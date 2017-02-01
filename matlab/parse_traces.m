@@ -35,40 +35,40 @@ clc;
 
 %% Define Source:
 
-run_idx = 8; %10;
-slice_idx = 6;
+run_idx = 10;
+slice_idx = 1;
 
-%source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1/';
-%tiff_dir = strcat(source_dir, sprintf('run%i_slices/', run_idx));
-source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1/ch1_slice6_parsed/test_avg/';
-tiff_dir = '/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1/ch1_slice6_parsed/test_avg/';
+source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20170118_AG33/fov1_gratings1/';
+tiff_dir = strcat(source_dir, sprintf('run%i_slices/', run_idx));
+% source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20170118_AG33/fov1_gratings1/ch1_slice6_parsed/test_avg/';
+% tiff_dir = '/nas/volume1/2photon/RESDATA/TEFO/20170118_AG33/fov1_gratings1/ch1_slice6_parsed/test_avg/';
 
 % -------------------------------------------------------------------------
 % Set here only for source files to be used for getting masks:
-% curr_tiff = sprintf('fov1_gratings_%05d.tif #2.tif #%i.tif', run_idx, slice_idx);
-% curr_tiff_path = strcat(tiff_dir, curr_tiff);
-code_idx = 3;
-curr_tiff = sprintf('AVG_code%i.tif', code_idx);
+curr_tiff = sprintf('fov1_gratings_%05d.tif #2.tif #%i.tif', run_idx, slice_idx);
 curr_tiff_path = strcat(tiff_dir, curr_tiff);
-avgimg_fn = sprintf('MAX_%s', curr_tiff);
-
-
+% 
+% code_idx = 3;
+% curr_tiff = sprintf('AVG_code%i.tif', code_idx);
+% curr_tiff_path = strcat(tiff_dir, curr_tiff);
+% avgimg_fn = sprintf('MAX_%s', curr_tiff);
 
 avgimg_fn = sprintf('AVG/AVG_%s', curr_tiff);
 ccimg_fn = strcat('CC/', sprintf('cc_%s.png', curr_tiff(1:end-4))); % , ridx, fidx));
 %stdimg_fn = sprintf('STD_%s', curr_tiff); %fov3_gratings_0000%i.tif #2.tif #%i.tif', ridx, fidx);
 
 slice_no = ['slice' num2str(slice_idx)];
-%file_no = ['file' num2str(run_idx)]; % 'file1R'
-file_no = ['code' num2str(code_idx)]; % 'file1R'
+file_no = ['file' num2str(run_idx)]; % 'file1R'
+% file_no = ['code' num2str(code_idx)]; % 'file1R'
 % -------------------------------------------------------------------------
 
 parts = strsplit(source_dir, '/');
 cond_folder = parts{end-1};
 
 % Set dir for new (or to-be-appended struct):
+struct_fn = strcat(source_dir, slice_no, '_traces_AVG.mat')
 %struct_fn = strcat(source_dir, slice_no, '_traces_AVG_singleROI_dim.mat')
-struct_fn = strcat(source_dir, slice_no, '_traces_AVGTIFF.mat')
+%struct_fn = strcat(source_dir, slice_no, '_traces_AVGTIFF.mat')
 
 % struct_fn = strcat(source_dir, slice_no, '_traces_STD.mat')
 % struct_fn = strcat(source_dir, slice_no, '_traces_CC.mat')
@@ -143,9 +143,13 @@ end
 
 %%
 make_new_rois = 0;
-nruns = 7; %12;
+nruns = 12; %12;
 %slice_idx = source_slice_no;
 source_file_no = 10;
+
+slice_idx = 6;
+run_idx = 10;
+
 
 tiff_dir = strcat(source_dir, 'ch1_slice6/');
 
@@ -254,6 +258,8 @@ end
     save(struct_fn, 'D')
 % end
 
+
+end
 
 %% Processes traces.
 
@@ -670,207 +676,6 @@ text(.1,.45,'delta F / F (%)',...
 D.(slice_no).(file_no).colors = colors;
 D.(slice_no).(file_no).legend = legend_labels{1};
 save(struct_fn, 'D')
-
-%% Weird oscillations?
-
-cell = 7 %(fov2_bar5_00002)
-S = D_traces(D_active(cell), :);
-
-S = t1; %traces(6,:);
-
-Fs = 5.58;
-T = 1/Fs;
-L = length(S);
-t = (0:L-1)*T;
-
-
-figure()
-plot(t, S, 'k', 'LineWidth', 1)
-
-Y = fft(S);
-P2 = abs(Y/L);
-P1 = P2(1:L/2+1);
-P1(2:end-1) = 2*P1(2:end-1);
-
-
-figure()
-target_freq = 0.37;
-f1 = Fs*(0:(L/2))/L;
-plot(f1,P1)
-hold on;
-plot(target_freq, max(P1), 'r*')
-title('Single-Sided Amplitude Spectrum of X(t)')
-xlabel('f (Hz)')
-ylabel('|P1(f)|')
-
-%%  PHASE MAP?
-
-target_freq = 0.37;
-Fs = 5.58;
-
-avgimg = D.(slice_no).(file_no).avgimg;
-masks = D.(slice_no).(file_no).masks;
-
-winsz = 30;
-for roi=1:size(D.(slice_no).(file_no).raw_traces,1)
-    
-    roi_no = sprintf('roi%i', roi);
-    
-    fin = round((5.58/.37)*30);
-%     pix = D.(slice_no).(file_no).raw_traces(roi, 1:round(fin));
-%     actualT = 0:length(pix);
-%     interpT = 0:(1/5.58):fin;
-%     tmpy = interp1(actualT, pix, interpT);
-    
-    tmpy = D.(slice_no).(file_no).raw_traces(roi, 1:round(fin));
-    %tmpy = D.(slice_no).(file_no).raw_traces(roi, 1:end);
-    tmp1 = padarray(tmpy,[0 winsz],tmpy(1),'pre');
-    tmp1 = padarray(tmp1,[0 winsz],tmpy(end),'post');
-    rollingAvg=conv(tmp1,fspecial('average',[1 winsz]),'same');%average
-    rollingAvg=rollingAvg(winsz+1:end-winsz);
-    y = tmpy - rollingAvg;
-    
-    NFFT = length(y);
-    Y = fft(y,NFFT);
-    F = ((0:1/NFFT:1-1/NFFT)*Fs).';
-    freq_idx = find(abs((F-target_freq))==min(abs(F-target_freq)));
-
-    magY = abs(Y);
-    %phaseY = unwrap(angle(Y));
-    phaseY = angle(Y);
-    %phase_rad = atan2(imag(Y(freq_idx)), real(Y(freq_idx)));
-    %phase_deg = phase_rad / pi * 180 + 90;
-    
-    fft_struct.(roi_no).targetPhase = phaseY(freq_idx); % unwrap(angle(Y(freq_idx)));
-    fft_struct.(roi_no).targetMag = magY(freq_idx);
-    
-end
-
-phaseMap = zeros(size(avgimg));
-phaseMap(phaseMap==0) = NaN;
-for roi=1:length(fieldnames(fft_struct))
-    
-    roi_no = sprintf('roi%i', roi);
-    curr_phase = fft_struct.(roi_no).targetPhase;
-    curr_mag = fft_struct.(roi_no).targetMag;
-    replaceNan = masks(:,:,roi)==1;
-    phaseMap(replaceNan) = 0;
-    phaseMap = phaseMap + curr_phase*masks(:,:,roi);
-    
-end
-
-figure()
-A = repmat(avgimg, [1, 1, 3]);
-B = phaseMap;
-imagesc(A);
-hold on;
-Bimg = imagesc2(B);
-colormap hsv
-caxis([-pi, pi])
-%colorbar()
-
-%% legend?
-
-sim_path = '/home/juliana/Repositories/retinotopy-mapper/tests/simulation/';
-sim_fn = 'V-Left_0_8bit.tif';
-
-sframe = 1;
-SIM = bigread2(strcat(sim_path, sim_fn),sframe);
-if ~isa(SIM,'double');    SIM = double(SIM);  end
-nframes = size(SIM,3);
-
-Fs = 60;
-T = 1/Fs;
-L = nframes;
-t = (0:L-1)*T;
-target = 0.05;
-legend_phase = zeros(size(SIM,1), size(SIM,2));
-for x=1:size(SIM,1)
-    for y=1:size(SIM,2)
-        pix = SIM(x,y,:);
-        NFFT = length(pix);
-        Yf = fft(pix,NFFT);
-        F = ((0:1/NFFT:1-1/NFFT)*Fs).';
-        freq_idx = find(abs((F-target))==min(abs(F-target)));
-
-        %magY = abs(Yf);
-        %phaseY = unwrap(angle(Y));
-        %phase_rad = atan2(imag(Y(freq_idx)), real(Y(freq_idx)));
-        %phase_deg = phase_rad / pi * 180 + 90;
-
-        legend_phase(x,y) = angle(Yf(freq_idx)); % unwrap(angle(Y(freq_idx)));
-    end
-        
-end
-figure()
-imagesc(legend_phase)
-colormap hsv
-caxis([-pi, pi])
-colorbar()
-
-
-%% fake legend:
-
-A = zeros(10,50);
-A(:,1) = ones(size(A(:,1)));
-legend_im = zeros(10,50,1000);
-legend_im(:,:,1) = A(:,:,1);
-tmpA = A;
-for lidx=2:1000
-    legend_im(:,:,lidx) = circshift(tmpA, 1, 2);
-    tmpA = legend_im(:,:,lidx);
-end
-
-Fs = 1;
-T = 1/Fs;
-L = size(legend_im,3);
-t = (0:L-1)*T;
-target_freq = 1/50;
-legend_phase = zeros(size(legend_im,1), size(legend_im,2));
-for x=1:size(legend_im,1)
-    for y=1:size(legend_im,2)
-        pix = legend_im(x,y,:);
-        NFFT = length(pix);
-        Y = fft(pix,NFFT);
-        F = ((0:1/NFFT:1-1/NFFT)*Fs).';
-        freq_idx = find(abs((F-target_freq))==min(abs(F-target_freq)));
-
-        magY = abs(Y);
-        %phaseY = unwrap(angle(Y));
-        %phase_rad = atan2(imag(Y(freq_idx)), real(Y(freq_idx)));
-        %phase_deg = phase_rad / pi * 180 + 90;
-
-        legend_phase(x,y) = angle(Y(freq_idx)); % unwrap(angle(Y(freq_idx)));
-    end
-        
-end
-figure()
-imagesc(legend_phase)
-colormap hsv
-caxis([-pi, pi])
-%colorbar()
-axis('off')
-%helperFrequencyAnalysisPlot1(F, magY, phaseY, NFFT)
-
-%% How many active cells have matching freq?
-
-target_freq = 0.37;
-matchingROIs = [];
-for roi=1:length(active_cells)
-    x = D_traces(D_active(roi), :);
-    
-    
-    psdest = psd(spectrum.periodogram,x,'Fs',Fs,'NFFT',length(x));
-    [~,I] = max(psdest.Data);
-    fprintf('Maximum occurs at %d Hz.\n',psdest.Frequencies(I));
-    
-    if sprintf('%0.2f', psdest.Frequencies(I))==num2str(target_freq)
-        matchingROIs = [matchingROIs D_active(roi)];
-    end
-
-end
-
-fprintf('Found %i out of %i total ROIs with peak at target frequency of %0.2f', length(matchingROIs), length(active_cells), target_freq)
 
 
 

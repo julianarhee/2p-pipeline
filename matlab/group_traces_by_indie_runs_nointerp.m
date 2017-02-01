@@ -35,10 +35,10 @@ clc
 %% Set paths for acquis.
 %
 % 
-source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1/';
+source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20170118_AG33/fov1_gratings1/';
 mw_path = strcat(source_dir, 'mw_data/');
-pymat_fn = '20160118_AG33_gratings_fov1_run10.mat';
 
+pymat_fn = '20170118_AG33_gratings_fov1_run10.mat';
 S = load(strcat(source_dir, 'mw_data/', pymat_fn));
 
 % -------------------------------------------------------------------------
@@ -91,7 +91,7 @@ separate_runs = 1;
 
 if separate_runs == 0
 
-    pymat_fn = '20160118_AG33_gratings_fov1_run10.mat';
+    %pymat_fn = '20160118_AG33_gratings_fov1_run10.mat';
     S = load(strcat(source_dir, 'mw_data/', pymat_fn));
 
     run_idx = 2;
@@ -105,9 +105,9 @@ if separate_runs == 0
 else
     
     run_fns = dir(strcat(source_dir, 'mw_data/*.mat'));
-    curr_run_suffix = sprintf('_run%i.mat', run_idx);
+    %curr_run_suffix = sprintf('_run%i.mat', run_idx);
 
-    runs_to_use = [1 2 3 4 5 6 7 8 10];
+    runs_to_use = [1:11];
     trial_struct = struct();
     
     for rtu=1:length(runs_to_use)
@@ -161,7 +161,7 @@ else
         curr_run_suffix = sprintf('_run%i.mat', runs_to_use(rtu));
         for pyfn=1:length(run_fns)
             if strfind(run_fns(pyfn).name, curr_run_suffix)
-                pymat_fn = run_fns(pyfn).name
+                pymat_fn = run_fns(pyfn).name;
             end
         end
         %end
@@ -901,22 +901,89 @@ for mtidx=2:2:length(mw_tif_fns)
    end
 end
 
-% T = struct();
-% for t_fn = 1:length(t_fns)
-%    for code=1:length(stim_types)
-%        if isfield(trial_struct.(stim_types{code}), t_fns{t_fn})
-%            if isfield(T, t_fns{t_fn})
-%                T.(t_fns{t_fn})(end+1) = trial_struct.(stim_types{code}).(t_fns{t_fn}); 
-%            else
-%                T.(t_fns{t_fn})(1) = trial_struct.(stim_types{code}).(t_fns{t_fn});
-%            end
-%        else
-%            continue
-%        end
-%    end
-% end
+T = struct();
+for t_fn = 1:length(t_fns)
+   for code=1:length(stim_types)
+       if isfield(trial_struct.(stim_types{code}), t_fns{t_fn})
+           if isfield(T, t_fns{t_fn})
+               T.(t_fns{t_fn})(end+1) = trial_struct.(stim_types{code}).(t_fns{t_fn}); 
+           else
+               T.(t_fns{t_fn})(1) = trial_struct.(stim_types{code}).(t_fns{t_fn});
+           end
+       else
+           continue
+       end
+   end
+end
+
+oTIFFs = struct();
+ntrials = length(T.(t_fns{t_fn}));
+nfiles = length(t_fns);
+for tidx=1:nfiles
+    curr_tiff_name = t_fns{tidx};
+    curr_tiff = T.(curr_tiff_name); 
+    e1 = arrayfun(@(i) curr_tiff{i}(2), 1:numel(curr_tiff)); %idx=2 is start onset
+    [cordered, cidxs] = sort(e1);
+    oTIFFs.(curr_tiff_name).trial_indices = cordered;
+    oTIFFs.(curr_tiff_name).trial_codes = cidxs;
+end
+
+% Check first trace:
+pymat_fn = '20170118_AG33_gratings_fov1_run10.mat';
+S = load(strcat(source_dir, 'mw_data/', pymat_fn));
+
+mw_times = S.mw_times_by_file;
+offsets = double(S.offsets_by_file);
+mw_codes = S.mw_codes_by_file;
+mw_file_durs = double(S.mw_file_durs);
+if isfield(S, 'ard_file_durs')
+    ard_times = S.ard_file_trigger_times;
+    ard_filedurs = double(S.ard_file_durs);
+end
+
+if strcmp(class(mw_times), 'int64')
+curr_mw_times = double(mw_times(mw_fidx, :));       % GET MW rel times from match_triggers.py: 'rel_times'
+curr_mw_codes = mw_codes(mw_fidx, :);               % Get MW codes corresponding to time points:
+fprintf('File %s, Last code found: %i\n', mw_file_no, curr_mw_codes(end-1))
+
+curr_ard_times = double(ard_times(mw_fidx, :));
+else
+curr_mw_times = double(mw_times{mw_fidx}); % convert to sec
+curr_mw_codes = mw_codes{mw_fidx};
+curr_ard_times = double(ard_times{mw_fidx});
+end
+mw_rel_times = ((curr_mw_times - curr_mw_times(1)) + offsets(mw_fidx)); % into seconds
+mw_sec = mw_rel_times/1000000;
 
 
+figure(); 
+ctrace = D.slice6.file1.raw_traces(1,:);
+%mw_ints = mw_sec .*((nframes-1)/mw_sec(end))
+mw_ints = mw_sec .*5.2
+plot(ctrace)
+xlabel('frame #')
+hold on
+for stim=1:2:(length(mw_rel_times)-1)
+   
+   sx = [mw_ints(stim) mw_ints(stim+1) mw_ints(stim+1) mw_ints(stim)];
+   y1=get(gca,'ylim');
+   sy = [y1(1) y1(1) y1(2) y1(2)];
+   %sy = [-0.1 -0.1 0.1 0.1].*100;
+   curr_code = curr_mw_codes(stim);
+   patch(sx, sy, colors(curr_code,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0)
+   hold on;
+   text(sx(1), sy(1)-abs(sy(1))*0.25, num2str(curr_code));
+   %text(sx(1), sy(3)-abs(sy(2))*0.5, num2str(curr_code));
+end
+
+tmat = zeros(34,2);
+tmat(:,1) = oTIFFs.tif_mw1file10.trial_indices;
+tmat(:,2) = oTIFFs.tif_mw1file10.trial_codes;
+sorted_codes = tmat(:,2);
+grating_list = zeros(size(tmat));
+for i=1:length(sorted_codes)
+    grating_list(i,:) = S.gratings(sorted_codes(i)+1,:);
+end
 %%
 % for t_fn=1:length(t_fns)
 %     X.(t_fns{t_fn}) = T.(t_fns{t_fn});

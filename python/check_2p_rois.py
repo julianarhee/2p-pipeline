@@ -143,9 +143,9 @@ rolling = True
 # TEFO ---------------------------------------------------------------
 # 200um volume, fast
 
-# nreps = 1290 #455 #1290 #455
-# target_freq = 0.13 # 0.37 #0.37 #0.13      # stim frequency in Hz
-# acquisition_rate = 5.58 # vol rate in Hz
+nreps = 455 # 1290 #455 #1290 #455
+target_freq = 0.37 #0.13 # 0.37 #0.37 #0.13      # stim frequency in Hz
+acquisition_rate = 5.58 # vol rate in Hz
 
 # TEFO ---------------------------------------------------------------
 # 300um volume, slower
@@ -157,8 +157,21 @@ acquisition_rate = 4.11 # vol rate in Hz
 nframes_per_cyc = (1/target_freq) * acquisition_rate
 moving_win_sz = nframes_per_cyc * 2
 
+## matlab values:
+mat = scipy.io.loadmat(os.path.join(source_dir, 'bar5_cond2_VOL_slice15_trace.mat'), squeeze_me = True, struct_as_record=False)
+mat['trace'].roi6._fieldnames
+raw = mat['trace'].roi6.raw
+rolling = mat['trace'].roi6.rolling
+rolling_shifted = mat['trace'].roi6.rolling_shifted
+smoothed_shifted = mat['trace'].roi6.smoothed_shifted
+smoothed = mat['trace'].roi6.smoothed
+
+
+##
 channels = ['ch1', 'ch2', 'ch3']
 paths = [ch1_roi_path, ch2_roi_path, ch3_roi_path]
+
+ch1_roi_path = os.path.join(source_dir, 'Values.xls')
 
 # for roi in range(len(ch1_roi_files)):
 
