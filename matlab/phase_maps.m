@@ -39,17 +39,37 @@ ylabel('|P1(f)|')
 
 run_idx = 5;
 cond_idx = 2;
-
 source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/fov2_bar5/';
-tiff_dir = strcat(source_dir, sprintf('run%i_volumes/', run_idx));
+
+
+run_idx = 1;
+cond_idx = 1;
+source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20170118_AG33/fov1_bar008Hz_test1/';
+
+
+run_idx = 1;
+cond_idx = 1;
+source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopy/fov6_retinobar_037Hz_final_nomask/';
+
+
+% --------
+run_idx = 4;
+cond_idx = 3;
+nbad = 2; % n of MW runs to ignore due to bad scan phase adjustment runs
+mw_idx = cond_idx + nbad;
+source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/fov1_bar037Hz_run4/';
+
+% -----
 
 % -------------------------------------------------------------------------
 % Set here only for source files to be used for getting masks:
-nslices = 20;
-ndiscard = 8;
+% nslices = 20;
+nslices = 20; %30; %22
+ndiscard = 0; %8;
 ntotal_slices = nslices + ndiscard;
 
-nvolumes = 455;
+% nvolumes = 455;
+nvolumes = 350; %340; %1952;
 nframes = nvolumes * ntotal_slices;
 nchannels = 1;
 ntotal_frames = nframes * nchannels;
@@ -97,10 +117,17 @@ end
             
 %% Get MW info:
 
-conds = {'bottom', 'left', 'right', 'top'};
+% conds = {'bottom', 'left', 'right', 'top'};
+% conds = {'right'};
+% conds = {'right', 'top', 'bottom', 'left'};
+conds = {'top', 'bottom', 'right', 'top', 'bottom', 'left'};
 curr_cond_no = cond_idx;
 
-pymat_fn = '20161218_CE025_bar5.mat';
+%pymat_fn = '20161218_CE025_bar5.mat';
+%pymat_fn = '20170118_AG33_bar008Hz_fov1_test1.mat';
+%pymat_fn = '20161219_JR030W_retinobar_037Hz_final_fov6_nomask.mat';
+pymat_fn = '20161221_JR030W_bar037Hz_run4.mat';
+
 S = load(strcat(source_dir, 'mw_data/', pymat_fn));
 curr_cond = conds{curr_cond_no};
 
@@ -117,15 +144,39 @@ last = ceil(find(abs(y_sec - mw_sec(end)) == min(abs(y_sec - mw_sec(end)))));
 
 %% Get TIFF stack:
 
-check_slice = 0;
-run_idx = 5;
+check_slice = 1;  %
+run_idx = 4; %1; %5;
+slice_idx = 10;
 
 if check_slice==1
-    slice_idx = 15;
     slice_no = sprintf('slice%i', slice_idx);
-    curr_tiff_fn = sprintf('fov2_bar5_%05d.tif #1.tif #%i.tif', cond_idx, slice_idx);
+    %curr_tiff_fn = sprintf('fov2_bar5_%05d.tif #1.tif #%i.tif', cond_idx, slice_idx);
+% 
+%     curr_tiff_fn = sprintf('fov1_bar_%05d.tif #%i.tif', cond_idx, slice_idx);
+%     curr_tiff_fn = fullfile('ch2_slices', curr_tiff_fn);
+%   
+    curr_tiff_fn = sprintf('fov1_bar037Hz_run%i_Slice%i_Channel01_File%03d.tif', run_idx, slice_idx, cond_idx);
+    
+    if create_rois==1
+        acquisition_struct_fn = sprintf('bar_cond%i_sl%i_ROIs.mat', cond_idx, slice_idx)
+    else
+        acquisition_struct_fn = sprintf('bar_cond%i_sl%i.mat', cond_idx, slice_idx)
+        masks = 'pixels';
+    end
 else
-    curr_tiff_fn = sprintf('fov2_bar5_%05d.tif #1.tif', cond_idx);
+    slice_idx = 0;
+    % curr_tiff_fn = sprintf('fov2_bar5_%05d.tif #1.tif', cond_idx);
+    % curr_tiff_fn = sprintf('fov1_bar_%05d.tif', cond_idx);
+    curr_tiff_fn = sprintf('fov6_retinobar_037Hz_final_nomask_%05d.tif #1.tif', cond_idx);
+    
+    
+    if create_rois==1
+        acquisition_struct_fn = sprintf('bar_cond%i_sl%i_ROIs.mat', cond_idx, slice_idx)
+    else
+        acquisition_struct_fn = sprintf('bar_cond%i.mat', cond_idx)
+        masks = 'pixels';
+    end
+    
 end
 curr_tiff_path = fullfile(source_dir, curr_tiff_fn);
 
@@ -142,50 +193,81 @@ if ~isa(Y,'double');    Y = double(Y);  end         % convert to single
 [d1,d2,T] = size(Y);                                % dimensions of dataset
 d = d1*d2;      
 
-struct_fn = sprintf('bar%i_cond%i_FFT_k3.mat', run_idx, cond_idx)
+%acquisition_struct_fn = sprintf('bar%i_cond%i_FFT_k3_slice%i.mat', run_idx, cond_idx, slice_idx)
+%acquisition_struct_fn = sprintf('bar_cond%i.mat', cond_idx)
+
 
 %% Resample binned pixels:
 
-bin_pixels = 1;
-ksize = 3;
+if create_rois == 1
+    bin_pixels = 1;
+    ksize = 2;
 
-if bin_pixels==1
-    binY = zeros(size(Y));
-    for frame=1:length(Y);
-        curr_frame = Y(:,:,frame);
-        padY = padarray(curr_frame, [ksize, ksize], 'replicate');
-        convY = conv2(padY, fspecial('average',[ksize ksize]), 'same');
-        binY(:,:,frame) = convY(ksize+1:end-ksize, ksize+1:end-ksize);
+    if bin_pixels==1
+        binY = zeros(size(Y));
+        for frame=1:size(Y,3);
+            curr_frame = Y(:,:,frame);
+            padY = padarray(curr_frame, [ksize, ksize], 'replicate');
+            convY = conv2(padY, fspecial('average',[ksize ksize]), 'same');
+            binY(:,:,frame) = convY(ksize+1:end-ksize, ksize+1:end-ksize);
+        end
+        raw_traces = binY;
+    else
+        raw_traces = Y;
     end
-    raw_traces = binY;
+
 else
-    raw_traces = Y;
+
+    avgimg_fn = 'AVG_fov1_bar037Hz_run4_Slice10_Channel01_File003.tif';
+    avgimg = imread(fullfile(source_dir, 'AVG', avgimg_fn));
+    avgimg = mat2gray(avgimg);
+    masks=ROIselect_circle(avgimg);
+    
+    % extract raw traces:
+    raw_traces = zeros(size(masks,3), size(Y,3));
+    for r=1:size(masks,3)
+        curr_mask = masks(:,:,r);
+        Y_masked = nan(1,size(Y,3));
+        for t=1:size(Y,3)
+            t_masked = curr_mask.*Y(:,:,t);
+            t_masked(t_masked==0) = NaN;
+            Y_masked(t) = nanmean(t_masked(:));
+            %Y_masked(t) = sum(t_masked(:));
+        end
+        raw_traces(r,:,:) = Y_masked;
+    end
+
 end
 
-F = struct();
-F.run = run_no;
-F.condition = cond_no;
-F.condname = conds{cond_idx};
-F.tiff_path = curr_tiff_path;
-F.tiff_size = size(Y);
-F.smoothed = bin_pixels;
+%%
+acquisition = struct(); % save acquisition struct
+acquisition.masks = masks;
+acquisition.avgimg = avgimg;
+
+acquisition.run = run_no;
+acquisition.condition = cond_no;
+acquisition.condname = conds{cond_idx};
+acquisition.tiff_path = curr_tiff_path;
+acquisition.tiff_size = size(Y);
+acquisition.smoothed = bin_pixels;
+
 if bin_pixels
-    F.kernel = ksize;
+    acquisition.kernel = ksize;
 else
-    F.kernel = 'none';
+    acquisition.kernel = 'none';
 end
-F.volume = raw_traces;
-save(fullfile(source_dir, struct_fn), 'F');
+acquisition.volume = raw_traces;
+save(fullfile(source_dir, acquisition_struct_fn), 'acquisition');
 
 
 
-F.pymat_path = strcat(source_dir, 'mw_data/', pymat_fn);
-F.pymat = S;
-F.y_sec = y_sec;
-F.y_sec_vols = y_sec_vols;
-F.mw_sec = mw_sec;
-F.mw_cycle_idxs = cycle_starts;
-save(fullfile(source_dir, struct_fn), 'F');
+acquisition.pymat_path = strcat(source_dir, 'mw_data/', pymat_fn);
+acquisition.pymat = S;
+acquisition.y_sec = y_sec;
+acquisition.y_sec_vols = y_sec_vols;
+acquisition.mw_sec = mw_sec;
+acquisition.mw_cycle_idxs = cycle_starts;
+save(fullfile(source_dir, acquisition_struct_fn), 'acquisition');
 
 
 
@@ -207,13 +289,15 @@ save(fullfile(source_dir, struct_fn), 'F');
 %%  PHASE MAP?
 
 target_freq = 0.37;
-Fs = 5.58;
+Fs = 4.26; %5.58;
 
 winsz = round((1/target_freq)*Fs*2);
 
 phase_map = zeros(d1, d2, 1);
 mag_map = zeros(d1, d2, 1);
 max_map = zeros(d1, d2, 1);
+
+%slice_idx = 14;
 
 fft_struct = struct();
 for row=1:d1;
@@ -225,12 +309,16 @@ for row=1:d1;
     
         vol_trace = raw_traces(row, col, :);
         
-        for slice=15:15 %ntotal_slices;
+        for slice=slice_idx:slice_idx %ntotal_slices;
             slice_indices = slice:ntotal_slices:ntotal_frames;
             vol_offsets = y_sec_vols(slice_indices);
 
             tmp0 = zeros(1,length(slice_indices));
-            tmp0(:) = squeeze(vol_trace(:,:,slice_indices));
+            if check_slice==1
+                tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
+            else
+                tmp0(:) = squeeze(vol_trace(:,:,slice_indices));
+            end
             tmp1 = padarray(tmp0,[0 winsz],tmp0(1),'pre');
             tmp1 = padarray(tmp1,[0 winsz],tmp1(end),'post');
             rollingAvg=conv(tmp1,fspecial('average',[1 winsz]),'same');%average
@@ -240,8 +328,8 @@ for row=1:d1;
             NFFT = length(y);
             fft_y = fft(y,NFFT);
             %F = ((0:1/NFFT:1-1/NFFT)*Fs).';
-            F = Fs*(0:(NFFT/2))/NFFT;
-            freq_idx = find(abs((F-target_freq))==min(abs(F-target_freq)));
+            freqs = Fs*(0:(NFFT/2))/NFFT;
+            freq_idx = find(abs((freqs-target_freq))==min(abs(freqs-target_freq)));
 
             magY = abs(fft_y);
             %phaseY = unwrap(angle(Y));
@@ -256,7 +344,7 @@ for row=1:d1;
             fft_struct.(roi_no).DC_y = y;
             fft_struct.(roi_no).raw_y = tmp0;
             fft_struct.(roi_no).slices = slice_indices;
-            fft_struct.(roi_no).freqs = F;
+            fft_struct.(roi_no).freqs = freqs;
             fft_struct.(roi_no).freq_idx = freq_idx;
             fft_struct.(roi_no).target_freq = target_freq;
             
@@ -272,35 +360,107 @@ for row=1:d1;
     
 end
 
-curr_chunk = binY(:,:,slice_indices);
-avgY = mean(binY(:,:,slice_indices),3);
+
+%%
+
+fft_struct = struct();
+for row=1:size(raw_traces,1)
+    fprintf('Processing Row #: %i\n', row);
+
+        
+    
+        roi_no = sprintf('roi_x%i_y%i', row, col);
+    
+        vol_trace = raw_traces(row, :);
+        
+        for slice=slice_idx:slice_idx %ntotal_slices;
+            slice_indices = slice:ntotal_slices:ntotal_frames;
+            vol_offsets = y_sec_vols(slice_indices);
+
+            tmp0 = zeros(1,length(slice_indices));
+            if check_slice==1
+                tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
+            else
+                tmp0(:) = squeeze(vol_trace(:,:,slice_indices));
+            end
+            tmp1 = padarray(tmp0,[0 winsz],tmp0(1),'pre');
+            tmp1 = padarray(tmp1,[0 winsz],tmp1(end),'post');
+            rollingAvg=conv(tmp1,fspecial('average',[1 winsz]),'same');%average
+            rollingAvg=rollingAvg(winsz+1:end-winsz);
+            y = tmp0 - rollingAvg;
+        
+            NFFT = length(y);
+            fft_y = fft(y,NFFT);
+            %F = ((0:1/NFFT:1-1/NFFT)*Fs).';
+            freqs = Fs*(0:(NFFT/2))/NFFT;
+            freq_idx = find(abs((freqs-target_freq))==min(abs(freqs-target_freq)));
+
+            magY = abs(fft_y);
+            %phaseY = unwrap(angle(Y));
+            phaseY = angle(fft_y);
+            %phase_rad = atan2(imag(Y(freq_idx)), real(Y(freq_idx)));
+            %phase_deg = phase_rad / pi * 180 + 90;
+
+            fft_struct.(roi_no).targetPhase = phaseY(freq_idx); % unwrap(angle(Y(freq_idx)));
+            fft_struct.(roi_no).targetMag = magY(freq_idx);
+
+            fft_struct.(roi_no).fft_y = fft_y;
+            fft_struct.(roi_no).DC_y = y;
+            fft_struct.(roi_no).raw_y = tmp0;
+            fft_struct.(roi_no).slices = slice_indices;
+            fft_struct.(roi_no).freqs = freqs;
+            fft_struct.(roi_no).freq_idx = freq_idx;
+            fft_struct.(roi_no).target_freq = target_freq;
+            
+            phase_map(row, col) = phaseY(freq_idx);
+            mag_map(row, col) = magY(freq_idx);
+            max_idx = find(magY==max(magY));
+            max_map(row, col) = phaseY(max_idx(1));
+            
+
+
+
+    end
+    
+end
+
+
+%%
+
+if check_slice == 1
+    curr_chunk = binY;
+    avgY = mean(binY,3);
+else
+    curr_chunk = binY(:,:,slice_indices);
+    avgY = mean(binY(:,:,slice_indices),3);
+end
 maxY = max(curr_chunk(:));
 minY = min(curr_chunk(:));
 
-x_scaled = (avgimg-min(avgimg(:)))*(maxY-minY)/(max(avgimg(:))-min(avgimg(:))) + minY;
+x_scaled = (avgY-min(avgY(:)))*(maxY-minY)/(max(avgY(:))-min(avgY(:))) + minY;
 
+FFT = struct();
+FFT.sampling_rate = Fs;
+FFT.DC_window = winsz;
+FFT.avgimg = avgY;
+FFT.fft_struct = fft_struct;
 
-F.sampling_rate = Fs;
-F.DC_window = winsz;
-F.avgimg = avgimg;
-F.fft = fft_struct;
+FFT.phase_map = phase_map;
+FFT.mag_map = mag_map;
+FFT.max_map = mag_map;
+FFT.max_idx = max_idx;
 
-F.phase_map = phase_map;
-F.mag_map = mag_map;
-F.max_map = mag_map;
-F.max_idx = max_idx;
-
-
-save(fullfile(source_dir, struct_fn), 'F');
+slice_acquisition_struct_fn = strcat('FFT_', acquisition_struct_fn(1:end-4), sprintf('_slice%i', slice_idx), '.mat');
+save(fullfile(source_dir, slice_acquisition_struct_fn), 'FFT', '-v7.3');
 
 %
 %% fake legend:
 
-A = zeros(10,50);
-A(:,1) = ones(size(A(:,1)));
+sim_acquisition = zeros(10,50);
+sim_acquisition(:,1) = ones(size(sim_acquisition(:,1)));
 legend_im = zeros(10,50,1000);
-legend_im(:,:,1) = A(:,:,1);
-tmpA = A;
+legend_im(:,:,1) = sim_acquisition(:,:,1);
+tmpA = sim_acquisition;
 for lidx=2:1000
     legend_im(:,:,lidx) = circshift(tmpA, 1, 2);
     tmpA = legend_im(:,:,lidx);
@@ -316,11 +476,12 @@ for x=1:size(legend_im,1)
     for y=1:size(legend_im,2)
         pix = legend_im(x,y,:);
         NFFT = length(pix);
-        Y = fft(pix,NFFT);
-        F = ((0:1/NFFT:1-1/NFFT)*Fs).';
-        freq_idx = find(abs((F-target_freq))==min(abs(F-target_freq)));
+        legend_ft = fft(pix,NFFT);
+        %freqs = Fs*(0:1/(NFFT/2))/NFFT;
+        fqs = ((0:1/NFFT:1-1/NFFT)*Fs).';
+        freq_idx = find(abs((fqs-target_freq))==min(abs(fqs-target_freq)));
         magY = abs(Y);
-        legend_phase(x,y) = angle(Y(freq_idx)); % unwrap(angle(Y(freq_idx)));
+        legend_phase(x,y) = angle(legend_ft(freq_idx)); % unwrap(angle(Y(freq_idx)));
     end
         
 end
@@ -347,14 +508,14 @@ colormap(ax1, gray)
 
 ax4 = subplot(2,2,4);
 
-threshold = 8000; %10000; %8000; %(k=3); %20000;
+threshold = 0.15; %8000; %10000; %8000; %(k=3); %20000;
 threshold_map = phase_map;
-threshold_map(mag_map<threshold) = NaN;
+threshold_map(mag_map<(max(mag_map(:))*threshold)) = NaN;
 
-A = repmat(mat2gray(avgimg), [1, 1, 3]);
+acquisition = repmat(mat2gray(avgY), [1, 1, 3]);
 B = threshold_map; %phase_map
-imagesc(A);
-slice_no = 'slice15';
+imagesc(acquisition);
+slice_no = 'slice4';
 title(sprintf('avg - %s', slice_no))
 hold on;
 Bimg = imagesc2(B);
@@ -377,15 +538,15 @@ caxis([-pi, pi])
 colormap(ax2, hsv)
 
 
-figdir = fullfile(source_dir, 'figures', struct_fn(1:end-4));
+figdir = fullfile(source_dir, 'figures', acquisition_struct_fn(1:end-4));
 if ~exist(figdir, 'dir')
     mkdir(figdir)
 end
 
 
-figname = strcat('FFT_', struct_fn(1:end-4))
+figname = strcat('FFT_', acquisition_struct_fn(1:end-4))
 saveas(fig, fullfile(figdir, figname));
-figname = strcat('FFT_', struct_fn(1:end-4), '.png')
+figname = strcat('FFT_', acquisition_struct_fn(1:end-4), '.png')
 saveas(fig, fullfile(figdir, figname));
 
 
@@ -394,7 +555,7 @@ saveas(fig, fullfile(figdir, figname));
 
 fig = figure();
 hold on;
-imagesc(A);
+imagesc(acquisition);
 slice_no = 'slice15';
 %title(sprintf('avg - %s', slice_no))
 hold on;
@@ -407,11 +568,11 @@ fig.PaperPositionMode = 'auto'
 fig_pos = fig.PaperPosition;
 fig.PaperSize = [fig_pos(3) fig_pos(4)];
 
-figname = strcat('phase_', struct_fn(1:end-4), '.fig')
+figname = strcat('phase_', acquisition_struct_fn(1:end-4), '.fig')
 saveas(fig, fullfile(figdir, figname));
 % export_fig([fullfile(figdir, figname),'.pdf'], '-pdf') %,'-transparent');
 % print(fig,figname,'-dpdf')
-figname = strcat('phase_', struct_fn(1:end-4), '.bmp')
+figname = strcat('phase_', acquisition_struct_fn(1:end-4), '.bmp')
 saveas(fig, fullfile(figdir, figname));
 
 
@@ -422,12 +583,38 @@ axis('off')
 caxis([-pi, pi])
 colormap hsv
 
-figname = strcat('phase_', struct_fn(1:end-4), '_legend.bmp')
+figname = strcat('phase_', acquisition_struct_fn(1:end-4), '_legend.bmp')
 saveas(fig, fullfile(figdir, figname));
 
 
+%% Check active rois:
 
+%fft_struct = F.fft;
+%rois = fieldnames(fft_struct);
 
+%vol_offset = vol_offsets(15);
+% rawtrace = fft_struct.(rois{roi}).raw_y;
+% dc_sub = fft_struct.(rois{roi}).DC_y;
+
+min_df = 20; %0.5;
+active_rois = [];
+active_maxima = [];
+for roi=1:length(rois)
+    rawtrace = fft_struct.(rois{roi}).raw_y;
+    dc_sub = fft_struct.(rois{roi}).DC_y;
+    shift_y = dc_sub + mean(rawtrace);
+    dF = (shift_y - mean(shift_y)) ./ mean(shift_y);
+    %display(max(dF(:)))
+    if max(dF(:))*100 > min_df
+        active_rois = [active_rois roi];
+    end
+    active_maxima = [active_maxima max(dF(:))];
+end
+fprintf('Found %i ROIs with dF/F > %0.2f%%.\n', length(active_rois), min_df);
+
+amax = active_maxima(active_rois);
+[amaxY, amaxI] = sort(amax, 'descend');
+sorted_rois = active_rois(amaxI);
 
 %%
 % -------------------------------------------------------------------------
@@ -438,7 +625,8 @@ fig = figure();
 rois = fieldnames(fft_struct);
 pidx = 1;
 
-check_rois = randi(length(rois), [1 9]);
+% check_rois = active_rois(randi(9, [1,9])); %randi(length(rois), [1 9]);
+check_rois = sorted_rois(1:9);
 
 for ridx=1:length(check_rois); %1:length(rois)
     subplot(3,3, pidx)
@@ -468,6 +656,7 @@ for ridx=1:length(check_rois); %1:length(rois)
         plot(freqs, P1, 'k')
         hold on
         plot(freqs(freq_idx), max(P1), 'r*')
+        %plot(freqs(freq_idx), P1(freq_idx), 'r*')
         ylabel('power')
         xlabel('F (Hz)')
         figname_prefix = 'power';
@@ -476,16 +665,16 @@ for ridx=1:length(check_rois); %1:length(rois)
     pidx = pidx + 1;
 end
 
-plotname = strrep(struct_fn(1:end-4), '_', '-');
+plotname = strrep(acquisition_struct_fn(1:end-4), '_', '-');
 suptitle(plotname)
 
-figname = strcat(figname_prefix, '_', strrep(struct_fn(1:end-4), '_', '-'))
+figname = strcat(figname_prefix, '_', strrep(acquisition_struct_fn(1:end-4), '_', '-'))
 saveas(fig, fullfile(figdir, figname));
 
 
 % -------------------------------------------------------------------------
 % Look at PHASE map by ROIs:
-phaseMap = zeros(size(avgimg));
+phaseMap = zeros(size(avgY));
 phaseMap(phaseMap==0) = NaN;
 for roi=1:length(fieldnames(fft_struct))
     
@@ -499,10 +688,10 @@ for roi=1:length(fieldnames(fft_struct))
 end
 
 fig = figure();
-A = repmat(avgimg, [1, 1, 3]);
+acquisition = repmat(avgY, [1, 1, 3]);
 B = phaseMap;
 subplot(1,2,1)
-imagesc(A);
+imagesc(acquisition);
 hold on;
 Bimg = imagesc2(B);
 colormap hsv
@@ -511,15 +700,39 @@ caxis([-pi, pi])
 
 % legend:
 
-figname = strcat(figname_prefix, '_', strrep(struct_fn(1:end-4), '_', '-'))
+figname = strcat(figname_prefix, '_', strrep(acquisition_struct_fn(1:end-4), '_', '-'))
 saveas(fig, fullfile(figdir, figname));
 
 
 %% PLot time series with stimulus onsets:
 
-roi = 6;
+%roi = 10; %; 6;
 
-%vol_offset = vol_offsets(15);
+% 
+% fft_struct = F.fft;
+% rois = fieldnames(fft_struct);
+% 
+% %vol_offset = vol_offsets(15);
+% % rawtrace = fft_struct.(rois{roi}).raw_y;
+% % dc_sub = fft_struct.(rois{roi}).DC_y;
+% 
+% min_df = 5; %0.5;
+% active_rois = [];
+% for roi=1:length(rois)
+%     rawtrace = fft_struct.(rois{roi}).raw_y;
+%     dc_sub = fft_struct.(rois{roi}).DC_y;
+%     shift_y = dc_sub + mean(rawtrace);
+%     dF = (shift_y - mean(shift_y)) ./ mean(shift_y);
+%     %display(max(dF(:)))
+%     if max(dF(:))*100 > min_df
+%         active_rois = [active_rois roi];
+%     end
+% end
+% fprintf('Found %i ROIs with dF/F > %0.2f%%.\n', length(active_rois), min_df);
+
+%
+
+roi = sorted_rois(end); 
 rawtrace = fft_struct.(rois{roi}).raw_y;
 dc_sub = fft_struct.(rois{roi}).DC_y;
 
@@ -561,7 +774,7 @@ suptitle('ROI 6');
 xlabel('time (sec)');
 
 figname_prefix = sprintf('timeseries_%s', rois{roi});
-figname = strcat(figname_prefix, '_', strrep(struct_fn(1:end-4), '_', '-'))
+figname = strcat(figname_prefix, '_', strrep(acquisition_struct_fn(1:end-4), '_', '-'))
 saveas(fig, fullfile(figdir, figname));
 
 saveas(fig, fullfile(figdir, [figname '.png']));
@@ -582,7 +795,7 @@ avgimg = mat2gray(avgimg);
 
 create_masks = 0;
 
-mask_struct_fn = fullfile(source_dir, 'bar5_cond2_VOL_tile.mat');
+mask_acquisition_struct_fn = fullfile(source_dir, 'bar5_cond2_VOL_tile.mat');
 if create_masks==1
     slice_no = 'slice15';
     avgimg_fn = 'AVG_fov2_bar5_00001.tif #1.tif #15.tif';
@@ -590,7 +803,7 @@ if create_masks==1
     avgimg = mat2gray(avgimg);
     masks=ROIselect_circle(avgimg);
 else
-    mask_struct = load(mask_struct_fn);
+    mask_struct = load(mask_acquisition_struct_fn);
     masks = mask_struct.D.masks;
 end
 
@@ -611,8 +824,8 @@ for r=1:size(masks,3)
     raw_traces(r,:,:) = Y_masked;
 end
 
-%struct_fn = sprintf('bar%i_cond%i_slice%i_tile.mat', run_idx, cond_idx, slice_idx)
-struct_fn = sprintf('bar%i_cond%i_VOL_tile.mat', run_idx, cond_idx)
+%acquisition_struct_fn = sprintf('bar%i_cond%i_slice%i_tile.mat', run_idx, cond_idx, slice_idx)
+acquisition_struct_fn = sprintf('bar%i_cond%i_VOL_tile.mat', run_idx, cond_idx)
 D = struct();
 %D.slice = slice_no;
 D.condition = cond_no;
@@ -624,7 +837,7 @@ D.curr_tiff = curr_tiff_fn;
 D.source_dir = source_dir;
 D.raw_traces = raw_traces;
 
-save(fullfile(source_dir, struct_fn), 'D')
+save(fullfile(source_dir, acquisition_struct_fn), 'D')
 
 % -------------------------------------------------------------------------
 % Save ROI nums to img:
@@ -656,18 +869,18 @@ for c=1:numcells
 end
 
 D.RGBimg = RGBimg;
-save(struct_fn, 'D')
+save(acquisition_struct_fn, 'D')
 
 % -------------------------------------------------------------------------
 % Save ROI map (and make figure dir if needed):
-% Use struct_fn name to name dir for data from that struct.
+% Use acquisition_struct_fn name to name dir for data from that struct.
 
-figdir = fullfile(source_dir, 'figures', struct_fn(1:end-4));
+figdir = fullfile(source_dir, 'figures', acquisition_struct_fn(1:end-4));
 if ~exist(figdir, 'dir')
     mkdir(figdir)
 end
 
-figname = strcat('ROIs - ', strrep(struct_fn(1:end-4), '_', '-'));
+figname = strcat('ROIs - ', strrep(acquisition_struct_fn(1:end-4), '_', '-'));
 saveas(fig, fullfile(figdir, figname));
 
 
@@ -806,10 +1019,10 @@ for roi=1:length(rois)
     title(rois{roi})
 end
 
-plotname = strrep(struct_fn(1:end-4), '_', '-');
+plotname = strrep(acquisition_struct_fn(1:end-4), '_', '-');
 suptitle(plotname)
 
-figname = strcat(figname_prefix, '_', strrep(struct_fn(1:end-4), '_', '-'))
+figname = strcat(figname_prefix, '_', strrep(acquisition_struct_fn(1:end-4), '_', '-'))
 saveas(fig, fullfile(figdir, figname));
 
 
@@ -829,10 +1042,10 @@ for roi=1:length(fieldnames(fft_struct))
 end
 
 fig = figure();
-A = repmat(avgimg, [1, 1, 3]);
+acquisition = repmat(avgimg, [1, 1, 3]);
 B = phaseMap;
 subplot(1,2,1)
-imagesc(A);
+imagesc(acquisition);
 hold on;
 Bimg = imagesc2(B);
 colormap hsv
@@ -841,7 +1054,7 @@ caxis([-pi, pi])
 
 % legend:
 
-figname = strcat(figname_prefix, '_', strrep(struct_fn(1:end-4), '_', '-'))
+figname = strcat(figname_prefix, '_', strrep(acquisition_struct_fn(1:end-4), '_', '-'))
 saveas(fig, fullfile(figdir, figname));
 
 
@@ -952,7 +1165,7 @@ xlabel('time (sec)');
 % cond_folder = parts{end-1};
 % 
 % % Set dir for new (or to-be-appended struct):
-% struct_fn = strcat(source_dir, slice_no, '_traces_AVG.mat')
+% acquisition_struct_fn = strcat(source_dir, slice_no, '_traces_AVG.mat')
 % 
 % 
 
@@ -1014,9 +1227,9 @@ for roi=1:length(fieldnames(fft_struct))
 end
 
 figure()
-A = repmat(avgimg, [1, 1, 3]);
+acquisition = repmat(avgimg, [1, 1, 3]);
 B = phaseMap;
-imagesc(A);
+imagesc(acquisition);
 hold on;
 Bimg = imagesc2(B);
 colormap hsv
@@ -1065,11 +1278,11 @@ colorbar()
 
 %% fake legend:
 
-A = zeros(10,50);
-A(:,1) = ones(size(A(:,1)));
+acquisition = zeros(10,50);
+acquisition(:,1) = ones(size(acquisition(:,1)));
 legend_im = zeros(10,50,1000);
-legend_im(:,:,1) = A(:,:,1);
-tmpA = A;
+legend_im(:,:,1) = acquisition(:,:,1);
+tmpA = acquisition;
 for lidx=2:1000
     legend_im(:,:,lidx) = circshift(tmpA, 1, 2);
     tmpA = legend_im(:,:,lidx);

@@ -95,17 +95,25 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
         # stop_ev_ev = [i for i in modes if i['time']>start_ev['time'] and (i['value']==0 or i['value']==1)]
         run_idxs = [i for i,e in enumerate(modes) if e['time']>start_ev['time']]
 
+        # Find first stop event after first run event:
+        stop_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)
         bounds = []
-        for r in run_idxs: #[0]:
-            try:
-                # stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
-                stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
-            except StopIteration:
-                end_event_name = 'trial_end'
-                print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
-                stop_ev = df.get_events(end_event_name)[-1]
-                print stop_ev
-            bounds.append([modes[r]['time'], stop_ev['time']])
+        bounds.append([start_ev.time, stop_ev.time])
+
+        # Check for any other start-stop events in session:
+        for r in run_idxs[1:]: #[0]:
+            if modes[r].time < stop_ev.time:
+                continue
+            else:
+                try:
+                    # stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
+                    stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
+                except StopIteration:
+                    end_event_name = 'trial_end'
+                    print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
+                    stop_ev = df.get_events(end_event_name)[-1]
+                    print stop_ev
+                bounds.append([modes[r]['time'], stop_ev['time']])
 
         bounds[:] = [x for x in bounds if ((x[1]-x[0])/1E6)>1]
         # print "................................................................"
@@ -141,18 +149,18 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
             else:
                 trigg_evs = df.get_events(trigger_names[0])
 
-            trigg_evs = [t for t in trigg_evs if t.time > boundary[0] and t.time < boundary[1]]
+            trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
             # trigg_indices = np.where(np.diff([t.value for t in trigg_evs]) == 1)[0] # when trigger goes from 0 --> 1, start --> end
             # trigg_times = [[trigg_evs[i], trigg_evs[i+1]] for i in trigg_indices]
             first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0]
             curr_idx = copy.copy(first_trigger)
 
             trigg_times = []
-            start_idx = 0
+            start_idx = curr_idx
             while start_idx < len(trigg_evs)-1: 
 
                 try:
-                    print start_idx
+                    
                     curr_chunk = trigg_evs[start_idx:]
                     try:
                         curr_idx = [i for i,e in enumerate(curr_chunk) if e.value==0][0] # Find first DI high.
@@ -161,13 +169,17 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
 
                     stop_ev = next(i for i in curr_chunk[curr_idx:] if i['value']==1) # Find next DI low.
                     found_idx = [i.time for i in trigg_evs].index(stop_ev.time) # Get index of DI low.
+                    
+                    trigg_times.append([curr_chunk[curr_idx], stop_ev])
+                    start_idx = found_idx #start_idx + found_idx
+                    print start_idx
+
 
                 except StopIteration:
                     print "Got to STOP."
-                trigg_times.append([trigg_evs[start_idx:][curr_idx], stop_ev])
-                start_idx = found_idx #start_idx + found_idx
+                    break
 
-
+            trigg_times = [t for t in trigg_times if t[1].time - t[0].time > 1]
 
             # Check stimDisplayUpdate events vs announceStimulus:
             stim_evs = df.get_events('#stimDisplayUpdate')
@@ -181,6 +193,9 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
             print "N pix-evs found in boundary: %i" % len(pdevs)
             nons = np.where(np.diff([i.value[-1]['bit_code'] for i in pdevs])==0)[0] # pix stim event is always last
             pdevs = [p for i,p in enumerate(pdevs) if i not in nons]
+
+            pdevs = [p for p in pdevs if p.time <= trigg_times[-1][1].time and p['time'] >= trigg_times[0][0].time] # Make sure pixel events are within trigger times...
+
             pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
 
             print "Got %i pix code events." % len(pdev_info)
@@ -235,11 +250,16 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
                             restarts = list(np.where(np.diff(posvec) > 0)[0] + 1)
                             curr_cond_type = 'top'
 
+                    if curr_cond_type in POS.keys():
+                        ncond_rep = len([i for i in POS.keys() if i==curr_cond_type])
+                        curr_cond_type = curr_cond_type + '_' + str(ncond_rep+1)
+
                     POS[curr_cond_type] = cycstruct()
                     POS[curr_cond_type].times = cond
                     restarts.append(0)
                     POS[curr_cond_type].idxs = sorted(restarts)
                     POS[curr_cond_type].vals = posvec
+
 
             I['ncycles'] = ncycles
             I['target_freq'] = df.get_events('cyc_per_sec')[-1].value
@@ -433,7 +453,7 @@ else:
 
 stupid_off = True # mistake in mwk protocol that sets DI to value...
 
-trigger_times = [i.time for i in trigg_evs] # Use frame-trigger times to find dur of each tif file in MW time
+# trigger_times = [i.time for i in trigg_evs] # Use frame-trigger times to find dur of each tif file in MW time
 mw_file_durs = []
 frame_trigger_times = []
 tidx = 0
@@ -523,7 +543,7 @@ ard_dfn = os.path.join(ard_data_dir, ard_fn)
 
 #     return a+b+c+d
 
-nsplits = 2
+nsplits = 1
 
 f = codecs.open(ard_dfn, 'r')
 data = f.read()
@@ -637,33 +657,67 @@ plt.plot(end_file_idxs, np.ones((1,len(end_file_idxs)))[0], 'r*', markersize=10)
 plt.title('Number of TIF files should be: %i' % len(new_file_markers))
 
 
-acquisition_evs = evs[new_file_idxs[0]:end_file_idxs[0]+1]
-ftimes = [e[1] for e in acquisition_evs]
+# acquisition_evs = evs[new_file_idxs[0]:end_file_idxs[0]+1]
+# ftimes = [e[1] for e in acquisition_evs]
+
+# onset_evs = [evs[on] for on in onsets]
+# offset_evs = [evs[off] for off in offsets]
+
+# onset_times = [e[1] for e in onset_evs]
+# offset_times = [e[1] for e in offset_evs]
+
+# frame_trigger_trange = (max(np.diff(onset_times)) - min(np.diff(onset_times))) / 1E3
+# print "Range of frame trigger time stamps: %0.2f - %0.2f ms." % (max(np.diff(onset_times))/1E3, min(np.diff(onset_times))/1E3)
+
+# frame_durs = np.array(offset_times) - np.array(onset_times)
 
 onset_evs = [evs[on] for on in onsets]
 offset_evs = [evs[off] for off in offsets]
-
-onset_times = [e[1] for e in onset_evs]
-offset_times = [e[1] for e in offset_evs]
-
-frame_trigger_trange = (max(np.diff(onset_times)) - min(np.diff(onset_times))) / 1E3
-print "Range of frame trigger time stamps: %0.2f - %0.2f ms." % (max(np.diff(onset_times))/1E3, min(np.diff(onset_times))/1E3)
-
-frame_durs = np.array(offset_times) - np.array(onset_times)
-
+ard_acquisition_evs = []
+ard_frame_onset_times = []
+ard_frame_offset_times = []
+ard_onset_idxs = []
+ard_offset_idxs = []
 
 ard_file_durs = []
 ard_file_trigger_times = []
 ard_file_trigger_vals = []
 for sidx,eidx in zip(new_file_idxs, end_file_idxs):
+
+    curr_acquisition_evs = evs[sidx:eidx+1]
+    ftimes = [e[1] for e in curr_acquisition_evs]
+
+    curr_onset_evs = [ev for ev in onset_evs if ev[1]>=curr_acquisition_evs[0][1] and ev[1]<=curr_acquisition_evs[-1][1]]
+    curr_offset_evs = [ev for ev in offset_evs if ev[1]>=curr_acquisition_evs[0][1] and ev[1]<=curr_acquisition_evs[-1][1]]
+
+    curr_onset_times = [e[1] for e in curr_onset_evs]
+    curr_offset_times = [e[1] for e in curr_offset_evs]
+
+    curr_onset_idxs = [i for (i,ev) in enumerate(onset_evs) if ev[1]>=curr_acquisition_evs[0][1] and ev[1]<=curr_acquisition_evs[-1][1]]
+    curr_offset_idxs = [i for (i,ev) in enumerate(offset_evs) if ev[1]>=curr_acquisition_evs[0][1] and ev[1]<=curr_acquisition_evs[-1][1]]
+
+
+    frame_trigger_trange = (max(np.diff(onset_times)) - min(np.diff(onset_times))) / 1E3
+    print "Range of frame trigger time stamps: %0.2f - %0.2f ms." % (max(np.diff(onset_times))/1E3, min(np.diff(onset_times))/1E3)
+
+    frame_durs = np.array(offset_times) - np.array(onset_times)
+
+    ard_acquisition_evs.append(curr_acquisition_evs)
+    ard_frame_onset_times.append(curr_onset_times)
+    ard_frame_offset_times.append(curr_offset_times)
+    ard_onset_idxs.append(curr_onset_idxs)
+    ard_offset_idxs.append(curr_offset_idxs)
+
+
     ard_file_dur = (ard_times[eidx] - ard_times[sidx])/1E6
     ard_file_durs.append(ard_file_dur)
 
     ard_frame_tval = ard_codes[sidx:eidx+1]
     ard_frame_ttime = ard_times[sidx:eidx+1]
-    
     ard_file_trigger_vals.append(ard_frame_tval)
     ard_file_trigger_times.append(ard_frame_ttime)
+
+
 
 
 # no_ard = True
@@ -687,12 +741,12 @@ if no_ard is True:
 else:
 
     pydict = dict()
-    pydict['acquisition_evs'] = acquisition_evs
-    pydict['frame_onset_times'] = onset_times
-    pydict['frame_offset_times'] = offset_times
-    pydict['onset_idxs'] = onsets
-    pydict['offset_idxs'] = offsets
-    pydict['stop_ev_time'] = trialends[-1]['time'] #stop_ev['time']
+    pydict['acquisition_evs'] = ard_acquisition_evs
+    pydict['frame_onset_times'] = ard_frame_onset_times
+    pydict['frame_offset_times'] = ard_frame_offset_times
+    pydict['onset_idxs'] = ard_onset_idxs
+    pydict['offset_idxs'] = ard_offset_idxs
+    #pydict['stop_ev_time'] = trialends[-1]['time'] #stop_ev['time']
 
     pydict['ard_file_durs'] = ard_file_durs
     pydict['ard_file_trigger_times'] = ard_file_trigger_times
@@ -703,6 +757,7 @@ else:
     pydict['mw_frame_trigger_times'] = frame_trigger_times
     pydict['offsets_by_file'] = offsets_by_file
     pydict['mw_codes_by_file'] = mw_codes_by_file
+    
     pydict['ard_fn'] = ard_dfn
     pydict['mw_dfn'] = dfn
     pydict['source_dir'] = source_dir
