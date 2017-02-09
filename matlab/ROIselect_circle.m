@@ -19,9 +19,16 @@ RGBimg(:,:,3)=0;
 radius=10;  %in pixels
 figure('KeyPressFcn',@KeyDownListener,'WindowButtonMotionFcn',@Wbmf,'WindowButtonDownFcn',@Wbdf,'WindowScrollWheelFcn',@Wswf);
 set(gca, 'DataAspectRatio',[1 1 1]); %jyr
+set(gca,'XTick',[]); % hides the ticks on x-axis jyr
+set(gca,'YTick',[]); % hides the ticks on x-axis
+set(gca,'color','None'); % hides the white bckgrnd
+set(gca,'XColor','None'); % changes the color of y-axis to white
+set(gca,'YColor','None'); % changes the color of y-axis to white
+
 ax=axes;
 im_h=imshow(RGBimg,'Parent',ax);
-set(gca,'Units','pixels');
+%set(gca,'Units','pixels');
+set(gca, 'units', 'normalized', 'position', [0.05 0.15 0.9 0.8]) % Do this to let figure resizing follow
 set(gca, 'xlimmode','manual',...
     'ylimmode','manual',...
     'zlimmode','manual')
@@ -38,6 +45,7 @@ while quitsig
     title(ax,['#cells selected ' num2str(size(masks,3))])
     drawnow;
 end
+close all
 
     function KeyDownListener(~,event)
         if strcmp(event.Key,'uparrow')  %to increase the brightness of the green channel
