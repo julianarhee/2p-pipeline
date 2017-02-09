@@ -135,7 +135,7 @@ end
 
 %% Get old mask from source-struct, or create new:
 
-make_new_rois = 0;
+make_new_rois = 1;
 % 
 % % get average:
 % avgimg = imread(strcat(source_dir, avgimg_fn));
@@ -164,7 +164,7 @@ if make_new_rois == 1
 
     D.(slice_no).(file_no).masks = masks;
     D.(slice_no).(file_no).avgY = mat2gray(avgY);
-    %D.(slice_no).(file_no).ccimg = ccimg;
+    D.(slice_no).(file_no).ccimg = ccimg;
     D.(slice_no).(file_no).curr_tiff = curr_tiff;
     D.(slice_no).(file_no).slice_path = tiff_dir;
     save(struct_fn, 'D')
@@ -191,32 +191,27 @@ run_idx = 10;
 
 
 tiff_dir = strcat(source_dir, 'ch1_slice6/');
-%%
-source_file_no = 1;
 
 % Choose .mat struct fn:
-for fidx=1:length(tiffs)
-    if fidx == source_file_no
+for run_idx=1:nruns
+    if run_idx == source_file_no
         fprintf('skipping source...\n');
         continue
     end
-    fprintf('Current run: %i\n', fidx)
+    fprintf('Current run: %i\n', run_idx)
 
 % curr_tiff = sprintf('fov1_gratings_10reps_run1_Slice%02d_Channel01_File%03d.tif', slice_idx, run_idx);
 % curr_tiff_path = strcat(tiff_dir, curr_tiff);
-%curr_tiff = sprintf('fov1_gratings_%05d.tif #2.tif #%i.tif', run_idx, slice_idx);
-%curr_tiff_path = strcat(tiff_dir, curr_tiff);
+curr_tiff = sprintf('fov1_gratings_%05d.tif #2.tif #%i.tif', run_idx, slice_idx);
+curr_tiff_path = strcat(tiff_dir, curr_tiff);
 
 
-    curr_tiff = sprintf('fov2_rsvp_25reps_run3_Slice%i_Channel01_File%03d.tif', slice_idx, fidx);
-    curr_tiff_path = fullfile(source_dir, tiff_dir, curr_tiff);
-
-%avgimg_fn = sprintf('AVG/AVG_%s', curr_tiff);
-%ccimg_fn = strcat('CC/', sprintf('cc_%s.png', curr_tiff(1:end-4))); % , ridx, fidx));
+avgimg_fn = sprintf('AVG/AVG_%s', curr_tiff);
+ccimg_fn = strcat('CC/', sprintf('cc_%s.png', curr_tiff(1:end-4))); % , ridx, fidx));
 %stdimg_fn = sprintf('STD_%s', curr_tiff); %fov3_gratings_0000%i.tif #2.tif #%i.tif', ridx, fidx);
 
 slice_no = ['slice' num2str(slice_idx)];
-file_no = ['file' num2str(fidx)]; % 'file1R'
+file_no = ['file' num2str(run_idx)]; % 'file1R'
 
 % get average:
 % avgimg = imread(strcat(source_dir, avgimg_fn));
@@ -255,10 +250,8 @@ if ~exist(struct_fn)
     D.(slice_no).(file_no).masks = masks;
     %D.(slice_no).(file_no).avgimg = avgimg;
     %D.(slice_no).(file_no).ccimg = ccimg;
-    D.(slice_no).(file_no).curr_tiff = curr_tiff_path;
-    %D.(slice_no).(file_no).slice_path = tiff_dir;
-    
-    D.(slice_no).(file_no).source_file_no = source_file_no;
+    D.(slice_no).(file_no).curr_tiff = curr_tiff;
+    D.(slice_no).(file_no).slice_path = tiff_dir;
 else
     load(struct_fn);
     if ~isfield(D.(slice_no), file_no)
@@ -268,13 +261,13 @@ else
 end
 
 
-%
+%%
 % load movie:
 sframe=1;
-Y = bigread2(curr_tiff_path,sframe);
+Y = bigread2(strcat(tiff_dir, curr_tiff),sframe);
 if ~isa(Y,'double');    Y = double(Y);  end
 
-%
+%%
 
 nframes = size(Y,3);
 

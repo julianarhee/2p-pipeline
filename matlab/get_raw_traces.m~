@@ -1,0 +1,72 @@
+
+function T = get_raw_traces(corrected, acquisition_name, ntiffs, nchannels, tiff_info, roi_type, channel_idx)
+    
+    switch corrected
+        case 'acquisition2p'
+            T = struct();
+            for curr_slice = 10:15 %1:tiff_info.nslices
+                slice_indices = curr_slice:tiff_info.nframes_per_volume:tiff_info.ntotal_frames;
+                
+                sample_tiff = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, curr_slice, channel_idx, 1);
+                sampleY = tiffRead(fullfile(tiff_info.tiff_dir, sample_tiff));
+                avg_sampleY = mean(sampleY, 3);
+                masks = ROIselect_circle(mat2gray(avg_sampleY));
+                
+                for channel_idx=1:nchannels
+                    
+                    for curr_file=1:ntiffs
+                        curr_tiff = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, curr_slice, channel_idx, curr_file);
+                        Y = tiffRead(fullfile(tiff_info.tiff_dir, curr_tiff));
+                        avgY = mean(Y, 3);
+                        
+                        % ---
+                        switch roi_type
+                            case 'rois'
+                                %masks = ROIselect_circle(mat2gray(avgY));
+                                raw_traces = zeros(size(masks,3), size(Y,3));
+                                for r=1:size(masks,3)
+                                    curr_mask = masks(:,:,r);
+                                    Y_masked = nan(1,size(Y,3));
+                                    for t=1:size(Y,3)
+                                        t_masked = curr_mask.*Y(:,:,t);
+                                        t_masked(t_masked==0) = NaN;
+                                        Y_masked(t) = nanmean(t_masked(:));
+                                        %Y_masked(t) = sum(t_masked(:));
+                                    end
+                                    raw_traces(r,:,:) = Y_masked;
+                                end
+                            case 'smoothed_pixels'
+                                raw_traces = zeros(size(Y));
+                                for frame=1:size(Y,3);
+                                    curr_frame = Y(:,:,frame);
+                                    padY = padarray(curr_frame, [ksize, ksize], 'replicate');
+                                    convY = conv2(padY, fspecial('average',[ksize ksize]), 'same');
+                                    raw_traces(:,:,frame) = convY(ksize+1:end-ksize, ksize+1:end-ksize);
+                                end
+                            otherwise
+                                [prev_fn, prev_path, ~] = uigetfile();
+                                prev_struct = load(fullfile(prev_path, prev_fn), 'masks');
+                                prev_struct_fieldname = fieldnames(prev_struct);
+                                masks = prev_struct.(prev_struct_fieldname{1}).slice(curr_slice).masks{curr_file};
+                        end
+        
+
+
+                        % ---
+                       
+                        T.slice(curr_slice).traces.file{curr_file} = raw_traces;
+                        T.slice(curr_slice).masks.file{curr_file} = raw_traces;
+                        T.slice(curr_slice).frame_indices = slice_indices;
+                    end
+                end
+                
+            end
+            
+        case 'none'
+            % do other stuff
+        otherwise
+            fprintf('No TIFFs found...\n')
+    end
+
+
+end

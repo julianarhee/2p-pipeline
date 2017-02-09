@@ -386,59 +386,6 @@ def get_pixel_clock_events(dfns, remove_orphans=True, stimtype='image'):
                 T = imtrials + tdevs
                 T = sorted(T, key=get_timekey)
 
-            # if stimtype=='bar':
-            #     # do stuff
-
-            #     bardevs = [i for i in idevs for v in i.value if '_bar' in v['name']]
-
-            #     conds = df.get_events('condition')
-            #     conds = [cond for cond in conds if cond.value>=0]
-            #     ncycles = df.get_events('ncycles')[-1].value
-            #     cycnums = df.get_events('cycnum')
-            #     cycends = [i for (i,c) in enumerate(cycnums) if c.value==ncycles+1]
-            #     cycles = []
-            #     sidx = 0
-            #     for cyc in cycends:
-            #         cyc_chunk = cycnums[sidx:cyc+1]
-            #         cyc_start = len(cyc_chunk) - [i.value for i in cyc_chunk][::-1].index(1) - 1 # find last occurrence of value1
-            #         cycles.append(cyc_chunk[cyc_start:cyc+1])
-            #         sidx = cyc + 1
-
-            #     bartimes = []
-            #     for cidx,cycle in enumerate(cycles):            
-            #         bartimes.append([b for b in bardevs if b.time < cycle[-1].time and b.time > trigg_starts[cidx][0].time])
-
-            #     tpositions = []
-            #     for update in bartimes:
-            #         tpos = [[i.time, (i.value[1]['pos_x'], i.value[1]['pos_y'])] for i in update]
-            #         tpositions.append(tpos)
-
-            #     POS = dict()
-            #     for cond in tpositions:
-            #         if cond[0][1][1]==0: # vertical cond, ypos=0
-            #             posvec = [i[1][0] for i in cond]
-            #             if posvec[0] < 0: # bar starting on LEFT
-            #                 restarts = list(np.where(np.diff(posvec) < 0)[0] + 1)
-            #                 curr_cond_type = 'left'
-            #             else:  
-            #                 restarts = list(np.where(np.diff(posvec) > 0)[0] + 1)
-            #                 curr_cond_type = 'right'
-            #         else: # horizontal cond, xpos = 0
-            #             posvec = [i[1][1] for i in cond] 
-            #             if posvec[0] < 0: # bar is starting at BOTTOM
-            #                 restarts = list(np.where(np.diff(posvec) < 0)[0] + 1)
-            #                 curr_cond_type = 'bottom'
-            #             else:
-            #                 restarts = list(np.where(np.diff(posvec) > 0)[0] + 1)
-            #                 curr_cond_type = 'top'
-
-            #         POS[curr_cond_type] = cycstruct()
-            #         POS[curr_cond_type].times = cond
-            #         restarts.append(0)
-            #         POS[curr_cond_type].idxs = sorted(restarts)
-            #         POS[curr_cond_type].vals = posvec
-
-
             trial_ends = [i for i in df.get_events('Announce_TrialEnd') if i.value==1]
             
             E.append(trial_ends)
