@@ -90,17 +90,16 @@ interpolate_y = 0;
 separate_runs = 1;
 
 if separate_runs == 0
-
+    pymat_fn = '';
     %pymat_fn = '20160118_AG33_gratings_fov1_run10.mat';
     S = load(strcat(source_dir, 'mw_data/', pymat_fn));
 
-    run_idx = 2;
-    ntrash = 1;
-    start_tif = 7;
-    tif_no = start_tif - ntrash;
-    ndiscard = 5;
-    mc_file_no = 1;
-    mw_fidx = 6 + run_idx - 1; % tif_no - ntrash; %mc_file_no+ntrash;
+%     run_idx = 2;
+%     ntrash = 1;
+%     start_tif = 4;
+%     tif_no = start_tif - ntrash;
+%     ndiscard = 3;
+    mw_fidx = 4; % tif_no - ntrash; %mc_file_no+ntrash;
 
 else
     
