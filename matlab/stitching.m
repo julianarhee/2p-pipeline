@@ -1,6 +1,7 @@
 
 nslices = 20;
 start_slice = 5;
+channel = 1;
 
 source_dir = '/nas/volume1/2photon/RESDATA/20161218_CE024_highres/acquisitions/';
 acquisition_dirs = dir(source_dir);
@@ -8,7 +9,7 @@ isub = [acquisition_dirs(:).isdir]; %# returns logical vector
 acquisitions = {acquisition_dirs(isub).name}';
 acquisitions(ismember(acquisitions,{'.','..'})) = [];
 
-for acquisition_idx = 1:length(acquisitions)
+for acquisition_idx = 14:14 %1:length(acquisitions)
     
     curr_acquisition_name = acquisitions{acquisition_idx};
     curr_acquisition_dir = fullfile(source_dir, curr_acquisition_name);
@@ -21,9 +22,13 @@ for acquisition_idx = 1:length(acquisitions)
     subvolumes(ismember(subvolumes,{'.','..'})) = [];
     
     for subvolume_idx=1:length(subvolumes)
-        
-        %curr_subvolume_dir = fullfile(curr_acquisition_dir, subvolumes{subvolume_idx}, 'Corrected', 'Channel01');
-        curr_subvolume_dir = fullfile(curr_acquisition_dir, subvolumes{subvolume_idx}, 'Corrected', 'Channel02');
+        if channel==1
+            curr_subvolume_dir = fullfile(curr_acquisition_dir, subvolumes{subvolume_idx}, 'Corrected', 'Channel01');
+            avg_channel_dir = 'average_stacks';
+        else
+            curr_subvolume_dir = fullfile(curr_acquisition_dir, subvolumes{subvolume_idx}, 'Corrected', 'Channel02');
+            avg_channel_dir = 'average_stacks_BV';
+        end
 
         slices = dir(fullfile(curr_subvolume_dir, '*.tif'));
         slices = {slices(:).name}';
@@ -42,11 +47,11 @@ for acquisition_idx = 1:length(acquisitions)
             [d1,d2,T] = size(Y);                                % dimensions of dataset
             d = d1*d2;  
             
-            average_stack(:,:,slice_idx) = mean(Y+(2^15), 3);
+            average_stack(:,:,slice_idx) = mean(Y, 3);
         end
         %average_stack = uint16(round(average_stack.*65535));
         %average_stack = int16(average_stack);
-        avgerage_stack_dir = fullfile(curr_acquisition_dir, 'average_stacks_BVs');
+        avgerage_stack_dir = fullfile(curr_acquisition_dir, avg_channel_dir);
         if ~exist(avgerage_stack_dir, 'dir')
             mkdir(avgerage_stack_dir);
         end
