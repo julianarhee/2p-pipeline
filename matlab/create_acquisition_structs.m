@@ -193,7 +193,7 @@ save(fullfile(struct_dir, curr_tracestruct_name), '-struct', 'raw_traces');
 %
 
 %%
-
+tic();
 scalevec = [2 1 1];
 tmp_source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
 tmp_tiff_dir = 'Corrected_Channel01_File003';
@@ -213,4 +213,5 @@ for tmp_idx=1:length(tmp_tiffs)
     resize_dir = fullfile(tmp_source_dir, strcat(tmp_tiff_dir, '_scaled'));
     tiffWrite(imData, tmp_tiff, resize_dir);
 end
-
+fprintf('Time elapsed: ');
+toc();

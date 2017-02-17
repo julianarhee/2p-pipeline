@@ -1,4 +1,4 @@
-function imData=bigread2(path_to_file,sframe,num2read,scalevec)
+function imData2=bigread2_scale(path_to_file,sframe,num2read,scalevec)
 %reads tiff files in Matlab bigger than 4GB, allows reading from sframe to sframe+num2read-1 frames of the tiff - in other words, you can read page 200-300 without rading in from page 1.
 %based on a partial solution posted on Matlab Central (http://www.mathworks.com/matlabcentral/answers/108021-matlab-only-opens-first-frame-of-multi-page-tiff-stack)
 %Darcy Peterka 2014, v1.0
@@ -69,7 +69,7 @@ if strcmpi(ext,'.tiff') || strcmpi(ext,'.tif');
     elseif(bd==32)
         form='single'
     elseif (bd==16)
-        form='uint16';
+        form='int16';
     elseif (bd==8)
         form='uint8';
     end
@@ -102,7 +102,7 @@ if strcmpi(ext,'.tiff') || strcmpi(ext,'.tif');
     he_h=info.Height;
     % mul is set to > 1 for debugging only
     mul=1;
-    if strcmpi(form,'uint16') || strcmpi(form,'uint8')
+    if strcmpi(form,'int16') || strcmpi(form,'uint8')
         if(bo)
             for cnt = sframe:lastframe
                 %cnt;
@@ -160,7 +160,7 @@ if strcmpi(ext,'.tiff') || strcmpi(ext,'.tif');
         %scale_vec = [2 1 1];
         T = maketform('affine',[scalevec(1) 0 0; 0 scalevec(2) 0; 0 0 scalevec(3); 0 0 0;]);
         R = makeresampler({'cubic','cubic','cubic'},'fill');
-        imData = tformarray(imData,T,R,[1 2 3],[1 2 3], size(imData).*scalevec,[],0);
+        imData2 = tformarray(imData,T,R,[1 2 3],[1 2 3], size(imData).*scalevec,[],0);
 
                         
         fclose(fp);
