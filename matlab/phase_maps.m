@@ -409,18 +409,13 @@ max_map = zeros(d1, d2, 1);
 
 if use_rois==0
     
-%slice_idx = 14;
-
 fft_struct = struct();
 for row=1:d1;
     fprintf('Processing Row #: %i\n', row);
     for col=1:d2;
-        
-    
         roi_no = sprintf('roi_x%i_y%i', row, col);
     
         vol_trace = raw_traces(row, col, :);
-        
         for slice=slice_idx:slice_idx %ntotal_slices;
             slice_indices = slice:ntotal_slices:ntotal_frames;
             vol_offsets = y_sec_vols(slice_indices);
@@ -442,7 +437,6 @@ for row=1:d1;
         
             NFFT = length(trace_y);
             fft_y = fft(trace_y,NFFT);
-            %F = ((0:1/NFFT:1-1/NFFT)*Fs).';
             freqs = Fs*(0:(NFFT/2))/NFFT;
             freq_idx = find(abs((freqs-target_freq))==min(abs(freqs-target_freq)));
 
@@ -467,10 +461,7 @@ for row=1:d1;
             mag_map(row, col) = magY(freq_idx);
             max_idx = find(magY==max(magY));
             max_map(row, col) = phaseY(max_idx(1));
-            
         end
-
-
     end
     
 end
@@ -493,8 +484,6 @@ else
 fft_struct = struct();
 for row=1:size(raw_traces,1)
     fprintf('Processing Row #: %i\n', row);
-    
-        %roi_no = sprintf('roi_x%i_y%i', row, col);
         roi_no = sprintf('roi_%i', row);
         
         vol_trace = raw_traces(row, :);
@@ -545,11 +534,7 @@ for row=1:size(raw_traces,1)
             mag_map(masks(:,:,row)==1) = magY(freq_idx);
             max_idx = find(magY==max(magY));
             max_map(masks(:,:,row)==1) = phaseY(max_idx(1));
-            
-
-
-
-    end
+        end
     
 end
 
