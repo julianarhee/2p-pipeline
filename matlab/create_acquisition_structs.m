@@ -596,7 +596,7 @@ colormap(ax2, hsv)
 
 
 %%
-
+tic();
 scalevec = [2 1 1];
 tmp_source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/raw/';
 tmp_tiff_dir = 'raw';
@@ -618,4 +618,5 @@ for tmp_idx=1:length(tmp_tiffs)
     resize_dir = fullfile(tmp_source_dir, strcat(tmp_tiff_dir, '_scaled'));
     tiffWrite(imData, tmp_tiff, resize_dir);
 end
-
+fprintf('Time elapsed: ');
+toc();
