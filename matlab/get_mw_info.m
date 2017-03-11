@@ -3,7 +3,7 @@ function M = get_mw_info(mw_path, ntiffs)
 run_fns = dir(fullfile(mw_path, '*.mat'));
 if isempty(run_fns)
     
-    fprintf('Failed to find corresponding MW-parsed .mat file for current acquisition %s.\n', source_dir);
+    fprintf('Failed to find corresponding MW-parsed .mat file for current acquisition %s.\n', mw_path);
     
     if exist(mw_path,'dir')
         fprintf('Found MW path at %s, but .mwk file is not yet parsed.\n', mw_path);
@@ -54,8 +54,8 @@ switch mw_to_si
         pymat = load(fullfile(mw_path, pymat_fn));
         run_names = cellstr(pymat.conditions);
         if pymat.stimtype=='bar'
-            conditions = cellstr(pymat.bars);
-        elseif pymat.stimtype=='grating'r
+            conditions = cellstr(pymat.conditions);
+        elseif pymat.stimtype=='grating'
             conditions = cellstr(pymat.gratings);
         elseif pymat.stimtype=='image'
             conditions = cellstr(pymat.stim_idxs);

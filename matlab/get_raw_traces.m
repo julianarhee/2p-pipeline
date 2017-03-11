@@ -14,13 +14,14 @@ function trace_info = get_raw_traces(corrected, acquisition_name, ntiffs, nchann
 %  now... more on this later.
 %  Unprocessed TIFFs will contain SI's metadata in them, so metadata
 %  can and should still be extracted.
-%
+%   
+    paramspecs =  '';
     trace_info = struct();
     trace_struct_names = {};
     switch corrected
         case 'acquisition2p'
             T = struct();
-            for curr_slice = 1:tiff_info.nslices %12:2:16 %1:tiff_info.nslices
+            for curr_slice = 10:2:12 %1:tiff_info.nslices %12:2:16 %1:tiff_info.nslices
                 slice_indices = curr_slice:tiff_info.nframes_per_volume:tiff_info.ntotal_frames;
                 
                 %sample_tiff = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, curr_slice, channel_idx, 1);
@@ -110,8 +111,10 @@ function trace_info = get_raw_traces(corrected, acquisition_name, ntiffs, nchann
                                 
             end
             
-        case 'none'
+        case 'raw'
             % do other stuff
+            
+            
         otherwise
             fprintf('No TIFFs found...\n')
     end
