@@ -4,29 +4,61 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-source_dir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
-struct_dir = fullfile(source_dir, 'datastructs');
-if ~exist(struct_dir, 'dir')
-    mkdir(struct_dir);
+source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
+% source_dir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
+% source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
+analysis_dir = fullfile(source_dir, 'analysis');
+if ~exist(analysis_dir, 'dir')
+    mkdir(analysis_dir);
 end
 
 % Define TIFF dir if is sub-dir within the source-dir:
 channel_idx = 1;
 nchannels = 1;
 %tiff_dir = sprintf('Corrected_Channel%02d', channel_idx);
-tiff_dir = sprintf('Corrected');
+%tiff_dir = sprintf('Corrected');
 acquisition_name = 'fov1_bar037Hz_run4';
 
 %% Get SI volume info:
 
 metaInfo = 'SI';
 
+corrected = true;
+if corrected
+    tiff_source = 'Corrected';
+else
+    tiff_source = 'Parsed';
+end
+
 switch metaInfo
     case 'SI'
-
+       
         metastruct_fn = sprintf('%s.mat', acquisition_name);
-        meta = load(fullfile(source_dir, metastruct_fn));
         
+        if ~exist(fullfile(source_dir, metastruct_fn))
+            
+            % Load and parse raw TIFFs and create meta file:
+            movies = dir(fullfile(source_dir,'*.tif'));
+            movies = {movies(:).name};
+            writeDir = fullfile(source_dir, tiff_source);
+            if ~exist(writeDir, 'dir')
+                mkdir(writeDir)
+            end
+            parseSIdata(acquisition_name, movies, source_dir, writeDir)
+            
+            
+            % Load meta struct:
+            load(fullfile(source_dir, metastruct_fn));
+            meta = struct();
+            meta.(acquisition_name) = metaDataSI{1}; % Have info for each file, but this was not corrected in previosuly run MCs...
+        else
+            meta = load(fullfile(source_dir, metastruct_fn));
+        end
+
+        % Sort Parsed files into separate directories:
+        numchannels = 2;
+        sort_parsed_tiffs(source_dir, tiff_source, numchannels);
+            
         nvolumes = meta.(acquisition_name).metaDataSI.SI.hFastZ.numVolumes;
         nslices = meta.(acquisition_name).metaDataSI.SI.hFastZ.numFramesPerVolume;
         ndiscard = meta.(acquisition_name).metaDataSI.SI.hFastZ.numDiscardFlybackFrames;
@@ -42,8 +74,7 @@ switch metaInfo
         lines_per_frame = meta.(acquisition_name).metaDataSI.SI.hRoiManager.linesPerFrame;
         frame_height = lines_per_frame/slow_multiplier;
         
-        %clear M;
-        
+      
     case 'manual' % No motion-correction/processing, just using raw TIFFs.
         nvolumes = 350;
         nslices = 20;
@@ -53,11 +84,14 @@ switch metaInfo
         ntotal_frames = nframes_per_volume * nvolumes;
 end
 
-which_tiffs = sprintf('*Channel%02d*.tif', channel_idx);
-tmp_tiffs = dir(fullfile(source_dir, tiff_dir, which_tiffs));
-tiff_fns = {tmp_tiffs(:).name}';
-ntiffs = length(tiff_fns) / nframes_per_volume;
-fprintf('Found %i TIFF files for current acquisition analysis.\n', ntiffs);
+% Get paths to each FILE directory (into which TIFFs have been parsed):
+
+channel_dir = sprintf('Channel%02d', channel_idx);
+tmp_tiffs = dir(fullfile(source_dir, tiff_source, channel_dir));
+tmp_tiffs = tmp_tiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmp_tiffs));
+tiff_dirs = {tmp_tiffs(:).name}';
+ntiffs = length(tiff_dirs);
+fprintf('Found %i TIFF stacks for current acquisition analysis.\n', ntiffs);
 
 %% Specify experiment parameters:
 
@@ -81,9 +115,9 @@ end
 %% Grab experiment info for each slice and save a .mat for each run.
 %  Stores MW / ARD stimulus info & metadata from SI.
 
-for tiff_idx=1:ntiffs
+for fidx=1:ntiffs
     
-    curr_mw_fidx = mw.mw_fidx + tiff_idx - 1;
+    curr_mw_fidx = mw.mw_fidx + fidx - 1;
     
     % Make sure to grab the correct run based on TIFF order number:
     for order_no=1:length(fieldnames(run_order))
@@ -144,23 +178,31 @@ for tiff_idx=1:ntiffs
     tiff.ntotal_slices = nslices + ndiscard;
     tiff.ntotal_frames = ntotal_frames;
     tiff.nframes_per_volume = nframes_per_volume;
-    tiff.tiff_path = fullfile(source_dir, tiff_dir);
+    tiff.tiff_path = fullfile(source_dir, tiff_source, channel_dir, tiff_dirs{fidx});
     tiff.imgX = frame_width;
     tiff.imgY = frame_height;
+    
+    tiff.tiff_fidx = fidx;
    
-    curr_struct_name = char(sprintf('meta_%05d.mat', tiff_idx));
-    save(fullfile(struct_dir, curr_struct_name), '-struct', 'tiff');
+    curr_struct_name = char(sprintf('meta_File%03d.mat', fidx));
+    meta_path = fullfile(analysis_dir, 'meta');
+    if ~exist(meta_path)
+        mkdir(meta_path)
+    end
+    
+    save(fullfile(meta_path, curr_struct_name), '-struct', 'tiff');
     
 end
     
-%% Get raw traces from TIFFs:
+%% Set up experiment analysis parameters:
 
 % =========================================================================
 % Parameters:
 % =========================================================================
 
 % -------------------------
-corrected = 'acquisition2p';
+preprocessing = 'Acquisition2P';
+%preprocessing = 'raw';
 
 % --------------------------
 roi_type = 'create_rois';
@@ -178,43 +220,162 @@ roi_type = 'create_rois';
 channel_idx = 1;
 
 % -------------------------
-tiff_info_structs = dir(fullfile(struct_dir, '*meta_*'));
-tiff_info_structs = {tiff_info_structs(:).name}';
-meta = load(fullfile(struct_dir, tiff_info_structs{1}));
+meta_structs = dir(fullfile(meta_path, '*meta_*'));
+meta_structs = {meta_structs(:).name}';
+meta_paths = cell(1, length(meta_structs));
+for m=1:length(meta_structs)
+    meta_paths{m} = fullfile(meta_path, meta_structs{m});
+end
+ntiffs = length(meta_paths);
 
-ntiffs = length(tiff_info_structs);
+
 
 % =========================================================================
-% Grab traces, and save them:
+% Save analysis info:
 % =========================================================================
-% TODO:  1. don't have separate "traces" structs from the meta struct --
-% combine into "acquisition-struct" for easier analysis??
 
-roi_type = 'pixels';
-% if smooth_spatial==1
-smooth_spatial=1;
-ksize=5;
+didx = 1;
 
-trace_info = get_raw_traces(corrected, acquisition_name, ntiffs, nchannels, meta,...
-                roi_type, channel_idx, smooth_spatial, ksize);
+datastruct = sprintf('datastruct_%03d', didx);
+datastruct_path = fullfile(analysis_dir, datastruct);
+if ~exist(datastruct_path)
+    mkdir(datastruct_path)
+    D = struct();
+end
 
-% raw_traces.slice(10).traces.file(1)
-% currently, have it s.t. new ROI masks are created for each slice, but
-% re-used for each file (of that slice)
+D.name = datastruct;
+D.path = datastruct_path;
+D.acquisition_name = acquisition_name;
+D.preprocessing = preprocessing;
+D.roi_type = roi_type;
+D.metaPaths = meta_paths;
+D.ntiffs = ntiffs;
+D.channels = nchannels;
+
+save(fullfile(datastruct_path, datastruct), '-append', '-struct', 'D');
+
+
+%% Create masks and get traces:
+
+% =========================================================================
+% Create masks, and save them:
+% =========================================================================
+
+refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
+slices_to_use = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+
+refMeta = load(meta_paths{refRun});
+slice_fns = dir(fullfile(refMeta.tiff_path, '*.tif'));
+slice_fns = {slice_fns(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
+
+switch roi_type
+    case 'create_rois'
+        
+        % Create ROIs: ----------------------------------------------------
+        create_rois(datastruct_path, acquisition_name, refMeta, slice_fns);
+                
+        
+        % Set up mask info struct to reuse masks across files:
+        % -----------------------------------------------------------------
+        mask_type = 'circles';
+        maskInfo = struct();
+        maskInfo.refNum = refRun;
+        maskInfo.refMeta = refMeta;
+        maskInfo.mask_type = mask_type;
+
+        mask_dir = fullfile(datastruct_path, 'masks');
+        mask_structs = dir(fullfile(mask_dir, '*.mat'));
+        mask_structs = {mask_structs(:).name}';
+        slices_to_use = zeros(1,length(mask_structs));
+        for m=1:length(mask_structs)
+            m_parts = strsplit(mask_structs{m}, 'Slice');
+            m_parts = strsplit(m_parts{2}, '_');
+            slices_to_use(m) = str2num(m_parts{1});
+        end
+        mask_paths = cell(1,length(mask_structs));
+        for m=1:length(mask_structs)
+            mask_paths{m} = fullfile(mask_dir, mask_structs{m});
+        end
+        maskInfo.maskPaths = mask_paths;
+        maskInfo.slices_to_use = slices_to_use;
+        
+        
+        % =================================================================
+        % Get traces with masks:
+        % =================================================================
+        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
+                    nchannels, meta_paths, maskInfo);
+        
+        
+    case 'pixels'
+        
+        mask_type = 'pixels';
+        
+        % Set smoothing/filtering params:
+        % -----------------------------------------------------------------
+        params = struct();
+        params.smooth_xy = true;
+        params.kernel_xy = 5;
+        
+        slices_to_use = [5, 10, 15, 20]; % TMP 
+        params.slices_to_use = slices_to_use;
+        
+
+        
+        % =================================================================
+        % Get traces:
+        % =================================================================
+        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
+                    nchannels, meta_paths, [], params);
+
+    case 'nmf'
+        
+        mask_type = 'nmf';
+        
+        % Get NMF params:
+        % -----------------------------------------------------------------
+        params = struct();
+        
+        
+        
+        
+        % =================================================================
+        % Get traces:
+        % =================================================================
+        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
+                    nchannels, meta_paths, [], params); 
+                    
+end
+
+
+% Update analysis info struct:
 % -------------------------------------------------------------------------
 
-%curr_tracestruct_name = char(sprintf('traces_%s_%05d.mat', roi_type, 1));
-%save(fullfile(struct_dir, curr_tracestruct_name), '-struct', 'T');
+D.refRun = refRun;
+D.refPath = refMeta.tiff_path;
+D.slices = slices_to_use;
 
-% 
+D.maskType = mask_type;
+if strcmp(D.maskType, 'circles')
+    D.maskInfo = maskInfo;
+    D.maskType = mask_type;
+else
+    D.params = params;
+end
+save(fullfile(datastruct_path, datastruct), '-append', '-struct', 'D');
 
+        
 %%  Align stimulus events to traces:
 
 % Load metadata if needed:
+meta_structs = dir(meta_path);
+meta_structs = {meta_structs(:).name}';
 
-tiff_info_structs = dir(fullfile(struct_dir, '*meta_*'));
-tiff_info_structs = {tiff_info_structs(:).name}';
-meta = load(fullfile(struct_dir, tiff_info_structs{1}));
+% Load traces if needed:
+traces_path = fullfile(datastruct_path, 'traces');
+traces_structs = dir(traces_path);
+traces_structs = {traces_structs(:).name}';
+
 
 % % Load FFT analysis structs if needed:
 % roi_type = 'pixels';
@@ -226,12 +387,12 @@ meta = load(fullfile(struct_dir, tiff_info_structs{1}));
 % Retinotopy:
 
 % slices = [12, 14, 16];
-tmp_slice_fns = dir(fullfile(struct_dir, 'traces', '*traces_*_pixels*'));
+tmp_slice_fns = dir(fullfile(analysis_dir, 'traces', '*traces_*_pixels*'));
 slice_fns = {tmp_slice_fns(:).name};
 
 for sidx = 10:length(slice_fns)
     slice_fn = slice_fns{sidx};
-    load(fullfile(struct_dir, 'traces', slice_fn))
+    load(fullfile(analysis_dir, 'traces', slice_fn))
 
     nfiles = length(T.traces.file);
     for fidx = 1:nfiles
@@ -408,10 +569,10 @@ for sidx = 10:length(slice_fns)
         FFT.max_map = mag_map;
         FFT.max_idx = max_idx;
         
-        save(fullfile(struct_dir, 'traces', analysis_struct_fn), 'FFT', '-v7.3');
+        save(fullfile(analysis_dir, 'traces', analysis_struct_fn), 'FFT', '-v7.3');
         
         fft_struct_fn = sprintf('ft_Slice%02d_File%03d_%s', sidx, fidx, roi_type);
-        save(fullfile(struct_dir, 'traces', fft_struct_fn), 'fft_struct', '-v7.3');
+        save(fullfile(analysis_dir, 'traces', fft_struct_fn), 'fft_struct', '-v7.3');
         clearvars FFT fft_struct
         
     end
@@ -498,7 +659,7 @@ legends.bottom = flipud(legend_phase);
 legend_struct = 'retinotopy_legends';
 
 %FFT.legends = legends;
-save(fullfile(struct_dir, legend_struct), 'legends', '-v7.3');
+save(fullfile(analysis_dir, legend_struct), 'legends', '-v7.3');
 
 %end
 %end
@@ -537,18 +698,18 @@ colormap(gray)
 %%  LOAD previously generated analysis structs/info:
 
 % Get meta data
-tiff_info_structs = dir(fullfile(struct_dir, '*meta_*'));
-tiff_info_structs = {tiff_info_structs(:).name}';
-tiff_info = load(fullfile(struct_dir, tiff_info_structs{1}));
+meta_structs = dir(fullfile(analysis_dir, '*meta_*'));
+meta_structs = {meta_structs(:).name}';
+tiff_info = load(fullfile(analysis_dir, meta_structs{1}));
 
 % Load FFT analysis structs if needed:
 roi_type = 'pixels';
-fft_structs = dir(fullfile(struct_dir, sprintf('*FFT_*%s*', roi_type)));
+fft_structs = dir(fullfile(analysis_dir, sprintf('*FFT_*%s*', roi_type)));
 fft_structs = {fft_structs(:).name}';
 
 curr_slice = 12;
-curr_fft_struct = sprintf('FFT_Slice%02d_nFiles%i_%s.mat', curr_slice, length(tiff_info_structs), roi_type);
-fft = load(fullfile(struct_dir, curr_fft_struct));
+curr_fft_struct = sprintf('FFT_Slice%02d_nFiles%i_%s.mat', curr_slice, length(meta_structs), roi_type);
+fft = load(fullfile(analysis_dir, curr_fft_struct));
 
 %%
 
