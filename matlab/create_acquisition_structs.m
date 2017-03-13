@@ -4,20 +4,20 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
-% source_dir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
-% source_dir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
-analysis_dir = fullfile(source_dir, 'analysis');
-if ~exist(analysis_dir, 'dir')
-    mkdir(analysis_dir);
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
+analysisDir = fullfile(sourceDir, 'analysis');
+if ~exist(analysisDir, 'dir')
+    mkdir(analysisDir);
 end
 
 % Define TIFF dir if is sub-dir within the source-dir:
-channel_idx = 1;
+channelIdx = 1;
 nchannels = 1;
-%tiff_dir = sprintf('Corrected_Channel%02d', channel_idx);
+%tiff_dir = sprintf('Corrected_Channel%02d', channelIdx);
 %tiff_dir = sprintf('Corrected');
-acquisition_name = 'fov1_bar037Hz_run4';
+acquisitionName = 'fov1_bar037Hz_run4';
 
 %% Get SI volume info:
 
@@ -25,172 +25,172 @@ metaInfo = 'SI';
 
 corrected = true;
 if corrected
-    tiff_source = 'Corrected';
+    tiffSource = 'Corrected';
 else
-    tiff_source = 'Parsed';
+    tiffSource = 'Parsed';
 end
 
 switch metaInfo
     case 'SI'
        
-        metastruct_fn = sprintf('%s.mat', acquisition_name);
+        metastructFn = sprintf('%s.mat', acquisitionName);
         
-        if ~exist(fullfile(source_dir, metastruct_fn))
+        if ~exist(fullfile(sourceDir, metastructFn))
             
             % Load and parse raw TIFFs and create meta file:
-            movies = dir(fullfile(source_dir,'*.tif'));
+            movies = dir(fullfile(sourceDir,'*.tif'));
             movies = {movies(:).name};
-            writeDir = fullfile(source_dir, tiff_source);
+            writeDir = fullfile(sourceDir, tiffSource);
             if ~exist(writeDir, 'dir')
                 mkdir(writeDir)
             end
-            parseSIdata(acquisition_name, movies, source_dir, writeDir)
+            parseSIdata(acquisitionName, movies, sourceDir, writeDir)
             
             
             % Load meta struct:
-            load(fullfile(source_dir, metastruct_fn));
+            load(fullfile(sourceDir, metastructFn));
             meta = struct();
-            meta.(acquisition_name) = metaDataSI{1}; % Have info for each file, but this was not corrected in previosuly run MCs...
+            meta.(acquisitionName) = metaDataSI{1}; % Have info for each file, but this was not corrected in previosuly run MCs...
         else
-            meta = load(fullfile(source_dir, metastruct_fn));
+            meta = load(fullfile(sourceDir, metastructFn));
         end
 
         % Sort Parsed files into separate directories:
         numchannels = 2;
-        sort_parsed_tiffs(source_dir, tiff_source, numchannels);
+        sort_parsed_tiffs(sourceDir, tiffSource, numchannels);
             
-        nvolumes = meta.(acquisition_name).metaDataSI.SI.hFastZ.numVolumes;
-        nslices = meta.(acquisition_name).metaDataSI.SI.hFastZ.numFramesPerVolume;
-        ndiscard = meta.(acquisition_name).metaDataSI.SI.hFastZ.numDiscardFlybackFrames;
-        nframes_per_volume = nslices + ndiscard;
-        ntotal_frames = nframes_per_volume * nvolumes;
+        nVolumes = meta.(acquisitionName).metaDataSI.SI.hFastZ.numVolumes;
+        nSlices = meta.(acquisitionName).metaDataSI.SI.hFastZ.numFramesPerVolume;
+        nDiscard = meta.(acquisitionName).metaDataSI.SI.hFastZ.numDiscardFlybackFrames;
+        nFramesPerVolume = nSlices + nDiscard;
+        nTotalFrames = nFramesPerVolume * nVolumes;
         
-        si_frame_times = meta.(acquisition_name).metaDataSI.frameTimestamps_sec(1:2:end);
-        si_frame_rate = meta.(acquisition_name).metaDataSI.SI.hRoiManager.scanFrameRate;
-        si_volume_rate = meta.(acquisition_name).metaDataSI.SI.hRoiManager.scanVolumeRate;
+        siFrameTimes = meta.(acquisitionName).metaDataSI.frameTimestamps_sec(1:2:end);
+        siFrameRate = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanFrameRate;
+        siVolumeRate = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanVolumeRate;
         
-        frame_width = meta.(acquisition_name).metaDataSI.SI.hRoiManager.pixelsPerLine;
-        slow_multiplier = meta.(acquisition_name).metaDataSI.SI.hRoiManager.scanAngleMultiplierSlow;
-        lines_per_frame = meta.(acquisition_name).metaDataSI.SI.hRoiManager.linesPerFrame;
-        frame_height = lines_per_frame/slow_multiplier;
+        frameWidth = meta.(acquisitionName).metaDataSI.SI.hRoiManager.pixelsPerLine;
+        slowMultiplier = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanAngleMultiplierSlow;
+        linesPerFrame = meta.(acquisitionName).metaDataSI.SI.hRoiManager.linesPerFrame;
+        frameHeight = linesPerFrame/slowMultiplier;
         
       
     case 'manual' % No motion-correction/processing, just using raw TIFFs.
-        nvolumes = 350;
-        nslices = 20;
-        ndiscard = 0;
+        nVolumes = 350;
+        nSlices = 20;
+        nDiscard = 0;
         
-        nframes_per_volume = nslices + ndiscard;
-        ntotal_frames = nframes_per_volume * nvolumes;
+        nFramesPerVolume = nSlices + nDiscard;
+        nTotalFrames = nFramesPerVolume * nVolumes;
 end
 
 % Get paths to each FILE directory (into which TIFFs have been parsed):
 
-channel_dir = sprintf('Channel%02d', channel_idx);
-tmp_tiffs = dir(fullfile(source_dir, tiff_source, channel_dir));
-tmp_tiffs = tmp_tiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmp_tiffs));
-tiff_dirs = {tmp_tiffs(:).name}';
-ntiffs = length(tiff_dirs);
-fprintf('Found %i TIFF stacks for current acquisition analysis.\n', ntiffs);
+channelDir = sprintf('Channel%02d', channelIdx);
+tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmpTiffs));
+tiffDirs = {tmpTiffs(:).name}';
+nTiffs = length(tiffDirs);
+fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffs);
 
 %% Specify experiment parameters:
 
-mw_path = fullfile(source_dir, 'mw_data');
-mw = get_mw_info(mw_path, ntiffs);
+mwPath = fullfile(sourceDir, 'mw_data');
+mw = get_mw_info(mwPath, nTiffs);
 pymat = mw.pymat;
 
 % Create arbitrary stimtype codes:
-stim_types = cell(1,length(mw.cond_types));
-for sidx=1:length(mw.cond_types)
+stimTypes = cell(1,length(mw.condTypes));
+for sidx=1:length(mw.condTypes)
     sname = sprintf('code%i', sidx);
-    stim_types{sidx} = sname;
+    stimTypes{sidx} = sname;
 end
 
 % Get indices of each run to preserve order when indexing into MW
 % file-structs:
-for run_idx=1:length(mw.run_names)
-    run_order.(mw.run_names{run_idx}) = pymat.(mw.run_names{run_idx}).ordernum + 1;
+for runIdx=1:length(mw.runNames)
+    runOrder.(mw.runNames{runIdx}) = pymat.(mw.runNames{runIdx}).ordernum + 1;
 end
 
 %% Grab experiment info for each slice and save a .mat for each run.
 %  Stores MW / ARD stimulus info & metadata from SI.
 
-for fidx=1:ntiffs
+for fidx=1:nTiffs
     
-    curr_mw_fidx = mw.mw_fidx + fidx - 1;
+    currMWfidx = mw.MWfidx + fidx - 1;
     
     % Make sure to grab the correct run based on TIFF order number:
-    for order_no=1:length(fieldnames(run_order))
-        if run_order.(mw.run_names{order_no}) == curr_mw_fidx
-            curr_run_name = mw.run_names{order_no};
+    for orderIdx=1:length(fieldnames(runOrder))
+        if runOrder.(mw.runNames{orderIdx}) == currMWfidx
+            currRunName = mw.runNames{orderIdx};
         end
     end
     
-    mw_sec = (double(pymat.(curr_run_name).time) - double(pymat.(curr_run_name).time(1))) / 1E6;
-    cycle_starts = pymat.(curr_run_name).idxs + 1; % Get indices of cycle starts
-    mw_dur = (double(pymat.triggers(curr_mw_fidx,2)) - double(pymat.triggers(curr_mw_fidx,1))) / 1E6;
+    mwSec = (double(pymat.(currRunName).time) - double(pymat.(currRunName).time(1))) / 1E6;
+    cycleStarts = pymat.(currRunName).idxs + 1; % Get indices of cycle starts
+    mwDur = (double(pymat.triggers(currMWfidx,2)) - double(pymat.triggers(currMWfidx,1))) / 1E6;
     
-    if exist('si_frame_times')
-        si_sec_vols = si_frame_times;
+    if exist('siFrameTimes')
+        siSec = siFrameTimes;
     else
         if isfield(pymat, 'ard_file_durs')
-            ard_dur = double(pymat.ard_file_durs(curr_mw_fidx));
+            ardDur = double(pymat.ard_file_durs(currMWfidx));
             %if sample_us==1 % Each frame has a t-stamped frame-onset (only true if ARD sampling every 200us, isntead of standard 1ms)
-            si_sec_vols = (double(pymat.frame_onset_times{curr_mw_fidx}) - double(pymat.frame_onset_times{curr_mw_fidx}(1))) / 1E6; 
-            if length(si_sec) < ntotal_frames % there are missed frame triggers
-                si_sec_vols = linspace(0, ard_dur, ntotal_frames);
+            siSec = (double(pymat.frame_onset_times{currMWfidx}) - double(pymat.frame_onset_times{currMWfidx}(1))) / 1E6; 
+            if length(si_sec) < nTotalFrames % there are missed frame triggers
+                siSec = linspace(0, ardDur, nTotalFrames);
                 % This is pretty accurate.. only off by ~ 3ms compared to SI's
                 % trigger times.
             end
         else
-            si_sec_vols = linspace(0, mw_dur, ntotal_frames);
+            siSec = linspace(0, mwDur, nTotalFrames);
         end
     end
     
     
     if pymat.stimtype=='bar'
-        trim_long = 1;
+        trimLong = 1;
         ncycles = pymat.info.ncycles;
-        target_freq = pymat.info.target_freq;
-        %si_frame_rate = 1/median(diff(si_sec_vols));
-        %si_volume_rate = round(si_frame_rate/nframes_per_volume, 2); % 5.58%4.11 %4.26 %5.58
-        n_true_frames = ceil((1/target_freq)*si_volume_rate*ncycles);
+        targetFreq = pymat.info.target_freq;
+        %siFrameRate = 1/median(diff(siSec));
+        %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
+        nTrueFrames = ceil((1/targetFreq)*siVolumeRate*ncycles);
         
     end
     
-    tiff.acquisition_name = acquisition_name;
-    tiff.mw_run_name = curr_run_name;
-    tiff.mw_fidx = curr_mw_fidx;
-    tiff.mw_path = mw.mw_path;
+    tiff.acquisitionName = acquisitionName;
+    tiff.mwRunName = currRunName;
+    tiff.MWfidx = currMWfidx;
+    tiff.mwPath = mw.mwPath;
     %tiff.run_fn = M.run_fns;
-    tiff.mw_sec = mw_sec;
-    tiff.stim_starts = cycle_starts;
-    tiff.mw_dur = mw_dur;
-    tiff.si_sec_vols = si_sec_vols;
+    tiff.mwSec = mwSec;
+    tiff.stim_starts = cycleStarts;
+    tiff.mwDur = mwDur;
+    tiff.siSec = siSec;
     tiff.ncycles = ncycles;
-    tiff.target_freq = target_freq;
-    tiff.si_frame_rate = si_frame_rate;
-    tiff.si_volume_rate = si_volume_rate;
-    tiff.n_true_frames = n_true_frames;
+    tiff.targetFreq = targetFreq;
+    tiff.siFrameRate = siFrameRate;
+    tiff.siVolumeRate = siVolumeRate;
+    tiff.nTrueFrames = nTrueFrames;
     
-    tiff.nvolumes = nvolumes;
-    tiff.nslices = nslices;
-    tiff.ntotal_slices = nslices + ndiscard;
-    tiff.ntotal_frames = ntotal_frames;
-    tiff.nframes_per_volume = nframes_per_volume;
-    tiff.tiff_path = fullfile(source_dir, tiff_source, channel_dir, tiff_dirs{fidx});
-    tiff.imgX = frame_width;
-    tiff.imgY = frame_height;
+    tiff.nVolumes = nVolumes;
+    tiff.nSlices = nSlices;
+    tiff.ntotal_slices = nSlices + nDiscard;
+    tiff.nTotalFrames = nTotalFrames;
+    tiff.nFramesPerVolume = nFramesPerVolume;
+    tiff.tiff_path = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{fidx});
+    tiff.imgX = frameWidth;
+    tiff.imgY = frameHeight;
     
-    tiff.tiff_fidx = fidx;
+    tiff.tiffIdx = fidx;
    
-    curr_struct_name = char(sprintf('meta_File%03d.mat', fidx));
-    meta_path = fullfile(analysis_dir, 'meta');
-    if ~exist(meta_path)
-        mkdir(meta_path)
+    currStructName = char(sprintf('meta_File%03d.mat', fidx));
+    metaPath = fullfile(analysisDir, 'meta');
+    if ~exist(metaPath)
+        mkdir(metaPath)
     end
     
-    save(fullfile(meta_path, curr_struct_name), '-struct', 'tiff');
+    save(fullfile(metaPath, currStructName), '-struct', 'tiff');
     
 end
     
@@ -205,9 +205,9 @@ preprocessing = 'Acquisition2P';
 %preprocessing = 'raw';
 
 % --------------------------
-roi_type = 'create_rois';
+roiType = 'create_rois';
 
-% roi_type: 
+% roiType: 
 %   'create_rois' : create new ROIs using circle-GUI
 %   'smoothed_pixels' : use all pixels, but smooth with kernel size,
 %   ksize=2 (default)
@@ -217,16 +217,16 @@ roi_type = 'create_rois';
 %         2.  let user select which ROI set to use in a non-stupid way...
 
 % -------------------------
-channel_idx = 1;
+channelIdx = 1;
 
 % -------------------------
-meta_structs = dir(fullfile(meta_path, '*meta_*'));
-meta_structs = {meta_structs(:).name}';
-meta_paths = cell(1, length(meta_structs));
-for m=1:length(meta_structs)
-    meta_paths{m} = fullfile(meta_path, meta_structs{m});
+metaStructs = dir(fullfile(metaPath, '*meta_*'));
+metaStructs = {metaStructs(:).name}';
+metaPaths = cell(1, length(metaStructs));
+for m=1:length(metaStructs)
+    metaPaths{m} = fullfile(metaPath, metaStructs{m});
 end
-ntiffs = length(meta_paths);
+nTiffs = length(metaPaths);
 
 
 
@@ -237,22 +237,22 @@ ntiffs = length(meta_paths);
 didx = 1;
 
 datastruct = sprintf('datastruct_%03d', didx);
-datastruct_path = fullfile(analysis_dir, datastruct);
-if ~exist(datastruct_path)
-    mkdir(datastruct_path)
+dstructPath = fullfile(analysisDir, datastruct);
+if ~exist(dstructPath)
+    mkdir(dstructPath)
     D = struct();
 end
-
+D = struct();
 D.name = datastruct;
-D.path = datastruct_path;
-D.acquisitionName = acquisition_name;
+D.path = dstructPath;
+D.acquisitionName = acquisitionName;
 D.preprocessing = preprocessing;
-D.roiType = roi_type;
-D.metaPaths = meta_paths;
-D.ntiffs = ntiffs;
+D.roiType = roiType;
+D.metaPaths = metaPaths;
+D.nTiffs = nTiffs;
 D.channels = nchannels;
 
-save(fullfile(datastruct_path, datastruct), '-append', '-struct', 'D');
+save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
 
 %% Create masks and get traces:
@@ -262,17 +262,17 @@ save(fullfile(datastruct_path, datastruct), '-append', '-struct', 'D');
 % =========================================================================
 
 refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
-slices_to_use = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
 
-refMeta = load(meta_paths{refRun});
-slice_fns = dir(fullfile(refMeta.tiff_path, '*.tif'));
-slice_fns = {slice_fns(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
+refMeta = load(metaPaths{refRun});
+traceNames = dir(fullfile(refMeta.tiff_path, '*.tif'));
+traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
 
-switch roi_type
+switch roiType
     case 'create_rois'
         
         % Create ROIs: ----------------------------------------------------
-        create_rois(datastruct_path, acquisition_name, refMeta, slice_fns);
+        create_rois(dstructPath, acquisitionName, refMeta, traceNames);
                 
         
         % Set up mask info struct to reuse masks across files:
@@ -281,56 +281,56 @@ switch roi_type
         maskInfo = struct();
         maskInfo.refNum = refRun;
         maskInfo.refMeta = refMeta;
-        maskInfo.mask_type = maskType;
+        maskInfo.maskType = maskType;
 
-        maskDir = fullfile(datastruct_path, 'masks');
-        mask_structs = dir(fullfile(maskDir, '*.mat'));
-        mask_structs = {mask_structs(:).name}';
-        slices_to_use = zeros(1,length(mask_structs));
-        for m=1:length(mask_structs)
-            m_parts = strsplit(mask_structs{m}, 'Slice');
-            m_parts = strsplit(m_parts{2}, '_');
-            slices_to_use(m) = str2num(m_parts{1});
+        maskDir = fullfile(dstructPath, 'masks');
+        maskStructs = dir(fullfile(maskDir, '*.mat'));
+        maskStructs = {maskStructs(:).name}';
+        slicesToUse = zeros(1,length(maskStructs));
+        for m=1:length(maskStructs)
+            mparts = strsplit(maskStructs{m}, 'Slice');
+            mparts = strsplit(mparts{2}, '_');
+            slicesToUse(m) = str2num(mparts{1});
         end
-        mask_paths = cell(1,length(mask_structs));
-        for m=1:length(mask_structs)
-            mask_paths{m} = fullfile(maskDir, mask_structs{m});
+        maskPaths = cell(1,length(maskStructs));
+        for m=1:length(maskStructs)
+            maskPaths{m} = fullfile(maskDir, maskStructs{m});
         end
-        maskInfo.maskPaths = mask_paths;
-        maskInfo.slices_to_use = slices_to_use;
+        maskInfo.maskPaths = maskPaths;
+        maskInfo.slicesToUse = slicesToUse;
         
         
         % =================================================================
         % Get traces with masks:
         % =================================================================
-        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
-                    nchannels, meta_paths, maskInfo);
+        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
+                    nchannels, metaPaths, maskInfo);
         
         
     case 'pixels'
         
-        mask_type = 'pixels';
+        maskType = 'pixels';
         
         % Set smoothing/filtering params:
         % -----------------------------------------------------------------
         params = struct();
-        params.smooth_xy = true;
-        params.kernel_xy = 5;
+        params.smoothXY = true;
+        params.kernelXY = 5;
         
-        slices_to_use = [5, 10, 15, 20]; % TMP 
-        params.slices_to_use = slices_to_use;
+        slicesToUse = [5, 10, 15, 20]; % TMP 
+        params.slicesToUse = slicesToUse;
         
 
         
         % =================================================================
         % Get traces:
         % =================================================================
-        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
-                    nchannels, meta_paths, [], params);
+        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
+                    nchannels, metaPaths, [], params);
 
     case 'nmf'
         
-        mask_type = 'nmf';
+        maskType = 'nmf';
         
         % Get NMF params:
         % -----------------------------------------------------------------
@@ -342,8 +342,8 @@ switch roi_type
         % =================================================================
         % Get traces:
         % =================================================================
-        get_traces(datastruct_path, mask_type, acquisition_name, ntiffs,...
-                    nchannels, meta_paths, [], params); 
+        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
+                    nchannels, metaPaths, [], params); 
                     
 end
 
@@ -353,33 +353,33 @@ end
 
 D.refRun = refRun;
 D.refPath = refMeta.tiff_path;
-D.slices = slices_to_use;
+D.slices = slicesToUse;
 
-D.maskType = mask_type;
+D.maskType = maskType;
 if strcmp(D.maskType, 'circles')
     D.maskInfo = maskInfo;
-    D.maskType = mask_type;
+    D.maskType = maskType;
 else
     D.params = params;
 end
-save(fullfile(datastruct_path, datastruct), '-append', '-struct', 'D');
+save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
         
 %%  Align stimulus events to traces:
 
 % Load metadata if needed:
-meta_structs = dir(meta_path);
-meta_structs = {meta_structs(:).name}';
+metaStructs = dir(metaPath);
+metaStructs = {metaStructs(:).name}';
 
 % Load traces if needed:
-traces_path = fullfile(datastruct_path, 'traces');
+traces_path = fullfile(dstructPath, 'traces');
 traces_structs = dir(traces_path);
 traces_structs = {traces_structs(:).name}';
 
 
 % % Load FFT analysis structs if needed:
-% roi_type = 'pixels';
-% fft_structs = dir(fullfile(struct_dir, sprintf('*FFT_*%s*', roi_type)));
+% roiType = 'pixels';
+% fft_structs = dir(fullfile(struct_dir, sprintf('*FFT_*%s*', roiType)));
 % fft_structs = {fft_structs(:).name}';
 
 %%
@@ -387,30 +387,30 @@ traces_structs = {traces_structs(:).name}';
 % Retinotopy:
 
 % slices = [12, 14, 16];
-tmp_slice_fns = dir(fullfile(analysis_dir, 'traces', '*traces_*_pixels*'));
-slice_fns = {tmp_slice_fns(:).name};
+tmpTraceNames = dir(fullfile(analysisDir, 'traces', '*traces_*_pixels*'));
+traceNames = {tmpTraceNames(:).name};
 
-for sidx = 10:length(slice_fns)
-    slice_fn = slice_fns{sidx};
-    load(fullfile(analysis_dir, 'traces', slice_fn))
+for sidx = 10:length(traceNames)
+    traceName = traceNames{sidx};
+    load(fullfile(analysisDir, 'traces', traceName))
 
     nfiles = length(T.traces.file);
     for fidx = 1:nfiles
         traces = T.traces.file{fidx};
         masks = T.masks.file{fidx};
-        avgY = T.avg_image.file{fidx};
+        avgY = T.avgImage.file{fidx};
 
-        Fs = meta.si_volume_rate;
-        target_freq = meta.target_freq;
+        Fs = meta.siVolumeRate;
+        targetFreq = meta.targetFreq;
         ncycles = meta.ncycles;
-        ntotal_slices = meta.nframes_per_volume;
+        ntotal_slices = meta.nFramesPerVolume;
 
         cut_end=1;
-        crop = meta.n_true_frames; %round((1/target_freq)*ncycles*Fs);
+        crop = meta.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
 
-        winsz = round((1/target_freq)*Fs*2);
+        winsz = round((1/targetFreq)*Fs*2);
 
-        switch roi_type
+        switch roiType
             case 'create_rois'
                 [d1,d2,~] = size(T.masks.file{fidx});
                 [nrois, tpoints] = size(T.traces.file{fidx});
@@ -419,14 +419,14 @@ for sidx = 10:length(slice_fns)
         end
 
         % Get phase and magnitude maps:
-        phase_map = zeros(d1, d2, 1);
-        mag_map = zeros(d1, d2, 1);
-        max_map = zeros(d1, d2, 1);
+        phaseMap = zeros(d1, d2, 1);
+        magMap = zeros(d1, d2, 1);
+        maxMap = zeros(d1, d2, 1);
 
         fft_struct = struct();
 
         check_slice = 1;
-        switch roi_type
+        switch roiType
             case 'create_rois'
                 for row=1:size(traces,1)
                     fprintf('Processing ROI #: %i\n', row);
@@ -435,14 +435,14 @@ for sidx = 10:length(slice_fns)
                         vol_trace = traces(row, :);
 
                         for slice=slice_idx:slice_idx %ntotal_slices;
-                            slice_indices = slice:tiff.nframes_per_volume:tiff.ntotal_frames;
-                            vol_offsets = tiff.si_sec_vols(slice_indices);
+                            sliceIdxs = slice:tiff.nFramesPerVolume:tiff.nTotalFrames;
+                            vol_offsets = tiff.siSec(sliceIdxs);
 
-                            tmp0 = zeros(1,length(slice_indices));
+                            tmp0 = zeros(1,length(sliceIdxs));
                             if check_slice==1
                                 tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
                             else
-                                tmp0(:) = squeeze(vol_trace(slice_indices));
+                                tmp0(:) = squeeze(vol_trace(sliceIdxs));
                             end
                             if cut_end==1
                                 tmp0 = tmp0(1:crop);
@@ -457,7 +457,7 @@ for sidx = 10:length(slice_fns)
                             fft_y = fft(trace_y,NFFT);
                             %F = ((0:1/NFFT:1-1/NFFT)*Fs).';
                             freqs = Fs*(0:(NFFT/2))/NFFT;
-                            freq_idx = find(abs((freqs-target_freq))==min(abs(freqs-target_freq)));
+                            freq_idx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
 
                             magY = abs(fft_y);
                             %phaseY = unwrap(angle(Y));
@@ -471,15 +471,15 @@ for sidx = 10:length(slice_fns)
                             fft_struct.(roi_no).fft_y = fft_y;
                             fft_struct.(roi_no).DC_y = trace_y;
                             fft_struct.(roi_no).raw_y = tmp0;
-                            fft_struct.(roi_no).slices = slice_indices;
+                            fft_struct.(roi_no).slices = sliceIdxs;
                             fft_struct.(roi_no).freqs = freqs;
                             fft_struct.(roi_no).freq_idx = freq_idx;
-                            fft_struct.(roi_no).target_freq = target_freq;
+                            fft_struct.(roi_no).targetFreq = targetFreq;
 
-                            phase_map(masks(:,:,row)==1) = phaseY(freq_idx);
-                            mag_map(masks(:,:,row)==1) = magY(freq_idx);
+                            phaseMap(masks(:,:,row)==1) = phaseY(freq_idx);
+                            magMap(masks(:,:,row)==1) = magY(freq_idx);
                             max_idx = find(magY==max(magY));
-                            max_map(masks(:,:,row)==1) = phaseY(max_idx(1));
+                            maxMap(masks(:,:,row)==1) = phaseY(max_idx(1));
                         end
                 end
 
@@ -495,14 +495,14 @@ for sidx = 10:length(slice_fns)
                         % 1.  Subtract rolling mean to get rid of slow
                         % drift, etc.
                         % ---------------------------------------------
-                        slice_indices = sidx:meta.nframes_per_volume:meta.ntotal_frames;
-                        vol_offsets = meta.si_sec_vols(slice_indices);
+                        sliceIdxs = sidx:meta.nFramesPerVolume:meta.nTotalFrames;
+                        vol_offsets = meta.siSec(sliceIdxs);
 
-                        tmp0 = zeros(1,length(slice_indices));
+                        tmp0 = zeros(1,length(sliceIdxs));
                         if check_slice==1
                             tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
                         else
-                            tmp0(:) = squeeze(vol_trace(:,:,slice_indices));
+                            tmp0(:) = squeeze(vol_trace(:,:,sliceIdxs));
                         end
                         if cut_end==1
                             tmp0 = tmp0(1:crop);
@@ -518,7 +518,7 @@ for sidx = 10:length(slice_fns)
                         NFFT = length(trace_y);
                         fft_y = fft(trace_y,NFFT);
                         freqs = Fs*(0:(NFFT/2))/NFFT;
-                        freq_idx = find(abs((freqs-target_freq))==min(abs(freqs-target_freq)));
+                        freq_idx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
 
                         magY = abs(fft_y);
                         %phaseY = unwrap(angle(Y));
@@ -532,15 +532,15 @@ for sidx = 10:length(slice_fns)
                         fft_struct.(roi_no).fft_y = fft_y;
                         fft_struct.(roi_no).DC_y = trace_y;
                         fft_struct.(roi_no).raw_y = tmp0;
-                        fft_struct.(roi_no).slices = slice_indices;
+                        fft_struct.(roi_no).slices = sliceIdxs;
                         fft_struct.(roi_no).freqs = freqs;
                         fft_struct.(roi_no).freq_idx = freq_idx;
-                        fft_struct.(roi_no).target_freq = target_freq;
+                        fft_struct.(roi_no).targetFreq = targetFreq;
 
-                        phase_map(row, col) = phaseY(freq_idx);
-                        mag_map(row, col) = magY(freq_idx);
+                        phaseMap(row, col) = phaseY(freq_idx);
+                        magMap(row, col) = magY(freq_idx);
                         max_idx = find(magY==max(magY));
-                        max_map(row, col) = phaseY(max_idx(1));
+                        maxMap(row, col) = phaseY(max_idx(1));
                         % end
                     end
 
@@ -552,9 +552,9 @@ for sidx = 10:length(slice_fns)
 
         % Save analysis struct info:
         % --------------------------
-        %slice_fn_parts = strsplit(slice_fn, '_');
-        % analysis_struct_fn = sprintf('FFT_%s', slice_fn_parts{2});
-        analysis_struct_fn = sprintf('FFT_Slice%02d_File%03d_%s', sidx, fidx, roi_type);
+        %traceName_parts = strsplit(traceName, '_');
+        % analysis_struct_fn = sprintf('FFT_%s', traceName_parts{2});
+        analysis_struct_fn = sprintf('FFT_Slice%02d_File%03d_%s', sidx, fidx, roiType);
 
         FFT = struct();
         FFT.slice = sidx;
@@ -564,15 +564,15 @@ for sidx = 10:length(slice_fns)
         FFT.avgimg = avgY;
         %FFT.fft_struct = fft_struct;
 
-        FFT.phase_map = phase_map;
-        FFT.mag_map = mag_map;
-        FFT.max_map = mag_map;
+        FFT.phaseMap = phaseMap;
+        FFT.magMap = magMap;
+        FFT.maxMap = magMap;
         FFT.max_idx = max_idx;
         
-        save(fullfile(analysis_dir, 'traces', analysis_struct_fn), 'FFT', '-v7.3');
+        save(fullfile(analysisDir, 'traces', analysis_struct_fn), 'FFT', '-v7.3');
         
-        fft_struct_fn = sprintf('ft_Slice%02d_File%03d_%s', sidx, fidx, roi_type);
-        save(fullfile(analysis_dir, 'traces', fft_struct_fn), 'fft_struct', '-v7.3');
+        fft_struct_fn = sprintf('ft_Slice%02d_File%03d_%s', sidx, fidx, roiType);
+        save(fullfile(analysisDir, 'traces', fft_struct_fn), 'fft_struct', '-v7.3');
         clearvars FFT fft_struct
         
     end
@@ -593,7 +593,7 @@ Fs_lgd = 1;
 T_lgd = 1/Fs_lgd;
 L_lgd = size(legend_im,3);
 t_lgd = (0:L_lgd-1)*T_lgd;
-target_freq_lgd = 1/50;
+targetFreq_lgd = 1/50;
 legend_phase = zeros(size(legend_im,1), size(legend_im,2));
 for r_lgd=1:size(legend_im,1)
     for c_lgd=1:size(legend_im,2)
@@ -602,7 +602,7 @@ for r_lgd=1:size(legend_im,1)
         legend_ft = fft(y_lgd,NFFT_lgd);
         %freqs = Fs*(0:1/(NFFT/2))/NFFT;
         freqs_lgd = ((0:1/NFFT_lgd:1-1/NFFT_lgd)*Fs_lgd).';
-        freq_idx_lgd = find(abs((freqs_lgd-target_freq_lgd))==min(abs(freqs_lgd-target_freq_lgd)));
+        freq_idx_lgd = find(abs((freqs_lgd-targetFreq_lgd))==min(abs(freqs_lgd-targetFreq_lgd)));
         magY = abs(legend_ft);
         legend_phase(r_lgd,c_lgd) = angle(legend_ft(freq_idx_lgd)); % unwrap(angle(Y(freq_idx)));
     end        
@@ -633,7 +633,7 @@ Fs_lgd = 1;
 T_lgd = 1/Fs_lgd;
 L_lgd = size(legend_im,3);
 t_lgd = (0:L_lgd-1)*T_lgd;
-target_freq_lgd = 1/10;
+targetFreq_lgd = 1/10;
 legend_phase = zeros(size(legend_im,1), size(legend_im,2));
 for r_lgd=1:size(legend_im,1)
     for c_lgd=1:size(legend_im,2)
@@ -642,7 +642,7 @@ for r_lgd=1:size(legend_im,1)
         legend_ft = fft(y_lgd,NFFT_lgd);
         %freqs = Fs*(0:1/(NFFT/2))/NFFT;
         freqs_lgd = ((0:1/NFFT_lgd:1-1/NFFT_lgd)*Fs_lgd).';
-        freq_idx_lgd = find(abs((freqs_lgd-target_freq_lgd))==min(abs(freqs_lgd-target_freq_lgd)));
+        freq_idx_lgd = find(abs((freqs_lgd-targetFreq_lgd))==min(abs(freqs_lgd-targetFreq_lgd)));
         magY = abs(legend_ft);
         legend_phase(r_lgd,c_lgd) = angle(legend_ft(freq_idx_lgd)); % unwrap(angle(Y(freq_idx)));
     end        
@@ -659,7 +659,7 @@ legends.bottom = flipud(legend_phase);
 legend_struct = 'retinotopy_legends';
 
 %FFT.legends = legends;
-save(fullfile(analysis_dir, legend_struct), 'legends', '-v7.3');
+save(fullfile(analysisDir, legend_struct), 'legends', '-v7.3');
 
 %end
 %end
@@ -669,7 +669,7 @@ save(fullfile(analysis_dir, legend_struct), 'legends', '-v7.3');
 % TODO:  fix this, make ROI-selector also give back average image used to
 % select ROIs...
 
-curr_tiff = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, sidx, 1, 1);
+curr_tiff = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisitionName, sidx, 1, 1);
 Y = tiffRead(fullfile(tiff_info.tiff_path, curr_tiff));
 avgY = mean(Y, 3);
 maxY = max(Y(:));
@@ -698,25 +698,25 @@ colormap(gray)
 %%  LOAD previously generated analysis structs/info:
 
 % Get meta data
-meta_structs = dir(fullfile(analysis_dir, '*meta_*'));
-meta_structs = {meta_structs(:).name}';
-tiff_info = load(fullfile(analysis_dir, meta_structs{1}));
+metaStructs = dir(fullfile(analysisDir, '*meta_*'));
+metaStructs = {metaStructs(:).name}';
+tiff_info = load(fullfile(analysisDir, metaStructs{1}));
 
 % Load FFT analysis structs if needed:
-roi_type = 'pixels';
-fft_structs = dir(fullfile(analysis_dir, sprintf('*FFT_*%s*', roi_type)));
+roiType = 'pixels';
+fft_structs = dir(fullfile(analysisDir, sprintf('*FFT_*%s*', roiType)));
 fft_structs = {fft_structs(:).name}';
 
 curr_slice = 12;
-curr_fft_struct = sprintf('FFT_Slice%02d_nFiles%i_%s.mat', curr_slice, length(meta_structs), roi_type);
-fft = load(fullfile(analysis_dir, curr_fft_struct));
+curr_fft_struct = sprintf('FFT_Slice%02d_nFiles%i_%s.mat', curr_slice, length(metaStructs), roiType);
+fft = load(fullfile(analysisDir, curr_fft_struct));
 
 %%
 
 % conds = {'left', 'right', 'top', 'bottom'};
 % cond_idx = 1;
 
-curr_cond_name = meta.mw_run_name;
+curr_cond_name = meta.mwRunName;
 
 fig = figure();
 %A = repmat(x_scaled, [1, 1, 3]);
@@ -728,11 +728,11 @@ colormap(ax1, gray)
 
 ax4 = subplot(2,2,4);
 threshold = .3 %0.1; %8000; %10000; %8000; %(k=3); %20000;
-threshold_map = phase_map;
-threshold_map(mag_map<(max(mag_map(:))*threshold)) = NaN;
+thresholdMap = phaseMap;
+thresholdMap(magMap<(max(magMap(:))*threshold)) = NaN;
 
 fov = repmat(mat2gray(avgY), [1, 1, 3]);
-B = threshold_map; %phase_map
+B = thresholdMap; %phaseMap
 imagesc(fov);
 slice_no = strcat('slice', num2str(sidx));
 title(sprintf('avg - %s', slice_no))
@@ -743,7 +743,7 @@ colormap(ax4, hsv)
 caxis([-pi, pi])
 
 ax3 = subplot(2,2,3);
-imagesc(mag_map)
+imagesc(ratioMap)
 axis('off')
 colormap(ax3, hot)
 hb = colorbar('location','eastoutside');
@@ -759,24 +759,24 @@ colormap(ax2, hsv)
 %%
 tic();
 scalevec = [2 1 1];
-tmp_source_dir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/raw/';
+tmp_sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/raw/';
 tmp_tiff_dir = 'raw';
-resize_dir = fullfile(tmp_source_dir, strcat(tmp_tiff_dir, '_scaled'));
+resize_dir = fullfile(tmp_sourceDir, strcat(tmp_tiff_dir, '_scaled'));
 if ~exist(resize_dir, 'dir')
     mkdir(resize_dir)
 end
-%tmp_tiffs = dir(fullfile(tmp_source_dir, tmp_tiff_dir, '*.tif'));
-%tmp_tiffs = {tmp_tiffs(:).name}';
-tmp_tiffs = {'fov1_bar037Hz_run4_00003.tif'};
+%tmpTiffs = dir(fullfile(tmp_sourceDir, tmp_tiff_dir, '*.tif'));
+%tmpTiffs = {tmpTiffs(:).name}';
+tmpTiffs = {'fov1_bar037Hz_run4_00003.tif'};
 
-for tmp_idx=1:length(tmp_tiffs)
-    %tmp_tiff = sprintf('%s_Slice%02d_Channel01_File003.tif', acquisition_name, tmp_idx);
-    tmp_tiff = tmp_tiffs{tmp_idx};
-    tmp_tiff_path = fullfile(tmp_source_dir, tmp_tiff_dir, tmp_tiff);
+for tmp_idx=1:length(tmpTiffs)
+    %tmp_tiff = sprintf('%s_Slice%02d_Channel01_File003.tif', acquisitionName, tmp_idx);
+    tmp_tiff = tmpTiffs{tmp_idx};
+    tmp_tiff_path = fullfile(tmp_sourceDir, tmp_tiff_dir, tmp_tiff);
     %imData=bigread2_scale(tmp_tiff_path,1,[],scalevec);
     imData=bigread2(tmp_tiff_path,1);
     
-    resize_dir = fullfile(tmp_source_dir, strcat(tmp_tiff_dir, '_scaled'));
+    resize_dir = fullfile(tmp_sourceDir, strcat(tmp_tiff_dir, '_scaled'));
     tiffWrite(imData, tmp_tiff, resize_dir);
 end
 fprintf('Time elapsed: ');

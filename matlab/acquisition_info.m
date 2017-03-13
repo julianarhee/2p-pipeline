@@ -27,18 +27,18 @@ analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 % jyr:  change 'datastruct' dir to "analysis" so it aint confusing
 
 D = load(fullfile(analysisDir, datastruct));
-acquisitionName = D.acquisition_name;
+acquisitionName = D.acquisitionName;
 nChannels = D.channels;
 roiType = D.roiType;
-ntiffs = D.ntiffs;
+nTiffs = D.nTiffs;
 metaPaths = D.metaPaths;
 maskType = D.maskType;
 maskPaths = D.maskInfo.maskPaths;
-slices_to_use = D.slices;
+slicesToUse = D.slices;
 
 tracesDir = fullfile(analysisDir, 'traces');
-tracePaths = dir(fullfile(tracesDir, '*.mat'));
-tracePaths = {tracePaths(:).name}';
+traceNames = dir(fullfile(tracesDir, '*.mat'));
+traceNames = {traceNames(:).name}';
 
 figDir = fullfile(analysisDir, 'figures');
 if ~exist(figDir, 'dir')
@@ -49,3 +49,9 @@ outputDir = fullfile(analysisDir, 'output');
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
+
+D.outputDir = outputDir;
+D.figDir = figDir;
+D.tracesDir = tracesDir;
+D.traceNames = traceNames;
+save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');
