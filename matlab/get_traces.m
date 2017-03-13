@@ -38,14 +38,13 @@ switch mask_type
         for cidx=1:nchannels
             %T = struct();  
             
-            parfor sidx = 1:length(slices)
+            for sidx = 1:length(slices)-1
                 T = struct();  
                 % Load manually-drawn circle ROIs:
                 curr_slice_idx = slices(sidx);
                 fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, curr_slice_idx, length(slices));
                 
                 M=load(maskPaths{sidx});
-                M = M.M;
                 masks = M.masks;
                 [channelPath, refDir, ~] = fileparts(M.refPath);
                 refSlice = M.slice;
@@ -74,10 +73,10 @@ switch mask_type
                     end
 
                     T.traces.file(fidx) = {raw_traces};
-                    T.masks.file(fidx) = {masks};
+                    %T.masks.file(fidx) = {masks};
                     T.avg_image.file(fidx) = {avgY};
                     T.slice_path.file{fidx} = fullfile(slicePath, curr_slice_fn);
-                    T.meta.file(fidx) = metaFile;
+                    %T.meta.file(fidx) = metaFile;
                     
                     fprintf('Extracted traces for %i of %i FILES.\n', fidx, ntiffs);
                 end
@@ -88,7 +87,10 @@ switch mask_type
                     mkdir(traces_path);
                 end
                 traces_fn = sprintf('traces_Slice%02d_Channel%02d', curr_slice_idx, cidx);
+                fprintf('Saving struct: %s.\n', traces_fn);
+                
                 save_struct(traces_path, traces_fn, T);
+                %clear T masks M
 
             end
         end

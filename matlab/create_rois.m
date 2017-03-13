@@ -37,7 +37,7 @@ for sidx = slices_to_use %12:2:16 %1:tiff_info.nslices
     end
 
     mask_struct_fn = char(sprintf('masks_Slice%02d_File%03d.mat', sidx, refNum));
-    save(fullfile(struct_save_path, mask_struct_fn), 'M', '-v7.3');
+    save(fullfile(struct_save_path, mask_struct_fn), 'M', '-struct', '-v7.3');
 
 end
 

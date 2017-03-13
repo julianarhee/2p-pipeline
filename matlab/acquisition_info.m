@@ -23,22 +23,29 @@ end
 acquisitionDir = fullfile(source, session, experiment);
 
 datastruct = sprintf('datastruct_%03d', analysis_no);
-analysisDir = fullfile(acquisitionDir, 'datastructs', datastruct);
+analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 % jyr:  change 'datastruct' dir to "analysis" so it aint confusing
 
-D = load(fullfile(analysisDir, data_struct));
+D = load(fullfile(analysisDir, datastruct));
 acquisitionName = D.acquisition_name;
-nChannels = D.nchannels;
-roiType = D.roi_type;
+nChannels = D.channels;
+roiType = D.roiType;
 ntiffs = D.ntiffs;
 metaPaths = D.metaPaths;
 maskType = D.maskType;
-slices_to_use = D.slices_to_use;
+maskPaths = D.maskInfo.maskPaths;
+slices_to_use = D.slices;
 
 tracesDir = fullfile(analysisDir, 'traces');
-tracePaths = dir(tracesDir);
+tracePaths = dir(fullfile(tracesDir, '*.mat'));
+tracePaths = {tracePaths(:).name}';
 
 figDir = fullfile(analysisDir, 'figures');
 if ~exist(figDir, 'dir')
     mkdir(figDir);
+end
+
+outputDir = fullfile(analysisDir, 'output');
+if ~exist(outputDir, 'dir')
+    mkdir(outputDir);
 end

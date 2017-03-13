@@ -154,7 +154,7 @@ for fidx=1:ntiffs
         target_freq = pymat.info.target_freq;
         %si_frame_rate = 1/median(diff(si_sec_vols));
         %si_volume_rate = round(si_frame_rate/nframes_per_volume, 2); % 5.58%4.11 %4.26 %5.58
-        n_true_frames = ceil((1/target_freq)*ncycles*si_volume_rate);
+        n_true_frames = ceil((1/target_freq)*si_volume_rate*ncycles);
         
     end
     
@@ -245,9 +245,9 @@ end
 
 D.name = datastruct;
 D.path = datastruct_path;
-D.acquisition_name = acquisition_name;
+D.acquisitionName = acquisition_name;
 D.preprocessing = preprocessing;
-D.roi_type = roi_type;
+D.roiType = roi_type;
 D.metaPaths = meta_paths;
 D.ntiffs = ntiffs;
 D.channels = nchannels;
@@ -277,14 +277,14 @@ switch roi_type
         
         % Set up mask info struct to reuse masks across files:
         % -----------------------------------------------------------------
-        mask_type = 'circles';
+        maskType = 'circles';
         maskInfo = struct();
         maskInfo.refNum = refRun;
         maskInfo.refMeta = refMeta;
-        maskInfo.mask_type = mask_type;
+        maskInfo.mask_type = maskType;
 
-        mask_dir = fullfile(datastruct_path, 'masks');
-        mask_structs = dir(fullfile(mask_dir, '*.mat'));
+        maskDir = fullfile(datastruct_path, 'masks');
+        mask_structs = dir(fullfile(maskDir, '*.mat'));
         mask_structs = {mask_structs(:).name}';
         slices_to_use = zeros(1,length(mask_structs));
         for m=1:length(mask_structs)
@@ -294,7 +294,7 @@ switch roi_type
         end
         mask_paths = cell(1,length(mask_structs));
         for m=1:length(mask_structs)
-            mask_paths{m} = fullfile(mask_dir, mask_structs{m});
+            mask_paths{m} = fullfile(maskDir, mask_structs{m});
         end
         maskInfo.maskPaths = mask_paths;
         maskInfo.slices_to_use = slices_to_use;
