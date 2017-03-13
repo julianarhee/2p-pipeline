@@ -83,7 +83,9 @@ for sidx = 1:length(slices_to_use)
             end
             tmp1 = padarray(tmp0,[0 winsz],tmp0(1),'pre');
             tmp1 = padarray(tmp1,[0 winsz],tmp1(end),'post');
-            rollingAvg=conv(tmp1,fspecial('average',[1 winsz]),'same');%average
+            %rollingAvg=conv(tmp1,fspecial('average',[1 winsz]),'same');%average
+            convvect = ones([1,winsz])/winsz
+            rollingAvg = conv(tmp1, convvect, 'same');
             rollingAvg=rollingAvg(winsz+1:end-winsz);
             trace_y = tmp0 - rollingAvg;
             
