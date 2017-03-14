@@ -223,6 +223,51 @@ for sidx = 1:length(slicesToUse)
         
 end
 
+%% ROI figures:
+
+alphaVal = 0.5;
+for sidx = 1:length(slicesToUse)
+    currSlice = slicesToUse(sidx);
+    
+    M = load(maskPaths{sidx});
+    masks = M.masks;
+    nROIs = size(masks,3);
+    
+    clear M;
+    
+    T = load(fullfile(tracesDir, traceNames{sidx}));
+    F = load(fullfile(outputDir, fftNames{sidx}));
+    
+    meanMap = zeros(d1, d2, 1);
+    maxMap = zeros(d1, d2, 1);
+    
+    for fidx=1:length(F.file)
+        
+        avgY = T.avgImage.file{1};
+        
+        RGBimg = zeros([size(avgY),3]);
+        RGBimg(:,:,1)=0;
+        RGBimg(:,:,2)=mat2gray(avgY); %mat2gray(avgY);
+        RGBimg(:,:,3)=0;
+        
+        for roi=1:nROIs
+            RGBimg(:,:,3) = RGBimg(:,:,3)+alphaVal*masks(:,:,roi);
+        end
+        
+        fig=figure();
+        imshow(RGBimg);
+        title(sprintf('Slice%02d File%03d', currSlice, fidx));
+        
+        roiFigName = sprintf('ROIs_Slice%02d_File%03d', currSlice, fidx);
+        
+        figSliceDir = sprintf('Slice%02d', currSlice);
+        currFigDir = fullfile(D.figDir, figSliceDir);
+        
+        save_figures(fig, currFigDir, roiFigName)
+            
+    end
+end
+
 %% PLOTTING.
 
 subplot = @(m,n,p) subtightplot (m, n, p, [0.01 0.1], [0.1 0.1], [0.1 0.1]);
@@ -254,7 +299,7 @@ for sidx=1:length(fftNames)
     FFT = load(fullfile(outputDir, fftNames{sidx})); 
     DF = load(fullfile(outputDir, dfNames{sidx}));
     
-    currSliceIdx = D.slices(sidx);
+    currSlice = D.slices(sidx);
     
     for fidx=1:length(FFT.file)
         
@@ -360,10 +405,10 @@ for sidx=1:length(fftNames)
         
         %%
         
-        suptitle(sprintf('Slice%02d, Cond: %s', currSliceIdx, currCond))
+        suptitle(sprintf('Slice%02d, Cond: %s', currSlice, currCond))
         
-        figName = sprintf('Overview_Slice%02d_File%03d_%s', currSliceIdx, fidx, currCond);
-        figSliceDir = sprintf('Slice%02d', currSliceIdx);
+        figName = sprintf('Overview_Slice%02d_File%03d_%s', currSlice, fidx, currCond);
+        figSliceDir = sprintf('Slice%02d', currSlice);
         currFigDir = fullfile(D.figDir, figSliceDir);
   
         save_figures(fig, currFigDir, figName);

@@ -223,7 +223,30 @@ for sidx = 1:length(slicesToUse)
         
 end
 
+%% ROI figures:
+
+for sidx = 1:length(slicesToUse)
+    currSlice = slicesToUse(sidx);
+    
+    M = load(maskPaths{sidx});
+    masks = M.masks;
+    clear M;
+    
+    T = load(fullfile(tracesDir, traceNames{sidx}));
+    F = load(fullfile(outputDir, fftNames{sidx}));
+    
+    meanMap = zeros(d1, d2, 1);
+    maxMap = zeros(d1, d2, 1);
+    
+    for fidx=1:length(F.file)
+        
+        avgY = T.avgImage.file(
+        
+    end
+end
 %% PLOTTING.
+
+subplot = @(m,n,p) subtightplot (m, n, p, [0.01 0.1], [0.1 0.1], [0.1 0.1]);
 
 cmap = 'hsv';
 
@@ -231,6 +254,11 @@ fftNames = dir(fullfile(outputDir, 'maps_*'));
 fftNames = {fftNames(:).name}';
 dfNames = dir(fullfile(outputDir, 'df_*'));
 dfNames = {dfNames(:).name}';
+
+D.fftNames = fftNames;
+D.dfNames = dfNames;
+save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');
+
 
 % get legends if needed:
 if isempty(dir(fullfile(outputDir, '*legends.mat')))
@@ -325,19 +353,11 @@ for sidx=1:length(fftNames)
 
         % phase at max mag ---------------------
         ax5 = subplot(2,3,5);
-        threshold = .1; %0.1; %8000; %10000; %8000; %(k=3); %20000;
-        thresholdMap2 = phaseMaxMap;
-        thresholdMap2(magMap<(max(magMap(:))*threshold)) = NaN;
 
         phaseMaxOverlay = threshold_map(phaseMaxMap, magMap, threshold);
         imagesc(fov);
         hold on;
-        
-        fov = repmat(mat2gray(avgY), [1, 1, 3]);
-        B = thresholdMap2; %phaseMap
-        imagesc2(fov);
-        hold on;
-        Bimg = imagesc2(B);
+        imagesc2(phaseMaxOverlay);
         title('phase')
         colormap(ax4, cmap)
         caxis([-pi, pi])
@@ -355,6 +375,9 @@ for sidx=1:length(fftNames)
         ax6Pos = get(ax6,'position');
         ax6Pos(3:4) = [ax1Pos(3:4)];
         set(ax6, 'position', ax6Pos);
+        
+        
+        set(fig, 'Position', [995 1046 1411 288], 'Units', 'pixels');
         
         %%
         

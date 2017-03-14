@@ -12,7 +12,7 @@ function save_figures(fig, figPath, figName)
     end
     
     fprintf('Saved figures to path: %s\n', figPath);
-    fprintf('Figure based name is: %s\n', figName);
+    fprintf('Figure base name is: %s\n', figName);
 
     close(fig)
 end
