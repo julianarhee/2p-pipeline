@@ -418,5 +418,15 @@ for sidx=1:length(fftNames)
 end
 
 
-%%
+%% ALIGN TO WIDEFIELD:
+
+% TODO:  
+% Add code for aligning FOVs with affine trans.
+% Allow handoff for colormap-matching between different rigs.
+% Combine repeated runs together and display each condition on same plot.
+% **need to re-scale**
+
+
+
+
 

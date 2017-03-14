@@ -4,6 +4,8 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp/';
+
 sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
@@ -17,6 +19,8 @@ channelIdx = 1;
 nchannels = 1;
 %tiff_dir = sprintf('Corrected_Channel%02d', channelIdx);
 %tiff_dir = sprintf('Corrected');
+
+%acquisitionName = 'fov2_rsvp_25reps';
 acquisitionName = 'fov1_bar037Hz_run4';
 
 %% Get SI volume info:
@@ -109,8 +113,13 @@ end
 % Get indices of each run to preserve order when indexing into MW
 % file-structs:
 for runIdx=1:length(mw.runNames)
-    runOrder.(mw.runNames{runIdx}) = pymat.(mw.runNames{runIdx}).orderNum + 1;
+
+    runOrder.(mw.runNames{runIdx}) = pymat.(mw.runNames{runIdx}).ordernum + 1;
+
 end
+
+% TODO:  FIX THIS so that it works for both retino and for trials...
+
 
 %% Grab experiment info for each slice and save a .mat for each run.
 %  Stores MW / ARD stimulus info & metadata from SI.
@@ -151,7 +160,7 @@ for fidx=1:nTiffs
     if pymat.stimtype=='bar'
         trimLong = 1;
         ncycles = pymat.info.ncycles;
-        targetFreq = pymat.info.targetFreq;
+        targetFreq = pymat.info.target_freq;
         %siFrameRate = 1/median(diff(siSec));
         %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
         nTrueFrames = ceil((1/targetFreq)*siVolumeRate*ncycles);
@@ -242,7 +251,7 @@ if ~exist(dstructPath)
     mkdir(dstructPath)
     D = struct();
 end
-
+D = struct();
 D.name = datastruct;
 D.path = dstructPath;
 D.acquisitionName = acquisitionName;
@@ -262,17 +271,17 @@ save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 % =========================================================================
 
 refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
-slices_to_use = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
 
 refMeta = load(metaPaths{refRun});
-slice_fns = dir(fullfile(refMeta.tiff_path, '*.tif'));
-slice_fns = {slice_fns(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
+traceNames = dir(fullfile(refMeta.tiff_path, '*.tif'));
+traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
 
 switch roiType
     case 'create_rois'
         
         % Create ROIs: ----------------------------------------------------
-        create_rois(dstructPath, acquisitionName, refMeta, slice_fns);
+        create_rois(dstructPath, acquisitionName, refMeta, traceNames);
                 
         
         % Set up mask info struct to reuse masks across files:
@@ -286,18 +295,18 @@ switch roiType
         maskDir = fullfile(dstructPath, 'masks');
         maskStructs = dir(fullfile(maskDir, '*.mat'));
         maskStructs = {maskStructs(:).name}';
-        slices_to_use = zeros(1,length(maskStructs));
+        slicesToUse = zeros(1,length(maskStructs));
         for m=1:length(maskStructs)
-            m_parts = strsplit(maskStructs{m}, 'Slice');
-            m_parts = strsplit(m_parts{2}, '_');
-            slices_to_use(m) = str2num(m_parts{1});
+            mparts = strsplit(maskStructs{m}, 'Slice');
+            mparts = strsplit(mparts{2}, '_');
+            slicesToUse(m) = str2num(mparts{1});
         end
-        mask_paths = cell(1,length(maskStructs));
+        maskPaths = cell(1,length(maskStructs));
         for m=1:length(maskStructs)
-            mask_paths{m} = fullfile(maskDir, maskStructs{m});
+            maskPaths{m} = fullfile(maskDir, maskStructs{m});
         end
-        maskInfo.maskPaths = mask_paths;
-        maskInfo.slices_to_use = slices_to_use;
+        maskInfo.maskPaths = maskPaths;
+        maskInfo.slicesToUse = slicesToUse;
         
         
         % =================================================================
@@ -314,11 +323,11 @@ switch roiType
         % Set smoothing/filtering params:
         % -----------------------------------------------------------------
         params = struct();
-        params.smooth_xy = true;
-        params.kernel_xy = 5;
+        params.smoothXY = true;
+        params.kernelXY = 5;
         
-        slices_to_use = [5, 10, 15, 20]; % TMP 
-        params.slices_to_use = slices_to_use;
+        slicesToUse = [5, 10, 15, 20]; % TMP 
+        params.slicesToUse = slicesToUse;
         
 
         
@@ -353,7 +362,7 @@ end
 
 D.refRun = refRun;
 D.refPath = refMeta.tiff_path;
-D.slices = slices_to_use;
+D.slices = slicesToUse;
 
 D.maskType = maskType;
 if strcmp(D.maskType, 'circles')
@@ -387,18 +396,18 @@ traces_structs = {traces_structs(:).name}';
 % Retinotopy:
 
 % slices = [12, 14, 16];
-tmp_slice_fns = dir(fullfile(analysisDir, 'traces', '*traces_*_pixels*'));
-slice_fns = {tmp_slice_fns(:).name};
+tmpTraceNames = dir(fullfile(analysisDir, 'traces', '*traces_*_pixels*'));
+traceNames = {tmpTraceNames(:).name};
 
-for sidx = 10:length(slice_fns)
-    slice_fn = slice_fns{sidx};
-    load(fullfile(analysisDir, 'traces', slice_fn))
+for sidx = 10:length(traceNames)
+    traceName = traceNames{sidx};
+    load(fullfile(analysisDir, 'traces', traceName))
 
     nfiles = length(T.traces.file);
     for fidx = 1:nfiles
         traces = T.traces.file{fidx};
         masks = T.masks.file{fidx};
-        avgY = T.avg_image.file{fidx};
+        avgY = T.avgImage.file{fidx};
 
         Fs = meta.siVolumeRate;
         targetFreq = meta.targetFreq;
@@ -419,9 +428,9 @@ for sidx = 10:length(slice_fns)
         end
 
         % Get phase and magnitude maps:
-        phase_map = zeros(d1, d2, 1);
-        mag_map = zeros(d1, d2, 1);
-        max_map = zeros(d1, d2, 1);
+        phaseMap = zeros(d1, d2, 1);
+        magMap = zeros(d1, d2, 1);
+        maxMap = zeros(d1, d2, 1);
 
         fft_struct = struct();
 
@@ -435,14 +444,14 @@ for sidx = 10:length(slice_fns)
                         vol_trace = traces(row, :);
 
                         for slice=slice_idx:slice_idx %ntotal_slices;
-                            slice_indices = slice:tiff.nFramesPerVolume:tiff.nTotalFrames;
-                            vol_offsets = tiff.siSec(slice_indices);
+                            sliceIdxs = slice:tiff.nFramesPerVolume:tiff.nTotalFrames;
+                            vol_offsets = tiff.siSec(sliceIdxs);
 
-                            tmp0 = zeros(1,length(slice_indices));
+                            tmp0 = zeros(1,length(sliceIdxs));
                             if check_slice==1
                                 tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
                             else
-                                tmp0(:) = squeeze(vol_trace(slice_indices));
+                                tmp0(:) = squeeze(vol_trace(sliceIdxs));
                             end
                             if cut_end==1
                                 tmp0 = tmp0(1:crop);
@@ -471,15 +480,15 @@ for sidx = 10:length(slice_fns)
                             fft_struct.(roi_no).fft_y = fft_y;
                             fft_struct.(roi_no).DC_y = trace_y;
                             fft_struct.(roi_no).raw_y = tmp0;
-                            fft_struct.(roi_no).slices = slice_indices;
+                            fft_struct.(roi_no).slices = sliceIdxs;
                             fft_struct.(roi_no).freqs = freqs;
                             fft_struct.(roi_no).freq_idx = freq_idx;
                             fft_struct.(roi_no).targetFreq = targetFreq;
 
-                            phase_map(masks(:,:,row)==1) = phaseY(freq_idx);
-                            mag_map(masks(:,:,row)==1) = magY(freq_idx);
+                            phaseMap(masks(:,:,row)==1) = phaseY(freq_idx);
+                            magMap(masks(:,:,row)==1) = magY(freq_idx);
                             max_idx = find(magY==max(magY));
-                            max_map(masks(:,:,row)==1) = phaseY(max_idx(1));
+                            maxMap(masks(:,:,row)==1) = phaseY(max_idx(1));
                         end
                 end
 
@@ -495,14 +504,14 @@ for sidx = 10:length(slice_fns)
                         % 1.  Subtract rolling mean to get rid of slow
                         % drift, etc.
                         % ---------------------------------------------
-                        slice_indices = sidx:meta.nFramesPerVolume:meta.nTotalFrames;
-                        vol_offsets = meta.siSec(slice_indices);
+                        sliceIdxs = sidx:meta.nFramesPerVolume:meta.nTotalFrames;
+                        vol_offsets = meta.siSec(sliceIdxs);
 
-                        tmp0 = zeros(1,length(slice_indices));
+                        tmp0 = zeros(1,length(sliceIdxs));
                         if check_slice==1
                             tmp0(:) = squeeze(vol_trace(1:end)); % don't use volume slice indices if just loading in 1 slice
                         else
-                            tmp0(:) = squeeze(vol_trace(:,:,slice_indices));
+                            tmp0(:) = squeeze(vol_trace(:,:,sliceIdxs));
                         end
                         if cut_end==1
                             tmp0 = tmp0(1:crop);
@@ -532,15 +541,15 @@ for sidx = 10:length(slice_fns)
                         fft_struct.(roi_no).fft_y = fft_y;
                         fft_struct.(roi_no).DC_y = trace_y;
                         fft_struct.(roi_no).raw_y = tmp0;
-                        fft_struct.(roi_no).slices = slice_indices;
+                        fft_struct.(roi_no).slices = sliceIdxs;
                         fft_struct.(roi_no).freqs = freqs;
                         fft_struct.(roi_no).freq_idx = freq_idx;
                         fft_struct.(roi_no).targetFreq = targetFreq;
 
-                        phase_map(row, col) = phaseY(freq_idx);
-                        mag_map(row, col) = magY(freq_idx);
+                        phaseMap(row, col) = phaseY(freq_idx);
+                        magMap(row, col) = magY(freq_idx);
                         max_idx = find(magY==max(magY));
-                        max_map(row, col) = phaseY(max_idx(1));
+                        maxMap(row, col) = phaseY(max_idx(1));
                         % end
                     end
 
@@ -552,8 +561,8 @@ for sidx = 10:length(slice_fns)
 
         % Save analysis struct info:
         % --------------------------
-        %slice_fn_parts = strsplit(slice_fn, '_');
-        % analysis_struct_fn = sprintf('FFT_%s', slice_fn_parts{2});
+        %traceName_parts = strsplit(traceName, '_');
+        % analysis_struct_fn = sprintf('FFT_%s', traceName_parts{2});
         analysis_struct_fn = sprintf('FFT_Slice%02d_File%03d_%s', sidx, fidx, roiType);
 
         FFT = struct();
@@ -564,9 +573,9 @@ for sidx = 10:length(slice_fns)
         FFT.avgimg = avgY;
         %FFT.fft_struct = fft_struct;
 
-        FFT.phase_map = phase_map;
-        FFT.mag_map = mag_map;
-        FFT.max_map = mag_map;
+        FFT.phaseMap = phaseMap;
+        FFT.magMap = magMap;
+        FFT.maxMap = magMap;
         FFT.max_idx = max_idx;
         
         save(fullfile(analysisDir, 'traces', analysis_struct_fn), 'FFT', '-v7.3');
@@ -728,11 +737,11 @@ colormap(ax1, gray)
 
 ax4 = subplot(2,2,4);
 threshold = .3 %0.1; %8000; %10000; %8000; %(k=3); %20000;
-threshold_map = phase_map;
-threshold_map(mag_map<(max(mag_map(:))*threshold)) = NaN;
+thresholdMap = phaseMap;
+thresholdMap(magMap<(max(magMap(:))*threshold)) = NaN;
 
 fov = repmat(mat2gray(avgY), [1, 1, 3]);
-B = threshold_map; %phase_map
+B = thresholdMap; %phaseMap
 imagesc(fov);
 slice_no = strcat('slice', num2str(sidx));
 title(sprintf('avg - %s', slice_no))
@@ -743,7 +752,7 @@ colormap(ax4, hsv)
 caxis([-pi, pi])
 
 ax3 = subplot(2,2,3);
-imagesc(mag_map)
+imagesc(ratioMap)
 axis('off')
 colormap(ax3, hot)
 hb = colorbar('location','eastoutside');

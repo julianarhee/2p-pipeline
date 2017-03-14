@@ -56,12 +56,12 @@ switch mw2si
         if strcmp(pymat.stimtype, 'bar')
             % sthmight be off here, edited..
             runNames = cellstr(pymat.runs);
-            condTypes = cellstr(pymat.condtypes);
+            condTypes = cellstr(pymat.conditions);
         elseif strcmp(pymat.stimtype, 'grating')
-            condTypes = cellstr(pymat.condtypes);
+            conditions = cellstr(pymat.gratings);
         elseif strcmp(pymat.stimtype, 'image')
             runNames = cellstr(pymat.runs);
-            condTypes = cellstr(pymat.condtypes);
+            conditions = cellstr(pymat.stim_idxs);
         else
             fprintf('No stimype detected in MW file...\n');
         end
@@ -78,7 +78,7 @@ M.mw2si = mw2si;
 M.MWfidx = MWfidx;
 M.nRuns = nRuns;
 M.nTiffs = nTiffs;
-M.condTypes = condTypes;
+M.condTypes = conditions;
 M.stimType = pymat.stimtype;
 M.pymat = pymat;
 end

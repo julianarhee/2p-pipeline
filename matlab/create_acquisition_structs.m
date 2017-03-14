@@ -4,7 +4,9 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp/';
+
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
 analysisDir = fullfile(sourceDir, 'analysis');
@@ -17,7 +19,9 @@ channelIdx = 1;
 nchannels = 1;
 %tiff_dir = sprintf('Corrected_Channel%02d', channelIdx);
 %tiff_dir = sprintf('Corrected');
-acquisitionName = 'fov1_bar037Hz_run4';
+
+acquisitionName = 'fov2_rsvp_25reps';
+%acquisitionName = 'fov1_bar037Hz_run4';
 
 %% Get SI volume info:
 
@@ -108,13 +112,18 @@ end
 
 % Get indices of each run to preserve order when indexing into MW
 % file-structs:
+runOrder = struct();
 for runIdx=1:length(mw.runNames)
     runOrder.(mw.runNames{runIdx}) = pymat.(mw.runNames{runIdx}).ordernum + 1;
 end
 
+% TODO:  FIX THIS so that it works for both retino and for trials...
+
+
 %% Grab experiment info for each slice and save a .mat for each run.
 %  Stores MW / ARD stimulus info & metadata from SI.
 
+tiff = struct();
 for fidx=1:nTiffs
     
     currMWfidx = mw.MWfidx + fidx - 1;
@@ -126,8 +135,11 @@ for fidx=1:nTiffs
         end
     end
     
+    % --
+
     mwSec = (double(pymat.(currRunName).time) - double(pymat.(currRunName).time(1))) / 1E6;
     cycleStarts = pymat.(currRunName).idxs + 1; % Get indices of cycle starts
+
     mwDur = (double(pymat.triggers(currMWfidx,2)) - double(pymat.triggers(currMWfidx,1))) / 1E6;
     
     if exist('siFrameTimes')
@@ -148,14 +160,17 @@ for fidx=1:nTiffs
     end
     
     
-    if pymat.stimtype=='bar'
+    if strcmp(pymat.stimtype, 'bar')
         trimLong = 1;
         ncycles = pymat.info.ncycles;
         targetFreq = pymat.info.target_freq;
         %siFrameRate = 1/median(diff(siSec));
         %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
         nTrueFrames = ceil((1/targetFreq)*siVolumeRate*ncycles);
-        
+        tiff.targetFreq = targetFreq;
+        tiff.nTrueFrames = nTrueFrames;
+    else
+        ncycles = length(cycleStarts);
     end
     
     tiff.acquisitionName = acquisitionName;
@@ -168,10 +183,8 @@ for fidx=1:nTiffs
     tiff.mwDur = mwDur;
     tiff.siSec = siSec;
     tiff.ncycles = ncycles;
-    tiff.targetFreq = targetFreq;
     tiff.siFrameRate = siFrameRate;
     tiff.siVolumeRate = siVolumeRate;
-    tiff.nTrueFrames = nTrueFrames;
     
     tiff.nVolumes = nVolumes;
     tiff.nSlices = nSlices;
