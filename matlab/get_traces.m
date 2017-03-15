@@ -1,4 +1,4 @@
-function get_traces(dstructPath, mask_type, acquisition_name, nTiffs, nchannels, metaPaths, varargin)
+function get_traces(dstructPath, maskType, acquisitionName, nTiffs, nchannels, metaPaths, varargin)
 
 %                                     
 % CASES:
@@ -32,7 +32,7 @@ switch nvargin
 end
 
 
-switch mask_type
+switch maskType
     case 'circles'
         
         for cidx=1:nchannels
@@ -46,14 +46,13 @@ switch mask_type
                 
                 M=load(maskPaths{sidx});
                 masks = M.masks;
-                [channelPath, refDir, ~] = fileparts(M.refPath);
                 
                 % Load current slice movie and apply mask from refRun:
                 for fidx = 1:nTiffs
                     metaFile = load(metaPaths{fidx});                              % Load meta info for current file.
                     slicePath = metaFile.tiffPath;                                 % Get path to all slice TIFFs for current file.
-                    currSliceName = strrep(M.slice, sprintf('File%03d', refNum),...
-                                            sprintf('File%03d', fidx));             % Use name of reference slice TIFF to get current slice fn
+                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
+                                        acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
                     avgY = mean(Y, 3);
 
@@ -108,7 +107,7 @@ switch mask_type
                 for fidx=1:nTiffs %1:3:3 %nTiffs
                     metaFile = load(metaPaths{fidx});
                     slicePath = metaFile.tiffPath;
-                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, currSliceIdx, cidx, fidx);
+                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisitionName, currSliceIdx, cidx, fidx);
                     
                     Y = tiffRead(fullfile(slicePath, currSliceName));
                     avgY = mean(Y, 3);
@@ -158,7 +157,7 @@ switch mask_type
                for fidx=1:nTiffs
                    metaFile = load(metaPaths{fidx});
                    slicePath = metaFile.tiffPath;
-                   currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition_name, currSliceIdx, cidx, fidx);
+                   currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisitionName, currSliceIdx, cidx, fidx);
 
                    Y = tiffRead(fullfile(slicePath, currSliceName));
                    avgY = mean(Y, 3);
@@ -184,7 +183,7 @@ switch mask_type
         
     otherwise
         
-        fprintf('Mask type %s not recognized...\n', mask_type);
+        fprintf('Mask type %s not recognized...\n', maskType);
         fprintf('No traces extracted.\n')
 
 end

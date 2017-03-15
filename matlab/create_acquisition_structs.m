@@ -4,7 +4,7 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp/';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
 
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
@@ -179,7 +179,7 @@ for fidx=1:nTiffs
     tiff.mwPath = mw.mwPath;
     %tiff.run_fn = M.run_fns;
     tiff.mwSec = mwSec;
-    tiff.stim_starts = cycleStarts;
+    tiff.stimStarts = cycleStarts;
     tiff.mwDur = mwDur;
     tiff.siSec = siSec;
     tiff.ncycles = ncycles;
@@ -188,10 +188,10 @@ for fidx=1:nTiffs
     
     tiff.nVolumes = nVolumes;
     tiff.nSlices = nSlices;
-    tiff.ntotal_slices = nSlices + nDiscard;
+    tiff.nTotalSlices = nSlices + nDiscard;
     tiff.nTotalFrames = nTotalFrames;
     tiff.nFramesPerVolume = nFramesPerVolume;
-    tiff.tiff_path = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{fidx});
+    tiff.tiffPath = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{fidx});
     tiff.imgX = frameWidth;
     tiff.imgY = frameHeight;
     
@@ -209,6 +209,16 @@ end
     
 %% Set up experiment analysis parameters:
 
+didx = 1;
+
+datastruct = sprintf('datastruct_%03d', didx);
+dstructPath = fullfile(analysisDir, datastruct);
+if ~exist(dstructPath)
+    mkdir(dstructPath)
+    D = struct();
+end
+
+
 % =========================================================================
 % Parameters:
 % =========================================================================
@@ -218,7 +228,21 @@ preprocessing = 'Acquisition2P';
 %preprocessing = 'raw';
 
 % --------------------------
-roiType = 'create_rois';
+roiType = 'condition';
+
+[fpath,fcond,~] = fileparts(sourceDir);
+if strcmp(roiType, 'old_rois')
+    maskSource = 'retinotopy037Hz';
+    maskSourcePath = fullfile(fpath, maskSource);
+    pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
+    maskNames = dir(fullfile(pathToMasks, 'masks_*'));
+    maskNames = {maskNames(:).name}';
+    maskPaths = cell(1, length(maskNames));
+    for maskIdx=1:length(maskNames)
+        maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
+    end
+    
+end
 
 % roiType: 
 %   'create_rois' : create new ROIs using circle-GUI
@@ -247,25 +271,30 @@ nTiffs = length(metaPaths);
 % Save analysis info:
 % =========================================================================
 
-didx = 1;
-
-datastruct = sprintf('datastruct_%03d', didx);
-dstructPath = fullfile(analysisDir, datastruct);
-if ~exist(dstructPath)
-    mkdir(dstructPath)
-    D = struct();
-end
+% didx = 1;
+% 
+% datastruct = sprintf('datastruct_%03d', didx);
+% dstructPath = fullfile(analysisDir, datastruct);
+% if ~exist(dstructPath)
+%     mkdir(dstructPath)
+%     D = struct();
+% end
 D = struct();
 D.name = datastruct;
 D.path = dstructPath;
 D.acquisitionName = acquisitionName;
 D.preprocessing = preprocessing;
 D.roiType = roiType;
+if strcmp(D.roiType, 'condition')
+    D.maskPaths = maskPaths;
+    D.maskSource = maskSource;
+    D.maskSourcePath = maskSourcePath;
+end
 D.metaPaths = metaPaths;
 D.nTiffs = nTiffs;
 D.channels = nchannels;
 
-save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
 
 %% Create masks and get traces:
@@ -318,7 +347,16 @@ switch roiType
         % =================================================================
         get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
                     nchannels, metaPaths, maskInfo);
+    
+    case 'condition'
+        % Use masks from a different condition:
+        ref = load(fullfile(D.maskSourcePath, 'analysis', datastruct, sprintf('%s.mat', datastruct)));
+        maskInfo = struct();
+        maskInfo = ref.maskInfo;
+        maskType = ref.maskType;
         
+        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
+                    nchannels, metaPaths, maskInfo);
         
     case 'pixels'
         
@@ -365,7 +403,7 @@ end
 % -------------------------------------------------------------------------
 
 D.refRun = refRun;
-D.refPath = refMeta.tiff_path;
+D.refPath = refMeta.tiffPath;
 D.slices = slicesToUse;
 
 D.maskType = maskType;
