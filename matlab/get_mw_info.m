@@ -1,4 +1,9 @@
-function M = get_mw_info(mwPath, nTiffs)
+function M = get_mw_info(sourceDir, nTiffs)
+
+M = struct();
+mwStruct = struct();
+
+mwPath = fullfile(sourceDir, 'mw_data');
 
 fileNames = dir(fullfile(mwPath, '*.mat'));
 if isempty(fileNames)
@@ -14,7 +19,7 @@ else
     fprintf('Found %i MW files and %i TIFFs.\n', length(fileNames), nTiffs);
     pymatName = fileNames{1};
     pymat = load(fullfile(mwPath, pymatName));
-    nRuns = length(double(pymat.triggers)); % Just check length of a var to see how many "runs" MW-parsing detected.
+    nRuns = length(pymat.runs); % Just check length of a var to see how many "runs" MW-parsing detected.
    
     fprintf('---------------------------------------------------------\n');
     if length(fileNames) == nTiffs        
@@ -45,40 +50,107 @@ else
     end
 end
 
-switch mw2si
-    case 'indie' % Each SI file goes with one MW/ARD file
-        % do stuff
-    case 'multi'
-        % do other stuff
-        pymatName = fileNames{1}; % There should only be 1 mwk file for multiple TIFFs (experiment reps).
-        pymat = load(fullfile(mwPath, pymatName));
-        %runNames = cellstr(pymat.conditions);
-        if strcmp(pymat.stimtype, 'bar')
-            % sthmight be off here, edited..
-            runNames = cellstr(pymat.runs);
-            condTypes = cellstr(pymat.condtypes);
-        elseif strcmp(pymat.stimtype, 'grating')
-            condTypes = cellstr(pymat.condtypes);
-        elseif strcmp(pymat.stimtype, 'image')
-            runNames = cellstr(pymat.runs);
-            condTypes = cellstr(pymat.condtypes);
-        else
-            fprintf('No stimype detected in MW file...\n');
-        end
-
-    otherwise
-        % fix stuff.
+for midx=1:length(fileNames)
+    pymat = load(fullfile(mwPath, fileNames{midx}));
+    if isfield(pymat, 'ard_dfn')
+        mwStruct.file(midx).ardPath = pymat.ard_dfn;
+    end
+    mwStruct.file(midx).mwPath = fullfile(mwPath, fileNames{midx});
+    mwStruct.file(midx).MWfidx = MWfidx;
+    mwStruct.file(midx).stimType = pymat.stimtype;
+    mwStruct.file(midx).runNames = cellstr(pymat.runs);
+    mwStruct.file(midx).condTypes = cellstr(pymat.condtypes);
+    for run=1:length(mwStruct.file(midx).runNames)
+        mwStruct.file(midx).pymat.(mwStruct.file(midx).runNames{run}) = pymat.(mwStruct.file(midx).runNames{run});
+    end
+    mwStruct.file(midx).info = pymat.info;
 end
 
+               
+% switch mw2si
+%     case 'indie' % Each SI file goes with one MW/ARD file
+%         % do stuff
+%         for midx=1:length(fileNames)
+%             pymat = load(fullfile(mwPath, fileNames{midx}));
+%             
+%             tmpRunNames = cellstr(pymat.runs);
+%             mwStruct.file(midx).mwPath = fullfile(mwPath, fileNames{midx});
+%             mwStruct.file(midx).MWfidx = MWfidx;
+%             mwStruct.file(midx).stimType = pymat.stimtype;
+%             mwStruct.file(midx).runNames = {tmpRunNames{MWfidx:end}};
+%             mwStruct.file(midx).condTypes = cellstr(pymat.condtypes);
+%             mwStruct.file(midx).pymat = pymat;
+%             
+% 
+%         end
+%         
+%     case 'multi'
+%         % do other stuff
+%         pymatName = fileNames{1}; % There should only be 1 mwk file for multiple TIFFs (experiment reps).
+%         pymat = load(fullfile(mwPath, pymatName));
+%         %runNames = cellstr(pymat.conditions);
+%         if strcmp(pymat.stimtype, 'bar')
+%             % sthmight be off here, edited..
+%             runNames = cellstr(pymat.runs);
+%             condTypes = cellstr(pymat.condtypes);
+%         elseif strcmp(pymat.stimtype, 'grating')
+%             condTypes = cellstr(pymat.condtypes);
+%         elseif strcmp(pymat.stimtype, 'image')
+%             runNames = cellstr(pymat.runs);
+%             condTypes = cellstr(pymat.condtypes);
+%         else
+%             fprintf('No stimype detected in MW file...\n');
+%         end
+% 
+%     otherwise
+%         % fix stuff.
+% end
 
-M.mwPath = mwPath;
-M.runNames = runNames;
+
+%M.runNames = runNames;
 M.fileNames = fileNames;
 M.mw2si = mw2si;
-M.MWfidx = MWfidx;
 M.nRuns = nRuns;
 M.nTiffs = nTiffs;
-M.condTypes = condTypes;
 M.stimType = pymat.stimtype;
-M.pymat = pymat;
+
+
+% Create arbitrary stimtype codes:
+% stimTypes = cell(1,length(mwStruct.file(1).condTypes));
+% for sidx=1:length(mwStruct.file(1).condTypes)
+%     sname = sprintf('code%i', sidx);
+%     stimTypes{sidx} = sname;
+% end
+
+% Get indices of each run to preserve order when indexing into MW
+% file-structs:
+for fileIdx=1:length(fileNames)
+    
+    runOrder = struct();
+    currRunNames = mwStruct.file(fileIdx).runNames;
+    for runIdx=1:length(currRunNames)
+        runOrder.(currRunNames{runIdx}) = mwStruct.file(fileIdx).pymat.(currRunNames{runIdx}).ordernum + 1;
+    end
+    mwStruct.file(fileIdx).runOrder = runOrder;
+    
+end
+
+%M.stimTypes = stimTypes;
+%M.runOrder = runOrder;
+
+M.MW = mwStruct;
+
+%------------------------
+
+
+% mwStructName = char(sprintf('MW_%s.mat', acquisitionName));
+% mwStructPath = fullfile(analysisDir, 'MW');
+% if ~exist(mwStructPath)
+%     mkdir(mwStructPath)
+% end
+% 
+% save(fullfile(mwStructPath, mwStructName), '-struct', 'M');
+
+
+
 end

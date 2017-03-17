@@ -6,7 +6,8 @@ clc;
 % Define source dir for current acquisition/experiment:
 sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
 
-% sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz/';
+%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
+
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
 analysisDir = fullfile(sourceDir, 'analysis');
@@ -16,12 +17,55 @@ end
 
 % Define TIFF dir if is sub-dir within the source-dir:
 channelIdx = 1;
-nchannels = 1;
+%nchannels = 1;
 %tiff_dir = sprintf('Corrected_Channel%02d', channelIdx);
 %tiff_dir = sprintf('Corrected');
 
 acquisitionName = 'fov2_rsvp_25reps';
 %acquisitionName = 'fov1_bar037Hz_run4';
+
+
+%% Define datastruct name for analysis:
+
+
+didx = 1;
+
+datastruct = sprintf('datastruct_%03d', didx);
+dstructPath = fullfile(analysisDir, datastruct);
+existingAnalyses = dir(analysisDir);
+existingAnalyses = {existingAnalyses(:).name}';
+
+if ~exist(dstructPath)
+    mkdir(dstructPath)
+    D = struct();
+else
+    fprintf('*********************************************************\n');
+    fprintf('WARNING:  Specified datastruct -- %s -- exists. Overwrite?\n');
+    uinput = input('Press Y/n to overwrite or create new: ', 's');
+    if strcmp(uinput, 'Y')
+        D = struct();
+        fprintf('New datastruct created: %s.\n', datastruct);
+        fprintf('Not yet saved. Exit now to load existing datastruct.\n');
+    else
+        didx = input('Enter # to create new datastruct: ');
+        datastruct = sprintf('datastruct_%03d', didx);
+        while ismember(datastruct, existingAnalyses)
+            didx = input('Analysis %s already exists... Choose again.', datastruct);
+            datastruct = sprintf('datastruct_%03d', didx);
+        end
+        dstructPath = fullfile(analysisDir, datastruct);
+        mkdir(dstructPath);
+        D = struct();
+    end
+end
+
+D.name = datastruct;
+D.datastructPath = dstructPath;
+D.sourceDir = sourceDir;
+D.acquisitionName = acquisitionName;
+D.channelIdx = channelIdx;
+save(fullfile(dstructPath, datastruct), '-struct', 'D');
+
 
 %% Get SI volume info:
 
@@ -34,50 +78,41 @@ else
     tiffSource = 'Parsed';
 end
 
+D.tiffSource = tiffSource;
+save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+
+
+%% Get SI volume info:
+
 switch metaInfo
     case 'SI'
        
-        metastructFn = sprintf('%s.mat', acquisitionName);
+        siMetaName = sprintf('%s.mat', acquisitionName);
         
-        if ~exist(fullfile(sourceDir, metastructFn))
+        if ~exist(fullfile(sourceDir, siMetaName))
             
-            % Load and parse raw TIFFs and create meta file:
+            % Load and parse raw TIFFs and create SI-specific meta file:
             movies = dir(fullfile(sourceDir,'*.tif'));
             movies = {movies(:).name};
             writeDir = fullfile(sourceDir, tiffSource);
             if ~exist(writeDir, 'dir')
                 mkdir(writeDir)
             end
-            parseSIdata(acquisitionName, movies, sourceDir, writeDir)
+            parseSIdata(acquisitionName, movies, sourceDir, writeDir);
             
-            
-            % Load meta struct:
-            load(fullfile(sourceDir, metastructFn));
-            meta = struct();
-            meta.(acquisitionName) = metaDataSI{1}; % Have info for each file, but this was not corrected in previosuly run MCs...
-        else
-            meta = load(fullfile(sourceDir, metastructFn));
+            % Load newly-created meta struct:
+            %siMeta = load(fullfile(sourceDir, siMetaName));
+            %meta = struct();
+            %meta.(acquisitionName) = siMeta.metaDataSI; % Have info for each file, but this was not corrected in previosuly run MCs...
         end
-
-        % Sort Parsed files into separate directories:
-        numchannels = 2;
-        sort_parsed_tiffs(sourceDir, tiffSource, numchannels);
-            
-        nVolumes = meta.(acquisitionName).metaDataSI.SI.hFastZ.numVolumes;
-        nSlices = meta.(acquisitionName).metaDataSI.SI.hFastZ.numFramesPerVolume;
-        nDiscard = meta.(acquisitionName).metaDataSI.SI.hFastZ.numDiscardFlybackFrames;
-        nFramesPerVolume = nSlices + nDiscard;
-        nTotalFrames = nFramesPerVolume * nVolumes;
         
-        siFrameTimes = meta.(acquisitionName).metaDataSI.frameTimestamps_sec(1:2:end);
-        siFrameRate = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanFrameRate;
-        siVolumeRate = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanVolumeRate;
+        % Creata META with SI (acquisition) and MW (experiment) info:
+        meta = createMetaStruct(D);
         
-        frameWidth = meta.(acquisitionName).metaDataSI.SI.hRoiManager.pixelsPerLine;
-        slowMultiplier = meta.(acquisitionName).metaDataSI.SI.hRoiManager.scanAngleMultiplierSlow;
-        linesPerFrame = meta.(acquisitionName).metaDataSI.SI.hRoiManager.linesPerFrame;
-        frameHeight = linesPerFrame/slowMultiplier;
-        
+        % Sort Parsed files into separate directories if needed:
+        if length(dir(fullfile(sourceDir, tiffSource))) > meta.nChannels
+            sort_parsed_tiffs(sourceDir, tiffSource, meta.nChannels);
+        end
       
     case 'manual' % No motion-correction/processing, just using raw TIFFs.
         nVolumes = 350;
@@ -86,163 +121,203 @@ switch metaInfo
         
         nFramesPerVolume = nSlices + nDiscard;
         nTotalFrames = nFramesPerVolume * nVolumes;
+        
+        %.....
+
 end
 
 % Get paths to each FILE directory (into which TIFFs have been parsed):
 
-channelDir = sprintf('Channel%02d', channelIdx);
-tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
-tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmpTiffs));
-tiffDirs = {tmpTiffs(:).name}';
-nTiffs = length(tiffDirs);
-fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffs);
+% channelDir = sprintf('Channel%02d', channelIdx);
+% tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+% tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmpTiffs));
+% tiffDirs = {tmpTiffs(:).name}';
+% nTiffs = length(tiffDirs);
+% fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffs);
+% if meta.nTiffs ~= nTiffs
+%     fprintf('Check META file at: %s\n', meta.metaPath);
+%     fprintf('Meta: %i | Found TIFFS in dir: %i.\n', meta.nTiffs, nTiffs);
+% end
+
+D.metaPath = meta.metaPath;
+D.nTiffs = meta.nTiffs;
+D.nChannels = meta.nChannels;
+D.stimType = meta.stimType;
+
+save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+
 
 %% Specify experiment parameters:
 
-mwPath = fullfile(sourceDir, 'mw_data');
-mw = get_mw_info(mwPath, nTiffs);
-pymat = mw.pymat;
+%createMetastruct(sourceDir, acquisitionName);
 
-% Create arbitrary stimtype codes:
-stimTypes = cell(1,length(mw.condTypes));
-for sidx=1:length(mw.condTypes)
-    sname = sprintf('code%i', sidx);
-    stimTypes{sidx} = sname;
-end
-
-% Get indices of each run to preserve order when indexing into MW
-% file-structs:
-runOrder = struct();
-for runIdx=1:length(mw.runNames)
-    runOrder.(mw.runNames{runIdx}) = pymat.(mw.runNames{runIdx}).ordernum + 1;
-end
-
-% TODO:  FIX THIS so that it works for both retino and for trials...
-
+% mwPath = fullfile(sourceDir, 'mw_data');
+% mw = get_mw_info(analysisDir, acquisitionName, mwPath, nTiffs); % pymat = mw.pymat;
+% 
+% % Create arbitrary stimtype codes:
+% stimTypes = cell(1,length(mw.condTypes));
+% for sidx=1:length(mw.condTypes)
+%     sname = sprintf('code%i', sidx);
+%     stimTypes{sidx} = sname;
+% end
+% 
+% % Get indices of each run to preserve order when indexing into MW
+% % file-structs:
+% runOrder = struct();
+% for runIdx=1:length(mw.runNames)
+%     runOrder.(mw.runNames{runIdx}) = mw.pymat.(mw.runNames{runIdx}).ordernum + 1;
+% end
+% 
+% mw.stimTypes = stimTypes;
+% mw.runOrder = runOrder;
+% 
+% currStructName = char(sprintf('MW_%s.mat', acquisitionName));
+% mwPath = fullfile(analysisDir, 'MW');
+% if ~exist(mwPath)
+%     mkdir(mwPath)
+% end
+% 
+% save(fullfile(mwPath, currStructName), '-struct', 'mw');
 
 %% Grab experiment info for each slice and save a .mat for each run.
 %  Stores MW / ARD stimulus info & metadata from SI.
-
-tiff = struct();
-for fidx=1:nTiffs
-    
-    currMWfidx = mw.MWfidx + fidx - 1;
-    
-    % Make sure to grab the correct run based on TIFF order number:
-    for orderIdx=1:length(fieldnames(runOrder))
-        if runOrder.(mw.runNames{orderIdx}) == currMWfidx
-            currRunName = mw.runNames{orderIdx};
-        end
-    end
-    
-    % --
-
-    mwSec = (double(pymat.(currRunName).time) - double(pymat.(currRunName).time(1))) / 1E6;
-    cycleStarts = pymat.(currRunName).idxs + 1; % Get indices of cycle starts
-
-    mwDur = (double(pymat.triggers(currMWfidx,2)) - double(pymat.triggers(currMWfidx,1))) / 1E6;
-    
-    if exist('siFrameTimes')
-        siSec = siFrameTimes;
-    else
-        if isfield(pymat, 'ard_file_durs')
-            ardDur = double(pymat.ard_file_durs(currMWfidx));
-            %if sample_us==1 % Each frame has a t-stamped frame-onset (only true if ARD sampling every 200us, isntead of standard 1ms)
-            siSec = (double(pymat.frame_onset_times{currMWfidx}) - double(pymat.frame_onset_times{currMWfidx}(1))) / 1E6; 
-            if length(si_sec) < nTotalFrames % there are missed frame triggers
-                siSec = linspace(0, ardDur, nTotalFrames);
-                % This is pretty accurate.. only off by ~ 3ms compared to SI's
-                % trigger times.
-            end
-        else
-            siSec = linspace(0, mwDur, nTotalFrames);
-        end
-    end
-    
-    
-    if strcmp(pymat.stimtype, 'bar')
-        trimLong = 1;
-        ncycles = pymat.info.ncycles;
-        targetFreq = pymat.info.target_freq;
-        %siFrameRate = 1/median(diff(siSec));
-        %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
-        nTrueFrames = ceil((1/targetFreq)*siVolumeRate*ncycles);
-        tiff.targetFreq = targetFreq;
-        tiff.nTrueFrames = nTrueFrames;
-    else
-        ncycles = length(cycleStarts);
-    end
-    
-    tiff.acquisitionName = acquisitionName;
-    tiff.mwRunName = currRunName;
-    tiff.MWfidx = currMWfidx;
-    tiff.mwPath = mw.mwPath;
-    %tiff.run_fn = M.run_fns;
-    tiff.mwSec = mwSec;
-    tiff.stim_starts = cycleStarts;
-    tiff.mwDur = mwDur;
-    tiff.siSec = siSec;
-    tiff.ncycles = ncycles;
-    tiff.siFrameRate = siFrameRate;
-    tiff.siVolumeRate = siVolumeRate;
-    
-    tiff.nVolumes = nVolumes;
-    tiff.nSlices = nSlices;
-    tiff.ntotal_slices = nSlices + nDiscard;
-    tiff.nTotalFrames = nTotalFrames;
-    tiff.nFramesPerVolume = nFramesPerVolume;
-    tiff.tiff_path = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{fidx});
-    tiff.imgX = frameWidth;
-    tiff.imgY = frameHeight;
-    
-    tiff.tiffIdx = fidx;
-   
-    currStructName = char(sprintf('meta_File%03d.mat', fidx));
-    metaPath = fullfile(analysisDir, 'meta');
-    if ~exist(metaPath)
-        mkdir(metaPath)
-    end
-    
-    save(fullfile(metaPath, currStructName), '-struct', 'tiff');
-    
-end
+% 
+% tiff = struct();
+% for fidx=1:nTiffs
+%     
+%     currMWfidx = mw.MWfidx + fidx - 1;
+%     
+%     % Make sure to grab the correct run based on TIFF order number:
+%     for orderIdx=1:length(fieldnames(runOrder))
+%         if runOrder.(mw.runNames{orderIdx}) == currMWfidx
+%             currRunName = mw.runNames{orderIdx};
+%         end
+%     end
+%     
+%     % --
+% 
+%     mwSec = (double(mw.pymat.(currRunName).time) - double(mw.pymat.(currRunName).time(1))) / 1E6;
+%     cycleStarts = mw.pymat.(currRunName).idxs + 1; % Get indices of cycle starts
+% 
+%     mwDur = (double(mw.pymat.triggers(currMWfidx,2)) - double(mw.pymat.triggers(currMWfidx,1))) / 1E6;
+%     
+%     if exist('siFrameTimes')
+%         siSec = siFrameTimes;
+%     else
+%         if isfield(mw.pymat, 'ard_file_durs')
+%             ardDur = double(mw.pymat.ard_file_durs(currMWfidx));
+%             %if sample_us==1 % Each frame has a t-stamped frame-onset (only true if ARD sampling every 200us, isntead of standard 1ms)
+%             siSec = (double(mw.pymat.frame_onset_times{currMWfidx}) - double(mw.pymat.frame_onset_times{currMWfidx}(1))) / 1E6; 
+%             if length(si_sec) < nTotalFrames % there are missed frame triggers
+%                 siSec = linspace(0, ardDur, nTotalFrames);
+%                 % This is pretty accurate.. only off by ~ 3ms compared to SI's
+%                 % trigger times.
+%             end
+%         else
+%             siSec = linspace(0, mwDur, nTotalFrames);
+%         end
+%     end
+%     
+%     
+%     if strcmp(mw.pymat.stimtype, 'bar')
+%         trimLong = 1;
+%         ncycles = mw.pymat.info.ncycles;
+%         targetFreq = mw.pymat.info.target_freq;
+%         %siFrameRate = 1/median(diff(siSec));
+%         %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
+%         nTrueFrames = ceil((1/targetFreq)*siVolumeRate*ncycles);
+%         tiff.mw.targetFreq = targetFreq;
+%         tiff.mw.nTrueFrames = nTrueFrames;
+%     else
+%         ncycles = length(cycleStarts);
+%     end
+%     
+%     tiff.acquisitionName = acquisitionName;
+%     tiff.mw.mwRunName = currRunName;
+%     tiff.mw.MWfidx = currMWfidx;
+%     tiff.mw.mwPath = mw.mwPath;
+%     %tiff.run_fn = M.run_fns;
+%     tiff.mw.mwSec = mwSec;
+%     tiff.mw.stimStarts = cycleStarts;
+%     tiff.mw.mwDur = mwDur;
+%     tiff.mw.siSec = siSec;
+%     tiff.mw.ncycles = ncycles;
+%     tiff.mw.pymat = mw.pymat;
+%     
+%     tiff.si.nChannels = nChannels;
+%     tiff.si.siFrameTimes = siFrameTimes;
+%     tiff.si.siFrameRate = siFrameRate;
+%     tiff.si.siVolumeRate = siVolumeRate;
+%     tiff.si.nVolumes = nVolumes;
+%     tiff.si.nSlices = nSlices;
+%     tiff.si.nTotalSlices = nSlices + nDiscard;
+%     tiff.si.nTotalFrames = nTotalFrames;
+%     tiff.si.nFramesPerVolume = nFramesPerVolume;
+%     tiff.si.tiffPath = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{fidx});
+%     tiff.si.imgX = frameWidth;
+%     tiff.si.imgY = frameHeight;
+%     
+%     tiff.si.tiffIdx = fidx;
+%    
+%     currStructName = char(sprintf('meta_File%03d.mat', fidx));
+%     metaPath = fullfile(analysisDir, 'meta');
+%     if ~exist(metaPath)
+%         mkdir(metaPath)
+%     end
+%     
+%     save(fullfile(metaPath, currStructName), '-struct', 'tiff');
+%     
+% end
     
 %% Set up experiment analysis parameters:
-
-didx = 1;
-
-datastruct = sprintf('datastruct_%03d', didx);
-dstructPath = fullfile(analysisDir, datastruct);
-if ~exist(dstructPath)
-    mkdir(dstructPath)
-    D = struct();
-end
-
 
 % =========================================================================
 % Parameters:
 % =========================================================================
 
-% -------------------------
+
+% 1. Specifiy preprocessing method:
+% --------------------------------------------
 preprocessing = 'Acquisition2P';
-%preprocessing = 'raw';
+% preprocessing = 'raw';
 
-% --------------------------
+
+% 2.  Specify ROI type for current analysis:
+% --------------------------------------------
+% roiType = 'create_rois';
 roiType = 'condition';
+% roiType = 'pixels';
 
-[fpath,fcond,~] = fileparts(sourceDir);
-if strcmp(roiType, 'old_rois')
-    maskSource = 'retinotopy037Hz';
-    maskSourcePath = fullfile(fpath, maskSource);
-    pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
-    maskNames = dir(fullfile(pathToMasks, 'masks_*'));
-    maskNames = {maskNames(:).name}';
-    maskPaths = cell(1, length(maskNames));
-    for maskIdx=1:length(maskNames)
-        maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
-    end
-    
+switch roiType
+    case 'create_rois'
+        [fpath,fcond,~] = fileparts(sourceDir);
+        maskSource = fcond;
+    case 'condition'
+        maskSource = 'retinotopy037Hz';
+        fprintf('Using pre-defined masks from condition: %s.\n', maskSource);
+        maskSourcePath = fullfile(fpath, maskSource);
+        pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
+        maskNames = dir(fullfile(pathToMasks, 'masks_*'));
+        maskNames = {maskNames(:).name}';
+        maskPaths = cell(1, length(maskNames));
+        for maskIdx=1:length(maskNames)
+            maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
+        end
 end
+
+% [fpath,fcond,~] = fileparts(sourceDir);
+% if strcmp(roiType, 'condition')
+%     maskSource = 'retinotopy037Hz';
+%     maskSourcePath = fullfile(fpath, maskSource);
+%     pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
+%     maskNames = dir(fullfile(pathToMasks, 'masks_*'));
+%     maskNames = {maskNames(:).name}';
+%     maskPaths = cell(1, length(maskNames));
+%     for maskIdx=1:length(maskNames)
+%         maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
+%     end
+%     
+% end
 
 % roiType: 
 %   'create_rois' : create new ROIs using circle-GUI
@@ -253,18 +328,17 @@ end
 % TO DO:  1. option to specify kernel size
 %         2.  let user select which ROI set to use in a non-stupid way...
 
-% -------------------------
-channelIdx = 1;
-
-% -------------------------
-metaStructs = dir(fullfile(metaPath, '*meta_*'));
-metaStructs = {metaStructs(:).name}';
-metaPaths = cell(1, length(metaStructs));
-for m=1:length(metaStructs)
-    metaPaths{m} = fullfile(metaPath, metaStructs{m});
-end
-nTiffs = length(metaPaths);
-
+% % -------------------------
+% channelIdx = 1;
+% 
+% % -------------------------
+% metaStructs = dir(fullfile(D.metaPath, sprintf('meta_%s*', acquisitionName)));
+% metaStructName = {metaStructs(:).name}';
+% metaPaths = cell(1, length(metaStructName));
+% for m=1:length(metaStructs)
+%     metaPaths{m} = fullfile(D.metaPath, metaStructName{m});
+% end
+% 
 
 
 % =========================================================================
@@ -279,10 +353,9 @@ nTiffs = length(metaPaths);
 %     mkdir(dstructPath)
 %     D = struct();
 % end
-D = struct();
-D.name = datastruct;
-D.path = dstructPath;
-D.acquisitionName = acquisitionName;
+%D = struct();
+
+
 D.preprocessing = preprocessing;
 D.roiType = roiType;
 if strcmp(D.roiType, 'condition')
@@ -290,9 +363,6 @@ if strcmp(D.roiType, 'condition')
     D.maskSource = maskSource;
     D.maskSourcePath = maskSourcePath;
 end
-D.metaPaths = metaPaths;
-D.nTiffs = nTiffs;
-D.channels = nchannels;
 
 save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
@@ -302,19 +372,30 @@ save(fullfile(dstructPath, datastruct), '-struct', 'D');
 % =========================================================================
 % Create masks, and save them:
 % =========================================================================
-
-refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
-slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
-
-refMeta = load(metaPaths{refRun});
-traceNames = dir(fullfile(refMeta.tiff_path, '*.tif'));
-traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
+% 
+% refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
+% slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+% 
+% refMeta = load(metaPaths{refRun});
+% traceNames = dir(fullfile(refMeta.si.tiffPath, '*.tif'));
+% traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
 
 switch roiType
     case 'create_rois'
         
-        % Create ROIs: ----------------------------------------------------
-        create_rois(dstructPath, acquisitionName, refMeta, traceNames);
+        % Choose reference:
+        % -----------------------------------------------------------------
+        %refRun = 1; % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
+        slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+
+        refMeta = load(meta.metaPath);
+        %traceNames = dir(fullfile(refMeta.si.tiffPath, '*.tif'));
+        %traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
+
+        
+        % Create ROIs:
+        % -----------------------------------------------------------------
+        create_rois(D, refMeta, slicesToUse);
                 
         
         % Set up mask info struct to reuse masks across files:
@@ -345,15 +426,20 @@ switch roiType
         % =================================================================
         % Get traces with masks:
         % =================================================================
-        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
-                    nchannels, metaPaths, maskInfo);
+        [tracesPath, nSlicesTrace] = get_traces(D, maskType, maskInfo);
     
     case 'condition'
         % Use masks from a different condition:
         ref = load(fullfile(D.maskSourcePath, 'analysis', datastruct, sprintf('%s.mat', datastruct)));
+        refRun = ref.refRun;
+        slicesToUse = ref.slices;
+        
+        refMeta = load(ref.metaPaths{refRun});
         maskInfo = struct();
         maskInfo = ref.maskInfo;
+        maskType = ref.maskType;
         
+        [tracesPath, nSlicesTrace] = get_traces(D, maskType, maskInfo);
         
     case 'pixels'
         
@@ -373,8 +459,7 @@ switch roiType
         % =================================================================
         % Get traces:
         % =================================================================
-        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
-                    nchannels, metaPaths, [], params);
+        [tracesPath, nSlicesTrace] = get_traces(D, maskType, [], params);
 
     case 'nmf'
         
@@ -390,8 +475,7 @@ switch roiType
         % =================================================================
         % Get traces:
         % =================================================================
-        get_traces(dstructPath, maskType, acquisitionName, nTiffs,...
-                    nchannels, metaPaths, [], params); 
+        [tracesPath, nSlicesTrace] = get_traces(D, maskType, [], params); 
                     
 end
 
@@ -400,7 +484,7 @@ end
 % -------------------------------------------------------------------------
 
 D.refRun = refRun;
-D.refPath = refMeta.tiff_path;
+D.refPath = refMeta.si.tiffPath;
 D.slices = slicesToUse;
 
 D.maskType = maskType;
@@ -410,6 +494,10 @@ if strcmp(D.maskType, 'circles')
 else
     D.params = params;
 end
+
+D.tracesPath = tracesPath; 
+D.nSlicesSelected = nSlicesTrace;
+
 save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
         

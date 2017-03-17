@@ -6,9 +6,9 @@
 % USER-INUPT:
 % -------------------------------------------------------------------------
 session = '20161221_JR030W';
-experiment = 'retinotopy037Hz';
+experiment = 'retinotopy037Hz';%'rsvp';
 analysis_no = 1;
-
+tefo = false;
 
 % -------------------------------------------------------------------------
 % Auto-generate:
@@ -16,7 +16,6 @@ analysis_no = 1;
 
 source = '/nas/volume1/2photon/RESDATA';
 
-tefo = false;
 if tefo
     source = [source '/TEFO'];
 end
@@ -28,16 +27,17 @@ analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 
 D = load(fullfile(analysisDir, datastruct));
 acquisitionName = D.acquisitionName;
-nChannels = D.channels;
+nChannels = D.nChannels;
 roiType = D.roiType;
 nTiffs = D.nTiffs;
-metaPaths = D.metaPaths;
+metaPath = D.metaPath;
 maskType = D.maskType;
 maskPaths = D.maskInfo.maskPaths;
 slicesToUse = D.slices;
+channelIdx = D.channelIdx;
 
-tracesDir = fullfile(analysisDir, 'traces');
-traceNames = dir(fullfile(tracesDir, '*.mat'));
+tracesPath = D.tracesPath;
+traceNames = dir(fullfile(tracesPath, '*.mat'));
 traceNames = {traceNames(:).name}';
 
 figDir = fullfile(analysisDir, 'figures');
@@ -52,6 +52,5 @@ end
 
 D.outputDir = outputDir;
 D.figDir = figDir;
-D.tracesDir = tracesDir;
 D.traceNames = traceNames;
 save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');

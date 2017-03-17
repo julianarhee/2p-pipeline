@@ -24,32 +24,33 @@ for sidx = 1:length(slicesToUse)
     masks = M.masks;
     clear M;
         
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     
     fftStruct = struct();
     for fidx=1:nTiffs
+        fprintf('Processing TIFF #%i...\n', fidx);
         
-        meta = load(metaPaths{fidx});
+        meta = load(metaPath);
         
-        traces = T.traces.file{fidx};
-        avgY = T.avgImage.file{fidx};
+        traces = traceStruct.traces.file{fidx};
+        avgY = traceStruct.avgImage.file{fidx};
         
 
-        targetFreq = meta.targetFreq;
-        ncycles = meta.ncycles;
-        nTotalSlices = meta.nFramesPerVolume;
+        targetFreq = meta.file(fidx).mw.targetFreq;
+        nCycles = meta.file(fidx).mw.nCycles;
+        nTotalSlices = meta.file(fidx).si.nFramesPerVolume;
         
         cutEnd=1;
-        crop = meta.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+        crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
         switch roiType
             case 'create_rois'
                 [d1,d2] = size(avgY);
-                [nrois, tpoints] = size(T.traces.file{fidx});
+                [nrois, tpoints] = size(traceStruct.traces.file{fidx});
             case 'pixels'
                 %[d1,d2,tpoints] = size(T.traces.file{fidx});
                 [d1, d2] = size(avgY);
-                tpoints = size(T.traces.file{fidx},3);
+                tpoints = size(traceStruct.traces.file{fidx},3);
         end
         
         % Get phase and magnitude maps:
@@ -60,11 +61,11 @@ for sidx = 1:length(slicesToUse)
 
         for roi=1:size(traces,1)
             
-            if mod(roi,10)==0
+            if mod(roi,100)==0
                 fprintf('Processing roi #%i...\n', roi)
             end
             
-            sliceIdxs = currSlice:meta.nFramesPerVolume:meta.nTotalFrames;
+            sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
             currTrace = traces(roi, :);
             
             % Subtract rolling mean to get rid of drift:
@@ -73,7 +74,7 @@ for sidx = 1:length(slicesToUse)
 %                 tmp0(:) = squeeze(currTrace(1:end));
 %             end
 
-            Fs = meta.siVolumeRate;
+            Fs = meta.file(fidx).si.siVolumeRate;
             winsz = round((1/targetFreq)*Fs*2);
            
             if cutEnd==1
@@ -149,11 +150,11 @@ for sidx = 1:length(slicesToUse)
     end
     
     % Save maps for current slice:
-    map_fn = sprintf('maps_Slice%02d', currSlice);
-    save_struct(outputDir, map_fn, maps);
+    mapStructName = sprintf('maps_Slice%02d', currSlice);
+    save_struct(outputDir, mapStructName, maps);
 
-    fft_fn = sprintf('fft_Slice%02d', currSlice);
-    save_struct(outputDir, fft_fn, fftStruct);
+    fftStructName = sprintf('fft_Slice%02d', currSlice);
+    save_struct(outputDir, fftStructName, fftStruct);
 
     %M.file(fidx) = maps;
     
@@ -177,7 +178,7 @@ for sidx = 1:length(slicesToUse)
     masks = M.masks;
     clear M;
     
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     F = load(fullfile(outputDir, fftNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
@@ -191,8 +192,8 @@ for sidx = 1:length(slicesToUse)
             if mod(roi, 20)==0
                 fprintf('Processing roi #%i...\n', roi);
             end
-            meta = load(metaPaths{fidx});
-            traces = T.traces.file{fidx};
+            meta = load(metaPath);
+            traces = traceStruct.traces.file{fidx};
             
             rawTrace = F.file(fidx).roi(roi).raw;
             filteredTrace = F.file(fidx).roi(roi).trace;
@@ -225,14 +226,17 @@ end
 
 %% ROI figures:
 
+alphaVal = 0.5;
 for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
     
     M = load(maskPaths{sidx});
     masks = M.masks;
+    nROIs = size(masks,3);
+    
     clear M;
     
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     F = load(fullfile(outputDir, fftNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
@@ -240,10 +244,31 @@ for sidx = 1:length(slicesToUse)
     
     for fidx=1:length(F.file)
         
-        avgY = T.avgImage.file(
+        avgY = traceStruct.avgImage.file{1};
         
+        RGBimg = zeros([size(avgY),3]);
+        RGBimg(:,:,1)=0;
+        RGBimg(:,:,2)=mat2gray(avgY); %mat2gray(avgY);
+        RGBimg(:,:,3)=0;
+        
+        for roi=1:nROIs
+            RGBimg(:,:,3) = RGBimg(:,:,3)+alphaVal*masks(:,:,roi);
+        end
+        
+        fig=figure();
+        imshow(RGBimg);
+        title(sprintf('Slice%02d File%03d', currSlice, fidx));
+        
+        roiFigName = sprintf('ROIs_Slice%02d_File%03d', currSlice, fidx);
+        
+        figSliceDir = sprintf('Slice%02d', currSlice);
+        currFigDir = fullfile(D.figDir, figSliceDir);
+        
+        save_figures(fig, currFigDir, roiFigName)
+            
     end
 end
+
 %% PLOTTING.
 
 subplot = @(m,n,p) subtightplot (m, n, p, [0.01 0.1], [0.1 0.1], [0.1 0.1]);
@@ -257,13 +282,13 @@ dfNames = {dfNames(:).name}';
 
 D.fftNames = fftNames;
 D.dfNames = dfNames;
-save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 % get legends if needed:
 if isempty(dir(fullfile(outputDir, '*legends.mat')))
     fprintf('generating legends...\n');
-    make_legends(D.fftDir);
+    make_legends(outputDir);
 end
 legendPath = dir(fullfile(outputDir, '*legends.mat'));
 legendPath = {legendPath(:).name}';
@@ -275,7 +300,7 @@ for sidx=1:length(fftNames)
     FFT = load(fullfile(outputDir, fftNames{sidx})); 
     DF = load(fullfile(outputDir, dfNames{sidx}));
     
-    currSliceIdx = D.slices(sidx);
+    currSlice = D.slices(sidx);
     
     for fidx=1:length(FFT.file)
         
@@ -381,10 +406,10 @@ for sidx=1:length(fftNames)
         
         %%
         
-        suptitle(sprintf('Slice%02d, Cond: %s', currSliceIdx, currCond))
+        suptitle(sprintf('Slice%02d, Cond: %s', currSlice, currCond))
         
-        figName = sprintf('Overview_Slice%02d_File%03d_%s', currSliceIdx, fidx, currCond);
-        figSliceDir = sprintf('Slice%02d', currSliceIdx);
+        figName = sprintf('Overview_Slice%02d_File%03d_%s', currSlice, fidx, currCond);
+        figSliceDir = sprintf('Slice%02d', currSlice);
         currFigDir = fullfile(D.figDir, figSliceDir);
   
         save_figures(fig, currFigDir, figName);
@@ -394,5 +419,15 @@ for sidx=1:length(fftNames)
 end
 
 
-%%
+%% ALIGN TO WIDEFIELD:
+
+% TODO:  
+% Add code for aligning FOVs with affine trans.
+% Allow handoff for colormap-matching between different rigs.
+% Combine repeated runs together and display each condition on same plot.
+% **need to re-scale**
+
+
+
+
 

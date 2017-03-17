@@ -1,4 +1,4 @@
-function get_traces(dstructPath, maskType, acquisitionName, nTiffs, nchannels, metaPaths, varargin)
+function [tracesPath, nSlicesTrace] = get_traces(D, maskType, varargin)
 
 %                                     
 % CASES:
@@ -31,6 +31,15 @@ switch nvargin
         slices = params.slicesToUse;   
 end
 
+tracesPath = fullfile(D.datastructPath, 'traces');
+if ~exist(tracesPath, 'dir')
+    mkdir(tracesPath);
+end
+acquisitionName = D.acquisitionName;
+nTiffs = D.nTiffs;
+nchannels = D.channelIdx;
+
+meta = load(D.metaPath);
 
 switch maskType
     case 'circles'
@@ -44,13 +53,13 @@ switch maskType
                 currSliceIdx = slices(sidx);
                 fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, currSliceIdx, length(slices));
                 
-                M=load(maskPaths{sidx});
-                masks = M.masks;
+                maskStruct=load(maskPaths{sidx});
+                masks = maskStruct.masks;
                 
                 % Load current slice movie and apply mask from refRun:
                 for fidx = 1:nTiffs
-                    metaFile = load(metaPaths{fidx});                              % Load meta info for current file.
-                    slicePath = metaFile.tiffPath;                                 % Get path to all slice TIFFs for current file.
+                    %meta = load(metaPaths{fidx});                              % Load meta info for current file.
+                    slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
                     currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
                                         acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
@@ -74,16 +83,16 @@ switch maskType
                     %T.masks.file(fidx) = {masks};
                     T.avgImage.file(fidx) = {avgY};
                     T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
-                    %T.meta.file(fidx) = metaFile;
+                    %T.meta.file(fidx) = meta;
                     
                     fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
                 end
 
                 % Save traces for each file to slice struct:                    
-                tracesPath = fullfile(dstructPath, 'traces');
-                if ~exist(tracesPath, 'dir')
-                    mkdir(tracesPath);
-                end
+%                 tracesPath = fullfile(dstructPath, 'traces');
+%                 if ~exist(tracesPath, 'dir')
+%                     mkdir(tracesPath);
+%                 end
                 tracesName = sprintf('traces_Slice%02d_Channel%02d', currSliceIdx, cidx);
                 fprintf('Saving struct: %s.\n', tracesName);
                 
@@ -103,13 +112,13 @@ switch maskType
                 % Get slice names:
                 currSliceIdx = slices(sidx);
                 fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, currSliceIdx, length(slices));
-
+                
                 for fidx=1:nTiffs %1:3:3 %nTiffs
-                    metaFile = load(metaPaths{fidx});
-                    slicePath = metaFile.tiffPath;
-                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisitionName, currSliceIdx, cidx, fidx);
-                    
-                    Y = tiffRead(fullfile(slicePath, currSliceName));
+                    %meta = load(metaPaths{fidx});
+                    slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
+                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
+                                        acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
+                    Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
                     avgY = mean(Y, 3);
 
                     % ------------
@@ -126,21 +135,21 @@ switch maskType
                     rawTraces = reshape(Y, [size(Y,1)*size(Y,2), size(Y,3)]);
                     
                     T.traces.file(fidx) = {rawTraces};
+                    %T.masks.file(fidx) = {masks};
                     T.avgImage.file(fidx) = {avgY};
-                    T.slicePath.file(fidx) = fullfile(slicePath, currSliceName);
-                    T.meta.file(fidx) = metaFile;
-                    T.params.file(fidx) = params;
+                    T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
+                    %T.meta.file(fidx) = meta;
                     
                     fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
                 end
                 
                 % Save traces for each file to slice struct:                    
-                tracesPath = fullfile(dstructPath, 'traces');
-                if ~exist(tracesPath, 'dir')
-                    mkdir(tracesPath);
-                end
+%                 tracesPath = fullfile(dstructPath, 'traces');
+%                 if ~exist(tracesPath, 'dir')
+%                     mkdir(tracesPath);
+%                 end
 
-                tracesName = sprintf('traces_Slice%02d_Channel%02d.tif', sidx, cidx);
+                tracesName = sprintf('traces_Slice%02d_Channel%02d', sidx, cidx);
                 save_struct(tracesPath, tracesName, T);
             end   
         end
@@ -153,14 +162,16 @@ switch maskType
             for sidx=1:length(slices)
 
                % Get slice names:
-               currSliceIdx = slices(sidx);
+                currSliceIdx = slices(sidx);
+                fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, currSliceIdx, length(slices));
+                
                for fidx=1:nTiffs
-                   metaFile = load(metaPaths{fidx});
-                   slicePath = metaFile.tiffPath;
-                   currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisitionName, currSliceIdx, cidx, fidx);
-
-                   Y = tiffRead(fullfile(slicePath, currSliceName));
-                   avgY = mean(Y, 3);
+                   
+                    slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
+                    currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
+                                        acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
+                    Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
+                    avgY = mean(Y, 3);
 
                    % DO STUFF
                    %
@@ -170,12 +181,12 @@ switch maskType
                end
               
                % Save traces for each file to slice struct:                    
-               tracesPath = fullfile(dstructPath, 'traces');
-               if ~exist(tracesPath, 'dir')
-                   mkdir(tracesPath);
-               end
+%                tracesPath = fullfile(dstructPath, 'traces');
+%                if ~exist(tracesPath, 'dir')
+%                    mkdir(tracesPath);
+%                end
 
-               tracesName = sprintf('traces_Slice%02d_Channel%02d.tif', sidx, cidx);
+               tracesName = sprintf('traces_Slice%02d_Channel%02d', sidx, cidx);
                save_struct(tracesPath, tracesName, T);
                 
              end
@@ -187,6 +198,11 @@ switch maskType
         fprintf('No traces extracted.\n')
 
 end
+
+tracesSaved = dir(fullfile(tracesPath, 'traces_*'));
+tracesSaved = tracesSaved(arrayfun(@(x) ~strcmp(x.name(1),'.'),tracesSaved));
+nSlicesTrace = length(tracesSaved);
+
 
 end
 

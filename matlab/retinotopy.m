@@ -24,32 +24,33 @@ for sidx = 1:length(slicesToUse)
     masks = M.masks;
     clear M;
         
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     
     fftStruct = struct();
     for fidx=1:nTiffs
+        fprintf('Processing TIFF #%i...\n', fidx);
         
-        meta = load(metaPaths{fidx});
+        meta = load(metaPath);
         
-        traces = T.traces.file{fidx};
-        avgY = T.avgImage.file{fidx};
+        traces = traceStruct.traces.file{fidx};
+        avgY = traceStruct.avgImage.file{fidx};
         
 
-        targetFreq = meta.targetFreq;
-        ncycles = meta.ncycles;
-        nTotalSlices = meta.nFramesPerVolume;
+        targetFreq = meta.file(fidx).mw.targetFreq;
+        nCycles = meta.file(fidx).mw.nCycles;
+        nTotalSlices = meta.file(fidx).si.nFramesPerVolume;
         
         cutEnd=1;
-        crop = meta.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+        crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
         switch roiType
             case 'create_rois'
                 [d1,d2] = size(avgY);
-                [nrois, tpoints] = size(T.traces.file{fidx});
+                [nrois, tpoints] = size(traceStruct.traces.file{fidx});
             case 'pixels'
                 %[d1,d2,tpoints] = size(T.traces.file{fidx});
                 [d1, d2] = size(avgY);
-                tpoints = size(T.traces.file{fidx},3);
+                tpoints = size(traceStruct.traces.file{fidx},3);
         end
         
         % Get phase and magnitude maps:
@@ -60,11 +61,11 @@ for sidx = 1:length(slicesToUse)
 
         for roi=1:size(traces,1)
             
-            if mod(roi,10)==0
+            if mod(roi,100)==0
                 fprintf('Processing roi #%i...\n', roi)
             end
             
-            sliceIdxs = currSlice:meta.nFramesPerVolume:meta.nTotalFrames;
+            sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
             currTrace = traces(roi, :);
             
             % Subtract rolling mean to get rid of drift:
@@ -73,7 +74,7 @@ for sidx = 1:length(slicesToUse)
 %                 tmp0(:) = squeeze(currTrace(1:end));
 %             end
 
-            Fs = meta.siVolumeRate;
+            Fs = meta.file(fidx).si.siVolumeRate;
             winsz = round((1/targetFreq)*Fs*2);
            
             if cutEnd==1
@@ -149,11 +150,11 @@ for sidx = 1:length(slicesToUse)
     end
     
     % Save maps for current slice:
-    map_fn = sprintf('maps_Slice%02d', currSlice);
-    save_struct(outputDir, map_fn, maps);
+    mapStructName = sprintf('maps_Slice%02d', currSlice);
+    save_struct(outputDir, mapStructName, maps);
 
-    fft_fn = sprintf('fft_Slice%02d', currSlice);
-    save_struct(outputDir, fft_fn, fftStruct);
+    fftStructName = sprintf('fft_Slice%02d', currSlice);
+    save_struct(outputDir, fftStructName, fftStruct);
 
     %M.file(fidx) = maps;
     
@@ -177,7 +178,7 @@ for sidx = 1:length(slicesToUse)
     masks = M.masks;
     clear M;
     
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     F = load(fullfile(outputDir, fftNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
@@ -191,8 +192,8 @@ for sidx = 1:length(slicesToUse)
             if mod(roi, 20)==0
                 fprintf('Processing roi #%i...\n', roi);
             end
-            meta = load(metaPaths{fidx});
-            traces = T.traces.file{fidx};
+            meta = load(metaPath);
+            traces = traceStruct.traces.file{fidx};
             
             rawTrace = F.file(fidx).roi(roi).raw;
             filteredTrace = F.file(fidx).roi(roi).trace;
@@ -235,7 +236,7 @@ for sidx = 1:length(slicesToUse)
     
     clear M;
     
-    T = load(fullfile(tracesDir, traceNames{sidx}));
+    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
     F = load(fullfile(outputDir, fftNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
@@ -243,7 +244,7 @@ for sidx = 1:length(slicesToUse)
     
     for fidx=1:length(F.file)
         
-        avgY = T.avgImage.file{1};
+        avgY = traceStruct.avgImage.file{1};
         
         RGBimg = zeros([size(avgY),3]);
         RGBimg(:,:,1)=0;
@@ -281,13 +282,13 @@ dfNames = {dfNames(:).name}';
 
 D.fftNames = fftNames;
 D.dfNames = dfNames;
-save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 % get legends if needed:
 if isempty(dir(fullfile(outputDir, '*legends.mat')))
     fprintf('generating legends...\n');
-    make_legends(D.fftDir);
+    make_legends(outputDir);
 end
 legendPath = dir(fullfile(outputDir, '*legends.mat'));
 legendPath = {legendPath(:).name}';
@@ -303,8 +304,8 @@ for sidx=1:length(fftNames)
     
     for fidx=1:length(FFT.file)
         
-        meta = load(metaPaths{fidx});
-        currCond = meta.mwRunName;
+        meta = load(metaPath);
+        currCond = meta.file(fidx).mw.runName;
         currCond = strrep(currCond, '_', '-');
         condTypeParts = strsplit(currCond,'-');
         currCondType = condTypeParts{1};
