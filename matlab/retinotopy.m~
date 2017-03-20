@@ -8,6 +8,7 @@
 % create_acquisition_structs.m pipeline.
 
 acquisition_info;
+trimEnd = true;
 
 % -------------------------------------------------------------------------
 % FFT analysis:
@@ -40,7 +41,6 @@ for sidx = 1:length(slicesToUse)
         nCycles = meta.file(fidx).mw.nCycles;
         nTotalSlices = meta.file(fidx).si.nFramesPerVolume;
         
-        cutEnd=1;
         crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
         switch roiType
@@ -77,7 +77,7 @@ for sidx = 1:length(slicesToUse)
             Fs = meta.file(fidx).si.siVolumeRate;
             winsz = round((1/targetFreq)*Fs*2);
            
-            if cutEnd==1
+            if trimEnd
                 tmp0 = currTrace(1:crop);
             else
                 tmp0 = currTrace;
@@ -165,10 +165,10 @@ clear fftStruct maps T
 
 %% Get dF/F maps:
 
-minDf = 10;
+minDf = 20;
 
-fftNames = dir(fullfile(outputDir, 'fft_*'));
-fftNames = {fftNames(:).name}';
+mapNames = dir(fullfile(outputDir, 'fft_*'));
+mapNames = {mapNames(:).name}';
 
 dfStruct = struct();
 for sidx = 1:length(slicesToUse)
@@ -179,7 +179,9 @@ for sidx = 1:length(slicesToUse)
     clear M;
     
     traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
-    F = load(fullfile(outputDir, fftNames{sidx}));
+    fftName = sprintf('fft_Slice%02d.mat', currSlice);
+    F = load(fullfile(outputDir, fftName));
+    %F = load(fullfile(outputDir, fftNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
     maxMap = zeros(d1, d2, 1);
@@ -187,7 +189,7 @@ for sidx = 1:length(slicesToUse)
     for fidx=1:length(F.file)
         tmpDf = struct();
         activeRois = [];
-        for roi=1:length(F.file(fidx).roi)
+        for roi=1:size(masks,3)%length(F.file(fidx).roi)
             
             if mod(roi, 20)==0
                 fprintf('Processing roi #%i...\n', roi);
@@ -237,7 +239,7 @@ for sidx = 1:length(slicesToUse)
     clear M;
     
     traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
-    F = load(fullfile(outputDir, fftNames{sidx}));
+    F = load(fullfile(outputDir, mapNames{sidx}));
     
     meanMap = zeros(d1, d2, 1);
     maxMap = zeros(d1, d2, 1);
@@ -275,12 +277,12 @@ subplot = @(m,n,p) subtightplot (m, n, p, [0.01 0.1], [0.1 0.1], [0.1 0.1]);
 
 cmap = 'hsv';
 
-fftNames = dir(fullfile(outputDir, 'maps_*'));
-fftNames = {fftNames(:).name}';
+mapNames = dir(fullfile(outputDir, 'maps_*'));
+mapNames = {mapNames(:).name}';
 dfNames = dir(fullfile(outputDir, 'df_*'));
 dfNames = {dfNames(:).name}';
 
-D.fftNames = fftNames;
+D.fftNames = mapNames;
 D.dfNames = dfNames;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
@@ -295,17 +297,18 @@ legendPath = {legendPath(:).name}';
 legends = load(char(fullfile(outputDir, legendPath)));
 
 
-for sidx=1:length(fftNames)
-    
-    FFT = load(fullfile(outputDir, fftNames{sidx})); 
-    DF = load(fullfile(outputDir, dfNames{sidx}));
+for sidx=1:length(D.slices)
     
     currSlice = D.slices(sidx);
+    mapName = sprintf('maps_Slice%02d.mat', currSlice);
+    dfName = sprintf('df_Slice%02d.mat', currSlice);
+    FFT = load(fullfile(outputDir, mapName)); 
+    DF = load(fullfile(outputDir, dfName));
     
     for fidx=1:length(FFT.file)
         
-        meta = load(metaPaths{fidx});
-        currCond = meta.mwRunName;
+        meta = load(metaPath);
+        currCond = meta.file(fidx).mw.runName;
         currCond = strrep(currCond, '_', '-');
         condTypeParts = strsplit(currCond,'-');
         currCondType = condTypeParts{1};
@@ -418,6 +421,37 @@ for sidx=1:length(fftNames)
     
 end
 
+
+%% Look at time-course:
+
+meta = load(D.metaPath);
+
+sidx = 1;
+currSlice = D.slices(sidx);
+dfStruct = load(fullfile(D.outputDir, D.dfNames{sidx}));
+
+currFile = 1;
+currTraces = dfStruct.file(currFile).traces;
+volumeIdxs = currSlice:meta.file(currFile).si.nFramesPerVolume:meta.file(currFile).si.nTotalFrames;
+siSecs = meta.file(currFile).mw.siSec(volumeIdxs);
+
+currRoi = 20;
+plot(siSecs, currTraces{currRoi})
+
+mwSecs = meta.file(currFile).mw.mwSec;
+stimOnsets = mwSecs(meta.mw.stimStarts);
+stimOffsets = meta.mw.mwSec(2:2:end);
+for onset=1:length(stimOnsets)
+    %line([stimOnsets(onset) stimOnsets(onset)], get(gca, 'ylim'));
+    ylims = get(gca, 'ylim');
+    v = [stimOnsets(onset) ylims(1); stimOffsets(onset) ylims(1);...
+        stimOffsets(onset) ylims(2); stimOnsets(onset) ylims(2)];
+    f = [1 2 3 4];
+    patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2)
+    hold on;
+end
+    
+    
 
 %% ALIGN TO WIDEFIELD:
 

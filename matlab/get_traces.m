@@ -66,6 +66,9 @@ switch maskType
                     avgY = mean(Y, 3);
 
                     % Use masks to extract time-series trace of each ROI:
+                    % --- TO DO --- FIX trace extraction to use sparse
+                    % matrices from create_rois.m:
+                    % ---------------
                     rawTraces = zeros(size(masks,3), size(Y,3));
                     for r=1:size(masks,3)
                         currMask = masks(:,:,r);
@@ -78,7 +81,8 @@ switch maskType
                         end
                         rawTraces(r,:,:) = maskedY;
                     end
-
+                    % ---------------
+                    
                     T.traces.file(fidx) = {rawTraces};
                     %T.masks.file(fidx) = {masks};
                     T.avgImage.file(fidx) = {avgY};

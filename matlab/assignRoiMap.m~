@@ -1,0 +1,18 @@
+function outmap = assignRoiMap(maskcell, roimap, roivecs, varargin)
+
+if length(varargin)==1
+    idx = varargin{1};
+    for i=1:length(maskcell)
+        roimap(full(maskcell{i})==1) = roivecs(i, idx);
+    end
+    outmap = roimap;
+    
+elseif length(varargin)==2
+    freqs = varargin{2};
+    outmap = zeros(size(roimap));
+    for i=1:length(maskcell)
+        freqs==freqs(roivecs(i,:)==max(roivecs(i,:)));
+        outmap(full(maskcell{i})==1) = roimap(roi, maxidx);
+    end
+    
+end

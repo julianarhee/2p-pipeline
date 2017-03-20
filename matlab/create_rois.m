@@ -33,10 +33,22 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     avgY = mean(Y, 3);
 
     %masks = ROIselect_circle(mat2gray(avgY));
+    
+    % ------------------------------------
+    % TODO:  below is temporary... Line 35 is standard for creating ROIs.
+    % Fix ROI select function to store sparse matrices (faster?)...
     old = load(fullfile(D.datastructPath, 'masks_old', sprintf('masks_Slice%02d_File001.mat', sidx)));
     masks = old.masks;
+    maskcell = cell(size(masks,3),1);
+    for roi=1:size(masks,3)
+        [i,j,s] = find(masks(:,:,roi));
+        [m,n] = size(masks(:,:,roi));
+        maskcell{roi} = sparse(i,j,s,m,n); %(:,:,roi);
+    end
+    % ------------------------------------
     
-    M.masks = masks;
+    M.maskcell = maskcell;
+    %M.masks = masks;
     M.slice = sliceFns{sidx};
     M.refPath = refMeta.file(refNum).si.tiffPath; %refMeta.tiffPath;
     M.sliceIdxs = sliceIdxs;

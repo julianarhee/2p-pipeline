@@ -1,4 +1,4 @@
-function create_rois(analysis_dir, acquisition_name, refMeta, varargin)
+function create_rois(D, refMeta, varargin)
    
 %  Create ROIs manually with circle-mask, save to struct:
 
@@ -6,11 +6,18 @@ function create_rois(analysis_dir, acquisition_name, refMeta, varargin)
 %  Create ROIs for each slice from the reference run/movie, then apply this
 %  later to each RUN (or file) of that slice.
 
+maskPath = fullfile(D.datastructPath, 'masks');
+if ~exist(maskPath, 'dir')
+    mkdir(maskPath);
+end
+
+nSlices = refMeta.file(1).si.nSlices;
+
 nargin = length(varargin);
 if nargin==1
     slicesToUse = varargin{1};
 else
-    slicesToUse = 1:length(slice_fns);
+    slicesToUse = 1:nSlices;
 end
 
 M = struct();
@@ -18,7 +25,7 @@ M = struct();
 for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     refNum = refMeta.file(1).si.motionRefNum; % All files should have some refNum for motion correction.
     
-    sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.nTotalFrames;
+    sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.file(refNum).si.nTotalFrames;
     
     sliceFns = dir(fullfile(refMeta.file(refNum).si.tiffPath, '*.tif'));
     sliceFns = {sliceFns(:).name}';
@@ -26,21 +33,20 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     avgY = mean(Y, 3);
 
     %masks = ROIselect_circle(mat2gray(avgY));
-    maskPaths = dir(fullfile(analysis_dir, 'masks_old', '*.mat'));
-    maskPaths = {maskPaths(:).name}
+    old = load(fullfile(D.datastructPath, 'masks_old', sprintf('masks_Slice%02d_File001.mat', sidx)));
+    masks = old.masks;
+    for roi=1:size(masks,3)
+        masks
+    
     M.masks = masks;
     M.slice = sliceFns{sidx};
-    M.refPath = refMeta.tiffPath;
+    M.refPath = refMeta.file(refNum).si.tiffPath; %refMeta.tiffPath;
     M.sliceIdxs = sliceIdxs;
+    M.slicePath = fullfile(refMeta.file(refNum).si.tiffPath, sliceFns{sidx});
 
     % Save reference masks:        
-    struct_save_path = fullfile(analysis_dir, 'masks');
-    if ~exist(struct_save_path, 'dir')
-        mkdir(struct_save_path);
-    end
-
-    mask_struct_fn = char(sprintf('masks_Slice%02d_File%03d.mat', sidx, refNum));
-    save(fullfile(struct_save_path, mask_struct_fn), 'M', '-struct', '-v7.3');
+    maskStructName = char(sprintf('masks_Slice%02d_File%03d.mat', sidx, refNum));
+    save(fullfile(maskPath, maskStructName), '-struct', 'M', '-v7.3');
 
 end
 
