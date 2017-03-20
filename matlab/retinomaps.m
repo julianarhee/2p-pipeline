@@ -203,20 +203,24 @@ for sidx = 1:length(slicesToUse)
         raw = fftStruct.file(fidx).trimmedRawMat;
         filtered = fftStruct.file(fidx).traceMat;
         adjusted = filtered + mean(raw,3);
-        dfFunc = @(x) (x-mean(x))./mean(x);
+        %dfFunc = @(x) (x-mean(x))./mean(x);
         %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
         dfMat = arrayfun(@(i) extractDfTrace(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false);
         dfMat = cat(1, dfMat{1:end})*100;
         
+        meanDfs = mean(dfMat,2);
         maxDfs = max(dfMat, [], 2);
         activeRois = find(maxDfs >= minDf);
         fprintf('Found %i ROIs with dF/F > %02.f%%.\n', length(activeRois), minDf);
         
-        meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
-        maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
+        meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
+        maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+        
+        %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
+        %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
         
         dfStruct.file(fidx).meanMap = meanMap;
-        dfStruct.file(fidx).maxMap = maxmap;
+        dfStruct.file(fidx).maxMap = maxMap;
         dfStruct.file(fidx).dfMat = dfMat;
         dfStruct.file(fidx).activeRois = activeRois;
         dfStruct.file(fidx).minDf = minDf;
