@@ -258,17 +258,25 @@ def get_pixel_clock_events(dfns, remove_orphans=True, stimtype='image'):
         # stop_ev_ev = [i for i in modes if i['time']>start_ev['time'] and (i['value']==0 or i['value']==1)]
         run_idxs = [i for i,e in enumerate(modes) if e['time']>start_ev['time']]
 
+        # Find first stop event after first run event:
+        s_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)
         bounds = []
-        for r in run_idxs: #[0]:
-            try:
-                # stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
-                stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
-            except StopIteration:
-                end_event_name = 'trial_end'
-                print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
-                stop_ev = df.get_events(end_event_name)[-1]
-                print stop_ev
-            bounds.append([modes[r]['time'], stop_ev['time']])
+        bounds.append([start_ev.time, stop_ev.time])
+
+        # Check for any other start-stop events in session:
+        for r in run_idxs[1:]: #[0]:
+            if modes[r].time < stop_ev.time:
+                continue
+            else:
+                try:
+                    # stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
+                    stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
+                except StopIteration:
+                    end_event_name = 'trial_end'
+                    print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
+                    stop_ev = df.get_events(end_event_name)[-1]
+                    print stop_ev
+                bounds.append([modes[r]['time'], stop_ev['time']])
 
         bounds[:] = [x for x in bounds if ((x[1]-x[0])/1E6)>1]
         # print "................................................................"
@@ -309,17 +317,44 @@ def get_pixel_clock_events(dfns, remove_orphans=True, stimtype='image'):
             else:
                 trigg_evs = df.get_events(trigger_names[0])
 
-            trigg_evs = [t for t in trigg_evs if t.time > boundary[0] and t.time < boundary[1]]
-            trigg_indices = np.where(np.diff([t.value for t in trigg_evs]) == 1)[0] # when trigger goes from 0 --> 1, start --> end
-            trigg_times = [[trigg_evs[i], trigg_evs[i+1]] for i in trigg_indices]
+            trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
+            # trigg_indices = np.where(np.diff([t.value for t in trigg_evs]) == 1)[0] # when trigger goes from 0 --> 1, start --> end
+            # trigg_times = [[trigg_evs[i], trigg_evs[i+1]] for i in trigg_indices]
+            first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0]
+            curr_idx = copy.copy(first_trigger)
 
-            # -- CHECK THIS on the already-analyzed datafiles...
-            # phidget channel DI goes to 0 for SI-trigger ON, and default is 1 for OFF.
-            # frame_trigger_val = 0
-            # first_trigger_idx = np.where(np.array([i.value for i in trigg_evs])==frame_trigger_val)[0][0]
-            # trigg_evs = trigg_evs[first_trigger_idx:]
-            # first_trigger_time = trigg_evs[0].time
+            trigg_times = []
+            start_idx = curr_idx
+            while start_idx < len(trigg_evs)-1: 
 
+                try:
+                    found_new_start = False
+                    early_abort = False
+                    curr_chunk = trigg_evs[start_idx:]
+                    try:
+                        curr_idx = [i for i,e in enumerate(curr_chunk) if e.value==0][0] # Find first DI high.
+                        found_new_start = True
+                    except IndexError:
+                        break
+
+                    off_ev = next(i for i in curr_chunk[curr_idx:] if i['value']==1) # Find next DI low.
+                    found_idx = [i.time for i in trigg_evs].index(off_ev.time) # Get index of DI low.
+                    
+                    trigg_times.append([curr_chunk[curr_idx], off_ev])
+                    start_idx = found_idx #start_idx + found_idx
+                    print start_idx
+
+
+                except StopIteration:
+                    print "Got to STOP."
+                    if found_new_start is True:
+                        early_abort = True
+                        trigg_times.append([curr_chunk[curr_idx], ])
+                    break
+
+            if early_abort is True:
+                trigg_times[-1] = trigg_times[-1][0], bo
+            trigg_times = [t for t in trigg_times if t[1].time - t[0].time > 1]
 
             # Check stimDisplayUpdate events vs announceStimulus:
             stim_evs = df.get_events('#stimDisplayUpdate')
