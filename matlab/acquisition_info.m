@@ -6,9 +6,9 @@
 % USER-INUPT:
 % -------------------------------------------------------------------------
 session = '20161221_JR030W';
-experiment = 'retinotopy037Hz';
+experiment = 'retinotopy037Hz';%'rsvp';
 analysis_no = 1;
-
+tefo = false;
 
 % -------------------------------------------------------------------------
 % Auto-generate:
@@ -16,7 +16,6 @@ analysis_no = 1;
 
 source = '/nas/volume1/2photon/RESDATA';
 
-tefo = false;
 if tefo
     source = [source '/TEFO'];
 end
@@ -27,18 +26,19 @@ analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 % jyr:  change 'datastruct' dir to "analysis" so it aint confusing
 
 D = load(fullfile(analysisDir, datastruct));
-acquisitionName = D.acquisition_name;
-nChannels = D.channels;
+acquisitionName = D.acquisitionName;
+nChannels = D.nChannels;
 roiType = D.roiType;
-ntiffs = D.ntiffs;
-metaPaths = D.metaPaths;
+nTiffs = D.nTiffs;
+metaPath = D.metaPath;
 maskType = D.maskType;
 maskPaths = D.maskInfo.maskPaths;
-slices_to_use = D.slices;
+slicesToUse = D.slices;
+channelIdx = D.channelIdx;
 
-tracesDir = fullfile(analysisDir, 'traces');
-tracePaths = dir(fullfile(tracesDir, '*.mat'));
-tracePaths = {tracePaths(:).name}';
+tracesPath = D.tracesPath;
+traceNames = dir(fullfile(tracesPath, '*.mat'));
+traceNames = {traceNames(:).name}';
 
 figDir = fullfile(analysisDir, 'figures');
 if ~exist(figDir, 'dir')
@@ -49,3 +49,8 @@ outputDir = fullfile(analysisDir, 'output');
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end
+
+D.outputDir = outputDir;
+D.figDir = figDir;
+D.traceNames = traceNames;
+save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');

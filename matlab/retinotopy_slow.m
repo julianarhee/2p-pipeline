@@ -435,22 +435,27 @@ currTraces = dfStruct.file(currFile).traces;
 volumeIdxs = currSlice:meta.file(currFile).si.nFramesPerVolume:meta.file(currFile).si.nTotalFrames;
 siSecs = meta.file(currFile).mw.siSec(volumeIdxs);
 
-currRoi = 20;
-plot(siSecs, currTraces{currRoi})
-
 mwSecs = meta.file(currFile).mw.mwSec;
-stimOnsets = mwSecs(meta.mw.stimStarts);
-stimOffsets = meta.mw.mwSec(2:2:end);
+stimOnsets = mwSecs(meta.file(currFile).mw.stimStarts);
+stimOffsets = mwSecs(2:2:end);
+
+
+currRoi = 100;
+plot(siSecs, currTraces{currRoi}, 'k', 'LineWidth', 1)
+hold on;
 for onset=1:length(stimOnsets)
     %line([stimOnsets(onset) stimOnsets(onset)], get(gca, 'ylim'));
     ylims = get(gca, 'ylim');
-    v = [stimOnsets(onset) ylims(1); stimOffsets(onset) ylims(1);...
-        stimOffsets(onset) ylims(2); stimOnsets(onset) ylims(2)];
-    f = [1 2 3 4];
-    patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2)
+%     v = [stimOnsets(onset) ylims(1); stimOffsets(onset) ylims(1);...
+%         stimOffsets(onset) ylims(2); stimOnsets(onset) ylims(2)];
+%     f = [1 2 3 4];
+%     patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2)
+    line([stimOnsets(onset) stimOnsets(onset)], [ylims(1) ylims(2)], 'Color', 'r');
     hold on;
 end
-    
+xlabel('time (s)');
+ylabel('dF/F');
+title(sprintf('Time course, roi %i, Slice%02d, File%03d', currRoi, currSlice, currFile));
     
 
 %% ALIGN TO WIDEFIELD:

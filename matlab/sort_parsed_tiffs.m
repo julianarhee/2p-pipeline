@@ -29,7 +29,7 @@ end
 files_found = {};
 channel_dirs = dir(corrected_path);
 %csub = [channel_dirs(:).isdir];
-channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1),'.'),channel_dirs))
+channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1),'.'),channel_dirs));
 channels = {channel_dirs(:).name}';   
 for cidx=1:length(channels)
     channel_path = fullfile(corrected_path, channels{cidx});
@@ -59,6 +59,7 @@ for cidx=1:length(channels)
         end
     end
 end
+
 % end
        
 
