@@ -364,7 +364,7 @@ if strcmp(D.roiType, 'condition')
     D.maskSourcePath = maskSourcePath;
 end
 
-save(fullfile(dstructPath, datastruct), '-struct', 'D');
+save(fullfile(D.dstructPath, D.name), '-struct', 'D');
 
 
 %% Create masks and get traces:
@@ -374,7 +374,7 @@ save(fullfile(dstructPath, datastruct), '-struct', 'D');
 % =========================================================================
 % 
 % refRun = 1;                                                 % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
-% slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
 % 
 % refMeta = load(metaPaths{refRun});
 % traceNames = dir(fullfile(refMeta.si.tiffPath, '*.tif'));
@@ -386,25 +386,26 @@ switch roiType
         % Choose reference:
         % -----------------------------------------------------------------
         %refRun = 1; % Use ref movie from motion-correction if applicable (obj.refMovNum from Acquisition2P class).
-        slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+        D.slices = slicesToUse;                            % Specify which slices to use (if empty, will grab traces for all slices)
 
         refMeta = load(meta.metaPath);
         %traceNames = dir(fullfile(refMeta.si.tiffPath, '*.tif'));
         %traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
-        refRun = refMeta.file(1).si.motionRefNum;
+        D.refRun = refMeta.file(1).si.motionRefNum;
+        D.refPath = refMeta.file(D.refRun).si.tiffPath;
         
         % Create ROIs:
         % -----------------------------------------------------------------
-        create_rois(D, refMeta, slicesToUse);
+        create_rois(D, refMeta);
                 
         
         % Set up mask info struct to reuse masks across files:
         % -----------------------------------------------------------------
-        maskType = 'circles';
-        maskInfo = struct();
-        maskInfo.refNum = refRun;
-        maskInfo.refMeta = refMeta;
-        maskInfo.maskType = maskType;
+        D.maskType = 'circles';
+        D.maskInfo = struct();
+        D.maskInfo.refNum = refRun;
+        D.maskInfo.refMeta = refMeta;
+        D.maskInfo.maskType = maskType;
 
         maskDir = fullfile(dstructPath, 'masks');
         maskStructs = dir(fullfile(maskDir, '*.mat'));
@@ -419,47 +420,52 @@ switch roiType
         for m=1:length(maskStructs)
             maskPaths{m} = fullfile(maskDir, maskStructs{m});
         end
-        maskInfo.maskPaths = maskPaths;
-        maskInfo.slicesToUse = slicesToUse;
+        D.maskInfo.maskPaths = maskPaths;
+        D.maskInfo.slices = slicesToUse;
         
         
         % =================================================================
         % Get traces with masks:
         % =================================================================
-        [tracesPath, nSlicesTrace] = get_traces(D, maskType, maskInfo);
-    
+        tic()
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
+        toc()
+        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        
     case 'condition'
         % Use masks from a different condition:
         ref = load(fullfile(D.maskSourcePath, 'analysis', datastruct, sprintf('%s.mat', datastruct)));
-        refRun = ref.refRun;
-        slicesToUse = ref.slices;
+        D.refRun = ref.refRun;
+        D.refPath = refMeta.file(D.refRun).si.tiffPath;
+        D.slices = ref.slices;
         
         refMeta = load(ref.metaPaths{refRun});
-        maskInfo = struct();
-        maskInfo = ref.maskInfo;
-        maskType = ref.maskType;
+        D.maskInfo = struct();
+        D.maskInfo = ref.maskInfo;
+        D.maskType = ref.maskType;
         
-        [tracesPath, nSlicesTrace] = get_traces(D, maskType, maskInfo);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
+        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+
         
     case 'pixels'
         
-        maskType = 'pixels';
+        D.maskType = 'pixels';
         
         % Set smoothing/filtering params:
         % -----------------------------------------------------------------
-        params = struct();
-        params.smoothXY = true;
-        params.kernelXY = 5;
+        D.params = struct();
+        D.params.smoothXY = true;
+        D.params.kernelXY = 5;
         
-        slicesToUse = [5, 10, 15, 20]; % TMP 
-        params.slicesToUse = slicesToUse;
-        
-
+        D.slices = slicesToUse; % TMP 
+        D.params.slicesToUse = slicesToUse;
         
         % =================================================================
         % Get traces:
         % =================================================================
-        [tracesPath, nSlicesTrace] = get_traces(D, maskType, [], params);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
+        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
 
     case 'nmf'
         
@@ -483,22 +489,22 @@ end
 % Update analysis info struct:
 % -------------------------------------------------------------------------
 
-D.refRun = refRun;
-D.refPath = refMeta.file(refRun).si.tiffPath;
-D.slices = slicesToUse;
+% D.refRun = refRun;
+% D.refPath = refMeta.file(refRun).si.tiffPath;
+% D.slices = slicesToUse;
+% 
+% D.maskType = maskType;
+% if strcmp(D.maskType, 'circles')
+%     D.maskInfo = maskInfo;
+%     D.maskType = maskType;
+% else
+%     D.params = params;
+% end
+% 
+% D.tracesPath = tracesPath; 
+% D.nSlicesSelected = nSlicesTrace;
 
-D.maskType = maskType;
-if strcmp(D.maskType, 'circles')
-    D.maskInfo = maskInfo;
-    D.maskType = maskType;
-else
-    D.params = params;
-end
-
-D.tracesPath = tracesPath; 
-D.nSlicesSelected = nSlicesTrace;
-
-save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+%save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
         
 %%  Align stimulus events to traces:

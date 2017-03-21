@@ -1,4 +1,4 @@
-function [tracesPath, nSlicesTrace] = get_traces(D, maskType, varargin)
+function [tracesPath, nSlicesTrace] = get_traces(D)
 
 %                                     
 % CASES:
@@ -16,17 +16,17 @@ function [tracesPath, nSlicesTrace] = get_traces(D, maskType, varargin)
 %  Unprocessed TIFFs will contain SI's metadata in them, so metadata
 %  can and should still be extracted.
 %   
+maskType = D.maskType;
 
-nvargin = length(varargin);
-switch nvargin
-    case 1
-        maskInfo = varargin{1};
-        refNum = maskInfo.refNum;
-        maskPaths = maskInfo.maskPaths;
-        slices = maskInfo.slicesToUse;
-    case 2
-        params = varargin{2};
-        smooth_xy = params.smoothXY;
+switch maskType
+    case 'circles'
+        params = D.maskInfo;
+        refNum = params.refNum;
+        maskPaths = params.maskPaths;
+        slices = params.slicesToUse;
+    case 'pixels'
+        params = D.params;
+        smoothXY = params.smoothXY;
         ksize = params.kernelXY;
         slices = params.slicesToUse;   
 end
@@ -63,6 +63,28 @@ switch maskType
                     currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
                                         acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
+                    
+                    % TO DO:  
+                    % Check frame-to-frame correlation for bad
+                    % motion correction:
+                    checkframes = @(x,y) corrcoef(x,y);
+                    refframe = 1;
+                    corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,refframe)), 1:size(Y,3), 'UniformOutput', false);
+                    corrs = cat(3, corrs{1:end});
+                    meancorrs = squeeze(mean(mean(corrs,1),2));
+                    badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2); %find(meancorrs<0.795);
+                    
+                    while length(badframes) >= size(Y,3)*0.25
+                        refframe = refframe +1 
+                        corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
+                        corrs = cat(3, corrs{1:end});
+                        meancorrs = squeeze(mean(mean(corrs,1),2));
+                        badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2); %find(meancorrs<0.795);
+                    end
+                        
+                        
+                    find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2)
+                    
                     avgY = mean(Y, 3);
 
                     % Use masks to extract time-series trace of each ROI:
@@ -70,18 +92,29 @@ switch maskType
                     % matrices from create_rois.m:
                     % ---------------
                     
+%                     maskfunc = @(x,y) sum(sum(x.*y));
+%                     tic()
+%                     x = 1:size(Y,3);
+%                     rawTraces2 = arrayfun(@(xval) cellfun(@(c) maskfunc(full(c), Y(:,:,xval)), maskcell, 'UniformOutput', false), x, 'UniformOutput', false)
+%                     toc() % 100sec (looping over rois = 120sec)
+%                     
+                    tic()
                     maskfunc = @(x,y) sum(sum(x.*y));
-                    rawTraces = zeros(length(maskcell), size(Y,3));
-                    for r=1:length(maskcell)
-                        rawTraces(r,:,:) = cell2mat(arrayfun(@(i) maskfunc(Y(:,:,i), full(maskcell{r})), 1:size(Y,3), 'UniformOutput', false));
-                    end
+                    cellY = num2cell(Y, [1 2]);
+                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(full(c), frame), maskcell, 'UniformOutput', false), cellY, 'UniformOutput', false));
+                    rawTraces = cell2mat(cat(2, rawTracesTmp{1:end}));
+                    toc() % 44sec.
                     % ---------------
                     
-                    T.traces.file(fidx) = {rawTraces};
+                    T.rawTraces.file(fidx) = {rawTraces};
                     %T.masks.file(fidx) = {masks};
                     T.avgImage.file(fidx) = {avgY};
                     T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
-                    %T.meta.file(fidx) = meta;
+                    T.badFrames.file{fidx} = badframes;
+                    T.meancorrs.file{fidx} = meancorrs;
+                    T.refframe.file(fidx) = refframe;
+                    
+                    %clearvars rawTraces rawTracesTmp cellY Y avgY corrs
                     
                     fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
                 end
@@ -95,7 +128,7 @@ switch maskType
                 fprintf('Saving struct: %s.\n', tracesName);
                 
                 save_struct(tracesPath, tracesName, T);
-                %clear T masks M
+                %clearvars T maskStruct maskcell
 
             end
         end

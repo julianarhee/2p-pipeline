@@ -7,7 +7,7 @@
 % -------------------------------------------------------------------------
 session = '20161221_JR030W';
 experiment = 'rsvp';
-analysis_no = 1;
+analysis_no = 2;
 tefo = false;
 
 % -------------------------------------------------------------------------
@@ -26,31 +26,32 @@ analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 % jyr:  change 'datastruct' dir to "analysis" so it aint confusing
 
 D = load(fullfile(analysisDir, datastruct));
-acquisitionName = D.acquisitionName;
-nChannels = D.nChannels;
-roiType = D.roiType;
-nTiffs = D.nTiffs;
-metaPath = D.metaPath;
-maskType = D.maskType;
-maskPaths = D.maskInfo.maskPaths;
-slicesToUse = D.slices;
-channelIdx = D.channelIdx;
 
-tracesPath = D.tracesPath;
-traceNames = dir(fullfile(tracesPath, '*.mat'));
-traceNames = {traceNames(:).name}';
+% 
+% acquisitionName = D.acquisitionName;
+% nChannels = D.nChannels;
+% roiType = D.roiType;
+% nTiffs = D.nTiffs;
+% metaPath = D.metaPath;
+% maskType = D.maskType;
+% maskPaths = D.maskInfo.maskPaths;
+% slicesToUse = D.slices;
+% channelIdx = D.channelIdx;
 
-figDir = fullfile(analysisDir, 'figures');
-if ~exist(figDir, 'dir')
-    mkdir(figDir);
+traceNames = dir(fullfile(D.tracesPath, '*.mat'));
+D.traceNames = {traceNames(:).name}';
+
+D.figDir = fullfile(D.datastructPath, 'figures');
+if ~exist(D.figDir, 'dir')
+    mkdir(D.figDir);
 end
 
-outputDir = fullfile(analysisDir, 'output');
-if ~exist(outputDir, 'dir')
-    mkdir(outputDir);
+D.outputDir = fullfile(D.datastructPath, 'output');
+if ~exist(D.outputDir, 'dir')
+    mkdir(D.outputDir);
 end
-
-D.outputDir = outputDir;
-D.figDir = figDir;
-D.traceNames = traceNames;
-save(fullfile(analysisDir, datastruct), '-append', '-struct', 'D');
+% 
+% D.outputDir = outputDir;
+% D.figDir = figDir;
+% D.traceNames = traceNames;
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');

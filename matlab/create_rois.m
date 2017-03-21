@@ -1,4 +1,4 @@
-function create_rois(D, refMeta, varargin)
+function create_rois(D, refMeta)
    
 %  Create ROIs manually with circle-mask, save to struct:
 
@@ -13,12 +13,7 @@ end
 
 nSlices = refMeta.file(1).si.nSlices;
 
-nargin = length(varargin);
-if nargin==1
-    slicesToUse = varargin{1};
-else
-    slicesToUse = 1:nSlices;
-end
+slicesToUse = D.slicesToUse;
 
 M = struct();
 
