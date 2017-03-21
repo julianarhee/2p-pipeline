@@ -70,10 +70,23 @@ switch maskType
                     % matrices from create_rois.m:
                     % ---------------
                     
+                    %tmpMasked = full(currMask.*currFrame);
+                    %roiTrace = sum(tmpMasked(:));
+        fftfun = @(x) fft(x)/N;
+        fftMat = cell2mat(arrayfun(@(i) fftfun(traceMat(i,:)), 1:size(traces, 1), 'UniformOutput', false)');
+        
                     maskfunc = @(x,y) sum(sum(x.*y));
-                    rawTraces = zeros(length(maskcell), size(Y,3));
+                    rawTraces2 = zeros(length(maskcell), size(Y,3));
                     for r=1:length(maskcell)
-                        rawTraces(r,:,:) = cell2mat(arrayfun(@(i) maskfunc(Y(:,:,i), full(maskcell{r})), 1:size(Y,3), 'UniformOutput', false));
+                        %currMask = masks(:,:,r);
+                        %maskedY = nan(1,size(Y,3));
+%                         for t=1:size(Y,3)
+%                             tmpMasked = full(maskcell{r}).*Y(:,:,t);
+%                             %tmpMasked(tmpMasked==0) = NaN;
+%                             %maskedY(t) = nanmean(tmpMasked(:));
+%                             maskedY(t) = sum(tmpMasked(:));
+%                         end
+                        rawTraces2(r,:,:) = cell2mat(arrayfun(@(i) maskfunc(Y(:,:,i), full(maskcell{r})), 1:size(Y,3), 'UniformOutput', false));
                     end
                     % ---------------
                     

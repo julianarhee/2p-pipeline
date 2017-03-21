@@ -63,7 +63,9 @@ for midx=1:length(fileNames)
     for run=1:length(mwStruct.file(midx).runNames)
         mwStruct.file(midx).pymat.(mwStruct.file(midx).runNames{run}) = pymat.(mwStruct.file(midx).runNames{run});
     end
-    mwStruct.file(midx).info = pymat.info;
+    if strcmp(pymat.stimtype, 'bar')
+        mwStruct.file(midx).info = pymat.info;
+    end
 end
 
                
