@@ -28,7 +28,7 @@ acquisitionName = 'fov2_rsvp_25reps';
 %% Define datastruct name for analysis:
 
 
-didx = 1;
+didx = 2;
 
 datastruct = sprintf('datastruct_%03d', didx);
 dstructPath = fullfile(analysisDir, datastruct);
@@ -284,8 +284,8 @@ preprocessing = 'Acquisition2P';
 
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
-% roiType = 'create_rois';
-roiType = 'condition';
+roiType = 'create_rois';
+%roiType = 'condition';
 % roiType = 'pixels';
 
 switch roiType

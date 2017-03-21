@@ -6,7 +6,7 @@
 % USER-INUPT:
 % -------------------------------------------------------------------------
 session = '20161221_JR030W';
-experiment = 'retinotopy037Hz';%'rsvp';
+experiment = 'rsvp';
 analysis_no = 1;
 tefo = false;
 

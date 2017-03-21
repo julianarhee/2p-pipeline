@@ -54,7 +54,7 @@ switch maskType
                 fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, currSliceIdx, length(slices));
                 
                 maskStruct=load(maskPaths{sidx});
-                masks = maskStruct.masks;
+                maskcell = maskStruct.maskcell;
                 
                 % Load current slice movie and apply mask from refRun:
                 for fidx = 1:nTiffs
@@ -66,19 +66,17 @@ switch maskType
                     avgY = mean(Y, 3);
 
                     % Use masks to extract time-series trace of each ROI:
-                    rawTraces = zeros(size(masks,3), size(Y,3));
-                    for r=1:size(masks,3)
-                        currMask = masks(:,:,r);
-                        maskedY = nan(1,size(Y,3));
-                        for t=1:size(Y,3)
-                            tmpMasked = currMask.*Y(:,:,t);
-                            %tmpMasked(tmpMasked==0) = NaN;
-                            %maskedY(t) = nanmean(tmpMasked(:));
-                            maskedY(t) = sum(tmpMasked(:));
-                        end
-                        rawTraces(r,:,:) = maskedY;
+                    % --- TO DO --- FIX trace extraction to use sparse
+                    % matrices from create_rois.m:
+                    % ---------------
+                    
+                    maskfunc = @(x,y) sum(sum(x.*y));
+                    rawTraces = zeros(length(maskcell), size(Y,3));
+                    for r=1:length(maskcell)
+                        rawTraces(r,:,:) = cell2mat(arrayfun(@(i) maskfunc(Y(:,:,i), full(maskcell{r})), 1:size(Y,3), 'UniformOutput', false));
                     end
-
+                    % ---------------
+                    
                     T.traces.file(fidx) = {rawTraces};
                     %T.masks.file(fidx) = {masks};
                     T.avgImage.file(fidx) = {avgY};
