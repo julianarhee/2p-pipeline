@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 18-Mar-2017 20:55:21
+% Last Modified by GUIDE v2.5 19-Mar-2017 19:58:45
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -85,6 +85,11 @@ function currRoi_Callback(hObject, eventdata, handles)
 hObject.String = num2str(round(str2double(hObject.String)));
 handles.currRoiSlider.Value = str2double(hObject.String);
 
+newReference = 0;
+showRois = handles.roiToggle.Value;
+D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois)
+
 guidata(hObject,handles);
 
 % --- Executes during object creation, after setting all properties.
@@ -140,8 +145,9 @@ for fN=1:length(fileNames)
     fileNames{fN} = sprintf('File%02d', fN);
 end
 hObject.String = fileNames;
+hObject.UserData.runValue = hObject.Value;
 
-updateActivityMap(handles, D);
+updateActivityMap(handles, D, meta);
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
 % selectedSlice = str2double(handles.currSlice.String);
 % selectedFile = handles.runMenu.Value;
@@ -179,6 +185,11 @@ function currRoiSlider_Callback(hObject, eventdata, handles)
 hObject.Value = round(hObject.Value);
 handles.currRoi.String = num2str(hObject.Value);
 
+newReference = 0;
+showRois = handles.roiToggle.Value;
+D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
 guidata(hObject,handles);
 
 
@@ -199,65 +210,41 @@ function selectDatastructPush_Callback(hObject, eventdata, handles)
 % hObject    handle to selectDatastructPush (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-[currDatastruct, currPath, ~] = uigetfile();
-D = load(fullfile(currPath, currDatastruct));
-D.guiPath = currPath;
-setappdata(handles.roigui, 'D', D);
+[tmpCurrDatastruct, tmpCurrPath, ~] = uigetfile();
 
-% Get and set meta data:
-[fp,fn,fe] = fileparts(D.metaPath);
-tmpparts = strsplit(D.guiPath, '/');
-mPath = fullfile(tmpparts{1:end-2});
-meta = load(fullfile(['/' mPath], 'meta', strcat(fn, fe)));
-setappdata(handles.roigui, 'meta', meta);
-
-% Set defaults for ROI values:
-handles.currRoi.String = num2str(1); %num2str(round(str2double(handles.currRoi.String)));
-handles.currRoiSlider.Value = str2double('1'); %str2double(handles.currRoi.String);
-
-% Set options for SLICE menu:
-sliceNames = cell(1,length(D.slices));
-for s=1:length(sliceNames)
-    sliceNames{s} = sprintf('Slice%02d', D.slices(s));
-end
-handles.currSlice.String = sliceNames;
-
-% Get default slice idx and value:
-selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
-
-% Set file name options for RUN menu:
-fileNames = cell(1,length(meta.file));
-for fN=1:length(fileNames)
-    fileNames{fN} = sprintf('File%02d', fN);
-end
-handles.runMenu.String = fileNames;
-
-% Get default selected file/run:
-selectedFile = handles.runMenu.Value;
-
-% Assign MAP menu options:
-selectedFile = handles.runMenu.Value;
-mapStructName = sprintf('maps_Slice%02d.mat', selectedSlice); 
-[tmpP, tmpN,~]=fileparts(D.outputDir);
-mapStruct = load(fullfile(D.guiPath, tmpN, mapStructName));
-mapTypes = fieldnames(mapStruct.file(selectedFile));
-handles.mapMenu.String = mapTypes;
+% If legitimate path/struct chosen, populate GUI with components. This
+% will:
+% - Create appdata:  D, meta
+% - Update handles and specific UserData fields.
+[handles, firstLoad] = populateGUI(handles, tmpCurrPath, tmpCurrDatastruct);
 
 % Load and display average image for currently selected file/slice:
-avgimg = getCurrentSliceImage(handles, D);      % Get avg image for selected slice and file.
-% masks = getCurrentSliceMasks(handles,D);        % Get masks for currently selected slice. % NOTE:  Masks created could go with different file.
-% setRoiMax(handles, masks);                      % Set Max values for ROI entries.
-% RGBimg = createRGBmasks(avgimg, masks);         % Create RGB image for average slice and masks.
-% updateReferencePlot(handles, RGBimg);           % Update reference mask image.
-updateReferencePlot(handles, D);
+D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui, 'meta');
 
-D.avgimg = avgimg;
+if firstLoad==1
+    newReference=1;
+elseif ~isfield(hObject.UserData, 'currPath')
+    newReference=1;
+elseif ~strcmp(hObject.UserData.currPath, fullfile(D.guiPrepend, D.datastructPath))
+    newReference=1;
+else
+    newReference=0;
+end
+showRois = handles.roiToggle.Value;
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+setappdata(handles.roigui, 'D', D);
 
 % Update activity map:
-updateActivityMap(handles, D);
+updateActivityMap(handles, D, meta);
 
+% Set UserData fields:
+handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
+handles.runMenu.UserData.runValue = handles.runMenu.Value;
+
+% Update appdata for D struct:
 setappdata(handles.roigui, 'D', D);
+
 
 guidata(hObject,handles);
 
@@ -273,14 +260,33 @@ function currSlice_Callback(hObject, eventdata, handles)
 %        str2double(get(hObject,'String')) returns contents of currSlice as a double
 
 D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui, 'meta');
+
+%selectedFile = handles.runMenu.Value;
+%currRunName = meta.file(selectedFile).mw.runName;
+
 sliceNames = cell(1,length(D.slices));
 for s=1:length(sliceNames)
     sliceNames{s} = sprintf('Slice%02d', D.slices(s));
 end
 hObject.String = sliceNames;
 
-updateReferencePlot(handles, D);
-updateActivityMap(handles, D)
+showRois = handles.roiToggle.Value;
+
+if ~isfield(hObject.UserData, 'sliceValue')
+    newReference=1;
+elseif hObject.UserData.sliceValue ~= hObject.Value
+    newReference=1;
+else
+    newReference=0;
+end
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+updateActivityMap(handles, D, meta)
+
+setappdata(handles.roigui, 'D', D);
+hObject.UserData.sliceValue = hObject.Value;
 
 guidata(hObject,handles);
 
@@ -308,20 +314,20 @@ function mapMenu_Callback(hObject, eventdata, handles)
 %        contents{get(hObject,'Value')} returns selected item from mapMenu
 
 D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui, 'meta');
 
-[tmpP, tmpN,~]=fileparts(D.outputDir);
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
 selectedSlice = D.slices(selectedSliceIdx);
 selectedFile = handles.runMenu.Value;
-
+%currRunName = meta.file(selectedFile).mw.runName;
 
 mapStructName = sprintf('maps_Slice%02d.mat', selectedSlice); 
-mapStruct = load(fullfile(D.guiPath, tmpN, mapStructName));
+mapStruct = load(fullfile(D.guiPrepend, D.outputDir, mapStructName));
 mapTypes = fieldnames(mapStruct.file(selectedFile));
 
 hObject.String = mapTypes;
 
-updateActivityMap(handles, D);
+updateActivityMap(handles, D, meta);
 
 guidata(hObject,handles);
 
@@ -352,8 +358,9 @@ function threshold_Callback(hObject, eventdata, handles)
 hObject.String = num2str(str2double(hObject.String));
 
 D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui, 'meta');
 
-updateActivityMap(handles, D);
+updateActivityMap(handles, D, meta);
 
 guidata(hObject,handles);
 
@@ -368,4 +375,129 @@ function threshold_CreateFcn(hObject, eventdata, handles)
 %       See ISPC and COMPUTER.
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in roiToggle.
+function roiToggle_Callback(hObject, eventdata, handles)
+% hObject    handle to roiToggle (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of roiToggle
+
+D = getappdata(handles.roigui,'D');
+
+showRois = hObject.Value;
+if handles.currSlice.UserData.sliceValue ~= handles.currSlice.Value
+    newReference=1;
+else
+    newReference=0;
+end
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
+setappdata(handles.roigui, 'D', D);
+
+guidata(hObject,handles);
+
+
+
+function currDatastruct_Callback(hObject, eventdata, handles)
+% hObject    handle to currDatastruct (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of currDatastruct as text
+%        str2double(get(hObject,'String')) returns contents of currDatastruct as a double
+
+sPath = handles.selectDatastructPush.UserData.currPath;
+sStruct = handles.selectDatastructPush.UserData.currStruct;
+
+[txtpath,txtstruct,txtext] = fileparts(hObject.String);
+
+if ~strcmp(hObject.String, fullfile(sPath, sStruct))
+    % do stuff
+    [handles, firstLoad] = populateGUI(handles, txtpath, strcat(txtstruct, txtext));
+
+    % Load and display average image for currently selected file/slice:
+    D = getappdata(handles.roigui,'D');
+    meta = getappdata(handles.roigui, 'meta');
+    
+    if firstLoad==1
+        newReference=1;
+    elseif ~isfield(hObject.UserData, 'currPath')
+        newReference=1;
+    elseif ~strcmp(hObject.UserData.currPath, fullfile(D.guiPrepend, D.datastructPath))
+        newReference=1;
+    else
+        newReference=0;
+    end
+    showRois = handles.roiToggle.Value;
+    [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+    setappdata(handles.roigui, 'D', D);
+
+    % Update activity map:
+    updateActivityMap(handles, D, meta);
+
+    % Set UserData fields:
+    handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
+    handles.runMenu.UserData.runValue = handles.runMenu.Value;
+
+    % Update appdata for D struct:
+    setappdata(handles.roigui, 'D', D);
+
+    guidata(hObject,handles);
+end
+
+hObject.String = fullfile(handles.selectDatastructPush.UserData.currPath,...
+                            handles.selectDatastructPush.UserData.currStruct);
+
+guidata(hObject,handles);
+
+% --- Executes during object creation, after setting all properties.
+function currDatastruct_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to currDatastruct (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on mouse press over axes background.
+function ax1_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to ax1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% WindowButtonMotionFcn for the figure.
+
+%handles.avgimg.HitTest = 'off'
+
+S.ax = hObject.Parent;
+S.axp = S.ax.Position;
+S.xlm = S.ax.XLim;
+S.ylm = S.ax.YLim;
+S.dfx = diff(S.xlm);
+S.dfy = diff(S.ylm);
+
+F = S.ax.CurrentPoint  % The current point w.r.t the figure.
+
+Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+%fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+
+% Figure out of the current point is over the axes or not -> logicals.
+tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
+tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
+
+if tf1 && tf2
+    % Calculate the current point w.r.t. the axes.
+    Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+    Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+    %set(S.tx(2),'str',num2str([Cx,Cy],2))
+    fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
 end
