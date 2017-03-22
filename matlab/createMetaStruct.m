@@ -20,10 +20,15 @@ acquisitionName = D.acquisitionName;
 channelIdx = D.channelIdx;
 tiffSource = D.tiffSource;
 
+if isfield(D, 'extraTiffsExcluded')
+    nTiffCorrection = length(D.extraTiffsExcluded);
+else
+    nTiffCorerction = 0;
+end
 siStruct = get_si_info(sourceDir, acquisitionName);
 nTiffs = siStruct.nTiffs;
 
-mwStruct = get_mw_info(sourceDir, nTiffs);
+mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection);
 
 % Get paths to CORRECTED tiffs:
 channelDir = sprintf('Channel%02d', channelIdx);

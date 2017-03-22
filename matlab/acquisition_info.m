@@ -6,7 +6,7 @@
 % USER-INUPT:
 % -------------------------------------------------------------------------
 session = '20161221_JR030W';
-experiment = 'rsvp';
+experiment = 'rsvp_run3';
 analysis_no = 2;
 tefo = false;
 

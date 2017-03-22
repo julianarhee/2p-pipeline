@@ -24,6 +24,8 @@ channelIdx = 1;
 acquisitionName = 'fov2_rsvp_25reps_run3';
 %acquisitionName = 'fov1_bar037Hz_run4';
 
+extraTiffsExcluded = [9 10];
+
 
 %% Define datastruct name for analysis:
 
@@ -64,6 +66,7 @@ D.datastructPath = dstructPath;
 D.sourceDir = sourceDir;
 D.acquisitionName = acquisitionName;
 D.channelIdx = channelIdx;
+D.extraTiffsExcluded = extraTiffsExcluded;
 save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
 
@@ -108,6 +111,7 @@ switch metaInfo
         
         % Creata META with SI (acquisition) and MW (experiment) info:
         meta = createMetaStruct(D);
+        fprintf('Created meta struct for current acquisition,\n');
         
         % Sort Parsed files into separate directories if needed:
         if length(dir(fullfile(sourceDir, tiffSource))) > meta.nChannels
@@ -284,9 +288,9 @@ D.preprocessing = 'Acquisition2P';
 
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
-D.roiType = 'create_rois';
-%roiType = 'condition';
-% roiType = 'pixels';
+%D.roiType = 'create_rois';
+D.roiType = 'condition';
+%D.roiType = 'pixels';
 
 switch D.roiType
     case 'create_rois'
@@ -297,6 +301,7 @@ switch D.roiType
         D.maskDidx = 2;
         D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
         fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
+        
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSourcePath = fullfile(fpath, D.maskSource);
         pathToMasks = fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, 'masks');
@@ -331,7 +336,7 @@ end
 %     D.maskSourcePath = maskSourcePath;
 % end
 
-save(fullfile(D.dstructPath, D.name), '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-struct', 'D');
 
 
 %% Create masks and get traces:
@@ -347,7 +352,7 @@ slicesToUse = [5, 10, 15, 20];                            % Specify which slices
 % traceNames = dir(fullfile(refMeta.si.tiffPath, '*.tif'));
 % traceNames = {traceNames(:).name}';                           % Get all TIFFs (slices) associated with file and volume of refRun movie.
 
-switch roiType
+switch D.roiType
     case 'create_rois'
         
         % Choose reference:
@@ -395,24 +400,26 @@ switch roiType
         % Get traces with masks:
         % =================================================================
         tic()
-        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         toc()
-        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
     case 'condition'
         % Use masks from a different condition:
         ref = load(fullfile(D.maskSourcePath, 'analysis', datastruct, sprintf('%s.mat', datastruct)));
         D.refRun = ref.refRun;
-        D.refPath = refMeta.file(D.refRun).si.tiffPath;
+        refMeta = load(ref.metaPath);
+        
+        
+        D.refPath = ref.refPath; %Meta.file(D.refRun).si.tiffPath;
         D.slices = ref.slices;
         
-        refMeta = load(ref.metaPaths{refRun});
         D.maskInfo = struct();
         D.maskInfo = ref.maskInfo;
         D.maskType = ref.maskType;
         
-        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
-        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
         
     case 'pixels'
@@ -431,7 +438,7 @@ switch roiType
         % =================================================================
         % Get traces:
         % =================================================================
-        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
 
     case 'nmf'
@@ -448,7 +455,7 @@ switch roiType
         % =================================================================
         % Get traces:
         % =================================================================
-        [tracesPath, nSlicesTrace] = get_traces(D, maskType, [], params); 
+        [tracesPath, nSlicesTrace] = getTraces(D, maskType, [], params); 
                     
 end
 
@@ -473,7 +480,15 @@ end
 
 %save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
-        
+%%  Process traces:
+
+
+processTraces(D, winUnit);
+
+
+
+
+
 %%  Align stimulus events to traces:
 
 % Load metadata if needed:

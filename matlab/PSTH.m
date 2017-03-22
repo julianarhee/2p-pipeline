@@ -9,6 +9,24 @@
 
 acquisition_info;
 
+slicesToUse = D.slices;
+
+%%
+% -------------------------------------------------------------------------
+% Process traces for FFT analysis:
+% -------------------------------------------------------------------------
+for sidx = 1:length(slicesToUse)
+
+    currSlice = slicesToUse(sidx);
+    fprintf('Processing traces for Slice %02d...\n', currSlice);
+    
+    % Assumes all TIFFs are reps of e/o, so just use file1:
+    winUnit = 3; % single trial dur (sec) 
+    %crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+    processTraces(D, winUnit)
+
+end
+
 %%
 
 % -------------------------------------------------------------------------
@@ -117,38 +135,39 @@ for sidx = 1:length(slicesToUse)
         currTiffs = fieldnames(mwTrials.(currStim));
         for tiffIdx=1:length(currTiffs)
             
-            % If corrected traceMat not found, correct and save, otherwise
-            % just load corrected tracemat:
-            if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
-                
-                % 1. First, remove "bad" frames (too much motion), and
-                % replace with Nans:
-                currTraces = T.rawTraces.file{tiffIdx};
-                T.badFrames.file{tiffIdx}(T.badFrames.file{tiffIdx}==T.refframe.file(tiffIdx)) = []; % Ignore reference frame (corrcoef=1)
-                
-                bf = T.badFrames.file{tiffIdx};
-                if length(bf) > 1
-                    assignNan = @(f) nan(size(f));
-                    tmpframes = arrayfun(@(i) assignNan(currTraces(:,i)), bf, 'UniformOutput', false);
-                    currTraces(:,bf) = cat(2,tmpframes{1:end});
-                end
-                
-                % 2. Next, get subtract rolling average from each trace
-                % (each row of currTraces is the trace of an ROI).
-                % Interpolate NaN frames if there are any.
-                winsz = round(meta.si.siVolumeRate*3*2);
-                [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(currTraces(i, :), winsz), 1:size(currTraces, 1), 'UniformOutput', false);
-                traceMat = cat(1, traceMat{1:end});
-                DCs = cat(1, DCs{1:end});
-                traceMat = bsxfun(@plus, DCs, traceMat);
-                T.traceMat.file{tiffIdx} = traceMat;
-                T.winsz.file(tiffIdx) = winsz;
-                T.DCs.file{fidx} = DCs;
-                save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'T');
-            else
-                traceMat = T.traceMat.file{tiffIdx};
-            end
-
+%             % If corrected traceMat not found, correct and save, otherwise
+%             % just load corrected tracemat:
+%             if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
+%                 
+%                 % 1. First, remove "bad" frames (too much motion), and
+%                 % replace with Nans:
+%                 currTraces = T.rawTraces.file{tiffIdx};
+%                 T.badFrames.file{tiffIdx}(T.badFrames.file{tiffIdx}==T.refframe.file(tiffIdx)) = []; % Ignore reference frame (corrcoef=1)
+%                 
+%                 bf = T.badFrames.file{tiffIdx};
+%                 if length(bf) > 1
+%                     assignNan = @(f) nan(size(f));
+%                     tmpframes = arrayfun(@(i) assignNan(currTraces(:,i)), bf, 'UniformOutput', false);
+%                     currTraces(:,bf) = cat(2,tmpframes{1:end});
+%                 end
+%                 
+%                 % 2. Next, get subtract rolling average from each trace
+%                 % (each row of currTraces is the trace of an ROI).
+%                 % Interpolate NaN frames if there are any.
+%                 winsz = round(meta.si.siVolumeRate*3*2);
+%                 [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(currTraces(i, :), winsz), 1:size(currTraces, 1), 'UniformOutput', false);
+%                 traceMat = cat(1, traceMat{1:end});
+%                 DCs = cat(1, DCs{1:end});
+%                 traceMat = bsxfun(@plus, DCs, traceMat);
+%                 T.traceMat.file{tiffIdx} = traceMat;
+%                 T.winsz.file(tiffIdx) = winsz;
+%                 T.DCs.file{fidx} = DCs;
+%                 save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'T');
+%             else
+%                 traceMat = T.traceMat.file{tiffIdx};
+%             end
+            traceMat = T.traceMat.file{tiffIdx};
+            
             currTrials = mwTrials.(currStim).(currTiffs{tiffIdx});
             for trialIdx=1:length(currTrials)
                 currSecs = mwTrials.(currStim).(currTiffs{tiffIdx}){trialIdx};
@@ -297,11 +316,14 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 %%
 
-currSlice = 5;
+currSlice = 15;
 currStim = 'stim1';
 
 currRoi = 20;
-raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
+nFramesPerTrial = stimstruct.slice(currSlice).(currStim).nFramesPerTrial;
+minFrames = min(nFramesPerTrial);
+rawMat = arrayfun(@(i) stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{i}(1:minFrames), 1:length(stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}), 'UniformOutput', false);
+raw = cat(1, rawMat{1:end});
 interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
 
 
@@ -311,15 +333,15 @@ interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{
 %
 figure();
 subplot(1,2,1)
-plot(roimat.', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
+plot(raw.', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
 hold on;
-plot(mean(roimat,1), 'k', 'LineWidth', 1);
+plot(mean(raw,1), 'k', 'LineWidth', 1);
 title('no interp')
 
 subplot(1,2,2)
-plot(interpmat.', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
+plot(interp.', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
 hold on;
-plot(mean(interpmat,1), 'k', 'LineWidth', 1);
+plot(mean(interp,1), 'k', 'LineWidth', 1);
 title('interp')
 
 %         
@@ -403,7 +425,7 @@ stimstruct = load(fullfile(D.outputDir, D.stimStructName));
 %% PLOT:
 
 currSlice = 15;
-currRoi = 100;
+currRoi = 20;
 
 figure();
 pRows = 2;
