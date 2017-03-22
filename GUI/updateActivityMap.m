@@ -58,7 +58,7 @@ switch selectedMapType
         % 'magnitude'
         % 'maxDf'
         axes(handles.ax2);  
-        handles.map = imagesc2(displayMap, handles.ax2);
+        handles.map = imagesc2(displayMap); %, handles.ax2);
         colormap(handles.ax2, hot);
         caxis([min(displayMap(:)), max(displayMap(:))])
         colorbar();

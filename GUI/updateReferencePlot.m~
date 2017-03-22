@@ -30,9 +30,9 @@ D.RGBimg(:,:,1) = D.RGBimg(:,:,1).*0;
 D.RGBimg(:,:,3) = D.RGBimg(:,:,3).*0;
     
 if selectedROI>0
-    D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
-    D.RGBimg(:,:,1) = D.RGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
-    D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
+    D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1)+0.7*maskcell{selectedROI);
+    D.RGBimg(:,:,1) = D.RGBimg(:,:,1)+0.7*masks(:,:,selectedROI);
+    D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*masks(:,:,selectedROI);
 end
 
 axes(handles.ax1);
@@ -44,7 +44,7 @@ axes(handles.ax1);
 
 if showRois==1
     if newReference==1
-        handles.avgimg = imagesc2(D.masksRGBimg) %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
+        handles.avgimg = imagesc2(D.masksRGBimg, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
     else
         handles.avgimg = findobj(handles.ax1, 'Type', 'image', '-depth', 1);
         handles.avgimg.CData = D.masksRGBimg; %imshow(D.masksRGBimg);
