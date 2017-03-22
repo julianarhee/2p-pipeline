@@ -28,7 +28,10 @@ for sidx = 1:length(slicesToUse)
     processTraces(D, winUnit, crop)
 
 end
+dfMin = 20;
+getDfMovie(D, dfMin);
 
+%%
 
 fstart = tic();
 % -------------------------------------------------------------------------
@@ -68,7 +71,7 @@ for sidx = 1:length(slicesToUse)
         
         %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
-        switch roiType
+        switch D.roiType
             case 'create_rois'
                 [d1,d2] = size(avgY);
                 [nrois, tpoints] = size(traces);

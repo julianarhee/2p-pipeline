@@ -521,42 +521,34 @@ currRoi = 20;
 DF = load(fullfile(D.outputDir, D.dfStructName));
 M = load(D.metaPath);
 
-nStimuli = length(M.condTypes);
-colors = zeros(nStimuli,3);
-for c=1:nStimuli
-    colors(c,:,:) = rand(1,3);
-end
-    
 nMovies = length(DF.slice(currSlice).file);
 
 figure();
-pRows = nMovies;
+pRows = 2;
 
 for tiffidx=1:nMovies
     
     meta = M.file(tiffidx);
     dfstruct = DF.slice(currSlice).file(tiffidx);
     
-    volumeIdxs = currSlice:meta.si.nFramesPerVolume:meta.si.nTotalFrames;
+    volumeIdxs = currSlice:meta.si.nFramesPerVolume:nTotalFrames;
     currFrameTimes = meta.mw.siSec(volumeIdxs);
     currMWTimes = meta.mw.mwSec;
-    currMWCodes = meta.mw.pymat.(meta.mw.runName).stimIDs;
-
     currtrace = dfstruct.dfMat(currRoi,:);
-    
-    subplot(pRows, ceil(nMovies/pRows), tiffidx);
     plot(currFrameTimes, currtrace, 'k')
-    ylims = get(gca, 'ylim');
-    sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
+    ylim = get(gca, 'ylim');
+    sy = [y1(1) y1(1) y1(2) y1(2)];
     hold on;
     for trial=1:2:length(currMWTimes)
-        sx = [currMWTimes(trial) currMWTimes(trial+1) currMWTimes(trial+1) currMWTimes(trial)];
-        currStim = currMWCodes(trial);
+        sx = [currMWTimes(trial) currMWTimes(trial+1) currMWTimes(trial+1) currMWTimes];
+        currStim = meta.mw.pymat.(meta.mw.runName).stimIDs(trial);
         patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
         hold on;
     end
-    xlim([0 currFrameTimes(end)]);
 
+   
+    
+    
 end
 
 

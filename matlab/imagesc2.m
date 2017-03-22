@@ -6,7 +6,9 @@ else
     ax = axes();
 end
 % plotting data. Removing and scaling axes (this is for image plotting)
-h = imagesc(ax, img_data);
+axes(ax)
+h = imagesc(img_data);
+%h = imagesc(img_data);
 axis image off
 
 % setting alpha values

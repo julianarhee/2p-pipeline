@@ -12,7 +12,7 @@ switch length(varargin)
         minDf = varargin{1};
 end
 
-DF = struct();
+
 
 %fftNames = dir(fullfile(D.outputDir, fftPrepend));
 %fftNames = {fftNames(:).name}';
@@ -21,8 +21,6 @@ slicesToUse = D.slices;
 
 dfstruct = struct();
 for sidx = 1:length(slicesToUse)
-   
-    
     currSlice = slicesToUse(sidx);
     
     M = load(D.maskPaths{sidx});
@@ -82,12 +80,12 @@ for sidx = 1:length(slicesToUse)
         %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
         %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
         
-        DF.slice(currSlice).file(fidx).meanMap = meanMap;
-        DF.slice(currSlice).file(fidx).maxMap = maxMap;
-        DF.slice(currSlice).file(fidx).dfMat = dfMat;
-        DF.slice(currSlice).file(fidx).activeRois = activeRois;
-        DF.slice(currSlice).file(fidx).minDf = minDf;
-        DF.slice(currSlice).file(fidx).maxDfs = maxDfs;
+        dfstruct.file(fidx).meanMap = meanMap;
+        dfstruct.file(fidx).maxMap = maxMap;
+        dfstruct.file(fidx).dfMat = dfMat;
+        dfstruct.file(fidx).activeRois = activeRois;
+        dfstruct.file(fidx).minDf = minDf;
+        dfstruct.file(fidx).maxDfs = maxDfs;
         
     end
     
@@ -97,16 +95,14 @@ for sidx = 1:length(slicesToUse)
 %     D.dfStructName = dfName;
 %     save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 %     
-    %DF.slice(currSlice) = dfstruct;
-    
     
 end
 
-dfName = sprintf('dfstruct.mat');
-save_struct(D.outputDir, dfName, DF);
-
-D.dfStructName = dfName;
-save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-
+    dfName = sprintf('df_Slice%02d', currSlice);
+    save_struct(D.outputDir, dfName, dfstruct);
+    
+    D.dfStructName = dfName;
+    save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+    
    
 end
