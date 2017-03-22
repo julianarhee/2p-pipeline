@@ -1,4 +1,4 @@
-function masks = getCurrentSliceMasks(handles,D)
+function maskcell = getCurrentSliceMasks(handles,D)
 
 selectedSlice = handles.currSlice.Value; %str2double(handles.currSlice.String);
 
@@ -7,7 +7,7 @@ sliceMaskName = strcat(mn,me);
 maskStruct = load(fullfile(D.guiPrepend, mp, sliceMaskName));
 fprintf('Loading masks...\n');
 
-masks = maskStruct.masks;
+maskcell = maskStruct.maskcell;
 
 
 end

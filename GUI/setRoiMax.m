@@ -1,6 +1,6 @@
-function setRoiMax(handles, masks)
+function setRoiMax(handles, maskcell)
 
-nRois = size(masks,3);
+nRois = length(maskcell);
 handles.currRoi.String = num2str(1);
 handles.currRoiSlider.String = num2str(1);
 
