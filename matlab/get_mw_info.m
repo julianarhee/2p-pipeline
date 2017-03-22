@@ -1,4 +1,4 @@
-function M = get_mw_info(sourceDir, nTiffs)
+function M = get_mw_info(sourceDir, nTiffs, nTiffCorrection)
 
 M = struct();
 mwStruct = struct();
@@ -22,23 +22,29 @@ else
     nRuns = length(pymat.runs); % Just check length of a var to see how many "runs" MW-parsing detected.
    
     fprintf('---------------------------------------------------------\n');
-    if length(fileNames) == nTiffs        
+    if length(fileNames) == nTiffs+nTiffCorrection 
+        % There is 1 .mwk file per .tiff file, including the excluded
+        % TIFFs.
         fprintf('Looks like indie runs.\n');
         mw2si = 'indie';
         MWfidx = 1;
     elseif length(fileNames)==1
+        % There is only a SINGLE .mwk file for all TIFFs, and the number of
+        % chunks or runs in the MWK file corresponds to the # of TIFFs
+        % included in analysis, plus excluded TIFFs.
         fprintf('Multiple SI runs found in current MW file %s.\n', pymatName);
         fprintf('MW detected %i runs, and there are %i TIFFs.\n', nRuns, nTiffs);
         fprintf('---------------------------------------------------------\n');
-        if nRuns==nTiffs % Likely, discarded/ignored TIFF files for given MW session
+        if nRuns==(nTiffs+nTiffCorrection) % Likely, discarded/ignored TIFF files for given MW session
             MWfidx = 1;
             mw2si = 'multi';
             fprintf('Found correct # of runs in MW session to match # TIFFs.\n');
             fprintf('Setting mw-fix to 1.\n');
-        elseif nRuns > nTiffs            
-            MWfidx = (nRuns - nTiffs) + 1; % EX: TIFF file1 is really corresponding to MW 'run' 4 if ignoring first 3 TIFF files.
+        elseif nRuns > (nTiffs+nTiffCorrection)            
+            MWfidx = (nRuns - (nTiffs+nTiffCorrection)) + 1; % EX: TIFF file1 is really corresponding to MW 'run' 4 if ignoring first 3 TIFF files.
             mw2si = 'multi';
             fprintf('Looks like %i TIFF files should be ignored.\n', (nRuns-nTiffs));
+            fprintf('Also excluding %i TIFF files from the end...\n', nTiffCorrection);
             fprintf('Setting MW file start index to %i.\n', MWfidx);
         else
             fprintf('**Warning** There are fewer MW runs than TIFFs. Is MW file parsed correctly?\n');

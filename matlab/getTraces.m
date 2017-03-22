@@ -1,4 +1,4 @@
-function [tracesPath, nSlicesTrace] = get_traces(D)
+function [tracesPath, nSlicesTrace] = getTraces(D)
 
 %                                     
 % CASES:
@@ -68,17 +68,25 @@ switch maskType
                     % Check frame-to-frame correlation for bad
                     % motion correction:
                     checkframes = @(x,y) corrcoef(x,y);
-                    corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
+                    refframe = 1;
+                    corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,refframe)), 1:size(Y,3), 'UniformOutput', false);
                     corrs = cat(3, corrs{1:end});
                     meancorrs = squeeze(mean(mean(corrs,1),2));
+                    badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*3); %find(meancorrs<0.795);
                     
-                    badframes = find(meancorrs<0.795);
-                        while length(badframes) >= size(Y,3)*0.25
+                    if length(badframes)>1
+                        fprintf('Bad frames found in movie %s at: %s\n', currSliceName, mat2str(badframes(2:end)));
+                    end
+                    while length(badframes) >= size(Y,3)*0.25
+                        refframe = refframe +1 
                         corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
                         corrs = cat(3, corrs{1:end});
                         meancorrs = squeeze(mean(mean(corrs,1),2));
-                        refidx += 1
-                    find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2)
+                        badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2); %find(meancorrs<0.795);
+                    end
+                        
+                        
+                    %find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2)
                     
                     avgY = mean(Y, 3);
 
@@ -107,6 +115,7 @@ switch maskType
                     T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
                     T.badFrames.file{fidx} = badframes;
                     T.meancorrs.file{fidx} = meancorrs;
+                    T.refframe.file(fidx) = refframe;
                     
                     %clearvars rawTraces rawTracesTmp cellY Y avgY corrs
                     

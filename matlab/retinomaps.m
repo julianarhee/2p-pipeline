@@ -8,7 +8,30 @@
 % create_acquisition_structs.m pipeline.
 
 acquisition_info;
-trimEnd = true;
+%trimEnd = true;
+slicesToUse = D.slices;
+
+meta = load(D.metaPath);
+nTiffs = meta.nTiffs;
+
+% -------------------------------------------------------------------------
+% Process traces for FFT analysis:
+% -------------------------------------------------------------------------
+for sidx = 1:length(slicesToUse)
+
+    currSlice = slicesToUse(sidx);
+    fprintf('Processing traces for Slice %02d...\n', currSlice);
+    
+    % Assumes all TIFFs are reps of e/o, so just use file1:
+    winUnit = meta.file(1).mw.(1/targetFreq);
+    crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+    processTraces(D, winUnit, crop)
+
+end
+dfMin = 20;
+getDfMovie(D, dfMin);
+
+%%
 
 fstart = tic();
 % -------------------------------------------------------------------------
@@ -24,39 +47,39 @@ for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
     fprintf('Processnig Slice %02d...\n', currSlice);
     
-    M = load(maskPaths{sidx});
-    %masks = M.masks;
+    % Load masks:
+    M = load(D.maskPaths{sidx});
     maskcell = M.maskcell;
     clear M;
-        
-    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
+    
+    % Load tracestruct:
+    tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     
     fftStruct = struct();
     for fidx=1:nTiffs
         fprintf('Processing TIFF #%i...\n', fidx);
         
-        meta = load(metaPath);
-        
         sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
         
-        traces = traceStruct.traces.file{fidx};
-        avgY = traceStruct.avgImage.file{fidx};
+        %traces = traceStruct.traces.file{fidx};
+        traces = tracestruct.traceMat.file{fidx};
+        avgY = tracestruct.avgImage.file{fidx};
         
-
         targetFreq = meta.file(fidx).mw.targetFreq;
         nCycles = meta.file(fidx).mw.nCycles;
         nTotalSlices = meta.file(fidx).si.nFramesPerVolume;
         
-        crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+        %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
-        switch roiType
+        switch D.roiType
             case 'create_rois'
                 [d1,d2] = size(avgY);
-                [nrois, tpoints] = size(traceStruct.traces.file{fidx});
+                [nrois, tpoints] = size(traces);
             case 'pixels'
                 %[d1,d2,tpoints] = size(T.traces.file{fidx});
                 [d1, d2] = size(avgY);
-                tpoints = size(traceStruct.traces.file{fidx},3);
+                tpoints = size(traces,2);
+                nrois = d1*d2;
         end
         
         % Get phase and magnitude maps:
@@ -68,18 +91,20 @@ for sidx = 1:length(slicesToUse)
         
         % Subtrace rolling average:
         Fs = meta.file(fidx).si.siVolumeRate;
-        winsz = round((1/targetFreq)*Fs*2);
-        %traceMat = arrayfun(@(x), subtractRollingMean(x,winsz),traces);
-        traceMat = arrayfun(@(i) subtractRollingMean(traces(i, :), winsz), 1:size(traces, 1), 'UniformOutput', false);
-        traceMat = cat(1, traceMat{1:end});
-        untrimmedTraceMat = traceMat;
-        if trimEnd
-            traceMat = traceMat(:,1:crop);
-            trimmedRawMat = traces(:,1:crop);
-        end
+        %winUnit = (1/targetFreq);
+        
+%         winsz = round((1/targetFreq)*Fs*2);
+%         %traceMat = arrayfun(@(x), subtractRollingMean(x,winsz),traces);
+%         traceMat = arrayfun(@(i) subtractRollingMean(traces(i, :), winsz), 1:size(traces, 1), 'UniformOutput', false);
+%         traceMat = cat(1, traceMat{1:end});
+%         untrimmedTraceMat = traceMat;
+%         if trimEnd
+%             traceMat = traceMat(:,1:crop);
+%             trimmedRawMat = traces(:,1:crop);
+%         end
         
         % Do FFT on each row:
-        N = size(traceMat,2);
+        N = size(traces,2);
         dt = 1/Fs;
         t = dt*(0:N-1)';
         dF = Fs/N;
@@ -87,7 +112,7 @@ for sidx = 1:length(slicesToUse)
         freqIdx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
 
         fftfun = @(x) fft(x)/N;
-        fftMat = cell2mat(arrayfun(@(i) fftfun(traceMat(i,:)), 1:size(traces, 1), 'UniformOutput', false)');
+        fftMat = cell2mat(arrayfun(@(i) fftfun(traces(i,:)), 1:size(traces, 1), 'UniformOutput', false)');
         fftMat = fftMat(:, 1:N/2);
         fftMat(:,2:end) = fftMat(:,2:end).*2;
         
@@ -103,10 +128,11 @@ for sidx = 1:length(slicesToUse)
         
         fftStruct.file(fidx).freqsAtMaxMag = maxFreqs;
         fftStruct.file(fidx).fftMat = fftMat;
-        fftStruct.file(fidx).traceMat = traceMat;
-        fftStruct.file(fidx).untrimmedTraceMat = untrimmedTraceMat;
-        fftStruct.file(fidx).rawMat = traces;
-        fftStruct.file(fidx).trimmedRawMat = trimmedRawMat;
+        fftStruct.file(fidx).traces = traces;
+        %fftStruct.file(fidx).traceMat = traceMat;
+        %fftStruct.file(fidx).untrimmedTraceMat = untrimmedTraceMat;
+        %fftStruct.file(fidx).rawMat = traces;
+        %fftStruct.file(fidx).trimmedRawMat = trimmedRawMat;
         fftStruct.file(fidx).sliceIdxs = sliceIdxs;
         fftStruct.file(fidx).targetFreq =targetFreq;
         fftStruct.file(fidx).freqs = freqs;
