@@ -146,6 +146,7 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
             if len(trigger_names) > 1:
                 print "Found > 1 name for frame-trigger:"
                 print "Choose: ", trigger_names
+                print "Hint: RSVP could be FrameTrigger, otherwise frame_trigger."
                 trigg_var_name = raw_input("Type var name to use: ")
                 trigg_evs = df.get_events(trigg_var_name)
             else:
@@ -351,6 +352,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             if len(trigger_names) > 1:
                 print "Found > 1 name for frame-trigger:"
                 print "Choose: ", trigger_names
+                print "Hint: RSVP could be FrameTrigger, otherwise frame_trigger."
                 trigg_var_name = raw_input("Type var name to use: ")
                 trigg_evs = df.get_events(trigg_var_name)
             else:
@@ -442,7 +444,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
                     tdevs.append(devs[lastdev])
                 
                 trialevents = imtrials + tdevs
-                trialevents = sorted(T, key=get_timekey)
+                trialevents = sorted(trialevents, key=get_timekey)
 
             # trial_ends = [i for i in df.get_events('Announce_TrialEnd') if i.value==1]
             
@@ -590,14 +592,14 @@ for mwfile in mw_files:
     elif stimtype == 'grating':
         # Need to find all unique grating types:
         all_combos = [(i.value[1]['rotation'], round(i.value[1]['frequency'],1)) for i in ievs]
-        gratings = sorted(list(set(all_combos))) # should be 35 for gratings -- sorted by orientation (7) x SF (5)
+        image_ids = sorted(list(set(all_combos))) # should be 35 for gratings -- sorted by orientation (7) x SF (5)
 
         mw_times = np.array([i.time for i in tevs])
         mw_codes = []
         for i in tevs:
             if len(i.value)>2: # contains image stim
                 stim_config = (i.value[1]['rotation'], round(i.value[1]['frequency'],1))
-                stim_idx = [gidx for gidx,grating in enumerate(sorted(gratings)) if grating==stim_config][0]+1
+                stim_idx = [gidx for gidx,grating in enumerate(sorted(image_ids)) if grating==stim_config][0]+1
             else:
                 stim_idx = 0
             mw_codes.append(stim_idx)
@@ -616,12 +618,33 @@ for mwfile in mw_files:
             #nsecs = 10500000 # 3500000
             nsecs = 10900000 # 3500000
         else:
-            nsecs = 3500000
+            nsecs = 3000000 #2100000
         find_matching_fidxs = np.where(t_mw_intervals > nsecs)[0]
         mw_file_idxs = [i+1 for i in find_matching_fidxs]
         mw_file_idxs.append(0)
         mw_file_idxs = np.array(sorted(mw_file_idxs))
         print "Found %i MW file chunks." % len(mw_file_idxs)
+        if len(trigg_times) != len(mw_file_idxs):
+            badparsing = True
+        else:
+            badparsing = False
+
+        while badparsing is True:
+            if len(trigg_times) < len(mw_file_idxs):
+                print "Current interval is: %i" % nsecs
+                nsecs = float(raw_input('Enter larger value: '))
+            else:
+                print "Current interval is: %i" % nsecs
+                nsecs = float(raw_input('Enter smaller value: '))
+            find_matching_fidxs = np.where(t_mw_intervals > nsecs)[0]
+            mw_file_idxs = [i+1 for i in find_matching_fidxs]
+            mw_file_idxs.append(0)
+            mw_file_idxs = np.array(sorted(mw_file_idxs))
+            print "Found %i MW file chunks." % len(mw_file_idxs)
+            if len(trigg_times) == len(mw_file_idxs):
+                print "GOT IT!"
+                badparsing = False
+
         rel_mw_times = mw_times - mw_times[0] # Divide by 1E6 to get in SEC
 
 
@@ -730,6 +753,7 @@ for mwfile in mw_files:
 
         if len(onsets) != len(offsets):
             print "N offsets %i does not match N onsets %i." % (len(offsets), len(onsets))
+            offsets.append(len(ard_evs)-1)
         else:
             print "N offsets and onsets match! Found %i frame events." % len(onsets)
 
@@ -868,7 +892,7 @@ for mwfile in mw_files:
         pydict['condtypes'] = sorted(image_ids)
         pydict['runs'] = runs.keys()
     elif stimtype=='grating':
-        pydict['condtypes'] = sorted(gratings)
+        pydict['condtypes'] = sorted(image_ids)
         pydict['runs'] = runs.keys()
 
     #if no_ard is False:
