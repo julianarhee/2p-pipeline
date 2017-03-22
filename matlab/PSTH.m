@@ -283,7 +283,7 @@ for sliceIdx=1:length(D.slices)
         stimstruct.slice(currSlice).(currStim).nRois = nRois;
         stimstruct.slice(currSlice).(currStim).nFramesPerTrial = currnpoints;
         stimstruct.slice(currSlice).(currStim).nTrials = nTrials;
-
+        stimstruct.slice(currSlice).(currStim).mwTrialTimes = tMW;
     end
 
 end
@@ -398,6 +398,7 @@ suptitle('Interp vs Raw traces by trial');
 acquisition_info;
 stimstruct = load(fullfile(D.outputDir, D.stimStructName));
 
+%trialstruct = load(fullfile(D.outputDir, D.trialStructName));
 
 %% PLOT:
 
@@ -416,7 +417,7 @@ for pIdx=1:nStim
     %raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
     interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
     mwinterpMat = stimstruct.slice(currSlice).(currStim).mwinterpMat;
-
+    tMW = stimstruct.slice(currSlice).(currStim).mwTrialTimes;
 
 
     [baseR, baseC] = find(mwinterpMat>=0);

@@ -4,7 +4,7 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
 
@@ -21,7 +21,7 @@ channelIdx = 1;
 %tiff_dir = sprintf('Corrected_Channel%02d', channelIdx);
 %tiff_dir = sprintf('Corrected');
 
-acquisitionName = 'fov2_rsvp_25reps';
+acquisitionName = 'fov2_rsvp_25reps_run3';
 %acquisitionName = 'fov1_bar037Hz_run4';
 
 
@@ -278,68 +278,35 @@ save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 
 % 1. Specifiy preprocessing method:
 % --------------------------------------------
-preprocessing = 'Acquisition2P';
+D.preprocessing = 'Acquisition2P';
 % preprocessing = 'raw';
 
 
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
-roiType = 'create_rois';
+D.roiType = 'create_rois';
 %roiType = 'condition';
 % roiType = 'pixels';
 
-switch roiType
+switch D.roiType
     case 'create_rois'
-        [fpath,fcond,~] = fileparts(sourceDir);
-        maskSource = fcond;
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
     case 'condition'
-        maskSource = 'retinotopy037Hz';
-        fprintf('Using pre-defined masks from condition: %s.\n', maskSource);
-        maskSourcePath = fullfile(fpath, maskSource);
-        pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
+        D.maskSource = 'rsvp';
+        D.maskDidx = 2;
+        D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
+        fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSourcePath = fullfile(fpath, D.maskSource);
+        pathToMasks = fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, 'masks');
         maskNames = dir(fullfile(pathToMasks, 'masks_*'));
         maskNames = {maskNames(:).name}';
-        maskPaths = cell(1, length(maskNames));
+        D.maskPaths = cell(1, length(maskNames));
         for maskIdx=1:length(maskNames)
-            maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
+            D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
         end
 end
-
-% [fpath,fcond,~] = fileparts(sourceDir);
-% if strcmp(roiType, 'condition')
-%     maskSource = 'retinotopy037Hz';
-%     maskSourcePath = fullfile(fpath, maskSource);
-%     pathToMasks = fullfile(maskSourcePath, 'analysis', datastruct, 'masks');
-%     maskNames = dir(fullfile(pathToMasks, 'masks_*'));
-%     maskNames = {maskNames(:).name}';
-%     maskPaths = cell(1, length(maskNames));
-%     for maskIdx=1:length(maskNames)
-%         maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
-%     end
-%     
-% end
-
-% roiType: 
-%   'create_rois' : create new ROIs using circle-GUI
-%   'smoothed_pixels' : use all pixels, but smooth with kernel size,
-%   ksize=2 (default)
-%   'prev_rois' : use previosuly-created ROIs 
-% --
-% TO DO:  1. option to specify kernel size
-%         2.  let user select which ROI set to use in a non-stupid way...
-
-% % -------------------------
-% channelIdx = 1;
-% 
-% % -------------------------
-% metaStructs = dir(fullfile(D.metaPath, sprintf('meta_%s*', acquisitionName)));
-% metaStructName = {metaStructs(:).name}';
-% metaPaths = cell(1, length(metaStructName));
-% for m=1:length(metaStructs)
-%     metaPaths{m} = fullfile(D.metaPath, metaStructName{m});
-% end
-% 
-
 
 % =========================================================================
 % Save analysis info:
@@ -355,14 +322,14 @@ end
 % end
 %D = struct();
 
-
-D.preprocessing = preprocessing;
-D.roiType = roiType;
-if strcmp(D.roiType, 'condition')
-    D.maskPaths = maskPaths;
-    D.maskSource = maskSource;
-    D.maskSourcePath = maskSourcePath;
-end
+% 
+% D.preprocessing = preprocessing;
+% D.roiType = roiType;
+% if strcmp(D.roiType, 'condition')
+%     D.maskPaths = maskPaths;
+%     D.maskSource = maskSource;
+%     D.maskSourcePath = maskSourcePath;
+% end
 
 save(fullfile(D.dstructPath, D.name), '-struct', 'D');
 
