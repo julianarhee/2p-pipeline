@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 19-Mar-2017 19:58:45
+% Last Modified by GUIDE v2.5 23-Mar-2017 10:37:54
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -88,7 +88,7 @@ handles.currRoiSlider.Value = str2double(hObject.String);
 newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
-[handles, D] = updateReferencePlot(handles, D, newReference, showRois)
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
 
 guidata(hObject,handles);
 
@@ -501,3 +501,19 @@ if tf1 && tf2
     %set(S.tx(2),'str',num2str([Cx,Cy],2))
     fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
 end
+
+
+% --- Executes on button press in stimShowAvg.
+function stimShowAvg_Callback(hObject, eventdata, handles)
+% hObject    handle to stimShowAvg (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of stimShowAvg
+
+
+% --- Executes on button press in stimShowAll.
+function stimShowAll_Callback(hObject, eventdata, handles)
+% hObject    handle to stimShowAll (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
