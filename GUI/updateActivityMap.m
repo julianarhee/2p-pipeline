@@ -35,9 +35,9 @@ switch selectedMapType
     case 'phase'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
-        handles.map = imagesc(handles.ax2, fov);
+        handles.map = imagesc(scalefov(fov));
         hold on;
-        handles.map = imagesc2(thresholdMap, handles.ax2);
+        handles.map = imagesc2(scalefov(thresholdMap));
         colormap(handles.ax2, hsv);
         caxis([min(displayMap(:)), max(displayMap(:))]);
         colorbar off;
@@ -45,9 +45,9 @@ switch selectedMapType
     case 'phasemax'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
-        handles.map = imagesc(handles.ax2, fov);
+        handles.map = imagesc(fov);
         hold on;
-        handles.map = imagesc2(thresholdMap, handles.ax2);
+        handles.map = imagesc2(scalefov(thresholdMap));
         colormap(handles.ax2, hsv);
         caxis([min(displayMap(:)), max(displayMap(:))]);
         colorbar off;
@@ -58,7 +58,7 @@ switch selectedMapType
         % 'magnitude'
         % 'maxDf'
         axes(handles.ax2);  
-        handles.map = imagesc2(displayMap); %, handles.ax2);
+        handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
         colormap(handles.ax2, hot);
         caxis([min(displayMap(:)), max(displayMap(:))])
         colorbar();
