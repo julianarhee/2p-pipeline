@@ -5,9 +5,9 @@
 % -------------------------------------------------------------------------
 % USER-INUPT:
 % -------------------------------------------------------------------------
-session = '20161221_JR030W';
-experiment = 'rsvp_run3';
-analysis_no = 2;
+session = '20161222_JR030W';
+experiment = 'retinotopy1';
+analysis_no = 1;
 tefo = false;
 
 % -------------------------------------------------------------------------
@@ -34,7 +34,7 @@ D = load(fullfile(analysisDir, datastruct));
 % nTiffs = D.nTiffs;
 % metaPath = D.metaPath;
 % maskType = D.maskType;
-% maskPaths = D.maskInfo.maskPaths;
+D.maskPaths = D.maskInfo.maskPaths;
 % slicesToUse = D.slices;
 % channelIdx = D.channelIdx;
 

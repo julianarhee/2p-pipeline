@@ -13,7 +13,7 @@ end
 
 nSlices = refMeta.file(1).si.nSlices;
 
-slicesToUse = D.slicesToUse;
+slicesToUse = D.slices;
 
 M = struct();
 

@@ -23,7 +23,8 @@ for sidx = 1:length(slicesToUse)
     fprintf('Processing traces for Slice %02d...\n', currSlice);
     
     % Assumes all TIFFs are reps of e/o, so just use file1:
-    winUnit = meta.file(1).mw.(1/targetFreq);
+    targetFreq = meta.file(1).mw.targetFreq;
+    winUnit = (1/targetFreq);
     crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
     processTraces(D, winUnit, crop)
 
@@ -42,6 +43,8 @@ fstart = tic();
 % For a given set of traces (on a given run) extracted from a slice, use 
 % corresponding metaInfo for maps.
 
+mapStructNames = cell(1,length(slicesToUse));
+fftStructNames = cell(1,length(slicesToUse));
 for sidx = 1:length(slicesToUse)
 
     currSlice = slicesToUse(sidx);
@@ -167,7 +170,7 @@ for sidx = 1:length(slicesToUse)
         maps.file(fidx).avgY = avgY;
 
         % --- Need to reshape into 2d image if using pixels:
-        if strcmp(roiType, 'pixels')
+        if strcmp(D.roiType, 'pixels')
             mapTypes = fieldnames(maps);
             for map=1:length(mapTypes)
                 currMap = maps.(mapTypes{map});
@@ -179,16 +182,18 @@ for sidx = 1:length(slicesToUse)
     end
     
     % Save maps for current slice:
-    mapStructName = sprintf('vecmaps_Slice%02d', currSlice);
-    save_struct(outputDir, mapStructName, maps);
+    mapStructName = sprintf('maps_Slice%02d', currSlice);
+    save_struct(D.outputDir, mapStructName, maps);
 
-    fftStructName = sprintf('vecfft_Slice%02d', currSlice);
-    save_struct(outputDir, fftStructName, fftStruct);
+    fftStructName = sprintf('fft_Slice%02d', currSlice);
+    save_struct(D.outputDir, fftStructName, fftStruct);
 
     %M.file(fidx) = maps;
     
     fprintf('Finished FFT analysis for Slice %02d.\n', currSlice);
     
+    mapStructNames{sidx} = mapStructName;
+    fftStructNames{sidx} = fftStructName;
 end
 
 clear fftStruct maps T
@@ -196,9 +201,14 @@ clear fftStruct maps T
 fprintf('TOTAL TIME ELAPSED:\n');
 toc(fstart);
 
+D.mapStructNames = mapStructNames;
+D.fftStructNames = fftStructNames;
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+
 %% Get dF/F maps:
 
-meta = load(metaPath);
+meta = load(D.metaPath);
 
 minDf = 20;
 
