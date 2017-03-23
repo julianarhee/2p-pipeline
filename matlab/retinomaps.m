@@ -17,18 +17,18 @@ nTiffs = meta.nTiffs;
 % -------------------------------------------------------------------------
 % Process traces for FFT analysis:
 % -------------------------------------------------------------------------
-for sidx = 1:length(slicesToUse)
+% for sidx = 1:length(slicesToUse)
+% 
+%     currSlice = slicesToUse(sidx);
+%     fprintf('Processing traces for Slice %02d...\n', currSlice);
+%     
+% Assumes all TIFFs are reps of e/o, so just use file1:
+targetFreq = meta.file(1).mw.targetFreq;
+winUnit = (1/targetFreq);
+crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+processTraces(D, winUnit, crop)
 
-    currSlice = slicesToUse(sidx);
-    fprintf('Processing traces for Slice %02d...\n', currSlice);
-    
-    % Assumes all TIFFs are reps of e/o, so just use file1:
-    targetFreq = meta.file(1).mw.targetFreq;
-    winUnit = (1/targetFreq);
-    crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
-    processTraces(D, winUnit, crop)
-
-end
+% end
 dfMin = 20;
 getDfMovie(D, dfMin);
 
@@ -76,6 +76,9 @@ for sidx = 1:length(slicesToUse)
         
         switch D.roiType
             case 'create_rois'
+                [d1,d2] = size(avgY);
+                [nrois, tpoints] = size(traces);
+            case 'condition'
                 [d1,d2] = size(avgY);
                 [nrois, tpoints] = size(traces);
             case 'pixels'

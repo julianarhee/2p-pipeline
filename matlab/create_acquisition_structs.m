@@ -4,7 +4,7 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy2';
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
@@ -20,7 +20,7 @@ end
 % Define TIFF dir to analysis for traces:
 channelIdx = 1;
 
-acquisitionName = 'fov1_bar037Hz_run4';
+acquisitionName = 'fov1_bar037Hz_retinotopy_run2';
 
 %acquisitionName = 'fov2_rsvp_25reps_run3';
 %acquisitionName = 'fov1_bar037Hz_run4';
@@ -159,8 +159,8 @@ D.preprocessing = 'Acquisition2P';
 
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
-D.roiType = 'create_rois';
-%D.roiType = 'condition';
+%D.roiType = 'create_rois';
+D.roiType = 'condition';
 %D.roiType = 'pixels';
 
 switch D.roiType
@@ -168,8 +168,8 @@ switch D.roiType
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
     case 'condition'
-        D.maskSource = 'rsvp';
-        D.maskDidx = 2;
+        D.maskSource = 'retinotopy1';
+        D.maskDidx = 1;
         D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
         fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
         

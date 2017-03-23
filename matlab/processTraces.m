@@ -27,14 +27,16 @@ slicesToUse = D.slices;
 
 for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
+    fprintf('Processing traces for Slice %02d...\n', currSlice);
 
     T = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     for tiffIdx=1:nTiffs
         meta = M.file(tiffIdx);
         % If corrected traceMat not found, correct and save, otherwise
         % just load corrected tracemat:
-        %if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
-
+        if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
+            fprintf('Creating new tracemat from processed traces...\n');
+            
             % 1. First, remove "bad" frames (too much motion), and
             % replace with Nans:
             currTraces = T.rawTraces.file{tiffIdx};
@@ -82,7 +84,7 @@ for sidx = 1:length(slicesToUse)
             save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'T');
 %         else
 %             traceMat = T.traceMat.file{tiffIdx};
-        %end
+        end
 
     end
 end
