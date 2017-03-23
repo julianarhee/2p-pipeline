@@ -23,12 +23,12 @@ switch maskType
         params = D.maskInfo;
         refNum = params.refNum;
         maskPaths = params.maskPaths;
-        slices = params.slicesToUse;
+        slices = D.slices;
     case 'pixels'
         params = D.params;
         smoothXY = params.smoothXY;
         ksize = params.kernelXY;
-        slices = params.slicesToUse;   
+        slices = D.slices;   
 end
 
 tracesPath = fullfile(D.datastructPath, 'traces');

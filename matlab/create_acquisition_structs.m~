@@ -4,7 +4,7 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy2';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1';
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
@@ -20,18 +20,17 @@ end
 % Define TIFF dir to analysis for traces:
 channelIdx = 1;
 
-acquisitionName = 'fov1_bar037Hz_retinotopy_run2';
+acquisitionName = 'fov1_rsvp_25reps_run3';
 
 %acquisitionName = 'fov2_rsvp_25reps_run3';
 %acquisitionName = 'fov1_bar037Hz_run4';
 
-extraTiffsExcluded = [];
-%extraTiffsExcluded = [9 10];
+extraTiffsExcluded = [9 10];
 
 
 %% Define datastruct name for analysis:
 
-didx = 1;
+didx = 2;
 
 datastruct = sprintf('datastruct_%03d', didx);
 dstructPath = fullfile(analysisDir, datastruct);
@@ -94,10 +93,6 @@ switch metaInfo
         siMetaName = sprintf('%s.mat', acquisitionName);
         
         if ~exist(fullfile(sourceDir, siMetaName))
-            
-            fprintf('No motion-corrected META data found...\n');
-            fprintf('Current acquisition is: %s\n', acquisitionName);
-            fprintf('Parsing SI tiffs, and creating new meta file.\n');
             
             % Load and parse raw TIFFs and create SI-specific meta file:
             movies = dir(fullfile(sourceDir,'*.tif'));
@@ -168,8 +163,8 @@ switch D.roiType
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
     case 'condition'
-        D.maskSource = 'retinotopy1';
-        D.maskDidx = 1;
+        D.maskSource = 'rsvp';
+        D.maskDidx = 2;
         D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
         fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
         
@@ -219,9 +214,9 @@ switch D.roiType
         % -----------------------------------------------------------------
         D.maskType = 'circles';
         D.maskInfo = struct();
-        D.maskInfo.refNum = D.refRun;
+        D.maskInfo.refNum = refRun;
         D.maskInfo.refMeta = refMeta;
-        D.maskInfo.maskType = D.maskType;
+        D.maskInfo.maskType = maskType;
 
         maskDir = fullfile(dstructPath, 'masks');
         maskStructs = dir(fullfile(maskDir, '*.mat'));

@@ -13,10 +13,10 @@ switch length(varargin)
         trimEnd = false;
     case 1
         trimEnd = true;
-        cropToFrame = varargin{2};
+        cropToFrame = varargin{1};
     case 2
         trimEnd = true;
-        cropToFrame = varargin{2};
+        cropToFrame = varargin{1};
 end
 
 M = load(D.metaPath);
@@ -27,6 +27,7 @@ slicesToUse = D.slices;
 
 for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
+    fprintf('Processing traces for Slice %02d...\n', currSlice);
 
     T = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     for tiffIdx=1:nTiffs
@@ -34,7 +35,8 @@ for sidx = 1:length(slicesToUse)
         % If corrected traceMat not found, correct and save, otherwise
         % just load corrected tracemat:
         if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
-
+            fprintf('Creating new tracemat from processed traces...\n');
+            
             % 1. First, remove "bad" frames (too much motion), and
             % replace with Nans:
             currTraces = T.rawTraces.file{tiffIdx};
@@ -75,8 +77,8 @@ for sidx = 1:length(slicesToUse)
                 untrimmedDCs = cat(1, untrimmedDCs{1:end});
                 untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat);
                 T.untrimmedTracemat.file{tiffIdx} = untrimmedTraceMat;
-                T.untrimmedDCs.file{fidx} = untrimmedDCs;
-                T.cropToFrame.file{fidx} = cropToFrame;
+                T.untrimmedDCs.file{tiffIdx} = untrimmedDCs;
+                T.cropToFrame.file{tiffIdx} = cropToFrame;
             end
 
             save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'T');
