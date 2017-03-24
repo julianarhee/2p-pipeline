@@ -239,10 +239,7 @@ switch maskType
                             maskcellTmp = arrayfun(@(roi) imresize(full(maskcellTmp{roi}), [size(maskcellTmp{roi},1)/2, size(maskcellTmp{roi},2)]), 1:nRois, 'UniformOutput', false);
                         end
                         maskcell = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
-                        maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
-                        maskStruct.file(fidx).maskcell = maskcell;
-                        [fp,fn,fe] = fileparts(maskPaths{sidx});
-                        save_struct(maskPaths{sidx}, strcat(fn,fe), maskStruct)
+                        save_struct(maskPaths{sidx}, maskStruct, )
                     else
                         maskcell = maskStruct.file(fidx).maskcell;
                     end
