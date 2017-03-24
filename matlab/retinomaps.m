@@ -65,7 +65,9 @@ for sidx = 1:length(slicesToUse)
         sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
         
         %traces = traceStruct.traces.file{fidx};
-        traces = tracestruct.traceMat.file{fidx};
+        traceMat = tracestruct.traceMat.file{fidx};
+        DCs = tracestruct.DCs.file{fidx};
+        traces = bsxfun(@minus, traceMat, DCs);
         avgY = tracestruct.avgImage.file{fidx};
         
         targetFreq = meta.file(fidx).mw.targetFreq;
