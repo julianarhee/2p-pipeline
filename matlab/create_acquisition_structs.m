@@ -332,8 +332,8 @@ switch D.roiType
         tic()
         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
         
-        D.maskInfo.params.nmfoptions = nmfstruct.options;
-        clear nmfstruct;
+        D.maskInfo.params.nmfoptions = nmfoptions;
+        clear nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         toc()
         
