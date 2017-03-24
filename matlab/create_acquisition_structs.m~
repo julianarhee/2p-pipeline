@@ -4,7 +4,7 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1';
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
@@ -20,12 +20,13 @@ end
 % Define TIFF dir to analysis for traces:
 channelIdx = 1;
 
-acquisitionName = 'fov1_rsvp_25reps_run3';
+%acquisitionName = 'fov1_bar037Hz_retinotopy_run2';
 
 %acquisitionName = 'fov2_rsvp_25reps_run3';
-%acquisitionName = 'fov1_bar037Hz_run4';
+acquisitionName = 'fov1_bar037Hz_run4';
 
-extraTiffsExcluded = [9 10];
+extraTiffsExcluded = [];
+%extraTiffsExcluded = [9 10];
 
 
 %% Define datastruct name for analysis:
@@ -82,7 +83,7 @@ else
 end
 
 D.tiffSource = tiffSource;
-save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 %% Get SI volume info:
@@ -90,18 +91,22 @@ save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
 switch metaInfo
     case 'SI'
        
-        siMetaName = sprintf('%s.mat', acquisitionName);
+        siMetaName = sprintf('%s.mat', D.acquisitionName);
         
-        if ~exist(fullfile(sourceDir, siMetaName))
+        if ~exist(fullfile(D.sourceDir, siMetaName))
+            
+            fprintf('No motion-corrected META data found...\n');
+            fprintf('Current acquisition is: %s\n', D.acquisitionName);
+            fprintf('Parsing SI tiffs, and creating new meta file.\n');
             
             % Load and parse raw TIFFs and create SI-specific meta file:
-            movies = dir(fullfile(sourceDir,'*.tif'));
+            movies = dir(fullfile(D.sourceDir,'*.tif'));
             movies = {movies(:).name};
-            writeDir = fullfile(sourceDir, tiffSource);
+            writeDir = fullfile(D.sourceDir, D.tiffSource);
             if ~exist(writeDir, 'dir')
                 mkdir(writeDir)
             end
-            parseSIdata(acquisitionName, movies, sourceDir, writeDir);
+            parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir);
             
             % Load newly-created meta struct:
             %siMeta = load(fullfile(sourceDir, siMetaName));
@@ -114,8 +119,8 @@ switch metaInfo
         fprintf('Created meta struct for current acquisition,\n');
         
         % Sort Parsed files into separate directories if needed:
-        if length(dir(fullfile(sourceDir, tiffSource))) > meta.nChannels
-            sort_parsed_tiffs(sourceDir, tiffSource, meta.nChannels);
+        if length(dir(fullfile(D.sourceDir, D.tiffSource))) > meta.nChannels
+            sort_parsed_tiffs(D.sourceDir, D.tiffSource, meta.nChannels);
         end
       
     case 'manual' % No motion-correction/processing, just using raw TIFFs.
@@ -136,7 +141,7 @@ D.nTiffs = meta.nTiffs;
 D.nChannels = meta.nChannels;
 D.stimType = meta.stimType;
 
-save(fullfile(dstructPath, datastruct), '-append', '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
  
 %% Set up experiment analysis parameters:
@@ -155,16 +160,17 @@ D.preprocessing = 'Acquisition2P';
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
 %D.roiType = 'create_rois';
-D.roiType = 'condition';
+%D.roiType = 'condition';
 %D.roiType = 'pixels';
+D.roiType = 'cnmf';
 
 switch D.roiType
     case 'create_rois'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
     case 'condition'
-        D.maskSource = 'rsvp';
-        D.maskDidx = 2;
+        D.maskSource = 'retinotopy1';
+        D.maskDidx = 1;
         D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
         fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
         
@@ -177,6 +183,9 @@ switch D.roiType
         for maskIdx=1:length(maskNames)
             D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
         end
+    case 'cnmf'
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
 end
 
 % =========================================================================
@@ -214,9 +223,9 @@ switch D.roiType
         % -----------------------------------------------------------------
         D.maskType = 'circles';
         D.maskInfo = struct();
-        D.maskInfo.refNum = refRun;
+        D.maskInfo.refNum = D.refRun;
         D.maskInfo.refMeta = refMeta;
-        D.maskInfo.maskType = maskType;
+        D.maskInfo.maskType = D.maskType;
 
         maskDir = fullfile(dstructPath, 'masks');
         maskStructs = dir(fullfile(maskDir, '*.mat'));
@@ -280,16 +289,41 @@ switch D.roiType
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
 
-    case 'nmf'
+    case 'cnmf'
         
-        maskType = 'nmf';
-        
+        D.maskType = 'contours';
+        D.slices = slicesToUse;
+
         % Get NMF params:
         % -----------------------------------------------------------------
-        params = struct();
+        D.params = struct();
         
+        D.params.K = 500; %50; %300; %50; %150; %35;                                      % number of components to be found
+        D.params.tau = 2; %2; %4;                                      % std of gaussian kernel (size of neuron) 
+        % tau = [1 1; 2 2];
+        % K = [100; 50];
+
+        D.params.p = 2;     % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+        D.params.merge_thr = 0.8;                                  % merging threshold
+
+%         D.params.options = CNMFSetParms(...                      
+%             'd1',d1,'d2',d2,...                         % dimensions of datasets
+%             'search_method','dilate','dist',3,...       % search locations when updating spatial components
+%             'deconv_method','constrained_foopsi',...    % activity deconvolution method
+%             'temporal_iter',2,...                       % number of block-coordinate descent steps 
+%             'fudge_factor',0.98,...                     % bias correction for AR coefficients
+%             'merge_thr',D.params.merge_thr,...                    % merging threshold
+%             'gSig',tau,...%'method','lars',... %jyr
+%             'thr_method', 'nrg'... %'max'...
+%             );
         
+        plotoutputs = false;
+        D.params.scaleFOV = true;
+        D.params.removeBadFrames = false;
+        nmfstructnames = getRoisNMF(D, meta, plotoutputs);
         
+        D.params.nmfoptions = nmfstruct.options;
+        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
         
         % =================================================================
         % Get traces:

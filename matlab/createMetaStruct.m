@@ -176,6 +176,7 @@ end
 meta.sourceDir = sourceDir;
 meta.acquisitionName = acquisitionName;
 
+meta.tiffPaths = tiffPaths;
 meta.nTiffs = nTiffs;
 meta.nChannels = siStruct.nChannels;
 

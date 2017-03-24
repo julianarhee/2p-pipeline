@@ -10,6 +10,7 @@ switch nargin
         end
         outmap = roimap;
     case 2
+        %sourcemat = varargin{2};
         freqs = varargin{2};
         outmap = zeros(size(maskcell{1},1), size(maskcell{1},2));
         for i=1:length(maskcell)
