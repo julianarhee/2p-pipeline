@@ -7,7 +7,9 @@ sliceMaskName = strcat(mn,me);
 maskStruct = load(fullfile(D.guiPrepend, mp, sliceMaskName));
 fprintf('Loading masks...\n');
 
-maskcell = maskStruct.maskcell;
+
+maskcell = maskStruct.maskcell; % masks created with create_rois.m
+
 
 
 end
