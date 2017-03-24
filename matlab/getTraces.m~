@@ -111,7 +111,6 @@ switch maskType
                     tic()
                     maskfunc = @(x,y) sum(sum(x.*y));
                     cellY = num2cell(Y, [1 2]);
-                    % For each frame of the movie, apply each ROI mask:
                     rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(full(c), frame), maskcell, 'UniformOutput', false), cellY, 'UniformOutput', false));
                     rawTraces = cell2mat(cat(2, rawTracesTmp{1:end}));
                     toc() % 44sec.
@@ -230,7 +229,7 @@ switch maskType
                     % 1 ROI mask is:  full(reshape(Aor(:,i),d1,d2));
                     %maskcell = maskStruct.maskcell;
                     maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2), 1:nRois, 'UniformOutput', false);
-                    if maskStruct.file(fidx).preprocessing.scaleFOV
+                    if maskStruct.preprocessing.scaleFOV
                         maskcellTmp = arrayfun(@(roi) imresize(maskcellTmp{roi}, [size(maskcellTmp{roi},1)*0.5, size((maskcellTmp{roi},2)]), 1:nRois, 'UniformOutput', false);
                     end
                     maskcell = cellfun(@(logical) maskcellTmp); % Does this work on sparse mats?
@@ -239,29 +238,24 @@ switch maskType
                     % TO DO:  
                     % Check frame-to-frame correlation for bad
                     % motion correction:
-                    if ~maskStruct.file(fidx).preprocessing.removeBadFrame
-                        checkframes = @(x,y) corrcoef(x,y);
-                        refframe = 1;
-                        corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,refframe)), 1:size(Y,3), 'UniformOutput', false);
+                    checkframes = @(x,y) corrcoef(x,y);
+                    refframe = 1;
+                    corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,refframe)), 1:size(Y,3), 'UniformOutput', false);
+                    corrs = cat(3, corrs{1:end});
+                    meancorrs = squeeze(mean(mean(corrs,1),2));
+                    badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*3); %find(meancorrs<0.795);
+                    
+                    if length(badframes)>1
+                        fprintf('Bad frames found in movie %s at: %s\n', currSliceName, mat2str(badframes(2:end)));
+                    end
+                    while length(badframes) >= size(Y,3)*0.25
+                        refframe = refframe +1 
+                        corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
                         corrs = cat(3, corrs{1:end});
                         meancorrs = squeeze(mean(mean(corrs,1),2));
-                        badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*3); %find(meancorrs<0.795);
-
-                        if length(badframes)>1
-                            fprintf('Bad frames found in movie %s at: %s\n', currSliceName, mat2str(badframes(2:end)));
-                        end
-                        while length(badframes) >= size(Y,3)*0.25
-                            refframe = refframe +1 
-                            corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
-                            corrs = cat(3, corrs{1:end});
-                            meancorrs = squeeze(mean(mean(corrs,1),2));
-                            badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2); %find(meancorrs<0.795);
-                        end
-                    else
-                        refframe = maskStruct.file(fidx).preprocessing.refframe;
-                        badframes = maskStruct.file(fidx).preprocessing.badframes;
-                        corrs = maskStruct.file(fidx).preprocessing.corrcoeffs;
+                        badframes = find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2); %find(meancorrs<0.795);
                     end
+                        
                         
                     %find(abs(meancorrs-mean(meancorrs))>=std(meancorrs)*2)
                     
@@ -291,7 +285,7 @@ switch maskType
                     T.avgImage.file(fidx) = {avgY};
                     T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
                     T.badFrames.file{fidx} = badframes;
-                    T.corrcoeffs.file{fidx} = corrs; %meancorrs;
+                    T.meancorrs.file{fidx} = meancorrs;
                     T.refframe.file(fidx) = refframe;
                     
                     %clearvars rawTraces rawTracesTmp cellY Y avgY corrs

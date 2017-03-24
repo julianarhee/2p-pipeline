@@ -320,11 +320,13 @@ switch D.roiType
         plotoutputs = false;
         D.params.scaleFOV = true;
         D.params.removeBadFrames = false;
-        [nmfstruct, D.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+        tic()
+        [nmfstruct, D.params.maskPaths] = getRoisNMF(D, meta, plotoutputs);
         
         D.params.nmfoptions = nmfstruct.options;
         clear nmfstruct;
         save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        toc()
         
         % =================================================================
         % Get traces:
