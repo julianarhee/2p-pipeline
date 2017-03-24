@@ -42,19 +42,24 @@ axes(handles.ax1);
 %     handles.avgimg = imagesc2(D.RGBimg);
 % end
 
-if showRois==1
-    if newReference==1
-        handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
-    else
-        handles.avgimg = findobj(handles.ax1, 'Type', 'image', '-depth', 1);
-        handles.avgimg.CData = D.masksRGBimg; %imshow(D.masksRGBimg);
-    end
-else
-    if newReference==1
-        handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
-    else
-        handles.avgimg.CData = D.RGBimg; % = imshow(D.RGBimg);
-    end
+switch D.maskType
+    case 'nmf'
+        handles.avgimg = plot_contours(maskcell,scalefov(D.masksRGBimg),D.maskInfo.nmfoptions,1);
+    otherwise
+        if showRois==1
+            if newReference==1
+                handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
+            else
+                handles.avgimg = findobj(handles.ax1, 'Type', 'image', '-depth', 1);
+                handles.avgimg.CData = D.masksRGBimg; %imshow(D.masksRGBimg);
+            end
+        else
+            if newReference==1
+                handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
+            else
+                handles.avgimg.CData = D.RGBimg; % = imshow(D.RGBimg);
+            end
+        end
 end
 
 handles.avgimg.HitTest = 'on';

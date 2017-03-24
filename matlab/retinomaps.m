@@ -212,64 +212,64 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 %% Get dF/F maps:
-
-meta = load(D.metaPath);
-
-minDf = 20;
-
-fftNames = dir(fullfile(outputDir, 'vecfft_*'));
-fftNames = {fftNames(:).name}';
-
-dfStruct = struct();
-for sidx = 1:length(slicesToUse)
-    currSlice = slicesToUse(sidx);
-    
-    M = load(maskPaths{sidx});
-    maskcell = M.maskcell;
-    clear M;
-    
-    traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
-    fftName = sprintf('vecfft_Slice%02d.mat', currSlice);
-    fftStruct = load(fullfile(outputDir, fftName));
-    %F = load(fullfile(outputDir, fftNames{sidx}));
-    
-    meanMap = zeros(d1, d2, 1);
-    maxMap = zeros(d1, d2, 1);
-    
-    for fidx=1:length(fftStruct.file)
-        activeRois = [];
-        nRois = length(maskcell);
-        
-        traces = traceStruct.traces.file{fidx};
-        raw = fftStruct.file(fidx).trimmedRawMat;
-        filtered = fftStruct.file(fidx).traceMat;
-        adjusted = filtered + mean(raw,3);
-        %dfFunc = @(x) (x-mean(x))./mean(x);
-        %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
-        dfMat = arrayfun(@(i) extractDfTrace(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false);
-        dfMat = cat(1, dfMat{1:end})*100;
-        
-        meanDfs = mean(dfMat,2);
-        maxDfs = max(dfMat, [], 2);
-        activeRois = find(maxDfs >= minDf);
-        fprintf('Found %i ROIs with dF/F > %02.f%%.\n', length(activeRois), minDf);
-        
-        meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
-        maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
-        
-        %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
-        %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
-        
-        dfStruct.file(fidx).meanMap = meanMap;
-        dfStruct.file(fidx).maxMap = maxMap;
-        dfStruct.file(fidx).dfMat = dfMat;
-        dfStruct.file(fidx).activeRois = activeRois;
-        dfStruct.file(fidx).minDf = minDf;
-        dfStruct.file(fidx).maxDfs = maxDfs;
-        
-    end
-    
-    dfName = sprintf('vecdf_Slice%02d', currSlice);
-    save_struct(outputDir, dfName, dfStruct);
-
-end
+% 
+% meta = load(D.metaPath);
+% 
+% minDf = 20;
+% 
+% fftNames = dir(fullfile(outputDir, 'vecfft_*'));
+% fftNames = {fftNames(:).name}';
+% 
+% dfStruct = struct();
+% for sidx = 1:length(slicesToUse)
+%     currSlice = slicesToUse(sidx);
+%     
+%     M = load(maskPaths{sidx});
+%     maskcell = M.maskcell;
+%     clear M;
+%     
+%     traceStruct = load(fullfile(tracesPath, traceNames{sidx}));
+%     fftName = sprintf('vecfft_Slice%02d.mat', currSlice);
+%     fftStruct = load(fullfile(outputDir, fftName));
+%     %F = load(fullfile(outputDir, fftNames{sidx}));
+%     
+%     meanMap = zeros(d1, d2, 1);
+%     maxMap = zeros(d1, d2, 1);
+%     
+%     for fidx=1:length(fftStruct.file)
+%         activeRois = [];
+%         nRois = length(maskcell);
+%         
+%         traces = traceStruct.traces.file{fidx};
+%         raw = fftStruct.file(fidx).trimmedRawMat;
+%         filtered = fftStruct.file(fidx).traceMat;
+%         adjusted = filtered + mean(raw,3);
+%         %dfFunc = @(x) (x-mean(x))./mean(x);
+%         %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
+%         dfMat = arrayfun(@(i) extractDfTrace(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false);
+%         dfMat = cat(1, dfMat{1:end})*100;
+%         
+%         meanDfs = mean(dfMat,2);
+%         maxDfs = max(dfMat, [], 2);
+%         activeRois = find(maxDfs >= minDf);
+%         fprintf('Found %i ROIs with dF/F > %02.f%%.\n', length(activeRois), minDf);
+%         
+%         meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
+%         maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+%         
+%         %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
+%         %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
+%         
+%         dfStruct.file(fidx).meanMap = meanMap;
+%         dfStruct.file(fidx).maxMap = maxMap;
+%         dfStruct.file(fidx).dfMat = dfMat;
+%         dfStruct.file(fidx).activeRois = activeRois;
+%         dfStruct.file(fidx).minDf = minDf;
+%         dfStruct.file(fidx).maxDfs = maxDfs;
+%         
+%     end
+%     
+%     dfName = sprintf('vecdf_Slice%02d', currSlice);
+%     save_struct(outputDir, dfName, dfStruct);
+% 
+% end
