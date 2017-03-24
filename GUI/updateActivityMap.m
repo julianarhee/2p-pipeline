@@ -53,9 +53,13 @@ handles.mapMenu.String = mapTypes;
     
 
 
+if handles.mapMenu.Value > length(mapTypes)
+    handles.mapMenu.Value = 1;
+end
 selectedMapIdx = handles.mapMenu.Value;
+
 selectedMapType = mapTypes{selectedMapIdx};
-if ismember(mapTypes, 'NaN')
+if (any(ismember(mapTypes, 'NaN')) || any(ismember(mapTypes, 'maxDf - not found')))
     displayMap = zeros(size(fov));
 elseif strcmp(selectedMapType, 'maxDf')
     displayMap = dfStruct.slice(selectedSlice).file(selectedFile).maxMap;

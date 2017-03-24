@@ -364,7 +364,7 @@ if noDF %isempty(dfStruct.slice(selectedSlice).file)
 else
     mapTypes{end+1} = 'maxDf';
 end
-%handles.mapMenu.String = mapTypes;
+handles.mapMenu.String = mapTypes;
 
 hObject.String = mapTypes;
 
