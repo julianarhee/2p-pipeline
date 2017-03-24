@@ -28,6 +28,7 @@ while loading==1
     else
         D.guiPrepend = '';
     end
+    setappdata(handles.roigui, 'D', D);
     
     % Load META data and set as appdata: ----------------------------------
     [fp,fn,fe] = fileparts(D.metaPath);
@@ -38,7 +39,6 @@ while loading==1
     end
     meta = load(fullfile(['/' mPath], 'meta', strcat(fn, fe)));
     
-    setappdata(handles.roigui, 'D', D);
     setappdata(handles.roigui, 'meta', meta);
     fprintf('Meta data loaded.\n');
 
@@ -95,6 +95,9 @@ while loading==1
         mapTypes{end+1} = 'maxDf';
     end
     handles.mapMenu.String = mapTypes;
+    
+    % Populate STIM menu options: -----------------------------------------
+    
     
     % Update UserData for selected path: ----------------------------------
     handles.selectDatastructPush.UserData.currPath = currPath;

@@ -364,7 +364,7 @@ if noDF %isempty(dfStruct.slice(selectedSlice).file)
 else
     mapTypes{end+1} = 'maxDf';
 end
-handles.mapMenu.String = mapTypes;
+%handles.mapMenu.String = mapTypes;
 
 hObject.String = mapTypes;
 
@@ -515,33 +515,74 @@ function ax1_ButtonDownFcn(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % WindowButtonMotionFcn for the figure.
-
+handles = guidata(hObject);
 %handles.avgimg.HitTest = 'off'
+maskcell = getappdata(handles.roigui,'maskcell');
+M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+M = cat(2,M{1:end});
 
-S.ax = hObject.Parent;
-S.axp = S.ax.Position;
-S.xlm = S.ax.XLim;
-S.ylm = S.ax.YLim;
-S.dfx = diff(S.xlm);
-S.dfy = diff(S.ylm);
+%hitpoint = eventdata.IntersectionPoint;
 
-F = S.ax.CurrentPoint  % The current point w.r.t the figure.
+currPoint = eventdata.IntersectionPoint;
 
-Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-%fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
-
-% Figure out of the current point is over the axes or not -> logicals.
-tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
-tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
-
-if tf1 && tf2
-    % Calculate the current point w.r.t. the axes.
-    Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-    Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-    %set(S.tx(2),'str',num2str([Cx,Cy],2))
-    fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+D = getappdata(handles.roigui, 'D');
+if strcmp(D.maskType, 'cnmf')
+    if D.maskInfo.params.scaleFOV
+        cp = [round(currPoint(1)) round(currPoint(2))];
+    else
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+    end
+else
+    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(handles.ax1,'CurrentPoint')
 end
+
+colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+[i,j,s] = find(M);
+roiIdx = find(i==colsubscript);
+if length(roiIdx)>1
+    roiIdx = roiIdx(1);
+end
+roiMatch = j(roiIdx);
+
+%fprintf('ROI: %i\n', roiMatch);
+handles.currRoi.String = num2str(round(str2double(hObject.String)));
+handles.currRoiSlider.Value = str2double(hObject.String);
+
+newReference = 0;
+showRois = handles.roiToggle.Value;
+D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
+
+
+
+guidata(hObject,handles);
+
+% Try this for highlting ROIs with hover only over ax1:
+% S.ax = hObject.Parent;
+% S.axp = S.ax.Position;
+% S.xlm = S.ax.XLim;
+% S.ylm = S.ax.YLim;
+% S.dfx = diff(S.xlm);
+% S.dfy = diff(S.ylm);
+% 
+% F = S.ax.CurrentPoint  % The current point w.r.t the figure.
+% 
+% Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+% Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+% %fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+% 
+% % Figure out of the current point is over the axes or not -> logicals.
+% tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
+% tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
+% 
+% if tf1 && tf2
+%     % Calculate the current point w.r.t. the axes.
+%     Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+%     Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+%     %set(S.tx(2),'str',num2str([Cx,Cy],2))
+%     fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+% end
 
 
 % --- Executes on button press in stimShowAvg.
