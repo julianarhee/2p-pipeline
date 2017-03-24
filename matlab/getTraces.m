@@ -242,7 +242,7 @@ switch maskType
                         maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
                         maskStruct.file(fidx).maskcell = maskcell;
                         [fp,fn,fe] = fileparts(maskPaths{sidx});
-                        save_struct(maskPaths{sidx}, strcat(fn,fe), maskStruct)
+                        save_struct(maskPaths{sidx}, strcat(fn,fe), maskStruct, 'append')
                     else
                         maskcell = maskStruct.file(fidx).maskcell;
                     end
