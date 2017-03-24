@@ -272,22 +272,26 @@ switch D.roiType
         
     case 'pixels'
         
+        D.slices = slicesToUse;
+        
         D.maskType = 'pixels';
+        D.maskInfo = struct();
         
         % Set smoothing/filtering params:
         % -----------------------------------------------------------------
-        D.params = struct();
-        D.params.smoothXY = true;
-        D.params.kernelXY = 5;
+        params = struct();
+        params.smoothXY = true;
+        params.kernelXY = 5;
         
-        D.slices = slicesToUse; % TMP 
-        D.params.slicesToUse = slicesToUse;
+        D.maskInfo.slices = slicesToUse; % TMP 
+        D.maskInfo.slicesToUse = slicesToUse;
+        D.maskInfo.params = params;
         
         % =================================================================
         % Get traces:
         % =================================================================
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
-        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
     case 'cnmf'
         
@@ -296,16 +300,16 @@ switch D.roiType
 
         % Get NMF params:
         % -----------------------------------------------------------------
-        D.params = struct();
+        D.maskInfo = struct();
         
-        D.params.K = 500; %50; %300; %50; %150; %35;                                      % number of components to be found
-        D.params.tau = 2; %2; %4;                                      % std of gaussian kernel (size of neuron) 
+        params.K = 500; %50; %300; %50; %150; %35;                                      % number of components to be found
+        params.tau = 2; %2; %4;                                      % std of gaussian kernel (size of neuron) 
         % tau = [1 1; 2 2];
         % K = [100; 50];
 
-        D.params.p = 2;     % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-        D.params.merge_thr = 0.8;                                  % merging threshold
-
+        params.p = 2;     % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+        params.merge_thr = 0.8;                                  % merging threshold
+        
 %         D.params.options = CNMFSetParms(...                      
 %             'd1',d1,'d2',d2,...                         % dimensions of datasets
 %             'search_method','dilate','dist',3,...       % search locations when updating spatial components
@@ -318,19 +322,25 @@ switch D.roiType
 %             );
         
         plotoutputs = false;
-        D.params.scaleFOV = true;
-        D.params.removeBadFrames = false;
-        tic()
-        [nmfstruct, D.params.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+        params.scaleFOV = true;
+        params.removeBadFrames = false;
         
-        D.params.nmfoptions = nmfstruct.options;
+        D.maskInfo.params = params;
+        D.maskInfo.maskType = D.maskType;
+        D.maskInfo.slices = slicesToUse;
+        
+        tic()
+        [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+        
+        D.maskInfo.params.nmfoptions = nmfstruct.options;
         clear nmfstruct;
-        save(fullfile(D.dstructPath, D.name), '-append', '-struct', 'D');
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         toc()
         
         % =================================================================
         % Get traces:
         % =================================================================
-        [tracesPath, nSlicesTrace] = getTraces(D, maskType, [], params); 
-                    
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+ 
 end

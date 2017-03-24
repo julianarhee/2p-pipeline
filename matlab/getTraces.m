@@ -20,20 +20,17 @@ maskType = D.maskType;
 
 switch maskType
     case 'circles'
-        params = D.maskInfo;
-        refNum = params.refNum;
-        maskPaths = params.maskPaths;
-        slices = D.slices;
+        refNum = D.maskInfo.refNum;
+        maskPaths = D.maskInfo.maskPaths;
+        slices = D.maskInfo.slices;
     case 'pixels'
-        params = D.params;
-        smoothXY = params.smoothXY;
-        ksize = params.kernelXY;
-        slices = D.slices;   
+        smoothXY = D.maskInfo.params.smoothXY;
+        ksize = D.maskInfo.params.kernelXY;
+        slices = D.maskInfo.slices;   
     case 'contours'
-        params = D.params;
         %refNum = params.refNum;
-        maskPaths = params.maskPaths;
-        slices = D.slices;
+        maskPaths = D.maskInfo.maskPaths;
+        slices = D.maskInfo.slices;
 end
 
 tracesPath = fullfile(D.datastructPath, 'traces');
