@@ -113,7 +113,7 @@ function stimMenu_Callback(hObject, eventdata, handles)
 
 % Hints: contents = cellstr(get(hObject,'String')) returns stimMenu contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from stimMenu
-D = getappdata(handles.roigui,'D');
+%D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
 hObject.String = meta.condTypes;
 hObject.UserData.stimType = hObject.String;
@@ -475,6 +475,7 @@ if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     end
     showRois = handles.roiToggle.Value;
     [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+    set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
     setappdata(handles.roigui, 'D', D);
 
     % Update activity map:
@@ -534,7 +535,7 @@ if strcmp(D.maskType, 'cnmf')
         cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
     end
 else
-    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(handles.ax1,'CurrentPoint')
+    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
 end
 
 colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
@@ -545,6 +546,7 @@ if length(roiIdx)>1
     roiMatch = j(roiIdx);
 elseif length(roiIdx)==0
     roiMatch = handles.currRoi.UserData.currRoi; 
+    fprintf('Try again, you did not select an ROI...\n');
 else
     roiMatch = j(roiIdx);
 end
@@ -600,6 +602,12 @@ function stimShowAvg_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % Hint: get(hObject,'Value') returns toggle state of stimShowAvg
+if hObject.Value
+    handles.stimMenu.Enable = 'off';
+else
+    handles.stimMenu.Enable = 'on';
+end
+
 
 
 % --- Executes on button press in stimShowAll.

@@ -100,7 +100,7 @@ switch selectedMapType
         axes(handles.ax2);  
         handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
         colormap(handles.ax2, hot);
-        caxis([min(displayMap(:)), max(displayMap(:))])
+        caxis([min(displayMap(:)), max(displayMap(:))]);
         colorbar();
 
     

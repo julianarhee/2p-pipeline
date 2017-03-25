@@ -97,7 +97,10 @@ while loading==1
     handles.mapMenu.String = mapTypes;
     
     % Populate STIM menu options: -----------------------------------------
-    
+    %meta = getappdata(handles.roigui, 'meta');
+    handles.stimMenu.String = meta.condTypes;
+    handles.stimMenu.UserData.stimType = handles.stimMenu.String;
+
     
     % Update UserData for selected path: ----------------------------------
     handles.selectDatastructPush.UserData.currPath = currPath;

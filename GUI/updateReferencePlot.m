@@ -55,11 +55,13 @@ switch D.maskType
         % ***************************
         handles.avgimg = plot_contours(maskcell,scalefov(D.masksRGBimg),D.maskInfo.nmfoptions,1);
     otherwise
-        if showRois==1
+        if showRois
             if newReference==1
                 handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
                 set(gca,'YDir','reverse')
-                set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
+                %set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
+                set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+                %set(handles.avgimg, 'ButtonDownFcn', current_cb);
                 %pause(0.1);
             else
                 %handles.avgimg = findobj(handles.ax1, 'Type', 'image')%, '-depth', 1);
@@ -69,15 +71,21 @@ switch D.maskType
             end
         else
             if newReference==1
-                handles.avgimg = imagesc2(scalefov(flipud(D.RGBimg))); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
-                set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
+                handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
+                %set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
+                set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+                %set(handles.avgimg, 'ButtonDownFcn', current_cb);
                 %pause(0.1);
             else
-                handles.avgimg.CData = scalefov(flipud(D.masksRGBimg)); % = imshow(D.RGBimg);
+                handles.avgimg.CData = scalefov(D.RGBimg); % = imshow(D.RGBimg);
                 %pause(0.1);
             end
         end
 end
+
+% child_handles = allchild(handles.avgimg);
+% set(child_handles,'HitTest','off');
+
 
 %handles.avgimg.HitTest = 'off'; %'on';
 %handles.avgimg.PickableParts = 'none'; %'visible';
