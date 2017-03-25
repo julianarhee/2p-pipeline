@@ -241,6 +241,8 @@ else
 end
 showRois = handles.roiToggle.Value;
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
 setappdata(handles.roigui, 'D', D);
 
 % Update activity map:

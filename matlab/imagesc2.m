@@ -9,7 +9,7 @@ function h = imagesc2 ( img_data, varargin)
 %axes(ax)
 h = imagesc(img_data);
 %h = imagesc(img_data);
-axis image on%off
+axis image off
 
 % setting alpha values
 if ndims( img_data ) == 2
