@@ -1,4 +1,4 @@
-function dfstruct = getDfMovie(D, varargin)
+function DF = getDfMovie(D, varargin)
 
 % Get dF/F maps:
 
@@ -22,12 +22,10 @@ slicesToUse = D.slices;
 dfstruct = struct();
 for sidx = 1:length(slicesToUse)
    
-    
     currSlice = slicesToUse(sidx);
+    fprintf('Processing SLICE %i...\n', currSlice);
     
-    M = load(D.maskPaths{sidx});
-    maskcell = M.maskcell;
-    clear M;
+    meta = load(D.maskPaths{sidx});
     
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     %fftName = sprintf('%s_Slice%02d.mat', fftPrepend, currSlice);
@@ -35,26 +33,35 @@ for sidx = 1:length(slicesToUse)
     %F = load(fullfile(outputDir, fftNames{sidx}));
         
     for fidx=1:nTiffs
+        if isfield(meta, 'file')
+            maskcell = meta.file(fidx).maskcell;
+        else
+            maskcell = meta.maskcell;
+        end
+        
         activeRois = [];
         nRois = length(maskcell);
         
-        avgY = tracestruct.avgImage.file{fidx};
-        adjustTraces = tracestruct.traceMat.file{fidx}; 
+        avgY = tracestruct.file(fidx).avgImage;
+        adjustTraces = tracestruct.file(fidx).traceMat; 
         % --> This is already corrected with DC -- do the following to get back
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
         
         switch D.roiType
             case 'create_rois'
                 [d1,d2] = size(avgY);
-                [nrois, tpoints] = size(adjustTraces);
+                [nframes, nrois] = size(adjustTraces);
             case 'condition'
                 [d1,d2] = size(avgY);
-                [nrois, tpoints] = size(adjustTraces);
+                [nframes, nrois] = size(adjustTraces);
             case 'pixels'
                 %[d1,d2,tpoints] = size(T.traces.file{fidx});
                 [d1, d2] = size(avgY);
-                tpoints = size(adjustTraces,2);
+                nframes = size(adjustTraces,1);
                 nrois = d1*d2;
+            case 'cnmf'
+                [d1,d2] = size(avgY);
+                [nframes, nrois] = size(adjustTraces);
         end
         meanMap = zeros(d1, d2, 1);
         maxMap = zeros(d1, d2, 1);
@@ -68,13 +75,14 @@ for sidx = 1:length(slicesToUse)
         
         %dfFunc = @(x) (x-mean(x))./mean(x);
         %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
-        dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
-        dfMat = cat(1, dfMat{1:end})*100;
+%         dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
+        dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(:,i)), 1:nrois, 'UniformOutput', false);
+        dfMat = cat(2, dfMat{1:end})*100;
         
-        meanDfs = mean(dfMat,2);
-        maxDfs = max(dfMat, [], 2);
+        meanDfs = mean(dfMat,1);
+        maxDfs = max(dfMat);
         activeRois = find(maxDfs >= minDf);
-        fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), size(dfMat,1), minDf);
+        fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, minDf);
         
         meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
         maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
@@ -105,8 +113,10 @@ end
 dfName = sprintf('dfstruct.mat');
 save_struct(D.outputDir, dfName, DF);
 
-D.dfStructName = dfName;
-save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+DF.name = dfName;
+
+% D.dfStructName = dfName;
+% save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
    
 end

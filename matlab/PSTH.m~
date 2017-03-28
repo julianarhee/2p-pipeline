@@ -374,15 +374,16 @@ for sliceIdx=1:length(D.slices)
         %df = cellfun(@(roi) roi.', df, 'UniformOutput', false);
         % --> each cell contains mxn mat : m=frames, n=trials
         % --> each cell in df array belongs to a given ROI
-        stimstruct.slice(currSlice).(currStim).dfCell = df;              % df{1} contains MxN mat:  M (each row) is a trial, and N (cols) is a frame/tpoint.
-        stimstruct.slice(currSlice).(currStim).baselineCell = baselines; % B{1} contains T values, each value is mean of baseline period for trial T
+        stimstruct.slice(currSlice).(currStim).slice(currSlice).(currStim).dfCell = df;              % df{1} contains MxN mat:  M (each row) is a trial, and N (cols) is a frame/tpoint.
+        stimstruct.slice(currSlice).(currStim).slice(currSlice).(currStim).baselineCell = baselines; % B{1} contains T values, each value is mean of baseline period for trial T
         
         
     end
 end
 
 
-save(fullfile(D.outputDir, D.stimStructName), '-append', '-struct', 'stimstruct');
+stimstructName = 'processedTraces.mat';
+save(fullfile(D.outputDir, D.stim
 
 D.stimStructName = stimstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
@@ -423,7 +424,6 @@ for pIdx=1:nStim
     subplot(pRows, round(nStim/pRows), pIdx)
 
     % Plot each trial for current stimulus:
-    figure();
     for trial=1:size(dfMat, 1);
         trial
         plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);

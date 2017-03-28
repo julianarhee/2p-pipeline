@@ -4,27 +4,23 @@ nargin = length(varargin);
 
 switch nargin
     case 1
-        % standard case: assign ROI in 'roimap' to value at 'idx' (index
-        % into 'roivecs') 
         idx = varargin{1};
         for i=1:length(maskcell)
-            roimap(maskcell{i}) = roivecs(idx,i);
+            roimap(full(maskcell{i})==1) = roivecs(idx,i);
+            %roimap(maskcell{i}) = roivecs(idx,i);
         end
         outmap = roimap;
     case 2
-        % max case:  find 'idx' that meets some condition related to
-        % 'freqs', then use this to index into 'roimap'
+        %sourcemat = varargin{2};
         freqs = varargin{2};
         outmap = zeros(size(maskcell{1},1), size(maskcell{1},2));
         for i=1:length(maskcell)
             idx = find(freqs==freqs(roivecs(:,i)==max(roivecs(:,i))));
-            outmap(maskcell{i}) = roimap(idx,i);
+            outmap(full(maskcell{i})==1) = roimap(i, idx);
         end
     case 0
-        % simple case:  assign ROI in 'roimap' to corresponding roi idx
-        % provided in 'roivecs'
         for i=1:length(maskcell)
-            roimap(maskcell{i}) = roivecs(i);
+            roimap(full(maskcell{i})==1) = roivecs(i);
         end
         outmap = roimap;
 end

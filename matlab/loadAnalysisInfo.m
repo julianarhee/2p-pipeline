@@ -1,7 +1,7 @@
 % Run this to grab relevant experiment info after acquisition struct has
 % been created.
 
-function loadAnalysisInfo(session,experiment, varargin)
+function [D] = loadAnalysisInfo(session,experiment, varargin)
 % -------------------------------------------------------------------------
 % USER-INUPT:
 % -------------------------------------------------------------------------
@@ -14,7 +14,7 @@ switch length(varargin)
         analysis_no = varargin{1};
         tefo = false;
     case 2
-        analys_no = varargin{1};
+        analysis_no = varargin{1};
         tefo = varargin{2};
 end
 % -------------------------------------------------------------------------

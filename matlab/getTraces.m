@@ -49,7 +49,7 @@ switch maskType
         for cidx=1:nchannels
             %T = struct();  
             
-            parfor sidx = 1:length(slices)
+            for sidx = 1:length(slices)
                 T = struct();  
                 % Load manually-drawn circle ROIs:
                 currSliceIdx = slices(sidx);
@@ -82,7 +82,7 @@ switch maskType
                         fprintf('Bad frames found in movie %s at: %s\n', currSliceName, mat2str(badframes(2:end)));
                     end
                     while length(badframes) >= size(Y,3)*0.25
-                        refframe = refframe +1 
+                        refframe = refframe +1;
                         corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
                         corrs = cat(3, corrs{1:end});
                         meancorrs = squeeze(mean(mean(corrs,1),2));
@@ -106,21 +106,51 @@ switch maskType
 %                     toc() % 100sec (looping over rois = 120sec)
 %                     
                     tic()
-                    maskfunc = @(x,y) sum(sum(x.*y));
+                    %maskfunc = @(x,y) sum(sum(x.*y));
+                    %cellY = num2cell(Y, [1 2]);
+                    %rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(full(c), frame), masklog), cellY, 'UniformOutput', false));
+
+                    maskfunc = @(x,y) sum(x(y)); % way faster
                     cellY = num2cell(Y, [1 2]);
                     % For each frame of the movie, apply each ROI mask:
-                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(full(c), frame), maskcell, 'UniformOutput', false), cellY, 'UniformOutput', false));
-                    rawTraces = cell2mat(cat(2, rawTracesTmp{1:end}));
+                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(frame, c), maskcell.'), cellY, 'UniformOutput', false));
+                    rawTraces = cat(1, rawTracesTmp{1:end});
+                    
                     toc() % 44sec.
+                    fprintf('Size rawTraces mat: %s\n', mat2str(size(rawTraces)));
+
                     % ---------------
                     
-                    T.rawTraces.file(fidx) = {rawTraces};
+                    [nr,nc] = size(avgY);
+                    nFrames = size(Y,3);
+                    
+%                     maskfunc = @(x,y) sum(sum(x.*y));
+%                     cellY = num2cell(Y, [1 2]);
+%                     %rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(roi) maskfunc(full(roi), frame), maskcell), cellY, 'UniformOutput', false));
+%                     rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(roi) maskfunc(full(roi), frame), maskcell), cellY, 'UniformOutput', false));
+% 
+%                     rawTraces = cat(1, rawTracesTmp{1:end});
+%                     fprintf('Size rawTraces mat: %s\n', mat2str(size(rawTraces)));
+%                     
+                    
+%                     T.rawTraces.file{fidx} = rawTraces;
+%                     %T.masks.file(fidx) = {masks};
+%                     T.avgImage.file{fidx} = avgY;
+%                     T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
+%                     T.badFrames.file(fidx) = badframes;
+%                     T.meancorrs.file{fidx} = meancorrs;
+%                     T.refframe.file(fidx) = refframe;
+                    
+                    T.file(fidx).rawTraces = rawTraces;
                     %T.masks.file(fidx) = {masks};
-                    T.avgImage.file(fidx) = {avgY};
-                    T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
-                    T.badFrames.file{fidx} = badframes;
-                    T.meancorrs.file{fidx} = meancorrs;
-                    T.refframe.file(fidx) = refframe;
+                    T.file(fidx).avgImage = avgY;
+                    T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
+                    T.file(fidx).badFrames = badframes;
+                    T.file(fidx).corrcoeffs = corrs;
+                    T.file(fidx).refframe = refframe;
+                    T.file(fidx).info.szFrame = size(avgY);
+                    T.file(fidx).info.nFrames = nFrames;
+                    T.file(fidx).info.nRois = length(maskcell);
                     
                     %clearvars rawTraces rawTracesTmp cellY Y avgY corrs
                     
@@ -143,7 +173,7 @@ switch maskType
 
     case 'pixels'
         % do stuff
-        for channel=1:nchannels
+        for cidx=1:nchannels
 
             parfor sidx=1:length(slices)
                 T = struct();
@@ -156,7 +186,7 @@ switch maskType
                     %meta = load(metaPaths{fidx});
                     slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
                     currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
-                                        acquisitionName, currSliceIdx, channel, fidx);             % Use name of reference slice TIFF to get current slice fn
+                                        acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
                     avgY = mean(Y, 3);
 
@@ -195,8 +225,8 @@ switch maskType
         
     case 'contours'
         % do other stuff
-        for channel=1:nchannels
-            parfor sidx=1:length(slices)
+        for cidx=1:nchannels
+           for sidx=1:length(slices)
                 
                 T = struct();  
 
@@ -204,15 +234,15 @@ switch maskType
                 fprintf('Processing %i (slice %i) of %i SLICES.\n', sidx, currSliceIdx, length(slices));
                 
                 % Load masks for current slice:
-                maskStruct=load(maskPaths{sidx});
+                maskStruct=load(D.maskInfo.maskPaths{sidx});
 
                 % Load current slice movie and apply mask from refRun:
                 for fidx = 1:nTiffs
-                    
+                    fidx
                     % Get current slice (corrected):
                     slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
                     currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
-                                        acquisitionName, currSliceIdx, channel, fidx);             % Use name of reference slice TIFF to get current slice fn
+                                        acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
                     
                     % TODO:
@@ -220,7 +250,7 @@ switch maskType
                     % instead...
                     % *********************************
                     % Get current masks:
-                    if ~isfield(maskStruct.file(fidx), 'maskcell')
+                    %if ~isfield(maskStruct.file(fidx), 'maskmat') || isempty(maskStruct.file(fidx).maskmat)
                         roiMat = maskStruct.file(fidx).rois;
                         nRois = size(roiMat,2);
                         d1=maskStruct.file(fidx).options.d1;
@@ -233,7 +263,9 @@ switch maskType
                         % 1 ROI mask is:  full(reshape(Aor(:,i),d1,d2));
                         %maskcell = maskStruct.maskcell;
                         % MASKCELL - this is a cell array where each ROI of the
-                        % current slice is stored as a sparse 
+                        % current slice is stored as a sparse
+                    %if ~isfield(maskStruct.file(fidx), 'maskcell') || isempty(maskStruct.file(fidx).maskcell)
+                        tic()
                         maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2), 1:nRois, 'UniformOutput', false);
                         if maskStruct.file(fidx).preprocessing.scaleFOV
                             maskcellTmp = arrayfun(@(roi) imresize(full(maskcellTmp{roi}), [size(maskcellTmp{roi},1)/2, size(maskcellTmp{roi},2)]), 1:nRois, 'UniformOutput', false);
@@ -241,11 +273,23 @@ switch maskType
                         maskcell = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
                         maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
                         maskStruct.file(fidx).maskcell = maskcell;
+                        toc()
+
                         [fp,fn,fe] = fileparts(maskPaths{sidx});
-                        save_struct(maskPaths{sidx}, strcat(fn,fe), maskStruct, 'append')
-                    else
-                        maskcell = maskStruct.file(fidx).maskcell;
-                    end
+                        save_struct(fp, strcat(fn,fe), maskStruct, 'append')
+                    %else
+                        %maskcell = maskStruct.file(fidx).maskcell;
+%                             maskmat = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+%                             %maskmat = cat(2,maskmat{1:end});
+%                             maskStruct.file(fidx).maskmat = maskmat;
+%                             [fp,fn,fe] = fileparts(maskPaths{sidx});
+%                             save_struct(fp, strcat(fn,fe), maskStruct, 'append')
+                    %end
+%                     else
+%                         maskcell = maskStruct.file(fidx).maskcell;
+%                         maskmat = maskStruct.file(fidx).maskmat;
+%                     end
+
                     % Check frame-to-frame correlation for bad
                     % motion correction:
                     if ~maskStruct.file(fidx).preprocessing.removeBadFrame
@@ -273,23 +317,55 @@ switch maskType
                     end
                                             
                     avgY = mean(Y, 3);
+                    [nr,nc] = size(avgY);
+                    nFrames = size(Y,3);
 
                     % Use masks to extract time-series trace of each ROI:
-                    tic()
-                    maskfunc = @(x,y) sum(sum(x.*y));
-                    cellY = num2cell(Y, [1 2]);
-                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(full(c), frame), maskcell, 'UniformOutput', false), cellY, 'UniformOutput', false));
-                    rawTraces = cell2mat(cat(2, rawTracesTmp{1:end}));
-                    toc() % 44sec.
-                    % ---------------
+%                     tic()
+%                     maskfunc = @(x,y) sum(sum(x.*y));
+%                     %cellY = num2cell(Y, [1 2]);
+%                     nFrames = size(Y,3);
+%                     nRois = size(maskmat, 2);
+%                     rawTracesTmp = arrayfun(@(frame) arrayfun(@(roi) maskfunc(reshape(maskmat(:,roi),nr,nc), Y(:,:,frame)), 1:nRois, 'UniformOutput', false), 1:nFrames, 'UniformOutput', false);
+%                     rawTraces = cell2mat(cat(1, rawTracesTmp{1:end}));
+%                     toc() % 44sec.
 
-                    T.rawTraces.file(fidx) = {rawTraces};
+                    
+%                     tic()
+%                     maskfunc = @(x,y) sum(sum(x.*y));
+%                     cellY = num2cell(Y, [1 2]);
+%                     %rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(roi) maskfunc(full(roi), frame), maskcell), cellY, 'UniformOutput', false));
+%                     rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(roi) maskfunc(full(roi), frame), maskcell), cellY, 'UniformOutput', false));
+% 
+%                     rawTraces = cat(2, rawTracesTmp{1:end});
+%                     fprintf('Size rawTraces mat: %s\n', mat2str(size(rawTraces)));
+%                     
+%                     toc() % 20sec.
+                    
+                    tic()
+                    % maskcell should be a cell array of logicals of size
+                    % (1,nRois).  Each logical aray is a saprse mat whose
+                    % full size is size(avgY).
+                    maskfunc = @(x,y) sum(x(y)); % way faster
+                    cellY = num2cell(Y, [1 2]);
+                    % For each frame of the movie, apply each ROI mask:
+                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(frame, c), maskcell), cellY, 'UniformOutput', false));
+                    rawTraces = cat(1, rawTracesTmp{1:end});
+                    toc() % 44sec.
+                    fprintf('Size rawTraces mat: %s\n', mat2str(size(rawTraces)));
+                    % ---------------   
+
+                    T.file(fidx).rawTraces = rawTraces;
                     %T.masks.file(fidx) = {masks};
-                    T.avgImage.file(fidx) = {avgY};
-                    T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
-                    T.badFrames.file{fidx} = badframes;
-                    T.corrcoeffs.file{fidx} = corrs; %meancorrs;
-                    T.refframe.file(fidx) = refframe;
+                    T.file(fidx).avgImage = avgY;
+                    T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
+                    T.file(fidx).badFrames = badframes;
+                    T.file(fidx).corrcoeffs = corrs;
+                    T.file(fidx).refframe = refframe;
+                    T.file(fidx).info.szFrame = size(avgY);
+                    T.file(fidx).info.nFrames = nFrames;
+                    T.file(fidx).info.nRois = length(maskcell);
+                    
                     
                     %clearvars rawTraces rawTracesTmp cellY Y avgY corrs
                     

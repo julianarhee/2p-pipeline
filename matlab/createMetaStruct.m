@@ -33,7 +33,7 @@ mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection);
 % Get paths to CORRECTED tiffs:
 channelDir = sprintf('Channel%02d', channelIdx);
 tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
-tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'),tmpTiffs));
+tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpTiffs));
 tiffDirs = {tmpTiffs(:).name}';
 nTiffs = length(tiffDirs);
 fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffs);
@@ -112,7 +112,7 @@ for fidx=1:nTiffs
         else
             siSec = ardSec;
         end
-        siDur = double(mw.pymat.(currRunName).SIdur) / 1E6;
+        siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
     else
         % Can either just use SI's time stamps, or interpolate from MW
         % duration...
@@ -128,7 +128,7 @@ for fidx=1:nTiffs
     meta.file(fidx).mw.mwDur = mwDur;
     meta.file(fidx).mw.siSec = siSec;
     meta.file(fidx).mw.siDur = siDur;
-
+    fprintf('Tiff %i dur is: %02.2d\n', fidx, siSec(end));
     
 %     if exist('siFrameTimes')
 %         siSec = siFrameTimes;
@@ -183,13 +183,17 @@ meta.nChannels = siStruct.nChannels;
 meta.nMW = mwStruct.mw2si;
 meta.stimType = mwStruct.stimType;
 condtypes = cell(1,length(condTypes));
-if strcmp(meta.stimType, 'bar')
-    meta.condTypes = mw.condTypes;
-    else
+if strcmp(meta.stimType, 'image')
     for c=1:length(condTypes)
         condtypes{c} = ['stim' num2str(str2num(condTypes{c})+1)];
     end
-    meta.condTypes = condtypes;
+else    
+    meta.condTypes = mw.condTypes;
+%     else
+%     for c=1:length(condTypes)
+%         condtypes{c} = ['stim' num2str(str2num(condTypes{c})+1)];
+%     end
+%     meta.condTypes = condtypes;
 end
 
 % Save META struct:

@@ -31,7 +31,6 @@ for sidx = 1:length(slicesToUse)
 
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     for tiffIdx=1:nTiffs
-        tiffIdx
         meta = metastruct.file(tiffIdx);
         % If corrected traceMat not found, correct and save, otherwise
         % just load corrected tracemat:
@@ -69,9 +68,9 @@ for sidx = 1:length(slicesToUse)
             winsz = round(meta.si.siVolumeRate*winUnit*2);
 %             [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
             [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
-            traceMat = cat(2, traceMat{1:end});
+            traceMat = cat(1, traceMat{1:end});
             DCs = cat(2, DCs{1:end});
-            traceMat = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
+            traceMat = bsxfun(@plus, DCs, traceMat.'); % ROWs = tpoints, COLS = ROI
             
             tracestruct.file(tiffIdx).traceMat = traceMat;
             tracestruct.file(tiffIdx).winsz = winsz;
@@ -80,15 +79,15 @@ for sidx = 1:length(slicesToUse)
             if trimEnd
                
                 [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtractRollingMean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
-                untrimmedTraceMat = cat(2, untrimmedTraceMat{1:end});
+                untrimmedTraceMat = cat(1, untrimmedTraceMat{1:end});
                 untrimmedDCs = cat(2, untrimmedDCs{1:end});
-                untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat);
-                tracestruct.file(tiffIdx).untrimmedTracemat = untrimmedTraceMat;
-                tracestruct.file(tiffIdx).untrimmedDCs = untrimmedDCs;
-                tracestruct.file(tiffIdx).cropToFrame = cropToFrame;
+                untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat.');
+                tracestruct.file(tiffIdx).untrimmedTracemat.file{tiffIdx} = untrimmedTraceMat;
+                tracestruct.file(tiffIdx).untrimmedDCs.file{tiffIdx} = untrimmedDCs;
+                tracestruct.cropToFrame.file{tiffIdx} = cropToFrame;
             end
 
-            save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'tracestruct');
+            save(fullfile(D.tracesPath, D.traceNames{sidx}), '-append', '-struct', 'T');
 %         else
 %             traceMat = T.traceMat.file{tiffIdx};
         %end
