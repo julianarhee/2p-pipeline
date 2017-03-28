@@ -41,11 +41,13 @@ while loading==1
     
     setappdata(handles.roigui, 'meta', meta);
     fprintf('Meta data loaded.\n');
-
+    
+    
     % Set defaults for ROI values: ----------------------------------------
     handles.currRoi.String = num2str(1); %num2str(round(str2double(handles.currRoi.String)));
     handles.currRoiSlider.Value = str2double('1'); %str2double(handles.currRoi.String);
 
+    
     % Set options for SLICE menu: -----------------------------------------
     sliceNames = cell(1,length(D.slices));
     for s=1:length(sliceNames)
@@ -53,10 +55,12 @@ while loading==1
     end
     handles.currSlice.String = sliceNames;
 
+    
     % Get default slice idx and value: ------------------------------------
     selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
     selectedSlice = D.slices(selectedSliceIdx);
 
+    
     % Set file name options for RUN menu: ---------------------------------
     fileNames = cell(1,length(meta.file));
     for fN=1:length(fileNames)
@@ -64,13 +68,14 @@ while loading==1
     end
     handles.runMenu.String = fileNames;
     
+    
     % Get default selected file/run: --------------------------------------
     selectedFile = handles.runMenu.Value;
 
+    
     % Populate MAP menu options: --------------------------------------------
     if isfield(D, 'dfStructName')
         dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
-        setappdata(handles.roigui, 'df', dfStruct);
         if isempty(dfStruct.slice(selectedSlice).file)
             fprinf('No DF struct found for slice %i.\n', selectedSlice);
             noDF = true;
@@ -80,7 +85,10 @@ while loading==1
     else
         fprintf('No DF struct found in current acquisition.\n');
         noDF = true;
+        dfStruct = struct();
     end
+    setappdata(handles.roigui, 'df', dfStruct);
+
     
     mapStructName = sprintf('maps_Slice%02d.mat', selectedSlice); 
     if ~exist(fullfile(D.guiPrepend, D.outputDir, mapStructName), 'file')
@@ -94,14 +102,41 @@ while loading==1
     else
         mapTypes{end+1} = 'maxDf';
     end
-    handles.mapMenu.String = mapTypes;
+    handles.mapMenu.String = sort_nat(mapTypes);
+
+    
     
     % Populate STIM menu options: -----------------------------------------
     %meta = getappdata(handles.roigui, 'meta');
-    handles.stimMenu.String = meta.condTypes;
+    handles.stimMenu.String = sort_nat(meta.condTypes);
     handles.stimMenu.UserData.stimType = handles.stimMenu.String;
-
+    if handles.stimMenu.Value > length(handles.stimMenu.String)
+        handles.stimMenu.Value = 1;
+        handles.stimMenu.UserData.currStimName = handles.stimMenu.String{handles.stimMenu.Value};
+    else
+        handles.stimMenu.UserData.currStimName =  handles.stimMenu.String{handles.stimMenu.Value};
+    end
+    if ~strcmp(D.stimType, 'bar')
+%         nStimuli = length(meta.condTypes);
+%         colors = zeros(nStimuli,3);
+%         for c=1:nStimuli
+%             colors(c,:,:) = rand(1,3);
+%         end
+        stimcolors = meta.stimcolors;
+        setappdata(handles.roigui, 'stimcolors', stimcolors);
+    end
     
+    if ~strcmp(D.stimType, 'bar')
+        stimstruct = load(fullfile(D.outputDir, D.stimStructName));
+        setappdata(handles.roigui, 'stimstruct', stimstruct);
+    end
+    
+    
+    % Populate Time-Course menu options: ----------------------------------
+    timecourseTypes = {'dF/F', 'raw', 'processed'};
+    handles.timecourseMenu.String = timecourseTypes;
+
+
     % Update UserData for selected path: ----------------------------------
     handles.selectDatastructPush.UserData.currPath = currPath;
     handles.selectDatastructPush.UserData.currStruct = currDatastruct;

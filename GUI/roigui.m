@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 23-Mar-2017 10:37:54
+% Last Modified by GUIDE v2.5 26-Mar-2017 18:45:15
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -88,7 +88,11 @@ handles.currRoiSlider.Value = str2double(hObject.String);
 newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui,'meta');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
 
 guidata(hObject,handles);
 
@@ -113,12 +117,17 @@ function stimMenu_Callback(hObject, eventdata, handles)
 
 % Hints: contents = cellstr(get(hObject,'String')) returns stimMenu contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from stimMenu
-%D = getappdata(handles.roigui,'D');
+D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
-hObject.String = meta.condTypes;
+hObject.String = sort_nat(meta.condTypes);
 hObject.UserData.stimType = hObject.String;
+hObject.UserData.currStimValue = hObject.Value;
+hObject.UserData.currStimName =  hObject.String{hObject.Value};
+
+updateTimeCourse(handles, D, meta);
 
 % TODO: Function to update stimulus-trace plot (PSTH):
+updateStimulusPlot(handles, D);
 
 
 guidata(hObject,handles);
@@ -156,6 +165,10 @@ hObject.String = fileNames;
 hObject.UserData.runValue = hObject.Value;
 
 updateActivityMap(handles, D, meta);
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
+
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
 % selectedSlice = str2double(handles.currSlice.String);
 % selectedFile = handles.runMenu.Value;
@@ -197,6 +210,9 @@ newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
 
 guidata(hObject,handles);
 
@@ -248,6 +264,12 @@ setappdata(handles.roigui, 'D', D);
 % Update activity map:
 updateActivityMap(handles, D, meta);
 
+% Update Timecourse plot:
+updateTimeCourse(handles, D, meta);
+
+% Update Stimulus plot:
+updateStimulusPlot(handles, D);
+
 % Set UserData fields:
 handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
 handles.runMenu.UserData.runValue = handles.runMenu.Value;
@@ -294,6 +316,9 @@ end
 set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 updateActivityMap(handles, D, meta)
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
+
 
 setappdata(handles.roigui, 'D', D);
 hObject.UserData.sliceValue = hObject.Value;
@@ -371,6 +396,7 @@ end
 hObject.String = mapTypes;
 
 updateActivityMap(handles, D, meta);
+
 
 guidata(hObject,handles);
 
@@ -458,7 +484,7 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
 
 [txtpath,txtstruct,txtext] = fileparts(hObject.String);
 
-if ~strcmp(hObject.String, fullfile(sPath, sStruct))
+%if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     % do stuff
     [handles, firstLoad] = populateGUI(handles, txtpath, strcat(txtstruct, txtext));
 
@@ -483,6 +509,12 @@ if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     % Update activity map:
     updateActivityMap(handles, D, meta);
 
+    % Update timecourse plot:
+    updateTimeCourse(handles, D, meta);
+    
+    % Update stimulus plot:
+    updateStimulusPlot(handles, D);
+
     % Set UserData fields:
     handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
     handles.runMenu.UserData.runValue = handles.runMenu.Value;
@@ -491,7 +523,7 @@ if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     setappdata(handles.roigui, 'D', D);
 
     guidata(hObject,handles);
-end
+%end
 
 hObject.String = fullfile(handles.selectDatastructPush.UserData.currPath,...
                             handles.selectDatastructPush.UserData.currStruct);
@@ -565,7 +597,9 @@ showRois = handles.roiToggle.Value;
 %TODO
 % ********************
 % Update "stimulus PSTH" plot
-% Update "time course" plot...
+meta = getappdata(handles.roigui, 'meta');
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
 
 
 guidata(hObject,handles);
@@ -604,11 +638,20 @@ function stimShowAvg_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % Hint: get(hObject,'Value') returns toggle state of stimShowAvg
+D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
+
 if hObject.Value
     handles.stimMenu.Enable = 'off';
 else
     handles.stimMenu.Enable = 'on';
 end
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
+
+guidata(hObject,handles)
+
 
 
 
@@ -617,3 +660,38 @@ function stimShowAll_Callback(hObject, eventdata, handles)
 % hObject    handle to stimShowAll (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+
+%updateTimeCourse(handles, D, meta);
+
+% TODO:  fix this...
+updateStimulusPlot(handles, D);
+
+guidata(hObject, handles)
+
+% --- Executes on selection change in timecourseMenu.
+function timecourseMenu_Callback(hObject, eventdata, handles)
+% hObject    handle to timecourseMenu (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: contents = cellstr(get(hObject,'String')) returns timecourseMenu contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from timecourseMenu
+D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
+
+updateTimeCourse(handles, D, meta)
+
+guidata(hObject,handles)
+
+
+% --- Executes during object creation, after setting all properties.
+function timecourseMenu_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to timecourseMenu (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
