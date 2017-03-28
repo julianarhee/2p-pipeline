@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 23-Mar-2017 10:37:54
+% Last Modified by GUIDE v2.5 26-Mar-2017 18:45:15
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -88,7 +88,11 @@ handles.currRoiSlider.Value = str2double(hObject.String);
 newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
+meta = getappdata(handles.roigui,'meta');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
 
 guidata(hObject,handles);
 
@@ -115,10 +119,15 @@ function stimMenu_Callback(hObject, eventdata, handles)
 %        contents{get(hObject,'Value')} returns selected item from stimMenu
 D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
-hObject.String = meta.condTypes;
+hObject.String = sort_nat(meta.condTypes);
 hObject.UserData.stimType = hObject.String;
+hObject.UserData.currStimValue = hObject.Value;
+hObject.UserData.currStimName =  hObject.String{hObject.Value};
+
+updateTimeCourse(handles, D, meta);
 
 % TODO: Function to update stimulus-trace plot (PSTH):
+updateStimulusPlot(handles, D);
 
 
 guidata(hObject,handles);
@@ -156,6 +165,10 @@ hObject.String = fileNames;
 hObject.UserData.runValue = hObject.Value;
 
 updateActivityMap(handles, D, meta);
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
+
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
 % selectedSlice = str2double(handles.currSlice.String);
 % selectedFile = handles.runMenu.Value;
@@ -197,6 +210,9 @@ newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
 
 guidata(hObject,handles);
 
@@ -241,10 +257,18 @@ else
 end
 showRois = handles.roiToggle.Value;
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
 setappdata(handles.roigui, 'D', D);
 
 % Update activity map:
 updateActivityMap(handles, D, meta);
+
+% Update Timecourse plot:
+updateTimeCourse(handles, D, meta);
+
+% Update Stimulus plot:
+updateStimulusPlot(handles, D);
 
 % Set UserData fields:
 handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
@@ -292,6 +316,9 @@ end
 set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 updateActivityMap(handles, D, meta)
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
+
 
 setappdata(handles.roigui, 'D', D);
 hObject.UserData.sliceValue = hObject.Value;
@@ -369,6 +396,7 @@ end
 hObject.String = mapTypes;
 
 updateActivityMap(handles, D, meta);
+
 
 guidata(hObject,handles);
 
@@ -456,7 +484,7 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
 
 [txtpath,txtstruct,txtext] = fileparts(hObject.String);
 
-if ~strcmp(hObject.String, fullfile(sPath, sStruct))
+%if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     % do stuff
     [handles, firstLoad] = populateGUI(handles, txtpath, strcat(txtstruct, txtext));
 
@@ -475,10 +503,17 @@ if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     end
     showRois = handles.roiToggle.Value;
     [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+    set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
     setappdata(handles.roigui, 'D', D);
 
     % Update activity map:
     updateActivityMap(handles, D, meta);
+
+    % Update timecourse plot:
+    updateTimeCourse(handles, D, meta);
+    
+    % Update stimulus plot:
+    updateStimulusPlot(handles, D);
 
     % Set UserData fields:
     handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
@@ -488,7 +523,7 @@ if ~strcmp(hObject.String, fullfile(sPath, sStruct))
     setappdata(handles.roigui, 'D', D);
 
     guidata(hObject,handles);
-end
+%end
 
 hObject.String = fullfile(handles.selectDatastructPush.UserData.currPath,...
                             handles.selectDatastructPush.UserData.currStruct);
@@ -515,33 +550,85 @@ function ax1_ButtonDownFcn(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % WindowButtonMotionFcn for the figure.
-
+handles = guidata(hObject);
 %handles.avgimg.HitTest = 'off'
+maskcell = getappdata(handles.roigui,'maskcell');
+% M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+% M = cat(2,M{1:end});
+M = getappdata(handles.roigui, 'maskmat');
 
-S.ax = hObject.Parent;
-S.axp = S.ax.Position;
-S.xlm = S.ax.XLim;
-S.ylm = S.ax.YLim;
-S.dfx = diff(S.xlm);
-S.dfy = diff(S.ylm);
+%hitpoint = eventdata.IntersectionPoint;
 
-F = S.ax.CurrentPoint  % The current point w.r.t the figure.
+currPoint = eventdata.IntersectionPoint;
 
-Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-%fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
-
-% Figure out of the current point is over the axes or not -> logicals.
-tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
-tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
-
-if tf1 && tf2
-    % Calculate the current point w.r.t. the axes.
-    Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-    Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-    %set(S.tx(2),'str',num2str([Cx,Cy],2))
-    fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+D = getappdata(handles.roigui, 'D');
+if strcmp(D.maskType, 'cnmf')
+    if D.maskInfo.params.scaleFOV
+        cp = [round(currPoint(1)) round(currPoint(2))];
+    else
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+    end
+else
+    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
 end
+
+colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+[i,j,s] = find(M);
+roiIdx = find(i==colsubscript);
+if length(roiIdx)>1
+    roiIdx = roiIdx(1);
+    roiMatch = j(roiIdx);
+elseif length(roiIdx)==0
+    roiMatch = handles.currRoi.UserData.currRoi; 
+    fprintf('Try again, you did not select an ROI...\n');
+else
+    roiMatch = j(roiIdx);
+end
+
+%fprintf('ROI: %i\n', roiMatch);
+handles.currRoi.String = num2str(roiMatch);
+handles.currRoiSlider.Value = str2double(handles.currRoi.String);
+
+newReference = 0;
+showRois = handles.roiToggle.Value;
+%D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+
+%TODO
+% ********************
+% Update "stimulus PSTH" plot
+meta = getappdata(handles.roigui, 'meta');
+updateTimeCourse(handles, D, meta);
+updateStimulusPlot(handles, D);
+
+
+guidata(hObject,handles);
+
+% Try this for highlting ROIs with hover only over ax1:
+% S.ax = hObject.Parent;
+% S.axp = S.ax.Position;
+% S.xlm = S.ax.XLim;
+% S.ylm = S.ax.YLim;
+% S.dfx = diff(S.xlm);
+% S.dfy = diff(S.ylm);
+% 
+% F = S.ax.CurrentPoint  % The current point w.r.t the figure.
+% 
+% Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+% Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+% %fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+% 
+% % Figure out of the current point is over the axes or not -> logicals.
+% tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
+% tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
+% 
+% if tf1 && tf2
+%     % Calculate the current point w.r.t. the axes.
+%     Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+%     Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+%     %set(S.tx(2),'str',num2str([Cx,Cy],2))
+%     fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
+% end
 
 
 % --- Executes on button press in stimShowAvg.
@@ -551,6 +638,21 @@ function stimShowAvg_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 % Hint: get(hObject,'Value') returns toggle state of stimShowAvg
+D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
+
+if hObject.Value
+    handles.stimMenu.Enable = 'off';
+else
+    handles.stimMenu.Enable = 'on';
+end
+updateTimeCourse(handles, D, meta);
+
+updateStimulusPlot(handles, D);
+
+guidata(hObject,handles)
+
+
 
 
 % --- Executes on button press in stimShowAll.
@@ -558,3 +660,38 @@ function stimShowAll_Callback(hObject, eventdata, handles)
 % hObject    handle to stimShowAll (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+
+%updateTimeCourse(handles, D, meta);
+
+% TODO:  fix this...
+updateStimulusPlot(handles, D);
+
+guidata(hObject, handles)
+
+% --- Executes on selection change in timecourseMenu.
+function timecourseMenu_Callback(hObject, eventdata, handles)
+% hObject    handle to timecourseMenu (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: contents = cellstr(get(hObject,'String')) returns timecourseMenu contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from timecourseMenu
+D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
+
+updateTimeCourse(handles, D, meta)
+
+guidata(hObject,handles)
+
+
+% --- Executes during object creation, after setting all properties.
+function timecourseMenu_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to timecourseMenu (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end

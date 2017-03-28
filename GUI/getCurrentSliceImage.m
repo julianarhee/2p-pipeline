@@ -6,8 +6,8 @@ selectedFile = handles.runMenu.Value;
 
 % Get avg image for selected slice and file:
 traceStruct = load(fullfile(D.guiPrepend, D.tracesPath, D.traceNames{selectedSliceIdx}));
-avgimg = traceStruct.avgImage.file(selectedFile);
-avgimg = avgimg{1};
+avgimg = traceStruct.file(selectedFile).avgImage;
+%avgimg = avgimg{1};
 
 
 end

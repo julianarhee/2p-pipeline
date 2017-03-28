@@ -9,10 +9,6 @@ if newReference==1
     maskcell = getCurrentSliceMasks(handles,D);        % Get masks for currently selected slice. % NOTE:  Masks created could go with different file.
     setappdata(handles.roigui, 'maskcell', maskcell);
     
-    M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
-    M = cat(2,M{1:end});
-    setappdata(handles.roigui, 'maskmat', M);
-
     setRoiMax(handles, maskcell);                      % Set Max values for ROI entries.
 
     [RGBimg, masksRGBimg] = createRGBimg(avgimg, maskcell);         % Create RGB image for average slice and masks.
@@ -26,7 +22,6 @@ end
 
 handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
 handles.runMenu.UserData.runValue = handles.runMenu.Value;
-handles.currRoi.UserData.currRoi = str2double(handles.currRoi.String);
 
 selectedROI = str2double(handles.currRoi.String);
 maskcell = getappdata(handles.roigui,'maskcell');
@@ -42,7 +37,7 @@ end
 
 axes(handles.ax1);
 %current_cb = get(handles.ax1, 'ButtonDownFcn');
-hold on;
+%hold on;
 % if showRois==1
 %     handles.avgimg = imagesc2(D.masksRGBimg);
 % else
@@ -55,46 +50,29 @@ switch D.maskType
         % ***************************
         handles.avgimg = plot_contours(maskcell,scalefov(D.masksRGBimg),D.maskInfo.nmfoptions,1);
     otherwise
-        if showRois
+        if showRois==1
             if newReference==1
                 handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
-                set(gca,'YDir','reverse')
-                %set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
-                set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
-                %set(handles.avgimg, 'ButtonDownFcn', current_cb);
                 %pause(0.1);
             else
-                %handles.avgimg = findobj(handles.ax1, 'Type', 'image')%, '-depth', 1);
+                handles.avgimg = findobj(handles.ax1, 'Type', 'image')%, '-depth', 1);
                 handles.avgimg.CData = scalefov(D.masksRGBimg); %imshow(D.masksRGBimg);
-                set(gca,'YDir','reverse')
                 %pause(0.1);
             end
         else
             if newReference==1
                 handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
-                %set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
-                set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
-                %set(handles.avgimg, 'ButtonDownFcn', current_cb);
                 %pause(0.1);
             else
-                handles.avgimg.CData = scalefov(D.RGBimg); % = imshow(D.RGBimg);
+                handles.avgimg.CData = scalefov(D.masksRGBimg); % = imshow(D.RGBimg);
                 %pause(0.1);
             end
         end
 end
 
-% child_handles = allchild(handles.avgimg);
-% set(child_handles,'HitTest','off');
-
-
-%handles.avgimg.HitTest = 'off'; %'on';
-%handles.avgimg.PickableParts = 'none'; %'visible';
-%set(handles.ax1, 'ButtonDownFcn',{@ax1_ButtonDownFcn});
-%set(handles.avgimg, 'ButtonDownFcn',{@ax1_ButtonDownFcn});
-
-
-%set(handles.avgimg, 'ButtonDownFcn', @(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles))
-
+handles.avgimg.HitTest = 'off'; %'on';
+handles.avgimg.PickableParts = 'none'; %'visible';
+set(handles.ax1, 'ButtonDownFcn',{@ax1_ButtonDownFcn});
 %set(handles.ax1, 'ButtonDownFcn',@(src,eventdata)ax1_ButtonDownFcn(src,eventdata,handles));
 %set(handles.avgimg, 'ButtonDownFcn', {@axes1_ButtonDownFcn})
 %handles.avgimg.Parent.HitTest = 'off';
