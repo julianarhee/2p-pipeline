@@ -852,7 +852,7 @@ for mwfile in mw_files:
 
 
     # Rearrange dicts to match retino structures:
-    if stimtype != 'bar':
+    if stimtype == 'bar':
         pydict = dict()
         for ridx,run in enumerate(runs.keys()):
             pydict[run] = {'time': mw_times_by_file[ridx],\
@@ -862,7 +862,16 @@ for mwfile in mw_files:
                             'stimIDs': mw_codes_by_file[ridx],
                             'MWdur': mw_file_durs[ridx],\
                             'MWtriggertimes': frame_trigger_times[ridx]}
-
+    if stimtype == 'grating':
+        pydict = dict()
+        for ridx,run in enumerate(runs.keys()):
+            pydict[run] = {'time': mw_times_by_file[ridx],\
+                            'ordernum': runs[run], 
+                            'idxs': [i for i,tmptev in enumerate(mw_trials_by_file[ridx]) if any(['gabor' in v['name'] for v in tmptev.value])],
+                            'offset': offsets_by_file[ridx],
+                            'stimIDs': mw_codes_by_file[ridx],
+                            'MWdur': mw_file_durs[ridx],\
+                            'MWtriggertimes': frame_trigger_times[ridx]}
     if no_ard is False:
         for ridx,run in enumerate(runs.keys()):
             pydict[run]['tframe'] = ard_frame_onset_times[ridx]
