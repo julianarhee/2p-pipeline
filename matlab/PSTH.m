@@ -197,14 +197,17 @@ for sidx = 1:length(slicesToUse)
                 tOn = currSecs(2);
                 tOff = currSecs(3);
                 if length(currSecs) < 4
-                    continue;
+                    %continue;
                     fprintf('Not enough tstamps found in stim %s, file %i, trial %i.\n', currStim, tiffIdx, trialIdx);
                     tPost = tOff + ITI;
                 else
                     tPost = currSecs(4);
+                end
                 %end
-                    sliceSecs = meta.file(currTiffIdx).mw.siSec(volumeIdxs);
-
+                    %sliceSecs = meta.file(currTiffIdx).mw.siSec(volumeIdxs);
+                    sliceSecs = meta.file(currTiffIdx).si.siFrameTimes(volumeIdxs);
+                    
+                    
                     framePre = find(abs(sliceSecs-tPre) == min(abs(sliceSecs-tPre)));
                     frameOn = find(abs(sliceSecs-tOn) == min(abs(sliceSecs-tOn)));
                     frameOff = find(abs(sliceSecs-tOff) == min(abs(sliceSecs-tOff)));
@@ -236,7 +239,7 @@ for sidx = 1:length(slicesToUse)
                     %baselines = mean(traceMat(:,frameidxs(1):frameOn-1), 2);
                     %baselineMat = repmat(baselines, [1, size(ctraces,2)]);
                     %deltaFs.(currStim){end+1} = ((ctraces - baselineMat) ./ baselineMat)*100;
-                end
+                %end
             end
         end
             
@@ -263,7 +266,138 @@ D.trialStructName = trialstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
-%%
+%% Don't interpolate -- 
+% Create same-sized time and trace mats using MW-onset-matched SI-times
+% (i.e., frame times from SI), and fill in or remove frame tstamps on a
+% trial-by-trial basis:
+
+%stimtracestruct = struct();
+
+for sliceIdx=1:length(D.slices)
+    
+    currSlice = D.slices(sliceIdx);
+    siTimes = trialstruct.slice(currSlice).siTimes;
+    siTraces = trialstruct.slice(currSlice).siTraces;
+    
+    stimnames = fieldnames(stimstruct.slice(currSlice));
+    nStim = length(stimnames);
+    for stimIdx=1:nStim
+        
+        currStim = stimnames{stimIdx};
+        
+        % Most trials will have the same nFrames, but some will have 1 or 2
+        % more/less, depending on where the closest-matching indices were.
+        % 
+        nTrials = length(siTimes.(currStim));
+        nRois = size(siTraces.(currStim){1},2);
+        nFramesPerTrial = cellfun(@length, siTimes.(currStim));
+        nTrialsDifferent = length(unique(nFramesPerTrial));
+
+        if nTrialsDifferent > 1
+            nFramesStandard = mode(nFramesPerTrial);
+            if nFramesStandard < max(nFramesPerTrial)-2
+                nFramesStandard = median(nFramesPerTrial);
+            end
+
+            % First, trim trials with frame tstamps extending into the next
+            % trial onset:
+            trialsTooLong = arrayfun(@(i) siTimes.(currStim){i}(end) > winUnit, 1:nTrials);
+            trimmedTrialTimes = arrayfun(@(i) siTimes.(currStim){i}(1:end-1), find(trialsTooLong), 'UniformOutput', false);
+            trimmedTrialTraces = arrayfun(@(i) siTraces.(currStim){i}(1:end-1,:), find(trialsTooLong), 'UniformOutput', false);
+
+            siTimes.(currStim)(trialsTooLong) = trimmedTrialTimes(1:end);
+            siTraces.(currStim)(trialsTooLong) = trimmedTrialTraces(1:end);
+
+    %         % Second, pad trials with shifted onset times relative to the
+    %         % standard in current set:
+    %         findOnsetIdxs = cellfun(@(trial) find(trial>0,1), siTimes.(currStim));
+    %         onsetIdxStandard = mode(findOnsetIdxs);
+    %         trialsTooEarly = find(findOnsetIdxs<onsetIdxStandard)
+    %         paddedTimes = arrayfun(@(t) padarray(siTimes.(currStim){t}, [0 onsetIdxStandard-findOnsetIdxs(t)], 0, 'pre'), trialsTooEarly, 'UniformOutput', false)
+    %         paddedTraces = arrayfun(@(t) padarray(siTraces.(currStim){t}, [onsetIdxStandard-findOnsetIdxs(t) 0], 0, 'pre'), trialsTooEarly, 'UniformOutput', false)
+    %         
+    %         siTimes.(currStim)(trialsTooEarly) = paddedTimes(1:end);
+    %         siTraces.(currStim)(trialsTooEarly) = paddedTraces(1:end);
+    %         
+            % Second, pad trials that are "too short" with to create same-sized
+            % mat:
+            trialsTooShort = arrayfun(@(trial) length(siTimes.(currStim){trial})<nFramesStandard, 1:nTrials);
+            trialsTooShortIdxs = find(trialsTooShort);
+            paddedTimes = arrayfun(@(t) padarray(siTimes.(currStim){t}, [0 nFramesStandard-length(siTimes.(currStim){t})], 0, 'post'), trialsTooShortIdxs, 'UniformOutput', false);
+            paddedTraces = arrayfun(@(t) padarray(siTraces.(currStim){t}, [nFramesStandard-length(siTimes.(currStim){t}) 0], 0, 'post'), trialsTooShortIdxs, 'UniformOutput', false);
+
+            siTimes.(currStim)(trialsTooShortIdxs) = paddedTimes(1:end);
+            siTraces.(currStim)(trialsTooShortIdxs) = paddedTraces(1:end);
+            
+            trimmedAndPadded = true;
+        else
+            trimmedAndPadded = false;
+
+        end
+        siTimeMat = cat(1, siTimes.(currStim){1:end});
+        siTimeMat(siTimeMat==0) = NaN; % Each ROW is 1 time-course for a trial
+        
+        siTraceCellTmp = arrayfun(@(roi) cellfun(@(trial) trial(:,roi), siTraces.(currStim), 'UniformOutput', false), 1:nRois, 'UniformOutput',false);
+        siTraceCell = cellfun(@(roi) cat(2,roi{1:end}), siTraceCellTmp, 'UniformOutput', false);
+
+        siTraceCell = cellfun(@nanzero, siTraceCell, 'UniformOutput', false);
+        
+        % ** Each CELL contains trials for an roi: MxN mat, each column in
+        % N is 1 trial's traces, so each row corresponds to a point in time
+        % (frame time point).
+        % To plot all traces, plot(siTraceCell{ROI}), since plots
+        % column-wise.
+        % To plot MEAN of traces, plot(mean(siTraceCell{ROI},2)), since
+        % columns=trials and rows=tpoints, want to take mean across trials
+        % for each tpoint.
+        
+        nFrames = size(siTimeMat,2);
+        nTrials = size(siTimeMat,1);
+        
+        preidxs = siTimeMat < 0;
+        tmpBaselines = cellfun(@(roi) preidxs.'.*roi, siTraceCell, 'UniformOutput', false);
+        baselines = cellfun(@(roi) arrayfun(@(trial) mean(roi(roi(:,trial)>0, trial)), 1:nTrials), tmpBaselines, 'UniformOutput', false);
+        baselines = cat(1,baselines{1:end}); % nr = nROIS, nc = ntrials
+        baselines = baselines.'; % baseline value for EACH trial is in row --
+        % --> for ROI x, pull baselines{:,x} where : grabs all the trials
+        
+        nRois = size(baselines,2);
+        calcdffunc = @(x,y) (x-y)./y;
+        dfTraceCell = arrayfun(@(roi) calcdffunc(siTraceCell{roi}, repmat(baselines(:,roi),1,size(siTraceCell{roi},1)).'), 1:nRois, 'UniformOutput', false);
+
+        
+        stimstruct.slice(currSlice).(currStim).siTimeMat = siTimeMat.'; 
+        % --> transpose siTimeMat to get each COLUMN to correspond to
+        % tstamps of a single trial...
+        stimstruct.slice(currSlice).(currStim).siTraceCell = siTraceCell;
+        stimstruct.slice(currSlice).(currStim).dfTraceCell = dfTraceCell;
+        stimstruct.slice(currSlice).(currStim).trimmedAndPadded = trimmedAndPadded;
+%         
+%         if max(nFramesPerTrial) > nFramesStandard
+%             trialsWithMax = find(nFramesPerTrial==max(nFramesPerTrial));
+%             trialsWithMaxTooLong = trialsWithMax(arrayfun(@(i) siTimes.(currStim){i}(end) > winUnit, trialsWithMax));
+%             % Remove trials that are "too long" (i.e., last frame is
+%             % actually occuring at onset of next trial):
+%             trimmedTrials = arrayfun(@(i) siTimes.(currStim){i}(1:end-1), trialsWithMaxTooLong, 'UniformOutput', false);
+%             siTimes.(currStim)(trialsWithMaxTooLong) = trimmedTrials(1:end);
+% 
+%             % Remove trials if they are too "early" (i.e., onset frame
+%             % is shifted (later in time) relative to the rest of the
+% 
+%         end
+    end
+end
+
+
+save(fullfile(D.outputDir, D.stimStructName), '-append', '-struct', 'stimstruct');
+
+D.trialStructName = trialstructName;
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+
+
+
+%% Interpolate same-sized time and trace mats with MW times...
 
 stimstruct = struct();
 
@@ -343,8 +477,6 @@ D.stimStructName = stimstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 %% Subtract baseline for df/F:
-
-dfstruct = struct();
 
 for sliceIdx=1:length(D.slices)
     
