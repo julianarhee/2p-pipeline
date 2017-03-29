@@ -188,13 +188,14 @@ if strcmp(meta.stimType, 'image')
         condtypes{c} = ['stim' num2str(str2num(condTypes{c})+1)];
     end
 else    
-    meta.condTypes = mw.condTypes;
+    condtypes = mw.condTypes;
 %     else
 %     for c=1:length(condTypes)
 %         condtypes{c} = ['stim' num2str(str2num(condTypes{c})+1)];
 %     end
 %     meta.condTypes = condtypes;
 end
+meta.condTypes = condtypes;
 
 % Save META struct:
 % ---------------------------------------------------------------------
