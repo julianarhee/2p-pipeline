@@ -66,12 +66,10 @@ for midx=1:length(fileNames)
     mwStruct.file(midx).stimType = pymat.stimtype;
     mwStruct.file(midx).runNames = cellstr(pymat.runs);
     if strcmp(pymat.stimtype, 'grating')
-        mwStruct.file(midx).condTypes = {};
         for gidx=1:size(pymat.condtypes,1)
             mwStruct.file(midx).condTypes{end+1} = sprintf('stim%i', gidx);
         end
-        mwStruct.file(midx).condValues = pymat.condtypes;
-        %t = arrayfun(@(gidx) mat2str(tmp(gidx,:)), 1:size(tmp,1), 'UniformOutput', false)
+        mwStruct.file(midx).condValues = mat2cell(pymat.condtypes, size(pymat.condtypes,1), 2);
     else
         mwStruct.file(midx).condTypes = cellstr(pymat.condtypes);
     end

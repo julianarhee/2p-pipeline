@@ -346,7 +346,7 @@ switch D.roiType
         D.maskInfo.params.nmfoptions = nmfoptions;
         clear nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-        %toc()
+        toc()
         
         % =================================================================
         % Get traces:
@@ -355,5 +355,3 @@ switch D.roiType
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
  
 end
-
-toc()

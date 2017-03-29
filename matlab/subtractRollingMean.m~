@@ -2,12 +2,10 @@ function [trace_y, DC_y] = subtractRollingMean(currTrace, winsz)
     % if cutEnd==1
     %     tmp0 = currTrace(1:crop);
     % else
-    ind = 1:length(currTrace);
+    ind = 1:length(currTrace).';
     ix = ~isnan(currTrace);
     if sum(ix) ~= length(currTrace)
-        tmp0 = interp1(ind(ix),currTrace(ix),ind,'linear').';
-        % transpose so that in output, cols are still rois and rows are
-        % still frames
+        tmp0 = interp1(ind(ix),currTrace(ix),ind,'linear');
     else
         tmp0 = currTrace;
     end

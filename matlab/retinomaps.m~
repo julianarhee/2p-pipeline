@@ -8,9 +8,9 @@
 % create_acquisition_structs.m pipeline.
 
 % acquisition_info;
-session = '20161222_JR030W';
-experiment = 'retinotopy2';
-analysis_no = 1;
+session = '20161221_JR030W';
+experiment = 'retinotopy037Hz';
+analysis_no = 3;
 tefo = false;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
