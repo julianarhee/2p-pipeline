@@ -56,15 +56,18 @@ handles.mapMenu.String = mapTypes;
 
 
 if handles.mapMenu.Value > length(mapTypes)
-    handles.mapMenu.Value = 1;
+    handles.mapMenu.Value = length(mapTypes);
 end
 selectedMapIdx = handles.mapMenu.Value;
 
 selectedMapType = mapTypes{selectedMapIdx};
-if (any(ismember(mapTypes, 'NaN')) || any(ismember(mapTypes, 'maxDf - not found')))
+if noDF
     displayMap = zeros(size(fov));
-elseif strcmp(selectedMapType, 'maxDf')
+elseif any(strfind(selectedMapType, 'Df')) || any(strcmp(selectedMapType, 'maps - notfound'))
     displayMap = dfStruct.slice(selectedSlice).file(selectedFile).maxMap;
+    if ~strcmp(selectedMapType, 'maxDf')
+        handles.mapMenu.Value = cell2mat(strfind(mapTypes, 'maxDf'));
+        
 else
     displayMap = mapStruct.file(selectedFile).(selectedMapType);
     magMap = mapStruct.file(selectedFile).ratio;
@@ -82,12 +85,26 @@ switch selectedMapType
         hold on;
         handles.map = imagesc2(scalefov(thresholdMap));
         colormap(handles.ax2, hsv);
-        caxis([min(displayMap(:)), max(displayMap(:))]);
+        %caxis([min(displayMap(:)), max(displayMap(:))]);
+        caxis([-1*pi, pi]);
         colorbar off;
         
         %legend:
-        handles.retinolegend.Visible = 'on';
-        handles.maplegend = imagesc(le
+        if isfield(meta, 'legends')
+            legends = meta.legends;
+            axes(handles.retinolegend)
+            handles.retinolegend.Visible = 'on';
+            handles.maplegend = imagesc(legends.(currCondType));
+            axis off
+            colormap(handles.retinolegend, hsv);
+            %caxis([min(displayMap(:)), max(displayMap(:))]);
+            caxis([-1*pi, pi]);
+            colorbar off;
+        
+        else
+            fprintf('No legend found...\n');
+            handles.retinolegend.Visible = 'off';
+        end
         
     case 'phasemax'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
@@ -96,8 +113,29 @@ switch selectedMapType
         hold on;
         handles.map = imagesc2(scalefov(thresholdMap));
         colormap(handles.ax2, hsv);
-        caxis([min(displayMap(:)), max(displayMap(:))]);
+        %caxis([min(displayMap(:)), max(displayMap(:))]);
+        caxis([-1*pi, pi]);
         colorbar off;
+
+        %legend:
+        if isfield(meta, 'legends')
+            legends = meta.legends;
+            axes(handles.retinolegend)
+            handles.retinolegend.Visible = 'on';
+            handles.maplegend = imagesc(legends.(currCondType));
+            axis off
+            colormap(handles.retinolegend, hsv);
+            %caxis([min(displayMap(:)), max(displayMap(:))]);
+            caxis([-1*pi, pi]);
+            colorbar off;
+        
+        else
+            fprintf('No legend found...\n');
+            handles.retinolegend.Visible = 'off';
+            if isfield(handles.retinolegend, 'Children')
+                handles.retinolegend.Children.Visible = 'off';
+            end
+        end
         
     otherwise
         % 'ratio' 
@@ -108,13 +146,19 @@ switch selectedMapType
         colormap(handles.ax2, hot);
         caxis([min(displayMap(:)), max(displayMap(:))]);
         colorbar();
+        
+        axes(handles.retinolegend)
+        handles.retinolegend.Visible = 'off';
+        if isfield(handles.retinolegend, 'Children')
+            handles.retinolegend.Children.Visible = 'off';
+        end
 
     
 end
 refPos = handles.ax1.Position;
 ax2Pos = handles.ax2.Position;
 handles.ax2.Position(3:4) = [refPos(3:4)];
-title(currRunName);
+title(handles.ax2, currRunName);
 %colorbar();
 %
 end

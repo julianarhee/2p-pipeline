@@ -56,15 +56,20 @@ handles.mapMenu.String = mapTypes;
 
 
 if handles.mapMenu.Value > length(mapTypes)
-    handles.mapMenu.Value = 1;
+    handles.mapMenu.Value = length(mapTypes);
 end
 selectedMapIdx = handles.mapMenu.Value;
 
 selectedMapType = mapTypes{selectedMapIdx};
-if (any(ismember(mapTypes, 'NaN')) || any(ismember(mapTypes, 'maxDf - not found')))
+if noDF
     displayMap = zeros(size(fov));
-elseif strcmp(selectedMapType, 'maxDf')
+elseif any(strfind(selectedMapType, 'Df')) || any(strcmp(selectedMapType, 'maps - notfound'))
     displayMap = dfStruct.slice(selectedSlice).file(selectedFile).maxMap;
+    if ~strcmp(selectedMapType, 'maxDf')
+        handles.mapMenu.Value = find(ismember(mapTypes, 'maxDf'));
+        selectedMapIdx = handles.mapMenu.Value;
+        selectedMapType = mapTypes{selectedMapIdx};
+    end
 else
     displayMap = mapStruct.file(selectedFile).(selectedMapType);
     magMap = mapStruct.file(selectedFile).ratio;
@@ -129,7 +134,9 @@ switch selectedMapType
         else
             fprintf('No legend found...\n');
             handles.retinolegend.Visible = 'off';
-            handles.retinolegend.Children.Visible = 'off';
+            if isfield(handles.retinolegend, 'Children')
+                handles.retinolegend.Children.Visible = 'off';
+            end
         end
         
     otherwise
@@ -144,7 +151,9 @@ switch selectedMapType
         
         axes(handles.retinolegend)
         handles.retinolegend.Visible = 'off';
-        handles.retinolegend.Children.Visible = 'off';
+        if isfield(handles.retinolegend, 'Children')
+            handles.retinolegend.Children.Visible = 'off';
+        end
 
     
 end

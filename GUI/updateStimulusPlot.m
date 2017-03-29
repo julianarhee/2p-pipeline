@@ -13,10 +13,15 @@ selectedRoi = str2double(handles.currRoi.String);
 stimstruct = getappdata(handles.roigui, 'stimstruct');
 stimcolors = getappdata(handles.roigui, 'stimcolors');
 
-dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfCell{selectedRoi}.*100;
-mwSec = stimstruct.slice(selectedSlice).(selectedStim).mwinterpMat;
+% dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfCell{selectedRoi}.*100;
+% mwSec = stimstruct.slice(selectedSlice).(selectedStim).mwinterpMat;
 mwTrialTimes = stimstruct.slice(selectedSlice).(selectedStim).mwTrialTimes;
+% nTrials = size(dfMat,1);
 
+dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfTraceCell{selectedRoi}.*100;
+mwSec = stimstruct.slice(selectedSlice).(selectedStim).siTimeMat.'; %
+trimmed = stimstruct.slice(selectedSlice).(selectedStim).trimmedAndPadded;
+nTrials = size(dfMat,2);
 
 %PLOT:
 axes(handles.ax3);
@@ -29,7 +34,7 @@ if ~handles.stimShowAvg.Value % Show each trial:
 %     end
     
     % Plot each trial trace:
-    handles.stimplot.trials = plot(mwSec.', dfMat.', 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
+    handles.stimplot.trials = plot(mwSec.', dfMat, 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
     hold on;
     
     % Plot MW stim ON patch:
@@ -43,22 +48,28 @@ if ~handles.stimShowAvg.Value % Show each trial:
     hold on;
     
     % Plot MEAN trace for current ROI across stimulus reps:
-    meanTraceInterp = mean(dfMat, 1);
-    meanMWTime = mean(mwSec,1);
+    %meanTraceInterp = mean(dfMat, 1);
+    meanTraceInterp = nanmean(dfMat, 2);
+    meanMWTime = nanmean(mwSec,1);
     handles.stimplot.mean = plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
     hold on;
-    title(sprintf('Stim ID: %s', selectedStim));
+    title(sprintf('%s [%i]', selectedStim, nTrials));
     
 else
     
     for stimIdx=1:length(stimNames)
         stimname = ['stim' num2str(stimIdx)];
-        dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
-        mwSec = stimstruct.slice(selectedSlice).(stimname).mwinterpMat;
+        %dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
+        %mwSec = stimstruct.slice(selectedSlice).(stimname).mwinterpMat;
         mwTrialTimes = stimstruct.slice(selectedSlice).(stimname).mwTrialTimes;
+
+        dfMat = stimstruct.slice(selectedSlice).(stimname).dfTraceCell{selectedRoi}.*100;
+        mwSec = stimstruct.slice(selectedSlice).(stimname).siTimeMat.'; %
+        trimmed = stimstruct.slice(selectedSlice).(stimname).trimmedAndPadded;
         
-        meanTraceInterp = mean(dfMat, 1);
-        meanMWTime = mean(mwSec,1);
+        %meanTraceInterp = mean(dfMat, 1);
+        meanTraceInterp = nanmean(dfMat, 2);
+        meanMWTime = nanmean(mwSec,1);
     
         handles.stimplot.mean(stimIdx) = plot(meanMWTime, meanTraceInterp, 'Color', stimcolors(stimIdx,:), 'LineWidth', 2);
         hold on;
@@ -78,7 +89,7 @@ end
 
 
 handles.ax3.Box = 'off';
-handles.TickDir = 'out';
+handles.ax3.TickDir = 'out';
 hold off;
 
 %end
