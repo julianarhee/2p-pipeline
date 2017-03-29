@@ -321,7 +321,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
                     print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
                     stop_ev = df.get_events(end_event_name)[-1]
                     print stop_ev
-                bounds.append([modes[r]['time'], stop_ev['time']])
+                bounds.append([modes[r]['time'], end_ev['time']])
 
         bounds[:] = [x for x in bounds if ((x[1]-x[0])/1E6)>1]
 
@@ -401,6 +401,8 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             print "N pix-evs found in boundary: %i" % len(pdevs)
 
             nons = np.where(np.diff([i.value[-1]['bit_code'] for i in pdevs])==0)[0] # pix stim event is always last
+            nons += 1 # to remove actual bad/repeated event
+            
             pdevs = [p for i,p in enumerate(pdevs) if i not in nons]
             pdevs = [p for p in pdevs if p.time <= trigg_times[-1][1].time and p['time'] >= trigg_times[0][0].time] # Make sure pixel events are within trigger times...
             pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
@@ -852,7 +854,7 @@ for mwfile in mw_files:
 
 
     # Rearrange dicts to match retino structures:
-    if stimtype == 'bar':
+    if stimtype == 'image':
         pydict = dict()
         for ridx,run in enumerate(runs.keys()):
             pydict[run] = {'time': mw_times_by_file[ridx],\
