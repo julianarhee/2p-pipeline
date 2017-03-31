@@ -1,4 +1,4 @@
-function updateTimeCourse(handles, D, meta)
+function [handles, D] = updateTimeCourse(handles, D, meta)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
 selectedSlice = D.slices(selectedSliceIdx);
@@ -40,11 +40,11 @@ switch tcourseTypes{handles.timecourseMenu.Value}
     case 'dF/F'
         if ~noDF
             dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMat;
-            if isfield(handles, 'timecourse')
-                handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-            else 
-                handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-            end
+%             if isfield(handles, 'timecourse')
+%                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%             else 
+            handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%             end
             xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
             hold on;
         else
@@ -58,11 +58,11 @@ switch tcourseTypes{handles.timecourseMenu.Value}
         % laod traces raw
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
         rawmat = tracestruct.file(selectedFile).rawTraces;
-        if isfield(handles, 'timecourse')
-            handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
-        else
-            handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
-        end
+%         if isfield(handles, 'timecourse')
+%             handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         else
+        handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         end
         xlim([0 tstamps(end)]);
         hold on;
         xlabel('time (s)');
@@ -72,11 +72,11 @@ switch tcourseTypes{handles.timecourseMenu.Value}
         % laodtracemat
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
         tracemat = tracestruct.file(selectedFile).traceMat;
-        if isfield(handles, 'timecourse')
-            handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
-        else
-            handles.timecourse = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
-        end
+%         if isfield(handles, 'timecourse')
+%             handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         else
+        handles.timecourse = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         end
         xlim([0 tstamps(size(tracemat,1))]); % Crop extra white space
         hold on;
         xlabel('time (s)');
@@ -102,7 +102,7 @@ else
         if handles.stimShowAvg.Value
             handles.mwepoch(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
         else
-            if strcmp(handles.stimMenu.UserData.currStimName, sprintf('stim%i', currStim))
+            if handles.stimMenu.Value==currStim
                 handles.mwepoch(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
             else
                 handles.mwepoch(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.5, 'EdgeAlpha', 0);

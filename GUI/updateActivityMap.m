@@ -1,4 +1,4 @@
-function updateActivityMap(handles, D, meta)
+function [handles, D] = updateActivityMap(handles, D, meta)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
 selectedSlice = D.slices(selectedSliceIdx);

@@ -80,7 +80,7 @@ if ~handles.stimShowAvg.Value % Show each trial:
     handles.stimtrialmean = plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
     hold on;
 else
-    meanDfMat = {};
+    meanDfMat = zeros(size(mwTrialTimes
     for stimIdx=1:length(stimNames)
         stimname = ['stim' num2str(stimIdx)];
         %dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
@@ -98,11 +98,9 @@ else
         handles.stimtrialmean(stimIdx) = plot(meanMWTime, meanTraceInterp, 'Color', stimcolors(stimIdx,:), 'LineWidth', 0.5);
         hold on;
         
-        meanDfMat{end+1} = meanTraceInterp;
+        meanDfMat(:,stimIdx) = meanTraceInterp;
         
     end
-    setappdata(handles.roigui, 'dfMat', meanDfMat);      
-    
     % Plot MW stim ON patch:
     stimOnset = mean(mwTrialTimes(:,2));
     stimOffset = mean(mwTrialTimes(:,3));

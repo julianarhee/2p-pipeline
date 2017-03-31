@@ -129,7 +129,11 @@ while loading==1
     if ~strcmp(D.stimType, 'bar')
         stimstruct = load(fullfile(D.outputDir, D.stimStructName));
         setappdata(handles.roigui, 'stimstruct', stimstruct);
+        trialstruct = load(fullfile(D.outputDir, D.trialStructName));
+        setappdata(handles.roigui, 'trialstruct', trialstruct);
     end
+    
+    handles.ax3.UserData.clickedTrial = 1;
     
     
     % Populate Time-Course menu options: ----------------------------------
