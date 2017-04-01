@@ -12,7 +12,7 @@ while loading==1
         fprintf('...');
         tload = tic();
     end
-
+    
     % Load main analysis MAT: ---------------------------------------------
     currPath = tmpCurrPath;
     currDatastruct = tmpCurrDatastruct;
@@ -42,6 +42,11 @@ while loading==1
     setappdata(handles.roigui, 'meta', meta);
     fprintf('Meta data loaded.\n');
     
+    % Set gui colors:
+    guicolors.red = [1 0 0];
+    guicolors.lightgray = [0.7 0.7 0.7];
+    guicolors.darkgray = [0.3 0.3 0.3];
+    setappdata(handles.roigui, 'guicolors', guicolors);
     
     % Set defaults for ROI values: ----------------------------------------
     handles.currRoi.String = num2str(1); %num2str(round(str2double(handles.currRoi.String)));
@@ -70,11 +75,15 @@ while loading==1
     
     
     % Get default selected file/run: --------------------------------------
+    if handles.runMenu.Value > length(handles.runMenu)
+        handles.runMenu.Value = length(handles.runMenu);
+    end
     selectedFile = handles.runMenu.Value;
 
     
     % Populate MAP menu options: --------------------------------------------
     if isfield(D, 'dfStructName')
+        fprintf('Loading DF datastruct...\n');
         dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
         if isempty(dfStruct.slice(selectedSlice).file)
             fprinf('No DF struct found for slice %i.\n', selectedSlice);
@@ -124,13 +133,17 @@ while loading==1
 %         end
         stimcolors = meta.stimcolors;
         setappdata(handles.roigui, 'stimcolors', stimcolors);
-    end
     
-    if ~strcmp(D.stimType, 'bar')
         stimstruct = load(fullfile(D.outputDir, D.stimStructName));
         setappdata(handles.roigui, 'stimstruct', stimstruct);
         trialstruct = load(fullfile(D.outputDir, D.trialStructName));
         setappdata(handles.roigui, 'trialstruct', trialstruct);
+        
+    else
+        
+        stimcolors = repmat(guicolors.red, [50,1]);
+        setappdata(handles.roigui, 'stimcolors', stimcolors);
+        
     end
     
     handles.ax3.UserData.clickedTrial = 1;

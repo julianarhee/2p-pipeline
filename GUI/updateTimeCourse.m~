@@ -91,43 +91,30 @@ if strcmp(D.stimType, 'bar')
         handles.ax4.TickDir = 'out';
         hold on;
     end
-    nEpochs = length(stimStarts);
 else
     colors = getappdata(handles.roigui, 'stimcolors');
     
     mwCodes = meta.file(selectedFile).mw.pymat.(currRunName).stimIDs;
     sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
-    trialidx = 1;
-    currStimTrialIdx = [];
     for trial=1:2:length(mwTimes)
         sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
         currStim = mwCodes(trial);
         if handles.stimShowAvg.Value
-            handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+            handles.mwepoch(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
         else
-            if currStim==handles.stimMenu.Value
-                handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-                currStimTrialIdx = [currStimTrialIdx trialidx];
+            if handles.stimMenu.Value==currStim
+                handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
+                currStimTrialIdx = [currStimTrialIdx
             else
-                handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+                handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
             end
+            
         end
         handles.ax4.TickDir = 'out';
         hold on;
-        trialidx = trialidx + 1;
-        %handles.ax4.UserData.trialEpochs = trialidx;
     end
-    nEpochs = length(mwTimes);
-    
-%     % Darken selected trial if multiple reps of selected stim in current
-%     % run:
-%     if isfield(handles.ax3.UserData, 'clickedTrialIdxInRun')
-%         handles.mwepochs(currStimTrialIdx(handles.ax3.UserData.clickedTrialIdxInRun)).FaceAlpha = selectedTrialStimAlpha;
-%     end
-    
 end
-
-handles.ax4.UserData.trialEpochs = nEpochs;
+    
 % xlim([0 tstamps(size(dfMat,2))]); % Crop extra white space
 % xlabel('time (s)');
 

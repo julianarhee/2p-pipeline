@@ -9,7 +9,16 @@ selectedStim = handles.stimMenu.String{selectedStimIdx};
 
 selectedRoi = str2double(handles.currRoi.String);
 
+guicolors = getappdata(handles.roigui, 'guicolors');
 
+%PLOT:
+axes(handles.ax3);
+
+if strcmp(D.stimType, 'bar')
+    % do some other stuff
+    
+else
+    
 stimstruct = getappdata(handles.roigui, 'stimstruct');
 stimcolors = getappdata(handles.roigui, 'stimcolors');
 
@@ -25,42 +34,11 @@ mwSec = stimstruct.slice(selectedSlice).(selectedStim).siTimeMat; % If created b
 trimmed = stimstruct.slice(selectedSlice).(selectedStim).trimmedAndPadded;
 nTrials = size(dfMat,2);
 
-%PLOT:
-axes(handles.ax3);
-
 if ~handles.stimShowAvg.Value % Show each trial:
-%     for trial=1:size(dfMat, 1);
-%         trial
-%         plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
-%         hold on;
-%     end
     
-    % Plot each trial trace:
-%     for trial=1:size(dfMat,2)
-% 
-% %         handles.stimtrials(trial) = plot(mwSec(:,trial), dfMat(:,trial), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1,...
-% %                                         'ButtonDownFcn', @selectTrace);  
-%         handles.stimtrials(trial) = plot(mwSec(:,trial), dfMat(:,trial), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1); 
-%         handles.stimMenu.UserData.clickedTrial = trialstruct.slice(selectedSlice).info.(selectedStim){trial}.tiffNum;
-%         hold on;
-%     end
-%     setappdata(handles.roigui, 'handles', handles)
-        
-
-      handles.stimtrials = plot(mwSec, dfMat, 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
-      setappdata(handles.roigui, 'dfMat', dfMat);          
-        %handles.stimplot.trials(trial).
-%         handles.stimMenu.UserData.clickedTrial = trialstruct.slice(selectedSlice).info.(selectedStim){trial}.tiffNum;
-        %handles.stimplot.trials(trial).ButtonDownFcn = 
-        %handles.stimplot.trials(trial).ButtonDownFcn = @ax3_ButtonDownFcn;
-%         handles.stimplot.trials(trial).HitTest = 'on';
-%         handles.stimplot.trials(trial).PickableParts = 'all';
-%         handles.stimplot(trial).HitTest = 'on';
-%         handles.stimplot(trial).PickableParts = 'all';
-%         handles.stimplot(trial).ButtonDownFcn = @ax3_ButtonDownFcn;
-%         
-%         hold on;
-%     end
+    % Plot each df/f trace for all trials:
+    handles.stimtrials = plot(mwSec, dfMat, 'Color', guicolors.lightgray, 'LineWidth',0.1);
+    setappdata(handles.roigui, 'dfMat', dfMat);          
     hold on;
     
     % Plot MW stim ON patch:
@@ -101,8 +79,9 @@ else
         meanDfMat{end+1} = meanTraceInterp;
         
     end
-    setappdata(handles.roigui, 'dfMat', meanDfMat);      
-    
+    setappdata(handles.roigui, 'dfMat', meanDfMat);     
+           
+            
     % Plot MW stim ON patch:
     stimOnset = mean(mwTrialTimes(:,2));
     stimOffset = mean(mwTrialTimes(:,3));
@@ -115,39 +94,13 @@ else
     
 end
 
+end
 
 handles.ax3.Box = 'off';
 handles.ax3.TickDir = 'out';
 hold off;
-%handles.ax3.UserData.clickedTrial = 1;
 
-% handles.ax3.PickableParts = 'all';
-% handles.ax3.HitTest = 'on';
-% set(handles.ax3, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 
-%end
-
-% 
-% axes(handles.ax4);
-% handles.timecourse = plot(; %, handles.ax2);
-% colormap(handles.ax2, hot);
-% caxis([min(displayMap(:)), max(displayMap(:))]);
-% colorbar();
-% handles.retinolegend.Visible = 'off';
-% 
-% 
-% refPos = handles.ax1.Position;
-% ax2Pos = handles.ax2.Position;
-% handles.ax2.Position(3:4) = [refPos(3:4)];
-%title(currRunName);
-%colorbar();
-%
 end
 
-% function selectTrace(hObject,~)
-% 
-% %trialstruct.slice(selectedSlice).info.(selectedStim){trial}.tiffNum
-% trialstruct = getapp
-% fprintf('Selected trial: %i\n', clickedTrial);
-% end
 
