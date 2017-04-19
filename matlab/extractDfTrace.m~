@@ -1,6 +1,0 @@
-function [currDf] = extractDfTrace(currTrace, method)
-    switch method
-        case 
-	currDf = (currTrace - mean(currTrace)) ./ mean(currTrace);
-
-end

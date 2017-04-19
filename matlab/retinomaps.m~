@@ -9,8 +9,12 @@
 
 % acquisition_info;
 session = '20161221_JR030W';
-experiment = 'retinotopy037Hz';
-analysis_no = 3;
+%experiment = 'retinotopy2';
+%experiment = 'test_crossref';
+%experiment = 'retinotopyFinalMask';
+experiment = 'test_crossref/nmf';
+
+analysis_no = 1;
 tefo = false;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -34,11 +38,30 @@ nTiffs = meta.nTiffs;
 targetFreq = meta.file(1).mw.targetFreq;
 winUnit = (1/targetFreq);
 crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
-processTraces(D, winUnit, crop)
+nWinUnits = 3;
+switch D.roiType
+    case '3Dcnmf'
+        processTraces3Dnmf(D, winUnit, nWinUnits, crop)
+    case 'cnmf'
+        % do other stuff
+    otherwise
+        processTraces(D, winUnit, nWinUnits, crop)
+end
 
 % end
+
+% -------------------------------------------------------------------------
+% Get DF/F for whole movie:
+% -------------------------------------------------------------------------
 dfMin = 20;
-dfstruct = getDfMovie(D, dfMin);
+switch D.roiType
+    case '3Dcnmf'
+        dfstruct = getDfMovie3Dnmf(D, dfMin);
+    case 'cnmf'
+        % do other stuff
+    otherwise
+        dfstruct = getDfMovie(D, dfMin);
+end
 
 D.dfStructName = dfstruct.name;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
@@ -74,7 +97,7 @@ for sidx = 1:length(slicesToUse)
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     
     fftStruct = struct();
-    for fidx=1:nTiffs
+    for fidx= 3:3 %1:nTiffs
         fprintf('Processing TIFF #%i...\n', fidx);
         
         if isfield(maskstruct, 'file')
@@ -112,13 +135,16 @@ for sidx = 1:length(slicesToUse)
             case 'cnmf'
                 [d1,d2] = size(avgY);
                 [nframes,nrois] = size(traces);
+            case '3Dcnmf'
+                [d1,d2,d3] = size(avgY);
+                [nframes,nrois] = size(traces);
         end
         
         % Get phase and magnitude maps:
-        phaseMap = zeros(d1, d2, 1);
-        magMap = zeros(d1, d2, 1);
-        ratioMap = zeros(d1, d2, 1);
-        phaseMaxMag = zeros(d1, d2, 1);
+        phaseMap = zeros([d1, d2]);
+        magMap = zeros([d1, d2]);
+        ratioMap = zeros([d1, d2]);
+        phaseMaxMag = zeros([d1, d2]);
         
         
         % Subtrace rolling average:
@@ -144,7 +170,7 @@ for sidx = 1:length(slicesToUse)
         freqIdx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
 
         fftfun = @(x) fft(x)/N;
-        fftMat = arrayfun(@(i) fftfun(traces(:,i)), 1:nrois, 'UniformOutput', false);
+        fftMat = arrayfun(@(i) fftfun(traces(:,i)), 1:size(traces,2), 'UniformOutput', false);
         fftMat = cat(2, fftMat{1:end});
        
         fftMat = fftMat(1:N/2, :);

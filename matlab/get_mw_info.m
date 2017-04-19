@@ -1,4 +1,4 @@
-function M = get_mw_info(sourceDir, nTiffs, nTiffCorrection)
+function M = get_mw_info(sourceDir, nTiffs, nTiffCorrection, crossref)
 
 M = struct();
 mwStruct = struct();
@@ -16,10 +16,27 @@ if isempty(fileNames)
     mw2si = 'unknown';
 else
     fileNames = {fileNames(:).name}';
+    if crossref
+        tmpmats = {};
+        for f=1:length(fileNames)
+            mplaces = find(fileNames{f}=='_');
+            tmpmats{end+1} = fileNames{f}(1:mplaces(end)-1);
+        end
+        matnames = unique(tmpmats);
+        fprintf('More than 1 .mat type found. Looks like multiple conditions are corrected to same reference.\n');
+        for f=1:length(matnames)
+            fprintf('Idx: %i, MAT: %s\n', f, matnames{f})
+        end
+        matroot = matnames{input('Select IDX of curr analysis:\n')};
+        tmpfidxs = cellfun(@(n) strfind(n, matroot), fileNames, 'UniformOutput', 0);
+        fidxs = arrayfun(@(i) ~isempty(tmpfidxs{i}), 1:length(tmpfidxs));
+        fileNames = fileNames(fidxs);
+    end
+    
     fprintf('Found %i MW files and %i TIFFs.\n', length(fileNames), nTiffs);
     pymatName = fileNames{1};
     pymat = load(fullfile(mwPath, pymatName));
-    nRuns = length(pymat.runs); % Just check length of a var to see how many "runs" MW-parsing detected.
+    nRuns = size(pymat.runs,1); %length(pymat.runs); % Just check length of a var to see how many "runs" MW-parsing detected.
    
     fprintf('---------------------------------------------------------\n');
     if length(fileNames) == nTiffs+nTiffCorrection 

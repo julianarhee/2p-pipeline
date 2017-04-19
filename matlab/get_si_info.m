@@ -15,7 +15,7 @@ function S = get_si_info(sourceDir, acquisitionName)
             nVolumes = currMeta.SI.hFastZ.numVolumes;
             nSlices = currMeta.SI.hFastZ.numFramesPerVolume;
             nDiscard = currMeta.SI.hFastZ.numDiscardFlybackFrames;
-            nFramesPerVolume = nSlices + nDiscard;
+            nFramesPerVolume = nSlices; % + nDiscard;
             nTotalFrames = nFramesPerVolume * nVolumes;
 
             siFrameTimes = currMeta.frameTimestamps_sec(1:2:end);
@@ -27,27 +27,29 @@ function S = get_si_info(sourceDir, acquisitionName)
             linesPerFrame = currMeta.SI.hRoiManager.linesPerFrame;
             frameHeight = linesPerFrame/slowMultiplier;
 
-            motionRefNum = meta.(acquisitionName).motionRefMovNum;
-            motionRefPath = meta.(acquisitionName).Movies{motionRefNum};
-            
-            
             siMetaStruct.file(fidx).nChannels = nChannels;
             siMetaStruct.file(fidx).nVolumes = nVolumes;
-            siMetaStruct.file(fidx).nSlices = nSlices;
+            siMetaStruct.file(fidx).nSlices = nSlices - nDiscard;
             siMetaStruct.file(fidx).nDiscard = nDiscard;
             siMetaStruct.file(fidx).nFramesPerVolume = nFramesPerVolume;
             siMetaStruct.file(fidx).nTotalFrames = nTotalFrames;
             siMetaStruct.file(fidx).siFrameTimes = siFrameTimes;
+            siMetaStruct.file(fidx).siFrameRate = siFrameRate;
             siMetaStruct.file(fidx).siVolumeRate = siVolumeRate;
             siMetaStruct.file(fidx).frameWidth = frameWidth;
             siMetaStruct.file(fidx).slowMultiplier = slowMultiplier;
             siMetaStruct.file(fidx).linesPerFrame = linesPerFrame;
             siMetaStruct.file(fidx).frameHeight = frameHeight;
-            siMetaStruct.file(fidx).motionRefNum = motionRefNum;
-            siMetaStruct.file(fidx).motionRefPath = motionRefPath;
+            if isfield(meta.(acquisitionName), 'motionRefMovNum')
+                motionRefNum = meta.(acquisitionName).motionRefMovNum;
+                motionRefPath = meta.(acquisitionName).Movies{motionRefNum};
             
-            siMetaStruct.file(fidx).rawTiffPath = meta.(acquisitionName).Movies{fidx};
+                siMetaStruct.file(fidx).motionRefNum = motionRefNum;
+                siMetaStruct.file(fidx).motionRefPath = motionRefPath;
+            
+                siMetaStruct.file(fidx).rawTiffPath = meta.(acquisitionName).Movies{fidx};
             %siMetaStruct.file(fidx) = sistruct;
+            end
             
         end
         S.acquisitionName = acquisitionName;
