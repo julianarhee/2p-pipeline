@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 26-Mar-2017 18:45:15
+% Last Modified by GUIDE v2.5 17-Apr-2017 19:19:05
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -90,9 +90,21 @@ showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui,'meta');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
-updateTimeCourse(handles, D, meta);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
-updateStimulusPlot(handles, D);
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 guidata(hObject,handles);
 
@@ -124,11 +136,21 @@ hObject.UserData.stimType = hObject.String;
 hObject.UserData.currStimValue = hObject.Value;
 hObject.UserData.currStimName =  hObject.String{hObject.Value};
 
-updateTimeCourse(handles, D, meta);
 
 % TODO: Function to update stimulus-trace plot (PSTH):
-updateStimulusPlot(handles, D);
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 guidata(hObject,handles);
 
@@ -164,10 +186,22 @@ end
 hObject.String = fileNames;
 hObject.UserData.runValue = hObject.Value;
 
-updateActivityMap(handles, D, meta);
-updateTimeCourse(handles, D, meta);
+[handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
-updateStimulusPlot(handles, D);
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
 % selectedSlice = str2double(handles.currSlice.String);
@@ -209,10 +243,24 @@ handles.currRoi.String = num2str(hObject.Value);
 newReference = 0;
 showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
-[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+meta = getappdata(handles.roigui,'meta');
 
-updateTimeCourse(handles, D, meta);
-updateStimulusPlot(handles, D);
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+if ~strcmp(D.stimType, 'bar')
+[handles, D] = updateStimulusPlot(handles, D);
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 guidata(hObject,handles);
 
@@ -262,13 +310,24 @@ set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 setappdata(handles.roigui, 'D', D);
 
 % Update activity map:
-updateActivityMap(handles, D, meta);
+[handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 % Update Timecourse plot:
-updateTimeCourse(handles, D, meta);
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 % Update Stimulus plot:
-updateStimulusPlot(handles, D);
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 % Set UserData fields:
 handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
@@ -315,10 +374,22 @@ end
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
 set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
-updateActivityMap(handles, D, meta)
-updateTimeCourse(handles, D, meta);
-updateStimulusPlot(handles, D);
+[handles, D] = updateActivityMap(handles, D, meta)
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 setappdata(handles.roigui, 'D', D);
 hObject.UserData.sliceValue = hObject.Value;
@@ -395,7 +466,8 @@ end
 
 hObject.String = mapTypes;
 
-updateActivityMap(handles, D, meta);
+[handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 
 guidata(hObject,handles);
@@ -429,7 +501,8 @@ hObject.String = num2str(str2double(hObject.String));
 D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
 
-updateActivityMap(handles, D, meta);
+[handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 guidata(hObject,handles);
 
@@ -464,6 +537,7 @@ else
     newReference=0;
 end
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 setappdata(handles.roigui, 'D', D);
 
@@ -507,13 +581,25 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
     setappdata(handles.roigui, 'D', D);
 
     % Update activity map:
-    updateActivityMap(handles, D, meta);
+    [handles, D] = updateActivityMap(handles, D, meta);
+    set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
     % Update timecourse plot:
-    updateTimeCourse(handles, D, meta);
+    [handles, D] = updateTimeCourse(handles, D, meta);
+    nEpochs = handles.ax4.UserData.trialEpochs;
+    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
     
     % Update stimulus plot:
-    updateStimulusPlot(handles, D);
+    [handles, D] = updateStimulusPlot(handles, D);
+    if ~strcmp(D.stimType, 'bar')
+    if handles.stimShowAvg.Value
+        set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    else
+        set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    end
+    end
+    handles.ax3.Children = flipud(handles.ax3.Children);
+
 
     % Set UserData fields:
     handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
@@ -562,15 +648,20 @@ M = getappdata(handles.roigui, 'maskmat');
 currPoint = eventdata.IntersectionPoint;
 
 D = getappdata(handles.roigui, 'D');
-if strcmp(D.maskType, 'cnmf')
-    if D.maskInfo.params.scaleFOV
-        cp = [round(currPoint(1)) round(currPoint(2))];
+if ~D.tefo
+    if strcmp(D.maskType, 'cnmf')
+        if D.maskInfo.params.scaleFOV
+            cp = [round(currPoint(1)) round(currPoint(2))];
+        else
+            cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        end
     else
-        cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
     end
 else
-    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
+    cp = [round(currPoint(1)) round(currPoint(2))];
 end
+
 
 colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
 [i,j,s] = find(M);
@@ -593,42 +684,29 @@ newReference = 0;
 showRois = handles.roiToggle.Value;
 %D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 %TODO
 % ********************
 % Update "stimulus PSTH" plot
 meta = getappdata(handles.roigui, 'meta');
-updateTimeCourse(handles, D, meta);
-updateStimulusPlot(handles, D);
+
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 
 guidata(hObject,handles);
-
-% Try this for highlting ROIs with hover only over ax1:
-% S.ax = hObject.Parent;
-% S.axp = S.ax.Position;
-% S.xlm = S.ax.XLim;
-% S.ylm = S.ax.YLim;
-% S.dfx = diff(S.xlm);
-% S.dfy = diff(S.ylm);
-% 
-% F = S.ax.CurrentPoint  % The current point w.r.t the figure.
-% 
-% Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-% Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-% %fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
-% 
-% % Figure out of the current point is over the axes or not -> logicals.
-% tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
-% tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
-% 
-% if tf1 && tf2
-%     % Calculate the current point w.r.t. the axes.
-%     Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
-%     Cy =  S.xlm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
-%     %set(S.tx(2),'str',num2str([Cx,Cy],2))
-%     fprintf('Curr position: %s\n', num2str([Cx,Cy],2))
-% end
 
 
 % --- Executes on button press in stimShowAvg.
@@ -641,14 +719,31 @@ function stimShowAvg_Callback(hObject, eventdata, handles)
 D = getappdata(handles.roigui, 'D');
 meta = getappdata(handles.roigui, 'meta');
 
+[handles, D] = updateStimulusPlot(handles, D);
 if hObject.Value
     handles.stimMenu.Enable = 'off';
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     handles.stimMenu.Enable = 'on';
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
-updateTimeCourse(handles, D, meta);
+handles.ax3.Children = flipud(handles.ax3.Children);
 
-updateStimulusPlot(handles, D);
+
+if isfield(handles.ax3.UserData, 'clickedStim')
+    handles.stimMenu.Value = handles.ax3.UserData.clickedStim;
+end
+
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+% [handles, D] = updateStimulusPlot(handles, D);
+% 
+% if strcmp(handles.stimMenu.Enable, 'on')
+%     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+% end
+
 
 guidata(hObject,handles)
 
@@ -661,11 +756,103 @@ function stimShowAll_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
-%updateTimeCourse(handles, D, meta);
+D = getappdata(handles.roigui, 'D');
+selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
+selectedSlice = D.slices(selectedSliceIdx);
+selectedRoi = str2double(handles.currRoi.String);
 
-% TODO:  fix this...
-updateStimulusPlot(handles, D);
+stimstruct = getappdata(handles.roigui, 'stimstruct');
+stimcolors = getappdata(handles.roigui, 'stimcolors');
+guicolors = getappdata(handles.roigui, 'guicolors');
 
+nStim = length(fieldnames(stimstruct.slice(selectedSlice)));
+if nStim > 20
+    nRows = 5;
+else
+    nRows = 2;
+end
+
+% if ~isfield(handles, 'allstimPSTH')
+%     fh = figure();
+% else
+%     fh = figure(fh);
+% end
+fh=figure();
+
+% if ~ishandle(handles.allstimPSTH)
+%     fh=figure();
+% else
+%     fh = figure(handles.allstimPSTH);
+% end
+
+%you can include anything you want in here as long as you specify the parent as
+%being fh
+pidx = 1;
+for stimidx=1:nStim
+    
+    currstim = sprintf('stim%i', stimidx);
+    mwTrialTimes = stimstruct.slice(selectedSlice).(currstim).mwTrialTimes;
+    dfMat = stimstruct.slice(selectedSlice).(currstim).dfTraceCell{selectedRoi}.*100;
+    mwSec = stimstruct.slice(selectedSlice).(currstim).siTimeMat; % If created before 03/29/2017, need to transpose
+
+    subaxis(nRows, ceil(nStim/nRows), pidx, 'Spacing', 0.02, 'Padding', 0.01, 'Margin', 0.05)
+    cla;
+    plot(mwSec, dfMat, 'Color', guicolors.lightgray, 'LineWidth',0.1);
+    hold on;
+
+    % Plot MW stim ON patch:
+    stimOnset = mean(mwTrialTimes(:,2));
+    stimOffset = mean(mwTrialTimes(:,3));
+    
+    xlim([-1.2, 3.2]);
+    ylim([-40, 40]);
+    
+    ylims = get(gca, 'ylim');
+    
+    v = [stimOnset ylims(1); stimOffset ylims(1);...
+        stimOffset ylims(2); stimOnset ylims(2)];
+    f = [1 2 3 4];
+    patch('Faces',f,'Vertices',v,'FaceColor',stimcolors(stimidx,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+    hold on;
+
+    % Plot MEAN trace for current ROI across stimulus reps:
+    %meanTraceInterp = mean(dfMat, 1);
+    meanTraceInterp = nanmean(dfMat, 2);
+    meanMWTime = nanmean(mwSec,2);
+    plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
+    hold on;
+    
+    if pidx==(ceil(nStim/nRows)*nRows - ceil(nStim/nRows) + 1) || pidx==1
+        % stuff
+        if pidx==1
+            set(gca, 'xticklabel', []);
+            set(gca, 'xtick', []);
+        else
+            set(gca, 'TickDir', 'out');
+            xlabel('time (s)')
+            ylabel('df/f');
+        end
+    else
+        %axis 'off'
+        set(gca, 'xticklabel', []);
+        set(gca, 'xtick', []);
+        set(gca, 'yticklabel', []);   
+        set(gca, 'ytick', []);
+        set(gca, 'xcolor', 'w');
+        set(gca, 'ycolor', 'w');
+        
+    end
+    set(gca, 'Box', 'off');
+    
+    title(currstim, 'FontSize', 8);
+    
+    pidx = pidx + 1;
+    
+end
+
+suptitle(sprintf('ROI %i', selectedRoi));
+handles.allstimPSTH = fh;
+    
 guidata(hObject, handles)
 
 % --- Executes on selection change in timecourseMenu.
@@ -679,7 +866,9 @@ function timecourseMenu_Callback(hObject, eventdata, handles)
 D = getappdata(handles.roigui, 'D');
 meta = getappdata(handles.roigui, 'meta');
 
-updateTimeCourse(handles, D, meta)
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 guidata(hObject,handles)
 
@@ -695,3 +884,537 @@ function timecourseMenu_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+
+% 
+% % --- Executes on mouse press over axes background.
+% function stimplotTrial_ButtonDownFcn(hObject, eventdata, handles)
+% % hObject    handle to ax1 (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % WindowButtonMotionFcn for the figure.
+% handles = guidata(hObject);
+% clickedTrial = handles.stimplot.UserData.clickedTrial;
+% fprintf('Selected trial: %i', clickedTrial);
+% 
+% 
+% 
+% guidata(hObject, handles)
+
+
+% --- Executes on mouse press over axes background.
+function ax3_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to ax3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+handles = guidata(hObject);
+dfmat = getappdata(handles.roigui, 'dfMat');
+
+sitWidth=0.5;
+standWidth=2;
+
+
+nTrials = size(dfmat,2);
+
+if handles.stimShowAvg.Value
+    lines = findobj(handles.stimtrialmean, 'type', 'line');
+    for stimAvgTraceIdx=1:length(dfmat)
+        currAvgTrace = dfmat{stimAvgTraceIdx};
+        if length(currAvgTrace)~=length(hObject.YData)
+            continue;
+        else
+            if sum(hObject.YData==currAvgTrace.') > length(hObject.YData)*.7
+                clickedTrial = stimAvgTraceIdx;
+            end
+        end
+    end
+    fprintf('Selected stimulus: %i\n', clickedTrial);
+    title(sprintf('Stim %i selected\n', clickedTrial),'FontSize', 8);     
+    handles.ax3.UserData.clickedStim = clickedTrial; % bad naming...
+    handles.stimMenu.Value = handles.ax3.UserData.clickedStim;
+    
+else
+    lines = findobj(handles.stimtrials, 'type', 'line');
+    nTrials = size(dfmat,2);
+    
+    if strcmp(hObject.Type, 'line')
+        % Transpose dfmat to get each trial as a row, then just take the
+        % first found value (since this will be equal to the actual trial,
+        % i.e., first frame/tpoint of selected trial):
+        clickedTrial = find(ismember(dfmat.', hObject.YData));
+        clickedTrial = clickedTrial(1); 
+        fprintf('Selected trial: %i\n', clickedTrial);
+        title(sprintf('Trial %i of %i selected', clickedTrial, nTrials), 'FontSize', 8);
+    end
+
+end
+
+handles.ax3.Children = flipud(handles.ax3.Children);
+
+if eventdata.Button==3    
+    % Turn off previously standing line if different one selected:
+    if isfield(handles.ax3.UserData, 'clickedTrial') && clickedTrial~=handles.ax3.UserData.clickedTrial
+        lines(handles.ax3.UserData.clickedTrial).LineWidth=sitWidth;
+        lines(clickedTrial).LineWidth=standWidth;
+    elseif isfield(handles.ax3.UserData, 'clickedTrial') && clickedTrial==handles.ax3.UserData.clickedTrial && lines(clickedTrial).LineWidth==standWidth
+        % TUrn off previously standing line if current one re-clicked:
+        lines(clickedTrial).LineWidth=sitWidth;
+    else
+        lines(clickedTrial).LineWidth=standWidth;
+        
+    end
+   handles.ax3.UserData.viewTrial = false; 
+   
+else
+    % Highlight the currently selected (LEFT-click) trial of current
+    % stimulus and update other plots to view the file/run in which trial
+    % occurred:
+    %if ~handles.stimShowAvg.Value
+    handles.ax3.UserData.viewTrial = true;
+    %else
+    %    handles.ax3.UserData.viewTrial = false;
+    %end
+    lines(clickedTrial).LineWidth=standWidth;
+    if isfield(handles.ax3.UserData, 'clickedTrial') && clickedTrial~=handles.ax3.UserData.clickedTrial
+        lines(handles.ax3.UserData.clickedTrial).LineWidth=sitWidth;
+    end
+    if isfield(handles.ax4.UserData, 'stimPlotIdx') && clickedTrial~=handles.ax4.UserData.stimPlotIdx
+        lines(handles.ax4.UserData.stimPlotIdx).LineWidth=sitWidth;
+    end
+end
+
+% Update currently selected trial:
+handles.ax3.UserData.clickedTrial = clickedTrial;
+
+% Update time-course and activity maps if specific trial is selected to
+% match the TIFF (i.e., file/run) in which the selected trial occurred:
+if handles.ax3.UserData.viewTrial
+
+    trialstruct = getappdata(handles.roigui, 'trialstruct');
+    meta = getappdata(handles.roigui, 'meta');
+    D = getappdata(handles.roigui, 'D');
+
+    selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
+    selectedSlice = D.slices(selectedSliceIdx);
+    selectedStimIdx = handles.stimMenu.Value;
+    stimNames = handles.stimMenu.String;
+    selectedStim = handles.stimMenu.String{selectedStimIdx};
+    selectedRoi = str2double(handles.currRoi.String);
+
+    clickedTrialRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.tiffNum;
+    clickedTrialIdxInRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.trialIdxInRun;
+    handles.runMenu.Value = clickedTrialRun;
+    handles.ax3.UserData.clickedTrialIdxInRun = clickedTrialIdxInRun;
+    handles.ax3.UserData.clickedTrialRun = clickedTrialRun;
+    
+    [handles, D] = updateTimeCourse(handles, D, meta);
+    nEpochs = handles.ax4.UserData.trialEpochs;
+    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    
+    [handles, D] =  updateActivityMap(handles, D, meta);
+    set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+
+end
+
+uistack(lines, 'top');
+
+guidata(hObject, handles);
+
+    
+    
+
+
+% --- Executes on mouse motion over figure - except title and menu.
+function roigui_WindowButtonMotionFcn(hObject, eventdata, handles)
+% hObject    handle to roigui (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% handles = guidata(hObject);
+% % Try this for highlting ROIs with hover only over ax1:
+% relPanelPos = handles.panelAx3.Position;
+% S.ax = handles.ax3;
+% S.axp = S.ax.Position;
+% 
+% S.axp(1) = S.axp(1)+relPanelPos(1);
+% S.axp(2) = S.axp(2)+relPanelPos(2);
+% %S.axp(2) = S.axp(1) + S.axp(2);
+% %S.axp(3) = S.axp(3)+relPanelPos(3);
+% %S.axp(4) = S.axp(3) + S.axp(3);
+% 
+% 
+% S.xlm = S.ax.XLim;
+% S.ylm = S.ax.YLim;
+% 
+% S.dfx = diff(S.xlm);
+% S.dfy = diff(S.ylm);
+% 
+% F = hObject.CurrentPoint;  % The current point w.r.t the figure.
+% 
+% % Figure out of the current point is over the axes or not -> logicals.
+% tf1 = S.axp(1) <= F(1) && F(1) <= S.axp(1) + S.axp(3);
+% tf2 = S.axp(2) <= F(2) && F(2) <= S.axp(2) + S.axp(4);
+% 
+% if tf1 && tf2
+%     % Calculate the current point w.r.t. the axes.
+%     Cx =  S.xlm(1) + (F(1)-S.axp(1)).*(S.dfx/S.axp(3));
+%     Cy =  S.ylm(1) + (F(2)-S.axp(2)).*(S.dfy/S.axp(4));
+%     %set(S.tx(2),'str',num2str([Cx,Cy],2))
+%     %fprintf('Curr position: %s\n', num2str([Cx,Cy],2));
+%     %hover(handles.ax3);
+%     
+%     % get all line children of the axes
+% %     lines = findobj(handles.stimtrials, 'type', 'line');
+% %     if isempty(lines), 
+% %         warning('no lines, nothing done');
+% %         return
+% %     else
+% %     
+% %     % set hover behavior
+% %     setbehavior(lines);
+% %     
+% %     % reset all sitting
+% %     if ~isempty(handles.ax3.UserData)
+% %         if handles.ax3.UserData.viewTrial
+% %         % do nothing
+% %         else
+% %         tstart = tic();
+% %         while toc(tstart) < 1
+% %             % do nothing
+% %         end
+% %         for h = lines(:)'
+% %             d = get(h,'userdata');
+% %             d.sit();
+% %         end
+% %         end
+% %     end
+% %     
+% %         
+% %     end
+%     
+% %     if isfield(handles.ax3, 'UserData')
+% %         if ~isempty(handles.ax3.UserData.clickedTrial)
+% %         d = get(lines(clickedTrial), 'userdata');
+% %         d.stand();
+% %         end
+% %     end
+% %     prevbestmatch = 1;
+% %     bestmatch = [];
+% %     
+% %     candidatesX = zeros(1,length(lines));
+% %     candidatesY = zeros(1,length(lines));
+% % 
+% %     lidx=1;
+% %     for line=lines(:)'
+% %         abdiffsY = abs(line.YData-Cy);
+% %         abdiffsX = abs(line.XData-Cx);
+% %         candidateY = find(abs(line.YData-Cy)==min(abs(line.YData-Cy)));
+% %         candidateX = find(abs(line.XData-Cx)==min(abs(line.XData-Cx)));
+% %         if min(abdiffsY)+min(abdiffsX) < 1
+% %             candidatesX(lidx) = abdiffsX(candidateX);
+% %             candidatesY(lidx) = abdiffsY(candidateY);
+% %         end
+% %         lidx = lidx+1;
+% %     end
+% %     bestmatch = [bestmatch find(candidatesY==min(candidatesY))];
+% %     
+% %         
+% %     %end
+% %     
+% %     for hix = 1:length(lines(:)');
+% %         h = lines(hix);
+% %         d = get(h,'userdata');
+% %         if hix==bestmatch(1) %hix==bestmatch(1)
+% %             d.stand();
+% %         else
+% %         	d.sit();
+% %         end
+% %         
+% %     end
+% %    
+% 
+% %     set(handles.stimtrials,'userdata',lines(1));
+% %     
+% %     ttimer = tic();
+% %     while toc(ttimer) < 1
+% %         lastone = get(handles.stimtrials, 'userdata');
+% %         lidx=1;
+% %         candidates = zeros(length(lines), 2);
+% %         for line=lines(:)'
+% %             abdiffs = abs(line.YData-Cy);
+% %             candidate = find(abs(line.YData-Cy)==min(abs(line.YData-Cy)));
+% %             candidates(lidx,:) = [lidx, abdiffs(candidate)];
+% %             lidx = lidx+1;
+% %         end
+% %         bestmatch = find(min(candidates(:,2)));
+% %         hovering = lines(bestmatch); %get(handles.stimtrials(bestmatch),'userdata');
+% %         
+% %         if hovering == lastone, return; end
+% %         % get behavior data 
+% %         hData = get(hovering,'userdata');
+% %         % hovering over some other type of object perhaps
+% %         if ~isfield( hData, 'sit' ), return; end
+% %         % ok, stand up
+% %         hData.stand();
+% %         % sit-down previous
+% %         hData = get(lastone,'userdata');
+% %         hData.sit();
+% %         % store as lastone
+% %         set(handles.stimtrials,'userdata',hovering);
+% %     end
+% 
+%     
+% 
+% %     end
+% 
+% end
+% %     
+%     
+% function setbehavior( hs )
+%     for h = hs(:)'
+% %         high = get(h,'color');
+% %         dim  = rgb2hsv(high);
+% %         dim(2) = 0.1;
+% %         dim(3) = 0.9;
+% %         dim = hsv2rgb(dim);
+%         
+%         hov.sit   = @() set(h,'linewidth', .5);
+%         
+%         hov.stand = @() set(h,'linewidth', 2);
+%         set(h,'userdata',hov);
+%     end
+
+
+% --- Executes on mouse press over axes background.
+function ax4_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to ax4 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+handles = guidata(hObject);
+D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
+trialstruct = getappdata(handles.roigui, 'trialstruct');
+
+sitWidth=0.5;
+standWidth=2;
+
+
+oldStimVal = handles.stimMenu.Value;
+
+selectedSliceIdx = handles.currSlice.Value;
+selectedSlice = D.slices(selectedSliceIdx);
+selectedFile = handles.runMenu.Value;
+currRunName = meta.file(selectedFile).mw.runName;
+
+mwTimes = meta.file(selectedFile).mw.mwSec;
+mwTimes = mwTimes(1:2:end);
+nTrials = length(mwTimes);
+mwCodes = meta.file(selectedFile).mw.pymat.(currRunName).stimIDs;
+mwCodes = mwCodes(1:2:end);
+
+colors = getappdata(handles.roigui, 'stimcolors');
+
+guicolors = getappdata(handles.roigui, 'guicolors');
+
+patches = findobj(handles.mwepochs, 'type', 'patch');
+
+if strcmp(hObject.Type, 'patch')
+    clickedTrial = find(ismember(mwTimes, hObject.Vertices(1,1)));
+    clickedTrial = clickedTrial(1);
+    %fprintf('Selected trial: %i\n', clickedTrial);
+    title(sprintf('Trial %i of %i selected', clickedTrial, nTrials), 'FontSize', 8);
+end
+
+clickedTrialStim = mwCodes(clickedTrial);
+% Check if there's more than 1 trial:
+stimReps = find(mwCodes==clickedTrialStim);
+clickedTrialStimColor = colors(clickedTrialStim,:);
+handles.stimMenu.Value = clickedTrialStim;
+      
+[handles, D] = updateStimulusPlot(handles, D);
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+
+% Highlight selected stim, if exists:
+standAlpha = 0.8;
+sitAlpha =0.4;
+if handles.stimShowAvg.Value
+    if isfield(handles.ax4.UserData, 'clickedTrialStim') ...
+            && clickedTrialStim~=handles.ax4.UserData.clickedTrialStim
+        handles.stimtrialmean(clickedTrialStim).LineWidth = standWidth;
+        handles.stimtrialmean(handles.ax4.UserData.clickedTrialStim).LineWidth = sitWidth;
+        uistack(handles.stimtrialmean(clickedTrialStim), 'top');
+        
+        patches(clickedTrial).FaceAlpha = standAlpha;
+        patches(handles.ax4.UserData.clickedTrial).FaceAlpha = sitAlpha;
+        
+        
+    elseif isfield(handles.ax4.UserData, 'clickedTrialStim') ...
+            && clickedTrial==handles.ax4.UserData.clickedTrial ...
+            && patches(clickedTrial).FaceAlpha==standAlpha
+            
+        % If same TRIAL picked, and corresponding mean-stim trace still on,
+        % turn off previously standing line if re-clicked:
+        handles.stimtrialmean(clickedTrialStim).LineWidth = sitWidth;
+        patches(clickedTrial).FaceAlpha = sitAlpha;
+        
+    else
+        handles.stimtrialmean(clickedTrialStim).LineWidth = standWidth;
+        uistack(handles.stimtrialmean(clickedTrialStim), 'top');
+        
+        patches(clickedTrial).FaceAlpha = standAlpha;
+
+    end
+    
+    stimPlotIdx = clickedTrial;
+
+else
+    % Highlight corresponding trial on stim-plot:
+    tmptrials = trialstruct.slice(selectedSlice).info.(['stim' num2str(clickedTrialStim)]);
+    tiffidxs = cellfun(@(tmptrial) tmptrial.tiffNum, tmptrials);
+    stimTrialReps = cellfun(@(foundtrial) foundtrial.currStimRep, tmptrials(tiffidxs==selectedFile));
+    stimPlotIdx = stimTrialReps(clickedTrial==stimReps);
+
+    if isfield(handles.ax4.UserData, 'clickedTrialStim') ...
+            && clickedTrial~=handles.ax4.UserData.clickedTrial
+        % Turn off old selected patch and trials, if new one selected:
+        handles.stimtrials(stimPlotIdx).LineWidth = standWidth;
+        %handles.stimtrials(handles.ax4.UserData.stimPlotIdx).LineWidth = sitWidth;
+        title(sprintf('Trial %i of %i selected', stimPlotIdx, length(handles.stimtrials)), 'FontSize', 8);
+        
+        patches(clickedTrial).FaceColor = clickedTrialStimColor;
+        patches(clickedTrial).FaceAlpha = standAlpha;
+        isOn = true;
+        
+        if clickedTrialStim~=handles.ax4.UserData.clickedTrialStim
+            patches(handles.ax4.UserData.clickedTrial).FaceColor = guicolors.lightgray;
+        end
+        patches(handles.ax4.UserData.clickedTrial).FaceAlpha = sitAlpha;
+        
+    elseif isfield(handles.ax4.UserData, 'clickedTrialStim') ...
+            && clickedTrial==handles.ax4.UserData.clickedTrial ...
+            && patches(handles.ax4.UserData.clickedTrial).FaceAlpha==standAlpha
+        % Turn off previously standing line if current one re-clicked:
+        handles.stimtrials(handles.ax4.UserData.stimPlotIdx).LineWidth = sitWidth;
+        patches(handles.ax4.UserData.clickedTrial).FaceAlpha = sitAlpha;
+        isOn = false;
+    else
+        handles.stimtrials(stimPlotIdx).LineWidth = standWidth;
+        title(sprintf('Trial %i of %i selected', stimPlotIdx, length(handles.stimtrials)), 'FontSize', 8);
+        
+        patches(clickedTrial).FaceColor = clickedTrialStimColor;
+        patches(clickedTrial).FaceAlpha = standAlpha;
+        isOn = true;
+    end
+
+    % Update selected trial face patch to match stim-color:
+%     patches(clickedTrial).FaceColor = clickedTrialStimColor;
+%     patches(clickedTrial).FaceAlpha = standAlpha;
+%     if isfield(handles.ax4.UserData, 'clickedTrialStim') && clickedTrialStim ~= handles.ax4.UserData.clickedTrialStim
+%         patches(handles.ax4.UserData.clickedTrial).FaceColor = guicolors.lightgray;
+%         patches(handles.ax4.UserData.clickedTrial).FaceAlpha = sitAlpha;
+%     end
+    if clickedTrialStim ~= oldStimVal
+        prevStimTrialIdxs = find(mwCodes==oldStimVal);
+        for ptrial = prevStimTrialIdxs
+            patches(ptrial).FaceColor = guicolors.lightgray;
+            patches(ptrial).FaceAlpha = sitAlpha;
+        end
+    end
+    
+    uistack(handles.stimtrials, 'top');
+end
+                
+
+handles.ax4.UserData.clickedTrialStim = clickedTrialStim;
+handles.ax4.UserData.clickedTrial = clickedTrial;
+handles.ax4.UserData.stimPlotIdx = stimPlotIdx;
+
+guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function ax2_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to ax2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% WindowButtonMotionFcn for the figure.
+handles = guidata(hObject);
+%handles.avgimg.HitTest = 'off'
+maskcell = getappdata(handles.roigui,'maskcell');
+% M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+% M = cat(2,M{1:end});
+M = getappdata(handles.roigui, 'maskmat');
+
+%hitpoint = eventdata.IntersectionPoint;
+
+currPoint = eventdata.IntersectionPoint;
+
+D = getappdata(handles.roigui, 'D');
+if ~D.tefo
+    if strcmp(D.maskType, 'cnmf')
+        if D.maskInfo.params.scaleFOV
+            cp = [round(currPoint(1)) round(currPoint(2))];
+        else
+            cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        end
+    else
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
+    end
+else
+    cp = [round(currPoint(1)) round(currPoint(2))];
+end
+
+
+colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+[i,j,s] = find(M);
+roiIdx = find(i==colsubscript);
+if length(roiIdx)>1
+    roiIdx = roiIdx(1);
+    roiMatch = j(roiIdx);
+elseif length(roiIdx)==0
+    roiMatch = handles.currRoi.UserData.currRoi; 
+    fprintf('Try again, you did not select an ROI...\n');
+else
+    roiMatch = j(roiIdx);
+end
+
+%fprintf('ROI: %i\n', roiMatch);
+handles.currRoi.String = num2str(roiMatch);
+handles.currRoiSlider.Value = str2double(handles.currRoi.String);
+
+newReference = 0;
+showRois = handles.roiToggle.Value;
+%D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+%TODO
+% ********************
+% Update "stimulus PSTH" plot
+meta = getappdata(handles.roigui, 'meta');
+
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
+
+
+guidata(hObject,handles);

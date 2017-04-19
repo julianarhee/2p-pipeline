@@ -1,9 +1,10 @@
-function updateActivityMap(handles, D, meta)
+function [handles, D] = updateActivityMap(handles, D, meta)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
 selectedSlice = D.slices(selectedSliceIdx);
 selectedFile = handles.runMenu.Value;
 
+currThresh = str2double(handles.threshold.String);
 
 %avgimg = getCurrentSliceImage(handles, D);
 fov = repmat(mat2gray(D.avgimg), [1, 1, 3]);
@@ -56,20 +57,24 @@ handles.mapMenu.String = mapTypes;
 
 
 if handles.mapMenu.Value > length(mapTypes)
-    handles.mapMenu.Value = 1;
+    handles.mapMenu.Value = length(mapTypes);
 end
 selectedMapIdx = handles.mapMenu.Value;
 
 selectedMapType = mapTypes{selectedMapIdx};
-if (any(ismember(mapTypes, 'NaN')) || any(ismember(mapTypes, 'maxDf - not found')))
+if noDF
     displayMap = zeros(size(fov));
-elseif strcmp(selectedMapType, 'maxDf')
+elseif any(strfind(selectedMapType, 'Df')) || any(strcmp(selectedMapType, 'maps - notfound'))
     displayMap = dfStruct.slice(selectedSlice).file(selectedFile).maxMap;
+    if ~strcmp(selectedMapType, 'maxDf')
+        handles.mapMenu.Value = find(ismember(mapTypes, 'maxDf'));
+        selectedMapIdx = handles.mapMenu.Value;
+        selectedMapType = mapTypes{selectedMapIdx};
+    end
 else
     displayMap = mapStruct.file(selectedFile).(selectedMapType);
     magMap = mapStruct.file(selectedFile).ratio;
 
-    currThresh = str2double(handles.threshold.String);
     thresholdMap = threshold_map(displayMap, magMap, currThresh);
 end
 
@@ -78,9 +83,15 @@ switch selectedMapType
     case 'phase'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
-        handles.map = imagesc(scalefov(fov));
-        hold on;
-        handles.map = imagesc2(scalefov(thresholdMap));
+        if D.tefo
+            handles.map = imagesc(fov);
+            hold on;
+            handles.map = imagesc2(thresholdMap);
+        else
+            handles.map = imagesc(scalefov(fov));
+            hold on;
+            handles.map = imagesc2(scalefov(thresholdMap));
+        end
         colormap(handles.ax2, hsv);
         %caxis([min(displayMap(:)), max(displayMap(:))]);
         caxis([-1*pi, pi]);
@@ -106,9 +117,15 @@ switch selectedMapType
     case 'phasemax'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
-        handles.map = imagesc(scalefov(fov));
-        hold on;
-        handles.map = imagesc2(scalefov(thresholdMap));
+        if D.tefo
+            handles.map = imagesc(fov);
+            hold on;
+            handles.map = imagesc2(thresholdMap);
+        else
+            handles.map = imagesc(scalefov(fov));
+            hold on;
+            handles.map = imagesc2(scalefov(thresholdMap));
+        end
         colormap(handles.ax2, hsv);
         %caxis([min(displayMap(:)), max(displayMap(:))]);
         caxis([-1*pi, pi]);
@@ -129,7 +146,9 @@ switch selectedMapType
         else
             fprintf('No legend found...\n');
             handles.retinolegend.Visible = 'off';
-            handles.retinolegend.Children.Visible = 'off';
+            if isfield(handles.retinolegend, 'Children')
+                handles.retinolegend.Children.Visible = 'off';
+            end
         end
         
     otherwise
@@ -137,14 +156,32 @@ switch selectedMapType
         % 'magnitude'
         % 'maxDf'
         axes(handles.ax2);  
-        handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
+        if D.tefo
+            handles.map = imagesc(fov);
+            hold on;
+            thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+            handles.map = imagesc2(thresholdMap); %, handles.ax2);
+        else
+            handles.map = imagesc(scalefov(fov));
+            hold on;
+            thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+            handles.map = imagesc2(scalefov(thresholdMap)); %, handles.ax2);    
+        end
+        %handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
         colormap(handles.ax2, hot);
-        caxis([min(displayMap(:)), max(displayMap(:))]);
+        %caxis([min(displayMap(:)), max(displayMap(:))]);
+        if any(isnan([min(thresholdMap(:)), max(thresholdMap(:))]))
+            caxis([0 1]);
+        else
+            caxis([min(thresholdMap(:)), max(thresholdMap(:))]);
+        end
         colorbar();
         
         axes(handles.retinolegend)
         handles.retinolegend.Visible = 'off';
-        handles.retinolegend.Children.Visible = 'off';
+        if ~isempty(handles.retinolegend.Children)
+            handles.retinolegend.Children.Visible = 'off';
+        end
 
     
 end

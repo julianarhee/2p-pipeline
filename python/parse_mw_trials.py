@@ -399,8 +399,14 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             # Get rid of "repeat" events from state updates.
             pdevs = [i for i in tmp_pdevs if i.time<= boundary[1] and i.time>=boundary[0]]
             print "N pix-evs found in boundary: %i" % len(pdevs)
-
-            nons = np.where(np.diff([i.value[-1]['bit_code'] for i in pdevs])==0)[0] # pix stim event is always last
+            i#bitcode_idxs = [i for p in pdevs for i in range(len(p.value) if 'bit_code' in p.value[i].keys()]
+            bitcode_idxs = []
+            for p in pdevs:
+                bitcode_idxs.append([i for i,v in enumerate(p.value) if p.value[i].keys()[0]=='bit_code'])
+            #bitcode_idxs = list(itertools.chain.from_iterable(bitcode_idxs))
+            bitcode_idxs = [b[0] for b in bitcode_idxs]
+            nons = np.where(np.diff([i.value[kn]['bit_code'] for i,kn in zip(pdevs, bitcode_idxs)])==0)[0]
+            #nons = np.where(np.diff([i.value[kn]['bit_code'] for kn in range(len(i.value)) if 'bit_code' in i.value[kn].keys() for i in pdevs])==0)[0] # pix stim event is always last
             nons += 1 # to remove actual bad/repeated event
             
             pdevs = [p for i,p in enumerate(pdevs) if i not in nons]

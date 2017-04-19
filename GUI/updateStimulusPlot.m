@@ -1,4 +1,4 @@
-function updateStimulusPlot(handles, D)
+function [handles, D] = updateStimulusPlot(handles, D)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
 selectedSlice = D.slices(selectedSliceIdx);
@@ -9,27 +9,49 @@ selectedStim = handles.stimMenu.String{selectedStimIdx};
 
 selectedRoi = str2double(handles.currRoi.String);
 
-
-stimstruct = getappdata(handles.roigui, 'stimstruct');
-stimcolors = getappdata(handles.roigui, 'stimcolors');
-
-dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfCell{selectedRoi}.*100;
-mwSec = stimstruct.slice(selectedSlice).(selectedStim).mwinterpMat;
-mwTrialTimes = stimstruct.slice(selectedSlice).(selectedStim).mwTrialTimes;
-
+guicolors = getappdata(handles.roigui, 'guicolors');
 
 %PLOT:
 axes(handles.ax3);
+if strcmp(D.stimType, 'bar')
+    % do some other stuff
+    
+    fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); 
+    fftstruct = load(fullfile(D.guiPrepend, D.outputDir, fftStructName));
+    freqs = fftstruct.file(selectedFile).freqs;
+    mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+    targetfreqIdx = fftstruct.file(selectedFile).targetFreqIdx;
+    targetfreq = fftstruct.file(selectedFile).targetFreq
+    handles.fft = plot(freqs, mags, 'k', 'LineWidth', 2);
+    hold on
+    handles.fftMax = plot(freqs(mags==max(mags(:))), mags(mags==max(mags(:))), 'r*');
+    hold on;
+    handles.fftTarget = plot(freqs(targetfreqIdx), mags(targetfreqIdx), 'g*');
+    xlabel('Frequency (Hz)')
+    ylabel('Magnitude')
+    hold off;
+else
+    
+stimstruct = getappdata(handles.roigui, 'stimstruct');
+stimcolors = getappdata(handles.roigui, 'stimcolors');
+
+trialstruct = getappdata(handles.roigui, 'trialstruct');
+
+% dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfCell{selectedRoi}.*100;
+% mwSec = stimstruct.slice(selectedSlice).(selectedStim).mwinterpMat;
+mwTrialTimes = stimstruct.slice(selectedSlice).(selectedStim).mwTrialTimes;
+% nTrials = size(dfMat,1);
+
+dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfTraceCell{selectedRoi}.*100;
+mwSec = stimstruct.slice(selectedSlice).(selectedStim).siTimeMat; % If created before 03/29/2017, need to transpose
+trimmed = stimstruct.slice(selectedSlice).(selectedStim).trimmedAndPadded;
+nTrials = size(dfMat,2);
 
 if ~handles.stimShowAvg.Value % Show each trial:
-%     for trial=1:size(dfMat, 1);
-%         trial
-%         plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
-%         hold on;
-%     end
     
-    % Plot each trial trace:
-    handles.stimplot.trials = plot(mwSec.', dfMat.', 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
+    % Plot each df/f trace for all trials:
+    handles.stimtrials = plot(mwSec, dfMat, 'Color', guicolors.lightgray, 'LineWidth',0.1);
+    setappdata(handles.roigui, 'dfMat', dfMat);          
     hold on;
     
     % Plot MW stim ON patch:
@@ -39,31 +61,40 @@ if ~handles.stimShowAvg.Value % Show each trial:
     v = [stimOnset ylims(1); stimOffset ylims(1);...
         stimOffset ylims(2); stimOnset ylims(2)];
     f = [1 2 3 4];
-    handles.stimplot.mwepochs = patch('Faces',f,'Vertices',v,'FaceColor',stimcolors(selectedStimIdx,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+    handles.stimepochs = patch('Faces',f,'Vertices',v,'FaceColor',stimcolors(selectedStimIdx,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
     hold on;
     
     % Plot MEAN trace for current ROI across stimulus reps:
-    meanTraceInterp = mean(dfMat, 1);
-    meanMWTime = mean(mwSec,1);
-    handles.stimplot.mean = plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
+    %meanTraceInterp = mean(dfMat, 1);
+    meanTraceInterp = nanmean(dfMat, 2);
+    meanMWTime = nanmean(mwSec,2);
+    handles.stimtrialmean = plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
     hold on;
-    title(sprintf('Stim ID: %s', selectedStim));
-    
 else
-    
+    meanDfMat = {};
     for stimIdx=1:length(stimNames)
         stimname = ['stim' num2str(stimIdx)];
-        dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
-        mwSec = stimstruct.slice(selectedSlice).(stimname).mwinterpMat;
+        %dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
+        %mwSec = stimstruct.slice(selectedSlice).(stimname).mwinterpMat;
         mwTrialTimes = stimstruct.slice(selectedSlice).(stimname).mwTrialTimes;
+
+        dfMat = stimstruct.slice(selectedSlice).(stimname).dfTraceCell{selectedRoi}.*100;
+        mwSec = stimstruct.slice(selectedSlice).(stimname).siTimeMat; %
+        trimmed = stimstruct.slice(selectedSlice).(stimname).trimmedAndPadded;
         
-        meanTraceInterp = mean(dfMat, 1);
-        meanMWTime = mean(mwSec,1);
+        %meanTraceInterp = mean(dfMat, 1);
+        meanTraceInterp = nanmean(dfMat, 2);
+        meanMWTime = nanmean(mwSec,2);
     
-        handles.stimplot.mean(stimIdx) = plot(meanMWTime, meanTraceInterp, 'Color', stimcolors(stimIdx,:), 'LineWidth', 2);
+        handles.stimtrialmean(stimIdx) = plot(meanMWTime, meanTraceInterp, 'Color', stimcolors(stimIdx,:), 'LineWidth', 0.5);
         hold on;
         
+        meanDfMat{end+1} = meanTraceInterp;
+        
     end
+    setappdata(handles.roigui, 'dfMat', meanDfMat);     
+           
+            
     % Plot MW stim ON patch:
     stimOnset = mean(mwTrialTimes(:,2));
     stimOffset = mean(mwTrialTimes(:,3));
@@ -76,26 +107,13 @@ else
     
 end
 
+end
 
 handles.ax3.Box = 'off';
-handles.TickDir = 'out';
+handles.ax3.TickDir = 'out';
 hold off;
 
-%end
 
-% 
-% axes(handles.ax4);
-% handles.timecourse = plot(; %, handles.ax2);
-% colormap(handles.ax2, hot);
-% caxis([min(displayMap(:)), max(displayMap(:))]);
-% colorbar();
-% handles.retinolegend.Visible = 'off';
-% 
-% 
-% refPos = handles.ax1.Position;
-% ax2Pos = handles.ax2.Position;
-% handles.ax2.Position(3:4) = [refPos(3:4)];
-%title(currRunName);
-%colorbar();
-%
 end
+
+
