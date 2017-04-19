@@ -13,10 +13,23 @@ guicolors = getappdata(handles.roigui, 'guicolors');
 
 %PLOT:
 axes(handles.ax3);
-
 if strcmp(D.stimType, 'bar')
     % do some other stuff
     
+    fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); 
+    fftstruct = load(fullfile(D.guiPrepend, D.outputDir, fftStructName));
+    freqs = fftstruct.file(selectedFile).freqs;
+    mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+    targetfreqIdx = fftstruct.file(selectedFile).targetFreqIdx;
+    targetfreq = fftstruct.file(selectedFile).targetFreq
+    handles.fft = plot(freqs, mags, 'k', 'LineWidth', 2);
+    hold on
+    handles.fftMax = plot(freqs(mags==max(mags(:))), mags(mags==max(mags(:))), 'r*');
+    hold on;
+    handles.fftTarget = plot(freqs(targetfreqIdx), mags(targetfreqIdx), 'g*');
+    xlabel('Frequency (Hz)')
+    ylabel('Magnitude')
+    hold off;
 else
     
 stimstruct = getappdata(handles.roigui, 'stimstruct');

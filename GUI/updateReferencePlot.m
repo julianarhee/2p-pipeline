@@ -36,8 +36,9 @@ D.RGBimg(:,:,3) = D.RGBimg(:,:,3).*0;
     
 if selectedROI>0
     D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
+    D.masksRGBimg(:,:,3) = D.masksRGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
     D.RGBimg(:,:,1) = D.RGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
-    D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
+    %D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
 end
 
 axes(handles.ax1);
@@ -57,21 +58,37 @@ switch D.maskType
     otherwise
         if showRois
             if newReference==1
-                handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
+                if D.tefo
+                    handles.avgimg = imagesc2(D.masksRGBimg);
+                else
+                    handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
+                end
                 set(gca,'YDir','reverse')
                 %set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
             else
-                handles.avgimg.CData = scalefov(D.masksRGBimg); %imshow(D.masksRGBimg);
+                if D.tefo
+                    handles.avgimg = imagesc2(D.masksRGBimg);
+                else
+                    handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %imshow(D.masksRGBimg);
+                end
                 set(gca,'YDir','reverse')
             end
         else
             if newReference==1
-                handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
+                if D.tefo
+                    handles.avgimg = imagesc2(D.RGBimg);
+                else
+                    handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
                 %set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+                end
 
             else
-                handles.avgimg.CData = scalefov(D.RGBimg); % = imshow(D.RGBimg);
+                if D.tefo
+                    handles.avgimg = imagesc2(D.RGBimg); % = imshow(D.RGBimg);
+                else
+                    handles.avgimg = imagesc2(scalefov(D.RGBimg)); % = imshow(D.RGBimg);
+                end
             end
         end
 end

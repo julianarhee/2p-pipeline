@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 31-Mar-2017 15:23:09
+% Last Modified by GUIDE v2.5 17-Apr-2017 19:19:05
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -90,18 +90,21 @@ showRois = handles.roiToggle.Value;
 D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui,'meta');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 guidata(hObject,handles);
 
@@ -136,12 +139,14 @@ hObject.UserData.currStimName =  hObject.String{hObject.Value};
 
 % TODO: Function to update stimulus-trace plot (PSTH):
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs
@@ -182,17 +187,21 @@ hObject.String = fileNames;
 hObject.UserData.runValue = hObject.Value;
 
 [handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
 % selectedSlice = str2double(handles.currSlice.String);
@@ -237,11 +246,13 @@ D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui,'meta');
 
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
+if ~strcmp(D.stimType, 'bar')
 [handles, D] = updateStimulusPlot(handles, D);
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
@@ -249,7 +260,7 @@ else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
-
+end
 
 guidata(hObject,handles);
 
@@ -300,6 +311,7 @@ setappdata(handles.roigui, 'D', D);
 
 % Update activity map:
 [handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 % Update Timecourse plot:
 [handles, D] = updateTimeCourse(handles, D, meta);
@@ -308,12 +320,14 @@ set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 % Update Stimulus plot:
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 % Set UserData fields:
 handles.currSlice.UserData.sliceValue = handles.currSlice.Value;
@@ -361,18 +375,21 @@ end
 set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 [handles, D] = updateActivityMap(handles, D, meta)
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 setappdata(handles.roigui, 'D', D);
 hObject.UserData.sliceValue = hObject.Value;
@@ -450,6 +467,7 @@ end
 hObject.String = mapTypes;
 
 [handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 
 guidata(hObject,handles);
@@ -484,6 +502,7 @@ D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
 
 [handles, D] = updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 guidata(hObject,handles);
 
@@ -518,6 +537,7 @@ else
     newReference=0;
 end
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 setappdata(handles.roigui, 'D', D);
 
@@ -562,6 +582,7 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
 
     % Update activity map:
     [handles, D] = updateActivityMap(handles, D, meta);
+    set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
     % Update timecourse plot:
     [handles, D] = updateTimeCourse(handles, D, meta);
@@ -570,10 +591,12 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
     
     % Update stimulus plot:
     [handles, D] = updateStimulusPlot(handles, D);
+    if ~strcmp(D.stimType, 'bar')
     if handles.stimShowAvg.Value
         set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
     else
         set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    end
     end
     handles.ax3.Children = flipud(handles.ax3.Children);
 
@@ -625,15 +648,20 @@ M = getappdata(handles.roigui, 'maskmat');
 currPoint = eventdata.IntersectionPoint;
 
 D = getappdata(handles.roigui, 'D');
-if strcmp(D.maskType, 'cnmf')
-    if D.maskInfo.params.scaleFOV
-        cp = [round(currPoint(1)) round(currPoint(2))];
+if ~D.tefo
+    if strcmp(D.maskType, 'cnmf')
+        if D.maskInfo.params.scaleFOV
+            cp = [round(currPoint(1)) round(currPoint(2))];
+        else
+            cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        end
     else
-        cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
     end
 else
-    cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
+    cp = [round(currPoint(1)) round(currPoint(2))];
 end
+
 
 colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
 [i,j,s] = find(M);
@@ -668,12 +696,14 @@ nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
+end
 
 
 guidata(hObject,handles);
@@ -727,18 +757,102 @@ function stimShowAll_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 D = getappdata(handles.roigui, 'D');
+selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
+selectedSlice = D.slices(selectedSliceIdx);
+selectedRoi = str2double(handles.currRoi.String);
 
+stimstruct = getappdata(handles.roigui, 'stimstruct');
+stimcolors = getappdata(handles.roigui, 'stimcolors');
+guicolors = getappdata(handles.roigui, 'guicolors');
 
-
-% TODO:  fix this...
-[handles, D] = updateStimulusPlot(handles, D);
-if handles.stimShowAvg.Value
-    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+nStim = length(fieldnames(stimstruct.slice(selectedSlice)));
+if nStim > 20
+    nRows = 5;
 else
-    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    nRows = 2;
 end
-handles.ax3.Children = flipud(handles.ax3.Children);
 
+% if ~isfield(handles, 'allstimPSTH')
+%     fh = figure();
+% else
+%     fh = figure(fh);
+% end
+fh=figure();
+
+% if ~ishandle(handles.allstimPSTH)
+%     fh=figure();
+% else
+%     fh = figure(handles.allstimPSTH);
+% end
+
+%you can include anything you want in here as long as you specify the parent as
+%being fh
+pidx = 1;
+for stimidx=1:nStim
+    
+    currstim = sprintf('stim%i', stimidx);
+    mwTrialTimes = stimstruct.slice(selectedSlice).(currstim).mwTrialTimes;
+    dfMat = stimstruct.slice(selectedSlice).(currstim).dfTraceCell{selectedRoi}.*100;
+    mwSec = stimstruct.slice(selectedSlice).(currstim).siTimeMat; % If created before 03/29/2017, need to transpose
+
+    subaxis(nRows, ceil(nStim/nRows), pidx, 'Spacing', 0.02, 'Padding', 0.01, 'Margin', 0.05)
+    cla;
+    plot(mwSec, dfMat, 'Color', guicolors.lightgray, 'LineWidth',0.1);
+    hold on;
+
+    % Plot MW stim ON patch:
+    stimOnset = mean(mwTrialTimes(:,2));
+    stimOffset = mean(mwTrialTimes(:,3));
+    
+    xlim([-1.2, 3.2]);
+    ylim([-40, 40]);
+    
+    ylims = get(gca, 'ylim');
+    
+    v = [stimOnset ylims(1); stimOffset ylims(1);...
+        stimOffset ylims(2); stimOnset ylims(2)];
+    f = [1 2 3 4];
+    patch('Faces',f,'Vertices',v,'FaceColor',stimcolors(stimidx,:), 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+    hold on;
+
+    % Plot MEAN trace for current ROI across stimulus reps:
+    %meanTraceInterp = mean(dfMat, 1);
+    meanTraceInterp = nanmean(dfMat, 2);
+    meanMWTime = nanmean(mwSec,2);
+    plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
+    hold on;
+    
+    if pidx==(ceil(nStim/nRows)*nRows - ceil(nStim/nRows) + 1) || pidx==1
+        % stuff
+        if pidx==1
+            set(gca, 'xticklabel', []);
+            set(gca, 'xtick', []);
+        else
+            set(gca, 'TickDir', 'out');
+            xlabel('time (s)')
+            ylabel('df/f');
+        end
+    else
+        %axis 'off'
+        set(gca, 'xticklabel', []);
+        set(gca, 'xtick', []);
+        set(gca, 'yticklabel', []);   
+        set(gca, 'ytick', []);
+        set(gca, 'xcolor', 'w');
+        set(gca, 'ycolor', 'w');
+        
+    end
+    set(gca, 'Box', 'off');
+    
+    title(currstim, 'FontSize', 8);
+    
+    pidx = pidx + 1;
+    
+end
+
+suptitle(sprintf('ROI %i', selectedRoi));
+handles.allstimPSTH = fh;
+    
 guidata(hObject, handles)
 
 % --- Executes on selection change in timecourseMenu.
@@ -857,11 +971,11 @@ else
     % Highlight the currently selected (LEFT-click) trial of current
     % stimulus and update other plots to view the file/run in which trial
     % occurred:
-    if ~handles.stimShowAvg.Value
-        handles.ax3.UserData.viewTrial = true;
-    else
-        handles.ax3.UserData.viewTrial = false;
-    end
+    %if ~handles.stimShowAvg.Value
+    handles.ax3.UserData.viewTrial = true;
+    %else
+    %    handles.ax3.UserData.viewTrial = false;
+    %end
     lines(clickedTrial).LineWidth=standWidth;
     if isfield(handles.ax3.UserData, 'clickedTrial') && clickedTrial~=handles.ax3.UserData.clickedTrial
         lines(handles.ax3.UserData.clickedTrial).LineWidth=sitWidth;
@@ -900,6 +1014,8 @@ if handles.ax3.UserData.viewTrial
     set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
     
     [handles, D] =  updateActivityMap(handles, D, meta);
+    set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+
 end
 
 uistack(lines, 'top');
@@ -1128,7 +1244,7 @@ handles.ax3.Children = flipud(handles.ax3.Children);
 
 % Highlight selected stim, if exists:
 standAlpha = 0.8;
-sitAlpha =0.3;
+sitAlpha =0.4;
 if handles.stimShowAvg.Value
     if isfield(handles.ax4.UserData, 'clickedTrialStim') ...
             && clickedTrialStim~=handles.ax4.UserData.clickedTrialStim
@@ -1222,3 +1338,83 @@ handles.ax4.UserData.clickedTrial = clickedTrial;
 handles.ax4.UserData.stimPlotIdx = stimPlotIdx;
 
 guidata(hObject, handles);
+
+
+% --- Executes on mouse press over axes background.
+function ax2_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to ax2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% WindowButtonMotionFcn for the figure.
+handles = guidata(hObject);
+%handles.avgimg.HitTest = 'off'
+maskcell = getappdata(handles.roigui,'maskcell');
+% M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+% M = cat(2,M{1:end});
+M = getappdata(handles.roigui, 'maskmat');
+
+%hitpoint = eventdata.IntersectionPoint;
+
+currPoint = eventdata.IntersectionPoint;
+
+D = getappdata(handles.roigui, 'D');
+if ~D.tefo
+    if strcmp(D.maskType, 'cnmf')
+        if D.maskInfo.params.scaleFOV
+            cp = [round(currPoint(1)) round(currPoint(2))];
+        else
+            cp = [round(currPoint(1)) round(currPoint(2)/2)]; 
+        end
+    else
+        cp = [round(currPoint(1)) round(currPoint(2)/2)]; %get(hsandles.ax1,'CurrentPoint')
+    end
+else
+    cp = [round(currPoint(1)) round(currPoint(2))];
+end
+
+
+colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+[i,j,s] = find(M);
+roiIdx = find(i==colsubscript);
+if length(roiIdx)>1
+    roiIdx = roiIdx(1);
+    roiMatch = j(roiIdx);
+elseif length(roiIdx)==0
+    roiMatch = handles.currRoi.UserData.currRoi; 
+    fprintf('Try again, you did not select an ROI...\n');
+else
+    roiMatch = j(roiIdx);
+end
+
+%fprintf('ROI: %i\n', roiMatch);
+handles.currRoi.String = num2str(roiMatch);
+handles.currRoiSlider.Value = str2double(handles.currRoi.String);
+
+newReference = 0;
+showRois = handles.roiToggle.Value;
+%D = getappdata(handles.roigui,'D');
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+%TODO
+% ********************
+% Update "stimulus PSTH" plot
+meta = getappdata(handles.roigui, 'meta');
+
+[handles, D] = updateTimeCourse(handles, D, meta);
+nEpochs = handles.ax4.UserData.trialEpochs;
+set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
+
+
+guidata(hObject,handles);

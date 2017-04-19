@@ -54,7 +54,11 @@ while loading==1
 
     
     % Set options for SLICE menu: -----------------------------------------
-    sliceNames = cell(1,length(D.slices));
+    if ~isfield(D, 'slices')
+        sliceNames = cell(1,length(D.slicesToUse));
+    else
+        sliceNames = cell(1,length(D.slices));
+    end
     for s=1:length(sliceNames)
         sliceNames{s} = sprintf('Slice%02d', D.slices(s));
     end
@@ -140,7 +144,8 @@ while loading==1
         setappdata(handles.roigui, 'trialstruct', trialstruct);
         
     else
-        
+        fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); 
+        fftStruct = load(fullfile(D.guiPrepend, D.outputDir, fftStructName));
         stimcolors = repmat(guicolors.red, [50,1]);
         setappdata(handles.roigui, 'stimcolors', stimcolors);
         

@@ -87,7 +87,7 @@ ylims = get(gca,'ylim');
 if strcmp(D.stimType, 'bar')
     for cyc=1:length(stimStarts)
         x = meta.file(selectedFile).mw.mwSec(stimStarts(cyc));
-        handles.mwepochs(cyc) = line([x x], [ylims(1) ylims(2)], 'Color', 'r');
+        handles.mwepochs(cyc) = line([x x], [ylims(1) ylims(2)], 'Color', [1 0 0 0.5]);
         handles.ax4.TickDir = 'out';
         hold on;
     end
