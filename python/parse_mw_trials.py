@@ -561,9 +561,10 @@ for mwfile in mw_files:
                         'pos': runs[run].vals,\
                         'idxs': runs[run].idxs,\
                         'ordernum': runs[run].ordernum,\
-                        'MWdur': float((runs[run].triggers[1]-runs[run].triggers[0])/1E6),\
+                        'MWdur': (runs[run].times[-1][0] - runs[run].times[0][0]) / 1E6,\
                         'offset': runs[run].times[0][0] - runs[run].triggers[0],\
                         'MWtriggertimes': runs[run].triggers}
+            #'MWdur': float((runs[run].triggers[1]-runs[run].triggers[0])/1E6),\
 
             #pydict['triggers'] = frame_trigger_times
             #pydict['runs'] = POS.keys()
