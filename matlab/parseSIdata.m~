@@ -76,9 +76,8 @@ end
 %metaDataSI_fn = sprintf('%s_meta', acquisition_name);
 eval([acquisition_name '= struct();'])
 eval([(acquisition_name) '.metaDataSI = metaDataSI'])
-mfilename = sprintf('%s', acquisition_name);
-
-save(fullfile(sourceDir, acquisition_name), mfilename)
+sprintf('
+save(fullfile(sourceDir, acquisition_name), ))
 display('Parsing Completed! Metadata saved to:')
 display(fullfile(sourceDir, acquisition_name));
 

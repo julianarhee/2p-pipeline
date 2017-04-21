@@ -25,7 +25,7 @@ for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
     fprintf('Processing SLICE %i...\n', currSlice);
     
-    meta = load(D.maskPaths{sidx});
+    masks = load(D.maskPaths{sidx});
     
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     %fftName = sprintf('%s_Slice%02d.mat', fftPrepend, currSlice);
@@ -33,10 +33,10 @@ for sidx = 1:length(slicesToUse)
     %F = load(fullfile(outputDir, fftNames{sidx}));
         
     for fidx=1:nTiffs
-        if isfield(meta, 'file')
-            maskcell = meta.file(fidx).maskcell;
+        if isfield(masks, 'file')
+            maskcell = masks.file(fidx).maskcell;
         else
-            maskcell = meta.maskcell;
+            maskcell = masks.maskcell;
         end
         
         activeRois = [];
@@ -81,6 +81,8 @@ for sidx = 1:length(slicesToUse)
         
         meanDfs = mean(dfMat,1);
         maxDfs = max(dfMat);
+        % Get rid of ridiculous values, prob edge effects:
+        maxDfs(abs(maxDfs)>400) = NaN;
         activeRois = find(maxDfs >= minDf);
         fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, minDf);
         

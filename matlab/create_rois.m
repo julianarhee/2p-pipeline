@@ -11,38 +11,44 @@ if ~exist(maskPath, 'dir')
     mkdir(maskPath);
 end
 
-nSlices = refMeta.file(1).si.nSlices;
+%nSlices = refMeta.file(1).si.nSlices;
+%meta = load(fullfile(D.sourceDir, D.metaPath));
 
 slicesToUse = D.slices;
 
 M = struct();
 
 for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
-    refNum = refMeta.file(1).si.motionRefNum; % All files should have some refNum for motion correction.
     
-    sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.file(refNum).si.nTotalFrames;
+    if strcmp(D.roiType, 'manual3Drois')
+        refNum = D.localRefNum;
+    else
+        refNum = D.refRun; %refMeta.file(1).si.motionRefNum; % All files should have some refNum for motion correction.
+    end
     
+    %sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.file(refNum).si.nTotalFrames;
+
     sliceFns = dir(fullfile(refMeta.file(refNum).si.tiffPath, '*.tif'));
     sliceFns = {sliceFns(:).name}';
     Y = tiffRead(fullfile(refMeta.file(refNum).si.tiffPath, sliceFns{sidx}));
     avgY = mean(Y, 3);
 
-    %masks = ROIselect_circle(mat2gray(avgY));
-    
+    masks = ROIselect_circle(mat2gray(avgY));
+    maskcell = arrayfun(@(roi) makeSparseMasks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
     % ------------------------------------
     % TODO:  below is temporary... Line 35 is standard for creating ROIs.
     % Fix ROI select function to store sparse matrices (faster?)...
-    old = load(fullfile(D.datastructPath, 'masks_old', sprintf('masks_Slice%02d_File001.mat', sidx)));
-    
-    if ~isfield(old, 'maskcell')
-        masks = old.masks;
-    
-        tic()
-        maskcell = arrayfun(@(roi) makeSparseMasks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
-        toc()
-    else
-        maskcell = old.maskcell;
-    end
+
+%     old = load(fullfile(D.datastructPath, 'masks_old', sprintf('masks_Slice%02d_File001.mat', sidx)));
+%     
+%     if ~isfield(old, 'maskcell')
+%         masks = old.masks;
+%         tic()
+%         maskcell = arrayfun(@(roi) makeSparseMasks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
+%         toc()
+%     else
+%         maskcell = old.maskcell;
+%     end
     
 %     maskcell = cell(size(masks,3),1);
 %     tic()
@@ -59,11 +65,11 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     %M.masks = masks;
     M.slice = sliceFns{sidx};
     M.refPath = refMeta.file(refNum).si.tiffPath; %refMeta.tiffPath;
-    M.sliceIdxs = sliceIdxs;
+    %M.sliceIdxs = sliceIdxs;
     M.slicePath = fullfile(refMeta.file(refNum).si.tiffPath, sliceFns{sidx});
 
     % Save reference masks:        
-    maskStructName = char(sprintf('masks_Slice%02d_File%03d.mat', sidx, refNum));
+    maskStructName = char(sprintf('masks_%s_Slice%02d_File%03d.mat', D.experiment, sidx, refNum));
     save(fullfile(maskPath, maskStructName), '-struct', 'M', '-v7.3');
 
 end

@@ -23,12 +23,27 @@ tiffSource = D.tiffSource;
 if isfield(D, 'extraTiffsExcluded')
     nTiffCorrection = length(D.extraTiffsExcluded);
 else
-    nTiffCorerction = 0;
+    nTiffCorrection = 0;
 end
 siStruct = get_si_info(sourceDir, acquisitionName);
+
+% Only grab relevant info for current experiment to create meta, since we
+% analyze by condition:
+if D.nExperiments > 1
+    % Reconstruct siStruct to only include relevant TIFFs:
+    tmpfidxs = arrayfun(@(i) strfind(siStruct.SI.file(i).rawTiffPath, D.experiment), 1:length(siStruct.SI.file), 'UniformOutput', 0);
+    fidxs = arrayfun(@(i) ~isempty(tmpfidxs{i}), 1:length(tmpfidxs));
+    siStruct.acquisitionName = D.experiment;
+    siStruct.nTiffs = length(cell2mat(tmpfidxs));
+    siStruct.SI.file(1:siStruct.nTiffs) = siStruct.SI.file(fidxs);
+    crossref = true;
+else
+    crossref = false;
+end
 nTiffs = siStruct.nTiffs;
 
-mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection);
+
+mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection, crossref);
 
 % Get paths to CORRECTED tiffs:
 channelDir = sprintf('Channel%02d', channelIdx);
@@ -174,7 +189,7 @@ for fidx=1:nTiffs
 end
 
 meta.sourceDir = sourceDir;
-meta.acquisitionName = acquisitionName;
+meta.acquisitionName = siStruct.acquisitionName; %acquisitionName;
 
 meta.tiffPaths = tiffPaths;
 meta.nTiffs = nTiffs;
@@ -199,7 +214,7 @@ meta.condTypes = condtypes;
 
 % Save META struct:
 % ---------------------------------------------------------------------
-metaStructName = char(sprintf('meta_%s.mat', acquisitionName));
+metaStructName = char(sprintf('meta_%s.mat', siStruct.acquisitionName)); %acquisitionName));
 metaStructPath = fullfile(sourceDir, 'analysis', 'meta');
 meta.metaPath = fullfile(metaStructPath, metaStructName);
 if ~exist(metaStructPath)

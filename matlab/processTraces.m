@@ -1,4 +1,4 @@
-function processTraces(D, winUnit, varargin)
+function processTraces(D, winUnit, nWinUnits, varargin)
 
 % Process traces:
 % getTraces.m extracts raw traces using ROI masks (saves tracestruct)
@@ -31,12 +31,12 @@ for sidx = 1:length(slicesToUse)
 
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     for tiffIdx=1:nTiffs
-        tiffIdx
+        %tiffIdx
         meta = metastruct.file(tiffIdx);
         % If corrected traceMat not found, correct and save, otherwise
         % just load corrected tracemat:
         %if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
-            fprintf('Creating new tracemat from processed traces...\n');
+            fprintf('TIFF %i: Creating new tracemat from processed traces...\n', tiffIdx);
             
             % 1. First, remove "bad" frames (too much motion), and
             % replace with Nans:
@@ -66,7 +66,7 @@ for sidx = 1:length(slicesToUse)
             % 3. Next, get subtract rolling average from each trace
             % (each row of currTraces is the trace of an ROI).
             % Interpolate NaN frames if there are any.
-            winsz = round(meta.si.siVolumeRate*winUnit*2);
+            winsz = round(meta.si.siVolumeRate*winUnit*nWinUnits);
 %             [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
             [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
             traceMat = cat(2, traceMat{1:end});

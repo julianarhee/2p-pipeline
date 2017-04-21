@@ -64,6 +64,13 @@ switch maskType
                 for fidx = 1:nTiffs
                     %meta = load(metaPaths{fidx});                              % Load meta info for current file.
                     slicePath = meta.file(fidx).si.tiffPath;                                 % Get path to all slice TIFFs for current file.
+                    
+                    % TODO:  fix FIDX indexing so that cross-referenced MC
+                    % tiffs correspond to to true File001, for ex., instead
+                    % of File006 (i.e., relative to full collection of
+                    % TIFFs, File001 of conditionRSVP might be File006 of a
+                    % MC-analysis in which There were File001-File005 for
+                    % conditionRetino or sth.):
                     currSliceName = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif',...
                                         acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
@@ -113,7 +120,7 @@ switch maskType
                     maskfunc = @(x,y) sum(x(y)); % way faster
                     cellY = num2cell(Y, [1 2]);
                     % For each frame of the movie, apply each ROI mask:
-                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(frame, c), maskcell.'), cellY, 'UniformOutput', false));
+                    rawTracesTmp = squeeze(cellfun(@(frame) cellfun(@(c) maskfunc(frame, c), maskcell), cellY, 'UniformOutput', false));
                     rawTraces = cat(1, rawTracesTmp{1:end});
                     
                     toc() % 44sec.

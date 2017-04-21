@@ -4,40 +4,129 @@ clc;
 %% DEFINE SOURCE DIRECTORY:
 
 % Define source dir for current acquisition/experiment:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1';
-%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
 
-%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
-%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
+% 20161222_JR030W.
 
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/retinotopy1/';
+%acquisitionName = 'fov1_bar037Hz_run4';
+%extraTiffsExcluded = [];
+
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1';
+% acquisitionName = 'fov1_gratings_10reps_run1';
+% extraTiffsExcluded = [19];
+
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings2';
+% acquisitionName = 'fov1_gratings_20reps_run2';
+% extraTiffsExcluded = [];
+
+
+% 20161221_JR030W.
+
+% NMF:
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
+acquisitionName = 'fov1_bar037Hz_run4_00005_crop';
+extraTiffsExcluded = [];
+
+%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
+%acquisitionName = 'fov1_bar037Hz_run4';
+%extraTiffsExcluded = [];
+
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref';
+% acquisitionName = 'test_crossref';
+% extraTiffsExcluded = [];
+
+%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
+%acquisitionName = 'fov2_rsvp_25reps';
+%extraTiffsExcluded = [];
+
+%sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
+%acquisitionName = 'fov2_rsvp_25reps_run3';
+%extraTiffsExcluded = [9 10];
+
+
+% TEFO:  20161219_JR030W.
+
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal';
+% acquisitionName = 'fov6_retinobar_037Hz_final_nomask';
+% extraTiffsExcluded = [];
+
+%
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
+% acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
+% extraTiffsExcluded = [];
+
+% too big?...
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/gratingsFinalMask2';
+% acquisitionName = 'fov6_gratings_bluemask_5trials';
+% extraTiffsExcluded = [];
+
+%
+%
+sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/rsvpFinal2';
+acquisitionName = 'fov6_rsvp_nomask_test_10trials';
+extraTiffsExcluded = [];
+
+
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
+
+
+%%
 
 analysisDir = fullfile(sourceDir, 'analysis');
 if ~exist(analysisDir, 'dir')
     mkdir(analysisDir);
 end
 
-% Define TIFF dir to analysis for traces:
-channelIdx = 1;
+channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
+
+didx = 1;           % Define datastruct analysis no.
+
+metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
+                    % options: 'manual' or 'SI'
+                    % If 'manual' each entry needs to be filled in...
+                    % This toggles whether tiff-source will be in
+                    % "Corrected" or "Parsed" folder in Step 2 (when TIFF
+                    % directorie
+
+corrected = false;   % Flag for whether motion-corrected using standard Acquisition2P_Class or not
+
+nchannels = 2;      % N channels acquired in session.
 
 
-%acquisitionName = 'fov2_rsvp_25reps';
+% 1. Specifiy preprocessing method:
+% --------------------------------------------
+%D.preprocessing = 'Acquisition2P';
+preprocessing = 'raw';
 
-%acquisitionName = 'fov1_bar037Hz_retinotopy_run2';
 
-%acquisitionName = 'fov2_rsvp_25reps_run3';
-%acquisitionName = 'fov1_bar037Hz_run4';
-%acquisitionName = 'fov1_bar037Hz_retinotopy_run2';
-acquisitionName = 'fov1_gratings_10reps_run1';
+% 2.  Specify ROI type for current analysis:
+% --------------------------------------------
+%roiType = 'create_rois';
+%roiType = 'manual3Drois';
+%roiType = 'condition';
+%D.roiType = 'pixels';
+%D.roiType = 'cnmf';
+roiType = '3Dcnmf'
 
-extraTiffsExcluded = [19];
-%extraTiffsExcluded = [9 10];
+if strcmp(roiType, 'condition')
+%     refMaskStruct = 'gratings1';
+%     refMaskStructIdx = 2;
 
+% Test cross-ref:
+    refMaskStruct = 'retinotopyFinal';
+    refMaskStructIdx = 1;
+end
+
+% 2.  Specify slices to process:
+% --------------------------------------------
+%slicesToUse = 7:17; 
+%slicesToUse = [10, 15];  
+%slicesToUse = [13:2:25];
+slicesToUse = [1:20];
 
 %% Define datastruct name for analysis:
 
-didx = 3;
+% didx = 1;
 
 datastruct = sprintf('datastruct_%03d', didx);
 dstructPath = fullfile(analysisDir, datastruct);
@@ -72,23 +161,48 @@ D.name = datastruct;
 D.datastructPath = dstructPath;
 D.sourceDir = sourceDir;
 D.acquisitionName = acquisitionName;
+D.roiType = roiType;
+D.preprocessing = preprocessing;
 D.channelIdx = channelIdx;
 D.extraTiffsExcluded = extraTiffsExcluded;
+D.slices = slicesToUse;
 save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
-
+fprintf('Created new datastruct analysis: %s\n', D.datastructPath)
 %% Get SI volume info:
 
-metaInfo = 'SI';
-
-corrected = true;
+% metaInfo = 'SI';
+% 
+% corrected = true;
 if corrected
-    tiffSource = 'Corrected';
+    D.tiffSource = 'Corrected';
 else
-    tiffSource = 'Parsed';
+    D.tiffSource = 'Parsed';
 end
 
-D.tiffSource = tiffSource;
+% Check if more than one "experiment" in current motion-correction
+% acquisition (i.e., multiple conditions in session corrected to a single
+% reference run of some other condition):
+tmpDirs = dir(fullfile(D.sourceDir, D.tiffSource));
+tmpDirs = tmpDirs(arrayfun(@(x) x.name(1), tmpDirs) ~= '.');
+tmpDirs = tmpDirs(find(~cell2mat(strfind(arrayfun(@(x) x.name, tmpDirs, 'UniformOutput', 0),'Channel'))));
+
+if numel(tmpDirs) > 1
+    D.nExperiments = length(tmpDirs);
+    D.experimentNames = arrayfun(@(x) tmpDirs(x).name, 1:length(tmpDirs), 'UniformOutput', 0);
+    fprintf('More than 1 condition corrected with current refernce:\n');
+    for eidx=1:length(D.experimentNames)
+        fprintf('Idx: %i, Name: %s\n', eidx, D.experimentNames{eidx});
+    end
+    selectedExperiment = input('Select idx of condition to analyze:\n');
+    D.tiffSource = fullfile(D.tiffSource, D.experimentNames{selectedExperiment});
+    D.experiment = D.experimentNames{selectedExperiment};
+else
+    D.nExperiments = 1;
+    D.experimentNames = acquisitionName;
+    D.experiment = acquisitionName;
+end
+    
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
@@ -123,9 +237,11 @@ switch metaInfo
         % Sort Parsed files into separate directories if needed:
         tmpchannels = dir(fullfile(D.sourceDir, D.tiffSource));
         tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels));
+        tmpchannels = tmpchannels([tmpchannels.isdir]);
         tmpchannels = {tmpchannels(:).name}';
-        if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
-            sort_parsed_tiffs(D.sourceDir, D.tiffSource, length(tmpchannels));
+        %if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
+        if isempty(tmpchannels)
+            sort_parsed_tiffs(D.sourceDir, D.tiffSource, nchannels);
         end
         
         % Creata META with SI (acquisition) and MW (experiment) info:
@@ -160,27 +276,30 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 % Parameters:
 % =========================================================================
 
-
-% 1. Specifiy preprocessing method:
-% --------------------------------------------
-D.preprocessing = 'Acquisition2P';
-% preprocessing = 'raw';
-
-
-% 2.  Specify ROI type for current analysis:
-% --------------------------------------------
-%D.roiType = 'create_rois';
-%D.roiType = 'condition';
-%D.roiType = 'pixels';
-D.roiType = 'cnmf';
+% 
+% % 1. Specifiy preprocessing method:
+% % --------------------------------------------
+% D.preprocessing = 'Acquisition2P';
+% % preprocessing = 'raw';
+% 
+% 
+% % 2.  Specify ROI type for current analysis:
+% % --------------------------------------------
+% %D.roiType = 'create_rois';
+% %D.roiType = 'condition';
+% %D.roiType = 'pixels';
+% D.roiType = 'cnmf';
 
 switch D.roiType
     case 'create_rois'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
+    case 'manual3Drois'
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
     case 'condition'
-        D.maskSource = 'retinotopy1'; %'retinotopy1';
-        D.maskDidx = 1;
+        D.maskSource = refMaskStruct; %'retinotopy1';
+        D.maskDidx = refMaskStructIdx;
         D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
         fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
         
@@ -194,6 +313,10 @@ switch D.roiType
             D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
         end
     case 'cnmf'
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
+        
+    case '3Dcnmf'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
 end
@@ -212,7 +335,7 @@ save(fullfile(D.datastructPath, D.name), '-struct', 'D');
 % =========================================================================
 tic()
 
-slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
+% slicesToUse = [5, 10, 15, 20];                            % Specify which slices to use (if empty, will grab traces for all slices)
 
 switch D.roiType
     case 'create_rois'
@@ -222,9 +345,62 @@ switch D.roiType
         D.slices = slicesToUse;                            % Specify which slices to use (if empty, will grab traces for all slices)
 
         refMeta = load(meta.metaPath);                          % Get all TIFFs (slices) associated with file and volume of refRun movie.
+        if isfield(refMeta.file(1).si, 'motionRefNum')
+            D.refRun = refMeta.file(1).si.motionRefNum;
+            D.refPath = refMeta.file(D.refRun).si.tiffPath;
+        else
+            D.refRun = round(length(refMeta.file)/2);
+            D.refPath = 'na';
+        end
+        
+        % Create ROIs:
+        % -----------------------------------------------------------------
+        create_rois(D, refMeta);
+                
+        
+        % Set up mask info struct to reuse masks across files:
+        % -----------------------------------------------------------------
+        D.maskType = 'circles';
+        D.maskInfo = struct();
+        D.maskInfo.refNum = D.refRun;
+        D.maskInfo.refMeta = refMeta;
+        D.maskInfo.maskType = D.maskType;
+
+        maskDir = fullfile(D.datastructPath, 'masks');
+        maskStructs = dir(fullfile(maskDir, '*.mat'));
+        maskStructs = {maskStructs(:).name}';
+        slicesToUse = zeros(1,length(maskStructs));
+        for m=1:length(maskStructs)
+            mparts = strsplit(maskStructs{m}, 'Slice');
+            mparts = strsplit(mparts{2}, '_');
+            slicesToUse(m) = str2num(mparts{1});
+        end
+        maskPaths = cell(1,length(maskStructs));
+        for m=1:length(maskStructs)
+            maskPaths{m} = fullfile(maskDir, maskStructs{m});
+        end
+        D.maskInfo.maskPaths = maskPaths;
+        D.maskInfo.slices = slicesToUse;
+        
+        
+        % =================================================================
+        % Get traces with masks:
+        % =================================================================
+        tic()
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        toc()
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+    
+    case 'manual3Drois'
+        
+        % Choose reference:
+        % -----------------------------------------------------------------
+        D.slices = slicesToUse;                            % Specify which slices to use (if empty, will grab traces for all slices)
+
+        refMeta = load(meta.metaPath);                          % Get all TIFFs (slices) associated with file and volume of refRun movie.
         D.refRun = refMeta.file(1).si.motionRefNum;
         D.refPath = refMeta.file(D.refRun).si.tiffPath;
-        
+        D.localRefNum = 4
         % Create ROIs:
         % -----------------------------------------------------------------
         create_rois(D, refMeta);
@@ -265,7 +441,7 @@ switch D.roiType
         
     case 'condition'
         % Use masks from a different condition:
-        ref = load(fullfile(D.maskSourcePath, 'analysis', datastruct, sprintf('%s.mat', datastruct)));
+        ref = load(fullfile(D.maskSourcePath, 'analysis', sprintf('datastruct_%03i', refMaskStructIdx), sprintf('datastruct_%03i.mat', refMaskStructIdx)));
         D.refRun = ref.refRun;
         refMeta = load(ref.metaPath);
         
@@ -346,12 +522,164 @@ switch D.roiType
         D.maskInfo.params.nmfoptions = nmfoptions;
         clear nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-        toc()
+        %toc()
         
         % =================================================================
         % Get traces:
         % =================================================================
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
- 
+    
+    case '3Dcnmf'
+        
+        D.maskType = '3Dcontours';
+        D.slices = slicesToUse;
+
+        addpath(genpath('~/Repositories/ca_source_extraction'));
+        addpath(genpath('~/Repositories/NoRMCorre'));
+        
+        D.nmfPath = fullfile(D.datastructPath, 'nmf');
+
+        % Get NMF params:
+        % -----------------------------------------------------------------
+        D.maskInfo = struct();
+        
+        % Set params for 3D pipeline:
+        params.patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
+        params.overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
+    
+        params.K = 7;                                            % number of components to be found
+        params.tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
+        params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+        params.merge_thr = 0.8;                                  % merging threshold
+
+        plotoutputs = false;
+        %params.scaleFOV = true;
+        %params.removeBadFrames = false;
+        
+        D.maskInfo.params = params;
+        D.maskInfo.maskType = D.maskType;
+        D.maskInfo.slices = slicesToUse;
+        
+        % Run 3D CNMF pipeline:
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
+        
+        % Create placeholder path for "masks" to be created in
+        % getTraces3Dnmf.m:
+        tmpmaskpaths = dir(fullfile(D.datastructPath, 'masks', 'nmf3D_masks*'));
+        tmpmaskpaths = {tmpmaskpaths(:).name}';
+        for t=1:length(tmpmaskpaths)
+            D.maskInfo.maskPaths{end+1} = tmpmaskpaths{tmp};
+        
+        D.maskInfo.params.nmfoptions = nmfoptions;
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
+        
+        % =================================================================
+        % Get traces:
+        % =================================================================
+        [D.tracesPath, D.nSlicesTrace] = getTraces3Dnmf(D);
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
+        %%
+        
+        % ----------
+        % TEST PLOTTING w/ MW epochs:
+        % ------------
+        
+        meta = load(D.metaPath);
+        nStimuli = length(meta.condTypes);
+        if ~isfield(meta, 'stimcolors')
+            colors = zeros(nStimuli,3);
+            for c=1:nStimuli
+                colors(c,:,:) = rand(1,3);
+            end
+            meta.stimcolors = colors;
+            save(D.metaPath, '-append', '-struct', 'meta');
+        else
+            colors = meta.stimcolors;
+        end
+        
+        % Load if already created:
+        nmf_fn = dir(fullfile(D.sourceDir, 'nmf_analysis', '*output*.mat'))
+        tifmem_fn = dir(fullfile(D.sourceDir, sprintf('%s.mat', D.acquisitionName)));
+        nmf = load(fullfile(D.sourceDir, 'nmf_analysis', nmf_fn.name));
+        data = matfile(fullfile(D.sourceDir, tifmem_fn.name));
+        
+        % Get raw traces using spatial and temporal components of tiff Y:
+        ay = mm_fun(nmf.A, data.Y);
+        aa = nmf.A'*nmf.A;
+        traces = ay - aa*nmf.C;
+        
+        tracesName = sprintf('nmftraces_Channel%02d', cidx);
+        D.tracesPath = fullfile(D.datastructPath, 'traces');
+        if ~exist(D.tracesPath, 'dir')
+            mkdir(D.tracesPath);
+        end
+        % Use center of 3D roi to choose slice idx:
+        center = com(A,d1,d2,d3);
+        if size(center,2) == 2
+            center(:,3) = 1;
+        end
+        center = round(center);
+
+        %% Check out decent looking components:
+        % 3, 8, 10 21 22
+        tRoi = 100;
+        tFile = 3;
+       
+        
+        zplane = center(tRoi,3);
+        volumeIdxs = zplane:meta.file(tFile).si.nFramesPerVolume:meta.file(tFile).si.nTotalFrames;
+        tstamps = meta.file(tFile).mw.siSec(volumeIdxs);
+        mwTimes = meta.file(tFile).mw.mwSec;
+        
+        figure();
+        plot(tstamps(1:size(Y_r_out,2)),Y_r_out(tRoi,:)/Df_out(tRoi), 'k', 'linewidth',2); 
+        %plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+        ylims = get(gca,'ylim');
+        currRunName = meta.file(tFile).mw.runName;
+        %mwCodes = meta.file(tFile).mw.pymat.(currRunName).stimIDs;
+        sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
+        trialidx = 1;
+        currStimTrialIdx = [];
+        for trial=1:2:length(mwTimes)
+            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
+            %currStim = mwCodes(trial);
+            currStim = 1;
+%             if handles.stimShowAvg.Value
+            patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%             else
+%                 if currStim==handles.stimMenu.Value
+%                     handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%                     currStimTrialIdx = [currStimTrialIdx trialidx];
+%                 else
+%                     handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%                 end
+%             end
+            %handles.ax4.TickDir = 'out';
+            hold on;
+            trialidx = trialidx + 1;
+            %handles.ax4.UserData.trialEpochs = trialidx;
+        end
+        nEpochs = length(mwTimes);
+        
+        %%
+    
+    
+        %tic()
+%         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+%         
+%         D.maskInfo.params.nmfoptions = nmfoptions;
+%         clear nmfoptions;
+%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%         %toc()
+%         
+%         % =================================================================
+%         % Get traces:
+%         % =================================================================
+%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 end
+
+toc()
