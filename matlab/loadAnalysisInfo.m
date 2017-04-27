@@ -43,7 +43,7 @@ D.tefo = tefo;
 % metaPath = D.metaPath;
 % maskType = D.maskType;
 if isfield(D, 'maskInfo')
-    if strcmp(D.roiType, '3Dcnmf') && ~isfield(D, 'maskPaths')
+    if strcmp(D.roiType, '3Dcnmf')
         
         % DO this silly thing where create paths to individual mask files
         % for each slice/file -- this is just to be consistent with

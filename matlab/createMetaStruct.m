@@ -107,7 +107,7 @@ for fidx=1:nTiffs
         mwSec = mwSec + currOffset;
     end
     stimStarts = mw.pymat.(currRunName).idxs + 1; % Get indices of cycle (i.e., "trial") starts
-    mwDur = double(mw.pymat.(currRunName).MWdur) / 1E6; %mwDur = (double(mw.file(fidx).pymat.triggers(currMWfidx,2)) - double(mw.file(fidx).pymat.triggers(currMWfidx,1))) / 1E6;
+    mwDur = double(mw.pymat.(currRunName).MWdur); %/ 1E6; %mwDur = (double(mw.file(fidx).pymat.triggers(currMWfidx,2)) - double(mw.file(fidx).pymat.triggers(currMWfidx,1))) / 1E6;
     
     nFramesPerVolume = si.nFramesPerVolume;
     nTotalFrames = si.nTotalFrames;
@@ -165,11 +165,11 @@ for fidx=1:nTiffs
     
     if strcmp(mwStruct.stimType, 'bar')
         trimLong = 1;
-        nCycles = mw.info.ncycles;
+        nCycles = double(mw.info.ncycles);
         targetFreq = mw.info.target_freq;
         %siFrameRate = 1/median(diff(siSec));
         %siVolumeRate = round(siFrameRate/nFramesPerVolume, 2); % 5.58%4.11 %4.26 %5.58
-        nTrueFrames = ceil((1/targetFreq)*si.siVolumeRate*nCycles);
+        nTrueFrames = ceil((1/targetFreq)*nCycles*si.siVolumeRate);
         meta.file(fidx).mw.targetFreq = targetFreq;
         meta.file(fidx).mw.nTrueFrames = nTrueFrames;
         

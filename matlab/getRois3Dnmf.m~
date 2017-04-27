@@ -12,190 +12,198 @@ function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots)
 % tiffroot = fullfile(source, experiment);
 % savedir = 'nmf';
 % outpath = fullfile(tiffroot, savedir);
-
-mempath = fullfile(D.nmfPath, 'memfiles');
-if ~exist(mempath, 'dir')
-    mkdir(mempath)
-end
+% 
+% mempath = fullfile(D.nmfPath, 'memfiles');
+% if ~exist(mempath, 'dir')
+%     mkdir(mempath)
+% end
+% 
+% nmf_outpaths = {};
+% 
+% tiffs = dir(fullfile(D.sourceDir, '*.tif'));
+% tiffs = {tiffs(:).name}'
+% 
+% files = dir(fullfile(mempath, '*.mat'));
+% files = {files(:).name}';
+% for fn=1:length(files)
+%     if strfind(files{fn}, '_substack')
+%         files{fn} = [];
+%     end
+% end
+% 
+% 
+% 
+% if length(tiffs)>length(files)
+% 
+% 
+% tic()
+% for tiffidx = 1:length(tiffs)
+% %tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
+% tpath = fullfile(D.sourceDir, tiffs{tiffidx});
+% [source, filename, ext] = fileparts(tpath);
+% 
+% matpath = fullfile(mempath, sprintf('%s.mat', filename));
+% data = matfile(matpath,'Writable',true);
+% 
+% %info = imfinfo(tpath);
+% 
+% %nSlices = 20; nVolumes = 350;
+% %tic; Yt = loadtiff(tpath, 1, nSlices*2); toc;
+% %Yt = Yt(:,:,1:2:end);
+% 
+% %nSlices = meta.file(tiffidx).si.nSlices;
+% nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+% nRealFrames = meta.file(tiffidx).si.nSlices;
+% nVolumes = meta.file(tiffidx).si.nVolumes;
+% if D.tefo
+%     nChannels=2;
+% else
+%     nChannels=1;
+% end
+% 
+% tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
+% 
+% % Only grab green channel:
+% if strcmp(D.preprocessing, 'raw')
+%     Yt = Yt(:,:,1:2:end);
+% end
+% 
+% Y = cell(1, nVolumes);
+% firstslice = 1;
+% for vol=1:nVolumes
+%     Y{vol} = Yt(:,:,firstslice:(firstslice+nRealFrames-1));
+%     firstslice = firstslice+nSlices;
+% end
+% Y = cat(4, Y{1:end});
+% if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
+% Y = Y -  min(Y(:));                         % make data non-negative
+% 
+% data.Y = Y;
+% data.sizY = size(data.Y);
+% data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+% data.nY = min(data.Yr(:,:));
+% 
+% fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
+% fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
+% 
+% 
+% end
+% 
+% % 
+% fprintf('Done!');
+% toc()
+% 
+% 
+% end
+% 
+% 
+% %% Turn volumemat into data memmap object:
+% 
+% % 
+% % tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
+% % [sourcepath, filename, ext] = fileparts(tpath);
+% % savedir = 'nmf';
+% % tiffmat = sprintf('%s.mat', filename);
+% % 
+% % fullfilepath = fullfile(sourcepath, savedir, tiffmat);
+% % tmpdata = matfile(fullfilepath);
+% % if ~isprop(tmpdata, 'Y')
+% %     load(fullfilepath)
+% %     Y = volumemat;
+% %     clear volumemat;
+% % 
+% %     sizY = size(Y);
+% %     Yr = reshape(Y,prod(sizY(1:end-1)),[]);
+% %     nY = min(Yr(:));
+% %     savefast(fullfilepath,'Yr','Y','nY','sizY');
+% %     data = matfile(fullfilepath,'Writable',true);
+% %     
+% % end
+% 
+% %%  Test normcorre stuff:
+% % 
+% % addpath(genpath('~/Repositories/ca_source_extraction'));
+% % addpath(genpath('~/Repositories/NoRMCorre'));
+% 
+% 
+% % addpath(genpath('~/Repositories/ca_source_extraction'));
+% % addpath(genpath('~/Repositories/NoRMCorre'));
+% 
+% 
+% % patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
+% % overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
+% % 
+% % K = 7;                                            % number of components to be found
+% % tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
+% % p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+% % merge_thr = 0.8;                                  % merging threshold
+% 
+% %mempath = fullfile(D.nmfPath, 'memfiles');
+% files = dir(fullfile(mempath, '*.mat'));
+% files = {files(:).name}';
+% for fn=1:length(files)
+%     if strfind(files{fn}, '_substack')
+%         files{fn} = [];
+%     end
+% end
+% files
+% 
+% 
+% for tiffidx = 1:length(files)
+% 
+% fprintf('Creating substack for %i of %i files...\n', tiffidx, length(files))
+% 
+% first_tic = tic();
+% %tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
+% % tpath = fullfile(tiffroot, tiffs{tiffidx});
+% % [sourcepath, filename, ext] = fileparts(tpath);
+% % savedir = 'nmf';
+% % 
+% % tiffmat = sprintf('%s.mat', filename);
+% % matpath = fullfile(sourcepath, savedir, tiffmat);
+% nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+% nRealFrames = meta.file(tiffidx).si.nSlices;
+% nVolumes = meta.file(tiffidx).si.nVolumes;
+% if D.tefo
+%     nChannels=2;
+% else
+%     nChannels=1;
+% end
+% 
+% 
+% tpath = fullfile(mempath, files{tiffidx});
+% [filepath, filename, ext] = fileparts(tpath);
+% 
+% %matpath = fullfile(mempath, sprintf('%s.mat', filename));
+% 
+% %tpath = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf/analysis/datastruct_002/nmf/memfiles/fov1_bar037Hz_run4_00005_crop.mat';
+% %[~, filename, ext] = fileparts(tpath);
+% 
+% tmpdata = matfile(tpath,'Writable',true);
+% 
+% filename = [filename, '_substack']
+% data = matfile(fullfile(filepath, [filename, ext]), 'Writable', true);
+% % CROP flybacK;
+% data.Y = tmpdata.Y(:,:,6:end,:);
+% data.sizY = size(data.Y);
+% data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+% data.nY = min(data.Yr(:,:));
+% 
+% clear tmpdata;
+% 
+% fprintf('Finished:  substack size is %s\n', mat2str(data.sizY));
+% 
+% end
 
 nmf_outpaths = {};
 
-tiffs = dir(fullfile(D.sourceDir, '*.tif'));
-tiffs = {tiffs(:).name}'
 
-files = dir(fullfile(mempath, '*.mat'));
+mempath = fullfile(D.nmfPath, 'memfiles');
 
-if length(tiffs)~=length(files)
-
-
-tic()
-for tiffidx = 1:length(tiffs)
-%tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
-tpath = fullfile(D.sourceDir, tiffs{tiffidx});
-[source, filename, ext] = fileparts(tpath);
-
-matpath = fullfile(mempath, sprintf('%s.mat', filename));
-data = matfile(matpath,'Writable',true);
-
-%info = imfinfo(tpath);
-
-%nSlices = 20; nVolumes = 350;
-%tic; Yt = loadtiff(tpath, 1, nSlices*2); toc;
-%Yt = Yt(:,:,1:2:end);
-
-nSlices = meta.file(tiffidx).si.nSlices;
-nVolumes = meta.file(tiffidx).si.nVolumes;
-
-
-tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes); toc;
-
-Y = cell(1, nVolumes);
-firstslice = 1;
-for vol=1:nVolumes
-    Y{vol} = Yt(:,:,firstslice:(firstslice+nSlices-1));
-    firstslice = firstslice+nSlices;
-end
-Y = cat(4, Y{1:end});
-if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-Y = Y -  min(Y(:));                         % make data non-negative
-
-data.Y = Y;
-data.sizY = size(data.Y);
-data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-data.nY = min(data.Yr(:,:));
-
-fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
-fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
-
-% Read in chunks at a time:
-% sizY = [size(Yt) nVolumes];
-% data.Y(sizY(1),sizY(2),sizY(3),sizY(4)) = Yt(1)*0;
-% data.Yr(numel(Yt), nVolumes) = Yt(1)*0;
-% nY = Inf;
-% sframe = 1;
-% for i = sframe:(nSlices*2):(nSlices*nVolumes*2)
-%     tic()
-%     Ytemp = loadtiff(tpath, i, nSlices*2);
-%     Ytemp = Ytemp(:,:,1:2:end);
-%     Yr = reshape(Ytemp, prod(sizY(1:end-1)), []);
-%     nY = min(nY, min(Yr(:)));
-%     data.Yr(:,i:i-1+size(Yr,2)) = Yr;
-%     %data.Y(1:sizY(1),1:sizY(2),1:sizY(3),i-1+(1:size(Yr,2))) = Ytemp; % fix this to deal with alt. indexing
-%     data.Y(1:sizY(1),1:sizY(2),1:sizY(3),(1:size(Yr,2))) = Ytemp;
-%     fprintf('Finished chunk %i:\n', i);
-%     toc()
-% end
-% %
-
-
-% 
-% Y_ch1(:,:,sframe:sframe+(chunksize/2)-1) = double(tmpY(1:2:end));
-% clear tmpY
-% sframe = sframe + chunksize;
-% 
-% sizY = [size(tmpY) nSlices nVolumes];
-% 
-% Y_ch1 = tmpY(:,:,1:2:end);
-% %Y_ch2 = tmpY(:,:,2:2:end);
-% 
-% %splitpath = fullfile(outpath, sprintf('%s_splitCH.mat', filename));
-% %savefast(splitpath,'Y_ch1','Y_ch2');
-% clear tmpY;
-% %clear Y_ch2;
-% 
-% matpath = fullfile(outpath, sprintf('%s.mat', filename));
-% data = matfile(matpath,'Writable',true);
-% 
-% % Reshape to 4d volume for 3d pipeline:
-% Y = cell(1, nvolumes);
-% firstslice = 1;
-% for vol=1:nvolumes
-%     Y{vol} = Y_ch1(:,:,firstslice:(firstslice+nslices-1));
-%     firstslice = firstslice+nslices;
-% end
-
-% figure();
-% minY = min(Y_ch1(:));
-% maxY = max(Y_ch1(:));
-% for slice=1:size(volmat{1}, 3)
-%     imagesc(volmat{1}(:,:,slice))
-%     %imshow(Y_ch1(:,:,slice))
-%     caxis([minY maxY]);
-%     pause(1)
-% end
-% 
-% data.Y = cat(4, Y{1:end});
-% data.sizY = size(data.Y);
-% data.Yr = reshape(data.Y,prod(data.sizY(1:end-1)),[]);
-% data.nY = min(data.Yr(:));
-
-end
-
-% 
-fprintf('Done!');
-toc()
-
-
-end
-% avgvolume = mean(volumemat, 4);
-% 
-% figure();
-% minY = min(avgvolume(:));
-% maxY = max(avgvolume(:));
-% for slice=1:size(avgvolume, 3)
-%     imagesc(avgvolume(:,:,slice))
-%     %imshow(Y_ch1(:,:,slice))
-%     caxis([minY maxY]);
-%     pause(1)
-% end
-
-%save(fullfile(sourcepath, savedir, sprintf('%s.mat', filename)), 'volumemat', '-v7.3')
-
-
-%% Turn volumemat into data memmap object:
-
-% 
-% tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
-% [sourcepath, filename, ext] = fileparts(tpath);
-% savedir = 'nmf';
-% tiffmat = sprintf('%s.mat', filename);
-% 
-% fullfilepath = fullfile(sourcepath, savedir, tiffmat);
-% tmpdata = matfile(fullfilepath);
-% if ~isprop(tmpdata, 'Y')
-%     load(fullfilepath)
-%     Y = volumemat;
-%     clear volumemat;
-% 
-%     sizY = size(Y);
-%     Yr = reshape(Y,prod(sizY(1:end-1)),[]);
-%     nY = min(Yr(:));
-%     savefast(fullfilepath,'Yr','Y','nY','sizY');
-%     data = matfile(fullfilepath,'Writable',true);
-%     
-% end
-
-%%  Test normcorre stuff:
-% 
-% addpath(genpath('~/Repositories/ca_source_extraction'));
-% addpath(genpath('~/Repositories/NoRMCorre'));
-
-
-% addpath(genpath('~/Repositories/ca_source_extraction'));
-% addpath(genpath('~/Repositories/NoRMCorre'));
-
-
-% patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
-% overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
-% 
-% K = 7;                                            % number of components to be found
-% tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
-% p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-% merge_thr = 0.8;                                  % merging threshold
-
-%mempath = fullfile(D.nmfPath, 'memfiles');
-files = dir(fullfile(mempath, '*.mat'));
-files = {files(:).name}'
+tmpfiles = dir(fullfile(mempath, '*.mat'));
+tmpfiles = {tmpfiles(:).name}';
+subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
+files = tmpfiles(subidxs);
 
 patch_size = D.maskInfo.params.patch_size;
 overlap = D.maskInfo.params.overlap;
@@ -203,45 +211,29 @@ K = D.maskInfo.params.K;
 tau = D.maskInfo.params.tau;
 p = D.maskInfo.params.p;
 merge_thr = D.maskInfo.params.merge_thr;
-
-
-
+ 
 for tiffidx = 1:length(files)
     
+        
 first_tic = tic();
-%tpath = '/nas/volume1/2photon/RESDATA/20161222_JR030W/gratings1/fov1_gratings_10reps_run1_00007.tif';
-% tpath = fullfile(tiffroot, tiffs{tiffidx});
-% [sourcepath, filename, ext] = fileparts(tpath);
-% savedir = 'nmf';
-% 
-% tiffmat = sprintf('%s.mat', filename);
-% matpath = fullfile(sourcepath, savedir, tiffmat);
 
 tpath = fullfile(mempath, files{tiffidx});
-[~, filename, ext] = fileparts(tpath);
+[filepath, filename, ext] = fileparts(tpath);
 
-%matpath = fullfile(mempath, sprintf('%s.mat', filename));
-data = matfile(tpath,'Writable',true);
+matpath = fullfile(mempath, sprintf('%s.mat', filename));
+data = matfile(matpath,'Writable',true);
 
-% load(fullfile(sourcepath, savedir, tiffmat));
-% Y = volumemat;
-% clear volumemat;
+fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
-%if exist([filepath(1:end-3),'mat'],'file')
-%data = matfile(matpath,'Writable',true);
-% else
-%     sframe=1;						% user input: first frame to read (optional, default 1)
-%     num2read=[];					% user input: how many frames to read   (optional, default until the end)
-%     chunksize=5000;                 % user input: read and map input in chunks (optional, default read all at once)
-%     data = memmap_file(filepath,sframe,num2read,chunksize);
-%     %data = memmap_file_sequence(foldername);
-% end
-
-% Set parameters
-% sizY = size(data,'Y');                  % size of data matrix
-% patch_size = [32,32];                   % size of each patch along each dimension (optional, default: [32,32])
-% overlap = [4,4];                        % amount of overlap in each dimension (optional, default: [4,4])
-% 
+    
+nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+nRealFrames = meta.file(tiffidx).si.nSlices;
+nVolumes = meta.file(tiffidx).si.nVolumes;
+if D.tefo
+    nChannels=2;
+else
+    nChannels=1;
+end
 
 if ndims(data.Y) == 4
     [d1,d2,d3,T] = size(data.Y);                            % dimensions of dataset
@@ -253,6 +245,8 @@ d = d1*d2*d3;                                          % total number of pixels
 
 
 %% Test NoRMCorre moition correction:
+
+MC = false;
 
 % % Rigid:
 % 
@@ -364,23 +358,73 @@ options = CNMFSetParms(...
     'deconv_method','constrained_foopsi',...    % activity deconvolution method
     'temporal_iter',2,...                       % number of block-coordinate descent steps 
     'cluster_pixels',false,...
-    'ssub',3,...                                % spatial downsampling when processing
+    'ssub',1,...                                % spatial downsampling when processing
     'tsub',1,...                                % further temporal downsampling when processing
     'fudge_factor',0.96,...                     % bias correction for AR coefficients
     'merge_thr',merge_thr,...                   % merging threshold
     'gSig',tau,... 
-    'max_size_thr',100,'min_size_thr',10,...    % max/min acceptable size for each component
+    'max_size_thr',50,'min_size_thr',2,...    % max/min acceptable size for each component
     'spatial_method','regularized',...          % method for updating spatial components
-    'df_prctile',50); %...                       % take the median of background fluorescence to compute baseline fluorescence 
+    'df_prctile',50,...
+    'space_thresh',0.6); %...                       % take the median of background fluorescence to compute baseline fluorescence 
     %);
-    
+
+%%
+
+%K = 1705;
+
+[P,Y] = preprocess_data(data.Y,p);    
+
+rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_005/rois.mat');
+roiA = rois.all;
+P.ROI_list = roiA;
+
+[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+
+ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+
+% Get centers of each ROI:
+centers = com(Ain,d1,d2,d3);
+if size(centers,2) == 2
+    centers(:,3) = 1;
+end
+centers = round(centers);
+
+% Get avgs of each slice (instead of corr imgs):
+avgs = zeros([d1,d2,d3]);
+for slice=1:d3
+    avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+end
+
+
+plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+
+[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+
+P.p = 0;
+[C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
+P.p = 2;
+
  %% Run on patches (around 15 minutes)
    
 tic;
-[A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options)
-fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(tiffs));
+[A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
+fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
 
-patchoutput = fullfile(D.nmfPath, 'patch_results_File%03d', tiffidx) 
+results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
+patch_results = matfile(results_fn, 'Writable', true);
+patch_results.RESULTS = RESULTS;
+patch_results.A = A;
+patch_results.b = b;
+patch_results.C = C;
+patch_results.f = f;
+patch_results.S = S;
+patch_results.P = P;
+patch_results.YrA = YrA;
+patch_results.patch_size = patch_size;
+patch_results.patch_overlap = overlap;
+
+fprintf('Saved results of run_CNMF_patches, File%03d.\n', tiffidx);
 
 toc
 
@@ -392,7 +436,7 @@ toc
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-% Cn = correlation_image_3D(data.Y); 
+Cn = correlation_image_3D(data.Y); 
 % 
 %     
 % %% classify components
@@ -408,7 +452,7 @@ toc
 %% Plot components and view traces:
 
 % Cn looks crappy, try just avg to do sanity check of ROIs:
-avgs = zeros(size(Cn));
+avgs = zeros([d1,d2,d3]);
 for slice=1:d3
     avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
 end
@@ -416,9 +460,12 @@ end
 %[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,Cn,options);
 [T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,avgs,options);
 
+
+%[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,patch.A,patch.C,patch.b,patch.f,avgs,options);
+
 %% SAVE nmf output:
 
-nmf_outfile = ['nmfoutput_' filename, '.mat']
+nmf_outfile = ['nmfoutput_' filename, '_substack.mat']
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
 
@@ -434,6 +481,7 @@ nmfoutput.motion = MC;
 
 nmfoutput.A = A;
 nmfoutput.Cn = Cn;
+nmfoutput.avgs = avgs;
 nmfoutput.C = C;
 nmfoutput.b = b;
 nmfoutput.f = f;
@@ -443,9 +491,9 @@ nmfoutput.T_out = T_out;
 nmfoutput.Yr_out = Y_r_out;
 nmfoutput.C_out = C_out;
 nmfoutput.Df_out = Df_out;
-nmfoutput.center = center;
+%nmfoutput.center = center;
 
-fprintf('Finished CNMF trace extraction for %i of %i files.\n', tiffidx, length(tiffs))'
+fprintf('Finished CNMF trace extraction for %i of %i files.\n', tiffidx, length(files));
 fprintf('TOTAL ELAPSED TIME for file %i: \n')
 toc(first_tic);
 

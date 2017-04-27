@@ -121,7 +121,7 @@ for sidx = 1:length(slicesToUse)
         traceMatDC = tracestruct.file(fidx).traceMatDC;
         DCs = tracestruct.file(fidx).DCs;
         tmptraces = bsxfun(@minus, traceMatDC, DCs);
-        traces = tracestruct.file(fidx).traceMat;
+        traces = traceMatDC; %tracestruct.file(fidx).traceMat;
         
         avgY = tracestruct.file(fidx).avgImage;
         
@@ -156,13 +156,6 @@ for sidx = 1:length(slicesToUse)
         magMap = zeros([d1, d2]);
         ratioMap = zeros([d1, d2]);
         phaseMaxMag = zeros([d1, d2]);
-        
-        % ---
-        phaseMapInferred = zeros([d1, d2]);
-        magMapInferred = zeros([d1, d2]);
-        ratioMapInferred = zeros([d1, d2]);
-        phaseMaxMagInferred = zeros([d1, d2]);
-        % ---
         
         
         % Subtrace rolling average:
@@ -256,13 +249,6 @@ for sidx = 1:length(slicesToUse)
         maps.file(fidx).phasemax = phaseMaxMag;
         maps.file(fidx).ratio = ratioMap;
         maps.file(fidx).avgY = avgY;
-        
-        % ---
-        maps.file(fidx).magnitudeInferred = magMapInferred;
-        maps.file(fidx).phaseInferred = phaseMapInferred;
-        maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
-        maps.file(fidx).ratioInferred = ratioMapInferred;
-        % ---
 
         % --- Need to reshape into 2d image if using pixels:
         if strcmp(D.roiType, 'pixels')
@@ -278,15 +264,15 @@ for sidx = 1:length(slicesToUse)
     end
     
     % Save maps for current slice:
-    mapStructName = sprintf('maps_Slice%02d', D.slices(sidx));
+    mapStructName = sprintf('maps_Slice%02d', D.slices(currSlice));
     save_struct(D.outputDir, mapStructName, maps);
 
-    fftStructName = sprintf('fft_Slice%02d', D.slices(sidx));
+    fftStructName = sprintf('fft_Slice%02d', D.slices(currSlice));
     save_struct(D.outputDir, fftStructName, fftStruct);
 
     %M.file(fidx) = maps;
     
-    fprintf('Finished FFT analysis for Slice %02d.\n', D.slices(sidx));
+    fprintf('Finished FFT analysis for Slice %02d.\n', D.slices(currSlice));
     
     mapStructNames{sidx} = mapStructName;
     fftStructNames{sidx} = fftStructName;

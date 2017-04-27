@@ -26,11 +26,13 @@ nTiffs = metastruct.nTiffs;
 nslices = length(D.traceNames);
 
 % DO the stupid 3D thing first:
-tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{1}));
-for tiffIdx=3:3 
-     meta = metastruct.file(tiffIdx);
-    %tiffIdx
+
+for tiffIdx=1:nTiffs
+    
+    tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{tiffIdx}));
+
     meta = metastruct.file(tiffIdx);
+    
     % If corrected traceMat not found, correct and save, otherwise
     % just load corrected tracemat:
     %if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
@@ -38,8 +40,9 @@ for tiffIdx=3:3
 
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
-        currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
-
+        currTraces = tracestruct.rawTraces; % nxm mat, n=frames, m=rois
+        currInferredTraces = tracestruct.inferredTraces;
+        
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
 %         bf = tracestruct.file(tiffIdx).badFrames;
@@ -55,9 +58,11 @@ for tiffIdx=3:3
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
+            inferredTraces = currInferredTraces(1:cropToFrame,:);
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
+            inferredTraces = currInferredTraces;
         end
 
 
@@ -65,28 +70,31 @@ for tiffIdx=3:3
         % (each row of currTraces is the trace of an ROI).
         % Interpolate NaN frames if there are any.
         winsz = round(meta.si.siVolumeRate*winUnit*nWinUnits);
-%             [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
+        %[traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
         [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         traceMat = cat(2, traceMat{1:end});
         DCs = cat(2, DCs{1:end});
-        traceMat = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
-
-        tracestruct.file(tiffIdx).traceMat = traceMat;
-        tracestruct.file(tiffIdx).winsz = winsz;
-        tracestruct.file(tiffIdx).DCs = DCs;
-
+        traceMatDC = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
+        
+        tracestruct.traceMatDC = traceMatDC;
+        tracestruct.traceMat = traceMat;
+        tracestruct.winsz = winsz;
+        tracestruct.DCs = DCs;
+        
+        tracestruct.inferredTraceMat = inferredTraces;
+        
         if trimEnd
 
             [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtractRollingMean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
             untrimmedTraceMat = cat(2, untrimmedTraceMat{1:end});
             untrimmedDCs = cat(2, untrimmedDCs{1:end});
             untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat);
-            tracestruct.file(tiffIdx).untrimmedTracemat = untrimmedTraceMat;
-            tracestruct.file(tiffIdx).untrimmedDCs = untrimmedDCs;
-            tracestruct.file(tiffIdx).cropToFrame = cropToFrame;
+            tracestruct.untrimmedTracemat = untrimmedTraceMat;
+            tracestruct.untrimmedDCs = untrimmedDCs;
+            tracestruct.cropToFrame = cropToFrame;
         end
 
-        save(fullfile(D.tracesPath, D.traceNames3D{1}), '-append', '-struct', 'tracestruct');
+        save(fullfile(D.tracesPath, D.traceNames3D{tiffIdx}), '-append', '-struct', 'tracestruct');
 %         else
 %             traceMat = T.traceMat.file{tiffIdx};
     %end
@@ -99,9 +107,10 @@ for sidx=1:nslices
     
 tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
 
-for tiffIdx=3:3 %1:nTiffs
-    %tiffIdx
+for tiffIdx=1:nTiffs
+
     meta = metastruct.file(tiffIdx);
+    
     % If corrected traceMat not found, correct and save, otherwise
     % just load corrected tracemat:
     %if ~isfield(T, 'traceMat') || length(T.traceMat.file) < tiffIdx
@@ -110,7 +119,8 @@ for tiffIdx=3:3 %1:nTiffs
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
         currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
-
+        currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
+        
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
 %         bf = tracestruct.file(tiffIdx).badFrames;
@@ -126,9 +136,12 @@ for tiffIdx=3:3 %1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
+            inferredTraces = currInferredTraces(1:cropToFrame,:);
+            
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
+            inferredTraces = currInferredTraces(1:cropToFrame,:);
         end
 
 
@@ -140,12 +153,15 @@ for tiffIdx=3:3 %1:nTiffs
         [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         traceMat = cat(2, traceMat{1:end});
         DCs = cat(2, DCs{1:end});
-        traceMat = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
+        traceMatDC = bsxfun(@plus, traceMat, DCs); % ROWs = tpoints, COLS = ROI
 
+        tracestruct.file(tiffIdx).traceMatDC = traceMatDC;
         tracestruct.file(tiffIdx).traceMat = traceMat;
         tracestruct.file(tiffIdx).winsz = winsz;
         tracestruct.file(tiffIdx).DCs = DCs;
-
+        
+        tracestruct.file(tiffIdx).inferredTraceMat = inferredTraces;
+        
         if trimEnd
 
             [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtractRollingMean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);

@@ -5,6 +5,6 @@ if isempty(varargin)
 else
     save(fullfile(traces_path, traces_fn), '-append', '-struct', 'T');
 end
-fprintf('Saved struct %s to %s.\n', traces_fn, traces_path);
+%fprintf('Saved struct %s to %s.\n', traces_fn, traces_path);
 
 end

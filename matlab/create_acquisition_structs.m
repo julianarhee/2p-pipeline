@@ -23,9 +23,16 @@ clc;
 % 20161221_JR030W.
 
 % NMF:
-% sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
-% acquisitionName = 'fov1_bar037Hz_run4_00005_crop';
-% extraTiffsExcluded = [];
+sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
+acquisitionName = 'fov1_bar037Hz_run4';
+extraTiffsExcluded = [];
+tefo = false;
+
+% datastruct_001 :  nmf, larg(er) neuron size specified, didn't save output
+% datatstruct_002 :  nmf, smaller neurons, better overlap size, saving
+% output
+% datastruct_003 :  nmf, same settings, run patch, but run on all files.
+
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
 %acquisitionName = 'fov1_bar037Hz_run4';
@@ -50,13 +57,21 @@ clc;
 % acquisitionName = 'fov6_retinobar_037Hz_final_nomask';
 % extraTiffsExcluded = [];
 
-%
-sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
-acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
-extraTiffsExcluded = [];
-tefo = true;
+% ---- PHASE 1, BLOCK 2 ----
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
+% acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
+% extraTiffsExcluded = [];
+% tefo = true;
+
 % datastruct_002 : used 'condition' ROIs from retinotopyFinal.
 % datastruct_001 :  3Dcnmf
+% datastruct_003 :  use new params for 3Dcnmf, use SUBSTACK.
+% datastruct_004 : same as _003, but different params
+% datastruct_005 : use x-ray on slice 18of 27-slice stack...
+% datastruct_006 :  same as _005, but more Rois selected, and only slices
+% 6-30 (remove first 5 slices)
+
+% -------------------------------
 
 
 % too big?...
@@ -83,7 +98,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 1;           % Define datastruct analysis no.
+didx = 3;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -101,7 +116,7 @@ nchannels = 2;      % N channels acquired in session.
 % --------------------------------------------
 %D.preprocessing = 'Acquisition2P';
 preprocessing = 'raw';
-
+%preprocessing = 'fiji';
 
 % 2.  Specify ROI type for current analysis:
 % --------------------------------------------
@@ -126,7 +141,10 @@ end
 %slicesToUse = 7:17; 
 %slicesToUse = [10, 15];  
 %slicesToUse = [13:2:25];
-slicesToUse = [1:20];
+% slicesToUse = [1:20];
+% slicesToUse = [6:30];
+%slicesToUse = [4:30];
+slicesToUse = [6:20];
 
 %% Define datastruct name for analysis:
 
@@ -232,7 +250,34 @@ switch metaInfo
             if ~exist(writeDir, 'dir')
                 mkdir(writeDir)
             end
-            parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir);
+            switch D.preprocessing
+                case 'fiji'
+                    fprintf('No SI metadata for fiji tiffs.\nSelect reference:\n');
+                    [fn, fpath, ~] = uigetfile();
+                    sitmp = load(fullfile(fpath, fn));
+                    siRefAcquisitionName = fieldnames(sitmp);
+                    siRef = sitmp.(siRefAcquisitionName{1});
+                    fprintf('Selected reference si metastruct from: %s.\n', siRef.acqName);
+                    if length(movies)==1
+                        siRefFidx = input('Select FILE idx from current reference acquisition:\n');
+                        siRefMetaStruct = siRef.metaDataSI{siRefFidx};
+                        parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir, siRefMetaStruct);
+                    else
+                        siRefMetaStruct = siRef;
+                        if length(movies) ~= length(siRef.metaDataSI)
+                            siRefStartIdx = input('Select idx for FIRST file in reference meta stuct:\n');
+                            if isempty(siRefStartIdx)
+                                siRefStartIdx = 1;
+                            end
+                        else
+                            siRefStartIdx = 1;
+                        end
+                        parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir, siRefMetaStruct, siRefStartIdx);
+                    end
+                    
+                otherwise
+                    parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir);
+            end
             
             % Load newly-created meta struct:
             %siMeta = load(fullfile(sourceDir, siMetaName));
@@ -547,7 +592,9 @@ switch D.roiType
         addpath(genpath('~/Repositories/NoRMCorre'));
         
         D.nmfPath = fullfile(D.datastructPath, 'nmf');
-
+        if ~exist(D.nmfPath)
+            mkdir(D.nmfPath)
+        end
         % Get NMF params:
         % -----------------------------------------------------------------
         D.maskInfo = struct();
@@ -555,18 +602,18 @@ switch D.roiType
         % Set params for 3D pipeline:
         if D.tefo
             params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
+            params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
 
-            params.K = 20;                                            % number of components to be found
-            params.tau = [2,2,1];                                    % std of gaussian kernel (size of neuron) 
+            params.K = 2000;                                            % number of components to be found
+            params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
             params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
             params.merge_thr = 0.8;                                  % merging threshold
         else
-            params.patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
+            params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
+            params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
 
-            params.K = 7;                                            % number of components to be found
-            params.tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
+            params.K = 10;                                            % number of components to be found
+            params.tau = [3,6,2];                                    % std of gaussian kernel (size of neuron) 
             params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
             params.merge_thr = 0.8;                                  % merging threshold
         end
@@ -579,20 +626,44 @@ switch D.roiType
         D.maskInfo.maskType = D.maskType;
         D.maskInfo.slices = slicesToUse;
         
-        % Run 3D CNMF pipeline:
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
         
+        % Create memmapped files and substack if needed:
+        memmap3D(D, meta);
+        
+        
+        % Run 3D CNMF pipeline:
+        roistart = tic();
+        
+        D.maskInfo.params.patches = false;
+        
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
+
         D.maskInfo.params.nmfoptions = nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
+        fprintf('Extracted all 3D ROIs!\n')
+        toc(roistart);
         
+%         % look at CNMF results:
+%         patch_fns = dir(fullfile(D.nmfPath, '*patch_results*.mat'));
+%         patch = matfile(fullfile(D.nmfPath, patch_fns(2).name));
+%         nmf_fns = dir(fullfile(D.nmfPath, '*output*.mat'));
+%         nmf = matfile(fullfile(D.nmfPath, nmf_fns(2).name));
+%         
+%         nmfoptions = nmf.options;
+%         T = size(nmf.Y, 4);
+%         tiffYr = reshape(nmf.Y, nmfoptions.d1*nmfoptions.d2*nmfoptions.d3, T);
+%         AY = nmf.A' * tiffYr;
+%         
+%         plot_components_3D_GUI(nmf.Y,nmf.A,nmf.C,nmf.b,nmf.f,nmf.avgs,nmfoptions)
+%         
         % =================================================================
         % Get traces:
         % =================================================================
+        tracestart = tic();
         [D.tracesPath, D.nSlicesTrace] = getTraces3Dnmf(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-        
-        
+
         % Generate paths for "masks" to created in
         % getTraces3Dnmf.m:
         tmpmaskpaths = dir(fullfile(D.datastructPath, 'masks', 'nmf3D_masks*'));
@@ -604,7 +675,7 @@ switch D.roiType
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
         fprintf('DONE:  Extracted traces!\n');
-        toc(fstart);
+        toc(tracestart);
         %%
         
         % ----------

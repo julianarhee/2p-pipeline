@@ -71,7 +71,7 @@ for sidx = 1:length(slicesToUse)
             [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
             traceMat = cat(2, traceMat{1:end});
             DCs = cat(2, DCs{1:end});
-            traceMat = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
+            traceMat = bsxfun(@plus, traceMat, DCs); % ROWs = tpoints, COLS = ROI
             
             tracestruct.file(tiffIdx).traceMat = traceMat;
             tracestruct.file(tiffIdx).winsz = winsz;

@@ -33,57 +33,62 @@ function [tracesPath, nSlicesTrace] = getTraces3Dnmf(D)
 %         slices = D.maskInfo.slices;
 % end
 
+acquisitionName = D.acquisitionName;
+nTiffs = D.nTiffs;
+nchannels = D.channelIdx;
+meta = load(D.metaPath);
+
+
+% Create output dirs if no exist:
 tracesPath = fullfile(D.datastructPath, 'traces');
 if ~exist(tracesPath, 'dir')
     mkdir(tracesPath);
 end
-acquisitionName = D.acquisitionName;
-nTiffs = D.nTiffs;
-nchannels = D.channelIdx;
 
-meta = load(D.metaPath);
+masksPath = fullfile(D.datastructPath, 'masks');
+if ~exist(masksPath, 'dir')
+    mkdir(masksPath)
+end
 
-% Create empty masks dir if it doesn't exist:
-% if ~exist(D.maskInfo.maskPaths, 'dir')
-%     mkdir(D.maskInfo.maskPaths)
-% end
-maskStruct3D = struct();
-maskStruct = struct();
-
-T = struct();
 
 % Load output of 3DCNMF extraction:
 nmf_fns = dir(fullfile(D.nmfPath, '*output*.mat'));
-tifmem_fns = dir(fullfile(D.nmfPath, 'memfiles', sprintf('%s.mat', D.acquisitionName)));
 
-for fidx=1:1 %nTiffs
+for fidx=1:nTiffs
 
+% Initialize output stucts:
+maskStruct3D = struct();
+T = struct();
+    
 nmf = matfile(fullfile(D.nmfPath, nmf_fns(fidx).name)); %This is equiv. to 'maskstruct' in 2d
-data = matfile(fullfile(D.nmfPath, 'memfiles', tifmem_fns(fidx).name));
-
-% Get raw traces using spatial and temporal components of tiff Y:
-ay = mm_fun(nmf.A, data.Y);
-aa = nmf.A'*nmf.A;
-traces = ay - aa*nmf.C;
-
-avgs = zeros(data.sizY(:,1:end-1));
-for slice=1:size(avgs,3)
-    avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-end
-
-nslices = size(avgs,3);
-% Create "masks" from 3D spatial components:
-roiMat = full(nmf.A);
-nRois = size(roiMat,2);
 nopts = nmf.options;
 d1=nopts.d1;
 d2=nopts.d2;
 d3=nopts.d3;
+sizY= size(nmf.Y);
+
+tmpYr = nmf.Yr_out;
+tmpDf = nmf.Df_out;
+tmpC = nmf.C_out;
+
+% Get raw traces using spatial and temporal components of tiff Y:
+% ay = mm_fun(nmf.A, data.Y);
+% aa = nmf.A'*nmf.A;
+% traces = ay - aa*nmf.C;
+ntpoints = sizY(end);
+traces = nmf.A' * reshape(nmf.Y, d1*d2*d3, ntpoints); % nRows = nROIS, nCols = tpoints
+avgs = nmf.avgs;
+
+nslices = size(avgs,3);
+
+% Create "masks" from 3D spatial components:
+roiMat = full(nmf.A);
+nRois = size(roiMat,2);
+
+
 % To view ROIs:
 %figure(); plot_contours(roiMat, imresize(mat2gray(avgY), [512 1024]), maskStruct.file(1).options);
 
-
-tmpfidx = 3;
 % Want a cell array if sparse matrices, each of which is a
 % "mask" of an ROI.
 % 1 ROI mask is:  full(reshape(Aor(:,i),d1,d2));
@@ -91,7 +96,7 @@ tmpfidx = 3;
 % MASKCELL - this is a cell array where each ROI of the
 % current slice is stored as a sparse
 %if ~isfield(maskStruct.file(fidx), 'maskcell') || isempty(maskStruct.file(fidx).maskcell)
-tic()
+
 maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2, d3), 1:nRois, 'UniformOutput', false);
 % if maskStruct.file(fidx).preprocessing.scaleFOV
 %     maskcellTmp = arrayfun(@(roi) imresize(full(maskcellTmp{roi}), [size(maskcellTmp{roi},1)/2, size(maskcellTmp{roi},2)]), 1:nRois, 'UniformOutput', false);
@@ -123,6 +128,16 @@ tic()
 nrois = length(maskcell3D);
 %maskcell = cell(1,nrois);
 for sl=1:nslices
+
+    mask_slicefn = sprintf('masks_Slice%02d.mat', D.slices(sl));
+    maskPath = fullfile(D.datastructPath, 'masks', mask_slicefn);
+    
+    if exist(maskPath, 'file')
+        maskStruct = load(maskPath);
+    else
+        maskStruct = struct();
+    end
+    
     ncurrrois = length(currSliceRois{sl});
     maskcell = cell(1,ncurrrois);
     for roi=1:length(currSliceRois{sl})%nrois
@@ -130,53 +145,99 @@ for sl=1:nslices
         maskcell{roi} = maskcell3D{roidx}(:,:,centers(roidx, 3));
     end
     
-    maskStruct.file(tmpfidx).maskcell = maskcell;
-    maskStruct.file(tmpfidx).centers = currSliceRois{sl};
-    maskStruct.file(tmpfidx).rois = currSliceRois{sl};
+    maskStruct.file(fidx).maskcell = maskcell;
+    maskStruct.file(fidx).centers = currSliceRois{sl};
+    maskStruct.file(fidx).roi3Didxs = currSliceRois{sl};
     
-    mask_slicefn = sprintf('masks_Slice%02d_File%03d.mat', sl, tmpfidx);
-    maskPath = fullfile(D.datastructPath, 'masks', mask_slicefn);
+    %mask_slicefn = sprintf('masks_Slice%02d_File%03d.mat', sl, fidx);
+    %mask_slicefn = sprintf('masks_Slice%02d.mat');
+    %maskPath = fullfile(D.datastructPath, 'masks', mask_slicefn);
     [fp,fn,fe] = fileparts(maskPath);
-    save_struct(fp, strcat(fn,fe), maskStruct)
-end
-toc()
     
+    if exist(maskPath, 'file')
+        save_struct(fp, strcat(fn,fe), maskStruct, '-append')
+    else
+        save_struct(fp, strcat(fn,fe), maskStruct)
+    end
     
-maskStruct3D.file(tmpfidx).maskcell3D = maskcell3D;
-maskStruct3D.file(tmpfidx).centers = centers;
+    % Also extract traces for curr-slice masks:
+    tracesName = sprintf('traces_Slice%02d_Channel%02d.mat', D.slices(sl), 1);
+    if exist(fullfile(tracesPath, tracesName), 'file')
+        tracestruct = load(fullfile(tracesPath, tracesName));
+    else
+        tracestruct = struct();
+    end
+    tracestruct.file(fidx).rawTraces = traces(currSliceRois{sl},:)'; %rawTraces;
+    
+    % Include CNMF output to struct:
+    currDfs = tmpDf(currSliceRois{sl});
+    inferredTraces = arrayfun(@(i) tmpC(currSliceRois{sl}(i),:)/currDfs(i), 1:ncurrrois, 'UniformOutput', 0);
+    inferredTraces = cat(1, inferredTraces{1:end});
+    
+    tracestruct.file(fidx).inferredTraces = inferredTraces'; 
+    
+    %T.masks.file(fidx) = {masks};
+    tracestruct.file(fidx).avgImage = avgs(:,:,sl);
+    %T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
+    %T.file(fidx).badFrames = badframes;
+    %T.file(fidx).corrcoeffs = corrs;
+    %T.file(fidx).refframe = refframe;
+    tracestruct.file(fidx).info.szFrame = sizY(1:2); %size(avgY);
+    tracestruct.file(fidx).info.nFrames = sizY(:,end);
+    tracestruct.file(fidx).info.nRois = length(currSliceRois{sl}); %size(tr,1); %length(maskcell);
 
+    if exist(fullfile(tracesPath, tracesName), 'file')
+        save_struct(tracesPath, tracesName, tracestruct, '-append');
+    else
+        fprintf('Saving struct: %s.\n', tracesName);
+        save_struct(tracesPath, tracesName, tracestruct);
+    end
+
+end
+
+    
+% Save 3D mask info for current movie:
+% ------------------------------------
+maskStruct3D.maskcell3D = maskcell3D;
+maskStruct3D.centers = centers;
 
 % This maskPath points to the 3D mask cell array, i.e., each cell contains
 % 3D mask, and length of cell array is nRois:
-maskpath3D = fullfile(D.datastructPath, 'masks', sprintf('nmf3D_masks_File%03d.mat', tmpfidx));
-
+maskpath3D = fullfile(D.datastructPath, 'masks', sprintf('nmf3D_masks_File%03d.mat', fidx));
 
 [fp,fn,fe] = fileparts(maskpath3D);
 save_struct(fp, strcat(fn,fe), maskStruct3D)
 %else
 
+% Save 3D traces info for current movie:
+% ------------------------------------
+T.rawTraces = traces'; %rawTraces;
 
-T.file(tmpfidx).rawTraces = traces'; %rawTraces;
+% Include nmf outptu infered traces:
+inferredTraces = arrayfun(@(i) tmpC(i,:)/tmpDf(i), 1:nrois, 'UniformOutput', 0);
+inferredTraces = cat(1, inferredTraces{1:end});
+T.inferredTraces = inferredTraces';
+
 %T.masks.file(fidx) = {masks};
-T.file(tmpfidx).avgImage = avgs;
+T.avgImage = avgs;
 %T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
 %T.file(fidx).badFrames = badframes;
 %T.file(fidx).corrcoeffs = corrs;
 %T.file(fidx).refframe = refframe;
-T.file(tmpfidx).info.szFrame = data.sizY(:,1:2); %size(avgY);
-T.file(tmpfidx).info.nFrames = data.sizY(:,end);
-T.file(tmpfidx).info.nRois = length(maskStruct3D); %length(maskcell);
+T.info.szFrame = sizY(1:2); %size(avgY);
+T.info.nFrames = sizY(end);
+T.info.nRois = length(maskStruct3D); %length(maskcell);
 
 %clearvars rawTraces rawTracesTmp cellY Y avgY corrs
 
-fprintf('Extracted traces for %i of %i FILES.\n', tmpfidx, nTiffs);
+fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
 
 % Save traces for each file to slice struct:                    
 %                 tracesPath = fullfile(dstructPath, 'traces');
 %                 if ~exist(tracesPath, 'dir')
 %                     mkdir(tracesPath);
 %                 end
-tracesName = sprintf('traces3D_Channel%02d_File%03d', 1, tmpfidx);
+tracesName = sprintf('traces3D_Channel%02d_File%03d', 1, fidx);
 fprintf('Saving struct: %s.\n', tracesName);
 
 save_struct(tracesPath, tracesName, T);
@@ -186,28 +247,28 @@ save_struct(tracesPath, tracesName, T);
 % DO dum thing and reassign byslice:
 
 
-for sl=1:nslices
-    T = struct();
-    T.file(tmpfidx).rawTraces = traces(currSliceRois{sl},:)'; %rawTraces;
-    %T.masks.file(fidx) = {masks};
-    T.file(tmpfidx).avgImage = avgs(:,:,sl);
-    %T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
-    %T.file(fidx).badFrames = badframes;
-    %T.file(fidx).corrcoeffs = corrs;
-    %T.file(fidx).refframe = refframe;
-    T.file(tmpfidx).info.szFrame = data.sizY(:,1:2); %size(avgY);
-    T.file(tmpfidx).info.nFrames = data.sizY(:,end);
-    T.file(tmpfidx).info.nRois = length(currSliceRois{sl}); %size(tr,1); %length(maskcell);
-
-    fprintf('Extracted traces for %i of %i FILES.\n', tmpfidx, nTiffs);
-    %end
-
-    tracesName = sprintf('traces_Slice%02d_Channel%02d', sl, 1);
-    fprintf('Saving struct: %s.\n', tracesName);
-
-    save_struct(tracesPath, tracesName, T);
-
-end
+% for sl=1:nslices
+%     T = struct();
+%     T.file(fidx).rawTraces = traces(currSliceRois{sl},:)'; %rawTraces;
+%     %T.masks.file(fidx) = {masks};
+%     T.file(fidx).avgImage = avgs(:,:,sl);
+%     %T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
+%     %T.file(fidx).badFrames = badframes;
+%     %T.file(fidx).corrcoeffs = corrs;
+%     %T.file(fidx).refframe = refframe;
+%     T.file(fidx).info.szFrame = sizY(1:2); %size(avgY);
+%     T.file(fidx).info.nFrames = sizY(:,end);
+%     T.file(fidx).info.nRois = length(currSliceRois{sl}); %size(tr,1); %length(maskcell);
+% 
+%     fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
+%     %end
+% 
+%     tracesName = sprintf('traces_Slice%02d_Channel%02d', sl, 1);
+%     fprintf('Saving struct: %s.\n', tracesName);
+% 
+%     save_struct(tracesPath, tracesName, T);
+% 
+% end
 
 
 

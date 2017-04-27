@@ -26,10 +26,10 @@ dfstruct = struct();
 %currSlice = slicesToUse(sidx);
 %fprintf('Processing SLICE %i...\n', currSlice);
 
-sidx = 1;
 
-% Load 3D masks:
-masks = load(D.maskInfo.maskPaths{1});
+
+% % Load 3D masks:
+% masks = load(D.maskInfo.maskPaths{1});
 % Not consistent -- FIX THSI.
 % D.maskPaths is cell of paths to each slice's masks (for some reference
 % FILE, usually, but for now, tested only on single file File003.
@@ -45,25 +45,31 @@ masks = load(D.maskInfo.maskPaths{1});
 %fftStruct = load(fullfile(D.outputDir, fftName));
 %F = load(fullfile(outputDir, fftNames{sidx}));
 
-for fidx=3:3 %1:nTiffs
+for fidx=1:nTiffs
     
-    tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{1}));
-
+    % Load 3D masks:
+    masks = load(D.maskInfo.maskPaths{fidx});
+    
+    % Load 3D traces:
+    tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{fidx}));
+    
 %     if isfield(masks, 'file')
-    maskcell = masks.file(fidx).maskcell3D;
-    centers = masks.file(fidx).centers;
+    maskcell = masks.maskcell3D;
+    centers = masks.centers;
 %     else
 %         maskcell = masks.maskcell;
 %     end
 
     activeRois = [];
-    nRois = size(tracestruct.file(fidx).rawTraces,2); %length(maskcell);
+    nRois = size(tracestruct.rawTraces,2); %length(maskcell);
 
-    avgY = tracestruct.file(fidx).avgImage;
-    adjustTraces = tracestruct.file(fidx).traceMat; 
+    avgY = tracestruct.avgImage;
+    adjustTraces = tracestruct.traceMatDC; 
     % --> This is already corrected with DC -- do the following to get back
     % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
-
+    inferredTraces = tracestruct.inferredTraces;
+    
+    
     switch D.roiType
         case 'create_rois'
             [d1,d2] = size(avgY);
@@ -110,6 +116,26 @@ for fidx=3:3 %1:nTiffs
     meanMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfs);
     maxMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfs);
     
+    % ----------------------------------------------------------
+    % Make mean/max maps & get ROI traces from inferred traces:
+    blankMap = zeros([d1, d2]);
+    %dfMatInferred = arrayfun(@(i) extractDfTrace(inferredTraces(:,i)), 1:nrois, 'UniformOutput', false);
+    %dfMatInferred = cat(2, dfMatInferred{1:end})*100;
+    dfMatInferred = inferredTraces; % alrady df/f * 100
+    
+    meanDfsInferred = mean(inferredTraces,1);
+    maxDfsInferred = max(inferredTraces);
+    % Get rid of ridiculous values, prob edge effects:
+    maxDfsInferred(abs(maxDfsInferred)>400) = NaN;
+    activeRoisInferred = find(maxDfsInferred >= minDf);
+    fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisInferred), nrois, minDf);
+    
+    nslices =  size(avgY,3);
+    meanMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsInferred);
+    maxMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsInferred);
+    % ----------------------------------------------------------
+
+    
     
     % Sort df traces into "slices":
     currSliceRois = {};
@@ -118,22 +144,37 @@ for fidx=3:3 %1:nTiffs
     end
     
     dfMatSlices = {};
+    dfMatSlicesInferred = {};
     for sl=1:nslices
         dfMatSlices{end+1} = dfMat(:,currSliceRois{sl});
+        dfMatSlicesInferred{end+1} = dfMatInferred(:,currSliceRois{sl});
     end
     
     %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
     %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
-    for currSlice=1:nslices
-        DF.slice(currSlice).file(fidx).meanMap = meanMap(:,:,currSlice);
-        DF.slice(currSlice).file(fidx).maxMap = maxMap(:,:,currSlice);
-    
-        DF.slice(currSlice).file(fidx).dfMat = dfMatSlices{currSlice};
-        DF.slice(currSlice).file(fidx).centers = currSliceRois{currSlice};
+    for sidx=1:nslices
+        
+        currSlice = D.slices(sidx);
+        
+        DF.slice(currSlice).file(fidx).meanMap = meanMap(:,:,sidx);
+        DF.slice(currSlice).file(fidx).maxMap = maxMap(:,:,sidx);        
+        
+        DF.slice(currSlice).file(fidx).meanMapInferred = meanMapInferred(:,:,sidx);
+        DF.slice(currSlice).file(fidx).maxMapInferred = maxMapInferred(:,:,sidx);
+        
+        
+        DF.slice(currSlice).file(fidx).dfMat = dfMatSlices{sidx};
+        DF.slice(currSlice).file(fidx).dfMatInferred = dfMatSlicesInferred{sidx};
+        
+        DF.slice(currSlice).file(fidx).centers = currSliceRois{sidx};
     
         DF.slice(currSlice).file(fidx).activeRois = activeRois;
+        DF.slice(currSlice).file(fidx).activeRoisInferred = activeRoisInferred;
+        
         DF.slice(currSlice).file(fidx).minDf = minDf;
+        
         DF.slice(currSlice).file(fidx).maxDfs = maxDfs;
+        DF.slice(currSlice).file(fidx).maxDfsInferred = maxDfsInferred;
     end
 
 end

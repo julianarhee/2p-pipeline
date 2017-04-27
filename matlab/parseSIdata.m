@@ -1,11 +1,21 @@
-function parseSIdata(acquisition_name, movies, sourceDir, writeDir)
+function parseSIdata(acquisition_name, movies, sourceDir, writeDir, varargin)
 % Parse and save TIFFs that are not preprocessed (motion corrected).
 % Rename by Channel, Slice, and File.
 
 %% Set params:
 
 namingFunction = @defaultNamingFunction;
-
+if nargin > 0
+     sirefs = varargin{1};
+     if length(varargin)>1
+         sirefFidx = varargin{2};
+     else
+         sirefFidx = 1;
+     end
+     refmeta = true;
+else
+    refmeta = false;
+end
 %% Load movies and motion correct
 %Calculate Number of movies and arrange processing order so that
 %reference is first
@@ -17,11 +27,24 @@ movieOrder = 1:nMovies;
 metaDataSI = {};
 
 for movNum = movieOrder
-    fprintf('\nLoading Movie #%03.0f of #%03.0f\n',movNum,nMovies),
-    [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
+    fprintf('\nLoading Movie #%03.0f of #%03.0f\n',movNum,nMovies)
+    if refmeta
+        refMovIdx = movNum + sirefFidx - 1; 
+        scanImageMetadata = sirefs.metaDataSI{refMovIdx};
+        [mov, ~] = tiffRead(fullfile(sourceDir, movies{movNum}));
+    else
+        [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
+    end
 
     fprintf('Mov size is: %s\n.', mat2str(size(mov)));
     fprintf('Mov type is: %s\n.', class(mov)); 
+    if size(mov,2)~=scanImageMetadata.SI.hRoiManager.pixelsPerLine
+        scanImageMetadata.SI.hRoiManager.pixelsPerLine = size(mov,2);
+    end
+    if size(mov,1)~=scanImageMetadata.SI.hRoiManager.linesPerFrame
+        scanImageMetadata.SI.hRoiManager.linesPerFrame = size(mov,1);
+    end
+    
 %     if obj.binFactor > 1
 %         mov = binSpatial(mov, obj.binFactor);
 %     end
