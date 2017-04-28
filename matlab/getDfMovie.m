@@ -25,7 +25,9 @@ for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
     fprintf('Processing SLICE %i...\n', currSlice);
     
-    masks = load(D.maskPaths{sidx});
+    if ~strcmp(D.roiType, 'pixels')
+        masks = load(D.maskPaths{sidx});
+    end
     
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
     %fftName = sprintf('%s_Slice%02d.mat', fftPrepend, currSlice);
@@ -33,17 +35,26 @@ for sidx = 1:length(slicesToUse)
     %F = load(fullfile(outputDir, fftNames{sidx}));
         
     for fidx=1:nTiffs
-        if isfield(masks, 'file')
-            maskcell = masks.file(fidx).maskcell;
+        if ~strcmp(D.roiType, 'pixels')
+            if isfield(masks, 'file')
+                maskcell = masks.file(fidx).maskcell;
+            else
+                maskcell = masks.maskcell;
+            end
+            nRois = length(maskcell);
+            
         else
-            maskcell = masks.maskcell;
+            nRois = tracestruct.file(fidx).info.nRois;
         end
         
         activeRois = [];
-        nRois = length(maskcell);
         
-        avgY = tracestruct.file(fidx).avgImage;
-        adjustTraces = tracestruct.file(fidx).traceMat; 
+        if iscell(tracestruct.file(fidx).avgImage)
+            avgY = tracestruct.file(fidx).avgImage{1};
+        else
+            avgY = tracestruct.file(fidx).avgImage;
+        end
+        adjustTraces = tracestruct.file(fidx).traceMatDC; 
         % --> This is already corrected with DC -- do the following to get back
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
         
@@ -86,11 +97,23 @@ for sidx = 1:length(slicesToUse)
         activeRois = find(maxDfs >= minDf);
         fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, minDf);
         
-        meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
-        maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+        if strcmp(D.roiType, 'pixels')
+            % Just need to reshape into 2d image if using pixels:
+            meanMap = reshape(meanDfs, [d1, d2]);
+            maxMap = reshape(maxDfs, [d1, d2]);
+        else
+            meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
+            maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+        end
         
-        %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
-        %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);
+        % --- Need to reshape into 2d image if using pixels:
+%         if strcmp(D.roiType, 'pixels')
+%             meanMap = reshape(meanMap, [d1, d2, size(meanMap,3)]);
+%             maxMap = reshape(maxMap, [d1, d2, size(maxMap,3)]);
+%         end
+
+        % ----------------------------------------------------
+        
         
         DF.slice(currSlice).file(fidx).meanMap = meanMap;
         DF.slice(currSlice).file(fidx).maxMap = maxMap;

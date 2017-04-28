@@ -60,14 +60,17 @@ while loading==1
         sliceNames = cell(1,length(D.slices));
     end
     for s=1:length(sliceNames)
-        sliceNames{s} = sprintf('Slice%02d', D.slices(s));
+        sliceNames{s} = sprintf('Slice%02d', D.slices(s)); % - D.slices(1) + 1);
     end
     handles.currSlice.String = sliceNames;
 
     
     % Get default slice idx and value: ------------------------------------
     selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-    selectedSlice = D.slices(selectedSliceIdx);
+    if selectedSliceIdx > length(D.slices)
+        selectedSliceIdx = length(D.slices);
+    end
+    selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 
     
     % Set file name options for RUN menu: ---------------------------------
@@ -90,7 +93,7 @@ while loading==1
         fprintf('Loading DF datastruct...\n');
         dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
         if isempty(dfStruct.slice(selectedSlice).file)
-            fprinf('No DF struct found for slice %i.\n', selectedSlice);
+            fprintf('No DF struct found for slice %i.\n', selectedSlice);
             noDF = true;
         else
             noDF = false;
@@ -125,10 +128,8 @@ while loading==1
     handles.stimMenu.UserData.stimType = handles.stimMenu.String;
     if handles.stimMenu.Value > length(handles.stimMenu.String)
         handles.stimMenu.Value = 1;
-        handles.stimMenu.UserData.currStimName = handles.stimMenu.String{handles.stimMenu.Value};
-    else
-        handles.stimMenu.UserData.currStimName =  handles.stimMenu.String{handles.stimMenu.Value};
     end
+    handles.stimMenu.UserData.currStimName =  handles.stimMenu.String{handles.stimMenu.Value};
     if ~strcmp(D.stimType, 'bar')
 %         nStimuli = length(meta.condTypes);
 %         colors = zeros(nStimuli,3);
@@ -155,7 +156,11 @@ while loading==1
     
     
     % Populate Time-Course menu options: ----------------------------------
-    timecourseTypes = {'dF/F', 'raw', 'processed'};
+    if isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatInferred')
+        timecourseTypes = {'dF/F', 'raw', 'processed', 'inferred'};
+    else
+        timecourseTypes = {'dF/F', 'raw', 'processed'};
+    end
     handles.timecourseMenu.String = timecourseTypes;
 
 

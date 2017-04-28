@@ -42,16 +42,19 @@ for sidx = 1:length(slicesToUse)
             % replace with Nans:
             currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
             
-            tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
+            if isfield(tracestruct.file(tiffIdx), 'badFrames')
+                tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
-            bf = tracestruct.file(tiffIdx).badFrames;
-            if length(bf) > 1
-                assignNan = @(f) nan(size(f));
-%                 tmpframes = arrayfun(@(i) assignNan(currTraces(:,i)), bf, 'UniformOutput', false);
-                tmpframes = arrayfun(@(i) assignNan(currTraces(i,:)), bf, 'UniformOutput', false);
-                currTraces(bf,:) = cat(1,tmpframes{1:end});
+                bf = tracestruct.file(tiffIdx).badFrames;
+                if length(bf) > 1
+                    assignNan = @(f) nan(size(f));
+    %                 tmpframes = arrayfun(@(i) assignNan(currTraces(:,i)), bf, 'UniformOutput', false);
+                    tmpframes = arrayfun(@(i) assignNan(currTraces(i,:)), bf, 'UniformOutput', false);
+                    currTraces(bf,:) = cat(1,tmpframes{1:end});
+                end
+                
             end
-            
+
             % 2.  Crop trailing frames (extra frames, not related to
             % stimulus), if needed:
             
@@ -71,8 +74,9 @@ for sidx = 1:length(slicesToUse)
             [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
             traceMat = cat(2, traceMat{1:end});
             DCs = cat(2, DCs{1:end});
-            traceMat = bsxfun(@plus, traceMat, DCs); % ROWs = tpoints, COLS = ROI
+            traceMatDC = bsxfun(@plus, traceMat, DCs); % ROWs = tpoints, COLS = ROI
             
+            tracestruct.file(tiffIdx).traceMatDC = traceMatDC;
             tracestruct.file(tiffIdx).traceMat = traceMat;
             tracestruct.file(tiffIdx).winsz = winsz;
             tracestruct.file(tiffIdx).DCs = DCs;

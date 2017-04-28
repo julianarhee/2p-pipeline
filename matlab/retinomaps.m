@@ -16,8 +16,8 @@ session = '20161221_JR030W';
 %experiment = 'retinotopyFinalMask';
 experiment = 'test_crossref/nmf';
 
-analysis_no = 3;
-tefo = false;
+analysis_no = 7;
+tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
 
@@ -93,7 +93,9 @@ for sidx = 1:length(slicesToUse)
     fprintf('Processing Slice %02d of %i slices...\n', currSlice, length(slicesToUse));
     
     % Load masks:
-    maskstruct = load(D.maskPaths{sidx});
+    if ~strcmp(D.roiType, 'pixels')
+        maskstruct = load(D.maskPaths{sidx});
+    end
     
     % Load tracestruct:
     tracestruct = load(fullfile(D.tracesPath, D.traceNames{sidx}));
@@ -102,15 +104,18 @@ for sidx = 1:length(slicesToUse)
     for fidx=1:nTiffs
         fprintf('Processing TIFF #%i...\n', fidx);
         
-        if isfield(maskstruct, 'file')
-            maskcell = maskstruct.file(fidx).maskcell;
-        else
-            maskcell = maskstruct.maskcell;
+        if ~strcmp(D.roiType, 'pixels')
+            if isfield(maskstruct, 'file')
+                maskcell = maskstruct.file(fidx).maskcell;
+            else
+                maskcell = maskstruct.maskcell;
+            end
+
+            if isempty(maskcell)
+                continue;
+            end
         end
         
-        if isempty(maskcell)
-            continue;
-        end
         %sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
         sliceIdxs = slicesToUse(sidx):meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
 
@@ -118,14 +123,23 @@ for sidx = 1:length(slicesToUse)
         expectedTImes = expectedTimes + meta.file(fidx).mw.mwSec(1); % add offset between trigger and stim-display
         
         %traces = traceStruct.traces.file{fidx};
-        inferredTraces = tracestruct.file(fidx).inferredTraces;
+        if isfield(tracestruct.file(fidx), 'inferredTraces')
+            inferredTraces = tracestruct.file(fidx).inferredTraces;
+            inferred = true;
+        else
+            inferred = false;
+        end
         
         traceMatDC = tracestruct.file(fidx).traceMatDC;
         DCs = tracestruct.file(fidx).DCs;
         tmptraces = bsxfun(@minus, traceMatDC, DCs);
         traces = tracestruct.file(fidx).traceMat;
         
-        avgY = tracestruct.file(fidx).avgImage;
+        if iscell(tracestruct.file(fidx).avgImage)
+            avgY = tracestruct.file(fidx).avgImage{1};
+        else
+            avgY = tracestruct.file(fidx).avgImage;
+        end
         
         targetFreq = meta.file(fidx).mw.targetFreq;
         nCycles = meta.file(fidx).mw.nCycles;
@@ -160,10 +174,12 @@ for sidx = 1:length(slicesToUse)
         phaseMaxMag = zeros([d1, d2]);
         
         % ---
-        phaseMapInferred = zeros([d1, d2]);
-        magMapInferred = zeros([d1, d2]);
-        ratioMapInferred = zeros([d1, d2]);
-        phaseMaxMagInferred = zeros([d1, d2]);
+        if inferred
+            phaseMapInferred = zeros([d1, d2]);
+            magMapInferred = zeros([d1, d2]);
+            ratioMapInferred = zeros([d1, d2]);
+            phaseMaxMagInferred = zeros([d1, d2]);
+        end
         % ---
         
         
@@ -207,19 +223,22 @@ for sidx = 1:length(slicesToUse)
         [maxmag,maxidx] = max(magMat);
         maxFreqs = freqs(maxidx);
         
-        % Get FFT-MAT for inferred: ---------------------------------
-        fftMatInferred = arrayfun(@(i) fftfun(inferredTraces(:,i)), 1:size(inferredTraces,2), 'UniformOutput', false);
-        fftMatInferred = cat(2, fftMatInferred{1:end});
-      
-        fftMatInferred = fftMatInferred(1:N/2, :);
-        fftMatInferred(2:end,:) = fftMatInferred(2:end,:).*2;
-        
-        magMatInferred = abs(fftMatInferred);
-        ratioMatInferred = magMatInferred(freqIdx,:) ./ (sum(magMatInferred, 1) - magMatInferred(freqIdx,:));
-        phaseMatInferred = angle(fftMatInferred);
 
-        [maxmag2,maxidx2] = max(magMatInferred);
-        maxFreqsInferred = freqs(maxidx2);
+        % Get FFT-MAT for inferred: ---------------------------------
+        if inferred
+            fftMatInferred = arrayfun(@(i) fftfun(inferredTraces(:,i)), 1:size(inferredTraces,2), 'UniformOutput', false);
+            fftMatInferred = cat(2, fftMatInferred{1:end});
+
+            fftMatInferred = fftMatInferred(1:N/2, :);
+            fftMatInferred(2:end,:) = fftMatInferred(2:end,:).*2;
+
+            magMatInferred = abs(fftMatInferred);
+            ratioMatInferred = magMatInferred(freqIdx,:) ./ (sum(magMatInferred, 1) - magMatInferred(freqIdx,:));
+            phaseMatInferred = angle(fftMatInferred);
+
+            [maxmag2,maxidx2] = max(magMatInferred);
+            maxFreqsInferred = freqs(maxidx2);
+        end
         % ------------------------------------------------------------
         
         
@@ -239,16 +258,26 @@ for sidx = 1:length(slicesToUse)
         
         % Get MAPS for current slice: ---------------------------------
         tic();
-        phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
-        magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
-        ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
-        phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
-        
+        if strcmp(D.roiType, 'pixels')
+            phaseMap = reshape(phaseMat(freqIdx,:), [d1, d2]);
+            magMap = reshape(magMat(freqIdx,:), [d1, d2]);
+            ratioMap = reshape(ratioMat, [d1, d2]);
+            phasesAtMaxMag = arrayfun(@(i) freqs(magMat(:,i)==max(magMat(:,i))), 1:nrois);
+            phaseMaxMag = reshape(phasesAtMaxMag, [d1, d2]);
+        else
+            phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
+            magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
+            ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
+            phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
+        end
+
         % --
-        phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
-        magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
-        ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
-        phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
+        if inferred
+            phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
+            magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
+            ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
+            phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
+        end
         % ---
         
         toc();
@@ -260,21 +289,23 @@ for sidx = 1:length(slicesToUse)
         maps.file(fidx).avgY = avgY;
         
         % ---
-        maps.file(fidx).magnitudeInferred = magMapInferred;
-        maps.file(fidx).phaseInferred = phaseMapInferred;
-        maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
-        maps.file(fidx).ratioInferred = ratioMapInferred;
+        if inferred
+            maps.file(fidx).magnitudeInferred = magMapInferred;
+            maps.file(fidx).phaseInferred = phaseMapInferred;
+            maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
+            maps.file(fidx).ratioInferred = ratioMapInferred;
+        end
         % ---
 
         % --- Need to reshape into 2d image if using pixels:
-        if strcmp(D.roiType, 'pixels')
-            mapTypes = fieldnames(maps);
-            for map=1:length(mapTypes)
-                currMap = maps.(mapTypes{map});
-                currMap = reshape(currMap, [d1, d2, size(currMap,3)]);
-                maps.(mapTypes{map}) = currMap;
-            end
-        end
+%         if strcmp(D.roiType, 'pixels')
+%             mapTypes = fieldnames(maps);
+%             for map=1:length(mapTypes)
+%                 currMap = maps.(mapTypes{map});
+%                 currMap = reshape(currMap, [d1, d2, size(currMap,3)]);
+%                 maps.(mapTypes{map}) = currMap;
+%             end
+%         end
         % --------------------------------------------------------------
         
     end

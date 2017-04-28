@@ -70,7 +70,8 @@ if selectedROI > nrois
 end
 
 if strcmp(D.roiType, 'pixels')
-    handles.roi3D.String = mat2str(maskcell{selectedROI});
+    [roix, roiy] = ind2sub([d1, d2], selectedROI);
+    handles.roi3D.String = mat2str([roix, roiy]);
 else
     handles.roi3D.String = num2str(roiIdxs(selectedROI));
 end
@@ -79,19 +80,12 @@ D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1).*0;
 
 D.RGBimg(:,:,1) = D.RGBimg(:,:,1).*0;
 D.RGBimg(:,:,3) = D.RGBimg(:,:,3).*0;
-
+    
 if selectedROI>0
-    if strcmp(D.roiType, 'pixels')
-        rx = maskcell{selectedROI}(1);
-        ry = maskcell{selectedROI}(2);
-        D.masksRGBimg(rx, ry, 1) = D.masksRGBimg(rx, ry, 1) + 0.7;
-        D.RGBimg(rx, ry, 1) = D.masksRGBimg(rx, ry, 1) + 0.7;
-    else
-        D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
-        %D.masksRGBimg(:,:,3) = D.masksRGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
-        D.RGBimg(:,:,1) = D.RGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
-        %D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
-    end
+    D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
+    %D.masksRGBimg(:,:,3) = D.masksRGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
+    D.RGBimg(:,:,1) = D.RGBimg(:,:,1)+0.7*full(maskcell{selectedROI});
+    %D.RGBimg(:,:,3) = D.RGBimg(:,:,3)+0.7*full(maskcell{selectedROI});
 end
 
 axes(handles.ax1);

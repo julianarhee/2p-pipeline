@@ -31,6 +31,7 @@ clc;
 % datastruct_001 :  nmf, larg(er) neuron size specified, didn't save output
 % datatstruct_002 :  nmf, smaller neurons, better overlap size, saving
 % output
+% datastruct_003 :  nmf, same settings, run patch, but run on all files.
 
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
@@ -56,11 +57,12 @@ clc;
 % acquisitionName = 'fov6_retinobar_037Hz_final_nomask';
 % extraTiffsExcluded = [];
 
-%
+% ---- PHASE 1, BLOCK 2 ----
 sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
 acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
 extraTiffsExcluded = [];
 tefo = true;
+
 % datastruct_002 : used 'condition' ROIs from retinotopyFinal.
 % datastruct_001 :  3Dcnmf
 % datastruct_003 :  use new params for 3Dcnmf, use SUBSTACK.
@@ -68,6 +70,11 @@ tefo = true;
 % datastruct_005 : use x-ray on slice 18of 27-slice stack...
 % datastruct_006 :  same as _005, but more Rois selected, and only slices
 % 6-30 (remove first 5 slices)
+
+% datastruct_007 :  pixel analysis, remove first 5 slices, try with sigma=3
+
+% -------------------------------
+
 
 % too big?...
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/gratingsFinalMask2';
@@ -93,7 +100,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 6;           % Define datastruct analysis no.
+didx = 7;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -118,9 +125,9 @@ preprocessing = 'raw';
 %roiType = 'create_rois';
 %roiType = 'manual3Drois';
 %roiType = 'condition';
-%D.roiType = 'pixels';
+roiType = 'pixels';
 %D.roiType = 'cnmf';
-roiType = '3Dcnmf'
+%roiType = '3Dcnmf'
 
 if strcmp(roiType, 'condition')
 %     refMaskStruct = 'gratings1';
@@ -137,9 +144,9 @@ end
 %slicesToUse = [10, 15];  
 %slicesToUse = [13:2:25];
 % slicesToUse = [1:20];
-% slicesToUse = [6:30];
-%slicesToUse = [4:30];
 slicesToUse = [6:30];
+%slicesToUse = [4:30];
+%slicesToUse = [6:20];
 
 %% Define datastruct name for analysis:
 
@@ -358,6 +365,11 @@ switch D.roiType
         for maskIdx=1:length(maskNames)
             D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
         end
+        
+    case 'pixels'
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
+        
     case 'cnmf'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
@@ -504,6 +516,42 @@ switch D.roiType
 
         
     case 'pixels'
+
+
+        % Get NMF params:
+        % -----------------------------------------------------------------
+        D.maskInfo = struct();
+        
+        % Set params for 3D pipeline:
+        if D.tefo
+            params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
+            params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
+
+            params.K = 2000;                                            % number of components to be found
+            params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
+            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+            params.merge_thr = 0.8;                                  % merging threshold
+        else
+            params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
+            params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
+
+            params.K = 10;                                            % number of components to be found
+            params.tau = [3,6,2];                                    % std of gaussian kernel (size of neuron) 
+            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+            params.merge_thr = 0.8;                                  % merging threshold
+        end
+        
+        plotoutputs = false;
+        %params.scaleFOV = true;
+        %params.removeBadFrames = false;
+        
+        D.maskInfo.params = params;
+        D.maskInfo.maskType = D.maskType;
+        D.maskInfo.slices = slicesToUse;
+        
+
+        
+        
         
         D.slices = slicesToUse;
         
@@ -607,7 +655,7 @@ switch D.roiType
             params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
             params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
 
-            params.K = 7;                                            % number of components to be found
+            params.K = 10;                                            % number of components to be found
             params.tau = [3,6,2];                                    % std of gaussian kernel (size of neuron) 
             params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
             params.merge_thr = 0.8;                                  % merging threshold
@@ -623,12 +671,14 @@ switch D.roiType
         
         
         % Create memmapped files and substack if needed:
-        D.startSlice = substackIdx;
         memmap3D(D, meta);
         
         
         % Run 3D CNMF pipeline:
         roistart = tic();
+        
+        D.maskInfo.params.patches = false;
+        
         [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
 
         D.maskInfo.params.nmfoptions = nmfoptions;
