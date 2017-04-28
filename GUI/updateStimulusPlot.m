@@ -1,7 +1,10 @@
 function [handles, D] = updateStimulusPlot(handles, D)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
+if selectedSliceIdx > length(D.slices)
+    selectedSliceIdx = length(D.slices);
+end
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 selectedStimIdx = handles.stimMenu.Value;
 stimNames = handles.stimMenu.String;
@@ -16,12 +19,12 @@ axes(handles.ax3);
 if strcmp(D.stimType, 'bar')
     % do some other stuff
     
-    fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); 
+    fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); %D.slices(selectedSliceIdx)); 
     fftstruct = load(fullfile(D.guiPrepend, D.outputDir, fftStructName));
     freqs = fftstruct.file(selectedFile).freqs;
     mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
     targetfreqIdx = fftstruct.file(selectedFile).targetFreqIdx;
-    targetfreq = fftstruct.file(selectedFile).targetFreq
+    targetfreq = fftstruct.file(selectedFile).targetFreq;
     handles.fft = plot(freqs, mags, 'k', 'LineWidth', 2);
     hold on
     handles.fftMax = plot(freqs(mags==max(mags(:))), mags(mags==max(mags(:))), 'r*');

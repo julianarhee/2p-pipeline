@@ -1,7 +1,10 @@
 function [handles, D] = updateTimeCourse(handles, D, meta)
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
+if selectedSliceIdx > length(D.slices)
+    selectedSliceIdx = length(D.slices);
+end
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 
 selectedRoi = str2double(handles.currRoi.String);
@@ -11,14 +14,15 @@ selectedRoi = str2double(handles.currRoi.String);
 currRunName = meta.file(selectedFile).mw.runName;
 runpts= strsplit(currRunName, '_');
 currCondType = runpts{1};
-volumeIdxs = selectedSlice:meta.file(selectedFile).si.nFramesPerVolume:meta.file(selectedFile).si.nTotalFrames;
+%volumeIdxs = selectedSlice:meta.file(selectedFile).si.nFramesPerVolume:meta.file(selectedFile).si.nTotalFrames;
+volumeIdxs = D.slices(selectedSliceIdx):meta.file(selectedFile).si.nFramesPerVolume:meta.file(selectedFile).si.nTotalFrames;
 % 
 
 
 dfstruct = getappdata(handles.roigui, 'df');
 if ~isempty(fieldnames(dfstruct))
     if isempty(dfstruct.slice(selectedSlice).file)
-        fprinf('No DF struct found for slice %i.\n', selectedSlice);
+        fprintf('No DF struct found for slice %i.\n', selectedSlice);
         noDF = true;
     else
         noDF = false;
@@ -35,7 +39,9 @@ stimStarts = meta.file(selectedFile).mw.stimStarts;
 mwTimes = meta.file(selectedFile).mw.mwSec;
 
 tcourseTypes = handles.timecourseMenu.String;
-
+if handles.timecourseMenu.Value > length(tcourseTypes)
+    handles.timecourseMenu.Value = length(tcourseTypes);
+end
 switch tcourseTypes{handles.timecourseMenu.Value}
     case 'dF/F'
         if ~noDF
@@ -49,6 +55,23 @@ switch tcourseTypes{handles.timecourseMenu.Value}
             hold on;
         else
             handles.timecourse = plot(tstamps(1:size(dfMat,1)), zeros(1,1:length(tstamps)), 'k', 'LineWidth', 1);
+            hold on;
+        end
+        xlabel('time (s)');
+        ylabel('dF/f');
+        
+    case 'inferred'
+        if ~noDF
+            dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMatInferred;
+%             if isfield(handles, 'timecourse')
+%                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%             else 
+            handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%             end
+            xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
+            hold on;
+        else
+            handles.timecourse = plot(tstamps, zeros(1,1:length(tstamps)), 'k', 'LineWidth', 1);
             hold on;
         end
         xlabel('time (s)');

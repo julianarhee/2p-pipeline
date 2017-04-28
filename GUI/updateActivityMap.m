@@ -1,7 +1,12 @@
 function [handles, D] = updateActivityMap(handles, D, meta)
 
+fprintf('Updating activity map...');
+
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
+if selectedSliceIdx > length(D.slices)
+    selectedSliceIdx = length(D.slices);
+end
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 
 currThresh = str2double(handles.threshold.String);
@@ -26,7 +31,7 @@ if isfield(D, 'dfStructName')
     dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
     setappdata(handles.roigui, 'df', dfStruct);
     if isempty(dfStruct.slice(selectedSlice).file)
-        fprinf('No DF struct found for slice %i.\n', selectedSlice);
+        fprintf('No DF struct found for slice %i.\n', selectedSlice);
         noDF = true;
     else
         noDF = false;
@@ -83,7 +88,7 @@ switch selectedMapType
     case 'phase'
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
-        if D.tefo
+        if isfield(D, 'tefo') && D.tefo
             handles.map = imagesc(fov);
             hold on;
             handles.map = imagesc2(thresholdMap);
@@ -150,13 +155,50 @@ switch selectedMapType
                 handles.retinolegend.Children.Visible = 'off';
             end
         end
+
+    case 'phaseInferred'
+        % recalculate ratio masks from inferred trace data:
+        magMap = mapStruct.file(selectedFile).ratioInferred;
+        thresholdMap = threshold_map(displayMap, magMap, currThresh);
+        axes(handles.ax2);  
+        if isfield(D, 'tefo') && D.tefo
+            handles.map = imagesc(fov);
+            hold on;
+            handles.map = imagesc2(thresholdMap);
+        else
+            handles.map = imagesc(scalefov(fov));
+            hold on;
+            handles.map = imagesc2(scalefov(thresholdMap));
+        end
+        colormap(handles.ax2, hsv);
+        %caxis([min(displayMap(:)), max(displayMap(:))]);
+        caxis([-1*pi, pi]);
+        colorbar off;
+        
+        %legend:
+        if isfield(meta, 'legends')
+            legends = meta.legends;
+            axes(handles.retinolegend)
+            handles.retinolegend.Visible = 'on';
+            handles.maplegend = imagesc(legends.(currCondType));
+            axis off
+            colormap(handles.retinolegend, hsv);
+            %caxis([min(displayMap(:)), max(displayMap(:))]);
+            caxis([-1*pi, pi]);
+            colorbar off;
+        
+        else
+            fprintf('No legend found...\n');
+            handles.retinolegend.Visible = 'off';
+        end
+
         
     otherwise
         % 'ratio' 
         % 'magnitude'
         % 'maxDf'
         axes(handles.ax2);  
-        if D.tefo
+        if isfield(D, 'tefo') && D.tefo
             handles.map = imagesc(fov);
             hold on;
             thresholdMap = threshold_map(displayMap, displayMap, currThresh);
@@ -190,5 +232,8 @@ ax2Pos = handles.ax2.Position;
 handles.ax2.Position(3:4) = [refPos(3:4)];
 title(handles.ax2, currRunName);
 %colorbar();
-%
+
+fprintf('...Done!\n');
+
+
 end

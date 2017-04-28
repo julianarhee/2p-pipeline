@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 17-Apr-2017 19:19:05
+% Last Modified by GUIDE v2.5 21-Apr-2017 18:38:06
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -106,6 +106,9 @@ end
 handles.ax3.Children = flipud(handles.ax3.Children);
 end
 
+roiIdxs = getappdata(handles.roigui, 'roiIdxs');
+handles.roi3D.String = num2str(roiIdxs(str2double(hObject.String)));
+
 guidata(hObject,handles);
 
 % --- Executes during object creation, after setting all properties.
@@ -186,11 +189,27 @@ end
 hObject.String = fileNames;
 hObject.UserData.runValue = hObject.Value;
 
+switch D.roiType
+    case '3Dcnmf'
+        newReference=1;
+    otherwise
+        if ~isfield(handles.currSlice.UserData, 'sliceValue')
+            newReference=1;
+        elseif handles.currSlice.UserData.sliceValue ~= handles.currSlice.Value
+            newReference=1;
+        else
+            newReference=0;
+        end
+end
+showRois = handles.roiToggle.Value;
+[handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
 [handles, D] = updateActivityMap(handles, D, meta);
 set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
-nEpochs = handles.ax4.UserData.trialEpochs
+nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
@@ -211,6 +230,9 @@ end
 % mapStruct = load(fullfile(D.guiPath, tmpN, mapStructName));
 % selectedMapType = handles.
 % displayMap = mapStruct.file(selectedFile).(selectedMapType);
+% Update appdata for D struct:
+setappdata(handles.roigui, 'D', D);
+
 
 guidata(hObject,handles);
 
@@ -252,8 +274,8 @@ set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
-if ~strcmp(D.stimType, 'bar')
 [handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
 if handles.stimShowAvg.Value
     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
 else
@@ -261,6 +283,10 @@ else
 end
 handles.ax3.Children = flipud(handles.ax3.Children);
 end
+
+
+roiIdxs = getappdata(handles.roigui, 'roiIdxs');
+handles.roi3D.String = num2str(roiIdxs(hObject.Value));
 
 guidata(hObject,handles);
 
@@ -364,17 +390,18 @@ hObject.String = sliceNames;
 
 showRois = handles.roiToggle.Value;
 
-if ~isfield(hObject.UserData, 'sliceValue')
-    newReference=1;
-elseif hObject.UserData.sliceValue ~= hObject.Value
-    newReference=1;
-else
-    newReference=0;
-end
+% if ~isfield(hObject.UserData, 'sliceValue')
+%     newReference=1;
+% elseif hObject.UserData.sliceValue ~= hObject.Value
+%     newReference=1;
+% else
+%     newReference=0;
+% end
+newReference=1;
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
 set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
-[handles, D] = updateActivityMap(handles, D, meta)
+[handles, D] = updateActivityMap(handles, D, meta);
 set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
@@ -423,7 +450,11 @@ D = getappdata(handles.roigui,'D');
 meta = getappdata(handles.roigui, 'meta');
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
+if selectedSliceIdx > length(D.slices)
+    handles.currSlice.Value = length(D.slices);
+    selectedSliceIdx = handles.currSlice.Value;
+end
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 %currRunName = meta.file(selectedFile).mw.runName;
 
@@ -435,8 +466,8 @@ selectedFile = handles.runMenu.Value;
 if isfield(D, 'dfStructName')
     dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
     setappdata(handles.roigui, 'df', dfStruct);
-    if isempty(dfStruct.slice(selectedSlice).file)
-        fprinf('No DF struct found for slice %i.\n', selectedSlice);
+    if isempty(dfStruct.slice(selectedSliceIdx).file)
+        fprintf('No DF struct found for slice %i.\n', selectedSlice);
         noDF = true;
     else
         noDF = false;
@@ -575,6 +606,11 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
     else
         newReference=0;
     end
+    
+    if newReference==1
+        cla(handles.ax1);
+        cla(handles.ax2);
+    end
     showRois = handles.roiToggle.Value;
     [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
     set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
@@ -638,17 +674,13 @@ function ax1_ButtonDownFcn(hObject, eventdata, handles)
 % WindowButtonMotionFcn for the figure.
 handles = guidata(hObject);
 %handles.avgimg.HitTest = 'off'
-maskcell = getappdata(handles.roigui,'maskcell');
-% M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
-% M = cat(2,M{1:end});
-M = getappdata(handles.roigui, 'maskmat');
 
 %hitpoint = eventdata.IntersectionPoint;
 
 currPoint = eventdata.IntersectionPoint;
 
 D = getappdata(handles.roigui, 'D');
-if ~D.tefo
+if ~isfield(D, 'tefo') || ~D.tefo
     if strcmp(D.maskType, 'cnmf')
         if D.maskInfo.params.scaleFOV
             cp = [round(currPoint(1)) round(currPoint(2))];
@@ -662,18 +694,34 @@ else
     cp = [round(currPoint(1)) round(currPoint(2))];
 end
 
+if strcmp(D.roiType, 'pixels')
+    % TODO:  FIX this so that size of image is not hard-coded, and fix
+    % secondary ROI field ('roi3d') to read x,y coordinates:
+    
+    meta = load(D.metaPath);
+    d1 = meta.file(1).si.frameWidth;
+    d2 = meta.file(1).si.linesPerFrame;
 
-colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
-[i,j,s] = find(M);
-roiIdx = find(i==colsubscript);
-if length(roiIdx)>1
-    roiIdx = roiIdx(1);
-    roiMatch = j(roiIdx);
-elseif length(roiIdx)==0
-    roiMatch = handles.currRoi.UserData.currRoi; 
-    fprintf('Try again, you did not select an ROI...\n');
+    roiMatch = sub2ind([d1, d2], cp(1), cp(2));
+    
 else
-    roiMatch = j(roiIdx);
+    maskcell = getappdata(handles.roigui,'maskcell');
+    % M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+    % M = cat(2,M{1:end});
+    M = getappdata(handles.roigui, 'maskmat');
+
+    colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+    [i,j,s] = find(M);
+    roiIdx = find(i==colsubscript);
+    if length(roiIdx)>1
+        roiIdx = roiIdx(1);
+        roiMatch = j(roiIdx);
+    elseif length(roiIdx)==0
+        roiMatch = handles.currRoi.UserData.currRoi; 
+        fprintf('Try again, you did not select an ROI...\n');
+    else
+        roiMatch = j(roiIdx);
+    end
 end
 
 %fprintf('ROI: %i\n', roiMatch);
@@ -758,7 +806,7 @@ function stimShowAll_Callback(hObject, eventdata, handles)
 
 D = getappdata(handles.roigui, 'D');
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-selectedSlice = D.slices(selectedSliceIdx);
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedRoi = str2double(handles.currRoi.String);
 
 stimstruct = getappdata(handles.roigui, 'stimstruct');
@@ -997,7 +1045,7 @@ if handles.ax3.UserData.viewTrial
     D = getappdata(handles.roigui, 'D');
 
     selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
-    selectedSlice = D.slices(selectedSliceIdx);
+    selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
     selectedStimIdx = handles.stimMenu.Value;
     stimNames = handles.stimMenu.String;
     selectedStim = handles.stimMenu.String{selectedStimIdx};
@@ -1205,7 +1253,7 @@ standWidth=2;
 oldStimVal = handles.stimMenu.Value;
 
 selectedSliceIdx = handles.currSlice.Value;
-selectedSlice = D.slices(selectedSliceIdx);
+selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 currRunName = meta.file(selectedFile).mw.runName;
 
@@ -1349,17 +1397,13 @@ function ax2_ButtonDownFcn(hObject, eventdata, handles)
 % WindowButtonMotionFcn for the figure.
 handles = guidata(hObject);
 %handles.avgimg.HitTest = 'off'
-maskcell = getappdata(handles.roigui,'maskcell');
-% M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
-% M = cat(2,M{1:end});
-M = getappdata(handles.roigui, 'maskmat');
 
 %hitpoint = eventdata.IntersectionPoint;
 
 currPoint = eventdata.IntersectionPoint;
 
 D = getappdata(handles.roigui, 'D');
-if ~D.tefo
+if ~isfield(D, 'tefo') || ~D.tefo
     if strcmp(D.maskType, 'cnmf')
         if D.maskInfo.params.scaleFOV
             cp = [round(currPoint(1)) round(currPoint(2))];
@@ -1374,17 +1418,34 @@ else
 end
 
 
-colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
-[i,j,s] = find(M);
-roiIdx = find(i==colsubscript);
-if length(roiIdx)>1
-    roiIdx = roiIdx(1);
-    roiMatch = j(roiIdx);
-elseif length(roiIdx)==0
-    roiMatch = handles.currRoi.UserData.currRoi; 
-    fprintf('Try again, you did not select an ROI...\n');
+if strcmp(D.roiType, 'pixels')
+    % TODO:  FIX this so that size of image is not hard-coded, and fix
+    % secondary ROI field ('roi3d') to read x,y coordinates:
+    meta = load(D.metaPath);
+    d1 = meta.file(1).si.frameWidth;
+    d2 = meta.file(1).si.linesPerFrame;
+
+    roiMatch = sub2ind([d1, d2], cp(1), cp(2));
+    
 else
-    roiMatch = j(roiIdx);
+    maskcell = getappdata(handles.roigui,'maskcell');
+    % M = arrayfun(@(roi) reshape(full(maskcell{roi}), [size(maskcell{roi},1)*size(maskcell{roi},2) 1]), 1:length(maskcell), 'UniformOutput', false);
+    % M = cat(2,M{1:end});
+    M = getappdata(handles.roigui, 'maskmat');
+
+    colsubscript = sub2ind(size(maskcell{1}), cp(2), cp(1));
+    [i,j,s] = find(M);
+    roiIdx = find(i==colsubscript);
+    if length(roiIdx)>1
+        roiIdx = roiIdx(1);
+        roiMatch = j(roiIdx);
+    elseif length(roiIdx)==0
+        roiMatch = handles.currRoi.UserData.currRoi; 
+        fprintf('Try again, you did not select an ROI...\n');
+    else
+        roiMatch = j(roiIdx);
+    end
+    
 end
 
 %fprintf('ROI: %i\n', roiMatch);
@@ -1418,3 +1479,146 @@ end
 
 
 guidata(hObject,handles);
+
+
+
+function roi3D_Callback(hObject, eventdata, handles)
+% hObject    handle to roi3D (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of roi3D as text
+%        str2double(get(hObject,'String')) returns contents of roi3D as a double
+% hObject.String = num2str(round(str2double(hObject.String)));
+% curr3Droi = str2double(hObject.String);
+
+selectedFile = handles.runMenu.Value;
+selectedSliceIdx = handles.currSlice.Value;
+
+D = getappdata(handles.roigui, 'D');
+
+if strcmp(D.roiType, 'pixels')
+
+    curr3Droi = str2mat(hObject.String);
+    newReference=0;
+    showRois = handles.roiToggle.Value;
+    
+    [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+    set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+    %TODO
+    % ********************
+    % Update "stimulus PSTH" plot
+    meta = getappdata(handles.roigui, 'meta');
+
+    [handles, D] = updateTimeCourse(handles, D, meta);
+    nEpochs = handles.ax4.UserData.trialEpochs;
+    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+    [handles, D] = updateStimulusPlot(handles, D);
+    if ~strcmp(D.stimType, 'bar')
+    if handles.stimShowAvg.Value
+        set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    else
+        set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    end
+    handles.ax3.Children = flipud(handles.ax3.Children);
+    end
+
+    
+else
+    hObject.String = num2str(round(str2double(hObject.String)));
+    curr3Droi = str2double(hObject.String);
+
+    maskcell = getappdata(handles.roigui, 'maskcell');
+    roiIdxs = getappdata(handles.roigui, 'roiIdxs');
+
+    if ~ismember(curr3Droi, roiIdxs)
+        maskstruct3D = load(D.maskInfo.maskPaths{selectedFile});
+        correspondingSlice = maskstruct3D.file.centers(curr3Droi, 3);
+        if correspondingSlice ~= selectedSliceIdx
+            handles.currSlice.Value = correspondingSlice;
+            newReference = 1;
+            showRois = handles.roiToggle.Value;
+
+            [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+            set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+            %TODO
+            % ********************
+            % Update "stimulus PSTH" plot
+            meta = getappdata(handles.roigui, 'meta');
+
+            [handles, D] = updateTimeCourse(handles, D, meta);
+            nEpochs = handles.ax4.UserData.trialEpochs;
+            set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+            [handles, D] = updateStimulusPlot(handles, D);
+            if ~strcmp(D.stimType, 'bar')
+            if handles.stimShowAvg.Value
+                set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+            else
+                set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+            end
+            handles.ax3.Children = flipud(handles.ax3.Children);
+            end
+        end
+    else
+        handles.currRoi.String = num2str(find(roiIdxs==curr3Droi));
+        newReference=0;
+        showRois = handles.roiToggle.Value;
+        [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+        set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+        meta = getappdata(handles.roigui, 'meta');
+
+        [handles, D] = updateTimeCourse(handles, D, meta);
+        nEpochs = handles.ax4.UserData.trialEpochs;
+        set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+        [handles, D] = updateStimulusPlot(handles, D);
+        if ~strcmp(D.stimType, 'bar')
+        if handles.stimShowAvg.Value
+            set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+        else
+            set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+        end
+        handles.ax3.Children = flipud(handles.ax3.Children);
+        end
+
+    end
+end    
+% newReference = 0;
+% showRois = handles.roiToggle.Value;
+% D = getappdata(handles.roigui,'D');
+% meta = getappdata(handles.roigui,'meta');
+% [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
+% set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+% 
+% [handles, D] = updateTimeCourse(handles, D, meta);
+% nEpochs = handles.ax4.UserData.trialEpochs;
+% set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+% 
+% [handles, D] = updateStimulusPlot(handles, D);
+% if ~strcmp(D.stimType, 'bar')
+% if handles.stimShowAvg.Value
+%     set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+% else
+%     set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+% end
+% handles.ax3.Children = flipud(handles.ax3.Children);
+% end
+
+guidata(hObject,handles);
+
+% --- Executes during object creation, after setting all properties.
+function roi3D_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to roi3D (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
