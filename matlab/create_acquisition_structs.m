@@ -23,10 +23,10 @@ clc;
 % 20161221_JR030W.
 
 % NMF:
-sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
-acquisitionName = 'fov1_bar037Hz_run4';
-extraTiffsExcluded = [];
-tefo = false;
+% sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
+% acquisitionName = 'fov1_bar037Hz_run4';
+% extraTiffsExcluded = [];
+% tefo = false;
 
 % datastruct_001 :  nmf, larg(er) neuron size specified, didn't save output
 % datatstruct_002 :  nmf, smaller neurons, better overlap size, saving
@@ -58,10 +58,10 @@ tefo = false;
 % extraTiffsExcluded = [];
 
 % ---- PHASE 1, BLOCK 2 ----
-% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
-% acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
-% extraTiffsExcluded = [];
-% tefo = true;
+sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
+acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
+extraTiffsExcluded = [];
+tefo = true;
 
 % datastruct_002 : used 'condition' ROIs from retinotopyFinal.
 % datastruct_001 :  3Dcnmf
@@ -70,6 +70,8 @@ tefo = false;
 % datastruct_005 : use x-ray on slice 18of 27-slice stack...
 % datastruct_006 :  same as _005, but more Rois selected, and only slices
 % 6-30 (remove first 5 slices)
+
+% datastruct_007 :  pixel analysis, remove first 5 slices, try with sigma=3
 
 % -------------------------------
 
@@ -98,7 +100,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 3;           % Define datastruct analysis no.
+didx = 7;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -123,9 +125,9 @@ preprocessing = 'raw';
 %roiType = 'create_rois';
 %roiType = 'manual3Drois';
 %roiType = 'condition';
-%D.roiType = 'pixels';
+roiType = 'pixels';
 %D.roiType = 'cnmf';
-roiType = '3Dcnmf'
+%roiType = '3Dcnmf'
 
 if strcmp(roiType, 'condition')
 %     refMaskStruct = 'gratings1';
@@ -142,9 +144,9 @@ end
 %slicesToUse = [10, 15];  
 %slicesToUse = [13:2:25];
 % slicesToUse = [1:20];
-% slicesToUse = [6:30];
+slicesToUse = [6:30];
 %slicesToUse = [4:30];
-slicesToUse = [6:20];
+%slicesToUse = [6:20];
 
 %% Define datastruct name for analysis:
 
@@ -363,6 +365,11 @@ switch D.roiType
         for maskIdx=1:length(maskNames)
             D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
         end
+        
+    case 'pixels'
+        [fpath,fcond,~] = fileparts(D.sourceDir);
+        D.maskSource = fcond;
+        
     case 'cnmf'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
@@ -509,7 +516,7 @@ switch D.roiType
 
         
     case 'pixels'
-        
+
         D.slices = slicesToUse;
         
         D.maskType = 'pixels';
@@ -519,17 +526,20 @@ switch D.roiType
         % -----------------------------------------------------------------
         params = struct();
         params.smoothXY = true;
-        params.kernelXY = 5;
+        params.kernelXY = 3;
         
         D.maskInfo.slices = slicesToUse; % TMP 
-        D.maskInfo.slicesToUse = slicesToUse;
         D.maskInfo.params = params;
+        D.maskInfo.maskType = D.maskType;
         
         % =================================================================
         % Get traces:
         % =================================================================
+        tic()
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        toc();
+        
 
     case 'cnmf'
         

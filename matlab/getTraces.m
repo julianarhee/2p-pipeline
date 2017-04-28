@@ -182,7 +182,7 @@ switch maskType
         % do stuff
         for cidx=1:nchannels
 
-            parfor sidx=1:length(slices)
+            for sidx=1:length(slices)
                 T = struct();
                 
                 % Get slice names:
@@ -196,9 +196,10 @@ switch maskType
                                         acquisitionName, currSliceIdx, cidx, fidx);             % Use name of reference slice TIFF to get current slice fn
                     Y = tiffRead(fullfile(slicePath, currSliceName));               % Read in current file of current slice.
                     avgY = mean(Y, 3);
-
+                    nFrames = size(Y,3);
                     % ------------
-                    if smooth_spatial==1
+                    tic();
+                    if smoothXY
                         fprintf('Smoothing with kernel size %i...\n', ksize);
                         for frame=1:size(Y,3);
                             currFrame = Y(:,:,frame);
@@ -207,14 +208,21 @@ switch maskType
                             Y(:,:,frame) = convY(ksize+1:end-ksize, ksize+1:end-ksize);
                         end
                     end
+                    toc();
+                    % -----
                     
                     rawTraces = reshape(Y, [size(Y,1)*size(Y,2), size(Y,3)]);
                     
-                    T.traces.file(fidx) = {rawTraces};
+                    T.file(fidx).rawTraces = rawTraces'; % cols="rois" and rows=frames.
                     %T.masks.file(fidx) = {masks};
-                    T.avgImage.file(fidx) = {avgY};
-                    T.slicePath.file{fidx} = fullfile(slicePath, currSliceName);
+                    T.file(fidx).avgImage = avgY;
+                    T.file(fidx).slicePath = fullfile(slicePath, currSliceName);
                     %T.meta.file(fidx) = meta;
+                    %T.file(fidx).refframe = refframe;
+                    T.file(fidx).info.szFrame = size(avgY);
+                    T.file(fidx).info.nFrames = nFrames;
+                    T.file(fidx).info.nRois = size(rawTraces,1);
+                    
                     
                     fprintf('Extracted traces for %i of %i FILES.\n', fidx, nTiffs);
                 end
