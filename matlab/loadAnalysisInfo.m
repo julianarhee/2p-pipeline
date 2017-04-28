@@ -32,7 +32,7 @@ datastruct = sprintf('datastruct_%03d', analysis_no);
 analysisDir = fullfile(acquisitionDir, 'analysis', datastruct);
 % jyr:  change 'datastruct' dir to "analysis" so it aint confusing
 
-D = load(fullfile(analysisDir, datastruct));
+D = load(fullfile(analysisDir, strcat(datastruct, '.mat')));
 D.tefo = tefo;
 
 % 

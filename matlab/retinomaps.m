@@ -8,14 +8,16 @@
 % create_acquisition_structs.m pipeline.
 
 % acquisition_info;
-session = '20161219_JR030W';
+%session = '20161219_JR030W';
+session = '20161221_JR030W';
+
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
-experiment = 'retinotopyFinalMask';
-%experiment = 'test_crossref/nmf';
+%experiment = 'retinotopyFinalMask';
+experiment = 'test_crossref/nmf';
 
-analysis_no = 6;
-tefo = true;
+analysis_no = 3;
+tefo = false;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
 

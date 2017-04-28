@@ -634,7 +634,7 @@ switch D.roiType
         % Run 3D CNMF pipeline:
         roistart = tic();
         
-        D.maskInfo.params.patches = false;
+        D.maskInfo.params.patches = true;
         
         [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
 
