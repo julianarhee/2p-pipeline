@@ -420,35 +420,94 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
 
             # Find all trigger LOW events after the first onset trigger:
-            first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0]
-            curr_idx = copy.copy(first_trigger)
+            tmp_first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0]
+            first_off_ev = next(i for i in trigg_evs[tmp_first_trigger:] if i['value']==1) # Since 1=frame OFF, first find this one
+            first_off_idx = np.where([i.time==first_off_ev.time for i in trigg_evs])[0]
+ 
+            first_trigger_idx = tmp_first_trigger # THIS IS WHERE MIGHT NEED TO FIX, DPENDING ON WHICH VERSION OF PROTOCOL RUN.
 
-            tmp_trigg_times = []
-            start_idx = curr_idx
+            first_trigger_ev = trigg_evs[first_trigger_idx]
+
+            curr_idx = copy.copy(first_off_idx)
+
+            trigg_times = [[first_trigger_ev, first_off_ev]] # placeholder for off ev
+            start_idx = copy.copy(curr_idx)
             while start_idx < len(trigg_evs)-1: 
                 try:
                     found_new_start = False
                     early_abort = False
-                    curr_chunk = trigg_evs[start_idx:]
+                    curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
+      
                     try:
-                        curr_idx = [i for i,e in enumerate(curr_chunk) if e.value==0][0] # Find first DI high.
+                        
+                        #curr_idx = [i for i,e in enumerate(curr_chunk) if e.value==1][0] # Find first DI high.
+                        curr_off_ev = next(i for i in curr_chunk if i['value']==1)
+                        curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                        curr_start_idx = curr_off_idx - 1
+                        curr_start_ev = trigg_evs[curr_start_idx]
+                        if trigg_evs[curr_start_idx]['value']!=0:
+                        # i.e., if next-found ev with value=1 is not a true frame-off trigger (just a repeated event with same value)
+                            #early_abort = True
+                            break
+
                         found_new_start = True
                     except IndexError:
                         break
 
-                    off_ev = next(i for i in curr_chunk[curr_idx:] if i['value']==1) # Find next DI low.
-                    found_idx = [i.time for i in trigg_evs].index(off_ev.time) # Get index of DI low.
-                    tmp_trigg_times.append([curr_chunk[curr_idx], off_ev])
-                    start_idx = found_idx #start_idx + found_idx
+                    #off_ev = next(i for i in curr_chunk[curr_idx:] if i['value']==1) # Find next DI low.
+                    #found_idx = [i.time for i in trigg_evs].index(off_ev.time) # Get index of DI low.
+                    last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                    #trigg_times[-1][1] = trigg_evs[prev_off_idx]
+                    #trigg_times.append([curr_chunk[curr_idx], 0])
+                    trigg_times.append([curr_start_ev, curr_off_ev])
+                    start_idx = last_found_idx #start_idx + found_idx
                     print start_idx
                 except StopIteration:
                     print "Got to STOP."
                     if found_new_start is True:
                         early_abort = True
-                        tmp_trigg_times.append([curr_chunk[curr_idx], end_ev])
+                        #trigg_times.append([curr_chunk[curr_idx], end_ev])
                     break
-            trigg_times = [t for t in tmp_trigg_times if t[1].time - t[0].time > 1]
+            if early_abort is True:
+                if found_new_start is True:
+                    trigg_times.append([curr_chunk[curr_idx], end_ev])
+                else:
+                    trigg_times[-1][1] = end_ev
+            
+            trigg_times = [t for t in trigg_times if (t[1].time - t[0].time) > 1]
 
+
+#            first_on_ev = trigg_evs[tmp_first_trigger]
+#            calculated_trigger_duration = (first_off_ev.time - first_on_ev.time)/1E6.
+#            
+#            curr_idx = copy.copy(first_trigger)
+#
+#            tmp_trigg_times = []
+#            start_idx = curr_idx
+#            while start_idx < len(trigg_evs)-1: 
+#                try:
+#                    found_new_start = False
+#                    early_abort = False
+#                    curr_chunk = trigg_evs[start_idx:]
+#                    try:
+#                        curr_idx = [i for i,e in enumerate(curr_chunk) if e.value==0][0] # Find first DI high.
+#                        found_new_start = True
+#                    except IndexError:
+#                        break
+#
+#                    off_ev = next(i for i in curr_chunk[curr_idx:] if i['value']==1) # Find next DI low.
+#                    found_idx = [i.time for i in trigg_evs].index(off_ev.time) # Get index of DI low.
+#                    tmp_trigg_times.append([curr_chunk[curr_idx], off_ev])
+#                    start_idx = found_idx #start_idx + found_idx
+#                    print start_idx
+#                except StopIteration:
+#                    print "Got to STOP."
+#                    if found_new_start is True:
+#                        early_abort = True
+#                        tmp_trigg_times.append([curr_chunk[curr_idx], end_ev])
+#                    break
+#            trigg_times = [t for t in tmp_trigg_times if t[1].time - t[0].time > 1]
+#
             # Check stimDisplayUpdate events vs pixel-clock events:
             stim_evs = df.get_events('#stimDisplayUpdate')
             devs = [e for e in stim_evs if e.value and not e.value[0]==None]
@@ -459,7 +518,11 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             # Get rid of "repeat" events from state updates.
             pdevs = [i for i in tmp_pdevs if i.time<= boundary[1] and i.time>=boundary[0]]
             print "N pix-evs found in boundary: %i" % len(pdevs)
-            i#bitcode_idxs = [i for p in pdevs for i in range(len(p.value) if 'bit_code' in p.value[i].keys()]
+            #bitcode_idxs = [i for p in pdevs for i in range(len(p.value) if 'bit_code' in p.value[i].keys()]
+
+            pdevs = [i for i in pdevs if i.time<=trigg_times[-1][1].time and i.time>=trigg_times[0][0].time] # actually only want pdevs within trigger-boundaries, so only include if tstamp is within first trigger on and last trigger off.
+            print "N pix-evs found in TRIGGER boundaries: %i" % len(pdevs)
+
             bitcode_idxs = []
             for p in pdevs:
                 bitcode_idxs.append([i for i,v in enumerate(p.value) if p.value[i].keys()[0]=='bit_code'])
@@ -467,11 +530,13 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             bitcode_idxs = [b[0] for b in bitcode_idxs]
             nons = np.where(np.diff([i.value[kn]['bit_code'] for i,kn in zip(pdevs, bitcode_idxs)])==0)[0]
             #nons = np.where(np.diff([i.value[kn]['bit_code'] for kn in range(len(i.value)) if 'bit_code' in i.value[kn].keys() for i in pdevs])==0)[0] # pix stim event is always last
-            nons += 1 # to remove actual bad/repeated event
+            idxs_to_remove = [i for i in nons if i+1 not in nons]
+            #nons += 1 # to remove actual bad/repeated event
             
             pdevs = [p for i,p in enumerate(pdevs) if i not in nons]
-            pdevs = [p for p in pdevs if p.time <= trigg_times[-1][1].time and p['time'] >= trigg_times[0][0].time] # Make sure pixel events are within trigger times...
-            pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
+            bitcode_idxs = [b for i,b in enumerate(bitcode_idxs) if i not in nons]
+            pdev_info = [(p.value[b]['bit_code'], p.time) for b,p in zip(bitcode_idxs, pdevs)]   
+            
             print "Got %i pix code events." % len(pdev_info)
             pixelevents.append(pdev_info)
 
@@ -510,7 +575,15 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
                     lastdev = [i for i,d in enumerate(devs) if d.time > imtrials[-1].time and len(d.value)<3][0] # ignore the last "extra" ev (has diff time-stamp) - just wnt 1st non-grating blank
                     tdevs = [devs[i] for i in prevdev]
                     tdevs.append(devs[lastdev])
+                # Check that we got all the blanks:
+                blanks = [i for i,p in enumerate(pdevs) if len(p.value)==2]
+                mismatches = [i for i,(p,t) in enumerate(zip([pdevs[x] for x in blanks], tdevs)) if not p==t]   
+                if len(mismatches)>0:
+                    print "Mismatches found in parsing trials...."
                 
+                # Append a "trial off" at end, if needed:
+                if imtrials[-1].time > tdevs[-1].time: # early-abort
+                    imtrials.pop(-1)                
                 tmp_trialevents = imtrials + tdevs
                 tmp_trialevents = sorted(tmp_trialevents, key=get_timekey)
 
@@ -586,12 +659,12 @@ for mwfile in mw_files:
 
     # on FLASAH protocols, first real iamge event is 41
     if stimtype!='bar':
-	if len(tevs) > 1:
-	    tevs = [item for sublist in tevs for item in sublist]
-	    tevs = list(set(tevs))
-	    tevs.sort(key=operator.itemgetter(1))
-	else:
-	    tevs = tevs[0]
+        if len(tevs) > 1:
+            tevs = [item for sublist in tevs for item in sublist]
+            tevs = list(set(tevs))
+            tevs.sort(key=operator.itemgetter(1))
+        else:
+            tevs = tevs[0]
         print "Found %i trial events." % len(tevs)
 
 
