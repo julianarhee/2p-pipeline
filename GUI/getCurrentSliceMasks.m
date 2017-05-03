@@ -43,7 +43,7 @@ else
             end
         end
 
-        if strcmp(D.roiType, '3Dcnmf')
+        if strcmp(D.roiType, '3Dcnmf') && isfield(maskStruct.file(handles.runMenu.Value), 'roi3Didxs')
             roiIdxs = maskStruct.file(handles.runMenu.Value).roi3Didxs;
         else
             roiIdxs = 1:length(maskcell);
