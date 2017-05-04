@@ -1,7 +1,8 @@
 function save_struct(traces_path, traces_fn, T, varargin)
 
 if isempty(varargin)
-    save(fullfile(traces_path, traces_fn), '-struct', 'T', '-v7.3');
+    %save(fullfile(traces_path, traces_fn), '-struct', 'T', '-v7.3');
+    save(fullfile(traces_path, traces_fn), '-struct', 'T');
 else
     save(fullfile(traces_path, traces_fn), '-append', '-struct', 'T');
 end

@@ -157,7 +157,7 @@ for sidx = 1:length(slicesToUse)
             if ~ixfield(trialIdxs, currStim)
                 trialIdxs.(currStim).(currTiff){1} = trialNum;
             else
-                trialIdxs.(currStim).(currTiff){end+} = trialNum;
+                trialIdxs.(currStim).(currTiff){end+1} = trialNum;
             end
             trialNum = trialNum + 1;
         end
@@ -265,7 +265,7 @@ for sidx = 1:length(slicesToUse)
                     trialinfo.stimName = currStim;
                     trialinfo.runName = currTiff; %currTiffs{tiffIdx};
                     trialinfo.tiffNum = currTiffIdx;
-                    trialinfo.trialIdxInRun = trialIdxs.(currStim).(currTiff);
+                    trialinfo.trialIdxInRun = trialIdxs.(currStim).(currTiff){trialIdx};
                     trialinfo.currStimRep = nTrials.(currStim);
                     stimInfo.(currStim){end+1} = trialinfo;
                     
@@ -300,7 +300,7 @@ save_struct(D.outputDir, trialstructName, trialstruct);
 D.trialStructName = trialstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
-
+%%
 % %% Don't interpolate -- 
 % % Create same-sized time and trace mats using MW-onset-matched SI-times
 % % (i.e., frame times from SI), and fill in or remove frame tstamps on a

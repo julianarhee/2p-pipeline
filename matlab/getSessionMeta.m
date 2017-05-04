@@ -28,6 +28,7 @@ function sessionmeta = getSessionMeta(sessionpath, tefo)
     spts = strsplit(session, '_'); % DATE_ANIMALID
 
     sessionmeta.runs = runlist;
+    sessionmeta.run_times = run_start_times;
     sessionmeta.time = min(run_start_times)/1E3; % put into msec
     sessionmeta.date = datestr(datenum(spts{1},'yyyyMMdd'),'yyyy-MM-dd');
     sessionmeta.animal = spts{2};

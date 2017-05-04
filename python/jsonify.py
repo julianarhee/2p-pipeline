@@ -3,6 +3,7 @@
 import scipy.io
 import os
 import uuid
+import numpy as np
 
 # optparse for user-input:
 source = '/nas/volume1/2photon/RESDATA/TEFO'
@@ -80,19 +81,6 @@ def _tolist(ndarray):
 
 # ----------------------------------------------------------------------------
 
-sessionpath = os.path.join(source, session)
-
-# Get all the meta info:
-sessionmeta_fn =  os.listdir(sessionpath)
-sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
-
-sessionmeta = scipy.io.loadmat(os.path.join(sessionpath, sessionmeta_fn))
-
-# Get data analysis info for current run or runs:
-experiments = sessionmeta.runs
-
-experiment = experiments[0] # to
-
 
 def get_animal_info(animal, receipt_date='0000-00-00', sex='female'):
     animal_info = dict()
@@ -125,23 +113,25 @@ def get_run_info(s_uuid, run_name, runmeta, run_num=0):
     r_uuid = str(uuid.uuid4())
     # There can be "sub-runs" within a run (for ex., left_run1 and left_run2 could be two runs within retinotopy037Hz run
     # todo:  make sure all sessionmeta run names match the assigned "run names" within pymw structs.
-    if len(runmeta['file']) > 1:
-        subruns = [(fidx, str(i.mw.runName)) for fidx,i in enumerate(runmeta['file'])]
-    
-    # Get all trial info, if nec:
-    if runmeta['stimType']=='bar':
-        # just need to count each "run" (i..e, subrun) in struct.
-    else:
-        # Need to cycle into nested trialstuct and get all trials:    
+#    if len(runmeta['file']) > 1:
+#        tiffs = [(tidx, str(i.mw.runName)) for tidx,i in enumerate(runmeta['file'])]
+#        # May not need this, is confusing -- within a "run" there may be multiple files, which are also called "runs" upstream.
+#        # For event-related runs, there may be multiple TIFFS, each of which contain multiple trials
+#        # For continuous runs, there is one tiff per trial.
+#        tiffidx_in_run = [i for i,tiff in enumerate(tiffs) if tiff[0]==run_name][0]
+#    else:
+#        tiffidx_in_run = 0
+#
+    tiffs = [(tidx, str(i.mw.runName)) for tidx,i in enumerate(runmeta['file'])]
     
     run_info = {'id': r_uuid,\
                 'session': s_uuid,\
-                'run_name': [i[1] for i in subruns if i[1]==run][0],\
-                'subrun_number': runmeta['file'][fidx].mw.runOrder,\
+                'run_name': run_name,\
+                'tiffs': [(i[1], runmeta['file'][i[0]].mw.orderNum) for i in tiffs],\
                 'run_number': str(run_num),\
                 'imaging_fov_um':  str(runmeta.volumesize),\
                 'vol_rate': str(runmeta.volumerate),\
-                'trials': trial_uuids\
+                #'trials': trial_uuids\
               }
 
     return run_info
@@ -159,12 +149,21 @@ master = get_animal_info(animal, receipt_date)
 # ----------------------------------------------------------------------------
 # There can (but need not be) multiple sessions per animal. Each session can 
 # be identified by some combination of date and microscope type.
-    
-date = sessionmeta.date
-start_time = sessionmeta.time
-microscope = sessionmeta.scope
-run_list = sessionmeta.runs
 
+sessionpath = os.path.join(source, session)
+
+# Get all the meta info:
+sessionmeta_fn =  os.listdir(sessionpath)
+sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
+
+sessionmeta = loadmat(os.path.join(sessionpath, sessionmeta_fn))
+
+date = sessionmeta['date']
+start_time = sessionmeta['time']
+microscope = sessionmeta['scope']
+run_list = sessionmeta['runs']
+
+a_uuid = master.keys()[-1]
 session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
 
 # Run Info:
@@ -188,6 +187,43 @@ dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
 dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
 
 dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
+
+
+outputpath = dstruct['outputPath']
+def get_trials(r_uuid, run_name, runmeta, outputpath):
+
+    if len(runmeta['file']) > 1:
+        tiffs = [(tidx, str(i.mw.runName)) for tidx,i in enumerate(runmeta['file'])]
+        # May not need this, is confusing -- within a "run" there may be multiple files, which are also called "runs" upstream.
+        # For event-related runs, there may be multiple TIFFS, each of which contain multiple trials
+        # For continuous runs, there is one tiff per trial.
+        tiffidx_in_run = [i for i,tiff in enumerate(tiffs) if tiff[0]==run_name][0]
+    else:
+        tiffidx_in_run = 0
+
+   
+    # Get all trial info, if nec:
+    if runmeta['stimType']=='bar':
+        # just need to count each file in current run.
+        for tiff in tiffs:
+            trials[tiff[1]] = uuid.uuid4(); # trials will be a dict():  {'left': 'trial1_uuid', 'right': 'trial2_uuid', 'top1': 'trial3_uuid', 'top2': 'trial4_uuid'...}
+
+    else:
+        # Need to cycle into nested trialstuct and get all trials:    
+        trialstruct = loadmat(os.path.join(outputpath, 'stimReps.mat')) # mat structs saved as stuct or '-v7.3' need to be read with h5py
+        stims = dir(trialstruct['slice'][10].info)
+        stimnames = [n for n in stims if 'stim' in n]
+        for stim in stimnames:
+            # TO GET IDS for each trial:
+            # trialstruct['slice'][10].info.stim5[0].trialIdxInRun, for trials 0:nTrials of current stim
+
+            trials[stim] = trialstruct['slice'][10].info.stim[0].trialIdxInRun
+
+
+
+
+
+
 
 cell_info = get_cell_info(run_info, dstruct)
 
