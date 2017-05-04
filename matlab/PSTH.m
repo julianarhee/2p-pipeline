@@ -133,6 +133,7 @@ for sidx = 1:length(slicesToUse)
         currTrialIdxs = meta.file(fidx).mw.pymat.(currRun).idxs + 1; % bc python 0-indexes
         
         currTiff = sprintf('tiff%i', fidx);
+        trialNum = 1;
         for trialIdx=1:2:length(currMWcodes)
             if skipFirst && trialIdx==1
                 continue;
@@ -153,6 +154,12 @@ for sidx = 1:length(slicesToUse)
                 end
             end
             mwEpochIdxs.(currStim){end+1} = trialIdx-1:currEnd;
+            if ~ixfield(trialIdxs, currStim)
+                trialIdxs.(currStim).(currTiff){1} = trialNum;
+            else
+                trialIdxs.(currStim).(currTiff){end+} = trialNum;
+            end
+            trialNum = trialNum + 1;
         end
     end 
     
@@ -258,7 +265,7 @@ for sidx = 1:length(slicesToUse)
                     trialinfo.stimName = currStim;
                     trialinfo.runName = currTiff; %currTiffs{tiffIdx};
                     trialinfo.tiffNum = currTiffIdx;
-                    trialinfo.trialIdxInRun = trialIdx;
+                    trialinfo.trialIdxInRun = trialIdxs.(currStim).(currTiff){trialIdx};
                     trialinfo.currStimRep = nTrials.(currStim);
                     stimInfo.(currStim){end+1} = trialinfo;
                     
