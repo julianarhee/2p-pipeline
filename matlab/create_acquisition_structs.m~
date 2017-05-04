@@ -22,17 +22,22 @@ clc;
 
 % 20161221_JR030W.
 
-% NMF:
+% ---- NMF: ---------------------------------------------------------------
 % sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/test_crossref/nmf';
 % acquisitionName = 'fov1_bar037Hz_run4';
 % extraTiffsExcluded = [];
 % tefo = false;
 
 % datastruct_001 :  nmf, larg(er) neuron size specified, didn't save output
-% datatstruct_002 :  nmf, smaller neurons, better overlap size, saving
+% datastruct_002 :  nmf, smaller neurons, better overlap size, saving
 % output
 % datastruct_003 :  nmf, same settings, run patch, but run on all files.
+% datastruct_004 :  same source data as NMF, but do pixels to compare
+% against TeFo, use sigma=3
 
+% datastruct_005 :  bad-parsing..... re-do
+
+% ---- 12k res ------------------------------------------------------------
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/retinotopy037Hz';
 %acquisitionName = 'fov1_bar037Hz_run4';
@@ -42,9 +47,18 @@ clc;
 % acquisitionName = 'test_crossref';
 % extraTiffsExcluded = [];
 
+% datastruct_001 : manual reois, retinotopy037Hz part
+% datastruct_002 : same as _001, but for rsvp
+% datastruct_003 : aborted attempt for manual 3D rois.
+
+
+% ---- rsvp -----
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp';
 %acquisitionName = 'fov2_rsvp_25reps';
 %extraTiffsExcluded = [];
+
+% datastruct_001 :  condition ROIs, from retinotopy037Hz...
+% datastruct_002 :  manual ROIs, selected within itself
 
 %sourceDir = '/nas/volume1/2photon/RESDATA/20161221_JR030W/rsvp_run3';
 %acquisitionName = 'fov2_rsvp_25reps_run3';
@@ -56,12 +70,18 @@ clc;
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal';
 % acquisitionName = 'fov6_retinobar_037Hz_final_nomask';
 % extraTiffsExcluded = [];
+% tefo = true;
+
+% datastruct_001 :  manually-selected ROIs on every other slice, 13-25.
+% datastruct_002 :  do pixel-wide analysis, sigma=3 (to compare to
+% datastruct_007 on retinotopyFinalMask)
+
 
 % ---- PHASE 1, BLOCK 2 ----
-sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
-acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
-extraTiffsExcluded = [];
-tefo = true;
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
+% acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
+% extraTiffsExcluded = [];
+% tefo = true;
 
 % datastruct_002 : used 'condition' ROIs from retinotopyFinal.
 % datastruct_001 :  3Dcnmf
@@ -70,16 +90,31 @@ tefo = true;
 % datastruct_005 : use x-ray on slice 18of 27-slice stack...
 % datastruct_006 :  same as _005, but more Rois selected, and only slices
 % 6-30 (remove first 5 slices)
-
 % datastruct_007 :  pixel analysis, remove first 5 slices, try with sigma=3
-
 % -------------------------------
+% 
+% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyControl';
+% acquisitionName = 'fov6_037Hz_nomask_bar1_shutteroff';
+% extraTiffsExcluded = [];
+% tefo = true;
 
+% datastruct_001 :  pixels, sigma=3; compare retinotopyFinal and retinotopyFinalMask
+
+
+
+% -- TEFO:  gratings/ rsvp -------------------------------------------------------
 
 % too big?...
-% sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/gratingsFinalMask2';
-% acquisitionName = 'fov6_gratings_bluemask_5trials';
-% extraTiffsExcluded = [];
+sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/gratingsFinalMask2';
+acquisitionName = 'fov6_gratings_bluemask_5trials';
+extraTiffsExcluded = [];
+tefo = true;
+
+% datastruct_001 : use AVG ROI MAP (from retinotopy runs), then select
+% using blob_detector (python); blobType = 'difference' 
+% datastruct_002 :  use AVG ROI MAP (from averaged retinotopy runs) to seed
+% 3DCNMF.
+
 
 %
 %
@@ -100,7 +135,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 7;           % Define datastruct analysis no.
+didx = 2;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -113,40 +148,62 @@ corrected = false;   % Flag for whether motion-corrected using standard Acquisit
 
 nchannels = 2;      % N channels acquired in session.
 
-
+% --------------------------------------------
 % 1. Specifiy preprocessing method:
 % --------------------------------------------
 %D.preprocessing = 'Acquisition2P';
 preprocessing = 'raw';
 %preprocessing = 'fiji';
 
-% 2.  Specify ROI type for current analysis:
+
+% --------------------------------------------
+% 2.a.  Specify ROI type for current analysis:
 % --------------------------------------------
 %roiType = 'create_rois';
+% roiType = 'roiMap';
 %roiType = 'manual3Drois';
 %roiType = 'condition';
-roiType = 'pixels';
+%roiType = 'pixels';
 %D.roiType = 'cnmf';
-%roiType = '3Dcnmf'
+roiType = '3Dcnmf'
 
+% 2.b.  Specify additional args, depending on ROI type:
 if strcmp(roiType, 'condition')
-%     refMaskStruct = 'gratings1';
-%     refMaskStructIdx = 2;
-
 % Test cross-ref:
-    refMaskStruct = 'retinotopyFinal';
-    refMaskStructIdx = 1;
+    refMaskStruct = 'retinotopyFinal'; %refMaskStruct = 'gratings1';
+    refMaskStructIdx = 1; %refMaskStructIdx = 2;
+elseif strcmp(roiType, 'roiMap')
+    pathparts = strsplit(sourceDir, '/');
+    mapSource = strjoin(pathparts(1:end-1), '/');
+    mapSource = fullfile(mapSource, 'average_volumes');
+    mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
+    roiPaths = dir(fullfile(mapSource, 'rois*.mat'));
+    if length(roiPaths)==1
+        roiPath = roiPaths(1).name;
+    else
+        roiIdx = 1; % Specify which ROI maps to use, if more than 1
+        roiPath = roiPaths(roiIdx).name;
+    end
+elseif strcmp(roiType, '3Dcnmf')
+    seedRois = true;
 end
 
-% 2.  Specify slices to process:
+% --------------------------------------------
+% 3.  Specify slices to process:
 % --------------------------------------------
 %slicesToUse = 7:17; 
 %slicesToUse = [10, 15];  
 %slicesToUse = [13:2:25];
 % slicesToUse = [1:20];
-slicesToUse = [6:30];
+%slicesToUse = [6:30];
 %slicesToUse = [4:30];
 %slicesToUse = [6:20];
+slicesToUse = [9:30];
+
+
+% 4.  Provide additional params:
+metaonly = true;
+nhugetiffs = 1;
 
 %% Define datastruct name for analysis:
 
@@ -204,6 +261,8 @@ if corrected
     D.tiffSource = 'Corrected';
 else
     D.tiffSource = 'Parsed';
+    D.metaonly = metaonly;
+    D.nTiffs = nhugetiffs;
 end
 
 % Check if more than one "experiment" in current motion-correction
@@ -278,7 +337,11 @@ switch metaInfo
                     end
                     
                 otherwise
-                    parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir);
+                    if D.metaonly
+                        parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir, [], [], D.metaonly);
+                    else
+                        parseSIdata(D.acquisitionName, movies, D.sourceDir, writeDir);
+                    end
             end
             
             % Load newly-created meta struct:
@@ -293,8 +356,8 @@ switch metaInfo
         tmpchannels = tmpchannels([tmpchannels.isdir]);
         tmpchannels = {tmpchannels(:).name}';
         %if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
-        if isempty(tmpchannels)
-            sort_parsed_tiffs(D.sourceDir, D.tiffSource, nchannels);
+        if isempty(tmpchannels) || strcmp(D.tiffSource, 'Parsed')
+            sort_parsed_tiffs(D, nchannels);
         end
         
         % Creata META with SI (acquisition) and MW (experiment) info:
@@ -347,9 +410,14 @@ switch D.roiType
     case 'create_rois'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
+    
+    case 'roiMap'
+        D.maskSource = mapSource;
+        
     case 'manual3Drois'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
+        
     case 'condition'
         D.maskSource = refMaskStruct; %'retinotopy1';
         D.maskDidx = refMaskStructIdx;
@@ -375,8 +443,24 @@ switch D.roiType
         D.maskSource = fcond;
         
     case '3Dcnmf'
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        D.maskSource = fcond;
+        if seedRois
+            pathparts = strsplit(sourceDir, '/');
+            mapSource = strjoin(pathparts(1:end-1), '/');
+            mapSource = fullfile(mapSource, 'average_volumes');
+            mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
+            roiPaths = dir(fullfile(mapSource, 'centroids*.mat'));
+            if length(roiPaths)==1
+                roiPath = roiPaths(1).name;
+            else
+                roiIdx = 1; % Specify which ROI maps to use, if more than 1
+                roiPath = roiPaths(roiIdx).name;
+            end
+            D.maskSource = mapSource;
+        else
+            [fpath,fcond,~] = fileparts(D.sourceDir);
+            D.maskSource = fcond;
+        end
+        
 end
 
 % =========================================================================
@@ -384,6 +468,25 @@ end
 % =========================================================================
 
 save(fullfile(D.datastructPath, D.name), '-struct', 'D');
+
+
+%%
+
+% rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/average_volumes/rois_avg_frames_conditions_channel01.mat')
+% 
+% fig = figure(); imagesc(sliceim); colormap(gray);
+% 
+% currslice = 13;
+% currslice_name = sprintf('slice%i', currslice);
+% 
+% currrois = rois.(currslice_name).DoG;
+% radii = currrois(:,3);
+% centers = [currrois(:,2), currrois(:,1)];
+% 
+% 
+% fig = figure(); imagesc(sliceim); colormap(gray);
+% hold on;
+% viscircles(gca, centers, radii, 'LineWidth', 0.2, 'Color', 'y')
 
 
 %% Create masks and get traces:
@@ -449,6 +552,38 @@ switch D.roiType
         toc()
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
     
+    case 'roiMap'
+        
+        D.maskType = 'circles';
+        D.maskInfo = struct();
+        D.maskInfo.mapSource = mapSource;
+        D.maskInfo.mapSlicePaths = mapSlicesPath;
+        D.maskInfo.roiPath = roiPath; 
+        D.maskInfo.slices = slicesToUse;
+        D.maskInfo.blobType = 'difference';
+        %D.maskInfo.refNum = 1;
+        
+        % Create masks from ROI maps: 
+        % -----------------------------------------------------------------
+        rois_to_masks(D);
+        
+        maskDir = fullfile(D.datastructPath, 'masks');
+        maskStructs = dir(fullfile(maskDir, '*.mat'));
+        maskStructs = {maskStructs(:).name}';
+        for m=1:length(maskStructs)
+            maskPaths{m} = fullfile(maskDir, maskStructs{m});
+        end
+        D.maskInfo.maskPaths = maskPaths;
+        
+        % =================================================================
+        % Get traces with masks:
+        % =================================================================
+        tic()
+        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        toc()
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+    
+        
     case 'manual3Drois'
         
         % Choose reference:
@@ -517,42 +652,6 @@ switch D.roiType
         
     case 'pixels'
 
-
-        % Get NMF params:
-        % -----------------------------------------------------------------
-        D.maskInfo = struct();
-        
-        % Set params for 3D pipeline:
-        if D.tefo
-            params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
-
-            params.K = 2000;                                            % number of components to be found
-            params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
-            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-            params.merge_thr = 0.8;                                  % merging threshold
-        else
-            params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
-
-            params.K = 10;                                            % number of components to be found
-            params.tau = [3,6,2];                                    % std of gaussian kernel (size of neuron) 
-            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-            params.merge_thr = 0.8;                                  % merging threshold
-        end
-        
-        plotoutputs = false;
-        %params.scaleFOV = true;
-        %params.removeBadFrames = false;
-        
-        D.maskInfo.params = params;
-        D.maskInfo.maskType = D.maskType;
-        D.maskInfo.slices = slicesToUse;
-        
-
-        
-        
-        
         D.slices = slicesToUse;
         
         D.maskType = 'pixels';
@@ -562,17 +661,20 @@ switch D.roiType
         % -----------------------------------------------------------------
         params = struct();
         params.smoothXY = true;
-        params.kernelXY = 5;
+        params.kernelXY = 3;
         
         D.maskInfo.slices = slicesToUse; % TMP 
-        D.maskInfo.slicesToUse = slicesToUse;
         D.maskInfo.params = params;
+        D.maskInfo.maskType = D.maskType;
         
         % =================================================================
         % Get traces:
         % =================================================================
+        tic()
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        toc();
+        
 
     case 'cnmf'
         
@@ -638,11 +740,25 @@ switch D.roiType
         if ~exist(D.nmfPath)
             mkdir(D.nmfPath)
         end
-        % Get NMF params:
-        % -----------------------------------------------------------------
-        D.maskInfo = struct();
         
-        % Set params for 3D pipeline:
+        % Specify ROI map source(s), if seeding:
+        % -----------------------------------------------------------------   
+        D.maskInfo = struct();
+        if seedRois
+            D.maskInfo.mapSource = mapSource;
+            D.maskInfo.mapSlicePaths = mapSlicesPath;
+            D.maskInfo.roiPath = roiPath; 
+            D.maskInfo.slices = slicesToUse;
+            D.maskInfo.blobType = 'difference';
+            D.maskInfo.seedRois = true;
+        end
+
+        % Create memmapped files and substack if needed:
+        % -----------------------------------------------------------------   
+        memmap3D(D, meta);
+        
+        % Set NMF params for 3D pipeline:
+        % -----------------------------------------------------------------   
         if D.tefo
             params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
             params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
@@ -670,14 +786,33 @@ switch D.roiType
         D.maskInfo.slices = slicesToUse;
         
         
-        % Create memmapped files and substack if needed:
-        memmap3D(D, meta);
-        
-        
         % Run 3D CNMF pipeline:
+        % -----------------------------------------------------------------   
         roistart = tic();
         
-        D.maskInfo.params.patches = false;
+        %D.maskInfo.params.patches = true;
+        
+        if D.maskInfo.seedRois
+            D.maskInfo.params.patches = false;
+            centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            if isfield(D.maskInfo, 'blobType')
+                if strcmp(D.maskInfo.blobType, 'difference')
+                    seeds = centroids.DoG;
+                else
+                    seeds = centroids.LoG;
+                end
+            end
+            % Add 1 to x,y bec python 0-indexes (no need to do this for
+            % slice #)
+            seeds(:,1) = seeds(:,1)+1;
+            seeds(:,2) = seeds(:,2)+1;
+            
+            % Remove ignored slics:
+            discardslices = find(seeds(:,3)<D.slices(1));
+            seeds(discardslices,:) = [];
+            seeds(:,3) = seeds(:,3) - 
+            D.maskInfo.seeds = seeds;
+        end
         
         [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
 

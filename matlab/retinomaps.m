@@ -14,10 +14,13 @@ session = '20161221_JR030W';
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
 %experiment = 'retinotopyFinalMask';
+%experiment = 'retinotopyFinal';
+%experiment = 'retinotopyControl';
+
 experiment = 'test_crossref/nmf';
 
-analysis_no = 7;
-tefo = true;
+analysis_no = 4;
+tefo = false;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
 

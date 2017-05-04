@@ -223,7 +223,7 @@ tpath = fullfile(mempath, files{tiffidx});
 matpath = fullfile(mempath, sprintf('%s.mat', filename));
 data = matfile(matpath,'Writable',true);
 
-fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
     
 nSlices = meta.file(tiffidx).si.nFramesPerVolume;
@@ -346,7 +346,7 @@ sizY = data.sizY;                       % size of data matrix
 % patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
 % overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
 % 
-patches = construct_patches(sizY(1:end-1),patch_size,overlap);
+%patches = construct_patches(sizY(1:end-1),patch_size,overlap);
 % K = 7;                                            % number of components to be found
 % tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
 % p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
@@ -373,6 +373,11 @@ options = CNMFSetParms(...
 
 %K = 1705;
 if D.maskInfo.params.patches
+    
+    fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+
+    patches = construct_patches(sizY(1:end-1),patch_size,overlap);
+
     %% Run on patches (around 15 minutes)
 
     tic;
@@ -404,9 +409,10 @@ else
 
     [P,Y] = preprocess_data(data.Y,p);    
 
-    rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
-    roiA = rois.all;
-    P.ROI_list = double(roiA);
+    %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
+    %roiA = rois.all;
+    
+    P.ROI_list = double(D.maskInfo.seeds);
     [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
 
     ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
@@ -468,7 +474,7 @@ end
 
 %% SAVE nmf output:
 
-nmf_outfile = ['nmfoutput_' filename, '_substack.mat']
+nmf_outfile = ['nmfoutput_' filename, '.mat']
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
 

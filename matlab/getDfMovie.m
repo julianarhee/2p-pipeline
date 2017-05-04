@@ -62,6 +62,9 @@ for sidx = 1:length(slicesToUse)
             case 'create_rois'
                 [d1,d2] = size(avgY);
                 [nframes, nrois] = size(adjustTraces);
+            case 'roiMap'
+                [d1,d2] = size(avgY);
+                [nframes, nrois] = size(adjustTraces);
             case 'condition'
                 [d1,d2] = size(avgY);
                 [nframes, nrois] = size(adjustTraces);

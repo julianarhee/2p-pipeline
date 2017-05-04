@@ -44,31 +44,57 @@ if length(tiffs)>length(files)
     else
         nChannels=1;
     end
+    
+    if D.metaonly % i.e., tiff is too huge to load into matlab
+        
+        % Since too large (for Matlab), already parsed in Fiji:
+        tiffsourcePath = fullfile(D.sourceDir, D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
+        tiffslices = dir(fullfile(tiffsourcePath, '*.tif'));
+        tiffslices = {tiffslices(:).name}';
+        
+        Yt = loadtiff(fullfile(tiffsourcePath, tiffslices{1}));
+        
+        data.Y(size(Yt,1), size(Yt,2), nRealFrames, nVolumes) = Yt(1)*0; 
+        data.Yr(size(Yt,1)*size(Yt,2)*nRealFrames, nVolumes) = Yt(1)*0;
+        
+        for sliceidx=1:length(tiffslices)
+            tic(); tmpYt = loadtiff(fullfile(tiffsourcePath, tiffslices{sliceidx})); toc();
+            data.Y(:,:,sliceidx,:) = reshape(tmpYt, [size(Yt,1) size(Yt,2) 1 nVolumes]);
+        end
+        data.sizY = size(data.Y);
+        data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+        data.nY = min(data.Yr(:,:));
+        
+        fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
+        fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
+        
+    else % ok to read in whole thing
+        
+        tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
 
-    tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
+        % Only grab green channel:
+        if strcmp(D.preprocessing, 'raw') && D.tefo
+            Yt = Yt(:,:,1:2:end);
+        end
 
-    % Only grab green channel:
-    if strcmp(D.preprocessing, 'raw') && D.tefo
-        Yt = Yt(:,:,1:2:end);
+        Y = cell(1, nVolumes);
+        firstslice = 1;
+        for vol=1:nVolumes
+            Y{vol} = Yt(:,:,firstslice:(firstslice+nRealFrames-1));
+            firstslice = firstslice+nSlices;
+        end
+        Y = cat(4, Y{1:end});
+        if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
+        Y = Y -  min(Y(:));                         % make data non-negative
+
+        data.Y = Y;
+        data.sizY = size(data.Y);
+        data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+        data.nY = min(data.Yr(:,:));
+
+        fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
+        fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
     end
-
-    Y = cell(1, nVolumes);
-    firstslice = 1;
-    for vol=1:nVolumes
-        Y{vol} = Yt(:,:,firstslice:(firstslice+nRealFrames-1));
-        firstslice = firstslice+nSlices;
-    end
-    Y = cat(4, Y{1:end});
-    if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-    Y = Y -  min(Y(:));                         % make data non-negative
-
-    data.Y = Y;
-    data.sizY = size(data.Y);
-    data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-    data.nY = min(data.Yr(:,:));
-
-    fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
-    fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
     
     end
 

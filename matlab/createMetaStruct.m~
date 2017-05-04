@@ -221,7 +221,7 @@ meta.condTypes = condtypes;
 
 
 % TOD:  fix this so that runmeta info includes all nec. stuff
-% TODO2:  fix so that sessionmeta is parent of ALL runs.
+% TODO2:
 % New stuff for DB: -------------------
 meta.volumeRate = si.file(1).siVolumeRate;
 meta.volumeSizePixels = [si.file(1).frameWidth, si.file(1).frameHeight, si.file(1).nSlices];

@@ -58,6 +58,8 @@ if isfield(D, 'maskInfo')
         for m=1:length(tmppaths)
             D.maskPaths{end+1} = fullfile(D.datastructPath, 'masks', tmppaths{m});
         end
+    else
+        D.maskPaths = D.maskInfo.maskPaths;
     end
 else
     D.maskPaths = D.maskInfo.maskPaths;

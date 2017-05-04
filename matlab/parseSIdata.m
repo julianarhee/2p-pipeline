@@ -5,16 +5,22 @@ function parseSIdata(acquisition_name, movies, sourceDir, writeDir, varargin)
 %% Set params:
 
 namingFunction = @defaultNamingFunction;
-if nargin > 0
-     sirefs = varargin{1};
-     if length(varargin)>1
-         sirefFidx = varargin{2};
-     else
-         sirefFidx = 1;
-     end
-     refmeta = true;
-else
-    refmeta = false;
+switch length(varargin)
+    case 0
+        refmeta = false;
+        metaonly = false;
+    case 1
+        sirefs = varargin{1};
+        sirefFidx = 1;
+        metaonly = false;
+    case 2
+        sirefs = varargin{1};
+        sirefFidx = varargin{2};
+        refmeta = true;
+        metaonly = false;
+    case 3
+        refmeta = false;
+        metaonly = true;
 end
 %% Load movies and motion correct
 %Calculate Number of movies and arrange processing order so that
@@ -33,16 +39,23 @@ for movNum = movieOrder
         scanImageMetadata = sirefs.metaDataSI{refMovIdx};
         [mov, ~] = tiffRead(fullfile(sourceDir, movies{movNum}));
     else
-        [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
+        if metaonly
+            fprintf('Only getting metadata...\n');
+            scanImageMetadata = tiffReadMeta(fullfile(sourceDir, movies{movNum}));
+        else
+            [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
+        end
     end
-
-    fprintf('Mov size is: %s\n.', mat2str(size(mov)));
-    fprintf('Mov type is: %s\n.', class(mov)); 
-    if size(mov,2)~=scanImageMetadata.SI.hRoiManager.pixelsPerLine
-        scanImageMetadata.SI.hRoiManager.pixelsPerLine = size(mov,2);
-    end
-    if size(mov,1)~=scanImageMetadata.SI.hRoiManager.linesPerFrame
-        scanImageMetadata.SI.hRoiManager.linesPerFrame = size(mov,1);
+    
+    if ~metaonly
+        fprintf('Mov size is: %s\n.', mat2str(size(mov)));
+        fprintf('Mov type is: %s\n.', class(mov)); 
+        if size(mov,2)~=scanImageMetadata.SI.hRoiManager.pixelsPerLine
+            scanImageMetadata.SI.hRoiManager.pixelsPerLine = size(mov,2);
+        end
+        if size(mov,1)~=scanImageMetadata.SI.hRoiManager.linesPerFrame
+            scanImageMetadata.SI.hRoiManager.linesPerFrame = size(mov,1);
+        end
     end
     
 %     if obj.binFactor > 1
@@ -52,12 +65,22 @@ for movNum = movieOrder
 %     % Apply line shift:
 %     fprintf('Line Shift Correcting Movie #%03.0f of #%03.0f\n', movNum, nMovies),
 %     mov = correctLineShift(mov);
-    try
-        [movStruct, nSlices, nChannels] = parseScanimageTiff(mov, scanImageMetadata);
-    catch
-        error('parseScanimageTiff failed to parse metadata'),
+
+    if metaonly
+        siStruct = scanImageMetadata.SI;
+        fZ              = siStruct.hFastZ.enable; %siStruct.fastZEnable;
+        nChannels = numel(siStruct.hChannels.channelSave); %numel(siStruct.channelsSave);
+        nSlices = siStruct.hStackManager.numSlices + (fZ*siStruct.hFastZ.numDiscardFlybackFrames); % Slices are acquired at different locations (e.g. depths).
+        discard = (fZ*siStruct.hFastZ.numDiscardFlybackFrames);
+        nSlices = nSlices - discard; %nSlices-(fZ*siStruct.fastZDiscardFlybackFrames);
+    else
+        try
+            [movStruct, nSlices, nChannels] = parseScanimageTiff(mov, scanImageMetadata);
+        catch
+            error('parseScanimageTiff failed to parse metadata'),
+        end
+        clear mov
     end
-    clear mov
     
 %     % Find motion:
 %     fprintf('Identifying Motion Correction for Movie #%03.0f of #%03.0f\n', movNum, nMovies),
@@ -68,26 +91,28 @@ for movNum = movieOrder
 %     fprintf('Applying Motion Correction for Movie #%03.0f of #%03.0f\n', movNum, nMovies),
 %     movStruct = obj.motionCorrectionFunction(obj, movStruct, scanImageMetadata, movNum, 'apply');
     
-    for nSlice = 1:nSlices
-        for nChannel = 1:nChannels
-            % Create movie fileName and save in acq object
-            movFileName = feval(namingFunction,acquisition_name, nSlice, nChannel, movNum);
-%             obj.correctedMovies.slice(nSlice).channel(nChannel).fileName{movNum} = fullfile(writeDir,movFileName);
-           
-%             % Determine 3D-size of movie and store w/ fileNames
-%             obj.correctedMovies.slice(nSlice).channel(nChannel).size(movNum,:) = ...
-%                 size(movStruct.slice(nSlice).channel(nChannel).mov);            
-            % Write corrected movie to disk
-            fprintf('Writing Movie #%03.0f of #%03.0f\n',movNum,nMovies),
-            try
-                tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
-                %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
-            catch
-                % Sometimes, disk access fails due to intermittent
-                % network problem. In that case, wait and re-try once:
-                pause(60);
-                tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
-                %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
+    if ~metaonly
+        for nSlice = 1:nSlices
+            for nChannel = 1:nChannels
+                % Create movie fileName and save in acq object
+                movFileName = feval(namingFunction,acquisition_name, nSlice, nChannel, movNum);
+    %             obj.correctedMovies.slice(nSlice).channel(nChannel).fileName{movNum} = fullfile(writeDir,movFileName);
+
+    %             % Determine 3D-size of movie and store w/ fileNames
+    %             obj.correctedMovies.slice(nSlice).channel(nChannel).size(movNum,:) = ...
+    %                 size(movStruct.slice(nSlice).channel(nChannel).mov);            
+                % Write corrected movie to disk
+                fprintf('Writing Movie #%03.0f of #%03.0f\n',movNum,nMovies),
+                try
+                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
+                    %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
+                catch
+                    % Sometimes, disk access fails due to intermittent
+                    % network problem. In that case, wait and re-try once:
+                    pause(60);
+                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
+                    %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
+                end
             end
         end
     end

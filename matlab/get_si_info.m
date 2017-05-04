@@ -1,11 +1,17 @@
-function S = get_si_info(sourceDir, acquisitionName)
+function S = get_si_info(D)
         
+        sourceDir = D.sourceDir;
+        acquisitionName = D.acquisitionName;
         siMetaStruct = struct();
         
         siMetaName = sprintf('%s.mat', acquisitionName);
         meta = load(fullfile(sourceDir, siMetaName));
         
-        nTiffs = length(meta.(acquisitionName).metaDataSI);
+        if D.metaonly
+            nTiffs = D.nTiffs;
+        else
+            nTiffs = length(meta.(acquisitionName).metaDataSI);
+        end
         
         for fidx=1:nTiffs
             currMeta = meta.(acquisitionName).metaDataSI{fidx};

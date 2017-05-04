@@ -1,8 +1,4 @@
-function sort_parsed_tiffs(D, nchannels)
-
-
-acquisition_dir = D.sourceDir;
-tiff_dir = D.tiffSource;
+function sort_parsed_tiffs(acquisition_dir, tiff_dir, nchannels)
 
 if ~exist('namingFunction', 'var')
     namingFunction = @defaultNamingFunction;
@@ -53,16 +49,17 @@ for cidx=1:length(channels)
         for fpath = 1:length(file_paths)
             tiffs = dir(fullfile(channel_path, file_paths{fpath}, '*.tif'));
             tiffs = {tiffs(:).name}';
-            if isempty(strfind(tiffs{1}, sprintf('File%03d', fpath)))
+            if ~strfind(tiffs{1}, sprintf('File%03d', fpath))
                 % Rename files:
                 for tidx=1:length(tiffs)
                     % Fiji-split:
-                    splits = regexp(tiffs{tidx}, '\s', 'split');
-                    nChannel = str2double(splits{2}(regexp(splits{2}, '\d')));
-                    nSlice = str2double(splits{3}(regexp(splits{3}, '\d')));
-                    new_file_name = feval(namingFunction, D.acquisitionName, nSlice, nChannel, fpath);
-                    movefile(fullfile(channel_path, file_paths{fpath}, tiffs{tidx}), fullfile(channel_path, file_paths{fpath}, new_file_name));
-                end
+                    pts = strsplit(tiffs{tidx}, ' ')
+                    slice_pt = pts{end};
+                    
+                    
+                new_file_name = feval(namingFunction, D.acquisitionName, nSlice, nChannel, movNum);
+                movefile(fullfile(channel_path, file_paths{fidx}), fullfile(channel_path, new_fil_name));
+                
             end
         end
     else

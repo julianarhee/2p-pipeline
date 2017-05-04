@@ -776,22 +776,15 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 fprintf('DONE!!!\n');
 
 % 
-%     mwinterpMat: [MxN double] - M = trial, N = interpolated tpoints to
-%     match length of SI traces
-% interpTraceCell: {1xnROIs cell} - interpTraceCell{r} = interpolated traces
-% for each trial of mwinterpMat for roi r.
-%    rawTraceCell: {1xnROIs cell} - rawTraceCell{r} = "raw" (not interpolate)
-%    traces for each trial, not matches in tpoints to mwinterpMat
+%     mwinterpMat: [MxN double] - M
+% interpTraceCell: {1x194 cell}
+%    rawTraceCell: {1x194 cell}
 %           nRois: 194
-% nFramesPerTrial: [17 17 18 18 18] - should match nframes of
-% rawTraceCell{r}
+% nFramesPerTrial: [17 17 18 18 18]
 %         nTrials: 5
-%    mwTrialTimes: [MxN double] - M = trial, N = mw-based tpoints (trials)
-%          dfCell: {1xnROIs cell} - dfCell{r} = df/f calculated from
-%          interpolated traces (interpTraceCell), which are matched in
-%          tpoints to mwinterpMat (baseline=pre-onset tpoints)
-%    baselineCell: [MxnROIs double] - M = trial, gives baseline (average of
-%    pre-onset tpoints) for each trial.
+%    mwTrialTimes: [5x4 double]
+%          dfCell: {1x194 cell}
+%    baselineCell: [5x194 double]
 
 
 

@@ -20,7 +20,7 @@ maskType = D.maskType;
 
 switch maskType
     case 'circles'
-        refNum = D.maskInfo.refNum;
+        %refNum = D.maskInfo.refNum;
         maskPaths = D.maskInfo.maskPaths;
         slices = D.maskInfo.slices;
     case 'pixels'
@@ -233,7 +233,7 @@ switch maskType
 %                     mkdir(tracesPath);
 %                 end
 
-                tracesName = sprintf('traces_Slice%02d_Channel%02d', sidx, cidx);
+                tracesName = sprintf('traces_Slice%02d_Channel%02d', currSliceIdx, cidx);
                 save_struct(tracesPath, tracesName, T);
             end   
         end
@@ -319,7 +319,7 @@ switch maskType
                             fprintf('Bad frames found in movie %s at: %s\n', currSliceName, mat2str(badframes(2:end)));
                         end
                         while length(badframes) >= size(Y,3)*0.25
-                            refframe = refframe +1 
+                            refframe = refframe +1;
                             corrs = arrayfun(@(i) checkframes(Y(:,:,i), Y(:,:,1)), 1:size(Y,3), 'UniformOutput', false);
                             corrs = cat(3, corrs{1:end});
                             meancorrs = squeeze(mean(mean(corrs,1),2));

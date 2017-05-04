@@ -23,7 +23,7 @@ metastruct = load(D.metaPath);
 condTypes = metastruct.condTypes;
 nTiffs = metastruct.nTiffs;
 
-slicesToUse = D.slices;
+slicesToUse = D.slices
 
 for sidx = 1:length(slicesToUse)
     currSlice = slicesToUse(sidx);
@@ -58,7 +58,8 @@ for sidx = 1:length(slicesToUse)
             % 2.  Crop trailing frames (extra frames, not related to
             % stimulus), if needed:
             
-            if trimEnd
+            if trimEnd && size(currTraces,1)>cropToFrame 
+                %TODO: don't have conditional for if n frames is actually shorter than desired... (could interpolate)
                 traces = currTraces(1:cropToFrame,:);
                 %traces = currTraces(:, 1:cropToFrame);
             else
