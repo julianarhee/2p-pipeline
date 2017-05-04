@@ -107,6 +107,7 @@ for sidx = 1:length(slicesToUse)
     mwTimes = struct();
     deltaFs = struct();
     stimInfo = struct();
+    trialIdxs = struct();
     for stimIdx=1:length(condTypes)
         currStim = condTypes{stimIdx};
         mwTrials.(currStim) = [];
@@ -118,6 +119,7 @@ for sidx = 1:length(slicesToUse)
         mwTimes.(currStim) = [];
         deltaFs.(currStim) = [];
         stimInfo.(currStim) = [];
+        trialIdxs.(currStim) = [];
     end
     
     % Get MW tstamps and within-trial indices ("epochs") and sort by
@@ -154,10 +156,15 @@ for sidx = 1:length(slicesToUse)
                 end
             end
             mwEpochIdxs.(currStim){end+1} = trialIdx-1:currEnd;
-            if ~ixfield(trialIdxs, currStim)
+            if ~isfield(trialIdxs, currStim)
                 trialIdxs.(currStim).(currTiff){1} = trialNum;
             else
-                trialIdxs.(currStim).(currTiff){end+} = trialNum;
+                if ~isfield(trialIdxs.(currStim), currTiff)
+                    trialIdxs.(currStim).(currTiff){1} = trialNum;
+                else
+                    trialIdxs.(currStim).(currTiff){end+1} = trialNum;
+            
+                end
             end
             trialNum = trialNum + 1;
         end
@@ -300,7 +307,7 @@ save_struct(D.outputDir, trialstructName, trialstruct);
 D.trialStructName = trialstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
-
+%%
 % %% Don't interpolate -- 
 % % Create same-sized time and trace mats using MW-onset-matched SI-times
 % % (i.e., frame times from SI), and fill in or remove frame tstamps on a

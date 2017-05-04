@@ -104,6 +104,16 @@ clc;
 
 % -- TEFO:  gratings/ rsvp -------------------------------------------------------
 
+source = '/nas/volume1/2photon/RESDATA/TEFO';
+session = '20161219_JR030W';
+run = 'gratingsFinalMask2';
+
+sourceDir = fullfile(source, session, run);
+
+acquisitionName = 'fov6_gratings_bluemask_5trials';
+extraTiffsExcluded = [];
+tefo = true;
+
 % too big?...
 sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/gratingsFinalMask2';
 acquisitionName = 'fov6_gratings_bluemask_5trials';
