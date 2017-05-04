@@ -28,8 +28,8 @@ currCondType = runpts{1};
 
 % Populate MAP menu options: --------------------------------------------
 if isfield(D, 'dfStructName')
-    dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
-    setappdata(handles.roigui, 'df', dfStruct);
+    dfStruct = getappdata(handles.roigui, 'df'); %load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
+    %setappdata(handles.roigui, 'df', dfStruct);
     if isempty(dfStruct.slice(selectedSlice).file)
         fprintf('No DF struct found for slice %i.\n', selectedSlice);
         noDF = true;

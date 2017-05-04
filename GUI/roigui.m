@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 21-Apr-2017 18:38:06
+% Last Modified by GUIDE v2.5 03-May-2017 12:58:46
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -464,8 +464,8 @@ selectedFile = handles.runMenu.Value;
 
 % Populate MAP menu options: --------------------------------------------
 if isfield(D, 'dfStructName')
-    dfStruct = load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
-    setappdata(handles.roigui, 'df', dfStruct);
+    dfStruct = getappdata(handles.roigui, 'df'); %load(fullfile(D.guiPrepend, D.outputDir, D.dfStructName));
+    %setappdata(handles.roigui, 'df', dfStruct);
     if isempty(dfStruct.slice(selectedSliceIdx).file)
         fprintf('No DF struct found for slice %i.\n', selectedSlice);
         noDF = true;
@@ -702,7 +702,7 @@ if strcmp(D.roiType, 'pixels')
     d1 = meta.file(1).si.frameWidth;
     d2 = meta.file(1).si.linesPerFrame;
 
-    roiMatch = sub2ind([d1, d2], cp(1), cp(2));
+    roiMatch = sub2ind([d1, d2], cp(2), cp(1)); % image is flipped
     
 else
     maskcell = getappdata(handles.roigui,'maskcell');
@@ -833,6 +833,8 @@ fh=figure();
 %     fh = figure(handles.allstimPSTH);
 % end
 
+dflim = str2double(handles.dfrange.String);
+
 %you can include anything you want in here as long as you specify the parent as
 %being fh
 pidx = 1;
@@ -841,6 +843,13 @@ for stimidx=1:nStim
     currstim = sprintf('stim%i', stimidx);
     mwTrialTimes = stimstruct.slice(selectedSlice).(currstim).mwTrialTimes;
     dfMat = stimstruct.slice(selectedSlice).(currstim).dfTraceCell{selectedRoi}.*100;
+    if handles.smooth.Value
+        for tridx=1:size(dfMat, 2)
+            dfMat(:,tridx) = smooth(dfMat(:,tridx), 'rlowess');
+        end
+    end
+        
+    %dfMat = stimstruct.slice(selectedSlice).(currstim).dfCell{selectedRoi}.*100;
     mwSec = stimstruct.slice(selectedSlice).(currstim).siTimeMat; % If created before 03/29/2017, need to transpose
 
     subaxis(nRows, ceil(nStim/nRows), pidx, 'Spacing', 0.02, 'Padding', 0.01, 'Margin', 0.05)
@@ -853,7 +862,7 @@ for stimidx=1:nStim
     stimOffset = mean(mwTrialTimes(:,3));
     
     xlim([-1.2, 3.2]);
-    ylim([-40, 40]);
+    ylim([-dflim, dflim]);
     
     ylims = get(gca, 'ylim');
     
@@ -1050,9 +1059,14 @@ if handles.ax3.UserData.viewTrial
     stimNames = handles.stimMenu.String;
     selectedStim = handles.stimMenu.String{selectedStimIdx};
     selectedRoi = str2double(handles.currRoi.String);
-
-    clickedTrialRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.tiffNum;
-    clickedTrialIdxInRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.trialIdxInRun;
+    
+    if handles.stimShowAvg.Value
+        clickedTrialRun = trialstruct.slice(selectedSlice).info.(selectedStim){1}.tiffNum;
+        clickedTrialIdxInRun = trialstruct.slice(selectedSlice).info.(selectedStim){1}.trialIdxInRun;
+    else
+        clickedTrialRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.tiffNum;
+        clickedTrialIdxInRun = trialstruct.slice(selectedSlice).info.(selectedStim){clickedTrial}.trialIdxInRun;
+    end
     handles.runMenu.Value = clickedTrialRun;
     handles.ax3.UserData.clickedTrialIdxInRun = clickedTrialIdxInRun;
     handles.ax3.UserData.clickedTrialRun = clickedTrialRun;
@@ -1425,7 +1439,7 @@ if strcmp(D.roiType, 'pixels')
     d1 = meta.file(1).si.frameWidth;
     d2 = meta.file(1).si.linesPerFrame;
 
-    roiMatch = sub2ind([d1, d2], cp(1), cp(2));
+    roiMatch = sub2ind([d1, d2], cp(2), cp(1)); % image is flipped
     
 else
     maskcell = getappdata(handles.roigui,'maskcell');
@@ -1622,3 +1636,56 @@ function roi3D_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+
+
+function dfrange_Callback(hObject, eventdata, handles)
+% hObject    handle to dfrange (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of dfrange as text
+%        str2double(get(hObject,'String')) returns contents of dfrange as a double
+
+hObject.Value = str2double(hObject.String);
+
+
+guidata(hObject,handles);
+
+
+% --- Executes during object creation, after setting all properties.
+function dfrange_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to dfrange (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in smooth.
+function smooth_Callback(hObject, eventdata, handles)
+% hObject    handle to smooth (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of smooth
+
+D = getappdata(handles.roigui,'D');
+
+[handles, D] = updateStimulusPlot(handles, D);
+if ~strcmp(D.stimType, 'bar')
+if handles.stimShowAvg.Value
+    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+else
+    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+end
+handles.ax3.Children = flipud(handles.ax3.Children);
+end
+
+guidata(hObject,handles);
+
+

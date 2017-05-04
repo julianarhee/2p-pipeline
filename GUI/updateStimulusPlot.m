@@ -46,6 +46,7 @@ mwTrialTimes = stimstruct.slice(selectedSlice).(selectedStim).mwTrialTimes;
 % nTrials = size(dfMat,1);
 
 dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfTraceCell{selectedRoi}.*100;
+%dfMat = stimstruct.slice(selectedSlice).(selectedStim).dfCell{selectedRoi}.*100;
 mwSec = stimstruct.slice(selectedSlice).(selectedStim).siTimeMat; % If created before 03/29/2017, need to transpose
 trimmed = stimstruct.slice(selectedSlice).(selectedStim).trimmedAndPadded;
 nTrials = size(dfMat,2);
@@ -53,6 +54,12 @@ nTrials = size(dfMat,2);
 if ~handles.stimShowAvg.Value % Show each trial:
     
     % Plot each df/f trace for all trials:
+    if handles.smooth.Value
+        for tridx=1:size(dfMat, 2)
+            dfMat(:,tridx) = smooth(dfMat(:,tridx), 'rlowess');
+        end
+    end
+        
     handles.stimtrials = plot(mwSec, dfMat, 'Color', guicolors.lightgray, 'LineWidth',0.1);
     setappdata(handles.roigui, 'dfMat', dfMat);          
     hold on;
@@ -82,6 +89,13 @@ else
         mwTrialTimes = stimstruct.slice(selectedSlice).(stimname).mwTrialTimes;
 
         dfMat = stimstruct.slice(selectedSlice).(stimname).dfTraceCell{selectedRoi}.*100;
+        if handles.smooth.Value
+            for tridx=1:size(dfMat, 2)
+                dfMat(:,tridx) = smooth(dfMat(:,tridx), 'rlowess');
+            end
+        end
+    
+        %dfMat = stimstruct.slice(selectedSlice).(stimname).dfCell{selectedRoi}.*100;
         mwSec = stimstruct.slice(selectedSlice).(stimname).siTimeMat; %
         trimmed = stimstruct.slice(selectedSlice).(stimname).trimmedAndPadded;
         

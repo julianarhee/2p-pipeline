@@ -131,11 +131,14 @@ while loading==1
     end
     handles.stimMenu.UserData.currStimName =  handles.stimMenu.String{handles.stimMenu.Value};
     if ~strcmp(D.stimType, 'bar')
-%         nStimuli = length(meta.condTypes);
-%         colors = zeros(nStimuli,3);
-%         for c=1:nStimuli
-%             colors(c,:,:) = rand(1,3);
-%         end
+        if ~isfield(meta, 'stimcolors')
+            nStimuli = length(meta.condTypes);
+            meta.stimcolors = zeros(nStimuli,3);
+            for c=1:nStimuli
+                meta.stimcolors(c,:,:) = rand(1,3);
+            end
+        end
+    
         stimcolors = meta.stimcolors;
         setappdata(handles.roigui, 'stimcolors', stimcolors);
     
