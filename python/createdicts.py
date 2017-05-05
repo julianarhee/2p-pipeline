@@ -156,7 +156,7 @@ def get_trials(r_uuid, run_name, tiffs, runmeta, outputpath):
             # to get ids for each trial:
             # trialstruct['slice'][10].info.stim5[0].trialidxinrun, for trials 0:ntrials of current stim
             trials[stim] = dict() 
-            trials[stim]['trialidx_in_run'] = [eval("trialstruct['slice'][10].info.%s[%i].trialidxinrun" % (stim, trial)) for trial in range(len(eval("trialstruct['slice'][10].info.%s" % stim)))]
+            trials[stim]['trialidx_in_run'] = [eval("trialstruct['slice'][10].info.%s[%i].trialIdxInRun" % (stim, trial)) for trial in range(len(eval("trialstruct['slice'][10].info.%s" % stim)))]
             trials[stim]['trial_uuid'] = str(uuid.uuid4())
 
     return trials
