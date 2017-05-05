@@ -76,7 +76,7 @@ tmpC = nmf.C_out;
 % aa = nmf.A'*nmf.A;
 % traces = ay - aa*nmf.C;
 ntpoints = sizY(end);
-traces = nmf.A' * reshape(nmf.Y, d1*d2*d3, ntpoints); % nRows = nROIS, nCols = tpoints
+traces = nmf.A' * reshape(double(nmf.Y), d1*d2*d3, ntpoints); % nRows = nROIS, nCols = tpoints
 avgs = nmf.avgs;
 
 nslices = size(avgs,3);
