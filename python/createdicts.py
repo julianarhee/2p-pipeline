@@ -1,15 +1,17 @@
 #!/usr/bin/env python2
 
-import scipy.io
+import scipy.io as spio
 import os
 import uuid
 import numpy as np
+import cPickle as pkl
+import h5py
 
 # optparse for user-input:
 source = '/nas/volume1/2photon/RESDATA/TEFO'
 session = '20161219_JR030W'
 #experiment = 'gratingsFinalMask2'
-datastruct_idx = 1
+# datastruct_idx = 1
 animal = 'R2B1'
 receipt_date = '2016-12-30'
 
@@ -116,7 +118,6 @@ def get_run_info(s_uuid, run_name, runmeta, run_num=0):
     # for continuous stimuli (retinotopic mapping), 1 tiff = 1 trial.
     # for event-related (static stimulus shown for some x seconds), 1 tiff contains multiple trials. 
  
-    # tiffs = [(tidx, str(i.mw.runname)) for tidx,i in enumerate(runmeta['file'])]
     if type(runmeta['file'])==dict:
         # then, only 1 file, and immediate keys are 'mw' and 'si' (i.e., don't need to index into files)
         tiffs = [(str(runmeta['file']['mw']['runName']), 0)]
@@ -138,44 +139,60 @@ def get_run_info(s_uuid, run_name, runmeta, run_num=0):
 
 def get_trials(r_uuid, run_name, tiffs, runmeta, outputpath):
 
-    trials = dict()
+    trials = []
 
    # get all trial info:
     if runmeta['stimType']=='bar':
         # just need to count each file in current run.
+        tiffs.sort(key=lambda x: x[1])
         for tiff in tiffs:
             # trials will be a dict():  
             # {'left': 'trial1_uuid', 'right': 'trial2_uuid', 'top1': 'trial3_uuid', 'top2': 'trial4_uuid'...}
-            trials[tiff[0]] = str(uuid.uuid4()); 
+            # trials[tiff[1]] = str(uuid.uuid4()) # trials[x] = uuuid - x is trial no in file 
+            trials.append((tiff[1], str(uuid.uuid4()))
+)
     else:
         # need to cycle into nested trialstuct and get all trials:    
-        trialstruct = loadmat(os.path.join(outputpath, 'stimreps.mat')) # mat structs saved as stuct or '-v7.3' need to be read with h5py (just resaved without '-v7.3' handles in psth.m to avoid this)
+        trialstruct = loadmat(os.path.join(outputpath, 'stimReps.mat')) # mat structs saved as stuct or '-v7.3' need to be read with h5py (just resaved without '-v7.3' handles in psth.m to avoid this)
         stims = dir(trialstruct['slice'][10].info) # slice index does not matter here, since will be the same for all slices.
         stimnames = [n for n in stims if 'stim' in n]
-        for stim in stimnames:
-            # to get ids for each trial:
-            # trialstruct['slice'][10].info.stim5[0].trialidxinrun, for trials 0:ntrials of current stim
-            trials[stim] = dict() 
-            trials[stim]['trialidx_in_run'] = [eval("trialstruct['slice'][10].info.%s[%i].trialIdxInRun" % (stim, trial)) for trial in range(len(eval("trialstruct['slice'][10].info.%s" % stim)))]
-            trials[stim]['trial_uuid'] = str(uuid.uuid4())
+        for stim in stimnames:           
+            for tidx in range(len(eval("trialstruct['slice'][10].info.%s" % stim))):
+                t_uuid = str(uuid.uuid4())
+                trialidx_in_run = eval("trialstruct['slice'][10].info.%s[%i].trialIdxInRun" % (stim, tidx)) 
+                trials.append((trialidx_in_run, t_uuid))
+
+    trials.sort(key=lambda x: x[0])
 
     return trials
 
 
-def get_cell_info(run_info, dstruct):
-    nrois = dstruct['nrois'] # todo:  this assumes that ALL runs have the same ROIs (which we want eventually, but need alignment for)
-    maskmat = loadmat(dstruct['masks3D']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
-    masks = dict((k, v) for k,v in maskmat['maskcell3d'].iteritems())  # todo:  haven't created this, so not sure if this is correct call
+def get_cell_info(run_name, run_info, runmeta, dstruct):
+    nrois = dstruct['nRois'] # todo:  this assumes that ALL runs have the same ROIs (which we want eventually, but need alignment for)
+    maskmat = h5py.File(dstruct['maskarrayPath']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
+    tmpmask = np.empty(maskmat['masks'].shape)
+    tmpmask = maskmat['masks'].value
+    masks = tmpmask.T
+    del tmpmask
+    volsize = runmeta['volumeSizePixels']
+    
+    maskarray = dict((roi, dict()) for roi in range(nrois))
+    for roi in range(nrois):
+        maskarray[roi] = np.reshape(masks[:,roi], volsize, order='F')
 
     # todo:  combine ALL slice rois and convert to master list of 3D coords: (0, (x0, y0, z0)), (1, (x1,y1,z1), ... (N, (xN, yN, zN))
-    cell_info = dict.fromkeys([i[0] for i in dstruct['centroids']], dict()) 
+    cell_info = dict.fromkeys([i for i in maskarray.keys()], dict()) 
     tmp = dict((k, {'id': str(uuid.uuid4())}) for k,v in cell_info.iteritems())
     cell_info.update(tmp)
-    for k in cells_info.keys():
-        cell_info[k].update(run=run_info.keys())
-        cell_info[k].update(mask=masks[k])
+    for k in cell_info.keys():
+        cell_info[k].update(run=run_info[run_name])
+        cell_info[k].update(mask=maskarray[k])
 
     return cell_info
+
+
+
+
 
 # ----------------------------------------------------------------------------
 # TEST OUTPUT: 
@@ -228,7 +245,7 @@ for runidx,run in enumerate(session_info['runs']):
     # todo:  FIX createMetaStruct.m s.t. new fields are saved:
     runmeta['volumesize'] = [500, 500, 210]
     runmeta['volumerate'] = 4.11
-    runmeta['stages_um'] = [12568, 52037, 59050] # THIS IS MANUAL ENTRY (not incorp. in SI & pipeline yet)
+    runmeta['stages_um'] = [12568, 52037, 59050] # MANUAL ENTRY (not incorp. in SI & pipeline yet)
     
     run_info[run] = get_run_info(session_info['id'], run, runmeta, runidx)
  
@@ -241,6 +258,7 @@ for runidx,run in enumerate(session_info['runs']):
 # grab all that info by providing some run.
 
 curr_run = run_info.keys()[0] # Just choose this one for now, but should be in argsin.
+#curr_run = run_info.keys()[-1] # test gratings
 
 r_uuid = run_info[curr_run]['id']
 run_name = run_info[curr_run]['run_name']
@@ -254,14 +272,16 @@ tiff_list = run_info[curr_run]['tiffs']
 # yet, so for now, just hard-code didxs that are reasonable to use for testing
 # a set of runs:
 didxs = dict()
-didxs['retinotopyFinal'] = 1
-didxs['retinotopyFinalMask'] = 2
-didxs['gratingsFinalMask2'] = 1
+didxs['retinotopyFinal'] = 4 
+didxs['retinotopyFinalMask'] = 8 
+didxs['gratingsFinalMask2'] = 2 
 
 runpath = os.path.join(source, session, curr_run)
 runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
 runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
 runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
+
+datastruct_idx = didxs[curr_run]
 
 datastruct = 'datastruct_%03d' % datastruct_idx
 dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
@@ -271,11 +291,54 @@ dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
 
 outputpath = dstruct['outputDir']
 
-trials = get_trials(r_uuid, run_name, tiff_list, runmeta, outputpath)
+trial_list = get_trials(r_uuid, run_name, tiff_list, runmeta, outputpath)
 
 
-# cell_info = get_cell_info(run_info, dstruct)
+# Get trial info:
+# ----------------------------------------------------------------------------
+tinfo_fn = 'trial_info.pkl'
+with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
+    tinfo = pkl.load(f)
+
+# trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
+trial_info = dict()
+for t in sorted([tid[0] for tid in trial_list]):
+    trial_info[t] = dict()
+    trial_info[t]['id'] = trial_list[t-1][1]
+    trial_info[t]['run'] = r_uuid
+    if dstruct['stimType']=='bar':
+        trialnum = t
+    else:
+        trialnum = t+1
+
+    trial_info[t]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
+    trial_info[t]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
+    trial_info[t]['stimuli'] = tinfo[trialnum]['stimuli']
+    trial_info[t]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
+    trial_info[t]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
 
 
+# Get cell info:
+# ----------------------------------------------------------------------------
+cell_info = get_cell_info(run_name, run_info, runmeta, dstruct)
 
+cellidx = 0
+trialidx = 1
+c_uuid = cell_info[cellidx]['id']
+t_uuid = trial_info[trialidx]['id']
+
+def get_functional_time_course(c_uuid, r_uuid, channel, trial, cell_info, trial_info, run_info, dstruct):
+    trialidx = [i for i in trial_info.keys() if trial_info[i]['id']==t_uuid][0]
+    
+    # Get correct TIFF for chosen trial/run:
+    fileidx = run_info[run_name]['tiffs'][trialidx-1][1]
+    
+    # Load 3d traces:
+    tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][fileidx-1]))
+    rawmat = tracestruct['rawTraces']
+    data = rawmat[:,cellidx]
+
+    return data
+
+   
 

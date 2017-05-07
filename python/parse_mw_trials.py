@@ -591,10 +591,15 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             
             # E.append(trial_ends)
             trialevents.append(tmp_trialevents)
-
-
+        
+        # GET INFO:
+        info = dict()
+        itis = df.get_events('ITI_time')
+        info['ITI'] = itis[-1].value
+        sizes = df.get_events('stim_size')
+        info['stimsize'] = sizes[-1].value
             #pix_evs = df.get_events('#pixelClockCode')
-        return pixelevents, stimevents, trialevents, trigg_times
+        return pixelevents, stimevents, trialevents, trigg_times, info
 
 
 def get_timekey(item):
@@ -647,7 +652,7 @@ for mwfile in mw_files:
     if stimtype=='bar':
         pevs, runs, trigg_times, info = get_bar_events(dfns, stimtype=stimtype)
     else:
-        pevs, ievs, tevs, trigg_times = get_stimulus_events(dfns, stimtype=stimtype)
+        pevs, ievs, tevs, trigg_times, info = get_stimulus_events(dfns, stimtype=stimtype)
 
     if len(pevs) > 1:
         pevs = [item for sublist in pevs for item in sublist]
@@ -674,7 +679,25 @@ for mwfile in mw_files:
         print "Expected %i pixel events, missing %i pevs." % (nexpected_pevs, nexpected_pevs-len(pevs))
         # on FLASH protocols, first real iamge event is 41
         print "Found %i conditions, corresponding to %i TIFFs." % (len(runs), len(trigg_times))
+        
+        stimnames = ['left', 'right', 'top', 'bottom']
+ 
+        # GET TRIAL INFO FOR DB:
+        trial_list = [(runs[k].ordernum, k) for k in runs.keys()]
+        trial_list.sort(key=lambda x: x[0]) 
+        trial = dict((i+1, dict()) for i in range(len(runs)))
 
+        for trialidx,mvtrial in enumerate(trial_list):
+            mvname = mvtrial[1]
+            trialnum = trialidx + 1
+            trial[trialnum]['start_time_ms'] = round(runs[mvname].times[0][0]/1E3)
+            trial[trialnum]['end_time_ms'] = round(runs[mvname].times[-1][0]/1E3)
+            stimname = [i for i in stimnames if i in mvname][0]
+            stimsize = info['target_freq']
+            trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': runs[mvname].times[0][1], 'scale': stimsize}
+            trial[trialnum]['stim_on_times'] = round(runs[mvname].times[0][0]/1E3)
+            trial[trialnum]['stim_off_times'] = round(runs[mvname].times[-1][0]/1E3)
+    
     else:
         ievs = ievs[0]
         print "Found %i image trials." % len(ievs)
@@ -684,8 +707,33 @@ for mwfile in mw_files:
         #   ievs.sort(key=operator.itemgetter(1))
 
         print "Found %i stimulus update events across trials." % len(tevs)
-
         print "Expecting %i TIFFs." % len(trigg_times)
+       
+        # GET TRIAL INFO FOR DB:
+        trial = dict((i+1, dict()) for i in range(len(ievs)))
+        ievs = sorted(ievs, key=get_timekey)
+        tevs = sorted(tevs, key=get_timekey)
+        runstart_time = tevs[0].time
+        for trialidx,iev in enumerate(sorted(ievs, key=get_timekey)):
+            trialnum = trialidx + 1
+            blankidx = trialidx*2 + 1
+            trial[trialnum]['start_time_ms'] = round(iev.time/1E3)
+            trial[trialnum]['end_time_ms'] = round((tevs[blankidx].time + info['ITI'])/1E3)
+            ori = iev.value[1]['rotation']
+            sf = round(iev.value[1]['frequency'], 2)
+            stimname = 'grating-ori-%i-sf-%f' % (ori, sf)
+            stimpos = [iev.value[1]['xoffset'], iev.value[1]['yoffset']]
+            stimsize = iev.value[1]['height']
+            trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimpos, 'scale': stimsize}
+            trial[trialnum]['stim_on_times'] = round((iev.time - runstart_time)/1E3)
+            trial[trialnum]['stim_off_times'] = round((tevs[blankidx].time - runstart_time)/1E3)
+
+    # save trial info as pkl for easyloading: 
+    trialinfo_fn = 'trial_info.pkl'
+    with open(os.path.join(source_dir, 'mw_data', trialinfo_fn), 'wb') as f:
+	pkl.dump(trial, f, protocol=pkl.HIGHEST_PROTOCOL)
+    f.close()
+    
 
     # May need to fix this:
     print "Each chunk duration is: ", [(t[1].time - t[0].time)/1E6 for t in trigg_times]
@@ -721,7 +769,7 @@ for mwfile in mw_files:
             # # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
             # scipy.io.savemat(os.path.join(source_dir, 'mw_data', tif_fn), mdict=pydict)
             # print os.path.join(source_dir, 'mw_data', tif_fn)
-
+        
     elif stimtype == 'image':
         all_ims = [i.value[1]['name'] for i in ievs]
         image_ids = sorted(list(set(all_ims)))
