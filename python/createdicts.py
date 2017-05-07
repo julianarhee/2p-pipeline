@@ -137,11 +137,14 @@ def get_run_info(s_uuid, run_name, runmeta, run_num=0):
     return run_info
 
 
-def get_trials(r_uuid, run_name, tiffs, runmeta, outputpath):
+def get_trials(run_info, runmeta, outputpath):
 
     trials = []
+    
+    # Get associated TIFFs in run:
+    tiffs = run_info['tiffs']
 
-   # get all trial info:
+    # get all trial info:
     if runmeta['stimType']=='bar':
         # just need to count each file in current run.
         tiffs.sort(key=lambda x: x[1])
@@ -167,7 +170,7 @@ def get_trials(r_uuid, run_name, tiffs, runmeta, outputpath):
     return trials
 
 
-def get_cell_info(run_name, run_info, runmeta, dstruct):
+def get_cell_info(run_info, runmeta, dstruct):
     nrois = dstruct['nRois'] # todo:  this assumes that ALL runs have the same ROIs (which we want eventually, but need alignment for)
     maskmat = h5py.File(dstruct['maskarrayPath']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
     tmpmask = np.empty(maskmat['masks'].shape)
@@ -185,7 +188,7 @@ def get_cell_info(run_name, run_info, runmeta, dstruct):
     tmp = dict((k, {'id': str(uuid.uuid4())}) for k,v in cell_info.iteritems())
     cell_info.update(tmp)
     for k in cell_info.keys():
-        cell_info[k].update(run=run_info[run_name])
+        cell_info[k].update(run=run_info['id'])
         cell_info[k].update(mask=maskarray[k])
 
     return cell_info
@@ -230,6 +233,19 @@ a_uuid = master.keys()[-1]
 session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
 
 
+# Save dicts to session path:
+dictpath = os.path.join(sessionpath, 'dicts')
+if not os.path.exists(dictpath):
+    os.mkdir(dictpath)
+
+session_fn = 'session_info_%s.pkl' % animal
+with open(os.path.join(dictpath, session_fn), 'wb') as f:
+    pkl.dump(session_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+f.close()
+
+
+
+
 # Run Info:
 # ----------------------------------------------------------------------------
 # There can (but need not be) multiple runs per session. A given run may have
@@ -237,6 +253,9 @@ session_info =  get_session_info(master[a_uuid], date, start_time, run_list, mic
 
 run_info = dict()
 for runidx,run in enumerate(session_info['runs']):
+    if run=='gratingsFinalMask2':
+        continue
+
     runpath = os.path.join(source, session, run)
     runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
     runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
@@ -249,6 +268,18 @@ for runidx,run in enumerate(session_info['runs']):
     
     run_info[run] = get_run_info(session_info['id'], run, runmeta, runidx)
  
+# Turn run_info into sth that can be indexed by r_uuid:
+RUNS = dict()
+for run in run_info.keys():
+    r_uuid = run_info[run]['id']
+    RUNS[r_uuid] = dict((k, v) for k,v in run_info[run].iteritems())
+
+run_fn = 'run_info.pkl'
+with open(os.path.join(dictpath, run_fn), 'wb') as f:
+    pkl.dump(RUNS, f, protocol=pkl.HIGHEST_PROTOCOL)
+f.close()
+
+
 
 # Cell / Trial Info:
 # ----------------------------------------------------------------------------
@@ -257,13 +288,8 @@ for runidx,run in enumerate(session_info['runs']):
 # grabbing cell info (time courses, trials, etc.) within a given run, so we
 # grab all that info by providing some run.
 
-curr_run = run_info.keys()[0] # Just choose this one for now, but should be in argsin.
-#curr_run = run_info.keys()[-1] # test gratings
-
-r_uuid = run_info[curr_run]['id']
-run_name = run_info[curr_run]['run_name']
-tiff_list = run_info[curr_run]['tiffs']
-
+curr_run_id = RUNS.keys()[0] # Just choose this one for now, but should be in argsin.
+curr_run_info = RUNS[curr_run_id]
 
 # -- Load a specific analysis info/structs (group of mat files indexed by
 # datastruct_idx for specific run:
@@ -276,12 +302,12 @@ didxs['retinotopyFinal'] = 4
 didxs['retinotopyFinalMask'] = 8 
 didxs['gratingsFinalMask2'] = 2 
 
-runpath = os.path.join(source, session, curr_run)
+runpath = os.path.join(source, session, RUNS[curr_run_id]['run_name'])
 runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
 runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
 runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
 
-datastruct_idx = didxs[curr_run]
+datastruct_idx = didxs[RUNS[curr_run_id]['run_name']]
 
 datastruct = 'datastruct_%03d' % datastruct_idx
 dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
@@ -291,7 +317,16 @@ dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
 
 outputpath = dstruct['outputDir']
 
-trial_list = get_trials(r_uuid, run_name, tiff_list, runmeta, outputpath)
+trial_list = get_trials(curr_run_info, runmeta, outputpath)
+
+# Save to .PKL:
+triallist_fn = 'trial_list.pkl'
+with open(os.path.join(dictpath, triallist_fn), 'wb') as f:
+    pkl.dump(trial_list, f, protocol=pkl.HIGHEST_PROTOCOL)
+f.close()
+
+
+
 
 
 # Get trial info:
@@ -302,43 +337,71 @@ with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
 
 # trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
 trial_info = dict()
-for t in sorted([tid[0] for tid in trial_list]):
-    trial_info[t] = dict()
-    trial_info[t]['id'] = trial_list[t-1][1]
-    trial_info[t]['run'] = r_uuid
+trial_list.sort(key=lambda x: x[0])
+for t in trial_list:
+    t_uuid = t[1]
+    trial_info[t_uuid] = dict()
+    trial_info[t_uuid]['id'] = t_uuid #trial_list[t-1][1]
+    trial_info[t_uuid]['run'] = curr_run_info['id'] 
     if dstruct['stimType']=='bar':
-        trialnum = t
+        trialnum = t[0]
     else:
-        trialnum = t+1
+        trialnum = t[0]+1
 
-    trial_info[t]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
-    trial_info[t]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
-    trial_info[t]['stimuli'] = tinfo[trialnum]['stimuli']
-    trial_info[t]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
-    trial_info[t]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
+    trial_info[t_uuid]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
+    trial_info[t_uuid]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
+    trial_info[t_uuid]['stimuli'] = tinfo[trialnum]['stimuli']
+    trial_info[t_uuid]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
+    trial_info[t_uuid]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
+    trial_info[t_uuid]['idx_in_run'] = t[0]
+
+del tinfo
+
+
+# Save to .PKL:
+trialinfo_fn = 'trial_info.pkl'
+with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
+    pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+f.close()
+
+
 
 
 # Get cell info:
 # ----------------------------------------------------------------------------
-cell_info = get_cell_info(run_name, run_info, runmeta, dstruct)
+cell_info = get_cell_info(curr_run_info, runmeta, dstruct)
 
-cellidx = 0
-trialidx = 1
-c_uuid = cell_info[cellidx]['id']
-t_uuid = trial_info[trialidx]['id']
+# Make c_uuids as keys for cell_info:
+CELLS = dict()
+for cell in cell_info.keys():
+    c_uuid = cell_info[cell]['id']
+    CELLS[r_uuid] = dict((k, v) for k,v in cell_info[cell].iteritems())
 
-def get_functional_time_course(c_uuid, r_uuid, channel, trial, cell_info, trial_info, run_info, dstruct):
-    trialidx = [i for i in trial_info.keys() if trial_info[i]['id']==t_uuid][0]
-    
-    # Get correct TIFF for chosen trial/run:
-    fileidx = run_info[run_name]['tiffs'][trialidx-1][1]
-    
-    # Load 3d traces:
-    tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][fileidx-1]))
-    rawmat = tracestruct['rawTraces']
-    data = rawmat[:,cellidx]
+cellinfo_fn = 'cell_info.pkl'
+with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
+    pkl.dump(CELLS, f, protocol=pkl.HIGHEST_PROTOCOL)
+f.close()
 
-    return data
-
+#
+#
+#
+#cellidx = 0
+#trialidx = 1
+#c_uuid = cell_info[cellidx]['id']
+#t_uuid = trial_info[trialidx]['id']
+#
+#def get_functional_time_course(c_uuid, r_uuid, channel, trial, cell_info, trial_info, run_info, dstruct):
+#    trialidx = [i for i in trial_info.keys() if trial_info[i]['id']==t_uuid][0]
+#    
+#    # Get correct TIFF for chosen trial/run:
+#    fileidx = run_info[run_name]['tiffs'][trialidx-1][1]
+#    
+#    # Load 3d traces:
+#    tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][fileidx-1]))
+#    rawmat = tracestruct['rawTraces']
+#    data = rawmat[:,cellidx]
+#
+#    return data
+#
    
 
