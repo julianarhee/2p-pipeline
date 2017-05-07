@@ -457,7 +457,7 @@ def get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct,
  
     if len(runs[r_uuid]['tiffs']) > 1:
         # Get correct TIFF for chosen trial/run:
-        file_idx_in_run = trial_info[trial_id]['idx_in_run']
+        file_idx_in_run = trial_info[r_uuid][trial_id]['idx_in_run']
     
         # Load 3d traces:
         tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][file_idx_in_run-1]))
