@@ -339,69 +339,71 @@ didxs['retinotopyFinal'] = 4
 didxs['retinotopyFinalMask'] = 8 
 didxs['gratingsFinalMask2'] = 2 
 
-runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
-runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
-runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
-runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
-
-datastruct_idx = didxs[runs[curr_run_id]['run_name']]
-
-datastruct = 'datastruct_%03d' % datastruct_idx
-dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
-dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
-
-dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
-
-outputpath = dstruct['outputDir']
-
-
-
-trialinfo_fn = 'trial_info.pkl'
 
 if create_new:
-    trial_list = get_trials(curr_run_info, runmeta, outputpath)
-
-    # Save to .PKL:
-    triallist_fn = 'trial_list.pkl'
-    with open(os.path.join(dictpath, triallist_fn), 'wb') as f:
-        pkl.dump(trial_list, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-
-    # Get trial info:
-    # ----------------------------------------------------------------------------
-    tinfo_fn = 'trial_info.pkl'
-    with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
-        tinfo = pkl.load(f)
-
-    # trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
     trial_info = dict()
-    trial_list.sort(key=lambda x: x[0])
-    for t in trial_list:
-        t_uuid = t[1]
-        trial_info[t_uuid] = dict()
-        trial_info[t_uuid]['id'] = t_uuid #trial_list[t-1][1]
-        trial_info[t_uuid]['run'] = curr_run_info['id'] 
-        if dstruct['stimType']=='bar':
-            trialnum = t[0]
-        else:
-            trialnum = t[0]+1
+    for curr_run_id in runs.keys():
+        curr_run_info = runs[curr_run_id]
+        trial_info[curr_run_id] = dict() 
+        runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
+        runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
+        runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
+        runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
 
-        trial_info[t_uuid]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
-        trial_info[t_uuid]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
-        trial_info[t_uuid]['stimuli'] = tinfo[trialnum]['stimuli']
-        trial_info[t_uuid]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
-        trial_info[t_uuid]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
-        trial_info[t_uuid]['idx_in_run'] = t[0]
+        datastruct_idx = didxs[runs[curr_run_id]['run_name']]
 
-    del tinfo
+        datastruct = 'datastruct_%03d' % datastruct_idx
+        dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
+        dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
+
+        dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
+        outputpath = dstruct['outputDir']
 
 
-    # Save to .PKL:
-    with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
-        pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-    
-    print "Done:  Created TRIAL INFO dict."
+        trial_list = get_trials(curr_run_info, runmeta, outputpath)
+
+        # Save to .PKL:
+        triallist_fn = 'trial_list_%s.pkl' % curr_run_id
+        with open(os.path.join(dictpath, triallist_fn), 'wb') as f:
+            pkl.dump(trial_list, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+
+        # Get trial info:
+        # ----------------------------------------------------------------------------
+        tinfo_fn = 'trial_info.pkl'
+        with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
+            tinfo = pkl.load(f)
+
+        # trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
+        trial_list.sort(key=lambda x: x[0])
+        for t in trial_list:
+            t_uuid = t[1]
+            trial_info[curr_run_id][t_uuid] = dict()
+            trial_info[curr_run_id][t_uuid]['id'] = t_uuid #trial_list[t-1][1]
+            trial_info[curr_run_id][t_uuid]['run'] = curr_run_info['id'] 
+            if dstruct['stimType']=='bar':
+                trialnum = t[0]
+            else:
+                trialnum = t[0]+1
+
+            trial_info[curr_run_id][t_uuid]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
+            trial_info[curr_run_id][t_uuid]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
+            trial_info[curr_run_id][t_uuid]['stimuli'] = tinfo[trialnum]['stimuli']
+            trial_info[curr_run_id][t_uuid]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
+            trial_info[curr_run_id][t_uuid]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
+            trial_info[curr_run_id][t_uuid]['idx_in_run'] = t[0]
+
+        del tinfo
+
+
+        # Save to .PKL:
+        trialinfo_fn = 'trial_info.pkl'
+ 
+        with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
+            pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+        
+        print "Done:  Created TRIAL INFO dict."
 
 else:
     # LOAD:
