@@ -484,7 +484,7 @@ if create_new:
     timecourses = dict((c_uuid, dict()) for c_uuid in cells.keys())
     for r_uuid in runs.keys():
         timecourses[c_uuid][r_uuid] = dict()
-        for t_uuid in trial_info.keys():
+        for t_uuid in trial_info[r_uuid].keys():
             for c_uuid in cells.keys():
                 timecourses[c_uuid][r_uuid][t_uuid] = get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct, trial=True, trial_id=t_uuid)    
 
