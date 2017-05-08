@@ -182,7 +182,11 @@ def get_cell_info(run_info, runmeta, dstruct):
     
     maskarray = dict((roi, dict()) for roi in range(nrois))
     for roi in range(nrois):
-        maskarray[roi] = np.reshape(masks[:,roi], volsize, order='F')
+        # maskarray[roi] = np.reshape(masks[:,roi], volsize, order='F')
+        # Make sparse, bec otherwise too huge:
+        maskarray[roi] = pd.SparseArray(masks[:,roi])
+        # To return full 3d mask:  
+        # mask = np.reshape(maskarray[roi].to_dense(), [x, y, z], order='F')
 
     # todo:  combine ALL slice rois and convert to master list of 3D coords: (0, (x0, y0, z0)), (1, (x1,y1,z1), ... (N, (xN, yN, zN))
     cell_info = dict.fromkeys([i for i in maskarray.keys()], dict()) 
@@ -195,9 +199,26 @@ def get_cell_info(run_info, runmeta, dstruct):
     return cell_info
 
 
+def get_datastruct_for_run(source, session, run_name):
+    runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
+    runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
+    runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
+    runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
+
+    datastruct_idx = didxs[runs[curr_run_id]['run_name']]
+
+    datastruct = 'datastruct_%03d' % datastruct_idx
+    dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
+    dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
+
+    dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
+
+    return runmeta, dstruct               
+
+
 def get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct, trial=True, channel=1, trial_id=''):
 
-    cellidx = cells[c_uuid]['cell_idx']
+    cellidx = cells[r_uuid][c_uuid]['cell_idx']
  
     if len(runs[r_uuid]['tiffs']) > 1:
         # Get correct TIFF for chosen trial/run:
@@ -233,7 +254,7 @@ def main():
     animal = 'R2B1'
     receipt_date = '2016-12-30'
     create_new = True 
-    get_time = False
+    get_time = True
 
 
     # ----------------------------------------------------------------------------
@@ -323,11 +344,13 @@ def main():
             if run=='gratingsFinalMask2':
                 continue
 
-            runpath = os.path.join(source, session, run)
-            runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
-            runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
-            runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
-            
+            runmeta, [] = get_datastruct_for_run(source, session, run)
+
+#            runpath = os.path.join(source, session, run)
+#            runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
+#            runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
+#            runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
+#            
             # todo:  FIX createMetaStruct.m s.t. new fields are saved:
             runmeta['volumesize'] = [500, 500, 210]
             runmeta['volumerate'] = 4.11
@@ -349,7 +372,7 @@ def main():
 
     else:
         # LOAD:
-        with open(os.path.join(dictpath, runinfo_fn), 'rb') as f:
+        with open(os.path.join(dictpath, run_fn), 'rb') as f:
             runs = pkl.load(f)
 
 
@@ -385,18 +408,8 @@ def main():
         for curr_run_id in runs.keys():
             curr_run_info = runs[curr_run_id]
             trial_info[curr_run_id] = dict() 
-            runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
-            runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
-            runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
-            runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
 
-            datastruct_idx = didxs[runs[curr_run_id]['run_name']]
-
-            datastruct = 'datastruct_%03d' % datastruct_idx
-            dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
-            dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
-
-            dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
+            runmeta, dstruct = get_datastruct_for_run(source, session, runs[curr_run_id]['run_name'])
             outputpath = dstruct['outputDir']
 
 
@@ -459,20 +472,25 @@ def main():
     cellinfo_fn = 'cell_info.pkl'
 
     if create_new:
-        cell_info = get_cell_info(curr_run_info, runmeta, dstruct)
+        cells = dict((k, dict()) for k in runs.keys())
+        for curr_run_id in runs.keys():
+            
+            #cellinfo_fn = 'cells_%s.pkl' % runs[curr_run_id]['run_name']
 
-        # Make c_uuids as keys for cell_info:
-        cells = dict()
-        for cell in cell_info.keys():
-            c_uuid = cell_info[cell]['id']
-            cells[c_uuid] = dict((k, v) for k,v in cell_info[cell].iteritems())
-            cells[c_uuid]['cell_idx'] = cell
+            curr_run_info = runs[curr_run_id]
 
-        with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
-            pkl.dump(cells, f, protocol=pkl.HIGHEST_PROTOCOL)
-        f.close()
-        
+	    runmeta, dstruct = get_datastruct_for_run(source, session, runs[curr_run_id]['run_name'])
 
+	    cell_info = get_cell_info(curr_run_info, runmeta, dstruct)
+            for cell in cell_info.keys():
+                c_uuid = cell_info[cell]['id']
+	        cells[curr_run_id][c_uuid] = dict((k, v) for k,v in cell_info[cell].iteritems())
+	        cells[curr_run_id][c_uuid]['cell_idx'] = cell
+
+	with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
+	    pkl.dump(cells, f, protocol=pkl.HIGHEST_PROTOCOL)
+	f.close()
+	
         print "Done:  Created CELLS dict."
 
     else:
