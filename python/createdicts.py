@@ -7,15 +7,15 @@ import numpy as np
 import cPickle as pkl
 import h5py
 
-# optparse for user-input:
-source = '/nas/volume1/2photon/RESDATA/TEFO'
-session = '20161219_JR030W'
-#experiment = 'gratingsFinalMask2'
-# datastruct_idx = 1
-animal = 'R2B1'
-receipt_date = '2016-12-30'
-create_new = True 
-
+## optparse for user-input:
+#source = '/nas/volume1/2photon/RESDATA/TEFO'
+#session = '20161219_JR030W'
+##experiment = 'gratingsFinalMask2'
+## datastruct_idx = 1
+#animal = 'R2B1'
+#receipt_date = '2016-12-30'
+#create_new = True 
+#
 # todo:  parse everything by session, instead of in bulk (i.e., all animals)...
 # animals = ['R2B1', 'R2B2']
 # receipt_dates = ['2016-12-20', '2016-12-30']
@@ -195,262 +195,6 @@ def get_cell_info(run_info, runmeta, dstruct):
     return cell_info
 
 
-
-
-
-# ----------------------------------------------------------------------------
-# TEST OUTPUT: 
-# ----------------------------------------------------------------------------
-
-sessionpath = os.path.join(source, session)
-
-# Save dicts to session path:
-dictpath = os.path.join(sessionpath, 'dicts')
-if not os.path.exists(dictpath):
-    os.mkdir(dictpath)
-
-print "---------------------------------------------------------------------"
-print "Creating new dicts..."
-print "New dicts will be saved to:"
-print "PATH: ", dictpath
-print "---------------------------------------------------------------------"
-
-
-
-# Animal Info:
-# ----------------------------------------------------------------------------
-# Animal info (and subsequent sections) will be defined by whether this
-# script should be run on a per-animal or per-animal-per-session basis.
-
-animalinfo_fn = 'animal_info.pkl'
-if create_new:
-    master = get_animal_info(animal, receipt_date)
-    with open(os.path.join(dictpath, animalinfo_fn), 'wb') as f:
-        pkl.dump(master, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-    
-    print "Done:  Created INFO dict for %s." % animal
-    
-else:
-    with open(os.path.join(dictpath, animalinfo_fn), 'rb') as f:
-        master = pkl.load(f)
-
-
-# Session Info: 
-# ----------------------------------------------------------------------------
-# There can (but need not be) multiple sessions per animal. Each session can 
-# be identified by some combination of date and microscope type.
-
-a_uuid = [k for k in master.keys() if master[k]['name']==animal][0]
-
-session_fn = 'session_info_%s.pkl' % animal
-if create_new:
-    # Get all the meta info:
-    sessionmeta_fn =  os.listdir(sessionpath)
-    sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
-
-    sessionmeta = loadmat(os.path.join(sessionpath, sessionmeta_fn))
-
-    date = sessionmeta['date']
-    start_time = sessionmeta['time']
-    microscope = sessionmeta['scope']
-    run_list = sessionmeta['runs']
-
-    a_uuid = master.keys()[-1]
-    session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
-
-
-    with open(os.path.join(dictpath, session_fn), 'wb') as f:
-        pkl.dump(session_info, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-
-    print "Done:  Created SESSION INFO dict."
-
-else:
-    # LOAD animal's session_info:
-    with open(os.path.join(dictpath, session_fn), 'rb') as f:
-        session_info = pkl.load(f)
-
-
-
-# Run Info:
-# ----------------------------------------------------------------------------
-# There can (but need not be) multiple runs per session. A given run may have
-# a single-trial or multi-trial format.
-
-run_fn = 'run_info.pkl'
-
-if create_new:
-    run_info = dict()
-    for runidx,run in enumerate(session_info['runs']):
-        if run=='gratingsFinalMask2':
-            continue
-
-        runpath = os.path.join(source, session, run)
-        runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
-        runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
-        runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
-        
-        # todo:  FIX createMetaStruct.m s.t. new fields are saved:
-        runmeta['volumesize'] = [500, 500, 210]
-        runmeta['volumerate'] = 4.11
-        runmeta['stages_um'] = [12568, 52037, 59050] # MANUAL ENTRY (not incorp. in SI & pipeline yet)
-        
-        run_info[run] = get_run_info(session_info['id'], run, runmeta, runidx)
-     
-    # Turn run_info into sth that can be indexed by r_uuid:
-    runs = dict()
-    for run in run_info.keys():
-        r_uuid = run_info[run]['id']
-        runs[r_uuid] = dict((k, v) for k,v in run_info[run].iteritems())
-
-    with open(os.path.join(dictpath, run_fn), 'wb') as f:
-        pkl.dump(runs, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-
-    print "Done:  Created RUNS dict."
-
-else:
-    # LOAD:
-    with open(os.path.join(dictpath, runinfo_fn), 'rb') as f:
-        runs = pkl.load(f)
-
-
-
-
-# Cell / Trial Info:
-# ----------------------------------------------------------------------------
-# All runs should have the same ROIs, so that comparing cell activity across
-# different runs is possible.  However, for now, am assuming that we're only
-# grabbing cell info (time courses, trials, etc.) within a given run, so we
-# grab all that info by providing some run.
-
-curr_run_id = runs.keys()[0] # Just choose this one for now, but should be in argsin.
-curr_run_info = runs[curr_run_id]
-
-# -- Load a specific analysis info/structs (group of mat files indexed by
-# datastruct_idx for specific run:
-
-# todo:  We don't know which analysis-method / roi-segmentation we are using
-# yet, so for now, just hard-code didxs that are reasonable to use for testing
-# a set of runs:
-didxs = dict()
-didxs['retinotopyFinal'] = 4 
-didxs['retinotopyFinalMask'] = 8 
-didxs['gratingsFinalMask2'] = 2 
-
-
-if create_new:
-    trial_info = dict()
-    for curr_run_id in runs.keys():
-        curr_run_info = runs[curr_run_id]
-        trial_info[curr_run_id] = dict() 
-        runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
-        runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
-        runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
-        runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
-
-        datastruct_idx = didxs[runs[curr_run_id]['run_name']]
-
-        datastruct = 'datastruct_%03d' % datastruct_idx
-        dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
-        dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
-
-        dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
-        outputpath = dstruct['outputDir']
-
-
-        trial_list = get_trials(curr_run_info, runmeta, outputpath)
-
-        # Save to .PKL:
-        triallist_fn = 'trial_list_%s.pkl' % curr_run_id
-        with open(os.path.join(dictpath, triallist_fn), 'wb') as f:
-            pkl.dump(trial_list, f, protocol=pkl.HIGHEST_PROTOCOL)
-        f.close()
-
-        # Get trial info:
-        # ----------------------------------------------------------------------------
-        tinfo_fn = 'trial_info.pkl'
-        with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
-            tinfo = pkl.load(f)
-
-        # trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
-        trial_list.sort(key=lambda x: x[0])
-        for t in trial_list:
-            t_uuid = t[1]
-            trial_info[curr_run_id][t_uuid] = dict()
-            trial_info[curr_run_id][t_uuid]['id'] = t_uuid #trial_list[t-1][1]
-            trial_info[curr_run_id][t_uuid]['run'] = curr_run_info['id'] 
-            if dstruct['stimType']=='bar':
-                trialnum = t[0]
-            else:
-                trialnum = t[0]+1
-
-            trial_info[curr_run_id][t_uuid]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
-            trial_info[curr_run_id][t_uuid]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
-            trial_info[curr_run_id][t_uuid]['stimuli'] = tinfo[trialnum]['stimuli']
-            trial_info[curr_run_id][t_uuid]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
-            trial_info[curr_run_id][t_uuid]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
-            trial_info[curr_run_id][t_uuid]['idx_in_run'] = t[0]
-
-        del tinfo
-
-
-        # Save to .PKL:
-        trialinfo_fn = 'trial_info.pkl'
- 
-        with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
-            pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
-        f.close()
-        
-        print "Done:  Created TRIAL INFO dict."
-
-else:
-    # LOAD:
-    with open(os.path.join(dictpath, trialinfo_fn), 'rb') as f:
-        trial_info = pkl.load(f)
-
-
-
-
-# Get cell info:
-# ----------------------------------------------------------------------------
-
-cellinfo_fn = 'cell_info.pkl'
-
-if create_new:
-    cell_info = get_cell_info(curr_run_info, runmeta, dstruct)
-
-    # Make c_uuids as keys for cell_info:
-    cells = dict()
-    for cell in cell_info.keys():
-        c_uuid = cell_info[cell]['id']
-        cells[c_uuid] = dict((k, v) for k,v in cell_info[cell].iteritems())
-        cells[c_uuid]['cell_idx'] = cell
-
-    with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
-        pkl.dump(cells, f, protocol=pkl.HIGHEST_PROTOCOL)
-    f.close()
-    
-
-    print "Done:  Created CELLS dict."
-
-else:
-    # LOAD:
-    with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
-        cells = pkl.load(f)
-
-
-
-# ----------------------------------------------------------------------------
-# LOAD DICTS AND EXTRACT CELL INFO:
-# ----------------------------------------------------------------------------
-# Choose example cell/run:
-#c_uuid = cells.keys()[0]
-#r_uuid = runs.keys()[0]
-#t_uuid = trial_info.keys()[0]
-
-
 def get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct, trial=True, channel=1, trial_id=''):
 
     cellidx = cells[c_uuid]['cell_idx']
@@ -478,28 +222,301 @@ def get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct,
         
     return data
 
-timecourses_fn = 'timecourses.pkl'   
 
-if create_new:
-    timecourses = dict((c_uuid, dict()) for c_uuid in cells.keys())
-    for r_uuid in runs.keys():
-        timecourses[c_uuid][r_uuid] = dict()
-        for t_uuid in trial_info[r_uuid].keys():
-            for c_uuid in cells.keys():
-                timecourses[c_uuid][r_uuid][t_uuid] = get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct, trial=True, trial_id=t_uuid)    
+def main():
+
+    # optparse for user-input:
+    source = '/nas/volume1/2photon/RESDATA/TEFO'
+    session = '20161219_JR030W'
+    #experiment = 'gratingsFinalMask2'
+    # datastruct_idx = 1
+    animal = 'R2B1'
+    receipt_date = '2016-12-30'
+    create_new = True 
+    get_time = False
 
 
-    with open(os.path.join(dictpath, timecourses_fn), 'wb') as f:
-        pkl.dump(timecourses, f, protocol=pkl.HIGHEST_PROTOCOL)
+    # ----------------------------------------------------------------------------
+    # TEST OUTPUT: 
+    # ----------------------------------------------------------------------------
+
+    sessionpath = os.path.join(source, session)
+
+    # Save dicts to session path:
+    dictpath = os.path.join(sessionpath, 'dicts')
+    if not os.path.exists(dictpath):
+        os.mkdir(dictpath)
+
+    print "---------------------------------------------------------------------"
+    print "Creating new dicts..."
+    print "New dicts will be saved to:"
+    print "PATH: ", dictpath
+    print "---------------------------------------------------------------------"
+
+
+
+    # Animal Info:
+    # ----------------------------------------------------------------------------
+    # Animal info (and subsequent sections) will be defined by whether this
+    # script should be run on a per-animal or per-animal-per-session basis.
+
+    animalinfo_fn = 'animal_info.pkl'
+    if create_new:
+        master = get_animal_info(animal, receipt_date)
+        with open(os.path.join(dictpath, animalinfo_fn), 'wb') as f:
+            pkl.dump(master, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+        
+        print "Done:  Created INFO dict for %s." % animal
+        
+    else:
+        with open(os.path.join(dictpath, animalinfo_fn), 'rb') as f:
+            master = pkl.load(f)
+
+
+    # Session Info: 
+    # ----------------------------------------------------------------------------
+    # There can (but need not be) multiple sessions per animal. Each session can 
+    # be identified by some combination of date and microscope type.
+
+    a_uuid = [k for k in master.keys() if master[k]['name']==animal][0]
+
+    session_fn = 'session_info_%s.pkl' % animal
+    if create_new:
+        # Get all the meta info:
+        sessionmeta_fn =  os.listdir(sessionpath)
+        sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
+
+        sessionmeta = loadmat(os.path.join(sessionpath, sessionmeta_fn))
+
+        date = sessionmeta['date']
+        start_time = sessionmeta['time']
+        microscope = sessionmeta['scope']
+        run_list = sessionmeta['runs']
+
+        session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
+
+
+        with open(os.path.join(dictpath, session_fn), 'wb') as f:
+            pkl.dump(session_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+
+        print "Done:  Created SESSION INFO dict."
+
+    else:
+        # LOAD animal's session_info:
+        with open(os.path.join(dictpath, session_fn), 'rb') as f:
+            session_info = pkl.load(f)
+
+
+
+    # Run Info:
+    # ----------------------------------------------------------------------------
+    # There can (but need not be) multiple runs per session. A given run may have
+    # a single-trial or multi-trial format.
+
+    run_fn = 'run_info.pkl'
+
+    if create_new:
+        run_info = dict()
+        for runidx,run in enumerate(session_info['runs']):
+            if run=='gratingsFinalMask2':
+                continue
+
+            runpath = os.path.join(source, session, run)
+            runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
+            runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
+            runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
+            
+            # todo:  FIX createMetaStruct.m s.t. new fields are saved:
+            runmeta['volumesize'] = [500, 500, 210]
+            runmeta['volumerate'] = 4.11
+            runmeta['stages_um'] = [12568, 52037, 59050] # MANUAL ENTRY (not incorp. in SI & pipeline yet)
+            
+            run_info[run] = get_run_info(session_info['id'], run, runmeta, runidx)
+         
+        # Turn run_info into sth that can be indexed by r_uuid:
+        runs = dict()
+        for run in run_info.keys():
+            r_uuid = run_info[run]['id']
+            runs[r_uuid] = dict((k, v) for k,v in run_info[run].iteritems())
+
+        with open(os.path.join(dictpath, run_fn), 'wb') as f:
+            pkl.dump(runs, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+
+        print "Done:  Created RUNS dict."
+
+    else:
+        # LOAD:
+        with open(os.path.join(dictpath, runinfo_fn), 'rb') as f:
+            runs = pkl.load(f)
+
+
+
+
+    # Cell / Trial Info:
+    # ----------------------------------------------------------------------------
+    # All runs should have the same ROIs, so that comparing cell activity across
+    # different runs is possible.  However, for now, am assuming that we're only
+    # grabbing cell info (time courses, trials, etc.) within a given run, so we
+    # grab all that info by providing some run.
+
+    # curr_run_id = runs.keys()[0] # Just choose this one for now, but should be in argsin.
+    # curr_run_info = runs[curr_run_id]
+
+    # -- Load a specific analysis info/structs (group of mat files indexed by
+    # datastruct_idx for specific run:
+
+    # todo:  We don't know which analysis-method / roi-segmentation we are using
+    # yet, so for now, just hard-code didxs that are reasonable to use for testing
+    # a set of runs:
+    didxs = dict()
+    didxs['retinotopyFinal'] = 4 
+    didxs['retinotopyFinalMask'] = 8 
+    didxs['gratingsFinalMask2'] = 2 
+    dstruct_idxs_fn = 'dstruct_idxs.pkl'
+    with open(os.path.join(dictpath, dstruct_idxs_fn), 'wb') as f:
+        pkl.dump(didxs, f, protocol=pkl.HIGHEST_PROTOCOL)
     f.close()
-    
-    print "Done:  Created TIMECOURSE dict."
 
-else:
-    # LOAD TRACES:
-    with open(os.path.join(dictpath, timecourses_fn), 'rb') as f:
-        timecourses = pkl.load(f)
+    if create_new:
+        trial_info = dict()
+        for curr_run_id in runs.keys():
+            curr_run_info = runs[curr_run_id]
+            trial_info[curr_run_id] = dict() 
+            runpath = os.path.join(source, session, runs[curr_run_id]['run_name'])
+            runmeta_fn = os.listdir(os.path.join(runpath, 'analysis', 'meta'))
+            runmeta_fn = [f for f in runmeta_fn if 'meta' in f and f.endswith('.mat')][0]
+            runmeta = loadmat(os.path.join(runpath, 'analysis', 'meta', runmeta_fn))
 
+            datastruct_idx = didxs[runs[curr_run_id]['run_name']]
+
+            datastruct = 'datastruct_%03d' % datastruct_idx
+            dstruct_fn = os.listdir(os.path.join(runpath,'analysis', datastruct))
+            dstruct_fn = [f for f in dstruct_fn if f.endswith('.mat')][0]
+
+            dstruct = loadmat(os.path.join(runpath, 'analysis', datastruct, dstruct_fn))
+            outputpath = dstruct['outputDir']
+
+
+            trial_list = get_trials(curr_run_info, runmeta, outputpath)
+
+            # Save to .PKL:
+            triallist_fn = 'trial_list_%s.pkl' % curr_run_id
+            with open(os.path.join(dictpath, triallist_fn), 'wb') as f:
+                pkl.dump(trial_list, f, protocol=pkl.HIGHEST_PROTOCOL)
+            f.close()
+
+            # Get trial info:
+            # ----------------------------------------------------------------------------
+            tinfo_fn = 'trial_info.pkl'
+            with open(os.path.join(runpath, 'mw_data', tinfo_fn), 'rb') as f:
+                tinfo = pkl.load(f)
+
+            # trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
+            trial_list.sort(key=lambda x: x[0])
+            for t in trial_list:
+                t_uuid = t[1]
+                trial_info[curr_run_id][t_uuid] = dict()
+                trial_info[curr_run_id][t_uuid]['id'] = t_uuid #trial_list[t-1][1]
+                trial_info[curr_run_id][t_uuid]['run'] = curr_run_info['id'] 
+                if dstruct['stimType']=='bar':
+                    trialnum = t[0]
+                else:
+                    trialnum = t[0]+1
+
+                trial_info[curr_run_id][t_uuid]['start_time_ms'] = tinfo[trialnum]['start_time_ms']
+                trial_info[curr_run_id][t_uuid]['end_time_ms'] = tinfo[trialnum]['end_time_ms']
+                trial_info[curr_run_id][t_uuid]['stimuli'] = tinfo[trialnum]['stimuli']
+                trial_info[curr_run_id][t_uuid]['stim_on_times'] = tinfo[trialnum]['stim_on_times']
+                trial_info[curr_run_id][t_uuid]['stim_off_times'] = tinfo[trialnum]['stim_off_times']
+                trial_info[curr_run_id][t_uuid]['idx_in_run'] = t[0]
+
+            del tinfo
+
+
+            # Save to .PKL:
+            trialinfo_fn = 'trial_info.pkl'
+     
+            with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
+                pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+            f.close()
+            
+            print "Done:  Created TRIAL INFO dict."
+
+    else:
+        # LOAD:
+        with open(os.path.join(dictpath, trialinfo_fn), 'rb') as f:
+            trial_info = pkl.load(f)
+
+
+
+
+    # Get cell info:
+    # ----------------------------------------------------------------------------
+
+    cellinfo_fn = 'cell_info.pkl'
+
+    if create_new:
+        cell_info = get_cell_info(curr_run_info, runmeta, dstruct)
+
+        # Make c_uuids as keys for cell_info:
+        cells = dict()
+        for cell in cell_info.keys():
+            c_uuid = cell_info[cell]['id']
+            cells[c_uuid] = dict((k, v) for k,v in cell_info[cell].iteritems())
+            cells[c_uuid]['cell_idx'] = cell
+
+        with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
+            pkl.dump(cells, f, protocol=pkl.HIGHEST_PROTOCOL)
+        f.close()
+        
+
+        print "Done:  Created CELLS dict."
+
+    else:
+        # LOAD:
+        with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
+            cells = pkl.load(f)
+
+
+
+    # ----------------------------------------------------------------------------
+    # LOAD DICTS AND EXTRACT CELL INFO:
+    # ----------------------------------------------------------------------------
+    # Choose example cell/run:
+    #c_uuid = cells.keys()[0]
+    #r_uuid = runs.keys()[0]
+    #t_uuid = trial_info.keys()[0]
+
+    if get_time:
+        timecourses_fn = 'timecourses.pkl'   
+
+        if create_new:
+            timecourses = dict((c_uuid, dict()) for c_uuid in cells.keys())
+            for r_uuid in runs.keys():
+                timecourses[c_uuid][r_uuid] = dict()
+                for t_uuid in trial_info[r_uuid].keys():
+                    for c_uuid in cells.keys():
+                        timecourses[c_uuid][r_uuid][t_uuid] = get_functional_time_course(c_uuid, r_uuid, cells, trial_info, runs, dstruct, trial=True, trial_id=t_uuid)    
+
+
+            with open(os.path.join(dictpath, timecourses_fn), 'wb') as f:
+                pkl.dump(timecourses, f, protocol=pkl.HIGHEST_PROTOCOL)
+            f.close()
+            
+            print "Done:  Created TIMECOURSE dict."
+
+        else:
+            # LOAD TRACES:
+            with open(os.path.join(dictpath, timecourses_fn), 'rb') as f:
+                timecourses = pkl.load(f)
+
+
+
+if __name__ == "__main__":
+    main()
 
 
 
