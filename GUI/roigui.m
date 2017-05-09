@@ -22,7 +22,7 @@ function varargout = roigui(varargin)
 
 % Edit the above text to modify the response to help roigui
 
-% Last Modified by GUIDE v2.5 03-May-2017 12:58:46
+% Last Modified by GUIDE v2.5 09-May-2017 16:32:15
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -214,12 +214,13 @@ set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
-if handles.stimShowAvg.Value
-    set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
-else
-    set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
-end
-handles.ax3.Children = flipud(handles.ax3.Children);
+    if handles.stimShowAvg.Value
+        set(handles.stimtrialmean, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    else
+        set(handles.stimtrials, 'ButtonDownFcn', @ax3_ButtonDownFcn);
+    end
+    handles.ax3.Children = flipud(handles.ax3.Children);
+
 end
 
 % [tmpP, tmpN,~]=fileparts(D.outputDir);
@@ -1549,7 +1550,7 @@ else
 
     if ~ismember(curr3Droi, roiIdxs)
         maskstruct3D = load(D.maskInfo.maskPaths{selectedFile});
-        correspondingSlice = maskstruct3D.file.centers(curr3Droi, 3);
+        correspondingSlice = maskstruct3D.centers(curr3Droi, 3);
         if correspondingSlice ~= selectedSliceIdx
             handles.currSlice.Value = correspondingSlice;
             newReference = 1;
@@ -1687,5 +1688,3 @@ handles.ax3.Children = flipud(handles.ax3.Children);
 end
 
 guidata(hObject,handles);
-
-
