@@ -1,6 +1,6 @@
 function sessionmeta = getSessionMeta(sessionpath, tefo)
 
-    runpaths = uipickfiles('FilterSpec', sessionpath);
+    runpaths = uipickfiles('FilterSpec', sessionpath)
 
     runlist = {};
     metapaths = {};

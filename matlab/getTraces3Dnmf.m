@@ -71,6 +71,12 @@ tmpYr = nmf.Yr_out;
 tmpDf = nmf.Df_out;
 tmpC = nmf.C_out;
 
+% Extract normalized spatial components:
+nA = full(sqrt(sum(nmf.A.^2))');
+[K,~] = size(nmf.C)
+spatialcomponents = nmf.A/spdiags(nA,0,K,K);
+
+
 % Get raw traces using spatial and temporal components of tiff Y:
 % ay = mm_fun(nmf.A, data.Y);
 % aa = nmf.A'*nmf.A;
@@ -82,7 +88,8 @@ avgs = nmf.avgs;
 nslices = size(avgs,3);
 
 % Create "masks" from 3D spatial components:
-roiMat = full(nmf.A);
+roiMat = full(nmf.A); % TODO:  IS this normalized to unit energy?? check aginst "spatialcomponents" above...
+
 nRois = size(roiMat,2);
 
 
@@ -200,6 +207,7 @@ end
 % ------------------------------------
 maskStruct3D.maskcell3D = maskcell3D;
 maskStruct3D.centers = centers;
+maskStruct3D.spatialcomponents = spatialcomponents;
 
 % This maskPath points to the 3D mask cell array, i.e., each cell contains
 % 3D mask, and length of cell array is nRois:

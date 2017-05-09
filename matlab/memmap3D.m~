@@ -14,9 +14,32 @@ tiffs = {tiffs(:).name}'
 
 files = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {files(:).name}';
-subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+%subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
 files = tmpfiles(subidxs)
 
+matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
+
+if length(tiffs)<length(files) % AVERAGE:
+    fprintf('Averagin tiffs...\n')
+    for runidx=1:length(matchtrials)
+        currfiles = arrayfun(@(f) files{f}, matchtrials{runidx}, 'UniformOutput', 0);
+        filename = sprintf('File%03d.mat', runidx);
+        avgdir = fullfile(D.datastructPath, 'averaged');
+        if ~exist(avgdir, 'dir')
+            mkdir(avgdir)
+        end
+        matfilepath = fullfile(avgdir, filename);
+        filedata = matfile(matfilepath, 'Writable', true);
+        f1 = matfile(fullfile(mempath, currfiles{1}));
+        f2 = matfile(fullfile(mempath, currfiles{2}));
+        
+        newfiletmp = cat(5, f1.Y, f2.Y);
+        avgfile = mean(newfiletmp, 5);
+        [d1,d2,d3,t] = size(avgfile)
+        filedata.Y(d1,d2,d3,t) = avgfile;
+        filedata.Yr(d1*d2*d3, t) = reshape(avgfile, 
+        
 if length(tiffs)>length(files)
 
 
@@ -59,7 +82,7 @@ if length(tiffs)>length(files)
         
         for sliceidx=1:length(tiffslices)
             tic(); tmpYt = loadtiff(fullfile(tiffsourcePath, tiffslices{sliceidx})); toc();
-            data.Y(:,:,sliceidx,:) = reshape(tmpYt, ;
+            data.Y(:,:,sliceidx,:) = reshape(tmpYt, [size(Yt,1) size(Yt,2) 1 nVolumes]);
         end
         data.sizY = size(data.Y);
         data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);

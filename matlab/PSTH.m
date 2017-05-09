@@ -12,8 +12,9 @@
 % experiment = 'gratings1';
 % analysis_no = 4;
 session = '20161219_JR030W';
-experiment = 'gratingsFinalMask2';
-analysis_no = 1;
+% experiment = 'gratingsFinalMask2';
+experiment = 'retinotopyFinalMask';
+analysis_no = 8;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -31,7 +32,7 @@ nWinUnits = 3;
 
 switch D.roiType
     case '3Dcnmf'
-        processTraces(D, winUnit, nWinUnits)
+        processTraces3Dnmf(D, winUnit, nWinUnits)
     case 'cnmf'
         % do other stuff
     otherwise
@@ -45,11 +46,20 @@ fprintf('Done processing Traces!\n');
 % -------------------------------------------------------------------------
 dfMin = 20;
 fprintf('Getting df structs for each movie file...\n');
-dfstruct = getDfMovie(D, dfMin);
+
+dfMin = 20;
+switch D.roiType
+    case '3Dcnmf'
+        dfstruct = getDfMovie3Dnmf(D, dfMin);
+    case 'cnmf'
+        % do other stuff
+    otherwise
+        dfstruct = getDfMovie(D, dfMin);
+end
 
 D.dfStructName = dfstruct.name;
-
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
 fprintf('Done extracting DF/F!\n');
 
 
@@ -66,7 +76,7 @@ end
 meta.stimcolors = colors;
 save(D.metaPath, '-append', '-struct', 'meta');
 
-%%
+%
 
 % -------------------------------------------------------------------------
 % Parse FILES by SLICE:
@@ -307,7 +317,7 @@ save_struct(D.outputDir, trialstructName, trialstruct);
 D.trialStructName = trialstructName;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
-%%
+%
 % %% Don't interpolate -- 
 % % Create same-sized time and trace mats using MW-onset-matched SI-times
 % % (i.e., frame times from SI), and fill in or remove frame tstamps on a
@@ -440,7 +450,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 
-%% Interpolate same-sized time and trace mats with MW times...
+% Interpolate same-sized time and trace mats with MW times...
 
 stimstruct = struct();
 

@@ -68,27 +68,24 @@ clc;
 % ==============================
 % DEFINE session info:
 % =============================
-%sessionpath = fullfile(source, session);
-%sessionmeta = getSessionMeta(sessionpath, D.tefo);
+sessionpath = fullfile(source, session);
+getSessionMeta(
 
 % TEFO:  20161219_JR030W.
 
 source = '/nas/volume1/2photon/RESDATA/TEFO';
 session = '20161219_JR030W';
-run = 'retinotopyFinal';
+run = 'retinotopyFinalMask';
 
 sourceDir = fullfile(source, session, run);
 
 % -------------------------------------------------------------------------
 % retinotopyFinal/
 % -------------------------------------------------------------------------
-%sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal';
+sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal';
 acquisitionName = 'fov6_retinobar_037Hz_final_nomask';
 extraTiffsExcluded = [];
 tefo = true;
-
-average = true;
-matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_001 :  manually-selected ROIs on every other slice, 13-25.
 % datastruct_002 :  do pixel-wide analysis, sigma=3 (to compare to
@@ -97,10 +94,10 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % **datastruct_003 :  roiMap, AVG ROI MAP (compare with gratingsFinalMask2)
 % - TODOOOO
 
-% datastruct_004 :  3Dcnmf, + AVG ROI MAP, substack 9-30.
+% datastruct_004 :  3DCNMF, + AVG ROI MAP, substack 9-30. **
 
-% datastruct_005 :  3Dcnmf + AVROIMAP + substack9-30, TODO.
-% **average runs with retintopyFinalMask**
+% datastruct_005 :  3Dcnmf + AVROIMAP + substack9-30, **average runs with
+% retintopyFinalMask**
 
 
 
@@ -108,9 +105,9 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % retinotopyFinalMask/
 % -------------------------------------------------------------------------
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask';
-% acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
-% extraTiffsExcluded = [];
-% tefo = true;
+acquisitionName = 'fov6_retinobar_037Hz_final_bluemask';
+extraTiffsExcluded = [];
+tefo = true;
 
 % datastruct_002 :  'condition;, used 'condition' ROIs from retinotopyFinal.
 % datastruct_001 :  '3Dcnmf'
@@ -178,7 +175,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 5;           % Define datastruct analysis no.
+didx = 8;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -291,11 +288,6 @@ D.channelIdx = channelIdx;
 D.extraTiffsExcluded = extraTiffsExcluded;
 D.slices = slicesToUse;
 D.tefo = tefo;
-
-D.average = average;
-if D.average
-    D.matchtrials = matchtrials;
-end
 
 save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
@@ -784,8 +776,8 @@ switch D.roiType
         D.maskType = '3Dcontours';
         D.slices = slicesToUse;
 
-        %addpath(genpath('~/Repositories/ca_source_extraction'));
-        %addpath(genpath('~/Repositories/NoRMCorre'));
+        addpath(genpath('~/Repositories/ca_source_extraction'));
+        addpath(genpath('~/Repositories/NoRMCorre'));
         
         D.nmfPath = fullfile(D.datastructPath, 'nmf');
         if ~exist(D.nmfPath)
@@ -806,10 +798,6 @@ switch D.roiType
 
         % Create memmapped files and substack if needed:
         % -----------------------------------------------------------------   
-        if D.average
-            D.matchtrials = matchtrials;
-            D.averagePath = fullfile(D.datastructPath, 'averaged');
-        end
         memmap3D(D, meta);
         
         % Set NMF params for 3D pipeline:
@@ -869,23 +857,8 @@ switch D.roiType
             D.maskInfo.seeds = seeds;
         end
         
-        
-        % Run ONCE to get reference components:
-        D.maskInfo.ref.tiffidx = 4;
-        getref = true;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
-        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
-        
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs);
 
-        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
-        D.maskInfo.ref.nmfoptions = nmfoptions;
-        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-
-        
-        % Run AGAIN to get other components with same spatials:
-        getref = false;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
-       
         D.maskInfo.params.nmfoptions = nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         

@@ -197,8 +197,11 @@ function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots)
 
 nmf_outpaths = {};
 
-
-mempath = fullfile(D.nmfPath, 'memfiles');
+if D.average
+    mempath = D.averagePath;
+else
+    mempath = fullfile(D.nmfPath, 'memfiles');
+end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
@@ -223,7 +226,7 @@ tpath = fullfile(mempath, files{tiffidx});
 matpath = fullfile(mempath, sprintf('%s.mat', filename));
 data = matfile(matpath,'Writable',true);
 
-fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
     
 nSlices = meta.file(tiffidx).si.nFramesPerVolume;
@@ -346,7 +349,7 @@ sizY = data.sizY;                       % size of data matrix
 % patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
 % overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
 % 
-patches = construct_patches(sizY(1:end-1),patch_size,overlap);
+%patches = construct_patches(sizY(1:end-1),patch_size,overlap);
 % K = 7;                                            % number of components to be found
 % tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
 % p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
@@ -363,74 +366,102 @@ options = CNMFSetParms(...
     'fudge_factor',0.96,...                     % bias correction for AR coefficients
     'merge_thr',merge_thr,...                   % merging threshold
     'gSig',tau,... 
-    'max_size_thr',50,'min_size_thr',2,...    % max/min acceptable size for each component
+    'max_size_thr',10,'min_size_thr',2,...    % max/min acceptable size for each component
     'spatial_method','regularized',...          % method for updating spatial components
     'df_prctile',50,...
+    'time_thresh',0.6,...
     'space_thresh',0.6); %...                       % take the median of background fluorescence to compute baseline fluorescence 
     %);
 
 %%
 
 %K = 1705;
+if D.maskInfo.params.patches
+    
+    fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
-[P,Y] = preprocess_data(data.Y,p);    
+    patches = construct_patches(sizY(1:end-1),patch_size,overlap);
 
-rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_005/rois.mat');
-roiA = rois.all;
-P.ROI_list = roiA;
+    %% Run on patches (around 15 minutes)
 
-[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+    tic;
+    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
+    fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
 
-ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+    results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
+    patch_results = matfile(results_fn, 'Writable', true);
+    patch_results.RESULTS = RESULTS;
+    patch_results.A = A;
+    patch_results.b = b;
+    patch_results.C = C;
+    patch_results.f = f;
+    patch_results.S = S;
+    patch_results.P = P;
+    patch_results.YrA = YrA;
+    patch_results.patch_size = patch_size;
+    patch_results.patch_overlap = overlap;
 
-% Get centers of each ROI:
-centers = com(Ain,d1,d2,d3);
-if size(centers,2) == 2
-    centers(:,3) = 1;
+    fprintf('Saved results of run_CNMF_patches, File%03d.\n', tiffidx);
+
+    toc
+
+    % 256x256x20 volume:
+    % Elapsed time is 2797.389282 seconds.
+
+
+else
+
+    [P,Y] = preprocess_data(data.Y,p);    
+
+    %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
+    %roiA = rois.all;
+    
+    P.ROI_list = double(D.maskInfo.seeds);
+    [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+
+    ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+
+    % Get centers of each ROI:
+    centers = com(Ain,d1,d2,d3);
+    if size(centers,2) == 2
+        centers(:,3) = 1;
+    end
+    centers = round(centers);
+
+    % Get avgs of each slice (instead of corr imgs):
+    avgs = zeros([d1,d2,d3]);
+    for slice=1:d3
+        avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+    end
+
+
+    plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+
+    if ~getref && tiffidx~=D.maskInfo.reftiff
+        
+        % Load A from previous:
+        refnmf = matfile(D.maskInfo.refnmfPath);
+        refA = refnmf.A;
+        Ain = refA>0;
+        fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.reftiff, islogical(Ain))
+    
+    elseif getref && tiffidx~=D.maskInfo.reftiff
+        fprintf('Told me to GETREF, and tiffidx %i is not the reference.\n', tiffidx)
+        continue;
+        
+    elseif getref && tiffidx==D.maskInfo.reftiff
+        fprintf('Getting REF components! 
+        
+    end
+    
+    [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+    
+    
+    P.p = 0;
+    [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
+    P.p = 2;
+
 end
-centers = round(centers);
-
-% Get avgs of each slice (instead of corr imgs):
-avgs = zeros([d1,d2,d3]);
-for slice=1:d3
-    avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-end
-
-
-plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
-
-[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
-
-P.p = 0;
-[C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
-P.p = 2;
-
- %% Run on patches (around 15 minutes)
-   
-tic;
-[A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
-fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
-
-results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
-patch_results = matfile(results_fn, 'Writable', true);
-patch_results.RESULTS = RESULTS;
-patch_results.A = A;
-patch_results.b = b;
-patch_results.C = C;
-patch_results.f = f;
-patch_results.S = S;
-patch_results.P = P;
-patch_results.YrA = YrA;
-patch_results.patch_size = patch_size;
-patch_results.patch_overlap = overlap;
-
-fprintf('Saved results of run_CNMF_patches, File%03d.\n', tiffidx);
-
-toc
-
-% 256x256x20 volume:
-% Elapsed time is 2797.389282 seconds.
-
 
 %% compute correlation image on a small sample of the data (optional - for visualization purposes) 
 
@@ -465,7 +496,7 @@ end
 
 %% SAVE nmf output:
 
-nmf_outfile = ['nmfoutput_' filename, '_substack.mat']
+nmf_outfile = ['nmfoutput_' filename, '.mat']
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
 

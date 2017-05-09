@@ -89,8 +89,9 @@ fstart = tic();
 % For a given set of traces (on a given run) extracted from a slice, use 
 % corresponding metaInfo for maps.
 
-mapStructNames3D = cell(1,nTiffs);
-fftStructNames3D = cell(1,nTiffs);
+mapStructNames3D = cell(1,length(slicesToUse));
+fftStructNames3D = cell(1,length(slicesToUse));
+
     
 % Load tracestruct:
 for fidx=1:nTiffs

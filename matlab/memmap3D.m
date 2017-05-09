@@ -14,10 +14,40 @@ tiffs = {tiffs(:).name}'
 
 files = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {files(:).name}';
-subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+%subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
 files = tmpfiles(subidxs)
 
-if length(tiffs)>length(files)
+checkfiles = dir(fullfile(D.averagePath, '*.mat'));
+checkfiles = {checkfiles(:).name}';
+
+if length(tiffs)<length(files) && D.average && isempty(files) % AVERAGE:
+    matchtrials = D.matchtrials;
+    fprintf('Averagin tiffs...\n')
+    for runidx=2:length(matchtrials)
+        currfiles = arrayfun(@(f) files{f}, matchtrials{runidx}, 'UniformOutput', 0);
+        filename = sprintf('File%03d_substack.mat', runidx);
+        avgdir = D.averagePath; %fullfile(D.datastructPath, 'averaged');
+        if ~exist(avgdir, 'dir')
+            mkdir(avgdir)
+        end
+        matfilepath = fullfile(avgdir, filename);
+        filedata = matfile(matfilepath, 'Writable', true);
+        f1 = matfile(fullfile(mempath, currfiles{1}));
+        f2 = matfile(fullfile(mempath, currfiles{2}));
+        
+        newfiletmp = cat(5, f1.Y, f2.Y);
+        avgfile = mean(newfiletmp, 5);
+        [d1,d2,d3,t] = size(avgfile)
+        filedata.Y(d1,d2,d3,t) = avgfile(1)*0;
+        filedata.Y(:,:,:,:) = avgfile;
+        filedata.Yr(d1*d2*d3, t) = avgfile(1)*0;
+        filedata.Yr(:,:) = reshape(avgfile, d1*d2*d3,[]);
+        filedata.nY = min(filedata.Yr(:,:));
+        clear newfiletmp avgfile
+    end
+
+elseif length(tiffs)>length(files)
 
 
     tic()
@@ -98,16 +128,22 @@ if length(tiffs)>length(files)
     
     end
 
-end
+
 
 % 
 fprintf('Done!');
 toc()
-
+end
 
 % MAKE SUBSTACK:
 %startSliceIdx = 4
 %mempath = fullfile(D.nmfPath, 'memfiles');
+if D.average
+    mempath = D.averagePath;
+else
+    mempath = fullfile(D.nmfPath, 'memfiles');
+end
+
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
 subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
@@ -161,7 +197,10 @@ else
     
     for tiffidx=1:length(files)
         tpath = fullfile(mempath, files{tiffidx});
-        data = matfile(tpath);
+        data = matfile(tpath, 'Writable', true);
+        if ~isprop(data, 'sizY')
+            data.sizY = size(data.Y);
+        end
         fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(files), mat2str(data.sizY));
 
     end

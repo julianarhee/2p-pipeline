@@ -10,7 +10,7 @@ function processTraces3Dnmf(D, winUnit, nWinUnits, varargin)
 
 switch length(varargin)
     case 0
-        trimEnd = false;
+        trimEnd = false
     case 1
         trimEnd = true;
         cropToFrame = varargin{1};
@@ -141,7 +141,7 @@ for tiffIdx=1:nTiffs
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            inferredTraces = currInferredTraces(1:cropToFrame,:);
+            inferredTraces = currInferredTraces;
         end
 
 

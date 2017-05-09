@@ -1,4 +1,4 @@
-function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots)
+function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots, getref)
 % clear all;
 % clc;
 % 
@@ -195,10 +195,17 @@ function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots)
 % 
 % end
 
-nmf_outpaths = {};
+if isfield(D.maskInfo, 'nmfPaths')
+    nmf_outpaths = D.maskInfo.nmfPaths;
+else
+    nmf_outpaths = {};
+end
 
-
-mempath = fullfile(D.nmfPath, 'memfiles');
+if D.average
+    mempath = D.averagePath;
+else
+    mempath = fullfile(D.nmfPath, 'memfiles');
+end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
@@ -213,8 +220,27 @@ p = D.maskInfo.params.p;
 merge_thr = D.maskInfo.params.merge_thr;
  
 for tiffidx = 1:length(files)
+  
     
-        
+    
+if ~getref && tiffidx~=D.maskInfo.ref.tiffidx
+
+    usePreviousA = true;
+    
+elseif getref && tiffidx~=D.maskInfo.ref.tiffidx
+    
+    fprintf('Skipping... tiff idx: %i.\n', tiffidx)
+    continue;
+
+elseif getref && tiffidx==D.maskInfo.ref.tiffidx
+    fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx)
+    usePreviousA = false;
+    
+end
+    
+    
+    
+    
 first_tic = tic();
 
 tpath = fullfile(mempath, files{tiffidx});
@@ -363,9 +389,10 @@ options = CNMFSetParms(...
     'fudge_factor',0.96,...                     % bias correction for AR coefficients
     'merge_thr',merge_thr,...                   % merging threshold
     'gSig',tau,... 
-    'max_size_thr',50,'min_size_thr',2,...    % max/min acceptable size for each component
+    'max_size_thr',10,'min_size_thr',2,...    % max/min acceptable size for each component
     'spatial_method','regularized',...          % method for updating spatial components
     'df_prctile',50,...
+    'time_thresh',0.6,...
     'space_thresh',0.6); %...                       % take the median of background fluorescence to compute baseline fluorescence 
     %);
 
@@ -433,8 +460,27 @@ else
 
     plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
 
+    if usePreviousA
+        
+        % Load A from previous:
+        refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
+        refA = refnmf.A;
+        Ain = refA>0;
+        fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
+    
+    else
+        if getref
+            fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx);
+        else
+            fprintf('Told me to GETREF, and tiffidx %i is not the reference.\n', tiffidx)
+            continue;
+        end
+    end
+       
+    
     [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
-
+    
+    
     P.p = 0;
     [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
     P.p = 2;
