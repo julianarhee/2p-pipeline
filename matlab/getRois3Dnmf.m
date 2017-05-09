@@ -438,52 +438,118 @@ else
 
     %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
     %roiA = rois.all;
-    
-    P.ROI_list = double(D.maskInfo.seeds);
-    [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
-
-    ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
-
-    % Get centers of each ROI:
-    centers = com(Ain,d1,d2,d3);
-    if size(centers,2) == 2
-        centers(:,3) = 1;
+    if D.maskInfo.seedRois
+        P.ROI_list = double(D.maskInfo.seeds);
     end
-    centers = round(centers);
-
-    % Get avgs of each slice (instead of corr imgs):
-    avgs = zeros([d1,d2,d3]);
-    for slice=1:d3
-        avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-    end
-
-
-    plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
-
-    if usePreviousA
-        
-        % Load A from previous:
-        refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
-        refA = refnmf.A;
-        Ain = refA>0;
-        fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
     
-    else
+%     [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+% 
+%     ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+% 
+%     % Get centers of each ROI:
+%     centers = com(Ain,d1,d2,d3);
+%     if size(centers,2) == 2
+%         centers(:,3) = 1;
+%     end
+%     centers = round(centers);
+% 
+%     % Get avgs of each slice (instead of corr imgs):
+%     avgs = zeros([d1,d2,d3]);
+%     for slice=1:d3
+%         avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+%     end
+% 
+% 
+%     plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+
+%     if usePreviousA
+%         
+%         % Load A from previous:
+%         refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
+%         refA = refnmf.A;
+%         Ain = refA>0;
+%         refb = refnmf.b;
+%         bin = refb>0;
+%         fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
+%         
+%         % To use logical A_, looks like Cin needs to be empty...
+%         [A,b,Cin] = update_spatial_components(data.Yr,[],fin,[Ain,bin],P,options);
+%     
+%     else
+%         if getref
+%             fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx);
+%         else
+%             fprintf('Told me to GETREF, and tiffidx %i is not the reference.\n', tiffidx)
+%             continue;
+%         end
+%     end
+    
+    if ~usePreviousA
+
         if getref
             fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx);
         else
             fprintf('Told me to GETREF, and tiffidx %i is not the reference.\n', tiffidx)
             continue;
         end
+        
+        % Get all the stuff:
+        [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+
+        ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+
+        % Get centers of each ROI:
+        centers = com(Ain,d1,d2,d3);
+        if size(centers,2) == 2
+            centers(:,3) = 1;
+        end
+        centers = round(centers);
+
+        % Get avgs of each slice (instead of corr imgs):
+        avgs = zeros([d1,d2,d3]);
+        for slice=1:d3
+            avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+        end
+
+        plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+        switch options.spatial_method
+            case 'regularized'
+                [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+            case 'constrained'
+                [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,Ain,P,options);
+        end
+        
+        P.p = 0;
+        [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
+        P.p = 2;
+
+        
+    else
+        
+        % Load A from previous:
+        refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
+        refA = refnmf.A;
+        Ain = refA>0;
+        refb = refnmf.b;
+        bin = refb>0;
+        fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
+        
+        % To use logical A_, looks like Cin needs to be empty...
+        [A,b,Cin] = update_spatial_components(data.Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
+        
+        P.p = 0;
+        [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,refnmf.f,P,options);
+        P.p = 2;
+        
     end
        
     
-    [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+%      [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
     
     
-    P.p = 0;
-    [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
-    P.p = 2;
+%     P.p = 0;
+%     [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
+%     P.p = 2;
 
 end
 
