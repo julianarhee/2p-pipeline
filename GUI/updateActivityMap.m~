@@ -238,12 +238,10 @@ if strcmp(D.stimType, 'bar')
     condmatches = cellfun(@(c) any(strfind(c, currRunName)), condtypes);
     if length(find(condmatches))>1
         % Get corresponding FILE:
-        findidx = regexp(currRunName, '[\d]');
-        stimMenuIdx = condmatches(findidx);
-    else
-        stimMenuIdx = find(condmatches);
-    end
-    handles.stimMenu.Value = stimMenuIdx;
+        if currRunName 
+    
+    
+    handles.stimMenu.Value = selectedFile;
 end
 %colorbar();
 
