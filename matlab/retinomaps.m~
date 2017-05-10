@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 4;
+analysis_no = 5;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -89,9 +89,8 @@ fstart = tic();
 % For a given set of traces (on a given run) extracted from a slice, use 
 % corresponding metaInfo for maps.
 
-mapStructNames3D = cell(1,length(slicesToUse));
-fftStructNames3D = cell(1,length(slicesToUse));
-
+mapStructNames3D = cell(1,nTiffs);
+fftStructNames3D = cell(1,nTiffs);
     
 % Load tracestruct:
 for fidx=1:nTiffs
@@ -462,6 +461,7 @@ for sidx = 1:length(slicesToUse)
         
         % Get MAPS for current slice: ---------------------------------
         tic();
+        switch
         if strcmp(D.roiType, 'pixels')
             phaseMap = reshape(phaseMat(freqIdx,:), [d1, d2]);
             magMap = reshape(magMat(freqIdx,:), [d1, d2]);

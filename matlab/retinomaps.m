@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 4;
+analysis_no = 5;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -461,27 +461,32 @@ for sidx = 1:length(slicesToUse)
         
         % Get MAPS for current slice: ---------------------------------
         tic();
-        if strcmp(D.roiType, 'pixels')
-            phaseMap = reshape(phaseMat(freqIdx,:), [d1, d2]);
-            magMap = reshape(magMat(freqIdx,:), [d1, d2]);
-            ratioMap = reshape(ratioMat, [d1, d2]);
-            phasesAtMaxMag = arrayfun(@(i) freqs(magMat(:,i)==max(magMat(:,i))), 1:nrois);
-            phaseMaxMag = reshape(phasesAtMaxMag, [d1, d2]);
-        else
-            phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
-            magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
-            ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
-            phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
+        switch D.roiType
+            case 'pixels'
+                phaseMap = reshape(phaseMat(freqIdx,:), [d1, d2]);
+                magMap = reshape(magMat(freqIdx,:), [d1, d2]);
+                ratioMap = reshape(ratioMat, [d1, d2]);
+                phasesAtMaxMag = arrayfun(@(i) freqs(magMat(:,i)==max(magMat(:,i))), 1:nrois);
+                phaseMaxMag = reshape(phasesAtMaxMag, [d1, d2]);
+%             case '3Dcnmf'
+%                 phaseMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfs);
+%                 
+            otherwise
+                phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
+                magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
+                ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
+                phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
         end
 
-        % --
-        if inferred
-            phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
-            magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
-            ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
-            phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
-        end
-        % ---
+%         % --
+%         if inferred
+%             display('hi')
+%             phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
+%             magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
+%             ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
+%             phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
+%         end
+%         % ---
         
         toc();
         
