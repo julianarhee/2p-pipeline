@@ -112,9 +112,8 @@ def initiate_new_animal(sessionpath, animal, receipt_date, dictpath, fn='animal_
     print "---------------------------------------------------------------------"
     
 
-    animalinfo_fn = fn 
     master = get_animal_info(animal, receipt_date)
-    with open(os.path.join(dictpath, animalinfo_fn), 'wb') as f:
+    with open(os.path.join(dictpath, fn), 'wb') as f:
 	pkl.dump(master, f, protocol=pkl.HIGHEST_PROTOCOL)
     f.close()
     
@@ -140,7 +139,7 @@ def get_session_info(a_uuid, date='0000-00-00', start_time='00:00:00', run_list=
 
 
 
-def populate_sessions(a_uuid, master, sessionpath, session_fn):
+def populate_sessions(a_uuid, master, sessionpath, session_fn, dictpath):
    
     # Get all the meta info:
     sessionmeta_fn =  os.listdir(sessionpath)
@@ -165,7 +164,7 @@ def populate_sessions(a_uuid, master, sessionpath, session_fn):
 
 
 
-def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pkl'):
+def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pkl', new_analysis=False):
     if new_analysis:
         didxs = dict((k, input('Enter datastruct no for run %s:' % k)) for k in run_names)
 	print "Created dstruct-idxs for runs:"
@@ -212,11 +211,11 @@ def get_run_info(s_uuid, run_name, runmeta, run_num=0):
     return run_info
 
 
-def populate_runs(source, session, session_info, run_fn):
+def populate_runs(source, session, session_info, run_fn, dictpath):
     
     tmprun_info = dict()
     for runidx,run in enumerate(session_info['runs']):
-	if run=='gratingsFinalMask2':
+	if run=='gratingsFinalMask2' or run=='retinotopyFinalMask':
 	    continue
 
 #            runmeta, [] = get_datastruct_for_run(didxs, source, session, run)
@@ -285,9 +284,10 @@ def get_trials(run_info, runmeta, outputpath):
     return trials
 
 
-def populate_trials(s_uuid, runs, didxs, source, session, trialinfo_fn='trial_info.pkl'):
-    trial_info = dict()
-   
+def populate_trials(s_uuid, runs, didxs, source, session, dictpath, trialinfo_fn='trial_info.pkl'):
+
+    trial_info = dict((k, dict()) for k in runs.keys())
+    trial_list = dict()
     for r_uuid in runs.keys():
 	curr_run_info = runs[r_uuid]
 	
@@ -311,8 +311,8 @@ def populate_trials(s_uuid, runs, didxs, source, session, trialinfo_fn='trial_in
 	    tinfo = pkl.load(f)
 
 	# trial parsing in SI ignores the 1st trial, so 2nd trial is the start:
-	trial_list.sort(key=lambda x: x[0])
-	for t in trial_list:
+	trial_list[r_uuid].sort(key=lambda x: x[0])
+	for t in trial_list[r_uuid]:
 	    t_uuid = t[1]
 	    trial_info[r_uuid][t_uuid] = dict()
 	    trial_info[r_uuid][t_uuid]['id'] = t_uuid #trial_list[t-1][1]
@@ -439,7 +439,7 @@ def main():
     parser.add_option('-r', '--receipt', action='store', dest='receipt_date', default='9999-99-99', help='receipt date (format: YYYY-MM-DD)')
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help='create new uuid indexed dicts')
     parser.add_option('--dstruct', action='store_true', dest='new_analysis', default=False, help='Enter new dstruct analysis nos.')
-
+    parser.add_option('-P', '--dpath', action='store', dest='dictpath', default='', help='path to save dicts')
 
     parser.add_option('--timecourse', action='store_true', dest='get_timecourse', default=False, help='extract time courses for each roi')
     parser.add_option('--trials', action='store_true', dest='do_trials', default=False, help='parse time-courses for trials')
@@ -450,17 +450,9 @@ def main():
     session = options.session
     animal = options.animal
     receipt_date = options.receipt_date
-    parser.add_option('--trials', action='store_true', dest='do_trials', default=False, help='parse time-courses for trials')
-
-    (options, args) = parser.parse_args()
-
-    source = options.source
-    session = options.session
-    animal = options.animal
-    receipt_date = options.receipt_date
     create_new = options.create_new
     new_analysis = options.new_analysis
-
+    dictpath = options.dictpath
     extract_timecourse = options.get_timecourse
     do_trials = options.do_trials
 
@@ -482,7 +474,7 @@ def main():
     # script should be run on a per-animal or per-animal-per-session basis.
     animalinfo_fn = 'animal_info.pkl' 
     if create_new:
-        master = initiate_new_animal(source, session, animal, receipt_date, dictpath, fn = animalinfo_fn)
+        master = initiate_new_animal(sessionpath, animal, receipt_date, dictpath, fn=animalinfo_fn)
     else:
 	print "---------------------------------------------------------------------"
 	print "Loading saved dicts..."
@@ -509,7 +501,7 @@ def main():
 
     session_fn = 'session_info_%s.pkl' % animal
     if create_new:
-        session_info = population_sessions(a_uuid, master, sessionpath, session_fn)
+        session_info = populate_sessions(a_uuid, master, sessionpath, session_fn, dictpath)
     else:
         # LOAD animal's session_info:
         with open(os.path.join(dictpath, session_fn), 'rb') as f:
@@ -536,7 +528,7 @@ def main():
     run_fn = 'run_info_%s.pkl' % session_info['id']
 
     if create_new:
-        run_info = populate_runs(source, session, session_info, run_fn)
+        run_info = populate_runs(source, session, session_info, run_fn, dictpath)
     else:
         # LOAD:
         with open(os.path.join(dictpath, run_fn), 'rb') as f:
@@ -545,9 +537,9 @@ def main():
         print "Loaded run-info stuct from %s:" % os.path.join(dictpath, run_fn)
     
     print 'RUNS: r_uuids:'
-    for ridx,run in enumerate(run_info):
-        print ridx, run['run_name'], run['id']
-    print "---------------------------------------------------------------------"
+    for ridx,run in enumerate(run_info.keys()):
+        print ridx, run_info[run]['run_name'], run
+        print "---------------------------------------------------------------------"
 
 
 
@@ -560,7 +552,7 @@ def main():
 
     trialinfo_fn = 'trial_info.pkl'
     if create_new:
-        trial_info = populate_trials(session_infp['id'], runs, didxs, source, session, fn=trialinfo_fn)
+        trial_info = populate_trials(session_info['id'], run_info, didxs, source, session, dictpath, trialinfo_fn=trialinfo_fn)
     else:
         # LOAD:
         with open(os.path.join(dictpath, trialinfo_fn), 'rb') as f:
@@ -578,17 +570,17 @@ def main():
     #cellinfo_fn = 'cell_info.pkl'
 
     if create_new:
-        for r_uuid in runs.keys():
+        for r_uuid in run_info.keys():
             print "Getting ROIs from run %s." % r_uuid
             cells = dict() #dict((k, dict()) for k in runs.keys())
 
             cellinfo_fn = 'cell_info_%s.pkl' % r_uuid # runs[curr_run_id]['run_name']
 
-            curr_run_info = runs[r_uuid]
+            curr_run_info = run_info[r_uuid]
 
-	    runmeta, dstruct = get_datastruct_for_run(didxs, source, session, runs[r_uuid]['run_name'])
+	    runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
 
-	    tmpcell_info = get_cell_info(curr_run_info, runs, runmeta, dstruct)
+	    tmpcell_info = get_cell_info(curr_run_info, run_info, runmeta, dstruct)
             for cell in tmpcell_info.keys():
                 c_uuid = tmpcell_info[cell]['id']
 	        cell_info[c_uuid] = dict((k, v) for k,v in tmpcell_info[cell].iteritems())
@@ -609,7 +601,7 @@ def main():
    
     if extract_timecourse:
         do_trials = options.do_trials
-        for r_uuid in runs.keys():
+        for r_uuid in run_info.keys():
             timecourses_fn = 'timecourses_%s.pkl' % r_uuid   
 
             # Takes FOREVER -- need to store this differently mebe:
@@ -620,10 +612,10 @@ def main():
             print min([int(v['cell_idx']) for c,v in cells.iteritems()])
             print max([int(v['cell_idx']) for c,v in cells.iteritems()])
 
-            runmeta, dstruct = get_datastruct_for_run(didxs, source, session, runs[r_uuid]['run_name'])
+            runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
             trial_list = trial_info[r_uuid].keys()
            
-            timecourses = dict((t_uuid, get_timecourse(cells, r_uuid, trial_info, runs, dstruct, channel=1, trial_id=t_uuid)) for t_uuid in trial_list)
+            timecourses = dict((t_uuid, get_timecourse(cells, r_uuid, trial_info, run_info, dstruct, channel=1, trial_id=t_uuid)) for t_uuid in trial_list)
             with open(os.path.join(dictpath, timecourses_fn), 'wb') as f:
                 pkl.dump(timecourses, f, protocol=pkl.HIGHEST_PROTOCOL)
             f.close()
