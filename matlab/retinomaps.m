@@ -91,7 +91,30 @@ fstart = tic();
 
 mapStructNames3D = cell(1,nTiffs);
 fftStructNames3D = cell(1,nTiffs);
-    
+
+maskPaths3D = D.maskInfo.maskPaths;
+
+% Test viewing:
+testmask = reshape(full(masks.spatialcomponents(:,1)), volsize);
+
+h = vol3d('cdata',testmask,'texture','3D');
+view(3);  
+axis tight; daspect([1 1 .4])
+alphamap('rampup');
+alphamap(.06 .* alphamap);
+
+hold all;
+
+for roi=2:5 %10 %size(masks.spatialcomponents,2)
+    vol3d('cdata', reshape(full(masks.spatialcomponents(:,roi)), volsize), 'texture', '3D', 'Parent', h.parent);
+    drawnow;
+    pause(1)
+end
+
+
+vol3dtool(h)
+
+
 % Load tracestruct:
 for fidx=1:nTiffs
     tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{fidx}));
@@ -113,10 +136,10 @@ for fidx=1:nTiffs
 %     end
     inferred = false;
     
-    traceMatDC = tracestruct.file(fidx).traceMatDC;
-    DCs = tracestruct.file(fidx).DCs;
+    traceMatDC = tracestruct.traceMatDC;
+    DCs = tracestruct.DCs;
     tmptraces = bsxfun(@minus, traceMatDC, DCs);
-    traces = tracestruct.file(fidx).traceMat;
+    traces = tracestruct.traceMat;
         
     targetFreq = meta.file(fidx).mw.targetFreq;
     nCycles = meta.file(fidx).mw.nCycles;
@@ -125,14 +148,14 @@ for fidx=1:nTiffs
     %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
 
-    [d1,d2,d3] = size(avgY);
+    volsize = meta.volumeSizePixels;
     [nframes,nrois] = size(traces);
         
     % Get phase and magnitude maps:
-    phaseMap = zeros([d1, d2, d3]);
-    magMap = zeros([d1, d2, d3]);
-    ratioMap = zeros([d1, d2, d3]);
-    phaseMaxMag = zeros([d1, d2, d3]);
+    phaseMap = zeros(volsize);
+    magMap = zeros(volsize);
+    ratioMap = zeros(volsize);
+    phaseMaxMag = zeros(volsize);
 
 %     % ---
 %     if inferred
