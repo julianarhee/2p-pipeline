@@ -141,31 +141,31 @@ def get_session_info(a_uuid, date='0000-00-00', start_time='00:00:00', run_list=
 
 
 def populate_sessions(a_uuid, master, sessionpath, session_fn):
+   
+    # Get all the meta info:
+    sessionmeta_fn =  os.listdir(sessionpath)
+    sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
+    sessionmeta = loadmat(os.path.join(sessionpath, sessionmeta_fn))
 
-       # Get all the meta info:
-        sessionmeta_fn =  os.listdir(sessionpath)
-        sessionmeta_fn = [f for f in sessionmeta_fn if 'sessionmeta' in f and f.endswith('.mat')][0]
-        sessionmeta = loadmat(os.path.join(sessionpath, sessionmeta_fn))
+    # Populate dict entries:
+    date = sessionmeta['date']
+    start_time = sessionmeta['time']
+    microscope = sessionmeta['scope']
+    run_list = sessionmeta['runs']
 
-        # Populate dict entries:
-        date = sessionmeta['date']
-        start_time = sessionmeta['time']
-        microscope = sessionmeta['scope']
-        run_list = sessionmeta['runs']
+    session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
 
-        session_info =  get_session_info(master[a_uuid], date, start_time, run_list, microscope) 
+    with open(os.path.join(dictpath, session_fn), 'wb') as f:
+	pkl.dump(session_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+    f.close()
 
-        with open(os.path.join(dictpath, session_fn), 'wb') as f:
-            pkl.dump(session_info, f, protocol=pkl.HIGHEST_PROTOCOL)
-        f.close()
-
-        print "Done:  Created SESSION INFO dict."
+    print "Done:  Created SESSION INFO dict."
 
     return session_info
 
 
 
-def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pkl')
+def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pkl'):
     if new_analysis:
         didxs = dict((k, input('Enter datastruct no for run %s:' % k)) for k in run_names)
 	print "Created dstruct-idxs for runs:"
@@ -173,7 +173,7 @@ def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pk
 	with open(os.path.join(dictpath, dstruct_idxs_fn), 'wb') as f:
             pkl.dump(didxs, f, protocol=pkl.HIGHEST_PROTOCOL)
 	f.close()
-    else
+    else:
         with open(os.path.join(dictpath, dstuct_idxs_fn), 'wb') as f:
             didxs = pkl.load(f)
         print "Loaded previously stored dstruct idx:"
@@ -286,8 +286,9 @@ def get_trials(run_info, runmeta, outputpath):
 
 
 def populate_trials(s_uuid, runs, didxs, source, session, trialinfo_fn='trial_info.pkl'):
+    trial_info = dict()
    
-     for r_uuid in runs.keys():
+    for r_uuid in runs.keys():
 	curr_run_info = runs[r_uuid]
 	
 	# Get datastruct info for current run/file:
@@ -330,13 +331,10 @@ def populate_trials(s_uuid, runs, didxs, source, session, trialinfo_fn='trial_in
 
 	del tinfo
 
-
-	# Save to .PKL:
-	     
+	# Save to .PKL:	     
 	with open(os.path.join(dictpath, trialinfo_fn), 'wb') as f:
 	    pkl.dump(trial_info, f, protocol=pkl.HIGHEST_PROTOCOL)
 	f.close()
-	
 	print "Done:  Created TRIAL INFO dict."
 
     return trial_info
@@ -518,7 +516,7 @@ def main():
             session_info = pkl.load(f)
         print "Loaded session-info struct from: %s" % os.path.join(dictpath, session_fn)
     
-    print "SESSION s_uuid:" session_info['id']
+    print "SESSION s_uuid:", session_info['id']
     print "---------------------------------------------------------------------"
 
 
