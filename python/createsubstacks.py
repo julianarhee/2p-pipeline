@@ -3,6 +3,7 @@
 import os
 import numpy as np
 import tifffile as tf
+from skimage import img_as_uint
 
 source = '/nas/volume1/2photon/RESDATA/TEFO'
 session = '20161219_JR030W'
@@ -28,6 +29,7 @@ nvolumes = 340
 
 for tiffidx in range(len(tiffs)):
     stack = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
+    stack = img_as_uint(stack)
 
     print "TIFF: %s" % tiffs[tiffidx]
     print "size: ", stack.shape
@@ -59,7 +61,7 @@ for tiffidx in range(len(tiffs)):
     
     print "Removed flyback frames. Final shape is: ", final.shape
 
-    newtiff_fn = 'File%05d.tif' % int(tiffidx+1)
+    newtiff_fn = 'File%05d_uint.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
 
 
