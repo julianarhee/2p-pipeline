@@ -1,5 +1,7 @@
 function [handles, D] = updateActivityMap(handles, D, meta)
 
+orient = true;
+
 fprintf('Updating activity map...');
 
 selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
@@ -89,9 +91,15 @@ switch selectedMapType
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
         if isfield(D, 'tefo') && D.tefo
-            handles.map = imagesc(fov);
-            hold on;
-            handles.map = imagesc2(thresholdMap);
+            if orient
+                handles.map = imagesc(rot90(fliplr(fov), -2));
+                hold on;
+                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
+            else
+                handles.map = imagesc(fov);
+                hold on;
+                handles.map = imagesc2(thresholdMap);
+            end
         else
             handles.map = imagesc(scalefov(fov));
             hold on;
@@ -123,9 +131,15 @@ switch selectedMapType
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
         if D.tefo
-            handles.map = imagesc(fov);
-            hold on;
-            handles.map = imagesc2(thresholdMap);
+            if orient
+                handles.map = imagesc(rot90(fliplr(fov), -2));
+                hold on;
+                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
+            else
+                handles.map = imagesc(fov);
+                hold on;
+                handles.map = imagesc2(thresholdMap);
+            end
         else
             handles.map = imagesc(scalefov(fov));
             hold on;
@@ -162,9 +176,15 @@ switch selectedMapType
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
         if isfield(D, 'tefo') && D.tefo
-            handles.map = imagesc(fov);
-            hold on;
-            handles.map = imagesc2(thresholdMap);
+            if orient
+                handles.map = imagesc(rot90(fliplr(fov), -2));
+                hold on;
+                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
+            else
+                handles.map = imagesc(fov);
+                hold on;
+                handles.map = imagesc2(thresholdMap);
+            end
         else
             handles.map = imagesc(scalefov(fov));
             hold on;
@@ -199,10 +219,17 @@ switch selectedMapType
         % 'maxDf'
         axes(handles.ax2);  
         if isfield(D, 'tefo') && D.tefo
-            handles.map = imagesc(fov);
-            hold on;
-            thresholdMap = threshold_map(displayMap, displayMap, currThresh);
-            handles.map = imagesc2(thresholdMap); %, handles.ax2);
+            if orient
+                handles.map = imagesc(rot90(fliplr(fov), -2));
+                hold on;
+                thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2)); %, handles.ax2);
+            else
+                handles.map = imagesc(fov);
+                hold on;
+                thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+                handles.map = imagesc2(thresholdMap); %, handles0
+            end
         else
             handles.map = imagesc(scalefov(fov));
             hold on;
