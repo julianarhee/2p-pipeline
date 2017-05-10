@@ -614,33 +614,34 @@ def main():
     if extract_timecourse:
         do_trials = options.do_trials
         for r_uuid in run_info.keys():
+        
             timecourses_fn = 'timecourses_%s.pkl' % r_uuid   
+            if create_new:
+                # Takes FOREVER -- need to store this differently mebe:
+                cellinfo_fn = 'cell_info_%s.pkl' % r_uuid #runs[r_uuid]['run_name']
+                with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
+                    cell_info = pkl.load(f)
+                    if not type(cell_info)==dict:
+                        print "Cells in %s, not a dict." % cellinfo_fn
+                        continue
+                print "Getting traces for %i cells..." % len(cell_info)
+                print min([int(v['cell_idx']) for c,v in cell_info.iteritems()])
+                print max([int(v['cell_idx']) for c,v in cell_info.iteritems()])
 
-            # Takes FOREVER -- need to store this differently mebe:
-            cellinfo_fn = 'cell_info_%s.pkl' % r_uuid #runs[r_uuid]['run_name']
-            with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
-                cell_info = pkl.load(f)
-                if not type(cell_info)==dict:
-                    print "Cells in %s, not a dict." % cellinfo_fn
-                    continue
-            print "Getting traces for %i cells..." % len(cell_info)
-            print min([int(v['cell_idx']) for c,v in cell_info.iteritems()])
-            print max([int(v['cell_idx']) for c,v in cell_info.iteritems()])
+                runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
+                trial_list = trial_info[r_uuid].keys()
+               
+                timecourses = dict((t_uuid, get_timecourse(cell_info, r_uuid, trial_info, run_info, dstruct, channel=1, trial_id=t_uuid)) for t_uuid in trial_list)
+                with open(os.path.join(dictpath, timecourses_fn), 'wb') as f:
+                    pkl.dump(timecourses, f, protocol=pkl.HIGHEST_PROTOCOL)
+                f.close()
+                
+                print "Done:  Created TIMECOURSE dict."
 
-            runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
-            trial_list = trial_info[r_uuid].keys()
-           
-            timecourses = dict((t_uuid, get_timecourse(cells, r_uuid, trial_info, run_info, dstruct, channel=1, trial_id=t_uuid)) for t_uuid in trial_list)
-            with open(os.path.join(dictpath, timecourses_fn), 'wb') as f:
-                pkl.dump(timecourses, f, protocol=pkl.HIGHEST_PROTOCOL)
-            f.close()
-            
-            print "Done:  Created TIMECOURSE dict."
-
-            # else:
-            #    # LOAD TRACES:
-            #    with open(os.path.join(dictpath, timecourses_fn), 'rb') as f:
-            #        timecourses = pkl.load(f)
+            else:
+                # LOAD TRACES:
+                with open(os.path.join(dictpath, timecourses_fn), 'rb') as f:
+                    timecourses = pkl.load(f)
 
 
 
