@@ -67,16 +67,24 @@ switch D.roiType
     otherwise
         dfstruct = getDfMovie(D, dfMin);
 end
-
 D.dfStructName = dfstruct.name;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 
 % Get legends:
-legends = makeLegends(D.outputDir);
-meta.legends = legends;
-save(D.metaPath, '-append', '-struct', 'meta');
+if ~isfield(meta, 'legends')
+    legends = makeLegends(D.outputDir);
+    meta.legends = legends;
+    save(D.metaPath, '-append', '-struct', 'meta');
+end
 
+condtypes = fieldnames(meta.legends)
+figure();
+for legend = 1:length(condtypes)
+    imagesc(meta.legends.(condtypes{legend})); caxis([-pi, pi]); cmap = colormap(hsv);
+    meta.cmaps.(condtypes{legend}) = cmap;
+end
+save(D.metaPath, '-append', '-struct', 'meta');
 %%
 
 % IF 3D rois, use 3D traces, before splitting into slices:
@@ -91,7 +99,9 @@ fstart = tic();
 
 mapStructNames3D = cell(1,nTiffs);
 fftStructNames3D = cell(1,nTiffs);
-    
+
+maskPaths3D = D.maskInfo.maskPaths;
+
 % Load tracestruct:
 for fidx=1:nTiffs
     tracestruct = load(fullfile(D.tracesPath, D.traceNames3D{fidx}));
@@ -125,14 +135,14 @@ for fidx=1:nTiffs
     %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
         
 
-    [d1,d2,d3] = meta.volumeSizePixels;
+    volsize = meta.volumeSizePixels;
     [nframes,nrois] = size(traces);
         
     % Get phase and magnitude maps:
-    phaseMap = zeros([d1, d2, d3]);
-    magMap = zeros([d1, d2, d3]);
-    ratioMap = zeros([d1, d2, d3]);
-    phaseMaxMag = zeros([d1, d2, d3]);
+    phaseMap = zeros(volsize);
+    magMap = zeros(volsize);
+    ratioMap = zeros(volsize);
+    phaseMaxMag = zeros(volsize);
 
 %     % ---
 %     if inferred
@@ -206,39 +216,39 @@ for fidx=1:nTiffs
         % Get MAPS for current slice: ---------------------------------
         tic();
         
-        % TOD:  Make 3D maps??
-
-        phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
-        magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
-        ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
-        phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
-
-
-        % --
-        if inferred
-            phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
-            magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
-            ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
-            phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
-        end
-        % ---
-        
-        toc();
-        
-        maps.file(fidx).magnitude = magMap;
-        maps.file(fidx).phase = phaseMap;
-        maps.file(fidx).phasemax = phaseMaxMag;
-        maps.file(fidx).ratio = ratioMap;
-        maps.file(fidx).avgY = avgY;
-        
-        % ---
-        if inferred
-            maps.file(fidx).magnitudeInferred = magMapInferred;
-            maps.file(fidx).phaseInferred = phaseMapInferred;
-            maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
-            maps.file(fidx).ratioInferred = ratioMapInferred;
-        end
-        % ---
+%         % TOD:  Make 3D maps??
+% 
+%         phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
+%         magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
+%         ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
+%         phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
+% 
+% 
+%         % --
+%         if inferred
+%             phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
+%             magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
+%             ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
+%             phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
+%         end
+%         % ---
+%         
+%         toc();
+%         
+%         maps.file(fidx).magnitude = magMap;
+%         maps.file(fidx).phase = phaseMap;
+%         maps.file(fidx).phasemax = phaseMaxMag;
+%         maps.file(fidx).ratio = ratioMap;
+%         maps.file(fidx).avgY = avgY;
+%         
+%         % ---
+%         if inferred
+%             maps.file(fidx).magnitudeInferred = magMapInferred;
+%             maps.file(fidx).phaseInferred = phaseMapInferred;
+%             maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
+%             maps.file(fidx).ratioInferred = ratioMapInferred;
+%         end
+%         % ---
 
         % --- Need to reshape into 2d image if using pixels:
 %         if strcmp(D.roiType, 'pixels')
@@ -252,9 +262,9 @@ for fidx=1:nTiffs
         % --------------------------------------------------------------
         
     
-    % Save maps for current slice:
-    mapStructName = sprintf('maps3D_File%03d', fidx);
-    save_struct(D.outputDir, mapStructName, maps);
+%     % Save maps for current slice:
+%     mapStructName = sprintf('maps3D_File%03d', fidx);
+%     save_struct(D.outputDir, mapStructName, maps);
 
     fftStructName = sprintf('fft3D_File%03d', fidx);
     save_struct(D.outputDir, fftStructName, fftStruct);
@@ -263,8 +273,8 @@ for fidx=1:nTiffs
     
     fprintf('Finished FFT analysis for File %03d.\n', fidx);
     
-    mapStructNames3D{sidx} = mapStructName;
-    fftStructNames3D{sidx} = fftStructName;
+%     mapStructNames3D{fidx} = mapStructName;
+    fftStructNames3D{fidx} = fftStructName;
 end
 
 clear fftStruct maps T
@@ -272,9 +282,66 @@ clear fftStruct maps T
 fprintf('TOTAL TIME ELAPSED:\n');
 toc(fstart);
 
-D.mapStructNames3D = mapStructNames3D;
+%D.mapStructNames3D = mapStructNames3D;
 D.fftStructNames3D = fftStructNames3D;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+
+%% 3D VISUALIZE:
+
+fidx = 4;
+roi = 1;
+
+
+fftstruct = load(fullfile(D.outputDir, D.fftStructNames3D{fidx}));
+fft = fftstruct.file(fidx);
+
+condtypes = fieldnames(meta.cmaps);
+
+fidx = 4;
+roi = 1;
+
+currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
+currcmap = meta.cmaps.(currcond);
+cmapspace = linspace(-pi, pi, size(currcmap,1));
+
+%hotmap = colormap(hot);
+%ratiospace = linspace(min(ratioMat), max(ratioMat), size(hotmap, 1));
+
+% Test viewing:
+maskPaths3D = D.maskInfo.maskPaths;
+maskmat = load(maskPaths3D{fidx});
+masks = maskmat.spatialcomponents;
+nrois = size(masks,2);
+clear maskmat
+
+for roi=1:100:nrois
+    %rmapidx = find(abs(ratiospace-ratioMat(roi))==min(abs(ratiospace-ratioMat(roi))));
+    cmapidx = find(abs(cmapspace-fft.targetPhase(roi))==min(abs(cmapspace-fft.targetPhase(roi))));
+    mask = reshape(full(masks(:,roi)), volsize); %.*(fft.ratioMat(roi)/max(fft.ratioMat));
+    data = smooth3(mask);
+    %patch(isocaps(data,0.25*max(data(:))),'FaceColor',hotmap(rmapidx,:),'EdgeColor','none');
+    [f,v] = isosurface(data, 0.25*max(data(:)));
+    p1 = patch('Vertices', v, 'Faces', f, 'FaceColor', currcmap(cmapidx,:), 'EdgeColor', 'none'); %, 'FaceAlpha', ratioMat(roi)/max(ratioMat));
+    isonormals(data,p1)
+    hold all;
+    %view(3);
+    view((-15, 30);
+    axis vis3d tight
+    
+    colormap(hsv)
+    caxis([-pi pi])
+
+    drawnow;
+end
+colorbar()
+camlight right; 
+lighting gouraud
+set(gca,'zdir','reverse')
+set(gca,'ydir','reverse')
+set(gca,'xdir','normal')
+set(gca, 'color', 'none')
+set(gca, 'zlim', [0 22])
 
 
 
