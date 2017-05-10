@@ -173,7 +173,7 @@ def select_analysis_source(run_names, dictpath, dstruct_idxs_fn='dstruct_idxs.pk
             pkl.dump(didxs, f, protocol=pkl.HIGHEST_PROTOCOL)
 	f.close()
     else:
-        with open(os.path.join(dictpath, dstuct_idxs_fn), 'wb') as f:
+        with open(os.path.join(dictpath, dstruct_idxs_fn), 'rb') as f:
             didxs = pkl.load(f)
         print "Loaded previously stored dstruct idx:"
     
@@ -341,7 +341,7 @@ def populate_trials(s_uuid, runs, didxs, source, session, dictpath, trialinfo_fn
 
 
 
-def get_cell_info(run_info, runs, runmeta, dstruct):
+def get_cell_info(run_info, runmeta, dstruct):
 #    nrois = dstruct['nRois'] # todo:  this assumes that ALL runs have the same ROIs (which we want eventually, but need alignment for)
     maskmat = h5py.File(dstruct['maskarrayPath']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
     tmpmask = np.empty(maskmat['masks'].shape)
@@ -359,6 +359,14 @@ def get_cell_info(run_info, runs, runmeta, dstruct):
         maskarray[roi] = pd.SparseArray(masks[:,roi])
         # To return full 3d mask:  
         # mask = np.reshape(maskarray[roi].to_dense(), [x, y, z], order='F')
+    
+    cell_info = dict.fromkeys([i for i in maskarray.keys()], dict())
+    tmp = dict((k, {'id': str(uuid.uuid4())}) for k,v in cell_info.iteritems())
+    cell_info.update(tmp)
+    for k in cell_info.keys():
+        cell_info[k].update(run=run_info['id'])
+        cell_info[k].update(mask=maskarray[k])
+
 
     return cell_info
 
@@ -568,31 +576,35 @@ def main():
     # ----------------------------------------------------------------------------
 
     #cellinfo_fn = 'cell_info.pkl'
+    print "Getting ROIs for %i runs..." % len(run_info.keys())
 
-    if create_new:
-        for r_uuid in run_info.keys():
-            print "Getting ROIs from run %s." % r_uuid
-            cells = dict() #dict((k, dict()) for k in runs.keys())
+    for r_uuid in run_info.keys():
+        print "Getting ROIs from run %s." % r_uuid
+        cell_info = dict() #dict((k, dict()) for k in runs.keys())
 
-            cellinfo_fn = 'cell_info_%s.pkl' % r_uuid # runs[curr_run_id]['run_name']
-
+        cellinfo_fn = 'cell_info_%s.pkl' % r_uuid # runs[curr_run_id]['run_name']
+        if create_new:
             curr_run_info = run_info[r_uuid]
 
-	    runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
+            runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
 
-	    tmpcell_info = get_cell_info(curr_run_info, run_info, runmeta, dstruct)
+            tmpcell_info = get_cell_info(curr_run_info, runmeta, dstruct)
             for cell in tmpcell_info.keys():
                 c_uuid = tmpcell_info[cell]['id']
-	        cell_info[c_uuid] = dict((k, v) for k,v in tmpcell_info[cell].iteritems())
-	        cell_info[c_uuid]['cell_idx'] = cell
+                cell_info[c_uuid] = dict((k, v) for k,v in tmpcell_info[cell].iteritems())
+                cell_info[c_uuid]['cell_idx'] = cell
 
             with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
-                nfopkl.dump(cell, f, protocol=pkl.HIGHEST_PROTOCOL)
+                pkl.dump(cell_info, f, protocol=pkl.HIGHEST_PROTOCOL)
             f.close()
 
-            del cell_info
+            del tmpcell_info
             
             print "Done:  Created CELLS dict."
+        else:
+            with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
+                cell_info = pkl.load(f)
+            print "Loaded cell-info dict: %s" % cellinfo_fn
 
 
     # ----------------------------------------------------------------------------
@@ -607,10 +619,13 @@ def main():
             # Takes FOREVER -- need to store this differently mebe:
             cellinfo_fn = 'cell_info_%s.pkl' % r_uuid #runs[r_uuid]['run_name']
             with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
-                cells = pkl.load(f)
-            print "Getting traces for %i cells..." % len(cells)
-            print min([int(v['cell_idx']) for c,v in cells.iteritems()])
-            print max([int(v['cell_idx']) for c,v in cells.iteritems()])
+                cell_info = pkl.load(f)
+                if not type(cell_info)==dict:
+                    print "Cells in %s, not a dict." % cellinfo_fn
+                    continue
+            print "Getting traces for %i cells..." % len(cell_info)
+            print min([int(v['cell_idx']) for c,v in cell_info.iteritems()])
+            print max([int(v['cell_idx']) for c,v in cell_info.iteritems()])
 
             runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
             trial_list = trial_info[r_uuid].keys()
