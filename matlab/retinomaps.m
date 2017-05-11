@@ -78,13 +78,15 @@ if ~isfield(meta, 'legends')
     save(D.metaPath, '-append', '-struct', 'meta');
 end
 
-condtypes = fieldnames(meta.legends)
-figure();
-for legend = 1:length(condtypes)
-    imagesc(meta.legends.(condtypes{legend})); caxis([-pi, pi]); cmap = colormap(hsv);
-    meta.cmaps.(condtypes{legend}) = cmap;
+if ~isfield(meta, 'cmaps')
+    condtypes = fieldnames(meta.legends);
+    figure();
+    for legend = 1:length(condtypes)
+        imagesc(meta.legends.(condtypes{legend})); caxis([-pi, pi]); cmap = colormap(hsv);
+        meta.cmaps.(condtypes{legend}) = cmap;
+    end
+    save(D.metaPath, '-append', '-struct', 'meta');
 end
-save(D.metaPath, '-append', '-struct', 'meta');
 %%
 
 % IF 3D rois, use 3D traces, before splitting into slices:
@@ -138,11 +140,11 @@ for fidx=1:nTiffs
     volsize = meta.volumeSizePixels;
     [nframes,nrois] = size(traces);
         
-    % Get phase and magnitude maps:
-    phaseMap = zeros(volsize);
-    magMap = zeros(volsize);
-    ratioMap = zeros(volsize);
-    phaseMaxMag = zeros(volsize);
+%     % Get phase and magnitude maps:
+%     phaseMap = zeros(volsize);
+%     magMap = zeros(volsize);
+%     ratioMap = zeros(volsize);
+%     phaseMaxMag = zeros(volsize);
 
 %     % ---
 %     if inferred
@@ -199,18 +201,18 @@ for fidx=1:nTiffs
 %         % ------------------------------------------------------------
 
         
-        fftStruct.file(fidx).targetPhase = phaseMat(freqIdx,:);
-        fftStruct.file(fidx).targetMag = magMat(freqIdx,:);
-        fftStruct.file(fidx).freqsAtMaxMag = maxFreqs;
-        fftStruct.file(fidx).fftMat = fftMat;
-        fftStruct.file(fidx).traces = traces;
-        fftStruct.file(fidx).sliceIdxs = sliceIdxs;
-        fftStruct.file(fidx).targetFreq = targetFreq;
-        fftStruct.file(fidx).freqs = freqs;
-        fftStruct.file(fidx).targetFreqIdx = freqIdx;
-        fftStruct.file(fidx).magMat = magMat;
-        fftStruct.file(fidx).ratioMat = ratioMat;
-        fftStruct.file(fidx).phaseMat = phaseMat;
+        fftStruct.targetPhase = phaseMat(freqIdx,:);
+        fftStruct.targetMag = magMat(freqIdx,:);
+        fftStruct.freqsAtMaxMag = maxFreqs;
+        fftStruct.fftMat = fftMat;
+        fftStruct.traces = traces;
+        fftStruct.sliceIdxs = sliceIdxs;
+        fftStruct.targetFreq = targetFreq;
+        fftStruct.freqs = freqs;
+        fftStruct.targetFreqIdx = freqIdx;
+        fftStruct.magMat = magMat;
+        fftStruct.ratioMat = ratioMat;
+        fftStruct.phaseMat = phaseMat;
 
         
         % Get MAPS for current slice: ---------------------------------
@@ -294,8 +296,8 @@ roi = 1;
 
 volsize = meta.volumeSizePixels;
     
-fftstruct = load(fullfile(D.outputDir, D.fftStructNames3D{fidx}));
-fft = fftstruct.file(fidx);
+fftmat = load(fullfile(D.outputDir, D.fftStructNames3D{fidx}));
+fftstruct = fftmat.file(fidx);
 
 condtypes = fieldnames(meta.cmaps);
 

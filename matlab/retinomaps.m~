@@ -266,7 +266,18 @@ for fidx=1:nTiffs
 %     mapStructName = sprintf('maps3D_File%03d', fidx);
 %     save_struct(D.outputDir, mapStructName, maps);
 
-    fftStructName = sprintf('fft3D_File%03d', fidx);
+%     fftStructName = 'fftStruct3D'; %sprintf('fft3D_File%03d', fidx);
+%     save_struct(D.outputDir, fftStructName, fftStruct);
+% 
+%     %M.file(fidx) = maps;
+%     
+%     fprintf('Finished FFT analysis for File %03d.\n', fidx);
+%     
+% %     mapStructNames3D{fidx} = mapStructName;
+%     fftStructNames3D{fidx} = fftStructName;
+end
+
+    fftStructName = 'fftStruct3D'; %sprintf('fft3D_File%03d', fidx);
     save_struct(D.outputDir, fftStructName, fftStruct);
 
     %M.file(fidx) = maps;
@@ -275,8 +286,7 @@ for fidx=1:nTiffs
     
 %     mapStructNames3D{fidx} = mapStructName;
     fftStructNames3D{fidx} = fftStructName;
-end
-
+    
 clear fftStruct maps T
 
 fprintf('TOTAL TIME ELAPSED:\n');
@@ -292,7 +302,8 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 fidx = 4;
 roi = 1;
 
-
+volsize = meta.volumeSizePixels;
+    
 fftstruct = load(fullfile(D.outputDir, D.fftStructNames3D{fidx}));
 fft = fftstruct.file(fidx);
 
@@ -326,7 +337,7 @@ for roi=1:100:nrois
     isonormals(data,p1)
     hold all;
     %view(3);
-    view((-15, 30);
+    view(-15, 30);
     axis vis3d tight
     
     colormap(hsv)
@@ -334,9 +345,9 @@ for roi=1:100:nrois
 
     drawnow;
 end
-colorbar()
-camlight right; 
-lighting gouraud
+%colorbar()
+camlight left; 
+lighting flat %gouraud
 set(gca,'zdir','reverse')
 set(gca,'ydir','reverse')
 set(gca,'xdir','normal')
