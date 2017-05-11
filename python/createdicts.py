@@ -428,6 +428,51 @@ def get_timecourse(cells, r_uuid, trial_info, runs, dstruct, channel=1, trial_id
     return data
 
 
+def create_new_metric_rev(rev_name, rev_uuid, cell_metric_names, dictpath):
+    metric_info_fn = 'metric_info_%s.pkl' % rev_name
+    per_cell_metric_info = dict((str(uuid.uuid4()), {'name': k, 'rev': rev_uuid}) for k in cell_metric_names)
+    for m_uuid in per_cell_metric_info.keys():
+        per_cell_metric_info[m_uuid]['id'] = m_uuid
+    
+    with open(os.path.join(dictpath, metric_info_fn), 'wb') as f:
+        pkl.dump(per_cell_metric_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+    f.close()
+    
+    return per_cell_metric_info
+
+
+def populate_cell_metrics(per_cell_metric_info, cell_info, curr_run_info, source, session, didxs):
+    r_uuid = curr_run_info['id']
+    
+    # Get datastruct info for current run/file:
+    runmeta, dstruct = get_datastruct_for_run(didxs, source, session, curr_run_info['run_name'])
+    outputpath = dstruct['outputDir']
+        
+    per_cell_metrics = dict((m_uuid, dict((c_uuid, dict()) for c_uuid in cell_info.keys())) for m_uuid in per_cell_metric_info.keys())
+    
+    for t_uuid in trial_list:
+        curr_trial_info = trial_info[r_uuid][t_uuid]
+        fileidx = curr_trial_info['idx_in_run']
+        print fileidx
+        fftmat = loadmat(os.path.join(outputpath, dstruct['fftStructNames3D'][fileidx-1]))
+
+        for c_uuid in cell_info.keys():
+            cellidx = cell_info[c_uuid]['cell_idx']
+            per_cell_metrics[phase_muuid][c_uuid][t_uuid] = fftmat['targetPhase'][cellidx]
+            per_cell_metrics[magnitude_muuid][c_uuid][t_uuid] = fftmat['targetMag'][cellidx]
+            per_cell_metrics[ratio_muuid][c_uuid][t_uuid] = fftmat['ratioMat'][cellidx]
+    
+    cellmetrics_fn = 'cell_metrics_%s_%s.pkl' % (metric_rev_uuid, r_uuid)
+    # Save:
+    with open(os.path.join(dictpath, cellmetrics_fn), 'wb') as f:
+        pkl.dump(per_cell_metrics, f, protocol=pkl.HIGHEST_PROTOCOL)
+    
+    print "Created new CELL-METRICS struct: ", cellmetrics_fn
+    
+    return per_cell_metrics
+
+
+
 def main():
 
 #    # optparse for user-input:
@@ -446,6 +491,9 @@ def main():
     parser.add_option('-a', '--animal', action='store', dest='animal', default='', help='animal sample ID (ex: R2B1)')
     parser.add_option('-r', '--receipt', action='store', dest='receipt_date', default='9999-99-99', help='receipt date (format: YYYY-MM-DD)')
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help='create new uuid indexed dicts')
+    parser.add_option('--metrics', action='store_true', dest='new_metrics', default=False, help='create new metrics (and uuids)')
+    parser.add_option('-M', '--metric', action='store_true', dest='metric_revname', default='', help='rev name for new metrics (default: rev1)')
+    
     parser.add_option('--dstruct', action='store_true', dest='new_analysis', default=False, help='Enter new dstruct analysis nos.')
     parser.add_option('-P', '--dpath', action='store', dest='dictpath', default='', help='path to save dicts')
 
@@ -464,6 +512,9 @@ def main():
     extract_timecourse = options.get_timecourse
     do_trials = options.do_trials
 
+    create_new_metrics = options.new_metrics
+    metric_id = options.metric_revname
+    
     # ----------------------------------------------------------------------------
     # TEST OUTPUT: 
     # ----------------------------------------------------------------------------
@@ -551,7 +602,7 @@ def main():
 
 
 
-    # 4.  Cell / Trial Info:
+    # 4.  Trial Info:
     # ----------------------------------------------------------------------------
     # All runs should have the same ROIs, so that comparing cell activity across
     # different runs is possible.  However, for now, am assuming that we're only
@@ -570,9 +621,7 @@ def main():
         print "---------------------------------------------------------------------"
 
 
-
-
-    # Get cell info:
+    # 5.  Get cell info:
     # ----------------------------------------------------------------------------
 
     #cellinfo_fn = 'cell_info.pkl'
@@ -584,6 +633,7 @@ def main():
 
         cellinfo_fn = 'cell_info_%s.pkl' % r_uuid # runs[curr_run_id]['run_name']
         if create_new:
+            print "Creating new ROIs..."
             curr_run_info = run_info[r_uuid]
 
             runmeta, dstruct = get_datastruct_for_run(didxs, source, session, run_info[r_uuid]['run_name'])
@@ -605,10 +655,14 @@ def main():
             with open(os.path.join(dictpath, cellinfo_fn), 'rb') as f:
                 cell_info = pkl.load(f)
             print "Loaded cell-info dict: %s" % cellinfo_fn
-
+            print "---------------------------------------------------------------------"
+            
+        roi_list = cell_info.keys()
+        print "N ROIs in run: ", len(roi_list)
+        
 
     # ----------------------------------------------------------------------------
-    # LOAD DICTS AND EXTRACT CELL INFO:
+    # Timecourses
     # ----------------------------------------------------------------------------
    
     if extract_timecourse:
@@ -642,13 +696,99 @@ def main():
                 # LOAD TRACES:
                 with open(os.path.join(dictpath, timecourses_fn), 'rb') as f:
                     timecourses = pkl.load(f)
+                print "Loaded timecourses from run: ", r_uuid
+                print "---------------------------------------------------------------------"
+
+            # Check timecourses loaded:    
+            print "N trials: ", len(trial_list)
+            r_uuid = run_info.keys()[0]
+            c_uuid = roi_list[0]
+            t_uuid = trial_list[0]
+
+            data = timecourses[t_uuid][c_uuid]
+            print "Cell ID: ", c_uuid
+            print "Data for trial ID: ", t_uuid
+            print "Dtype: %s, Size: %s" % (data.dtype, str(data.shape))
 
 
-    # PER-CELL-METRICS.
-    # ------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
+    # Per-cell-metric INFO:
+    # ----------------------------------------------------------------------------
 
+    create_new_metrics = options.new_metrics
+    metric_id = options.metric_revname
 
+    if create_new_metrics:
 
+        rev_name = 'rev1'
+        rev_uuid = str(uuid.uuid4())
+        cell_metric_names = ['phase', 'magnitude', 'target selectivity']
+
+        per_cell_metric_info = create_new_metric_rev(rev_name, rev_uuid, cell_metric_names, dictpath)
+
+        print "Created new METRIC-INFO struct: %s" % metric_info_fn, rev_uuid
+        metric_rev_uuid = rev_uuid
+
+    else:
+        if len(metric_id)==0:
+            metric_id = 'rev1' # Just use rev1 as default for now...
+
+        metric_info_fn = 'metric_info_%s.pkl' % metric_id
+        with open(os.path.join(dictpath, metric_info_fn), 'rb') as f:
+            per_cell_metric_info = pkl.load(f)
+
+        metric_rev_uuid = per_cell_metric_info[per_cell_metric_info.keys()[0]]['rev']
+        print "Loaded metric info: %s, ID: %s" % (metric_info_fn, metric_rev_uuid)
+        print "---------------------------------------------------------------------"
+        
+    metric_list = per_cell_metric_info.keys()
+    trial_list = trial_info[r_uuid].keys()
+ 
+    print "Metric-info revision ID: ", metric_rev_uuid
+    for metric in metric_list:
+        print metric, ': ', per_cell_metric_info[metric].keys()
+        
+    # Ceck m_uuids for current metric rev:
+    phase_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='phase'][0]
+    magnitude_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='magnitude'][0]
+    ratio_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='target selectivity'][0]
+    
+    print "---------------------------------------------------------------------"
+    print "phase ID: ", phase_muuid
+    print "mag ID: ", magnitude_muuid
+    print "ratio ID: ", ratio_muuid
+    
+    # ----------------------------------------------------------------------------
+    # Per-cell-metrics:
+    # ----------------------------------------------------------------------------
+
+    for r_uuid in run_info.keys():
+        curr_run_info = run_info[r_uuid]
+        cellmetrics_fn = 'cell_metrics_%s_%s.pkl' % (metric_rev_uuid, r_uuid)
+        if create_new:
+            per_cell_metrics = populate_cell_metrics(per_cell_metric_info, cell_info, curr_run_info, source, session, didxs)
+        else:
+            # Load stored cell-metrics:
+            with open(os.path.join(dictpath, cellmetrics_fn), 'rb') as f:
+                per_cell_metrics = pkl.load(f)
+            
+            print "Loaded CELL-METRICS struct: %s" % cellmetrics_fn
+            print "---------------------------------------------------------------------"
+        
+        # CHECK cell metric:
+        r_uuid = run_info.keys()[0]
+        t_uuid = trial_list[0]
+        c_uuid = roi_list[1001]
+        cellidx = cell_info[c_uuid]['cell_idx']
+        print cellidx
+
+        for t_uuid in trial_list:
+            stimulus = trial_info[r_uuid][t_uuid]['stimuli']['stimulus']
+            tidx = trial_info[r_uuid][t_uuid]['idx_in_run']
+            curr_cell_phase = per_cell_metrics[phase_muuid][c_uuid][t_uuid]
+            print "Trial %i (%s): Phase is %0.2f" % (tidx, stimulus, curr_cell_phase)
+
+    
 
 if __name__ == "__main__":
     main()
