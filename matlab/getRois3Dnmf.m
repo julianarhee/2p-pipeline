@@ -389,12 +389,13 @@ options = CNMFSetParms(...
     'fudge_factor',0.96,...                     % bias correction for AR coefficients
     'merge_thr',merge_thr,...                   % merging threshold
     'gSig',tau,... 
-    'max_size_thr',10,'min_size_thr',2,...    % max/min acceptable size for each component
-    'spatial_method','regularized',...          % method for updating spatial components
-    'df_prctile',50,...
+    'max_size_thr',8,'min_size_thr',2,...    % max/min acceptable size for each component
+    'spatial_method','regularized',...       % method for updating spatial components ('constrained')
+    'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
     'time_thresh',0.6,...
-    'space_thresh',0.6); %...                       % take the median of background fluorescence to compute baseline fluorescence 
-    %);
+    'space_thresh',0.6,...
+    'thr_method', 'max',...
+    'maxthr', 0); %...                      
 
 %%
 
@@ -440,6 +441,7 @@ else
     %roiA = rois.all;
     if D.maskInfo.seedRois
         P.ROI_list = double(D.maskInfo.seeds);
+        fprintf('Starting with %i seeds.\n', length(P.ROI_list));
     end
     
 %     [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
@@ -494,11 +496,17 @@ else
         end
         
         % Get all the stuff:
-        [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
-
-        ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+        fprintf('Initializing components...\n');
+        [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
+        %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+%         
+%         if ~D.maskInfo.keepAll
+%             fprintf('Filtering out very small components...\n');
+%             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+%         end
 
         % Get centers of each ROI:
+        fprintf('Getting centroids...\n');
         centers = com(Ain,d1,d2,d3);
         if size(centers,2) == 2
             centers(:,3) = 1;
@@ -506,21 +514,30 @@ else
         centers = round(centers);
 
         % Get avgs of each slice (instead of corr imgs):
+        fprintf('Averaging slices...\n');
         avgs = zeros([d1,d2,d3]);
         for slice=1:d3
-            avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+            avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
+            %avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
         end
 
         plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+        
+        % Update spatial components:
+        fprintf('Updating spatial...\n');
+        Yr = reshape(Y,d,T);
         switch options.spatial_method
             case 'regularized'
-                [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+                %[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+                [A,b,Cin] = update_spatial_components(Yr,Cin,fin,[Ain,bin],P,options);
             case 'constrained'
-                [A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,Ain,P,options);
+                [A,b,Cin] = update_spatial_components(Yr,Cin,fin,Ain,P,options);
         end
         
+        % Update temporal components:
+        fprintf('Updating temporal...\n');
         P.p = 0;
-        [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,fin,P,options);
+        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,fin,P,options);
         P.p = 2;
 
         
@@ -534,11 +551,15 @@ else
         bin = refb>0;
         fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
         
-        % To use logical A_, looks like Cin needs to be empty...
-        [A,b,Cin] = update_spatial_components(data.Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
+        % Update spatial components:
+        Yr = reshape(Y,d,T);
+        %[A,b,Cin] = update_spatial_components(data.Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
+        [A,b,Cin] = update_spatial_components(Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
         
+        % Update temporal components:
         P.p = 0;
-        [C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,refnmf.f,P,options);
+        %[C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,refnmf.f,P,options);
+        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,refnmf.f,P,options);
         P.p = 2;
         
     end
