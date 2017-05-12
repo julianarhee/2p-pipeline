@@ -535,6 +535,7 @@ else
         end
         
         % Update temporal components:
+        fprintf('Size A, after update spatial: %s', mat2str(size(A)));
         fprintf('Updating temporal...\n');
         P.p = 0;
         [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,fin,P,options);
@@ -600,7 +601,8 @@ for slice=1:d3
 end
 
 %[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,Cn,options);
-[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,avgs,options);
+%[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,avgs,options);
+[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(Y,A,C,b,f,avgs,options);
 
 
 %[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,patch.A,patch.C,patch.b,patch.f,avgs,options);

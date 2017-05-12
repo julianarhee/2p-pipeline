@@ -80,9 +80,8 @@ else
 end
 
 %  Save 3D masks to D stuct:
-if strcmp(D.roiType, '3Dcnmf')
-    if ~isfield(D, 'maskarrayPath')
-        fprintf('Creating hdf5 mask array for NDB...\n');
+if strcmp(D.roiType, '3Dcnmf') && ~isfield(D, 'maskarrayPath')
+       fprintf('Creating hdf5 mask array for NDB...\n');
         % Just need to load 3D masks:
         % if length(D.maskInfo.maskPaths) > 1
         % TODO:  currently, nmf is run on EACH file (i.e., each file may have
@@ -91,18 +90,20 @@ if strcmp(D.roiType, '3Dcnmf')
        tmpmasks = load(D.maskInfo.maskPaths{1});
        masks = full(tmpmasks.spatialcomponents);
        maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
-    %    for ridx=1:size(masks,2)
-    %        roimask = reshape(full(masks(:,ridx)), 120, 120, 22);
-    %        roiname = sprintf('roi%04d', ridx);
-    %        hdf5save(maskarrayPath, 'roimask', roiname);
-    %    end
+
        hdf5save(maskarrayPath, 'masks', 'masks');
        D.maskarrayPath = maskarrayPath;
        D.nRois = size(masks,2);
+elseif strcmp(D.roiType, 'manual3D') && ~isfield(D, 'maskarrayPath')
+       fprintf('Creating hdf5 mask array for NDB...\n');
 
-       %h5create(maskarrayPath, '/masks', size(masks))
-       %h5write(maskarrayPath, '/masks', masks);
-    end
+       tmpmasks = load(D.maskInfo.maskPaths{1});
+       masks = full(tmpmasks.roiMat);
+       maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
+
+       hdf5save(maskarrayPath, 'masks', 'masks');
+       D.maskarrayPath = maskarrayPath;
+       D.nRois = size(masks,2);
 end
        
 
