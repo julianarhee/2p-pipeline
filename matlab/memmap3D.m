@@ -18,23 +18,32 @@ tmpfiles = {files(:).name}';
 subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
 files = tmpfiles(subidxs)
 
+if D.average
+    % For now, there is 1 acquisition ("run" in DB lingo) that we are
+    % counting as the primary run.  Use this to appropriate match and index
+    % the files from whatever other run(s) we are averaging.
+    fileidxs1 = cell2mat(cellfun(@(f) any(strfind(f, D.acquisitionName)), files, 'UniformOutput', 0));
+    files1 = files(fileidxs1);
+    files2 = files(~fileidxs1);
+end
+    
 checkfiles = dir(fullfile(D.averagePath, '*.mat'));
 checkfiles = {checkfiles(:).name}';
 
-if length(tiffs)<length(files) && D.average && isempty(files) % AVERAGE:
+if length(tiffs)<length(files) && D.average && isempty(checkfiles) % AVERAGE:
     matchtrials = D.matchtrials;
     fprintf('Averagin tiffs...\n')
-    for runidx=2:length(matchtrials)
-        currfiles = arrayfun(@(f) files{f}, matchtrials{runidx}, 'UniformOutput', 0);
+    for runidx=1:length(matchtrials)
+        curr_match_idxs = matchtrials{runidx};
         filename = sprintf('File%03d_substack.mat', runidx);
         avgdir = D.averagePath; %fullfile(D.datastructPath, 'averaged');
-        if ~exist(avgdir, 'dir')
-            mkdir(avgdir)
-        end
+
         matfilepath = fullfile(avgdir, filename);
         filedata = matfile(matfilepath, 'Writable', true);
-        f1 = matfile(fullfile(mempath, currfiles{1}));
-        f2 = matfile(fullfile(mempath, currfiles{2}));
+        f1 = matfile(fullfile(mempath, files1{curr_match_idxs(1)}));
+        f2 = matfile(fullfile(mempath, files2{curr_match_idxs(2)}));
+        fprintf('Primary file is: %s\n', files1{curr_match_idxs(1)});
+        fprintf('Secondary file is: %s\n', files2{curr_match_idxs(2)});
         
         newfiletmp = cat(5, f1.Y, f2.Y);
         avgfile = mean(newfiletmp, 5);

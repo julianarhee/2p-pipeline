@@ -92,16 +92,25 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_001 :  manually-selected ROIs on every other slice, 13-25.
 % datastruct_002 :  do pixel-wide analysis, sigma=3 (to compare to
-% retinotopyFinalMask - datastruct_007)
+% avg - datastruct_007)
 
 % **datastruct_003 :  roiMap, AVG ROI MAP (compare with gratingsFinalMask2)
 % - TODOOOO
 
 % datastruct_004 :  3Dcnmf, + AVG ROI MAP, substack 9-30.
 
-% datastruct_005 :  3Dcnmf + AVROIMAP + substack9-30, TODO.
-% **average runs with retintopyFinalMask**
+% datastruct_005 :  3Dcnmf + AVROIMAP + substack9-30. **average runs with retintopyFinalMask**
+% --> This one is messed up, only 1 and 4 are basically run-twice (run),
+% since averaging was only done with itself.  Bad file-indexing fixed.
 
+% datastruct_006 :  3Dcnmf + AVGROIMAP + substacks9-30.  D.average
+% **REDOING of datastruct_005 with correctly averaged trials.
+% - max_size_thr slightly lowered to 8 (was 10)
+
+% datastruct_007 :  same (3Dcnmf, AVGROIMAP, substacks9-30, D.average)
+% - don't filter very small components... (ff) D.maskInfo.params.keepAll
+% - set thr_method to 'max' and see if setting 'maxthr'=0.9 (default: 0.1)
+% helps keep all...
 
 
 % -------------------------------------------------------------------------
@@ -178,7 +187,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 5;           % Define datastruct analysis no.
+didx = 7;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -340,6 +349,7 @@ end
     
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
+fprintf('Got SI file info.\n');
 
 %% Get SI volume info:
 
@@ -519,6 +529,7 @@ end
 
 save(fullfile(D.datastructPath, D.name), '-struct', 'D');
 
+fprintf('Got source info for creating ROI masks.\n')
 
 %%
 
@@ -802,19 +813,30 @@ switch D.roiType
             D.maskInfo.slices = slicesToUse;
             D.maskInfo.blobType = 'difference';
             D.maskInfo.seedRois = true;
+            D.maskInfo.keepAll = true;
         end
 
+        
         % Create memmapped files and substack if needed:
         % -----------------------------------------------------------------   
         if D.average
             D.matchtrials = matchtrials;
             D.averagePath = fullfile(D.datastructPath, 'averaged');
+            if ~exist(D.averagePath, 'dir')
+                mkdir(D.averagePath)
+            end
         end
         memmap3D(D, meta);
+        fprintf('Memmapped TIFF files.\n');
+        
         
         % Set NMF params for 3D pipeline:
         % -----------------------------------------------------------------   
         if D.tefo
+            % NOTE: Currently, only do patch if not seeding ROIs, just based on
+            % how the input spatial components are provided (i.e., inputs
+            % are not parsed into patches, and don't know if original NMF
+            
             params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
             params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
 
@@ -839,6 +861,9 @@ switch D.roiType
         D.maskInfo.params = params;
         D.maskInfo.maskType = D.maskType;
         D.maskInfo.slices = slicesToUse;
+        
+        % TODO:  Allow for specifying nmf options out here (and just pass
+        % in options to NMF, instead of setting inside getRois3Dnmf.m).
         
         
         % Run 3D CNMF pipeline:
@@ -871,26 +896,8 @@ switch D.roiType
         
         
         % Run ONCE to get reference components:
-        D.maskInfo.ref.tiffidx = 4;
-        getref = true;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
-        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
-        
-
-        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
-        D.maskInfo.ref.nmfoptions = nmfoptions;
-        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
         
-        % Run AGAIN to get other components with same spatials:
-        getref = false;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
-       
-        D.maskInfo.params.nmfoptions = nmfoptions;
-        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-        
-        fprintf('Extracted all 3D ROIs!\n')
-        toc(roistart);
         
 %         % look at CNMF results:
 %         patch_fns = dir(fullfile(D.nmfPath, '*patch_results*.mat'));
@@ -924,6 +931,9 @@ switch D.roiType
         
         fprintf('DONE:  Extracted traces!\n');
         toc(tracestart);
+        
+        
+        
         %%
         
         % ----------
