@@ -896,7 +896,27 @@ switch D.roiType
         
         
         % Run ONCE to get reference components:
+        roistart = tic();
+        D.maskInfo.ref.tiffidx = 4;
+        getref = true;
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
+        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
+        
+        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
+        D.maskInfo.ref.nmfoptions = nmfoptions;
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
+        
+        % Run AGAIN to get other components with same spatials:
+        getref = false;
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
+       
+        D.maskInfo.params.nmfoptions = nmfoptions;
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
+        fprintf('Extracted all 3D ROIs!\n')
+        
+        toc(roistart);
         
         
 %         % look at CNMF results:
