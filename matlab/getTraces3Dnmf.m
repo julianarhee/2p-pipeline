@@ -211,10 +211,15 @@ maskStruct3D.spatialcomponents = spatialcomponents;
 
 % This maskPath points to the 3D mask cell array, i.e., each cell contains
 % 3D mask, and length of cell array is nRois:
-maskpath3D = fullfile(D.datastructPath, 'masks', sprintf('nmf3D_masks_File%03d.mat', fidx));
+maskpath3D = fullfile(D.datastructPath, 'masks', sprintf('nmf3D_masks_File%03d.mat', fidx))
 
 [fp,fn,fe] = fileparts(maskpath3D);
-save_struct(fp, strcat(fn,fe), maskStruct3D)
+%save_struct(fp, strcat(fn,fe), maskStruct3D)
+save(maskpath3D, '-struct', 'maskStruct3D','-v7.3');
+
+
+fprintf('Saving struct: %s.\n', maskpath3D);
+
 %else
 
 % Save 3D traces info for current movie:

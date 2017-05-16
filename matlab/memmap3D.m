@@ -3,7 +3,7 @@ function memmap3D(D, meta)
 startSliceIdx = D.slices(1);
 fprintf('Substacks made starting from slice %i.\n', startSliceIdx);
 
-mempath = fullfile(D.nmfPath, 'memfiles');
+mempath = fullfile(D.mempath);
 if ~exist(mempath, 'dir')
     mkdir(mempath)
 end
@@ -150,7 +150,7 @@ end
 if D.average
     mempath = D.averagePath;
 else
-    mempath = fullfile(D.nmfPath, 'memfiles');
+    mempath = D.mempath; %fullfile(D.nmfPath, 'memfiles');
 end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));

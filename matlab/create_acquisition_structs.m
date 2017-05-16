@@ -109,7 +109,7 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_007 :  same (3Dcnmf, AVGROIMAP, substacks9-30, D.average)
 % - don't filter very small components... (ff) D.maskInfo.params.keepAll
-% - set thr_method to 'max' and see if setting 'maxthr'=0.9 (default: 0.1)
+% - set thr_method to 'max' and see if setting 'maxthr'=0 (default: 0.1)
 % helps keep all...
 
 
@@ -187,7 +187,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 7;           % Define datastruct analysis no.
+didx = 8;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -477,6 +477,8 @@ switch D.roiType
     case 'manual3Drois'
         [fpath,fcond,~] = fileparts(D.sourceDir);
         D.maskSource = fcond;
+        % TODO:  add option for storing paths to ROI masks
+        % ************************************************
         
     case 'condition'
         D.maskSource = refMaskStruct; %'retinotopy1';
@@ -648,51 +650,118 @@ switch D.roiType
         
     case 'manual3Drois'
         
-        % Choose reference:
-        % -----------------------------------------------------------------
-        D.slices = slicesToUse;                            % Specify which slices to use (if empty, will grab traces for all slices)
+        D.maskType = '3Dcontours';
+        D.slices = slicesToUse;
 
-        refMeta = load(meta.metaPath);                          % Get all TIFFs (slices) associated with file and volume of refRun movie.
-        D.refRun = refMeta.file(1).si.motionRefNum;
-        D.refPath = refMeta.file(D.refRun).si.tiffPath;
-        D.localRefNum = 4
-        % Create ROIs:
-        % -----------------------------------------------------------------
-        create_rois(D, refMeta);
-                
+        D.mempath = fullfile(D.datastructPath, 'memfiles');
+        if ~exist(D.nmfPath)
+            mkdir(D.nmfPath)
+        end
         
-        % Set up mask info struct to reuse masks across files:
-        % -----------------------------------------------------------------
-        D.maskType = 'circles';
+        % Create memmapped files and substack if needed:
+        % -----------------------------------------------------------------   
+        if D.average
+            D.matchtrials = matchtrials;
+            D.averagePath = fullfile(D.datastructPath, 'averaged');
+            if ~exist(D.averagePath, 'dir')
+                mkdir(D.averagePath)
+            end
+        end
+        memmap3D(D, meta);
+        fprintf('Memmapped TIFF files.\n');
+        
+        
+        % Specify ROI map source(s), if seeding:
+        % -----------------------------------------------------------------   
         D.maskInfo = struct();
-        D.maskInfo.refNum = D.refRun;
-        D.maskInfo.refMeta = refMeta;
-        D.maskInfo.maskType = D.maskType;
 
-        maskDir = fullfile(D.datastructPath, 'masks');
-        maskStructs = dir(fullfile(maskDir, '*.mat'));
-        maskStructs = {maskStructs(:).name}';
-        slicesToUse = zeros(1,length(maskStructs));
-        for m=1:length(maskStructs)
-            mparts = strsplit(maskStructs{m}, 'Slice');
-            mparts = strsplit(mparts{2}, '_');
-            slicesToUse(m) = str2num(mparts{1});
-        end
-        maskPaths = cell(1,length(maskStructs));
-        for m=1:length(maskStructs)
-            maskPaths{m} = fullfile(maskDir, maskStructs{m});
-        end
-        D.maskInfo.maskPaths = maskPaths;
+        D.maskInfo.mapSource = mapSource;  % path to AVG volumes from which ROIs selected
+        D.maskInfo.mapSlicePaths = mapSlicesPath;  % path to each slice of AVG volume (mapSource is parent)
+        D.maskInfo.roiPath = roiPath; 
         D.maskInfo.slices = slicesToUse;
+        D.maskInfo.roiPath = '';  % INPUT TO FILE CONTAINING CENTROIDS, RADII.
+
+        roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+        centroids = roimat.centroids;
+        radii = roimat.radii;
         
+        % Create MASKMAT -- single mask for each trace:
+        view_sample = false;
+        maskmat = getGolfballs(centers, radii, volumesize, view_sample);
+        D.maskmatPath = fullfile(D.mempath, 'maskmat.mat');
+        maskstruct = struct();
+        maskstruct.centroids = centroids;
+        maskstruct.maskmat = maskmat;
+        maskstruct.volumesize = volumesize;
+        save(D.maskmatPath, '-struct', 'maskmat');
         
-        % =================================================================
-        % Get traces with masks:
-        % =================================================================
-        tic()
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
-        toc()
+        % Get Traces for 3D masks:
+        
+        tracestart = tic();
+        [D.tracesPath, D.nSlicesTrace] = getTraces3D(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+        % Generate paths for "masks" to created in
+        % getTraces3Dnmf.m:
+        tmpmaskpaths = dir(fullfile(D.datastructPath, 'masks', 'manual3D_masks*'));
+        tmpmaskpaths = {tmpmaskpaths(:).name}';
+        D.maskInfo.maskPaths = {};
+        for tmppath=1:length(tmpmaskpaths)
+            D.maskInfo.maskPaths{end+1} = fullfile(D.datastructPath, 'masks', tmpmaskpaths{tmppath});
+        end
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
+        fprintf('DONE:  Extracted traces!\n');
+        toc(tracestart);
+
+        
+%         % Choose reference:
+%         % -----------------------------------------------------------------
+%         D.slices = slicesToUse;                            % Specify which slices to use (if empty, will grab traces for all slices)
+% 
+%         refMeta = load(meta.metaPath);                          % Get all TIFFs (slices) associated with file and volume of refRun movie.
+%         D.refRun = refMeta.file(1).si.motionRefNum;
+%         D.refPath = refMeta.file(D.refRun).si.tiffPath;
+%         D.localRefNum = 4
+%         
+%         % Create ROIs:
+%         % -----------------------------------------------------------------
+%         create_rois(D, refMeta);
+%                 
+%         
+%         % Set up mask info struct to reuse masks across files:
+%         % -----------------------------------------------------------------
+%         D.maskType = 'circles';
+%         D.maskInfo = struct();
+%         D.maskInfo.refNum = D.refRun;
+%         D.maskInfo.refMeta = refMeta;
+%         D.maskInfo.maskType = D.maskType;
+% 
+%         maskDir = fullfile(D.datastructPath, 'masks');
+%         maskStructs = dir(fullfile(maskDir, '*.mat'));
+%         maskStructs = {maskStructs(:).name}';
+%         slicesToUse = zeros(1,length(maskStructs));
+%         for m=1:length(maskStructs)
+%             mparts = strsplit(maskStructs{m}, 'Slice');
+%             mparts = strsplit(mparts{2}, '_');
+%             slicesToUse(m) = str2num(mparts{1});
+%         end
+%         maskPaths = cell(1,length(maskStructs));
+%         for m=1:length(maskStructs)
+%             maskPaths{m} = fullfile(maskDir, maskStructs{m});
+%         end
+%         D.maskInfo.maskPaths = maskPaths;
+%         D.maskInfo.slices = slicesToUse;
+%         
+%         
+%         % =================================================================
+%         % Get traces with masks:
+%         % =================================================================
+%         tic()
+%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+%         toc()
+%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
         
     case 'condition'
         % Use masks from a different condition:
@@ -802,6 +871,7 @@ switch D.roiType
         if ~exist(D.nmfPath)
             mkdir(D.nmfPath)
         end
+        D.mempath = fullfile(D.nmfPath, 'memfiles');
         
         % Specify ROI map source(s), if seeding:
         % -----------------------------------------------------------------   
@@ -896,7 +966,27 @@ switch D.roiType
         
         
         % Run ONCE to get reference components:
-
+        roistart = tic();
+        D.maskInfo.ref.tiffidx = 4;
+        getref = true;
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
+        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
+        
+        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
+        D.maskInfo.ref.nmfoptions = nmfoptions;
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        toc(roistart);
+        
+        % Run AGAIN to get other components with same spatials:
+        getref = false;
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, plotoutputs, getref);
+       
+        D.maskInfo.params.nmfoptions = nmfoptions;
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+        
+        fprintf('Extracted all 3D ROIs!\n')
+        
+        toc(roistart);
         
         
 %         % look at CNMF results:
