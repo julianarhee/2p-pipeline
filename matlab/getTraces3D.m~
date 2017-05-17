@@ -78,11 +78,10 @@ for slice=1:d3
     avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
 end
 
-% for slice=1:d3
-%     slicepath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/averagemem';
-%     slicefn = sprintf('slice%02d.tif', slice);
-%     tiffWrite(avgs(:,:,slice), slicefn, slicepath);
-% end
+for slice=1:d3
+    slicefn = sprintf('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/averagemem/slice%02.tif', slice);
+    imwrite(slicefn, avgs(:,:,slice));
+end
 
 % Get centers of each ROI:
 coms = com(maskstruct.maskmat,d1,d2,d3);

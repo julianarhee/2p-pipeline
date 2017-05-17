@@ -383,7 +383,7 @@ end
 camlight headlight; 
 lighting gouraud;
 camlight left; 
-lighting flat;
+lighting gouraud;
 if strcmp(metric, 'ratio')
     colorbar();
 end
