@@ -25,7 +25,7 @@ if strcmp(D.roiType, 'pixels')
     
 else
 
-    if strcmp(D.roiType, '3Dcnmf')
+    if strfind(D.roiType, '3D')
         [mp,mn,me] = fileparts(D.maskPaths{selectedSlice});
     else
         [mp,mn,me] = fileparts(D.maskInfo.maskPaths{selectedSlice});

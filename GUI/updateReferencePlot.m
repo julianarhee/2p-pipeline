@@ -14,7 +14,7 @@ if newReference==1
         
         D.RGBimg = RGBimg;
         D.masksRGBimg = RGBimg;
-        D.avgimg = avgimg;
+        D.avgimg = D.masksRGBimg(:,:,2); %avgimg;
         
         npixels = meta.file(1).si.frameWidth * meta.file(1).si.linesPerFrame;
         
@@ -43,7 +43,7 @@ if newReference==1
 
         D.RGBimg = RGBimg;
         D.masksRGBimg = masksRGBimg;
-        D.avgimg = avgimg;
+        D.avgimg = D.masksRGBimg(:,:,2); %avgimg;
         
         nrois = length(maskcell);
 
@@ -75,10 +75,16 @@ else
     handles.roi3D.String = num2str(roiIdxs(selectedROI));
 end
 
-D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1).*0;
+%D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1).*0;
+%D.masksRGBimg(:,:,2) = avgimg; 
+%D.masksRGBimg(:,:,3) = D.masksRGBimg(:,:,3).*0;
 
 D.RGBimg(:,:,1) = D.RGBimg(:,:,1).*0;
+%D.RGBimg(:,:,2) = avgimg;
 D.RGBimg(:,:,3) = D.RGBimg(:,:,3).*0;
+
+cmin = min(D.masksRGBimg(:)); %max(avgimg(:))*0.010;
+cmax = max(D.masksRGBimg(:)); %1; %max(avgimg(:));
 
 if selectedROI>0
     if strcmp(D.roiType, 'pixels')
@@ -113,9 +119,9 @@ switch D.maskType
         if showRois
             %if newReference==1
                 if isfield(D, 'tefo') && D.tefo
-                    handles.avgimg = imagesc2(D.masksRGBimg);
+                    handles.avgimg = imagesc2(D.masksRGBimg, [cmin, cmax]);
                 else
-                    handles.avgimg = imagesc2(scalefov(D.masksRGBimg)); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
+                    handles.avgimg = imagesc2(scalefov(D.masksRGBimg), [cmin, cmax]); %, handles.ax1); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg);
                 end
                 set(gca,'YDir','reverse')
                 %set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
@@ -131,9 +137,9 @@ switch D.maskType
         else
             %if newReference==1
                 if D.tefo
-                    handles.avgimg = imagesc2(D.RGBimg);
+                    handles.avgimg = imagesc2(D.RGBimg, [cmin, cmax]);
                 else
-                    handles.avgimg = imagesc2(scalefov(D.RGBimg)); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
+                    handles.avgimg = imagesc2(scalefov(D.RGBimg), [cmin, cmax]); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
                 %set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
                 end
 
@@ -146,7 +152,7 @@ switch D.maskType
 %             end
         end
 end
-
+%caxis([max(avgimg)*0.10, max(avgimg)]);
 % child_handles = allchild(handles.avgimg);
 % set(child_handles,'HitTest','off');
 
