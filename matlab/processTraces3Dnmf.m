@@ -41,7 +41,9 @@ for tiffIdx=1:nTiffs
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
         currTraces = tracestruct.rawTraces; % nxm mat, n=frames, m=rois
-        currInferredTraces = tracestruct.inferredTraces;
+        if isfield(tracestruct, 'inferredTraces')
+            currInferredTraces = tracestruct.inferredTraces;
+        end
         
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
@@ -58,11 +60,15 @@ for tiffIdx=1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
-            inferredTraces = currInferredTraces(1:cropToFrame,:);
+            if isfield(tracestruct, 'inferredTraces')
+                inferredTraces = currInferredTraces(1:cropToFrame,:);
+            end
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            inferredTraces = currInferredTraces;
+            if isfield(tracestruct, 'inferredTraces')
+                inferredTraces = currInferredTraces;
+            end
         end
 
 
@@ -80,8 +86,9 @@ for tiffIdx=1:nTiffs
         tracestruct.traceMat = traceMat;
         tracestruct.winsz = winsz;
         tracestruct.DCs = DCs;
-        
-        tracestruct.inferredTraceMat = inferredTraces;
+        if isfield(tracestruct, 'inferredTraces')
+            tracestruct.inferredTraceMat = inferredTraces;
+        end
         
         if trimEnd
 
@@ -119,7 +126,9 @@ for tiffIdx=1:nTiffs
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
         currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
-        currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
+        if isfield(tracestruct, 'inferredTraces')
+            currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
+        end
         
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
@@ -136,12 +145,16 @@ for tiffIdx=1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
-            inferredTraces = currInferredTraces(1:cropToFrame,:);
+            if isfield(tracestruct, 'inferredTraces')
+                inferredTraces = currInferredTraces(1:cropToFrame,:);
+            end
             
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            inferredTraces = currInferredTraces;
+            if isfield(tracestruct, 'inferredTraces')
+                inferredTraces = currInferredTraces;
+            end
         end
 
 
@@ -160,7 +173,9 @@ for tiffIdx=1:nTiffs
         tracestruct.file(tiffIdx).winsz = winsz;
         tracestruct.file(tiffIdx).DCs = DCs;
         
-        tracestruct.file(tiffIdx).inferredTraceMat = inferredTraces;
+        if isfield(tracestruct, 'inferredTraces')
+            tracestruct.file(tiffIdx).inferredTraceMat = inferredTraces;
+        end
         
         if trimEnd
 

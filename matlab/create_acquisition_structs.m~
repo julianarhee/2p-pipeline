@@ -692,11 +692,6 @@ switch D.roiType
         end
         
         D.dataDir = fullfile(D.mempath, 'tiffs'); 
-        
-        % Because downstream indexes based off of D.slices, need to re-map
-        % slices to be "true" indices of TIFFs actually used for
-        % analyses/maps...
-        % TODO:  FIX THIS, super clunky....
         create_substack = false;
         if ~create_substack
             D.slices = 1:length(slicesToUse); %slicesToUse = [1:22];

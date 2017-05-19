@@ -284,13 +284,13 @@ end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
-% if create_substacks
-subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
-inputfiles = tmpfiles(subidxs);
-% else
-%     inputfiles = tmpfiles;
+if create_substacks
+    subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+    inputfiles = tmpfiles(subidxs);
+else
+    inputfiles = tmpfiles;
 
-if isempty(inputfiles)
+if isempty(files)
     files = tmpfiles(~subidxs);
 
     for tiffidx = 1:length(files)
@@ -330,13 +330,13 @@ else
    
     fprintf('Checking TIFF substakc size...\n');
     
-    for tiffidx=1:length(inputfiles)
-        tpath = fullfile(mempath, inputfiles{tiffidx});
+    for tiffidx=1:length(files)
+        tpath = fullfile(mempath, files{tiffidx});
         data = matfile(tpath, 'Writable', true);
         if ~isprop(data, 'sizY')
             data.sizY = size(data.Y);
         end
-        fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
+        fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(files), mat2str(data.sizY));
 
     end
     

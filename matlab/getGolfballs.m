@@ -1,4 +1,4 @@
-function maskmat = getGolfballs(centers, radii, volumesize, view_sample=false)
+function maskmat = getGolfballs(centers, radii, volumesize, view_sample)
 
 % r=4;
 % phi=linspace(0,pi,120);
@@ -19,7 +19,7 @@ d3 = volumesize(3);
 % centers = [5,5,5; 15,15,15];
 % radii = [2, 3];
 
-spherefunc = @(r) sqrt((rows - centers(r,2)).^2 + (cols - centers(r,1)).^2 + (slices - centers(r,3)).^2) < radii(r).^2;
+spherefunc = @(r) sqrt((rows - round(centers(r,2))).^2 + (cols - round(centers(r,1))).^2 + (slices - round(centers(r,3))).^2) < radii(r).^2;
 
 nrois = length(radii);
 masks = arrayfun(@(roi) spherefunc(roi), 1:nrois, 'UniformOutput', false);
@@ -36,7 +36,7 @@ if view_sample
 end
 
 % Reshape to mat:
-maskmat = cellfun(@(roimask) reshape(roimask, dim1*dim2*dim3, []), masks, 'UniformOutput', 0);
+maskmat = cellfun(@(roimask) reshape(roimask, d1*d2*d3, []), masks, 'UniformOutput', 0);
 maskmat = cat(2, maskmat{1:end});
 
 

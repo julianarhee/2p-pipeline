@@ -91,7 +91,7 @@ if strfind(D.roiType, '3D') && ~isfield(D, 'maskarrayPath')
        if strcmp(D.roiType, '3Dnmf')
            masks = full(tmpmasks.spatialcomponents);
        else
-           masks = full(double(tmpmasks.roiMat));
+           masks = full(find(tmpmasks.roiMat));
        end
        maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
 
