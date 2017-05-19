@@ -19,7 +19,8 @@ d3 = volumesize(3);
 % centers = [5,5,5; 15,15,15];
 % radii = [2, 3];
 
-spherefunc = @(r) sqrt((rows - round(centers(r,2))).^2 + (cols - round(centers(r,1))).^2 + (slices - round(centers(r,3))).^2) < radii(r).^2;
+% spherefunc = @(r) sqrt((rows - round(centers(r,2))).^2 + (cols - round(centers(r,1))).^2 + (slices - round(centers(r,3))).^2) < radii(r).^2;
+spherefunc = @(r) sqrt((rows - centers(r,2)).^2 + (cols - centers(r,1)).^2 + (slices - centers(r,3)).^2) < radii(r).^2;
 
 nrois = length(radii);
 masks = arrayfun(@(roi) spherefunc(roi), 1:nrois, 'UniformOutput', false);

@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 9 %7;
+analysis_no = 11 %9 %7;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -326,7 +326,7 @@ switch metric
         cmapspace = linspace(-pi, pi, size(currcmap,1));
     case 'ratio'
         currcmap = colormap(hot);
-        cmapspace = linspace(min(ratioMat), max(ratioMat), size(hotmap, 1));
+        cmapspace = linspace(min(ratioMat), max(ratioMat), size(currcmap, 1));
 end
 
 % Test viewing:
@@ -383,7 +383,7 @@ end
 camlight headlight; 
 lighting gouraud;
 camlight left; 
-lighting gouraud;
+lighting flat;
 if strcmp(metric, 'ratio')
     colorbar();
 end
@@ -443,12 +443,23 @@ for sidx = 1:length(slicesToUse)
             else
                 maskcell = maskstruct.maskcell;
             end
-
-            if isempty(maskcell)
-                continue;
-            end
         end
-        
+            if isempty(maskcell)
+                fprintf('Empty mask!\n')
+        fftStruct.file(fidx).targetPhase = phaseMat(freqIdx,:);
+        fftStruct.file(fidx).targetMag = magMat(freqIdx,:);
+        fftStruct.file(fidx).freqsAtMaxMag = maxFreqs;
+        fftStruct.file(fidx).fftMat = fftMat;
+        fftStruct.file(fidx).traces = traces;
+        fftStruct.file(fidx).sliceIdxs = sliceIdxs;
+        fftStruct.file(fidx).targetFreq = targetFreq;
+        fftStruct.file(fidx).freqs = freqs;
+        fftStruct.file(fidx).targetFreqIdx = freqIdx;
+        fftStruct.file(fidx).magMat = magMat;
+        fftStruct.file(fidx).ratioMat = ratioMat;
+        fftStruct.file(fidx).phaseMat = phaseMat;
+
+            end
         %sliceIdxs = currSlice:meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
         sliceIdxs = slicesToUse(sidx):meta.file(fidx).si.nFramesPerVolume:meta.file(fidx).si.nTotalFrames;
 
@@ -496,6 +507,9 @@ for sidx = 1:length(slicesToUse)
                 [d1,d2] = size(avgY);
                 [nframes,nrois] = size(traces);
             case '3Dcnmf'
+                [d1,d2,d3] = size(avgY);
+                [nframes,nrois] = size(traces);
+            case 'manual3Drois'
                 [d1,d2,d3] = size(avgY);
                 [nframes,nrois] = size(traces);
         end
@@ -648,19 +662,22 @@ for sidx = 1:length(slicesToUse)
         
     end
     
+end
     % Save maps for current slice:
-    mapStructName = sprintf('maps_Slice%02d', D.slices(sidx));
-    save_struct(D.outputDir, mapStructName, maps);
 
-    fftStructName = sprintf('fft_Slice%02d', D.slices(sidx));
-    save_struct(D.outputDir, fftStructName, fftStruct);
+        mapStructName = sprintf('maps_Slice%02d', D.slices(sidx));
+        save_struct(D.outputDir, mapStructName, maps);
 
-    %M.file(fidx) = maps;
+        fftStructName = sprintf('fft_Slice%02d', D.slices(sidx));
+        save_struct(D.outputDir, fftStructName, fftStruct);
+
+        %M.file(fidx) = maps;
+
+        fprintf('Finished FFT analysis for Slice %02d.\n', D.slices(sidx));
+
+        mapStructNames{sidx} = mapStructName;
+        fftStructNames{sidx} = fftStructName;
     
-    fprintf('Finished FFT analysis for Slice %02d.\n', D.slices(sidx));
-    
-    mapStructNames{sidx} = mapStructName;
-    fftStructNames{sidx} = fftStructName;
 end
 
 clear fftStruct maps T

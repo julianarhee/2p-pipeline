@@ -250,9 +250,9 @@ else
 
     %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
     %roiA = rois.all;
-    if D.maskInfo.seedRois && D.maskInfo.centroidsOnly
+    if D.maskInfo.seedRois
         P.ROI_list = double(D.maskInfo.seeds);
-        fprintf('Starting with %i centroids as seeds.\n', length(P.ROI_list));
+        fprintf('Starting with %i seeds.\n', length(P.ROI_list));
     end
     
 %     [Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
@@ -307,25 +307,14 @@ else
         end
         
         % Get all the stuff:
-        
-        if D.maskInfo.centroidsOnly
-            fprintf('Initializing components...\n');
-            [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
-            %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
-    %         
-    %         if ~D.maskInfo.keepAll
-    %             fprintf('Filtering out very small components...\n');
-    %             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
-    %         end
-        else
-            fprintf('Using input masks (no initialization)...\n');
-            Ain = D.maskInfo.seeds;
-            Ain = Ain>0;
-            Cin = [];
-            fin = [];
-            bin = [];
-            fprintf('Size of input spatial footprint mask is: %s\n', mat2str(size(Ain)));
-        end
+        fprintf('Initializing components...\n');
+        [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
+        %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+%         
+%         if ~D.maskInfo.keepAll
+%             fprintf('Filtering out very small components...\n');
+%             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+%         end
 
         % Get centers of each ROI:
         fprintf('Getting centroids...\n');
