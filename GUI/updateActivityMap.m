@@ -1,6 +1,6 @@
 function [handles, D] = updateActivityMap(handles, D, meta)
 
-orient = true;
+orient = false; %true;
 
 fprintf('Updating activity map...');
 
@@ -8,7 +8,7 @@ selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String
 if selectedSliceIdx > length(D.slices)
     selectedSliceIdx = length(D.slices);
 end
-selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
+selectedSlice = D.slices(selectedSliceIdx) % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
 
 currThresh = str2double(handles.threshold.String);

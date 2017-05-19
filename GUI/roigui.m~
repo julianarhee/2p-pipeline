@@ -729,10 +729,9 @@ end
 
 %fprintf('ROI: %i\n', roiMatch);
 handles.currRoi.String = num2str(roiMatch);
-handles.currRoi.Value = roiMatch;
 handles.currRoiSlider.Value = str2double(handles.currRoi.String);
 
-newReference = 1;
+newReference = 0;
 showRois = handles.roiToggle.Value;
 %D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
@@ -1468,10 +1467,9 @@ end
 
 %fprintf('ROI: %i\n', roiMatch);
 handles.currRoi.String = num2str(roiMatch);
-handles.currRoi.Value = roiMatch;
 handles.currRoiSlider.Value = str2double(handles.currRoi.String);
 
-newReference = 1;
+newReference = 0;
 showRois = handles.roiToggle.Value;
 %D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
@@ -1572,13 +1570,7 @@ else
             handles.currSlice.Value = correspondingSlice;
             newReference = 1;
             showRois = handles.roiToggle.Value;
-            
-            [maskcell, roiIdxs] = getCurrentSliceMasks(handles,D);
-            roiSliceID = find(curr3Droi==roiIdxs)
-            handles.currRoi.Value = roiSliceID;
-            handles.currRoi.String = num2str(roiSliceID);
-            handles.currRoiSlider.Value = roiSliceID;
-            
+
             [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
             set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 

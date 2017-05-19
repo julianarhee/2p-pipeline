@@ -75,7 +75,7 @@ else
     handles.roi3D.String = num2str(roiIdxs(selectedROI));
 end
 
-%D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1).*0;
+D.masksRGBimg(:,:,1) = D.masksRGBimg(:,:,1).*0;
 %D.masksRGBimg(:,:,2) = avgimg; 
 %D.masksRGBimg(:,:,3) = D.masksRGBimg(:,:,3).*0;
 

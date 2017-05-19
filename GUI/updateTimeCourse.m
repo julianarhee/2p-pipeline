@@ -49,6 +49,9 @@ switch tcourseTypes{handles.timecourseMenu.Value}
 %             if isfield(handles, 'timecourse')
 %                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
 %             else 
+            if isempty(dfMat)
+                dfMat = zeros(size(dfMat,1), 1);
+            end
             handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
 %             end
             xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
@@ -84,6 +87,9 @@ switch tcourseTypes{handles.timecourseMenu.Value}
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else
+        if isempty(rawmat)
+            rawmat = zeros(size(rawmat,1), 1);
+        end
         handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         end
         xlim([0 tstamps(end)]);

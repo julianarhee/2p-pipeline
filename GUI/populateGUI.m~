@@ -63,32 +63,21 @@ while loading==1
         sliceNames{s} = sprintf('Slice%02d', D.slices(s)); % - D.slices(1) + 1);
     end
     handles.currSlice.String = sliceNames;
-    
+
     
     % Get default slice idx and value: ------------------------------------
-    selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
+    selectedSliceIdx = 10; %handles.currSlice.Value; %str2double(handles.currSlice.String);
     if selectedSliceIdx > length(D.slices)
         selectedSliceIdx = length(D.slices);
     end
     selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
     
-%     tmp_mstruct = load(D.maskPaths{selectedSlice});
-%     if isfield(tmp_mstruct, 'file') && isempty(tmp_mstruct.file(1).maskcell)
-%         slicesWithMasks = [];
-%         for sidx=1:length(D.slices)
-%             tmp_mstruct = lorad(D.maskPaths{sidx});
-%             if ~isempty(tmp_mstruct.file(1).maskcell)
-%                 slicesWithMasks = [slicesWithMasks sidx];
-%             end
-%         end
-%         sliceNames = cell(1,length(slicesWithMasks));
-%         for s=1:length(sliceNames)
-%             sliceNames{s} = sprintf('Slice%02d', D.slices(s)); % - D.slices(1) + 1);
-%         end
-%         handles.currSlice.String = sliceNames;
-%         D.slices = slicesWithMasks
-%         setappdata(handles.roigui, 'D', D);
-%     end
+    tmp_mstruct = load(D.maskPaths{selectedSlice});
+    if isfield(mstruct, 'file') && isempty(mstruct.file(1).maskcell)
+        for sidx=1:length(D.slices)
+            tmp_mstruct = load(D.maskPaths{sidx});
+            if ~isempty(tmp_mstruct.file(1).maskcell)
+                slicesWithMasks{end+1} = 
     
     % Set file name options for RUN menu: ---------------------------------
     fileNames = cell(1,length(meta.file));
