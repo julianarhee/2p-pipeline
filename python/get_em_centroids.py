@@ -14,6 +14,14 @@ centroidpath = os.path.join(source, session, maskdir)
 if not os.path.exists(centroidpath):
     os.mkdir(centroidpath)
 
+csv = True
+
+if csv:
+    print "Using CSV file to read EM to TeFo info. Env should be python, standard to use retiondev."
+else:
+    print "MAKE SURE PY3 env is active!"
+
+
 
 if csv:
     csvpath = os.path.join(centroidpath, [i for i in os.listdir(centroidpath) if i.endswith('.csv')][0])
