@@ -1,5 +1,12 @@
 #!/usr/bin/env python2
+'''
+Run this script to parse RAW acquisition files (.tif) from SI.
+Native format is int16. This script will remove all artifact and discard frames, and save to new .tif (int16, uint1`6).
 
+Append _visible.tif to crop display range for viewing on BOSS.
+
+Run python createsubstacks.py -h for all input options.
+'''
 import os
 import numpy as np
 import tifffile as tf
@@ -37,10 +44,13 @@ parser.add_option('--discard', action='store', dest='ndiscard', default=8, help=
 parser.add_option('--channels', action='store', dest='nchannels', default=2, help='Num interleaved channels in raw tiffs to be processed [default: 2]')
 parser.add_option('--volumes', action='store', dest='nvolumes', default=340, help='Num volumes acquired [default: 340]')
 parser.add_option('--nslices', action='store', dest='nslices', default=30, help='Num slices specified, no discard [default: 30]')
-
+parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
+parser.add_option('--substack', action='store_true', dest='create_substacks', default=False, help='Create substacks of data-only by removing all artifact/discard frames [default: False]')
 
 (options, args) = parser.parse_args() 
 
+create_substacks = options.create_substacks
+uint16 = options.uint16
 nflyback = options.nflyback
 ndiscard = options.ndiscard
 nchannels = options.nchannels
@@ -72,41 +82,47 @@ if not os.path.exists(savepath):
 
 for tiffidx in range(len(tiffs)):
     stack = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
-    stack = img_as_uint(stack)
+    if uint16:
+        stack = img_as_uint(stack)
 
     print "TIFF: %s" % tiffs[tiffidx]
     print "size: ", stack.shape
     print "dtype: ", stack.dtype
 
+    if create_substacks:
+       
+	# First, remove DISCARD frames:
+	nslices_orig = nslices_full - ndiscard #30 # single-channel n z-slices
 
-   
-    # First, remove DISCARD frames:
-    nslices_orig = nslices_full - ndiscard #30 # single-channel n z-slices
+	start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
+	substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
+	newstart = 0
+	for x in range(len(start_idxs)):    
+	    substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
+	    newstart = newstart + (nslices_orig*nchannels)
+	
+	print "Removed discard frames. New substack shape is: ", substack.shape    
 
-    start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
-    substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
-    newstart = 0
-    for x in range(len(start_idxs)):    
-	substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
-	newstart = newstart + (nslices_orig*nchannels)
+	# Next, crop off FLYBACK frames: 
+	nslices_crop = nslices_orig - nflyback 
+
+	start_idxs = np.arange(nflyback*nchannels, substack.shape[0], nslices_orig*nchannels)
+	final = np.empty((nslices_crop*nchannels*nvolumes, substack.shape[1], substack.shape[2]), dtype=stack.dtype)
+	newstart = 0
+	for x in range(len(start_idxs)):
+	    final[newstart:newstart+(nslices_crop*nchannels),:,:] = substack[start_idxs[x]:start_idxs[x]+(nslices_crop*nchannels), :, :]
+	    newstart = newstart + (nslices_crop*nchannels)
+	
+	print "Removed flyback frames. Final shape is: ", final.shape
     
-    print "Removed discard frames. New substack shape is: ", substack.shape    
-
-    # Next, crop off FLYBACK frames: 
-    nslices_crop = nslices_orig - nflyback 
-
-    start_idxs = np.arange(nflyback*nchannels, substack.shape[0], nslices_orig*nchannels)
-    final = np.empty((nslices_crop*nchannels*nvolumes, substack.shape[1], substack.shape[2]), dtype=stack.dtype)
-    newstart = 0
-    for x in range(len(start_idxs)):
-	final[newstart:newstart+(nslices_crop*nchannels),:,:] = substack[start_idxs[x]:start_idxs[x]+(nslices_crop*nchannels), :, :]
-	newstart = newstart + (nslices_crop*nchannels)
-    
-    print "Removed flyback frames. Final shape is: ", final.shape
+    else:
+        print "Not creating substacks from input tiffs."
+        
+        final = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
+        final = img_as_uint(final)
 
     newtiff_fn = 'File%03d.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
-
 
     ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
     rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
