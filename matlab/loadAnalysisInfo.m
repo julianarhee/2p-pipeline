@@ -80,18 +80,20 @@ else
 end
 
 %  Save 3D masks to D stuct:
-if strfind(D.roiType, '3D') && ~isfield(D, 'maskarrayPath')
+if strfind(D.roiType, '3D')
        fprintf('Creating hdf5 mask array for NDB...\n');
         % Just need to load 3D masks:
         % if length(D.maskInfo.maskPaths) > 1
         % TODO:  currently, nmf is run on EACH file (i.e., each file may have
         % different masks)... deal with this. [try:  use binary spatial comps
         % for A to enforce same locs. across files/runs]
-       tmpmasks = load(D.maskInfo.maskPaths{1});
+       tmpmasks = load(D.maskInfo.maskPaths{4});
        if strcmp(D.roiType, '3Dnmf')
-           masks = full(tmpmasks.spatialcomponents);
+           masks.maskmat = full(tmpmasks.spatialcomponents);
+           masks.maskids = tmpmasks.roi3Didxs;
        else
-           masks = full(double(tmpmasks.roiMat));
+           masks.maskmat = full(double(tmpmasks.roiMat));
+           masks.maskids = tmpmasks.roi3Didxs;
        end
        maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
 
