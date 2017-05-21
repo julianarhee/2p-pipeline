@@ -54,8 +54,12 @@ else
             roiIdxs = 1;
             maskcell = {0};
         else
-            if strfind(D.roiType, '3D') && isfield(maskStruct.file(handles.runMenu.Value), 'roi3Didxs')
-                roiIdxs = maskStruct.file(handles.runMenu.Value).roi3Didxs;
+            if strfind(D.roiType, '3D') 
+                if isfield(maskStruct.file(handles.runMenu.Value), 'roi3Didxs')
+                    roiIdxs = maskStruct.file(handles.runMenu.Value).roi3Didxs;
+                else
+                   roiIdxs = maskStruct.file(handles.runMenu.Value).roiIDs;
+                end
             else
                 roiIdxs = 1:length(maskcell);
             end

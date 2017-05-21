@@ -170,9 +170,9 @@ switch selectedMapType
             end
         end
 
-    case 'phaseInferred'
+    case 'phaseNMF'
         % recalculate ratio masks from inferred trace data:
-        magMap = mapStruct.file(selectedFile).ratioInferred;
+        magMap = mapStruct.file(selectedFile).ratioNMF;
         thresholdMap = threshold_map(displayMap, magMap, currThresh);
         axes(handles.ax2);  
         if isfield(D, 'tefo') && D.tefo
@@ -242,7 +242,11 @@ switch selectedMapType
         if any(isnan([min(thresholdMap(:)), max(thresholdMap(:))]))
             caxis([0 1]);
         else
-            caxis([min(thresholdMap(:)), max(thresholdMap(:))]);
+            if min(thresholdMap(:))==max(thresholdMap(:))
+                caxis([0, max(thresholdMap(:))]);
+            else
+                caxis([min(thresholdMap(:)), max(thresholdMap(:))]);
+            end
         end
         colorbar();
         

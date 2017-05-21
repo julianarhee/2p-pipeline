@@ -13,7 +13,7 @@ while loading==1
         tload = tic();
     end
     
-    % Load main analysis MAT: ---------------------------------------------
+    % Load main analysis MAT: -----------------n----------------------------
     currPath = tmpCurrPath;
     currDatastruct = tmpCurrDatastruct;
     D = load(fullfile(currPath, currDatastruct));
@@ -178,6 +178,8 @@ while loading==1
     % Populate Time-Course menu options: ----------------------------------
     if isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatInferred')
         timecourseTypes = {'dF/F', 'raw', 'processed', 'inferred'};
+    elseif isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatNMF')
+        timecourseTypes = {'dF/F', 'raw', 'processed', 'detrendNMF', 'dfNMF'};
     else
         timecourseTypes = {'dF/F', 'raw', 'processed'};
     end

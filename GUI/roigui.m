@@ -1565,6 +1565,10 @@ else
             % get ROIs...)
             matidx = find(maskstruct3D.roiIDs == curr3Droi);
             correspondingSlice = maskstruct3D.centers(matidx, 3);
+        elseif isfield(maskstruct3D, 'roi3Didxs')
+            matidx = find(maskstruct3D.roi3Didxs == curr3Droi);
+            correspondingSlice = maskstruct3D.centers(matidx, 3);
+            
         else
             correspondingSlice = maskstruct3D.centers(curr3Droi, 3);
         end
