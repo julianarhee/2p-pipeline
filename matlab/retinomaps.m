@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 13 %9 %7;
+analysis_no = 13 %13 %9 %7;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -132,14 +132,16 @@ for fidx=1:nTiffs
 %       inferred = false;
 %     end
     if isfield(tracestruct, 'dfTracesNMF')
-        dfTraceMatNMF = tracestruct.dfTraceMatNMF;
-        detrendedTraceMatNMF = tracestruct.detrendedTraceMatNMF;
+        %dfTraceMatNMF = tracestruct.dfTraceMatNMF;
+        %detrendedTracesNMF = tracestruct.detrendedTraceMatNMF;
+        inferred = true;
+    else
+        inferred = false;
     end
-    inferred = true;
     
-    traceMatDC = tracestruct.traceMatDC;
-    DCs = tracestruct.DCs;
-    tmptraces = bsxfun(@minus, traceMatDC, DCs);
+    %traceMatDC = tracestruct.traceMatDC;
+    %DCs = tracestruct.DCs;
+    %tmptraces = bsxfun(@minus, traceMatDC, DCs);
     traces = tracestruct.traceMat;
         
     targetFreq = meta.file(fidx).mw.targetFreq;
@@ -147,95 +149,98 @@ for fidx=1:nTiffs
     nTotalSlices = meta.file(fidx).si.nFramesPerVolume;
 
     %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
-        
-
     volsize = meta.volumeSizePixels;
     [nframes,nrois] = size(traces);
-        
-%     % Get phase and magnitude maps:
-%     phaseMap = zeros(volsize);
-%     magMap = zeros(volsize);
-%     ratioMap = zeros(volsize);
-%     phaseMaxMag = zeros(volsize);
-
-%     % ---
-%     if inferred
-%         phaseMapNMF = zeros([d1, d2, d3]);
-%         magMapNMF = zeros([d1, d2, d3]);
-%         ratioMapNMF = zeros([d1, d2, d3]);
-%         phaseMaxMagNMF = zeros([d1, d2, d3]);
-%     end
-%     % ---
-        
-        
-        % Subtrace rolling average:
-        Fs = meta.file(fidx).si.siVolumeRate;
-        %winUnit = (1/targetFreq);
-        
-        % Do FFT on each ROI's trace:
-        N = size(traces,1);
-        dt = 1/Fs;
-        t = dt*(0:N-1)';
-        dF = Fs/N;
-        freqs = dF*(0:N/2-1)';
-        freqIdx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
-
-        fftfun = @(x) fft(x)/N;
-        fftMat = arrayfun(@(i) fftfun(traces(:,i)), 1:size(traces,2), 'UniformOutput', false);
-        fftMat = cat(2, fftMat{1:end});
-      
-        fftMat = fftMat(1:N/2, :);
-        fftMat(2:end,:) = fftMat(2:end,:).*2;
-
-        magMat = abs(fftMat);
-        ratioMat = magMat(freqIdx,:) ./ (sum(magMat, 1) - magMat(freqIdx,:));
-        phaseMat = angle(fftMat);
-
-        [maxmag,maxidx] = max(magMat);
-        maxFreqs = freqs(maxidx);
-        
-
-        % Get FFT-MAT for inferred: ---------------------------------
-        if inferred
-            fftMatNMFoutput = arrayfun(@(i) fftfun(dfTraceMatNMF(:,i)), 1:size(dfTraceMatNMF,2), 'UniformOutput', false);
-            fftMatNMFoutput = cat(2, fftMatNMFoutput{1:end});
-
-            fftMatNMFoutput = fftMatNMFoutput(1:N/2, :);
-            fftMatNMFoutput(2:end,:) = fftMatNMFoutput(2:end,:).*2;
-
-            magMatNMFoutput = abs(fftMatNMFoutput);
-            ratioMatNMFoutput = magMatNMFoutput(freqIdx,:) ./ (sum(magMatNMFoutput, 1) - magMatNMFoutput(freqIdx,:));
-            phaseMatNMFoutput = angle(fftMatNMFoutput);
-
-            [maxmag2,maxidx2] = max(magMatNMFoutput);
-            maxFreqsNMFoutput = freqs(maxidx2);
-        end
-        % ------------------------------------------------------------
+            
 
         
-        fftStruct.targetPhase = phaseMat(freqIdx,:);
-        fftStruct.targetMag = magMat(freqIdx,:);
-        fftStruct.freqsAtMaxMag = maxFreqs;
-        fftStruct.fftMat = fftMat;
-        fftStruct.traces = traces;
-        fftStruct.sliceIdxs = sliceIdxs;
-        fftStruct.targetFreq = targetFreq;
-        fftStruct.freqs = freqs;
-        fftStruct.targetFreqIdx = freqIdx;
-        fftStruct.magMat = magMat;
-        fftStruct.ratioMat = ratioMat;
-        fftStruct.phaseMat = phaseMat;
+    % Do FFT on each ROI's trace:
+    Fs = meta.file(fidx).si.siVolumeRate;
+    N = size(traces,1);
+    dt = 1/Fs;
+    t = dt*(0:N-1)';
+    dF = Fs/N;
+    freqs = dF*(0:N/2-1)';
+    freqIdx = find(abs((freqs-targetFreq))==min(abs(freqs-targetFreq)));
 
-        if inferred
-            fftStruct.targetPhaseNMFoutput = phaseMatNMFoutput(freqIdx,:);
-            fftStruct.targetMagNMFoutput = magMatNMFoutput(freqIdx,:);
-            fftStruct.freqsAtMaxMagNMFoutput = maxFreqsNMFoutput;
-            fftStruct.fftMatNMFoutput = fftMatNMFoutput;
-            fftStruct.tracesNMFoutput = dfTraceMatNMF;
-            fftStruct.magMatNMFoutput = magMatNMFoutput;
-            fftStruct.ratioMatNMFoutput = ratioMatNMFoutput;
-            fftStruct.phaseMatNMFoutput = phaseMatNMFoutput;
-        end
+    fftfun = @(x) fft(x)/N;
+    fftMat = arrayfun(@(i) fftfun(traces(:,i)), 1:size(traces,2), 'UniformOutput', false);
+    fftMat = cat(2, fftMat{1:end});
+  
+    fftMat = fftMat(1:N/2, :);
+    fftMat(2:end,:) = fftMat(2:end,:).*2;
+
+    magMat = abs(fftMat);
+    ratioMat = magMat(freqIdx,:) ./ (sum(magMat, 1) - magMat(freqIdx,:));
+    phaseMat = angle(fftMat);
+
+    [maxmag,maxidx] = max(magMat);
+    maxFreqs = freqs(maxidx);
+    
+
+    % Get FFT-MAT for inferred: ---------------------------------
+    if inferred
+        % Use raw fluor matrix from NMF:
+        tracesNMF = tracestruct.rawTraceMatNMF;
+        fftMatNMF = arrayfun(@(i) fftfun(tracesNMF(:,i)), 1:size(tracesNMF,2), 'UniformOutput', false);
+        fftMatNMF = cat(2, fftMatNMF{1:end});
+        fftMatNMF = fftMatNMF(1:N/2, :);
+        fftMatNMF(2:end,:) = fftMatNMF(2:end,:).*2;
+        magMatNMF = abs(fftMatNMF);
+        ratioMatNMF = magMatNMF(freqIdx,:) ./ (sum(magMatNMF, 1) - magMatNMF(freqIdx,:));
+        phaseMatNMF = angle(fftMatNMF);
+        [maxmag2,maxidx2] = max(magMatNMF);
+        maxFreqsNMF = freqs(maxidx2);
+
+        % Use output of NMF:
+        tracesNMFoutput = tracestruct.detrendedTraceMatNMF;
+        fftMatNMFoutput = arrayfun(@(i) fftfun(tracesNMFoutput(:,i)), 1:size(tracesNMFoutput,2), 'UniformOutput', false);
+        fftMatNMFoutput = cat(2, fftMatNMFoutput{1:end});
+        fftMatNMFoutput = fftMatNMFoutput(1:N/2, :);
+        fftMatNMFoutput(2:end,:) = fftMatNMFoutput(2:end,:).*2;
+        magMatNMFoutput = abs(fftMatNMFoutput);
+        ratioMatNMFoutput = magMatNMFoutput(freqIdx,:) ./ (sum(magMatNMFoutput, 1) - magMatNMFoutput(freqIdx,:));
+        phaseMatNMFoutput = angle(fftMatNMFoutput);
+        [maxmag3,maxidx3] = max(magMatNMFoutput);
+        maxFreqsNMFoutput = freqs(maxidx2);
+
+    end
+    % ------------------------------------------------------------
+
+        
+    fftStruct.targetPhase = phaseMat(freqIdx,:);
+    fftStruct.targetMag = magMat(freqIdx,:);
+    fftStruct.freqsAtMaxMag = maxFreqs;
+    fftStruct.fftMat = fftMat;
+    fftStruct.traces = traces;
+    fftStruct.sliceIdxs = sliceIdxs;
+    fftStruct.targetFreq = targetFreq;
+    fftStruct.freqs = freqs;
+    fftStruct.targetFreqIdx = freqIdx;
+    fftStruct.magMat = magMat;
+    fftStruct.ratioMat = ratioMat;
+    fftStruct.phaseMat = phaseMat;
+
+    if inferred
+        fftStruct.targetPhaseNMF = phaseMatNMF(freqIdx,:);
+        fftStruct.targetMagNMF = magMatNMF(freqIdx,:);
+        fftStruct.freqsAtMaxMagNMF = maxFreqsNMF;
+        fftStruct.fftMatNMF = fftMatNMF;
+        fftStruct.tracesNMF = tracesNMF; %detrendedTraceMatNMF;
+        fftStruct.magMatNMF = magMatNMF;
+        fftStruct.ratioMatNMF = ratioMatNMF;
+        fftStruct.phaseMatNMF = phaseMatNMF;
+
+
+        fftStruct.targetPhaseNMFoutput = phaseMatNMFoutput(freqIdx,:);
+        fftStruct.targetMagNMFoutput = magMatNMFoutput(freqIdx,:);
+        fftStruct.freqsAtMaxMagNMFoutput = maxFreqsNMFoutput;
+        fftStruct.fftMatNMFoutput = fftMatNMFoutput;
+        fftStruct.tracesNMFoutput = tracesNMFoutput; %detrendedTraceMatNMF;
+        fftStruct.magMatNMFoutput = magMatNMFoutput;
+        fftStruct.ratioMatNMFoutput = ratioMatNMFoutput;
+        fftStruct.phaseMatNMFoutput = phaseMatNMFoutput;
+    end
 
 
 
@@ -337,15 +342,18 @@ metric = 'ratio';
 
 currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
 
+inputSource = 'NMFoutput'
 
-useNMF = true
-
-if useNMF
-    targetphase = fftstruct.targetPhaseNMFoutput;
-    ratiomat = fftstruct.ratioMatNMFoutput;
-else
-    targetphase = fftstruct.targetPhase;
-    ratiomat = fftstruct.ratioMat;
+switch inputSource
+    case 'NMF'
+        targetphase = fftstruct.targetPhaseNMF;
+        ratiomat = fftstruct.ratioMatNMF;
+    case 'NMFoutput'
+        targetphase = fftstruct.targetPhaseNMFoutput;
+        ratiomat = fftstruct.ratioMatNMFoutput;
+    otherwise
+        targetphase = fftstruct.targetPhase;
+        ratiomat = fftstruct.ratioMat;
 end
 
 
@@ -431,8 +439,8 @@ set(gca, 'xlim', [0 120])
 camlight headlight; 
 lighting gouraud;
 
-savefig(fullfile(D.figDir, 'ratio3Dmap_File004.fig'))
-saveas(p1, fullfile(D.figDir, 'ratio3Dmap_File004.png'), 'png')
+savefig(fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.fig', inputSource)))
+saveas(p1, fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.png', inputSource)), 'png')
 
 clf;
 
@@ -504,6 +512,39 @@ for sidx = 1:length(slicesToUse)
             maps.file(fidx).ratio = zeros(1,100);
             maps.file(fidx).avgY = zeros(1,100);
 
+            if inferred
+                fftStruct.file(fidx).targetPhaseNMF = zeros(1,100); 
+                fftStruct.file(fidx).targetMagNMF = zeros(1,100);
+                fftStruct.file(fidx).freqsAtMaxMagNMF = zeros(1,100);
+                fftStruct.file(fidx).fftMatNMF = zeros(1,100); 
+                fftStruct.file(fidx).tracesNMF = zeros(1,100); %detrendedTraceMatNMF;
+                fftStruct.file(fidx).magMatNMF = zeros(1,100);
+                fftStruct.file(fidx).ratioMatNMF = zeros(1,100);
+                fftStruct.file(fidx).phaseMatNMF = zeros(1,100);
+
+                fftStruct.file(fidx).targetPhaseNMFoutput = zeros(1,100);
+                fftStruct.file(fidx).targetMagNMFoutput = zeros(1,100);
+                fftStruct.file(fidx).freqsAtMaxMagNMFoutput = zeros(1,100) 
+                fftStruct.file(fidx).fftMatNMFoutput = zeros(1,100); 
+                fftStruct.file(fidx).tracesNMFoutput = zeros(1,100); %detrendedTraceMatNMF;
+                fftStruct.file(fidx).magMatNMFoutput = zeros(1,100); 
+                fftStruct.file(fidx).ratioMatNMFoutput = zeros(1,100); 
+                fftStruct.file(fidx).phaseMatNMFoutput = zeros(1,100); 
+ 
+                maps.file(fidx).magnitudeNMF = zeros(1,100); 
+                maps.file(fidx).phaseNMF = zeros(1,100);
+                maps.file(fidx).phasemaxNMF = zeros(1,100);
+                maps.file(fidx).ratioNMF = zeros(1,100);
+
+                maps.file(fidx).magnitudeNMFoutput = zeros(1,100); 
+                maps.file(fidx).phaseNMFoutput = zeros(1,100);
+                maps.file(fidx).phasemaxNMFoutput = zeros(1,100);
+                maps.file(fidx).ratioNMFoutput = zeros(1,100);
+
+            end
+
+
+
 
         else
                 
@@ -521,16 +562,16 @@ for sidx = 1:length(slicesToUse)
 %                 inferred = false;
 %             end
             if isfield(tracestruct.file(fidx), 'dfTracesNMF')
-                dfTraceMatNMF = tracestruct.file(fidx).dfTraceMatNMF;
-                detrendedTraceMatNMF = tracestruct.file(fidx).detrendedTraceMatNMF;
+                %dfTraceMatNMF = tracestruct.file(fidx).dfTraceMatNMF;
+                %detrendedTraceMatNMF = tracestruct.file(fidx).detrendedTraceMatNMF;
                 inferred = true;
             else
                 inferred = false;
             end
 
-            traceMatDC = tracestruct.file(fidx).traceMatDC;
-            DCs = tracestruct.file(fidx).DCs;
-            tmptraces = bsxfun(@minus, traceMatDC, DCs);
+            %traceMatDC = tracestruct.file(fidx).traceMatDC;
+            %DCs = tracestruct.file(fidx).DCs;
+            %tmptraces = bsxfun(@minus, traceMatDC, DCs);
             traces = tracestruct.file(fidx).traceMat;
 
             if iscell(tracestruct.file(fidx).avgImage)
@@ -580,29 +621,17 @@ for sidx = 1:length(slicesToUse)
                 magMapNMF = zeros([d1, d2]);
                 ratioMapNMF = zeros([d1, d2]);
                 phaseMaxMagNMF = zeros([d1, d2]);
+
+                phaseMapNMFoutput = zeros([d1, d2]);
+                magMapNMFoutput = zeros([d1, d2]);
+                ratioMapNMFoutput = zeros([d1, d2]);
+                phaseMaxMagNMFoutput = zeros([d1, d2]);
+
+
             end
             % ---
-        
-        
-            % Subtrace rolling average:
-            Fs = meta.file(fidx).si.siVolumeRate;
-            %winUnit = (1/targetFreq);
-
-    %         winsz = round((1/targetFreq)*Fs*2);
-    %         %traceMat = arrayfun(@(x), subtractRollingMean(x,winsz),traces);
-    %         traceMat = arrayfun(@(i) subtractRollingMean(traces(i, :), winsz), 1:size(traces, 1), 'UniformOutput', false);
-    %         traceMat = cat(1, traceMat{1:end});
-    %         untrimmedTraceMat = traceMat;
-    %         if trimEnd
-    %             traceMat = traceMat(:,1:crop);
-    %             trimmedRawMat = traces(:,1:crop);
-    %         end
-
-            % TODO:  fix fft sampling to interp (option):
-            % ...
-            % 
-
             % Do FFT on each row:
+            Fs = meta.file(fidx).si.siVolumeRate;
             N = size(traces,1);
             dt = 1/Fs;
             t = dt*(0:N-1)';
@@ -627,7 +656,9 @@ for sidx = 1:length(slicesToUse)
 
             % Get FFT-MAT for inferred: ---------------------------------
             if inferred
-                fftMatNMF = arrayfun(@(i) fftfun(dfTraceMatNMF(:,i)), 1:size(dfTraceMatNMF,2), 'UniformOutput', false);
+                % Do per-slice on raw fluorescent mat from NMF:
+                tracesNMF = tracestruct.file(fidx).rawTraceMatNMF;
+                fftMatNMF = arrayfun(@(i) fftfun(tracesNMF(:,i)), 1:size(tracesNMF,2), 'UniformOutput', false);
                 fftMatNMF = cat(2, fftMatNMF{1:end});
 
                 fftMatNMF = fftMatNMF(1:N/2, :);
@@ -639,6 +670,25 @@ for sidx = 1:length(slicesToUse)
 
                 [maxmag2,maxidx2] = max(magMatNMF);
                 maxFreqsNMF = freqs(maxidx2);
+
+
+                % Do per-slice on NMF output:
+                tracesNMFoutput = tracestruct.file(fidx).detrendedTraceMatNMF;
+                fftMatNMFoutput = arrayfun(@(i) fftfun(tracesNMFoutput(:,i)), 1:size(tracesNMFoutput,2), 'UniformOutput', false);
+                fftMatNMFoutput = cat(2, fftMatNMFoutput{1:end});
+
+                fftMatNMFoutput = fftMatNMFoutput(1:N/2, :);
+                fftMatNMFoutput(2:end,:) = fftMatNMFoutput(2:end,:).*2;
+
+                magMatNMFoutput = abs(fftMatNMFoutput);
+                ratioMatNMFoutput = magMatNMFoutput(freqIdx,:) ./ (sum(magMatNMFoutput, 1) - magMatNMFoutput(freqIdx,:));
+                phaseMatNMFoutput = angle(fftMatNMFoutput);
+
+                [maxmag3,maxidx3] = max(magMatNMFoutput);
+                maxFreqsNMFoutput = freqs(maxidx3);
+
+
+
             end
             % ------------------------------------------------------------
 
@@ -655,6 +705,27 @@ for sidx = 1:length(slicesToUse)
             fftStruct.file(fidx).magMat = magMat;
             fftStruct.file(fidx).ratioMat = ratioMat;
             fftStruct.file(fidx).phaseMat = phaseMat;
+
+            if inferred
+                fftStruct.file(fidx).targetPhaseNMF = phaseMatNMF(freqIdx,:);
+                fftStruct.file(fidx).targetMagNMF = magMatNMF(freqIdx,:);
+                fftStruct.file(fidx).freqsAtMaxMagNMF = maxFreqsNMF;
+                fftStruct.file(fidx).fftMatNMF = fftMatNMF;
+                fftStruct.file(fidx).tracesNMF = tracesNMF; %detrendedTraceMatNMF;
+                fftStruct.file(fidx).magMatNMF = magMatNMF;
+                fftStruct.file(fidx).ratioMatNMF = ratioMatNMF;
+                fftStruct.file(fidx).phaseMatNMF = phaseMatNMF;
+
+                fftStruct.file(fidx).targetPhaseNMFoutput = phaseMatNMFoutput(freqIdx,:);
+                fftStruct.file(fidx).targetMagNMFoutput = magMatNMFoutput(freqIdx,:);
+                fftStruct.file(fidx).freqsAtMaxMagNMFoutput = maxFreqsNMFoutput;
+                fftStruct.file(fidx).fftMatNMFoutput = fftMatNMFoutput;
+                fftStruct.file(fidx).tracesNMFoutput = tracesNMFoutput; %detrendedTraceMatNMF;
+                fftStruct.file(fidx).magMatNMFoutput = magMatNMFoutput;
+                fftStruct.file(fidx).ratioMatNMFoutput = ratioMatNMFoutput;
+                fftStruct.file(fidx).phaseMatNMFoutput = phaseMatNMFoutput;
+            end
+
 
 
             % Get MAPS for current slice: ---------------------------------
@@ -683,6 +754,13 @@ for sidx = 1:length(slicesToUse)
                 magMapNMF = assignRoiMap(maskcell, magMapNMF, magMatNMF, freqIdx);
                 ratioMapNMF = assignRoiMap(maskcell, ratioMapNMF, ratioMatNMF);
                 phaseMaxMagNMF = assignRoiMap(maskcell, phaseMatNMF, magMatNMF, [], freqs);
+
+                phaseMapNMFoutput = assignRoiMap(maskcell, phaseMapNMFoutput, phaseMatNMFoutput, freqIdx);
+                magMapNMFoutput = assignRoiMap(maskcell, magMapNMFoutput, magMatNMFoutput, freqIdx);
+                ratioMapNMFoutput = assignRoiMap(maskcell, ratioMapNMFoutput, ratioMatNMFoutput);
+                phaseMaxMagNMFoutput = assignRoiMap(maskcell, phaseMatNMFoutput, magMatNMFoutput, [], freqs);
+
+
             end
     %         % ---
 
@@ -700,6 +778,13 @@ for sidx = 1:length(slicesToUse)
                 maps.file(fidx).phaseNMF = phaseMapNMF;
                 maps.file(fidx).phasemaxNMF = phaseMaxMagNMF;
                 maps.file(fidx).ratioNMF = ratioMapNMF;
+
+                maps.file(fidx).magnitudeNMFoutput = magMapNMFoutput;
+                maps.file(fidx).phaseNMFoutput = phaseMapNMFoutput;
+                maps.file(fidx).phasemaxNMFoutput = phaseMaxMagNMFoutput;
+                maps.file(fidx).ratioNMFoutput = ratioMapNMFoutput;
+
+
             end
             % ---
 

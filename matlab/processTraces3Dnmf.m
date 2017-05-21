@@ -45,8 +45,12 @@ for tiffIdx=1:nTiffs
 %             currInferredTraces = tracestruct.inferredTraces;
 %         end        
         if isfield(tracestruct, 'dfTracesNMF')
+            currRawTracesNMF = tracestruct.rawTracesNMF;
             currDfTracesNMF = tracestruct.dfTracesNMF;
             currDetrendedNMF = tracestruct.detrendedNMF;
+            inferred = true;
+        else
+            inferred = false;
         end
         
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
@@ -64,14 +68,16 @@ for tiffIdx=1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
-            if isfield(tracestruct, 'dfTracesNMF')
+            if inferred
+                rawTracesNMF = currRawTracesNMF(1:cropToFrame,:);
                 dfTracesNMF = currDfTracesNMF(1:cropToFrame,:);
                 detrendedNMF = currDetrendedNMF(1:cropToFrame,:);
             end
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            if isfield(tracestruct, 'dfTracesNMF')
+            if inferred
+                rawTracesNMF = currRawTracesNMF;
                 dfTracesNMF = currDfTracesNMF;
                 detrendedNMF = currDetrendedNMF;
             end
@@ -92,8 +98,16 @@ for tiffIdx=1:nTiffs
         tracestruct.traceMat = traceMat;
         tracestruct.winsz = winsz;
         tracestruct.DCs = DCs;
-        if isfield(tracestruct, 'dfTracesNMF')
+        if inferred 
             %tracestruct.inferredTraceMat = inferredTraces;
+            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtractRollingMean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
+            rawTraceMatNMF = cat(2, rawTraceMatNMF{1:end});
+            rawDCsNMF = cat(2, rawDCsNMF{1:end});
+            rawTraceMatDCNMF = bsxfun(@plus, rawDCsNMF, rawTraceMatNMF); % ROWs = tpoints, COLS = ROI
+            
+            tracestruct.rawTraceMatDCNMF = rawTraceMatDCNMF;
+            tracestruct.rawTraceMatNMF = rawTraceMatNMF;
+            tracestruct.rawDCsNMF = rawDCsNMF;
             tracestruct.dfTraceMatNMF = dfTracesNMF;
             tracestruct.detrendedTraceMatNMF = detrendedNMF;
         end
@@ -138,6 +152,7 @@ for tiffIdx=1:nTiffs
 %             currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
 %         end
         if isfield(tracestruct.file(tiffIdx), 'dfTracesNMF')
+            currRawTracesNMF = tracestruct.file(tiffIdx).rawTracesNMF;
             currDfTracesNMF = tracestruct.file(tiffIdx).dfTracesNMF;
             currDetrendedNMF = tracestruct.file(tiffIdx).detrendedTracesNMF;
             inferred = true;
@@ -163,6 +178,7 @@ for tiffIdx=1:nTiffs
 %                 inferredTraces = currInferredTraces(1:cropToFrame,:);
 %             end
             if inferred
+                rawTracesNMF = currRawTracesNMF(1:cropToFrame,:);
                 dfTracesNMF = currDfTracesNMF(1:cropToFrame,:);
                 detrendedNMF = currDetrendedNMF(1:cropToFrame,:);
             end            
@@ -172,7 +188,8 @@ for tiffIdx=1:nTiffs
 %             if isfield(tracestruct, 'inferredTraces')
 %                 inferredTraces = currInferredTraces;
 %             end
-            if isfield(tracestruct, 'dfTracesNMF')
+            if inferred
+                rawTracesNMF = currRawTracesNMF; 
                 dfTracesNMF = currDfTracesNMF;
                 detrendedNMF = currDetrendedNMF;
             end
@@ -199,6 +216,14 @@ for tiffIdx=1:nTiffs
 %         end
         if inferred
             %tracestruct.inferredTraceMat = inferredTraces;
+            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtractRollingMean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
+            rawTraceMatNMF = cat(2, rawTraceMatNMF{1:end});
+            rawDCsNMF = cat(2, rawDCsNMF{1:end});
+            rawTraceMatDCNMF = bsxfun(@plus, rawTraceMatNMF, rawDCsNMF); % ROWs = tpoints, COLS = ROI
+
+            tracestruct.file(tiffIdx).rawTraceMatDCNMF = rawTraceMatDCNMF;
+            tracestruct.file(tiffIdx).rawTraceMatNMF = rawTraceMatNMF;
+            tracestruct.file(tiffIdx).rawDCsNMF = rawDCsNMF;
             tracestruct.file(tiffIdx).dfTraceMatNMF = dfTracesNMF;
             tracestruct.file(tiffIdx).detrendedTraceMatNMF = detrendedNMF;
         end

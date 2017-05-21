@@ -129,6 +129,8 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_013:  Use em7 centroids, seed centroidsOnly into 3Dnmf
 
+% datastruct_014:  Use em7 centroids again, same params as d013, but try "constrained" instead of "regularized"
+
 % ***********************************************
 
 
@@ -207,7 +209,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 13;           % Define datastruct analysis no.
+didx = 14;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -1144,7 +1146,7 @@ switch D.roiType
             'd1',meta.volumeSizePixels(1),...
             'd2',meta.volumeSizePixels(2),...
             'd3',meta.volumeSizePixels(3),...
-            'search_method','ellipse','dist',2,'se', strel('disk', 2, 0),...      % search locations when updating spatial components
+            'spatial_method', 'constrained', 'search_method','ellipse','dist',2,'se', strel('disk', 2, 0),...      % search locations when updating spatial components
             'max_size', 4, 'min_size', 1,...            % max/min size of ellipse axis (default: 8, 3)
             'deconv_method','constrained_foopsi',...    % activity deconvolution method
             'temporal_iter',2,...                       % number of block-coordinate descent steps 
@@ -1222,7 +1224,7 @@ switch D.roiType
         
         fprintf('DONE:  Extracted traces!\n');
         toc(tracestart);
-        
+end        
         
         
         %%

@@ -64,38 +64,42 @@ for fidx=1:nTiffs
     nRois = size(tracestruct.rawTraces,2); %length(maskcell);
 
     avgY = tracestruct.avgImage;
-    adjustTraces = tracestruct.traceMatDC; 
+    adjustedTraces = tracestruct.traceMatDC; 
     % --> This is already corrected with DC -- do the following to get back
     % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
 %     if isfield(tracestruct, 'inferredTraces')
 %         inferredTraces = tracestruct.inferredTraces;
 %     end
     if isfield(tracestruct, 'dfTracesNMF')
+        adjustedTracesNMF = tracestruct.rawTraceMatDCNMF;
         dfTracesNMF = tracestruct.dfTracesNMF;
         detrendedNMF = tracestruct.detrendedNMF;
+        inferred = true;
+    else
+        inferred = false;
     end
     
     switch D.roiType
         case 'create_rois'
             [d1,d2] = size(avgY);
-            [nframes, nrois] = size(adjustTraces);
+            [nframes, nrois] = size(adjustedTraces);
         case 'condition'
             [d1,d2] = size(avgY);
-            [nframes, nrois] = size(adjustTraces);
+            [nframes, nrois] = size(adjustedTraces);
         case 'pixels'
             %[d1,d2,tpoints] = size(T.traces.file{fidx});
             [d1, d2] = size(avgY);
-            nframes = size(adjustTraces,1);
+            nframes = size(adjustedTraces,1);
             nrois = d1*d2;
         case 'cnmf'
             [d1,d2] = size(avgY);
-            [nframes, nrois] = size(adjustTraces);
+            [nframes, nrois] = size(adjustedTraces);
         case '3Dcnmf'
             [d1,d2] = size(avgY(:,:,1));
-            [nframes, nrois] = size(adjustTraces);
+            [nframes, nrois] = size(adjustedTraces);
         case 'manual3Drois'
             [d1,d2] = size(avgY(:,:,1));
-            [nframes, nrois] = size(adjustTraces);
+            [nframes, nrois] = size(adjustedTraces);
     end
     blankMap = zeros([d1, d2]);
     maxMap = zeros([d1, d2]);
@@ -110,7 +114,7 @@ for fidx=1:nTiffs
     %dfFunc = @(x) (x-mean(x))./mean(x);
     %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
 %         dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
-    dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(:,i)), 1:nrois, 'UniformOutput', false);
+    dfMat = arrayfun(@(i) extractDfTrace(adjustedTraces(:,i)), 1:nrois, 'UniformOutput', false);
     dfMat = cat(2, dfMat{1:end})*100;
 
     
@@ -128,24 +132,9 @@ for fidx=1:nTiffs
     % ----------------------------------------------------------
     % Make mean/max maps & get ROI traces from inferred traces:
     blankMap = zeros([d1, d2]);
-    %dfMatInferred = arrayfun(@(i) extractDfTrace(inferredTraces(:,i)), 1:nrois, 'UniformOutput', false);
-    %dfMatInferred = cat(2, dfMatInferred{1:end})*100;
     %if isfield(tracestruct, 'inferredTraces')
-    if isfield(tracestruct, 'dfTracesNMF')
-%         dfMatInferred = inferredTraces; % alrady df/f * 100
-% 
-%         meanDfsInferred = mean(inferredTraces,1);
-%         maxDfsInferred = max(inferredTraces);
-%         % Get rid of ridiculous values, prob edge effects:
-%         maxDfsInferred(abs(maxDfsInferred)>400) = NaN;
-%         activeRoisInferred = find(maxDfsInferred >= minDf);
-%         fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisInferred), nrois, minDf);
-% 
-%         nslices =  size(avgY,3);
-%         meanMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsInferred);
-%         maxMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsInferred);
-
-        dfMatNMF = arrayfun(@(i) extractDfTrace(detrendedNMF(:,i)), 1:nrois, 'UniformOutput', false);
+    if inferred 
+        dfMatNMF = arrayfun(@(i) extractDfTrace(adjustedTracesNMF(:,i)), 1:nrois, 'UniformOutput', false);
         dfMatNMF = cat(2, dfMatNMF{1:end})*100;
 
         meanDfsNMF = mean(dfMatNMF,1);
@@ -153,21 +142,21 @@ for fidx=1:nTiffs
         % Get rid of ridiculous values, prob edge effects:
         maxDfsNMF(abs(maxDfsNMF)>400) = NaN;
         activeRoisNMF = find(maxDfsNMF >= minDf);
-        fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisNMF), nrois, minDf);
+        fprintf('Found %i of %i ROIs with raw NMF dF/F > %02.f%%.\n', length(activeRoisNMF), nrois, minDf);
 
         nslices =  size(avgY,3);
         meanMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMF);
         maxMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsNMF);
         
         
-        % AND ON DF OUTPUT ITSELF:
+        % AND ON NMF DF OUTPUT ITSELF:
         dfMatNMFoutput = dfTracesNMF;
         meanDfsNMFoutput = mean(dfMatNMFoutput,1);
         maxDfsNMFoutput = max(dfMatNMFoutput);
         % Get rid of ridiculous values, prob edge effects:
         maxDfsNMFoutput(abs(maxDfsNMFoutput)>400) = NaN;
         activeRoisNMFoutput = find(maxDfsNMFoutput >= minDf);
-        fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisNMFoutput), nrois, minDf);
+        fprintf('Found %i of %i ROIs with NMF dF/F > %02.f%%.\n', length(activeRoisNMFoutput), nrois, minDf);
 
         nslices =  size(avgY,3);
         meanMapNMFoutput = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMFoutput);
@@ -203,7 +192,7 @@ for fidx=1:nTiffs
     dfMatSlicesNMFoutput = {};
     for sl=1:nslices
         dfMatSlices{end+1} = dfMat(:,currSliceRois{sl});
-        if isfield(tracestruct, 'dfTracesNMF')
+        if inferred 
             dfMatSlicesNMF{end+1} = dfMatNMF(:,currSliceRois{sl});
             dfMatSlicesNMFoutput{end+1} = dfMatNMFoutput(:, currSliceRois{sl});
         end
@@ -232,7 +221,7 @@ for fidx=1:nTiffs
         
         DF.slice(currSlice).file(fidx).maxDfs = maxDfs;
         
-        if isfield(tracestruct, 'dfTracesNMF')
+        if inferred 
             DF.slice(currSlice).file(fidx).meanMapNMF = meanMapNMF(:,:,sidx);
             DF.slice(currSlice).file(fidx).maxMapNMF = maxMapNMF(:,:,sidx);
             DF.slice(currSlice).file(fidx).dfMatNMF = dfMatSlicesNMF{sidx};

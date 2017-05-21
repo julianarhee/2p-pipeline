@@ -152,12 +152,16 @@ for fidx=1:nTiffs
         dfTracesNMF = dfTracesNMF{1};
         detrendedNMF = nmf.Fd_us;
         detrendedNMF = detrendedNMF{1};
+
+        rawNMF = nmf.A*nmf.C + nmf.b*nmf.f;
+        rawTracesNMF = nmf.A'*rawNMF;
         
 %         currDfs = tmpDf(currSliceRois{sl});
 %         inferredTraces = arrayfun(@(i) tmpC(currSliceRois{sl}(i),:)/currDfs(i), 1:ncurrrois, 'UniformOutput', 0);
 %         inferredTraces = cat(1, inferredTraces{1:end});
 
 %         tracestruct.file(fidx).inferredTraces = inferredTraces'; 
+        tracestruct.file(fidx).rawTracesNMF = rawTracesNMF(currSliceRois{sl},:)';
         tracestruct.file(fidx).dfTracesNMF = dfTracesNMF(currSliceRois{sl},:)';
         tracestruct.file(fidx).detrendedTracesNMF = detrendedNMF(currSliceRois{sl},:)';
         %T.masks.file(fidx) = {masks};
@@ -210,6 +214,7 @@ for fidx=1:nTiffs
     %inferredTraces = arrayfun(@(i) tmpC(i,:)/tmpDf(i), 1:nrois, 'UniformOutput', 0);
     %inferredTraces = cat(1, inferredTraces{1:end});
     %T.inferredTraces = inferredTraces';
+    T.rawTracesNMF = rawTracesNMF';
     T.dfTracesNMF = dfTracesNMF';
     T.detrendedNMF = detrendedNMF';
 
