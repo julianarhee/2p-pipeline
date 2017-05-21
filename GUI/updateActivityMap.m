@@ -79,185 +79,160 @@ elseif any(strfind(selectedMapType, 'Df')) || any(strcmp(selectedMapType, 'maps 
         selectedMapType = mapTypes{selectedMapIdx};
     end
 else
+%     displayMap = mapStruct.file(selectedFile).(selectedMapType);
+%     magMap = mapStruct.file(selectedFile).ratio;
+%     thresholdMap = threshold_map(displayMap, magMap, currThresh);
+    
+    tcourseTypes = handles.timecourseMenu.String;
+    selected_tcourse = handles.timecourseMenu.Value;
+%     switch tcourseTypes{selected_tcourse}
+%         case 'processedNMF'
+%             if ~isempty(strfind(selectedMapType, 'output'))
+%                 selectedMapType = strcat(selectedMapType(1:end-9), 'NMF');
+%                 updateMapMenu = true;
+%             elseif isempty(strfind(selectedMapType, 'NMF'))
+%                 selectedMapType = strcat(selectedMapType, 'NMF');
+%                 updateMapMenu = true;
+%             else
+%                 updateMapMenu = false;
+%             end
+%         case 'dfNMF'
+%             if ~isempty(strfind(selectedMapType, 'NMF')) && isempty(strfind(selectedMapType, 'output'))
+%                 selectedMapType = strcat(selectedMapType(1:end-3), 'NMFoutput');
+%                 updateMapMenu = true;
+%             elseif isempty(strfind(selectedMapType, 'NMF'))
+%                 selectedMapType = strcat(selectedMapType, 'NMFoutput');
+%                 updateMapMenu = true;
+%             else
+%                 updateMapMenu = false;
+%             end
+%         otherwise
+%             updateMapMenu = false;
+%     end
+    if ~isempty(strfind(tcourseTypes{selected_tcourse}, '- NMF'))
+        %case 'processedNMF'
+            magMap = mapStruct.file(selectedFile).ratioNMF;
+            if ~isempty(strfind(selectedMapType, 'output'))
+                selectedMapType = strcat(selectedMapType(1:end-9), 'NMF');
+                updateMapMenu = true;
+            elseif isempty(strfind(selectedMapType, 'NMF'))
+                selectedMapType = strcat(selectedMapType, 'NMF');
+                updateMapMenu = true;
+            else
+                updateMapMenu = false;
+            end
+    elseif ~isempty(strfind(tcourseTypes{selected_tcourse}, 'output'))
+            magMap = mapStruct.file(selectedFile).ratioNMFoutput;
+            if ~isempty(strfind(selectedMapType, 'NMF')) && isempty(strfind(selectedMapType, 'output'))
+                selectedMapType = strcat(selectedMapType(1:end-3), 'NMFoutput');
+                updateMapMenu = true;
+            elseif isempty(strfind(selectedMapType, 'NMF'))
+                selectedMapType = strcat(selectedMapType, 'NMFoutput');
+                updateMapMenu = true;
+            else
+                updateMapMenu = false;
+            end
+        %otherwise
+    else
+        magMap = mapStruct.file(selectedFile).ratio;
+        updateMapMenu = false;
+    end
+    
+    if updateMapMenu
+        handles.mapMenu.Value = find(cell2mat(cellfun(@(maptype) strcmp(maptype, selectedMapType), mapTypes, 'UniformOutput', 0)));
+        selectedMapIdx = handles.mapMenu.Value;
+    end
     displayMap = mapStruct.file(selectedFile).(selectedMapType);
-    magMap = mapStruct.file(selectedFile).ratio;
-
+    %magMap = mapStruct.file(selectedFile).ratio;
     thresholdMap = threshold_map(displayMap, magMap, currThresh);
 end
 
-switch selectedMapType
+%switch selectedMapType
     
-    case 'phase'
-        thresholdMap = threshold_map(displayMap, magMap, currThresh);
-        axes(handles.ax2);  
-        if isfield(D, 'tefo') && D.tefo
-            if orient
-                handles.map = imagesc(rot90(fliplr(fov), -2));
-                hold on;
-                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
-            else
-                handles.map = imagesc(fov);
-                hold on;
-                handles.map = imagesc2(thresholdMap);
-            end
-        else
-            handles.map = imagesc(scalefov(fov));
+if strfind(selectedMapType, 'phase')
+    thresholdMap = threshold_map(displayMap, magMap, currThresh);
+    axes(handles.ax2);  
+    if isfield(D, 'tefo') && D.tefo
+        if orient
+            handles.map = imagesc(rot90(fliplr(fov), -2));
             hold on;
-            handles.map = imagesc2(scalefov(thresholdMap));
-        end
-        colormap(handles.ax2, hsv);
-        %caxis([min(displayMap(:)), max(displayMap(:))]);
-        caxis([-1*pi, pi]);
-        colorbar off;
-        
-        %legend:
-        if isfield(meta, 'legends')
-            legends = meta.legends;
-            axes(handles.retinolegend)
-            handles.retinolegend.Visible = 'on';
-            handles.maplegend = imagesc(legends.(currCondType));
-            axis off
-            colormap(handles.retinolegend, hsv);
-            %caxis([min(displayMap(:)), max(displayMap(:))]);
-            caxis([-1*pi, pi]);
-            colorbar off;
-        
+            handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
         else
-            fprintf('No legend found...\n');
-            handles.retinolegend.Visible = 'off';
-        end
-        
-    case 'phasemax'
-        thresholdMap = threshold_map(displayMap, magMap, currThresh);
-        axes(handles.ax2);  
-        if D.tefo
-            if orient
-                handles.map = imagesc(rot90(fliplr(fov), -2));
-                hold on;
-                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
-            else
-                handles.map = imagesc(fov);
-                hold on;
-                handles.map = imagesc2(thresholdMap);
-            end
-        else
-            handles.map = imagesc(scalefov(fov));
+            handles.map = imagesc(fov);
             hold on;
-            handles.map = imagesc2(scalefov(thresholdMap));
+            handles.map = imagesc2(thresholdMap);
         end
-        colormap(handles.ax2, hsv);
+    else
+        handles.map = imagesc(scalefov(fov));
+        hold on;
+        handles.map = imagesc2(scalefov(thresholdMap));
+    end
+    colormap(handles.ax2, hsv);
+    %caxis([min(displayMap(:)), max(displayMap(:))]);
+    caxis([-1*pi, pi]);
+    colorbar off;
+
+    %legend:
+    if isfield(meta, 'legends')
+        legends = meta.legends;
+        axes(handles.retinolegend)
+        handles.retinolegend.Visible = 'on';
+        handles.maplegend = imagesc(legends.(currCondType));
+        axis off
+        colormap(handles.retinolegend, hsv);
         %caxis([min(displayMap(:)), max(displayMap(:))]);
         caxis([-1*pi, pi]);
         colorbar off;
 
-        %legend:
-        if isfield(meta, 'legends')
-            legends = meta.legends;
-            axes(handles.retinolegend)
-            handles.retinolegend.Visible = 'on';
-            handles.maplegend = imagesc(legends.(currCondType));
-            axis off
-            colormap(handles.retinolegend, hsv);
-            %caxis([min(displayMap(:)), max(displayMap(:))]);
-            caxis([-1*pi, pi]);
-            colorbar off;
+    else
+        fprintf('No legend found...\n');
+        handles.retinolegend.Visible = 'off';
+    end
         
-        else
-            fprintf('No legend found...\n');
-            handles.retinolegend.Visible = 'off';
-            if isfield(handles.retinolegend, 'Children')
-                handles.retinolegend.Children.Visible = 'off';
-            end
-        end
-
-    case 'phaseNMF'
-        % recalculate ratio masks from inferred trace data:
-        magMap = mapStruct.file(selectedFile).ratioNMF;
-        thresholdMap = threshold_map(displayMap, magMap, currThresh);
-        axes(handles.ax2);  
-        if isfield(D, 'tefo') && D.tefo
-            if orient
-                handles.map = imagesc(rot90(fliplr(fov), -2));
-                hold on;
-                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2));
-            else
-                handles.map = imagesc(fov);
-                hold on;
-                handles.map = imagesc2(thresholdMap);
-            end
-        else
-            handles.map = imagesc(scalefov(fov));
-            hold on;
-            handles.map = imagesc2(scalefov(thresholdMap));
-        end
-        colormap(handles.ax2, hsv);
-        %caxis([min(displayMap(:)), max(displayMap(:))]);
-        caxis([-1*pi, pi]);
-        colorbar off;
-        
-        %legend:
-        if isfield(meta, 'legends')
-            legends = meta.legends;
-            axes(handles.retinolegend)
-            handles.retinolegend.Visible = 'on';
-            handles.maplegend = imagesc(legends.(currCondType));
-            axis off
-            colormap(handles.retinolegend, hsv);
-            %caxis([min(displayMap(:)), max(displayMap(:))]);
-            caxis([-1*pi, pi]);
-            colorbar off;
-        
-        else
-            fprintf('No legend found...\n');
-            handles.retinolegend.Visible = 'off';
-        end
-
-        
-    otherwise
-        % 'ratio' 
-        % 'magnitude'
-        % 'maxDf'
-        axes(handles.ax2);  
-        if isfield(D, 'tefo') && D.tefo
-            if orient
-                handles.map = imagesc(rot90(fliplr(fov), -2));
-                hold on;
-                thresholdMap = threshold_map(displayMap, displayMap, currThresh);
-                handles.map = imagesc2(rot90(fliplr(thresholdMap), -2)); %, handles.ax2);
-            else
-                handles.map = imagesc(fov);
-                hold on;
-                thresholdMap = threshold_map(displayMap, displayMap, currThresh);
-                handles.map = imagesc2(thresholdMap); %, handles0
-            end
-        else
-            handles.map = imagesc(scalefov(fov));
+else
+    % 'ratio' 
+    % 'magnitude'
+    % 'maxDf'
+    axes(handles.ax2);  
+    if isfield(D, 'tefo') && D.tefo
+        if orient
+            handles.map = imagesc(rot90(fliplr(fov), -2));
             hold on;
             thresholdMap = threshold_map(displayMap, displayMap, currThresh);
-            handles.map = imagesc2(scalefov(thresholdMap)); %, handles.ax2);    
-        end
-        %handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
-        colormap(handles.ax2, hot);
-        %caxis([min(displayMap(:)), max(displayMap(:))]);
-        if any(isnan([min(thresholdMap(:)), max(thresholdMap(:))]))
-            caxis([0 1]);
+            handles.map = imagesc2(rot90(fliplr(thresholdMap), -2)); %, handles.ax2);
         else
-            if min(thresholdMap(:))==max(thresholdMap(:))
-                caxis([0, max(thresholdMap(:))]);
-            else
-                caxis([min(thresholdMap(:)), max(thresholdMap(:))]);
-            end
+            handles.map = imagesc(fov);
+            hold on;
+            thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+            handles.map = imagesc2(thresholdMap); %, handles0
         end
-        colorbar();
-        
-        axes(handles.retinolegend)
-        handles.retinolegend.Visible = 'off';
-        if ~isempty(handles.retinolegend.Children)
-            handles.retinolegend.Children.Visible = 'off';
+    else
+        handles.map = imagesc(scalefov(fov));
+        hold on;
+        thresholdMap = threshold_map(displayMap, displayMap, currThresh);
+        handles.map = imagesc2(scalefov(thresholdMap)); %, handles.ax2);    
+    end
+    %handles.map = imagesc2(scalefov(displayMap)); %, handles.ax2);
+    colormap(handles.ax2, hot);
+    %caxis([min(displayMap(:)), max(displayMap(:))]);
+    if any(isnan([min(thresholdMap(:)), max(thresholdMap(:))]))
+        caxis([0 1]);
+    else
+        if min(thresholdMap(:))==max(thresholdMap(:))
+            caxis([0, max(thresholdMap(:))]);
+        else
+            caxis([min(thresholdMap(:)), max(thresholdMap(:))]);
         end
+    end
+    colorbar();
 
-    
+    axes(handles.retinolegend)
+    handles.retinolegend.Visible = 'off';
+    if ~isempty(handles.retinolegend.Children)
+        handles.retinolegend.Children.Visible = 'off';
+    end
 end
+
 refPos = handles.ax1.Position;
 ax2Pos = handles.ax2.Position;
 handles.ax2.Position(3:4) = [refPos(3:4)];

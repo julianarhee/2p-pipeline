@@ -4,7 +4,7 @@ nRois = length(maskcell);
 
 RGBimg = zeros([size(avgimg),3]);
 RGBimg(:,:,1)=0;
-if (max(avgimg(:)) - min(avgimg(:))) > 2000
+if (max(avgimg(:)) - min(avgimg(:))) > 500; %1000
     newmin = sort(reshape(avgimg, size(avgimg,1)*size(avgimg,2), 1));
     inrange = find(diff(newmin)>5);
     min2use = newmin(inrange(1)+1);

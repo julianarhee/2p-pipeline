@@ -931,6 +931,11 @@ meta = getappdata(handles.roigui, 'meta');
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
+[handles, D] =  updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
+
 guidata(hObject,handles)
 
 
@@ -1527,7 +1532,7 @@ if strcmp(D.roiType, 'pixels')
     [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
     set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
-    
+    im
     [handles, D] = updateActivityMap(handles, D, meta);
     set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 

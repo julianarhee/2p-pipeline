@@ -155,7 +155,7 @@ switch tcourseTypes{handles.timecourseMenu.Value}
     case 'raw - NMF'
         % laod traces raw
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
-        rawmat = tracestruct.file(selectedFile).rawTracesNMF;
+        rawmat = tracestruct.file(selectedFile).rawTraces;
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else
@@ -172,7 +172,7 @@ switch tcourseTypes{handles.timecourseMenu.Value}
     case 'processed - NMF'
         % laodtracemat
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
-        tracemat = tracestruct.file(selectedFile).rawTraceMatDCNMF;
+        tracemat = tracestruct.file(selectedFile).rawraceMat;
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else

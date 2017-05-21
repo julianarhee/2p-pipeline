@@ -24,21 +24,11 @@ if strcmp(D.stimType, 'bar')
     freqs = fftstruct.file(selectedFile).freqs;
     tcourseTypes = handles.timecourseMenu.String;
     selected_tcourse = handles.timecourseMenu.Value;
-%     switch tcourseTypes{selected_tcourse}
-%         case 'processedNMF'
-%             mags = fftstruct.file(selectedFile).magMatNMF(:, selectedRoi);
-%         case 'dfNMF'
-%             mags = fftstruct.file(selectedFile).magMatNMFoutput(:, selectedRoi);
-%         otherwise
-%             mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
-%     end
-    if ~isempty(strfind(tcourseTypes{selected_tcourse}, '- NMF'))
-        mags = fftstruct.file(selectedFile).magMatNMF(:, selectedRoi);
-    elseif ~isempty(strfind(tcourseTypes{selected_tcourse}, 'NMFoutput'))
-        mags = fftstruct.file(selectedFile).magMatNMFoutput(:, selectedRoi);
-    else
-        mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
-    end
+    switch tcourseTypes{selected_tcourse}
+        case 'processedNMF'
+            mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+
+    mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
     targetfreqIdx = fftstruct.file(selectedFile).targetFreqIdx;
     targetfreq = fftstruct.file(selectedFile).targetFreq;
     handles.fft = plot(freqs, mags, 'k', 'LineWidth', 2);

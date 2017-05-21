@@ -179,7 +179,8 @@ while loading==1
     if isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatInferred')
         timecourseTypes = {'dF/F', 'raw', 'processed', 'inferred'};
     elseif isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatNMF')
-        timecourseTypes = {'dF/F', 'raw', 'processed', 'detrendNMF', 'dfNMF'};
+        timecourseTypes = {'dF/F', 'raw', 'processed',...
+                            'df/F - NMF', 'raw - NMF', 'processed - NMF', 'dfNMFoutput'};
     else
         timecourseTypes = {'dF/F', 'raw', 'processed'};
     end
