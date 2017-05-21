@@ -343,30 +343,36 @@ def populate_trials(s_uuid, runs, didxs, source, session, dictpath, trialinfo_fn
 
 def get_cell_info(run_info, runmeta, dstruct):
 #    nrois = dstruct['nRois'] # todo:  this assumes that ALL runs have the same ROIs (which we want eventually, but need alignment for)
-    maskmat = h5py.File(dstruct['maskarrayPath']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
-    tmpmask = np.empty(maskmat['masks'].shape)
-    tmpmask = maskmat['masks'].value
-    masks = tmpmask.T
-    del tmpmask
+    # maskmat = h5py.File(dstruct['maskarrayPath']) # todo: save path to 3D-coord masks (saved as cell array in matlab?)
+    maskmat = loadmat(dstruct['maskarraymatPath'])
+    # tmpmask = np.empty(maskmat['masks'].shape)
+    # tmpmask = maskmat['masks'].value
+    # masks = tmpmask.T
+    # del tmpmask
+    masks = maskmat['maskmat']
+    maskids = maskmat['maskids']
     volsize = runmeta['volumeSizePixels']
 
     #nrois = max(nroistmp)
     nrois = masks.shape[1]        
-    maskarray = dict((roi, dict()) for roi in range(nrois))
-    for roi in range(nrois):
+    # maskarray = dict((roi, dict()) for roi in range(nrois))
+    maskarray = dict((roiID, dict()) for roiID in maskids)
+
+    for ridx,roiID in enumerate(sorted(maskids)):#range(nrois):
         # maskarray[roi] = np.reshape(masks[:,roi], volsize, order='F')
         # Make sparse, bec otherwise too huge:
-        maskarray[roi] = pd.SparseArray(masks[:,roi])
+        maskarray[roiID] = pd.SparseArray(masks[:,ridx])
         # To return full 3d mask:  
         # mask = np.reshape(maskarray[roi].to_dense(), [x, y, z], order='F')
     
     cell_info = dict.fromkeys([i for i in maskarray.keys()], dict())
     tmp = dict((k, {'id': str(uuid.uuid4())}) for k,v in cell_info.iteritems())
     cell_info.update(tmp)
-    for k in cell_info.keys():
+    for kidx,k in enumerate(sorted(cell_info.keys())):
+        print kidx,k
         cell_info[k].update(run=run_info['id'])
         cell_info[k].update(mask=maskarray[k])
-
+        cell_info[k].update(cellnum=kidx)
 
     return cell_info
 
@@ -401,8 +407,12 @@ def get_timecourse(cells, r_uuid, trial_info, runs, dstruct, channel=1, trial_id
         tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][file_idx_in_run-1]))
     else:
         tracestruct = loadmat(os.path.join(dstruct['tracesPath'], dstruct['traceNames3D'][0]))
+    if dstruct['roiType']=='3Dcnmf':
+        print "Getting raw NMF traces..."
+        rawmat = tracestruct['rawTracesNMF']
+    else:
+        rawmat = tracestruct['rawTraces']
 
-    rawmat = tracestruct['rawTraces']
     print "N cells in dict: ", len(cells)
     print "Size rawmat: ", rawmat.shape
 
@@ -415,9 +425,13 @@ def get_timecourse(cells, r_uuid, trial_info, runs, dstruct, channel=1, trial_id
     if dstruct['stimType']=='bar':
         if parse_trials is True:
             data = dict()
-            data = dict((k, rawmat[:, v['cell_idx']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+            # data = dict((k, rawmat[:, v['cell_idx']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+            data = dict((k, rawmat[:, v['cellnum']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+ 
         else:
-            data = dict((k, rawmat[:, v['cell_idx']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+            # data = dict((k, rawmat[:, v['cell_idx']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+            data = dict((k, rawmat[:, v['cellnum']]) for k,v in cells.iteritems())  # rawmat[:, cellidx]
+
 
     else:
         # only get part of full file trace that is trial:
@@ -441,7 +455,7 @@ def create_new_metric_rev(rev_name, rev_uuid, cell_metric_names, dictpath):
     return per_cell_metric_info
 
 
-def populate_cell_metrics(per_cell_metric_info, cell_info, curr_run_info, source, session, didxs):
+def populate_cell_metrics(metric_rev_uuid, per_cell_metric_info, cell_info, trial_info, curr_run_info, source, session, didxs, dictpath):
     r_uuid = curr_run_info['id']
     
     # Get datastruct info for current run/file:
@@ -449,19 +463,32 @@ def populate_cell_metrics(per_cell_metric_info, cell_info, curr_run_info, source
     outputpath = dstruct['outputDir']
         
     per_cell_metrics = dict((m_uuid, dict((c_uuid, dict()) for c_uuid in cell_info.keys())) for m_uuid in per_cell_metric_info.keys())
-    
+    phase_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='phase'][0]
+    magnitude_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='magnitude'][0]
+    ratio_muuid = [muuid for muuid in per_cell_metric_info.keys() if per_cell_metric_info[muuid]['name']=='target selectivity'][0]
+  
+    trial_list = trial_info[r_uuid].keys() 
     for t_uuid in trial_list:
         curr_trial_info = trial_info[r_uuid][t_uuid]
         fileidx = curr_trial_info['idx_in_run']
         print fileidx
         fftmat = loadmat(os.path.join(outputpath, dstruct['fftStructNames3D'][fileidx-1]))
-
-        for c_uuid in cell_info.keys():
-            cellidx = cell_info[c_uuid]['cell_idx']
-            per_cell_metrics[phase_muuid][c_uuid][t_uuid] = fftmat['targetPhase'][cellidx]
-            per_cell_metrics[magnitude_muuid][c_uuid][t_uuid] = fftmat['targetMag'][cellidx]
-            per_cell_metrics[ratio_muuid][c_uuid][t_uuid] = fftmat['ratioMat'][cellidx]
-    
+        if 'targetPhaseNMF' in fftmat.keys():
+            print "Getting cell metrics run on processed raw NMF traces..."
+            for c_uuid in cell_info.keys():
+                # cellidx = cell_info[c_uuid]['cell_idx']
+                cellidx = cell_info[c_uuid]['cellnum']
+                per_cell_metrics[phase_muuid][c_uuid][t_uuid] = fftmat['targetPhaseNMF'][cellidx]
+                per_cell_metrics[magnitude_muuid][c_uuid][t_uuid] = fftmat['targetMagNMF'][cellidx]
+                per_cell_metrics[ratio_muuid][c_uuid][t_uuid] = fftmat['ratioMatNMF'][cellidx]
+        else:
+            print "No NMF analyses found..."
+            for c_uuid in cell_info.keys():
+                cellidx = cell_info[c_uuid]['cell_idx']
+                per_cell_metrics[phase_muuid][c_uuid][t_uuid] = fftmat['targetPhase'][cellidx]
+                per_cell_metrics[magnitude_muuid][c_uuid][t_uuid] = fftmat['targetMag'][cellidx]
+                per_cell_metrics[ratio_muuid][c_uuid][t_uuid] = fftmat['ratioMat'][cellidx]
+ 
     cellmetrics_fn = 'cell_metrics_%s_%s.pkl' % (metric_rev_uuid, r_uuid)
     # Save:
     with open(os.path.join(dictpath, cellmetrics_fn), 'wb') as f:
@@ -643,6 +670,7 @@ def main():
                 c_uuid = tmpcell_info[cell]['id']
                 cell_info[c_uuid] = dict((k, v) for k,v in tmpcell_info[cell].iteritems())
                 cell_info[c_uuid]['cell_idx'] = cell
+            print cell_info[c_uuid].keys()
 
             with open(os.path.join(dictpath, cellinfo_fn), 'wb') as f:
                 pkl.dump(cell_info, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -700,9 +728,10 @@ def main():
                 print "---------------------------------------------------------------------"
 
             # Check timecourses loaded:    
-            print "N trials: ", len(trial_list)
             r_uuid = run_info.keys()[0]
             c_uuid = roi_list[0]
+            trial_list = trial_info[r_uuid].keys()
+            print "N trials: ", len(trial_list)
             t_uuid = trial_list[0]
 
             data = timecourses[t_uuid][c_uuid]
@@ -719,6 +748,7 @@ def main():
     metric_id = options.metric_revname
 
     if create_new_metrics:
+        metric_info_fn = 'metric_info_%s.pkl' % metric_id
 
         rev_name = 'rev1'
         rev_uuid = str(uuid.uuid4())
@@ -766,7 +796,7 @@ def main():
         curr_run_info = run_info[r_uuid]
         cellmetrics_fn = 'cell_metrics_%s_%s.pkl' % (metric_rev_uuid, r_uuid)
         if create_new:
-            per_cell_metrics = populate_cell_metrics(per_cell_metric_info, cell_info, curr_run_info, source, session, didxs)
+            per_cell_metrics = populate_cell_metrics(metric_rev_uuid, per_cell_metric_info, cell_info, trial_info, curr_run_info, source, session, didxs, dictpath)
         else:
             # Load stored cell-metrics:
             with open(os.path.join(dictpath, cellmetrics_fn), 'rb') as f:
@@ -778,15 +808,17 @@ def main():
         # CHECK cell metric:
         r_uuid = run_info.keys()[0]
         t_uuid = trial_list[0]
-        c_uuid = roi_list[1001]
+        c_uuid = sorted(roi_list)[0]
         cellidx = cell_info[c_uuid]['cell_idx']
-        print cellidx
+        cellnum = cell_info[c_uuid]['cellnum']
+        print roi_list
+        print cellnum, cellidx
 
         for t_uuid in trial_list:
             stimulus = trial_info[r_uuid][t_uuid]['stimuli']['stimulus']
             tidx = trial_info[r_uuid][t_uuid]['idx_in_run']
-            curr_cell_phase = per_cell_metrics[phase_muuid][c_uuid][t_uuid]
-            print "Trial %i (%s): Phase is %0.2f" % (tidx, stimulus, curr_cell_phase)
+            curr_cell_ratio = per_cell_metrics[ratio_muuid][c_uuid][t_uuid]
+            print "Trial %i (%s): Ratio is %f" % (tidx, stimulus, curr_cell_ratio)
 
     
 
