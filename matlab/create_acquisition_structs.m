@@ -117,13 +117,20 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % datastruct_010:  GOLFBALLS from EM centroids (em_centroids).  
 % - radius = 1 (see if smaller is still ok...)
 
+% ***********************************************
+% phase1_block2 submission:
+
+
 % datastruct_011:  Golfballs from NEW/final em centroids (em7_centroids)
 % - radius = 1.5 (no rounding)
 
 % datastruct_012:  Use masks from colored em7 TIFF of EM cells for
 % manual3Drois
 
-% datastruct_013:  Use em7 TIFF masks, but now do 3Dnmf (full mask)
+% datastruct_013:  Use em7 centroids, seed centroidsOnly into 3Dnmf
+
+% ***********************************************
+
 
 
 % -------------------------------------------------------------------------
@@ -255,6 +262,7 @@ end
 
 if seedRois
       manual3Dshape = '3Dcontours' %'spheres'
+      maskFinder = 'centroids'
 end
 
 % --------------------------------------------
@@ -1077,6 +1085,8 @@ switch D.roiType
                     end
                     
                     D.maskInfo.seeds = centers;
+                    D.maskInfo.seeds(:,1) = centers(:,2);
+                    D.maskInfo.seeds(:,2) = centers(:,1);
                     D.maskInfo.roiIDs = roiIDs;
                     D.maskInfo.keepAll = true;
                     D.maskInfo.centroidsOnly = true;
@@ -1084,22 +1094,31 @@ switch D.roiType
             end
         end
 
-        
+        if D.maskInfo.seedRois
+            params.patches = false;
+        end
         % Set NMF params for 3D pipeline:
         % -----------------------------------------------------------------   
         if D.tefo
             % NOTE: Currently, only do patch if not seeding ROIs, just based on
             % how the input spatial components are provided (i.e., inputs
             % are not parsed into patches, and don't know if original NMF
-            
-            params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
-
-            params.K = 2000;                                            % number of components to be found
-            params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
-            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-            params.merge_thr = 0.8;                                  % merging threshold
+            if params.patches
+                params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
+                params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
+                params.K = 10;                                   % number of components to be found                           
+                D.maskInfo.patches = true;
+            else
+                %params.K = 2000;                                            % number of components to be found
+                params.K = 300;
+                %params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
+                params.tau = [2,2,1];
+                params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+                params.merge_thr = 0.8;                                  % merging threshold
+                D.maskInfo.patches = false;
+            end
         else
+            D.maskInfo.patches = true;
             params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
             params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
 
@@ -1119,18 +1138,33 @@ switch D.roiType
         
         % TODO:  Allow for specifying nmf options out here (and just pass
         % in options to NMF, instead of setting inside getRois3Dnmf.m).
-        
-        
+
+        merge_thr = 0.85;
+        D.maskInfo.nmfoptions = CNMFSetParms(...
+            'd1',meta.volumeSizePixels(1),...
+            'd2',meta.volumeSizePixels(2),...
+            'd3',meta.volumeSizePixels(3),...
+            'search_method','ellipse','dist',2,'se', strel('disk', 2, 0),...      % search locations when updating spatial components
+            'max_size', 4, 'min_size', 1,...            % max/min size of ellipse axis (default: 8, 3)
+            'deconv_method','constrained_foopsi',...    % activity deconvolution method
+            'temporal_iter',2,...                       % number of block-coordinate descent steps 
+            'cluster_pixels',false,...                  
+            'ssub',1,...                                % spatial downsampling when processing
+            'tsub',1,...                                % further temporal downsampling when processing
+            'fudge_factor',0.96,...                     % bias correction for AR coefficients
+            'merge_thr',merge_thr,...                   % merging threshold
+            'gSig',params.tau,... 
+            'max_size_thr',4,'min_size_thr',1,...    % max/min acceptable size for each component
+            'spatial_method','regularized',...       % method for updating spatial components ('constrained')
+            'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
+            'time_thresh',0.6,...
+            'space_thresh',0.6,...
+            'thr_method', 'max',...                 % method to threshold ('max' or 'nrg', default 'max')
+            'maxthr', 0.0001,... %); %...                   % threshold of max value below which values are discarded (default: 0.1)
+            'conn_comp', false);                   % extract largest connected component (binary, default: true)
+            
         % Run 3D CNMF pipeline:
         % -----------------------------------------------------------------   
-        roistart = tic();
-        
-        %D.maskInfo.params.patches = true;
-        
-        if D.maskInfo.seedRois
-            D.maskInfo.params.patches = false;
-        end
-        
         
         % Run ONCE to get reference components:
         roistart = tic();
@@ -1193,103 +1227,103 @@ switch D.roiType
         
         %%
         
-        % ----------
-        % TEST PLOTTING w/ MW epochs:
-        % ------------
-        
-        meta = load(D.metaPath);
-        nStimuli = length(meta.condTypes);
-        if ~isfield(meta, 'stimcolors')
-            colors = zeros(nStimuli,3);
-            for c=1:nStimuli
-                colors(c,:,:) = rand(1,3);
-            end
-            meta.stimcolors = colors;
-            save(D.metaPath, '-append', '-struct', 'meta');
-        else
-            colors = meta.stimcolors;
-        end
-        
-        % Load if already created:
-        nmf_fn = dir(fullfile(D.sourceDir, 'nmf_analysis', '*output*.mat'))
-        tifmem_fn = dir(fullfile(D.sourceDir, sprintf('%s.mat', D.acquisitionName)));
-        nmf = load(fullfile(D.sourceDir, 'nmf_analysis', nmf_fn.name));
-        data = matfile(fullfile(D.sourceDir, tifmem_fn.name));
-        
-        % Get raw traces using spatial and temporal components of tiff Y:
-        ay = mm_fun(nmf.A, data.Y);
-        aa = nmf.A'*nmf.A;
-        traces = ay - aa*nmf.C;
-        
-        tracesName = sprintf('nmftraces_Channel%02d', cidx);
-        D.tracesPath = fullfile(D.datastructPath, 'traces');
-        if ~exist(D.tracesPath, 'dir')
-            mkdir(D.tracesPath);
-        end
-        % Use center of 3D roi to choose slice idx:
-        center = com(A,d1,d2,d3);
-        if size(center,2) == 2
-            center(:,3) = 1;
-        end
-        center = round(center);
-
-        %% Check out decent looking components:
-        % 3, 8, 10 21 22
-        tRoi = 100;
-        tFile = 3;
-       
-        
-        zplane = center(tRoi,3);
-        volumeIdxs = zplane:meta.file(tFile).si.nFramesPerVolume:meta.file(tFile).si.nTotalFrames;
-        tstamps = meta.file(tFile).mw.siSec(volumeIdxs);
-        mwTimes = meta.file(tFile).mw.mwSec;
-        
-        figure();
-        plot(tstamps(1:size(Y_r_out,2)),Y_r_out(tRoi,:)/Df_out(tRoi), 'k', 'linewidth',2); 
-        %plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-        ylims = get(gca,'ylim');
-        currRunName = meta.file(tFile).mw.runName;
-        %mwCodes = meta.file(tFile).mw.pymat.(currRunName).stimIDs;
-        sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
-        trialidx = 1;
-        currStimTrialIdx = [];
-        for trial=1:2:length(mwTimes)
-            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
-            %currStim = mwCodes(trial);
-            currStim = 1;
-%             if handles.stimShowAvg.Value
-            patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%             else
-%                 if currStim==handles.stimMenu.Value
-%                     handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%                     currStimTrialIdx = [currStimTrialIdx trialidx];
-%                 else
-%                     handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%                 end
-%             end
-            %handles.ax4.TickDir = 'out';
-            hold on;
-            trialidx = trialidx + 1;
-            %handles.ax4.UserData.trialEpochs = trialidx;
-        end
-        nEpochs = length(mwTimes);
-        
-        %%
-    
-    
-        %tic()
-%         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
-%         
-%         D.maskInfo.params.nmfoptions = nmfoptions;
-%         clear nmfoptions;
-%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-%         %toc()
-%         
-%         % =================================================================
-%         % Get traces:
-%         % =================================================================
-%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
-%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-end
-
-toc()
+%        % ----------
+%        % TEST PLOTTING w/ MW epochs:
+%        % ------------
+%        
+%        meta = load(D.metaPath);
+%        nStimuli = length(meta.condTypes);
+%        if ~isfield(meta, 'stimcolors')
+%            colors = zeros(nStimuli,3);
+%            for c=1:nStimuli
+%                colors(c,:,:) = rand(1,3);
+%            end
+%            meta.stimcolors = colors;
+%            save(D.metaPath, '-append', '-struct', 'meta');
+%        else
+%            colors = meta.stimcolors;
+%        end
+%        
+%        % Load if already created:
+%        nmf_fn = dir(fullfile(D.sourceDir, 'nmf_analysis', '*output*.mat'))
+%        tifmem_fn = dir(fullfile(D.sourceDir, sprintf('%s.mat', D.acquisitionName)));
+%        nmf = load(fullfile(D.sourceDir, 'nmf_analysis', nmf_fn.name));
+%        data = matfile(fullfile(D.sourceDir, tifmem_fn.name));
+%        
+%        % Get raw traces using spatial and temporal components of tiff Y:
+%        ay = mm_fun(nmf.A, data.Y);
+%        aa = nmf.A'*nmf.A;
+%        traces = ay - aa*nmf.C;
+%        
+%        tracesName = sprintf('nmftraces_Channel%02d', cidx);
+%        D.tracesPath = fullfile(D.datastructPath, 'traces');
+%        if ~exist(D.tracesPath, 'dir')
+%            mkdir(D.tracesPath);
+%        end
+%        % Use center of 3D roi to choose slice idx:
+%        center = com(A,d1,d2,d3);
+%        if size(center,2) == 2
+%            center(:,3) = 1;
+%        end
+%        center = round(center);
+%
+%        %% Check out decent looking components:
+%        % 3, 8, 10 21 22
+%        tRoi = 100;
+%        tFile = 3;
+%       
+%        
+%        zplane = center(tRoi,3);
+%        volumeIdxs = zplane:meta.file(tFile).si.nFramesPerVolume:meta.file(tFile).si.nTotalFrames;
+%        tstamps = meta.file(tFile).mw.siSec(volumeIdxs);
+%        mwTimes = meta.file(tFile).mw.mwSec;
+%        
+%        figure();
+%        plot(tstamps(1:size(Y_r_out,2)),Y_r_out(tRoi,:)/Df_out(tRoi), 'k', 'linewidth',2); 
+%        %plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%        ylims = get(gca,'ylim');
+%        currRunName = meta.file(tFile).mw.runName;
+%        %mwCodes = meta.file(tFile).mw.pymat.(currRunName).stimIDs;
+%        sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
+%        trialidx = 1;
+%        currStimTrialIdx = [];
+%        for trial=1:2:length(mwTimes)
+%            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
+%            %currStim = mwCodes(trial);
+%            currStim = 1;
+%%             if handles.stimShowAvg.Value
+%            patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%             else
+%%                 if currStim==handles.stimMenu.Value
+%%                     handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%                     currStimTrialIdx = [currStimTrialIdx trialidx];
+%%                 else
+%%                     handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%                 end
+%%             end
+%            %handles.ax4.TickDir = 'out';
+%            hold on;
+%            trialidx = trialidx + 1;
+%            %handles.ax4.UserData.trialEpochs = trialidx;
+%        end
+%        nEpochs = length(mwTimes);
+%        
+%        %%
+%    
+%    
+%        %tic()
+%%         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+%%         
+%%         D.maskInfo.params.nmfoptions = nmfoptions;
+%%         clear nmfoptions;
+%%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%%         %toc()
+%%         
+%%         % =================================================================
+%%         % Get traces:
+%%         % =================================================================
+%%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+%%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%end
+%
+%toc()

@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 12 %9 %7;
+analysis_no = 13 %9 %7;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -131,7 +131,11 @@ for fidx=1:nTiffs
 %     else
 %       inferred = false;
 %     end
-    inferred = false;
+    if isfield(tracestruct, 'dfTracesNMF')
+        dfTraceMatNMF = tracestruct.dfTraceMatNMF;
+        detrendedTraceMatNMF = tracestruct.detrendedTraceMatNMF;
+    end
+    inferred = true;
     
     traceMatDC = tracestruct.traceMatDC;
     DCs = tracestruct.DCs;
@@ -156,10 +160,10 @@ for fidx=1:nTiffs
 
 %     % ---
 %     if inferred
-%         phaseMapInferred = zeros([d1, d2, d3]);
-%         magMapInferred = zeros([d1, d2, d3]);
-%         ratioMapInferred = zeros([d1, d2, d3]);
-%         phaseMaxMagInferred = zeros([d1, d2, d3]);
+%         phaseMapNMF = zeros([d1, d2, d3]);
+%         magMapNMF = zeros([d1, d2, d3]);
+%         ratioMapNMF = zeros([d1, d2, d3]);
+%         phaseMaxMagNMF = zeros([d1, d2, d3]);
 %     end
 %     % ---
         
@@ -191,22 +195,22 @@ for fidx=1:nTiffs
         maxFreqs = freqs(maxidx);
         
 
-%         % Get FFT-MAT for inferred: ---------------------------------
-%         if inferred
-%             fftMatInferred = arrayfun(@(i) fftfun(inferredTraces(:,i)), 1:size(inferredTraces,2), 'UniformOutput', false);
-%             fftMatInferred = cat(2, fftMatInferred{1:end});
-% 
-%             fftMatInferred = fftMatInferred(1:N/2, :);
-%             fftMatInferred(2:end,:) = fftMatInferred(2:end,:).*2;
-% 
-%             magMatInferred = abs(fftMatInferred);
-%             ratioMatInferred = magMatInferred(freqIdx,:) ./ (sum(magMatInferred, 1) - magMatInferred(freqIdx,:));
-%             phaseMatInferred = angle(fftMatInferred);
-% 
-%             [maxmag2,maxidx2] = max(magMatInferred);
-%             maxFreqsInferred = freqs(maxidx2);
-%         end
-%         % ------------------------------------------------------------
+        % Get FFT-MAT for inferred: ---------------------------------
+        if inferred
+            fftMatNMFoutput = arrayfun(@(i) fftfun(dfTraceMatNMF(:,i)), 1:size(dfTraceMatNMF,2), 'UniformOutput', false);
+            fftMatNMFoutput = cat(2, fftMatNMFoutput{1:end});
+
+            fftMatNMFoutput = fftMatNMFoutput(1:N/2, :);
+            fftMatNMFoutput(2:end,:) = fftMatNMFoutput(2:end,:).*2;
+
+            magMatNMFoutput = abs(fftMatNMFoutput);
+            ratioMatNMFoutput = magMatNMFoutput(freqIdx,:) ./ (sum(magMatNMFoutput, 1) - magMatNMFoutput(freqIdx,:));
+            phaseMatNMFoutput = angle(fftMatNMFoutput);
+
+            [maxmag2,maxidx2] = max(magMatNMFoutput);
+            maxFreqsNMFoutput = freqs(maxidx2);
+        end
+        % ------------------------------------------------------------
 
         
         fftStruct.targetPhase = phaseMat(freqIdx,:);
@@ -221,6 +225,19 @@ for fidx=1:nTiffs
         fftStruct.magMat = magMat;
         fftStruct.ratioMat = ratioMat;
         fftStruct.phaseMat = phaseMat;
+
+        if inferred
+            fftStruct.targetPhaseNMFoutput = phaseMatNMFoutput(freqIdx,:);
+            fftStruct.targetMagNMFoutput = magMatNMFoutput(freqIdx,:);
+            fftStruct.freqsAtMaxMagNMFoutput = maxFreqsNMFoutput;
+            fftStruct.fftMatNMFoutput = fftMatNMFoutput;
+            fftStruct.tracesNMFoutput = dfTraceMatNMF;
+            fftStruct.magMatNMFoutput = magMatNMFoutput;
+            fftStruct.ratioMatNMFoutput = ratioMatNMFoutput;
+            fftStruct.phaseMatNMFoutput = phaseMatNMFoutput;
+        end
+
+
 
         
         % Get MAPS for current slice: ---------------------------------
@@ -320,14 +337,27 @@ metric = 'ratio';
 
 currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
 
+
+useNMF = true
+
+if useNMF
+    targetphase = fftstruct.targetPhaseNMFoutput;
+    ratiomat = fftstruct.ratioMatNMFoutput;
+else
+    targetphase = fftstruct.targetPhase;
+    ratiomat = fftstruct.ratioMat;
+end
+
+
 switch metric
     case 'phase'
         currcmap = meta.cmaps.(currcond);
         cmapspace = linspace(-pi, pi, size(currcmap,1));
     case 'ratio'
         currcmap = colormap(hot);
-        cmapspace = linspace(min(ratioMat), max(ratioMat), size(currcmap, 1));
+        cmapspace = linspace(min(ratioMat), max(ratiomat), size(currcmap, 1));
 end
+
 
 % Test viewing:
 maskPaths3D = D.maskInfo.maskPaths;
@@ -347,12 +377,14 @@ for roi=1:2:nrois
             if isnan(fftstruct.targetPhase(roi))
                 continue;
             end
-            cmapidx = find(abs(cmapspace-fftstruct.targetPhase(roi))==min(abs(cmapspace-fftstruct.targetPhase(roi))));
+            cmapidx = find(abs(cmapspace-targetphase(roi))==min(abs(cmapspace-targetphase(roi))));
+
         case 'ratio'
             if isnan(fftstruct.ratioMat(roi))
                 continue;
             end
-            cmapidx = find(abs(cmapspace-fftstruct.ratioMat(roi))==min(abs(cmapspace-fftstruct.ratioMat(roi))));
+            cmapidx = find(abs(cmapspace-ratiomat(roi))==min(abs(cmapspace-ratiomat(roi))));
+
     end
     if length(cmapidx)>1
         cmapidx = cmapidx(1);
@@ -398,6 +430,11 @@ set(gca, 'xlim', [0 120])
 
 camlight headlight; 
 lighting gouraud;
+
+savefig(fullfile(D.figDir, 'ratio3Dmap_File004.fig'))
+saveas(p1, fullfile(D.figDir, 'ratio3Dmap_File004.png'), 'png')
+
+clf;
 
 %% 2D maps (per slice):
 % =========================================================================
@@ -477,13 +514,20 @@ for sidx = 1:length(slicesToUse)
             expectedTImes = expectedTimes + meta.file(fidx).mw.mwSec(1); % add offset between trigger and stim-display
 
             %traces = traceStruct.traces.file{fidx};
-            if isfield(tracestruct.file(fidx), 'inferredTraces')
-                inferredTraces = tracestruct.file(fidx).inferredTraces;
+%             if isfield(tracestruct.file(fidx), 'inferredTraces')
+%                 inferredTraces = tracestruct.file(fidx).inferredTraces;
+%                 inferred = true;
+%             else
+%                 inferred = false;
+%             end
+            if isfield(tracestruct.file(fidx), 'dfTracesNMF')
+                dfTraceMatNMF = tracestruct.file(fidx).dfTraceMatNMF;
+                detrendedTraceMatNMF = tracestruct.file(fidx).detrendedTraceMatNMF;
                 inferred = true;
             else
                 inferred = false;
             end
-        
+
             traceMatDC = tracestruct.file(fidx).traceMatDC;
             DCs = tracestruct.file(fidx).DCs;
             tmptraces = bsxfun(@minus, traceMatDC, DCs);
@@ -532,10 +576,10 @@ for sidx = 1:length(slicesToUse)
 
             % ---
             if inferred
-                phaseMapInferred = zeros([d1, d2]);
-                magMapInferred = zeros([d1, d2]);
-                ratioMapInferred = zeros([d1, d2]);
-                phaseMaxMagInferred = zeros([d1, d2]);
+                phaseMapNMF = zeros([d1, d2]);
+                magMapNMF = zeros([d1, d2]);
+                ratioMapNMF = zeros([d1, d2]);
+                phaseMaxMagNMF = zeros([d1, d2]);
             end
             % ---
         
@@ -583,18 +627,18 @@ for sidx = 1:length(slicesToUse)
 
             % Get FFT-MAT for inferred: ---------------------------------
             if inferred
-                fftMatInferred = arrayfun(@(i) fftfun(inferredTraces(:,i)), 1:size(inferredTraces,2), 'UniformOutput', false);
-                fftMatInferred = cat(2, fftMatInferred{1:end});
+                fftMatNMF = arrayfun(@(i) fftfun(dfTraceMatNMF(:,i)), 1:size(dfTraceMatNMF,2), 'UniformOutput', false);
+                fftMatNMF = cat(2, fftMatNMF{1:end});
 
-                fftMatInferred = fftMatInferred(1:N/2, :);
-                fftMatInferred(2:end,:) = fftMatInferred(2:end,:).*2;
+                fftMatNMF = fftMatNMF(1:N/2, :);
+                fftMatNMF(2:end,:) = fftMatNMF(2:end,:).*2;
 
-                magMatInferred = abs(fftMatInferred);
-                ratioMatInferred = magMatInferred(freqIdx,:) ./ (sum(magMatInferred, 1) - magMatInferred(freqIdx,:));
-                phaseMatInferred = angle(fftMatInferred);
+                magMatNMF = abs(fftMatNMF);
+                ratioMatNMF = magMatNMF(freqIdx,:) ./ (sum(magMatNMF, 1) - magMatNMF(freqIdx,:));
+                phaseMatNMF = angle(fftMatNMF);
 
-                [maxmag2,maxidx2] = max(magMatInferred);
-                maxFreqsInferred = freqs(maxidx2);
+                [maxmag2,maxidx2] = max(magMatNMF);
+                maxFreqsNMF = freqs(maxidx2);
             end
             % ------------------------------------------------------------
 
@@ -633,13 +677,13 @@ for sidx = 1:length(slicesToUse)
             end
 
     %         % --
-    %         if inferred
-    %             display('hi')
-    %             phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
-    %             magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
-    %             ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
-    %             phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
-    %         end
+            if inferred
+                display('hi')
+                phaseMapNMF = assignRoiMap(maskcell, phaseMapNMF, phaseMatNMF, freqIdx);
+                magMapNMF = assignRoiMap(maskcell, magMapNMF, magMatNMF, freqIdx);
+                ratioMapNMF = assignRoiMap(maskcell, ratioMapNMF, ratioMatNMF);
+                phaseMaxMagNMF = assignRoiMap(maskcell, phaseMatNMF, magMatNMF, [], freqs);
+            end
     %         % ---
 
             toc();
@@ -652,10 +696,10 @@ for sidx = 1:length(slicesToUse)
 
             % ---
             if inferred
-                maps.file(fidx).magnitudeInferred = magMapInferred;
-                maps.file(fidx).phaseInferred = phaseMapInferred;
-                maps.file(fidx).phasemaxInferred = phaseMaxMagInferred;
-                maps.file(fidx).ratioInferred = ratioMapInferred;
+                maps.file(fidx).magnitudeNMF = magMapNMF;
+                maps.file(fidx).phaseNMF = phaseMapNMF;
+                maps.file(fidx).phasemaxNMF = phaseMaxMagNMF;
+                maps.file(fidx).ratioNMF = ratioMapNMF;
             end
             % ---
 

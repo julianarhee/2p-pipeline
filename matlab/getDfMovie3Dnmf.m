@@ -67,10 +67,13 @@ for fidx=1:nTiffs
     adjustTraces = tracestruct.traceMatDC; 
     % --> This is already corrected with DC -- do the following to get back
     % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
-    if isfield(tracestruct, 'inferredTraces')
-        inferredTraces = tracestruct.inferredTraces;
+%     if isfield(tracestruct, 'inferredTraces')
+%         inferredTraces = tracestruct.inferredTraces;
+%     end
+    if isfield(tracestruct, 'dfTracesNMF')
+        dfTracesNMF = tracestruct.dfTracesNMF;
+        detrendedNMF = tracestruct.detrendedNMF;
     end
-    
     
     switch D.roiType
         case 'create_rois'
@@ -110,6 +113,7 @@ for fidx=1:nTiffs
     dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(:,i)), 1:nrois, 'UniformOutput', false);
     dfMat = cat(2, dfMat{1:end})*100;
 
+    
     meanDfs = mean(dfMat,1);
     maxDfs = max(dfMat);
     % Get rid of ridiculous values, prob edge effects:
@@ -126,37 +130,82 @@ for fidx=1:nTiffs
     blankMap = zeros([d1, d2]);
     %dfMatInferred = arrayfun(@(i) extractDfTrace(inferredTraces(:,i)), 1:nrois, 'UniformOutput', false);
     %dfMatInferred = cat(2, dfMatInferred{1:end})*100;
-    if isfield(tracestruct, 'inferredTraces')
-        dfMatInferred = inferredTraces; % alrady df/f * 100
+    %if isfield(tracestruct, 'inferredTraces')
+    if isfield(tracestruct, 'dfTracesNMF')
+%         dfMatInferred = inferredTraces; % alrady df/f * 100
+% 
+%         meanDfsInferred = mean(inferredTraces,1);
+%         maxDfsInferred = max(inferredTraces);
+%         % Get rid of ridiculous values, prob edge effects:
+%         maxDfsInferred(abs(maxDfsInferred)>400) = NaN;
+%         activeRoisInferred = find(maxDfsInferred >= minDf);
+%         fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisInferred), nrois, minDf);
+% 
+%         nslices =  size(avgY,3);
+%         meanMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsInferred);
+%         maxMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsInferred);
 
-        meanDfsInferred = mean(inferredTraces,1);
-        maxDfsInferred = max(inferredTraces);
+        dfMatNMF = arrayfun(@(i) extractDfTrace(detrendedNMF(:,i)), 1:nrois, 'UniformOutput', false);
+        dfMatNMF = cat(2, dfMatNMF{1:end})*100;
+
+        meanDfsNMF = mean(dfMatNMF,1);
+        maxDfsNMF = max(dfMatNMF);
         % Get rid of ridiculous values, prob edge effects:
-        maxDfsInferred(abs(maxDfsInferred)>400) = NaN;
-        activeRoisInferred = find(maxDfsInferred >= minDf);
-        fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisInferred), nrois, minDf);
+        maxDfsNMF(abs(maxDfsNMF)>400) = NaN;
+        activeRoisNMF = find(maxDfsNMF >= minDf);
+        fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisNMF), nrois, minDf);
 
         nslices =  size(avgY,3);
-        meanMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsInferred);
-        maxMapInferred = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsInferred);
-    
+        meanMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMF);
+        maxMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsNMF);
+        
+        
+        % AND ON DF OUTPUT ITSELF:
+        dfMatNMFoutput = dfTracesNMF;
+        meanDfsNMFoutput = mean(dfMatNMFoutput,1);
+        maxDfsNMFoutput = max(dfMatNMFoutput);
+        % Get rid of ridiculous values, prob edge effects:
+        maxDfsNMFoutput(abs(maxDfsNMFoutput)>400) = NaN;
+        activeRoisNMFoutput = find(maxDfsNMFoutput >= minDf);
+        fprintf('Found %i of %i ROIs with inferred dF/F > %02.f%%.\n', length(activeRoisNMFoutput), nrois, minDf);
+
+        nslices =  size(avgY,3);
+        meanMapNMFoutput = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMFoutput);
+        maxMapNMFoutput = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsNMFoutput);
+        
     end
     % ----------------------------------------------------------
 
     
     
     % Sort df traces into "slices":
+%     currSliceRois = {};
+%     for sl=1:nslices
+%         currSliceRois{end+1} = find(centers(:,3)==sl);
+%     end
+    roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:22, 'UniformOutput', 0))), maskcell, 'UniformOutput', 0);
+
     currSliceRois = {};
+    % for sl=1:nslices
+    %     currSliceRois{end+1} = find(centers(:,3)==sl);
+    % end
     for sl=1:nslices
-        currSliceRois{end+1} = find(centers(:,3)==sl);
+        %currSliceRois{end+1} = find(centers(:,3)==sl); % Use center of
+        %mass (COM) to make 2D masks for each slice
+        roi_ids_found = find(cell2mat(cellfun(@(rslices) any(find(rslices==sl)), roislices, 'UniformOutput', 0)));
+        currSliceRois{end+1} = roi_ids_found; %maskstruct.roiIDs(roi_ids_found);
     end
-    
+
+
+%     
     dfMatSlices = {};
-    dfMatSlicesInferred = {};
+    dfMatSlicesNMF = {};
+    dfMatSlicesNMFoutput = {};
     for sl=1:nslices
         dfMatSlices{end+1} = dfMat(:,currSliceRois{sl});
-        if isfield(tracestruct, 'inferredTraces')
-            dfMatSlicesInferred{end+1} = dfMatInferred(:,currSliceRois{sl});
+        if isfield(tracestruct, 'dfTracesNMF')
+            dfMatSlicesNMF{end+1} = dfMatNMF(:,currSliceRois{sl});
+            dfMatSlicesNMFoutput{end+1} = dfMatNMFoutput(:, currSliceRois{sl});
         end
     end
     
@@ -183,12 +232,19 @@ for fidx=1:nTiffs
         
         DF.slice(currSlice).file(fidx).maxDfs = maxDfs;
         
-        if isfield(tracestruct, 'inferredTraces')
-            DF.slice(currSlice).file(fidx).meanMapInferred = meanMapInferred(:,:,sidx);
-            DF.slice(currSlice).file(fidx).maxMapInferred = maxMapInferred(:,:,sidx);
-            DF.slice(currSlice).file(fidx).dfMatInferred = dfMatSlicesInferred{sidx};
-            DF.slice(currSlice).file(fidx).activeRoisInferred = activeRoisInferred;
-            DF.slice(currSlice).file(fidx).maxDfsInferred = maxDfsInferred;
+        if isfield(tracestruct, 'dfTracesNMF')
+            DF.slice(currSlice).file(fidx).meanMapNMF = meanMapNMF(:,:,sidx);
+            DF.slice(currSlice).file(fidx).maxMapNMF = maxMapNMF(:,:,sidx);
+            DF.slice(currSlice).file(fidx).dfMatNMF = dfMatSlicesNMF{sidx};
+            DF.slice(currSlice).file(fidx).activeRoisNMF = activeRoisNMF;
+            DF.slice(currSlice).file(fidx).maxDfsNMF = maxDfsNMF;
+            
+            DF.slice(currSlice).file(fidx).meanMapNMFoutput = meanMapNMFoutput(:,:,sidx);
+            DF.slice(currSlice).file(fidx).maxMapNMFoutput = maxMapNMFoutput(:,:,sidx);
+            DF.slice(currSlice).file(fidx).dfMatNMFoutput = dfMatSlicesNMFoutput{sidx};
+            DF.slice(currSlice).file(fidx).activeRoisNMFoutput = activeRoisNMFoutput;
+            DF.slice(currSlice).file(fidx).maxDfsNMFoutput = maxDfsNMFoutput;
+            
         end
     end
 
