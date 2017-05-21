@@ -41,8 +41,12 @@ for tiffIdx=1:nTiffs
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
         currTraces = tracestruct.rawTraces; % nxm mat, n=frames, m=rois
-        if isfield(tracestruct, 'inferredTraces')
-            currInferredTraces = tracestruct.inferredTraces;
+%         if isfield(tracestruct, 'inferredTraces')
+%             currInferredTraces = tracestruct.inferredTraces;
+%         end        
+        if isfield(tracestruct, 'dfTracesNMF')
+            currDfTracesNMF = tracestruct.dfTracesNMF;
+            currDetrendedNMF = tracestruct.detrendedNMF;
         end
         
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
@@ -60,14 +64,16 @@ for tiffIdx=1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
-            if isfield(tracestruct, 'inferredTraces')
-                inferredTraces = currInferredTraces(1:cropToFrame,:);
+            if isfield(tracestruct, 'dfTracesNMF')
+                dfTracesNMF = currDfTracesNMF(1:cropToFrame,:);
+                detrendedNMF = currDetrendedNMF(1:cropToFrame,:);
             end
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            if isfield(tracestruct, 'inferredTraces')
-                inferredTraces = currInferredTraces;
+            if isfield(tracestruct, 'dfTracesNMF')
+                dfTracesNMF = currDfTracesNMF;
+                detrendedNMF = currDetrendedNMF;
             end
         end
 
@@ -86,8 +92,10 @@ for tiffIdx=1:nTiffs
         tracestruct.traceMat = traceMat;
         tracestruct.winsz = winsz;
         tracestruct.DCs = DCs;
-        if isfield(tracestruct, 'inferredTraces')
-            tracestruct.inferredTraceMat = inferredTraces;
+        if isfield(tracestruct, 'dfTracesNMF')
+            %tracestruct.inferredTraceMat = inferredTraces;
+            tracestruct.dfTraceMatNMF = dfTracesNMF;
+            tracestruct.detrendedTraceMatNMF = detrendedNMF;
         end
         
         if trimEnd
@@ -125,11 +133,17 @@ for tiffIdx=1:nTiffs
 
         % 1. First, remove "bad" frames (too much motion), and
         % replace with Nans:
-        currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
-        if isfield(tracestruct, 'inferredTraces')
-            currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
+         currTraces = tracestruct.file(tiffIdx).rawTraces; % nxm mat, n=frames, m=rois
+%         if isfield(tracestruct, 'inferredTraces')
+%             currInferredTraces = tracestruct.file(tiffIdx).inferredTraces;
+%         end
+        if isfield(tracestruct.file(tiffIdx), 'dfTracesNMF')
+            currDfTracesNMF = tracestruct.file(tiffIdx).dfTracesNMF;
+            currDetrendedNMF = tracestruct.file(tiffIdx).detrendedTracesNMF;
+            inferred = true;
+        else
+            inferred = false;
         end
-        
 %         tracestruct.file(tiffIdx).badFrames(tracestruct.file(tiffIdx).badFrames==tracestruct.file(tiffIdx).refframe) = []; % Ignore reference frame (corrcoef=1)
 
 %         bf = tracestruct.file(tiffIdx).badFrames;
@@ -145,15 +159,22 @@ for tiffIdx=1:nTiffs
 
         if trimEnd
             traces = currTraces(1:cropToFrame,:);
-            if isfield(tracestruct, 'inferredTraces')
-                inferredTraces = currInferredTraces(1:cropToFrame,:);
-            end
-            
+%             if isfield(tracestruct, 'inferredTraces')
+%                 inferredTraces = currInferredTraces(1:cropToFrame,:);
+%             end
+            if inferred
+                dfTracesNMF = currDfTracesNMF(1:cropToFrame,:);
+                detrendedNMF = currDetrendedNMF(1:cropToFrame,:);
+            end            
             %traces = currTraces(:, 1:cropToFrame);
         else
             traces = currTraces;
-            if isfield(tracestruct, 'inferredTraces')
-                inferredTraces = currInferredTraces;
+%             if isfield(tracestruct, 'inferredTraces')
+%                 inferredTraces = currInferredTraces;
+%             end
+            if isfield(tracestruct, 'dfTracesNMF')
+                dfTracesNMF = currDfTracesNMF;
+                detrendedNMF = currDetrendedNMF;
             end
         end
 
@@ -173,8 +194,13 @@ for tiffIdx=1:nTiffs
         tracestruct.file(tiffIdx).winsz = winsz;
         tracestruct.file(tiffIdx).DCs = DCs;
         
-        if isfield(tracestruct, 'inferredTraces')
-            tracestruct.file(tiffIdx).inferredTraceMat = inferredTraces;
+%         if isfield(tracestruct, 'inferredTraces')
+%             tracestruct.file(tiffIdx).inferredTraceMat = inferredTraces;
+%         end
+        if inferred
+            %tracestruct.inferredTraceMat = inferredTraces;
+            tracestruct.file(tiffIdx).dfTraceMatNMF = dfTracesNMF;
+            tracestruct.file(tiffIdx).detrendedTraceMatNMF = detrendedNMF;
         end
         
         if trimEnd

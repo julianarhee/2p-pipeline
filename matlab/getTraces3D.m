@@ -72,6 +72,11 @@ maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2, d3), 1:nRois, 'Unif
 maskcell3D = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
 %maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
 
+
+roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:22, 'UniformOutput', 0))), maskcell3D, 'UniformOutput', 0);
+
+
+
 % Get averages of each slice:
 avgs = zeros([d1,d2,d3]);
 for slice=1:d3
@@ -90,14 +95,21 @@ if size(coms,2) == 2
     coms(:,3) = 1;
 end
 coms = round(coms);
-centers = maskstruct.centroids;
+if isfield(maskstruct, 'centroids')
+    centers = maskstruct.centroids;
+else
+    centers = coms;
+end
 
 
 % Create "2D" masks for each slice, using centers:
 currSliceRois = {};
 nslices = d3;
 for sl=1:nslices
-    currSliceRois{end+1} = find(centers(:,3)==sl);
+    %currSliceRois{end+1} = find(centers(:,3)==sl);
+    roi_ids_found = find(cell2mat(cellfun(@(rslices) any(find(rslices==sl)), roislices, 'UniformOutput', 0)));
+    
+    currSliceRois{end+1} = roi_ids_found; %maskstruct.roiIDs(roi_ids_found);
 end
 
 % TODO:  if go with 3D auto-ROIs, fix everything upstream so that we don't
@@ -124,12 +136,13 @@ for sl=1:nslices
     maskcell = cell(1,ncurrrois);
     for roi=1:length(currSliceRois{sl})%nrois
         roidx = currSliceRois{sl}(roi);
-        maskcell{roi} = maskcell3D{roidx}(:,:,centers(roidx, 3));
+        %maskcell{roi} = maskcell3D{roidx}(:,:,centers(roidx, 3));
+        maskcell{roi} = maskcell3D{roidx}(:,:,sl);
     end
     
     maskStruct.file(fidx).maskcell = maskcell;
-    maskStruct.file(fidx).centers = currSliceRois{sl};
-    maskStruct.file(fidx).roi3Didxs = currSliceRois{sl};
+    maskStruct.file(fidx).centers = centers(currSliceRois{sl},:); %currSliceRois{sl};
+    maskStruct.file(fidx).roi3Didxs = maskstruct.roiIDs(currSliceRois{sl}); %maskstruct.roiIDs(roi_ids_found);
     
     %mask_slicefn = sprintf('masks_Slice%02d_File%03d.mat', sl, fidx);
     %mask_slicefn = sprintf('masks_Slice%02d.mat');
@@ -178,6 +191,7 @@ maskStruct3D.maskcell3D = maskcell3D;
 maskStruct3D.centers = centers;
 maskStruct3D.coms = coms;
 maskStruct3D.roiMat = roiMat;
+maskStruct3D.roiIDs = maskstruct.roiIDs;
 
 % This maskPath points to the 3D mask cell array, i.e., each cell contains
 % 3D mask, and length of cell array is nRois:

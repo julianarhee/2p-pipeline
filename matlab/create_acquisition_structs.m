@@ -111,14 +111,25 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % - don't filter very small components... (ff) D.maskInfo.params.keepAll
 % - set thr_method to 'max' and see if setting 'maxthr'=0 (default: 0.1)
 % helps keep all...
-
 % datastruct_008 -- maintain "empty" ROIs -- UNIFINISHED>
+% datastruct_009:  GOLFBALLS from EM centroids (em_centroids)
+% - radius = 1.5 (rounded to 2? -- too big...)
+% datastruct_010:  GOLFBALLS from EM centroids (em_centroids).  
+% - radius = 1 (see if smaller is still ok...)
 
-% datastruct_009:  GOLFBALLS from EM centroids.radius = 1.5 (rounded to 2?
-% too big...)
+% ***********************************************
+% phase1_block2 submission:
 
-% datastruct_010:  GOLFBALLS from EM centroids.radius = 1 (see if smaller
-% is still ok...)
+
+% datastruct_011:  Golfballs from NEW/final em centroids (em7_centroids)
+% - radius = 1.5 (no rounding)
+
+% datastruct_012:  Use masks from colored em7 TIFF of EM cells for
+% manual3Drois
+
+% datastruct_013:  Use em7 centroids, seed centroidsOnly into 3Dnmf
+
+% ***********************************************
 
 
 
@@ -196,7 +207,7 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 10;           % Define datastruct analysis no.
+didx = 13;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -222,11 +233,11 @@ preprocessing = 'raw';
 % --------------------------------------------
 %roiType = 'create_rois';
 % roiType = 'roiMap';
-roiType = 'manual3Drois';
+%roiType = 'manual3Drois';
 %roiType = 'condition';
 %roiType = 'pixels';
 %D.roiType = 'cnmf';
-%roiType = '3Dcnmf'
+roiType = '3Dcnmf'
 
 % 2.b.  Specify additional args, depending on ROI type:
 if strcmp(roiType, 'condition')
@@ -238,15 +249,20 @@ elseif strcmp(roiType, 'roiMap')
     mapSource = strjoin(pathparts(1:end-1), '/');
     mapSource = fullfile(mapSource, 'average_volumes');
     mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
-    roiPaths = dir(fullfile(mapSource, 'rois*.mat'));
-    if length(roiPaths)==1
-        roiPath = roiPaths(1).name;
+    roiCentroidPaths = dir(fullfile(mapSource, 'rois*.mat'));
+    if length(roiCentroidPaths)==1
+        roiPath = roiCentroidPaths(1).name;
     else
         roiIdx = 1; % Specify which ROI maps to use, if more than 1
-        roiPath = roiPaths(roiIdx).name;
+        roiPath = roiCentroidPaths(roiIdx).name;
     end
-elseif strcmp(roiType, '3Dcnmf')
+elseif strfind(roiType, '3D')
     seedRois = true;
+end
+
+if seedRois
+      manual3Dshape = '3Dcontours' %'spheres'
+      maskFinder = 'centroids'
 end
 
 % --------------------------------------------
@@ -489,20 +505,26 @@ switch D.roiType
         % TODO:  add option for storing paths to ROI masks
         % ************************************************
         [fpath,fcond,~] = fileparts(D.sourceDir);
-        mapSource = fullfile(fpath, 'em_centroids');
+        mapSource = fullfile(fpath, 'em7_centroids');
         %mapSource = fullfile(mapSource, 'average_volumes');
         mapSlicesPath = fullfile(mapSource, 'average_stacks', 'Channel01'); % Path to slices onto which masks can be drawn
-        roiPaths = dir(fullfile(mapSource, 'centroids*.mat'));         % Path to .mat containg centroid info
-        if length(roiPaths)==1
-            roiPath = roiPaths(1).name;
+        roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));         % Path to .mat containg centroid info
+        roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
+        
+        if length(roiCentroidPaths)==1
+            roiCentroidPath = roiCentroidPaths(1).name;
         else
             roiIdx = 1; % Specify which ROI maps to use, if more than 1
-            roiPath = roiPaths(roiIdx).name;
+            roiCentroidPath = roiCentroidPaths(roiIdx).name;
+        end
+        if length(roiMaskPaths)==1
+            roiMaskPath = roiMaskPaths(1).name;
+        else
+            roiIdx = 1; % Specify which ROI maps to use, if more than 1
+            roiMaskPath = roiMaskPaths(roiIdx).name;
         end
         D.maskSource = mapSource;
             
-            
-        
     case 'condition'
         D.maskSource = refMaskStruct; %'retinotopy1';
         D.maskDidx = refMaskStructIdx;
@@ -528,23 +550,50 @@ switch D.roiType
         D.maskSource = fcond;
         
     case '3Dcnmf'
+%         if seedRois
+%             pathparts = strsplit(sourceDir, '/');
+%             mapSource = strjoin(pathparts(1:end-1), '/');
+%             mapSource = fullfile(mapSource, 'average_volumes');
+%             mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
+%             roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));
+%             roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
+%             if length(roiCentroidPaths)==1
+%                 roiPath = roiCentroidPaths(1).name;
+%             else
+%                 roiIdx = 1; % Specify which ROI maps to use, if more than 1
+%                 roiPath = roiCentroidPaths(roiIdx).name;
+%             end
+%             D.maskSource = mapSource;
+%         else
+%             [fpath,fcond,~] = fileparts(D.sourceDir);
+%             D.maskSource = fcond;
+%         end
         if seedRois
-            pathparts = strsplit(sourceDir, '/');
-            mapSource = strjoin(pathparts(1:end-1), '/');
-            mapSource = fullfile(mapSource, 'average_volumes');
-            mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
-            roiPaths = dir(fullfile(mapSource, 'centroids*.mat'));
-            if length(roiPaths)==1
-                roiPath = roiPaths(1).name;
+            [fpath,fcond,~] = fileparts(D.sourceDir);
+            mapSource = fullfile(fpath, 'em7_centroids');
+            %mapSource = fullfile(mapSource, 'average_volumes');
+            mapSlicesPath = fullfile(mapSource, 'average_stacks', 'Channel01'); % Path to slices onto which masks can be drawn
+            roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));         % Path to .mat containg centroid info
+            roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
+
+            if length(roiCentroidPaths)==1
+                roiCentroidPath = roiCentroidPaths(1).name;
             else
                 roiIdx = 1; % Specify which ROI maps to use, if more than 1
-                roiPath = roiPaths(roiIdx).name;
+                roiCentroidPath = roiCentroidPaths(roiIdx).name;
+            end
+            if length(roiMaskPaths)==1
+                roiMaskPath = roiMaskPaths(1).name;
+            else
+                roiIdx = 1; % Specify which ROI maps to use, if more than 1
+                roiMaskPath = roiMaskPaths(roiIdx).name;
             end
             D.maskSource = mapSource;
         else
             [fpath,fcond,~] = fileparts(D.sourceDir);
             D.maskSource = fcond;
         end
+            
         
 end
 
@@ -673,7 +722,7 @@ switch D.roiType
         
     case 'manual3Drois'
         
-        D.maskType = '3Dcontours';
+        D.maskType = manual3Dshape;  %TODO:  FIX THSI in datastruct_011 -- should be "spheres" %'3Dcontours';
         D.slices = slicesToUse;
 
         D.mempath = fullfile(D.sourceDir, 'memfiles');
@@ -713,34 +762,57 @@ switch D.roiType
 
         D.maskInfo.mapSource = mapSource;  % path to AVG volumes from which ROIs selected
         D.maskInfo.mapSlicePaths = mapSlicesPath;  % path to each slice of AVG volume (mapSource is parent)
-        D.maskInfo.roiPath = roiPath; 
+         
         D.maskInfo.slices = slicesToUse;
 
-        roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
-        roinames = sort(fieldnames(roimat));
-        
-        centers = zeros(length(roinames), 3);
-        radii = zeros(length(roinames), 1);
-        for roi=1:length(roinames)
-            centers(roi,:) = roimat.(roinames{roi}).TEFO;
-            radii(roi) = 1;
-        end
-        %roimat.centroids;
-        %radii = roimat.radii;
-        
         % Create MASKMAT -- single mask for each trace:
         % ----------------------------------------------------------------- 
-        volumesize = meta.volumeSizePixels;
-        centers = round(centers);
-        view_sample = false;
-        maskmat = getGolfballs(centers, radii, volumesize, view_sample);
-        D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
-        maskstruct = struct();
-        maskstruct.centroids = centers;
-        maskstruct.radii = radii;
-        maskstruct.maskmat = maskmat;
-        maskstruct.volumesize = volumesize;
-        save(D.maskmatPath, '-struct', 'maskstruct');
+        % TODO:  fix this so that can use actual masks for extracting
+        % traces:  
+        if strcmp(D.maskType, 'spheres')
+            D.maskInfo.roiPath = roiCentroidPath;
+            
+            roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            roinames = sort(fieldnames(roimat));
+
+            centers = zeros(length(roinames), 3);
+            radii = zeros(length(roinames), 1);
+            roiIDs = zeros(length(roinames), 1);
+            for roi=1:length(roinames)
+                centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
+                radii(roi) = 1.5;
+                roiname = roinames{roi};
+                roiIDs(roi) = str2double(roiname(5:end));
+            end
+        
+            volumesize = meta.volumeSizePixels;
+            %centers = round(centers);
+            view_sample = false;
+            maskmat = getGolfballs(centers, radii, volumesize, view_sample);
+            D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
+            maskstruct = struct();
+            maskstruct.centroids = centers;
+            maskstruct.radii = radii;
+            maskstruct.maskmat = maskmat;
+            maskstruct.volumesize = volumesize;
+            maskstruct.roiIDs = roiIDs;
+            save(D.maskmatPath, '-struct', 'maskstruct');
+        else
+            % USE ACTUAL MASKS:
+            % LOAD MASK
+            volumesize = meta.volumeSizePixels;
+            D.maskInfo.roiPath = roiMaskPath;
+            roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            roinames = sort(fieldnames(roimat));
+            tmpmat = arrayfun(@(i) reshape(roimat.(roinames{i}), prod(volumesize), []), 1:length(roinames), 'UniformOutput', 0);
+            maskmat = cat(2, tmpmat{1:end});
+            maskstruct = struct();
+            maskstruct.maskmat = maskmat;
+            maskstruct.roiIDs = cellfun(@(roiname) str2double(roiname(5:end)), roinames);
+            maskstuct.volumesize = volumesize;
+            D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
+            save(D.maskmatPath, '-struct', 'maskstruct');
+        end
         
         % Get Traces for 3D masks:
         % ----------------------------------------------------------------- 
@@ -909,7 +981,7 @@ switch D.roiType
         
         fstart = tic();
         
-        D.maskType = '3Dcontours';
+        D.maskType = manual3Dshape; %'3Dcontours';
         D.slices = slicesToUse;
 
         %addpath(genpath('~/Repositories/ca_source_extraction'));
@@ -921,21 +993,10 @@ switch D.roiType
         end
         %D.mempath = fullfile(D.nmfPath, 'memfiles');
         D.mempath = fullfile(D.sourceDir, 'memfiles');
-        
-        % Specify ROI map source(s), if seeding:
-        % -----------------------------------------------------------------   
-        D.maskInfo = struct();
-        if seedRois
-            D.maskInfo.mapSource = mapSource;
-            D.maskInfo.mapSlicePaths = mapSlicesPath;
-            D.maskInfo.roiPath = roiPath; 
-            D.maskInfo.slices = slicesToUse;
-            D.maskInfo.blobType = 'difference';
-            D.maskInfo.seedRois = true;
-            D.maskInfo.keepAll = true;
+        if ~exist(D.mempath)
+            mkdir(D.mempath)
         end
 
-        
         % Create memmapped files and substack if needed:
         % -----------------------------------------------------------------   
         if D.average
@@ -945,25 +1006,119 @@ switch D.roiType
                 mkdir(D.averagePath)
             end
         end
-        memmap3D(D, meta);
+        D.dataDir = fullfile(D.mempath, 'tiffs'); 
+        
+        % Because downstream indexes based off of D.slices, need to re-map
+        % slices to be "true" indices of TIFFs actually used for
+        % analyses/maps...
+        % TODO:  FIX THIS, super clunky....
+        create_substack = false;
+        if ~create_substack
+            D.slices = 1:length(slicesToUse); %slicesToUse = [1:22];
+            fprintf('Updated slice idxs, since not creating substack. Start idx is: %i\n', D.slices(1));
+        end
+        
+        memmap3D(D, meta, create_substack);
         fprintf('Memmapped TIFF files.\n');
         
         
+        % Specify ROI map source(s), if seeding:
+        % -----------------------------------------------------------------   
+        D.maskInfo = struct();
+        if seedRois
+            D.maskInfo.mapSource = mapSource;
+            D.maskInfo.mapSlicePaths = mapSlicesPath;
+            D.maskInfo.slices = slicesToUse;
+            D.maskInfo.seedRois = true;
+            
+            switch maskFinder
+                case 'blobDetector'
+                    D.maskInfo.roiPath = roiPath; 
+                    D.maskInfo.blobType = 'difference';
+                    D.maskInfo.keepAll = true;
+                    
+                    centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+                    if isfield(D.maskInfo, 'blobType')
+                        if strcmp(D.maskInfo.blobType, 'difference')
+                            seeds = centroids.DoG;
+                        else
+                            seeds = centroids.LoG;
+                        end
+                    end
+                    % Add 1 to x,y bec python 0-indexes (no need to do this for
+                    % slice #)
+                    seeds(:,1) = seeds(:,1)+1;
+                    seeds(:,2) = seeds(:,2)+1;
+
+                    % Remove ignored slics:
+                    discardslices = find(seeds(:,3)<D.slices(1));
+                    seeds(discardslices,:) = [];
+                    seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
+                    D.maskInfo.seeds = seeds;
+                    
+                case 'EMmasks'
+                    volumesize = meta.volumeSizePixels;
+                    D.maskInfo.roiPath = roiMaskPath;
+                    roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+                    roinames = sort(fieldnames(roimat));
+                    tmpmat = arrayfun(@(i) reshape(roimat.(roinames{i}), prod(volumesize), []), 1:length(roinames), 'UniformOutput', 0);
+                    maskmat = cat(2, tmpmat{1:end});
+                    
+                    D.maskInfo.centroidsOnly = false;
+                    D.maskInfo.seeds = maskmat;
+                    D.maskInfo.roiIDs = cellfun(@(roiname) str2double(roiname(5:end)), roinames);
+                    
+                case 'centroids'
+                    D.maskInfo.roiPath = roiCentroidPath;
+
+                    roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+                    roinames = sort(fieldnames(roimat));
+
+                    centers = zeros(length(roinames), 3);
+                    radii = zeros(length(roinames), 1);
+                    roiIDs = zeros(length(roinames), 1);
+                    for roi=1:length(roinames)
+                        centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
+                        radii(roi) = 1.5;
+                        roiname = roinames{roi};
+                        roiIDs(roi) = str2double(roiname(5:end));
+                    end
+                    
+                    D.maskInfo.seeds = centers;
+                    D.maskInfo.seeds(:,1) = centers(:,2);
+                    D.maskInfo.seeds(:,2) = centers(:,1);
+                    D.maskInfo.roiIDs = roiIDs;
+                    D.maskInfo.keepAll = true;
+                    D.maskInfo.centroidsOnly = true;
+                    
+            end
+        end
+
+        if D.maskInfo.seedRois
+            params.patches = false;
+        end
         % Set NMF params for 3D pipeline:
         % -----------------------------------------------------------------   
         if D.tefo
             % NOTE: Currently, only do patch if not seeding ROIs, just based on
             % how the input spatial components are provided (i.e., inputs
             % are not parsed into patches, and don't know if original NMF
-            
-            params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
-            params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
-
-            params.K = 2000;                                            % number of components to be found
-            params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
-            params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-            params.merge_thr = 0.8;                                  % merging threshold
+            if params.patches
+                params.patch_size = [15,15,5];                   % size of each patch along each dimension (optional, default: [32,32])
+                params.overlap = [6,6,2];                        % amount of overlap in each dimension (optional, default: [4,4])
+                params.K = 10;                                   % number of components to be found                           
+                D.maskInfo.patches = true;
+            else
+                %params.K = 2000;                                            % number of components to be found
+                params.K = 300;
+                %params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
+                params.tau = [2,2,1];
+                params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+                params.merge_thr = 0.8;                                  % merging threshold
+                D.maskInfo.patches = false;
+            end
         else
+            D.maskInfo.patches = true;
             params.patch_size = [32,32,8];                   % size of each patch along each dimension (optional, default: [32,32])
             params.overlap = [6,12,4];                        % amount of overlap in each dimension (optional, default: [4,4])
 
@@ -979,40 +1134,37 @@ switch D.roiType
         
         D.maskInfo.params = params;
         D.maskInfo.maskType = D.maskType;
-        D.maskInfo.slices = slicesToUse;
+        D.maskInfo.slices = D.slices;
         
         % TODO:  Allow for specifying nmf options out here (and just pass
         % in options to NMF, instead of setting inside getRois3Dnmf.m).
-        
-        
+
+        merge_thr = 0.85;
+        D.maskInfo.nmfoptions = CNMFSetParms(...
+            'd1',meta.volumeSizePixels(1),...
+            'd2',meta.volumeSizePixels(2),...
+            'd3',meta.volumeSizePixels(3),...
+            'search_method','ellipse','dist',2,'se', strel('disk', 2, 0),...      % search locations when updating spatial components
+            'max_size', 4, 'min_size', 1,...            % max/min size of ellipse axis (default: 8, 3)
+            'deconv_method','constrained_foopsi',...    % activity deconvolution method
+            'temporal_iter',2,...                       % number of block-coordinate descent steps 
+            'cluster_pixels',false,...                  
+            'ssub',1,...                                % spatial downsampling when processing
+            'tsub',1,...                                % further temporal downsampling when processing
+            'fudge_factor',0.96,...                     % bias correction for AR coefficients
+            'merge_thr',merge_thr,...                   % merging threshold
+            'gSig',params.tau,... 
+            'max_size_thr',4,'min_size_thr',1,...    % max/min acceptable size for each component
+            'spatial_method','regularized',...       % method for updating spatial components ('constrained')
+            'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
+            'time_thresh',0.6,...
+            'space_thresh',0.6,...
+            'thr_method', 'max',...                 % method to threshold ('max' or 'nrg', default 'max')
+            'maxthr', 0.0001,... %); %...                   % threshold of max value below which values are discarded (default: 0.1)
+            'conn_comp', false);                   % extract largest connected component (binary, default: true)
+            
         % Run 3D CNMF pipeline:
         % -----------------------------------------------------------------   
-        roistart = tic();
-        
-        %D.maskInfo.params.patches = true;
-        
-        if D.maskInfo.seedRois
-            D.maskInfo.params.patches = false;
-            centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
-            if isfield(D.maskInfo, 'blobType')
-                if strcmp(D.maskInfo.blobType, 'difference')
-                    seeds = centroids.DoG;
-                else
-                    seeds = centroids.LoG;
-                end
-            end
-            % Add 1 to x,y bec python 0-indexes (no need to do this for
-            % slice #)
-            seeds(:,1) = seeds(:,1)+1;
-            seeds(:,2) = seeds(:,2)+1;
-            
-            % Remove ignored slics:
-            discardslices = find(seeds(:,3)<D.slices(1));
-            seeds(discardslices,:) = [];
-            seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
-            D.maskInfo.seeds = seeds;
-        end
-        
         
         % Run ONCE to get reference components:
         roistart = tic();
@@ -1075,103 +1227,103 @@ switch D.roiType
         
         %%
         
-        % ----------
-        % TEST PLOTTING w/ MW epochs:
-        % ------------
-        
-        meta = load(D.metaPath);
-        nStimuli = length(meta.condTypes);
-        if ~isfield(meta, 'stimcolors')
-            colors = zeros(nStimuli,3);
-            for c=1:nStimuli
-                colors(c,:,:) = rand(1,3);
-            end
-            meta.stimcolors = colors;
-            save(D.metaPath, '-append', '-struct', 'meta');
-        else
-            colors = meta.stimcolors;
-        end
-        
-        % Load if already created:
-        nmf_fn = dir(fullfile(D.sourceDir, 'nmf_analysis', '*output*.mat'))
-        tifmem_fn = dir(fullfile(D.sourceDir, sprintf('%s.mat', D.acquisitionName)));
-        nmf = load(fullfile(D.sourceDir, 'nmf_analysis', nmf_fn.name));
-        data = matfile(fullfile(D.sourceDir, tifmem_fn.name));
-        
-        % Get raw traces using spatial and temporal components of tiff Y:
-        ay = mm_fun(nmf.A, data.Y);
-        aa = nmf.A'*nmf.A;
-        traces = ay - aa*nmf.C;
-        
-        tracesName = sprintf('nmftraces_Channel%02d', cidx);
-        D.tracesPath = fullfile(D.datastructPath, 'traces');
-        if ~exist(D.tracesPath, 'dir')
-            mkdir(D.tracesPath);
-        end
-        % Use center of 3D roi to choose slice idx:
-        center = com(A,d1,d2,d3);
-        if size(center,2) == 2
-            center(:,3) = 1;
-        end
-        center = round(center);
-
-        %% Check out decent looking components:
-        % 3, 8, 10 21 22
-        tRoi = 100;
-        tFile = 3;
-       
-        
-        zplane = center(tRoi,3);
-        volumeIdxs = zplane:meta.file(tFile).si.nFramesPerVolume:meta.file(tFile).si.nTotalFrames;
-        tstamps = meta.file(tFile).mw.siSec(volumeIdxs);
-        mwTimes = meta.file(tFile).mw.mwSec;
-        
-        figure();
-        plot(tstamps(1:size(Y_r_out,2)),Y_r_out(tRoi,:)/Df_out(tRoi), 'k', 'linewidth',2); 
-        %plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-        ylims = get(gca,'ylim');
-        currRunName = meta.file(tFile).mw.runName;
-        %mwCodes = meta.file(tFile).mw.pymat.(currRunName).stimIDs;
-        sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
-        trialidx = 1;
-        currStimTrialIdx = [];
-        for trial=1:2:length(mwTimes)
-            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
-            %currStim = mwCodes(trial);
-            currStim = 1;
-%             if handles.stimShowAvg.Value
-            patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%             else
-%                 if currStim==handles.stimMenu.Value
-%                     handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%                     currStimTrialIdx = [currStimTrialIdx trialidx];
-%                 else
-%                     handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
-%                 end
-%             end
-            %handles.ax4.TickDir = 'out';
-            hold on;
-            trialidx = trialidx + 1;
-            %handles.ax4.UserData.trialEpochs = trialidx;
-        end
-        nEpochs = length(mwTimes);
-        
-        %%
-    
-    
-        %tic()
-%         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
-%         
-%         D.maskInfo.params.nmfoptions = nmfoptions;
-%         clear nmfoptions;
-%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-%         %toc()
-%         
-%         % =================================================================
-%         % Get traces:
-%         % =================================================================
-%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
-%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-end
-
-toc()
+%        % ----------
+%        % TEST PLOTTING w/ MW epochs:
+%        % ------------
+%        
+%        meta = load(D.metaPath);
+%        nStimuli = length(meta.condTypes);
+%        if ~isfield(meta, 'stimcolors')
+%            colors = zeros(nStimuli,3);
+%            for c=1:nStimuli
+%                colors(c,:,:) = rand(1,3);
+%            end
+%            meta.stimcolors = colors;
+%            save(D.metaPath, '-append', '-struct', 'meta');
+%        else
+%            colors = meta.stimcolors;
+%        end
+%        
+%        % Load if already created:
+%        nmf_fn = dir(fullfile(D.sourceDir, 'nmf_analysis', '*output*.mat'))
+%        tifmem_fn = dir(fullfile(D.sourceDir, sprintf('%s.mat', D.acquisitionName)));
+%        nmf = load(fullfile(D.sourceDir, 'nmf_analysis', nmf_fn.name));
+%        data = matfile(fullfile(D.sourceDir, tifmem_fn.name));
+%        
+%        % Get raw traces using spatial and temporal components of tiff Y:
+%        ay = mm_fun(nmf.A, data.Y);
+%        aa = nmf.A'*nmf.A;
+%        traces = ay - aa*nmf.C;
+%        
+%        tracesName = sprintf('nmftraces_Channel%02d', cidx);
+%        D.tracesPath = fullfile(D.datastructPath, 'traces');
+%        if ~exist(D.tracesPath, 'dir')
+%            mkdir(D.tracesPath);
+%        end
+%        % Use center of 3D roi to choose slice idx:
+%        center = com(A,d1,d2,d3);
+%        if size(center,2) == 2
+%            center(:,3) = 1;
+%        end
+%        center = round(center);
+%
+%        %% Check out decent looking components:
+%        % 3, 8, 10 21 22
+%        tRoi = 100;
+%        tFile = 3;
+%       
+%        
+%        zplane = center(tRoi,3);
+%        volumeIdxs = zplane:meta.file(tFile).si.nFramesPerVolume:meta.file(tFile).si.nTotalFrames;
+%        tstamps = meta.file(tFile).mw.siSec(volumeIdxs);
+%        mwTimes = meta.file(tFile).mw.mwSec;
+%        
+%        figure();
+%        plot(tstamps(1:size(Y_r_out,2)),Y_r_out(tRoi,:)/Df_out(tRoi), 'k', 'linewidth',2); 
+%        %plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%        ylims = get(gca,'ylim');
+%        currRunName = meta.file(tFile).mw.runName;
+%        %mwCodes = meta.file(tFile).mw.pymat.(currRunName).stimIDs;
+%        sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
+%        trialidx = 1;
+%        currStimTrialIdx = [];
+%        for trial=1:2:length(mwTimes)
+%            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
+%            %currStim = mwCodes(trial);
+%            currStim = 1;
+%%             if handles.stimShowAvg.Value
+%            patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%             else
+%%                 if currStim==handles.stimMenu.Value
+%%                     handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%                     currStimTrialIdx = [currStimTrialIdx trialidx];
+%%                 else
+%%                     handles.mwepochs(trial) = patch(sx, sy, [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
+%%                 end
+%%             end
+%            %handles.ax4.TickDir = 'out';
+%            hold on;
+%            trialidx = trialidx + 1;
+%            %handles.ax4.UserData.trialEpochs = trialidx;
+%        end
+%        nEpochs = length(mwTimes);
+%        
+%        %%
+%    
+%    
+%        %tic()
+%%         [nmfoptions, D.maskInfo.maskPaths] = getRoisNMF(D, meta, plotoutputs);
+%%         
+%%         D.maskInfo.params.nmfoptions = nmfoptions;
+%%         clear nmfoptions;
+%%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%%         %toc()
+%%         
+%%         % =================================================================
+%%         % Get traces:
+%%         % =================================================================
+%%         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+%%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%end
+%
+%toc()
