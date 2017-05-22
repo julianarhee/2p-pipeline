@@ -110,7 +110,8 @@ else
 %             updateMapMenu = false;
 %     end
     if ~isempty(strfind(tcourseTypes{selected_tcourse}, '- NMF'))
-        case 'processedNMF'
+        %case 'processedNMF'
+            magMap = mapStruct.file(selectedFile).ratioNMF;
             if ~isempty(strfind(selectedMapType, 'output'))
                 selectedMapType = strcat(selectedMapType(1:end-9), 'NMF');
                 updateMapMenu = true;
@@ -120,7 +121,8 @@ else
             else
                 updateMapMenu = false;
             end
-        case 'dfNMF'
+    elseif ~isempty(strfind(tcourseTypes{selected_tcourse}, 'output'))
+            magMap = mapStruct.file(selectedFile).ratioNMFoutput;
             if ~isempty(strfind(selectedMapType, 'NMF')) && isempty(strfind(selectedMapType, 'output'))
                 selectedMapType = strcat(selectedMapType(1:end-3), 'NMFoutput');
                 updateMapMenu = true;
@@ -130,8 +132,22 @@ else
             else
                 updateMapMenu = false;
             end
-        otherwise
+        %otherwise
+    elseif isempty(strfind(tcourseTypes{selected_tcourse}, 'NMF'))
+        if ~isempty(strfind(selectedMapType, 'output')
+            selectedMapType = selectedMapType(1:end-9);
+            updateMapMenu = true;
+        elseif ~isempty(strfind(selectedMapType, 'NMF')
+            selectedMapType = selectedMapType(1:end-3);
+            updateMapMenu = true;
+        else
             updateMapMenu = false;
+        end
+        magMap = mapStruct.file(selectedFile).ratio;
+    else
+        magMap = mapStruct.file(selectedFile).ratio;
+        updateMapMenu = false;
+    end
     end
     
     if updateMapMenu
@@ -139,7 +155,7 @@ else
         selectedMapIdx = handles.mapMenu.Value;
     end
     displayMap = mapStruct.file(selectedFile).(selectedMapType);
-    magMap = mapStruct.file(selectedFile).ratio;
+    %magMap = mapStruct.file(selectedFile).ratio;
     thresholdMap = threshold_map(displayMap, magMap, currThresh);
 end
 

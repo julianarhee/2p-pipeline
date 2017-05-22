@@ -133,9 +133,21 @@ else
                 updateMapMenu = false;
             end
         %otherwise
+    elseif isempty(strfind(tcourseTypes{selected_tcourse}, 'NMF'))
+        if ~isempty(strfind(selectedMapType, 'output'))
+            selectedMapType = selectedMapType(1:end-9);
+            updateMapMenu = true;
+        elseif ~isempty(strfind(selectedMapType, 'NMF'))
+            selectedMapType = selectedMapType(1:end-3);
+            updateMapMenu = true;
+        else
+            updateMapMenu = false;
+        end
+        magMap = mapStruct.file(selectedFile).ratio;
     else
         magMap = mapStruct.file(selectedFile).ratio;
         updateMapMenu = false;
+    
     end
     
     if updateMapMenu
