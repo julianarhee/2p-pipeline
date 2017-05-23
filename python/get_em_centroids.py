@@ -3,23 +3,23 @@
 import os
 import numpy as np
 import tifffile as tf
-from skimage import img_as_uint
+#from skimage import img_as_uint
 
 source = '/nas/volume1/2photon/RESDATA/TEFO'
 session = '20161219_JR030W'
-maskdir = 'em7_centroids' # SAVE DIR for output mat with centroids.
+maskdir = 'em7_centroids' # save dir for output mat with centroids.
 
 centroidpath = os.path.join(source, session, maskdir)
 
 if not os.path.exists(centroidpath):
     os.mkdir(centroidpath)
 
-csv = True
+csv = False
 
 if csv:
-    print "Using CSV file to read EM to TeFo info. Env should be python, standard to use retiondev."
+    print("using csv file to read em to tefo info. env should be python, standard to use retiondev.")
 else:
-    print "MAKE SURE PY3 env is active!"
+    print("make sure py3 env is active!")
 
 
 
