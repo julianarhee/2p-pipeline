@@ -113,17 +113,16 @@ nframes = rawtraces.shape[0]
 nrois = rawtraces.shape[1]
 
 volumesize = meta['volumeSizePixels']
+szX = volumesize[0]
+szY = volumesize[1]
+szZ = volumesize[2]
 
-#nmfvolume = np.empty((volumesize[0], volumesize[1], volumesize[2], nframes), dtype=[('x','uint8'), ('y', 'uint8'), ('z', 'uint8'), ('t', 'uint8')])
-nmfvolume = np.empty((volumesize[0], volumesize[1], volumesize[2], nframes), dtype='uint16')
+nmfvolume = np.empty((szX, szY, szZ, nframes), dtype='uint16')
 for roi in range(nrois):
     roimask = np.reshape(masks[:,roi], volumesize, order='F')
-    #roimask = scipy.ndimage.filters.gaussian_filter(np.reshape(masks[:,roi], volumesize, order='F'), sigma=(.5,.5,.5))
-    #roimask = np.swapaxes(roimasktmp, 0, 2)
-    #currtrace = np.array([(((val - old_min) * new_range) / old_range) + new_min for val in rawtraces[:, roi]])
     currtrace = np.empty((roimask.shape[0], roimask.shape[1], roimask.shape[2], nframes), dtype='uint16')
     currtrace[np.logical_or(currtrace[:,:,:,0], roimask)] = rawtraces[:, roi]
-    nmfvolume[np.logical_or(nmfvolume[:,:,:,0], roimask)] = rawtraces[:, roi] #currtrace #rawtraces[:,roi]
+    nmfvolume = nmfvolume + currtrace #currtrace #rawtraces[:,roi]
 
 nmfvolume = np.swapaxes(nmfvolume, 0, 3)
 nmfvolume = np.swapaxes(nmfvolume, 1, 2)
@@ -150,3 +149,46 @@ mlab.pipeline.iso_surface(src, contours=[roimask2.min()+0.1*roimask2.ptp(), ], o
 mlab.pipeline.iso_surface(src, contours=[roimask2.max()-0.1*roimask2.ptp(), ],)
 
 mlab.show()
+
+
+# Try averaging cycles:
+currtrace = rawtraces[:, 45]
+stepsize = len(currtrace)/ncycles
+cycidxs = np.arange(0, len(currtrace), stepsize)
+
+avgtracemat = []
+for cyc in cycidxs:
+    if cyc+stepsize > len(currtrace):
+    	continue
+    else:
+        avgtracemat.append(currtrace[cyc:cyc+stepsize])
+avgtracemat = np.array(avgtracemat)
+avgtrace = np.mean(avgtracemat, axis=0)
+plt.plot(avgtrace)
+
+alltraces = []
+nframes_avg = stepsize
+avgvolume = np.empty((szX, szY, szZ, nframes_avg), dtype='uint16')
+for roi in range(nrois):
+    roimask = np.reshape(masks[:,roi], volumesize, order='F')
+    currtrace = np.empty((szX, szY, szZ, nframes_avg), dtype='uint16')
+    tmptrace = []
+    for cyc in cycidxs:
+    	if cyc+stepsize > len(rawtraces[:, roi]):
+	    continue
+        else:
+	    tmptrace.append(rawtraces[cyc:cyc+stepsize, roi])
+    tmptrace = np.mean(np.array(tmptrace), axis=0)
+    currtrace[np.logical_or(currtrace[:,:,:,0], roimask)] = tmptrace #rawtraces[:, roi]
+    avgvolume = avgvolume + currtrace #currtrace #rawtraces[:,roi]
+    alltraces.append(tmptrace)
+
+avgvolume = np.swapaxes(avgvolume, 0, 3)
+avgvolume = np.swapaxes(avgvolume, 1, 2)
+
+
+outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
+outfile_fn = 'nmf_File%03d_avgcycle.tif' % int(tiffidx+1)
+tf.imsave(os.path.join(outpath, outfile_fn), avgvolume)
+
+
