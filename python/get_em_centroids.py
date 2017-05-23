@@ -5,6 +5,13 @@ import numpy as np
 import tifffile as tf
 from skimage import img_as_uint
 
+def convert_keys_to_string(dictionary):
+    """Recursively converts dictionary keys to strings."""
+    if not isinstance(dictionary, dict):
+        return dictionary
+    return dict((str(k), convert_keys_to_string(v)) 
+        for k, v in dictionary.items())
+
 source = '/nas/volume1/2photon/RESDATA/TEFO'
 session = '20161219_JR030W'
 maskdir = 'em7_centroids' # SAVE DIR for output mat with centroids.

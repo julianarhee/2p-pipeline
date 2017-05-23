@@ -335,6 +335,21 @@ else
         % YrA = AY - AA*C; % this is the same calc in extract_df_f for C2
         P.p = 2;
         
+        if ~D.maskInfo.keepAll
+            fprintf('Merging components...\n');
+            fprintf('Starting size A: %s', mat2str(size(A))); 
+            [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
+            switch options.spatial_method 
+                case 'regularized' 
+                    [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
+                case 'constrained' 
+                    [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, Am, P, options);
+            end
+            fprintf('Done merging. Post-merge size A is: %s', mat2str(size(A))); 
+            P.p = p;
+            fprintf('Updating temporal components again.\n');
+            [C, F, P, S] = update_temporal_components(Yr, A, b, Cm, f, P, options);
+        end        
         % Classify components:
         % -----------------------------------------------------------------
         %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(double(Y),A,C,b,f,YrA,options);

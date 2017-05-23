@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 13 %13 %9 %7;
+analysis_no = 15 %13 %13 %9 %7;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -370,7 +370,7 @@ end
 % Test viewing:
 maskPaths3D = D.maskInfo.maskPaths;
 maskmat = load(maskPaths3D{fidx});
-if strcmp(D.roiType, '3Dnmf')
+if strcmp(D.roiType, '3Dcnmf') || strcmp(D.roType, '3Dnmf')
     masks = maskmat.spatialcomponents;
 elseif strcmp(D.roiType, 'manual3Drois')
     masks = maskmat.roiMat;
@@ -482,7 +482,7 @@ for sidx = 1:length(slicesToUse)
     
     fftStruct = struct();
     for fidx=1:nTiffs
-        fprintf('Processing TIFF #%i...\n', fidx);
+        %fprintf('Processing TIFF #%i...\n', fidx);
         
         if ~strcmp(D.roiType, 'pixels')
             if isfield(maskstruct, 'file')
@@ -749,7 +749,7 @@ for sidx = 1:length(slicesToUse)
 
     %         % --
             if inferred
-                display('hi')
+                %display('hi')
                 phaseMapNMF = assignRoiMap(maskcell, phaseMapNMF, phaseMatNMF, freqIdx);
                 magMapNMF = assignRoiMap(maskcell, magMapNMF, magMatNMF, freqIdx);
                 ratioMapNMF = assignRoiMap(maskcell, ratioMapNMF, ratioMatNMF);
