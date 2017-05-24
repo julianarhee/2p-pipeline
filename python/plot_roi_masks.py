@@ -83,10 +83,20 @@ def _tolist(ndarray):
 
     return elem_list
 
-
-cellmap_path = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/cells_mapper_2_20170519_py2.pkl'
+cellmap_source = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids' 
+cellmap_path = os.path.join(cellmap_source, 'cells_mapper_2_20170519_py2.pkl')
 cellmap = pkl.load(open(cellmap_path, 'rb'))
-colormap = dict(('cell'+'%04d' % int(ckey), cellmap[ckey]['new_rgb']) for ckey in cellmap.keys())
+
+get_colormap = [i for i in os.listdir(cellmap_source) if 'colormap' in i]
+if len(get_colormap)==0:
+    colormap_fn = 'em7_centroids_colormap.pkl'
+    colormap = dict(('cell'+'%04d' % int(ckey), cellmap[ckey]['new_rgb']) for ckey in cellmap.keys())
+    with open(os.path.join(cellmap_source, colormap_fn), 'wb') as f:
+        pkl.dump(colormap, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+else:
+    colormap_fn = get_colormap[0]
+    colormap = pkl.load(open(os.path.join(cellmap_source, colormap_fn), 'rb'))
 
 dstructpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/analysis/datastruct_014/datastruct_014.mat'
 dstruct = loadmat(dstructpath)
