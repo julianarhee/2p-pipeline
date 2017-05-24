@@ -131,6 +131,11 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_014:  Use em7 centroids again, same params as d013, but try "constrained" instead of "regularized"
 
+% datastruct_015:  same as 014, but DON't swap x,y
+
+% datatsruct_016:  Using rawtracemat from NMF (AC + bf) in analysis. Test whole FOV to check df/f in 3d visualization
+
+
 % ***********************************************
 
 
@@ -200,7 +205,17 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % sourceDir = '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/raw/bar5';
 
 
-%%
+%% Set up experiment analysis parameters:
+
+% =========================================================================
+% Parameters:
+% =========================================================================
+
+didx = 16;           % Define datastruct analysis no.
+
+% --------------------------------------------
+% 1. Specifiy preprocessing & meta params:
+% --------------------------------------------
 
 analysisDir = fullfile(sourceDir, 'analysis');
 if ~exist(analysisDir, 'dir')
@@ -209,7 +224,6 @@ end
 
 channelIdx = 1;     % Set channel with GCaMP activity (Channel01)
 
-didx = 14;           % Define datastruct analysis no.
 
 metaInfo = 'SI';    % Define source of meta info (usualy 'SI')
                     % options: 'manual' or 'SI'
@@ -222,53 +236,17 @@ corrected = false;   % Flag for whether motion-corrected using standard Acquisit
 
 nchannels = 2;      % N channels acquired in session.
 
-% --------------------------------------------
-% 1. Specifiy preprocessing method:
-% --------------------------------------------
-%D.preprocessing = 'Acquisition2P';
+
+%preprocessing = 'Acquisition2P';
 preprocessing = 'raw';
 %preprocessing = 'fiji';
 
+metaonly = false;
+nhugetiffs = 0;
+
 
 % --------------------------------------------
-% 2.a.  Specify ROI type for current analysis:
-% --------------------------------------------
-%roiType = 'create_rois';
-% roiType = 'roiMap';
-%roiType = 'manual3Drois';
-%roiType = 'condition';
-%roiType = 'pixels';
-%D.roiType = 'cnmf';
-roiType = '3Dcnmf'
-
-% 2.b.  Specify additional args, depending on ROI type:
-if strcmp(roiType, 'condition')
-% Test cross-ref:
-    refMaskStruct = 'retinotopyFinal'; %refMaskStruct = 'gratings1';
-    refMaskStructIdx = 1; %refMaskStructIdx = 2;
-elseif strcmp(roiType, 'roiMap')
-    pathparts = strsplit(sourceDir, '/');
-    mapSource = strjoin(pathparts(1:end-1), '/');
-    mapSource = fullfile(mapSource, 'average_volumes');
-    mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
-    roiCentroidPaths = dir(fullfile(mapSource, 'rois*.mat'));
-    if length(roiCentroidPaths)==1
-        roiPath = roiCentroidPaths(1).name;
-    else
-        roiIdx = 1; % Specify which ROI maps to use, if more than 1
-        roiPath = roiCentroidPaths(roiIdx).name;
-    end
-elseif strfind(roiType, '3D')
-    seedRois = true;
-end
-
-if seedRois
-      manual3Dshape = '3Dcontours' %'spheres'
-      maskFinder = 'centroids'
-end
-
-% --------------------------------------------
-% 3.  Specify slices to process:
+% 2.  Specify slices to process:
 % --------------------------------------------
 %slicesToUse = 7:17; 
 %slicesToUse = [10, 15];  
@@ -280,13 +258,8 @@ end
 slicesToUse = [9:30];
 %slicesToUse = [1:22];
 
-% 4.  Provide additional params:
-metaonly = false;
-nhugetiffs = 0;
 
-%% Define datastruct name for analysis:
-
-% didx = 1;
+%% Create datastruct for analysis:
 
 datastruct = sprintf('datastruct_%03d', didx);
 dstructPath = fullfile(analysisDir, datastruct);
@@ -298,7 +271,7 @@ if ~exist(dstructPath)
     D = struct();
 else
     fprintf('*********************************************************\n');
-    fprintf('WARNING:  Specified datastruct -- %s -- exists. Overwrite?\n');
+    fprintf('WARNING:  Specified datastruct -- %s -- exists. Overwrite?\n', datastruct);
     uinput = input('Press Y/n to overwrite or create new: \n', 's');
     if strcmp(uinput, 'Y')
         D = struct();
@@ -321,21 +294,132 @@ D.name = datastruct;
 D.datastructPath = dstructPath;
 D.sourceDir = sourceDir;
 D.acquisitionName = acquisitionName;
-D.roiType = roiType;
+
 D.preprocessing = preprocessing;
 D.channelIdx = channelIdx;
 D.extraTiffsExcluded = extraTiffsExcluded;
 D.slices = slicesToUse;
 D.tefo = tefo;
-
 D.average = average;
+
 if D.average
     D.matchtrials = matchtrials;
 end
 
 save(fullfile(dstructPath, datastruct), '-struct', 'D');
 
+
 fprintf('Created new datastruct analysis: %s\n', D.datastructPath)
+
+
+% --------------------------------------------
+% 3.  Specify ROI type for current analysis:
+% --------------------------------------------
+%roiType = 'create_rois';
+% roiType = 'roiMap';
+%roiType = 'manual3Drois';
+%roiType = 'condition';
+%roiType = 'pixels';
+%D.roiType = 'cnmf';
+roiType = '3Dcnmf'
+maskDimensions = '3D';
+
+seedRois = true;
+manual3Dshape = '3Dcontours' %'spheres'
+maskFinder = 'centroids'
+
+% --------------------------------------------
+% 4.  Specify mask paths, if needed:
+% --------------------------------------------
+
+% 2.b.  Specify additional args, depending on ROI type:
+%if strcmp(roiType, 'condition')
+switch maskDimensions
+    case '2D' 
+        switch roiType
+            case 'create_rois'
+                [fpath,fcond,~] = fileparts(D.sourceDir);
+                D.maskSource = fcond;
+     
+            case 'condition'
+                % Test cross-ref:
+                refMaskStruct = 'retinotopyFinal'; %refMaskStruct = 'gratings1';
+                refMaskStructIdx = 1; %refMaskStructIdx = 2;
+                
+                D.maskSource = refMaskStruct; %'retinotopy1';
+                D.maskDidx = refMaskStructIdx;
+                D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
+                fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
+                
+                [fpath,fcond,~] = fileparts(D.sourceDir);
+                D.maskSourcePath = fullfile(fpath, D.maskSource);
+                pathToMasks = fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, 'masks');
+                maskNames = dir(fullfile(pathToMasks, 'masks_*'));
+                maskNames = {maskNames(:).name}';
+                D.maskPaths = cell(1, length(maskNames));
+                for maskIdx=1:length(maskNames)
+                    D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
+                end
+                            
+            case 'pixels'
+                [fpath,fcond,~] = fileparts(D.sourceDir);
+                D.maskSource = fcond;
+           
+            case 'roiMap'
+                %pathparts = strsplit(sourceDir, '/');
+                %mapSource = strjoin(pathparts(1:end-1), '/');
+                [fpath, fcond, ~] = fileparts(D.sourceDir)
+                mapSource = fullfile(mapSource, 'average_volumes');
+                mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
+                roiCentroidPaths = dir(fullfile(mapSource, 'rois*.mat'));
+                if length(roiCentroidPaths)==1
+                    roiPath = roiCentroidPaths(1).name;
+                else
+                    roiIdx = 1; % Specify which ROI maps to use, if more than 1
+                    roiPath = roiCentroidPaths(roiIdx).name;
+                end
+                D.maskSource = mapSource;
+            
+            case 'cnmf'
+                [fpath,fcond,~] = fileparts(D.sourceDir);
+                D.maskSource = fcond; 
+        end
+
+    case '3D'
+        if seedRois
+            [fpath,fcond,~] = fileparts(D.sourceDir);
+            mapSource = fullfile(fpath, 'em7_centroids');
+            mapSlicesPath = fullfile(mapSource, 'average_stacks', 'Channel01'); % Path to slices onto which masks can be drawn
+            roiCentroidPaths = dir(fullfile(mapSource, 'allcentroids*.mat'));         % Path to .mat containg centroid info
+            roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
+                
+            if length(roiCentroidPaths)==1
+                roiCentroidPath = roiCentroidPaths(1).name;
+            else
+                roiIdx = 1; % Specify which ROI maps to use, if more than 1
+                roiCentroidPath = roiCentroidPaths(roiIdx).name;
+            end
+            if length(roiMaskPaths)==1
+                roiMaskPath = roiMaskPaths(1).name;
+            else
+                roiIdx = 1; % Specify which ROI maps to use, if more than 1
+                roiMaskPath = roiMaskPaths(roiIdx).name;
+            end
+            D.maskSource = mapSource;
+        else
+            [fpath,fcond,~] = fileparts(D.sourceDir);
+            D.maskSource = fcond;
+        end
+
+end
+ 
+
+D.roiType = roiType;
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+fprintf('Updated datastruct analysis: %s\n', D.datastructPath)
+
+
 %% Get SI volume info:
 
 % metaInfo = 'SI';
@@ -473,131 +557,6 @@ D.stimType = meta.stimType;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
  
-%% Set up experiment analysis parameters:
-
-% =========================================================================
-% Parameters:
-% =========================================================================
-
-% 
-% % 1. Specifiy preprocessing method:
-% % --------------------------------------------
-% D.preprocessing = 'Acquisition2P';
-% % preprocessing = 'raw';
-% 
-% 
-% % 2.  Specify ROI type for current analysis:
-% % --------------------------------------------
-% %D.roiType = 'create_rois';
-% %D.roiType = 'condition';
-% %D.roiType = 'pixels';
-% D.roiType = 'cnmf';
-
-switch D.roiType
-    case 'create_rois'
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        D.maskSource = fcond;
-    
-    case 'roiMap'
-        D.maskSource = mapSource;
-        
-    case 'manual3Drois'
-%         [fpath,fcond,~] = fileparts(D.sourceDir);
-%         D.maskSource = fcond;
-        % TODO:  add option for storing paths to ROI masks
-        % ************************************************
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        mapSource = fullfile(fpath, 'em7_centroids');
-        %mapSource = fullfile(mapSource, 'average_volumes');
-        mapSlicesPath = fullfile(mapSource, 'average_stacks', 'Channel01'); % Path to slices onto which masks can be drawn
-        roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));         % Path to .mat containg centroid info
-        roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
-        
-        if length(roiCentroidPaths)==1
-            roiCentroidPath = roiCentroidPaths(1).name;
-        else
-            roiIdx = 1; % Specify which ROI maps to use, if more than 1
-            roiCentroidPath = roiCentroidPaths(roiIdx).name;
-        end
-        if length(roiMaskPaths)==1
-            roiMaskPath = roiMaskPaths(1).name;
-        else
-            roiIdx = 1; % Specify which ROI maps to use, if more than 1
-            roiMaskPath = roiMaskPaths(roiIdx).name;
-        end
-        D.maskSource = mapSource;
-            
-    case 'condition'
-        D.maskSource = refMaskStruct; %'retinotopy1';
-        D.maskDidx = refMaskStructIdx;
-        D.maskDatastruct = sprintf('datastruct_%03d', D.maskDidx);
-        fprintf('Using pre-defined masks from condition: %s.\n', D.maskSource);
-        
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        D.maskSourcePath = fullfile(fpath, D.maskSource);
-        pathToMasks = fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, 'masks');
-        maskNames = dir(fullfile(pathToMasks, 'masks_*'));
-        maskNames = {maskNames(:).name}';
-        D.maskPaths = cell(1, length(maskNames));
-        for maskIdx=1:length(maskNames)
-            D.maskPaths{maskIdx} = fullfile(pathToMasks, maskNames{maskIdx});
-        end
-        
-    case 'pixels'
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        D.maskSource = fcond;
-        
-    case 'cnmf'
-        [fpath,fcond,~] = fileparts(D.sourceDir);
-        D.maskSource = fcond;
-        
-    case '3Dcnmf'
-%         if seedRois
-%             pathparts = strsplit(sourceDir, '/');
-%             mapSource = strjoin(pathparts(1:end-1), '/');
-%             mapSource = fullfile(mapSource, 'average_volumes');
-%             mapSlicesPath = fullfile(mapSource, 'avg_frames_conditions_channel01');
-%             roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));
-%             roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
-%             if length(roiCentroidPaths)==1
-%                 roiPath = roiCentroidPaths(1).name;
-%             else
-%                 roiIdx = 1; % Specify which ROI maps to use, if more than 1
-%                 roiPath = roiCentroidPaths(roiIdx).name;
-%             end
-%             D.maskSource = mapSource;
-%         else
-%             [fpath,fcond,~] = fileparts(D.sourceDir);
-%             D.maskSource = fcond;
-%         end
-        if seedRois
-            [fpath,fcond,~] = fileparts(D.sourceDir);
-            mapSource = fullfile(fpath, 'em7_centroids');
-            %mapSource = fullfile(mapSource, 'average_volumes');
-            mapSlicesPath = fullfile(mapSource, 'average_stacks', 'Channel01'); % Path to slices onto which masks can be drawn
-            roiCentroidPaths = dir(fullfile(mapSource, 'centroids*.mat'));         % Path to .mat containg centroid info
-            roiMaskPaths = dir(fullfile(mapSource, 'masks*.mat'));
-
-            if length(roiCentroidPaths)==1
-                roiCentroidPath = roiCentroidPaths(1).name;
-            else
-                roiIdx = 1; % Specify which ROI maps to use, if more than 1
-                roiCentroidPath = roiCentroidPaths(roiIdx).name;
-            end
-            if length(roiMaskPaths)==1
-                roiMaskPath = roiMaskPaths(1).name;
-            else
-                roiIdx = 1; % Specify which ROI maps to use, if more than 1
-                roiMaskPath = roiMaskPaths(roiIdx).name;
-            end
-            D.maskSource = mapSource;
-        else
-            [fpath,fcond,~] = fileparts(D.sourceDir);
-            D.maskSource = fcond;
-        end
-            
-        
-end
 
 % =========================================================================
 % Save analysis info:
@@ -944,7 +903,7 @@ switch D.roiType
         % K = [100; 50];
 
         params.p = 2;     % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-        params.merge_thr = 0.8;                                  % merging threshold
+        params.merge_thr = 0.95;                                  % merging threshold
         
 %         D.params.options = CNMFSetParms(...                      
 %             'd1',d1,'d2',d2,...                         % dimensions of datasets
@@ -1075,7 +1034,7 @@ switch D.roiType
 
                     roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
                     roinames = sort(fieldnames(roimat));
-
+                    fprintf('Loaded %i ROIs from file %s...\n', length(roinames), D.maskInfo.roiPath);
                     centers = zeros(length(roinames), 3);
                     radii = zeros(length(roinames), 1);
                     roiIDs = zeros(length(roinames), 1);
@@ -1087,11 +1046,12 @@ switch D.roiType
                     end
                     
                     D.maskInfo.seeds = centers;
-                    D.maskInfo.seeds(:,1) = centers(:,2);
+                    D.maskInfo.seeds(:,1) = centers(:,2); % Compare dstruct014-015 in retinotopyFinal..
                     D.maskInfo.seeds(:,2) = centers(:,1);
                     D.maskInfo.roiIDs = roiIDs;
-                    D.maskInfo.keepAll = true;
+                    D.maskInfo.keepAll = false; %true;
                     D.maskInfo.centroidsOnly = true;
+                    fprintf('Seeding %i ROIs', length(centers));
                     
             end
         end

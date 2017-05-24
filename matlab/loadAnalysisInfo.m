@@ -104,9 +104,11 @@ if strfind(D.roiType, '3D')
        maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
        
        %hdf5save(maskarrayPath, 'masks', 'masks');
-       h5create(maskarrayPath, '/maskmat', size(maskmat));
+       if ~exist(maskarrayPath, 'file')
+           h5create(maskarrayPath, '/maskmat', size(maskmat));
+           h5create(maskarrayPath, '/maskids', size(maskids));
+       end
        h5write(maskarrayPath, '/maskmat', maskmat);
-       h5create(maskarrayPath, '/maskids', size(maskids));
        h5write(maskarrayPath, '/maskids', maskids);
 
        maskarraymatPath = fullfile(D.outputDir, 'maskarray.mat')
