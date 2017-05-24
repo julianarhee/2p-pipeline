@@ -94,7 +94,8 @@ tiffidx = 3
 
 tracestruct = loadmat(os.path.join(dstruct['tracesPath'], tracestructnames[tiffidx]))
 #rawtraces = tracestruct['rawTracesNMF']
-rawtraces = tracestruct['rawTraceMatDCNMF']
+#rawtraces = tracestruct['rawTraceMatDCNMF']
+rawtraces = tracestruct['rawTraceMatNMF']
 #rawtracestmp = tracestruct['rawTraceMatDCNMF']
 #rawtraces = exposure.rescale_intensity(rawtracestmp, out_range=(0, 2**16-1))
 
@@ -105,6 +106,13 @@ rawtraces = tracestruct['rawTraceMatDCNMF']
 #new_min = 0
 #new_max = 2**16
 #new_range = (new_max - new_min)
+
+old_max = rawtraces.max()
+old_min = rawtraces.min()
+new_max = 255.
+new_min = 0.
+old_range = float(old_max) - float(old_min)
+new_range = 255.
 
 
 maskstruct = loadmat(dstruct['maskarraymatPath'])
@@ -118,17 +126,18 @@ szY = volumesize[1]
 szZ = volumesize[2]
 
 
-nmfvolume = np.zeros((nframes, szZ, szY, szX), dtype='uint16')
+nmfvolume = np.zeros((nframes, szZ, szY, szX), dtype='uint8')
 for roi in range(nrois):
     masks[:, roi][np.isnan(masks[:, roi])] = 0. # make sure no NaNs.
     roimasktmp = np.reshape(masks[:,roi], volumesize, order='F') # Read in mask as in matlab
     roimask = np.swapaxes(roimasktmp, 0, 1) # Swap x,y to go from row,col idxs to x,y-image idxs
     roimask = np.swapaxes(roimask, 0, 2)    # Swap t to get t,y,x, order for img-space
-    currtrace = np.zeros((nframes, roimask.shape[0], roimask.shape[1], roimask.shape[2]), dtype='uint16')
-
+    currtrace = np.zeros((nframes, roimask.shape[0], roimask.shape[1], roimask.shape[2]), dtype='uint8')
+    
+    roitrace = (((rawtraces[:,roi] - old_min) * float(new_range)) / old_range) + new_min
     #currcellname = 'cell'+'%04d' % maskstruct['maskids'][roi]
     for t in range(rawtraces[:,roi].shape[0]):
-        currtrace[t, np.logical_or(currtrace[t,:,:,:], roimask)] = rawtraces[t, roi]
+        currtrace[t, np.logical_or(currtrace[t,:,:,:], roimask)] = roitrace[t] #rawtraces[t, roi]
     nmfvolume = np.add(nmfvolume, currtrace) 
  
 
@@ -144,7 +153,8 @@ for roi in range(nrois):
 #
 
 outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
-outfile_fn = 'nmf_File%03d_rawtracematdcnmf.tif' % int(tiffidx+1)
+#outfile_fn = 'nmf_File%03d_rawtracematdcnmf.tif' % int(tiffidx+1)
+outfile_fn = 'nmf_File%03d_processedNMF.tif' % int(tiffidx+1)
 tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
 
 
@@ -188,6 +198,22 @@ if check_average:
 
 
 
+#    old_max = stack.max()
+#    old_min = stack.min()
+#    new_max = 255.
+#    new_min = 0.
+#    old_range = float(old_max) - float(old_min)
+#    new_range = 255.
+#    for i in range(stack.shape[2]):
+#
+#    #    old_max = max(stack[:,:,i].ravel())
+#    #    old_min = min(stack[:,:,i].ravel())
+#    #    old_range = (old_max - old_min)  
+#    #    new_min = 0.
+#    #    new_range = 255. #(0 - 255)  
+#        stack[:,:,i] = (((stack[:,:,i] - old_min) * float(new_range)) / old_range) + new_min
+# 
+
 alltraces = []
 nframes_avg = stepsize
 
@@ -198,16 +224,19 @@ for roi in range(nrois):
     roimask = np.swapaxes(roimasktmp, 0, 1) # Swap x,y to go from row,col idxs to x,y-image idxs
     roimask = np.swapaxes(roimask, 0, 2)    # Swap t to get t,y,x, order for img-space
     currtrace = np.zeros((nframes_avg, roimask.shape[0], roimask.shape[1], roimask.shape[2]), dtype='uint16')
+    roitrace = (((rawtraces[:,roi] - old_min) * float(new_range)) / old_range) + new_min
+
     tmptrace = []
     for cyc in cycidxs:
-    	if cyc+stepsize > len(rawtraces[:, roi]):
+    	if cyc+stepsize > len(roitrace): #len(rawtraces[:, roi]):
 	    continue
         else:
-	    tmptrace.append(rawtraces[cyc:cyc+stepsize, roi])
-    tmptrace = np.mean(np.array(tmptrace), axis=0)
+	    tmptrace.append(roitrace[cyc:cyc+stepsize])
+            #tmptrace.append(rawtraces[cyc:cyc+stepsize, roi])
+    avgtrace = np.mean(np.array(tmptrace), axis=0)
 
-    for t in range(len(tmptrace)):
-        currtrace[t, np.logical_or(currtrace[t,:,:,:], roimask)] = tmptrace[t]
+    for t in range(len(avgtrace)):
+        currtrace[t, np.logical_or(currtrace[t,:,:,:], roimask)] = avgtrace[t]
     avgvolume = np.add(avgvolume, currtrace) 
 
 #avgvolume = np.empty((szX, szY, szZ, nframes_avg), dtype='uint16')
@@ -230,7 +259,8 @@ for roi in range(nrois):
 #
 
 outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
-outfile_fn = 'nmf_File%03d_avgcycle.tif' % int(tiffidx+1)
+#outfile_fn = 'nmf_File%03d_avgcycle.tif' % int(tiffidx+1)
+outfile_fn = 'nmf_File%03d_avgcycle_processedNMF.tif' % int(tiffidx+1)
 tf.imsave(os.path.join(outpath, outfile_fn), avgvolume)
 
 
