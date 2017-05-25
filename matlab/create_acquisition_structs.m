@@ -90,6 +90,29 @@ tefo = true;
 average = true;
 matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
+dsoptions = DSoptions(...
+    'source', '/nas/volume1/2photon/RESDATA/TEFO',...           % parent dir
+    'session', '20161219_JR030W',...                            % session name (single FOV)
+    'run', 'retinotopyFinal',...                                % experiment name
+    'datastruct', 18,...                                        % datastruct idx
+    'acquisition', 'fov6_retinobar_037Hz_final_nomask',...      % acquisition name
+    'tefo', true,...                                            % 'scope type' (t/f)
+    'preprocessing', 'raw',...                                  % preprocessed or no
+    'meta', 'SI',...                                            % source of meta info
+    'channels', 2,...                                           % num channels acquired
+    'signalchannel', 1,...                                      % channel num of signal
+    'roitype', '3Dcnmf',...                                     % method for roi extraction
+    'seedrois', 'true',...                                      % provide external source of seed coords
+    'maskdims', '3D',...                                        % dimensions of masks
+    'maskshape', '3Dcontours',...                               % shape of masks
+    'maskfinder', 'EMmasks',...                                 % method of finding masks, given set of seed coords
+    'slices', [9:30],...                                        % slices from acquis. that actually contain data
+    'averaged', true,...                                        % using tiffs that are the averaged tcourses of runs
+    'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
+    'metaonly', false,...                                       % only get meta data from tiffs (if files too large)
+    'nhugetiffs', 0...                                          % number of huge tiffs to exclude
+    );
+
 % ----------------------------------------------------------------------
 % datastruct_001 :  manually-selected ROIs on every other slice, 13-25.
 % datastruct_002 :  do pixel-wide analysis, sigma=3 (to compare to
