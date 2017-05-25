@@ -234,6 +234,7 @@ for roi in range(nrois):
 	    tmptrace.append(roitrace[cyc:cyc+stepsize])
             #tmptrace.append(rawtraces[cyc:cyc+stepsize, roi])
     avgtrace = np.mean(np.array(tmptrace), axis=0)
+    alltraces.append(avgtrace)
 
     for t in range(len(avgtrace)):
         currtrace[t, np.logical_or(currtrace[t,:,:,:], roimask)] = avgtrace[t]
