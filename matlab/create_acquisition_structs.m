@@ -90,6 +90,7 @@ tefo = true;
 average = true;
 matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
+% ----------------------------------------------------------------------
 % datastruct_001 :  manually-selected ROIs on every other slice, 13-25.
 % datastruct_002 :  do pixel-wide analysis, sigma=3 (to compare to
 % avg - datastruct_007)
@@ -133,8 +134,17 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 
 % datastruct_015:  same as 014, but DON't swap x,y
 
-% datatsruct_016:  Using rawtracemat from NMF (AC + bf) in analysis. Test whole FOV to check df/f in 3d visualization
+% datatsruct_016:  Using rawtracemat from NMF (AC + bf) in analysis. Test whole FOV to check df/f in 3d visualization.  search_method='dilate', se=strel('disk', 1, 0), merge_thr=0.85.
+% NOTE -- using file './em7_centroids/allcentroids.mat' 
+% - this was created in ipython session by taking centroids from saved output of roi_blob_detector.ipynb (2016-05-24)
+% - roi_blob_detector saves .mat file with [x,y,z+1] as coords.  need to subtract -1 from z, but do not swap axes.
+% - this keeps [x,y,z] formatting the same for centroids listed in original centroid_em7.mat (i.e., downstream, will swap s.t. [y,x,z] to match image coord space.
+% - ROIs too big, covering entire field
 
+
+% datastruct_017:  Same as _016, but use spatial_method='ellipse' with max/min=[3,1]
+% - merge_thr = 0.80
+% - max_thr = 0.01 (instead of 0.001)
 
 % ***********************************************
 
@@ -211,7 +221,7 @@ matchtrials = [{[1, 1]}, {[2, 3]}, {[3, 2]}, {[4, 4]}];
 % Parameters:
 % =========================================================================
 
-didx = 16;           % Define datastruct analysis no.
+didx = 17;           % Define datastruct analysis no.
 
 % --------------------------------------------
 % 1. Specifiy preprocessing & meta params:
@@ -418,6 +428,23 @@ D.roiType = roiType;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('Updated datastruct analysis: %s\n', D.datastructPath)
+
+% TODO:  create txt file with datastruct info.
+%dstructFile = 'datastructs.txt'
+%dstructPath = fullfile(source, session, run, dstructFile)
+%headers = {'datastruct', 'acquisition', 'tefo', 'preprocessing', 'meta',...
+%            'roiType', 'seedrois', 'maskdims', 'maskshape', 'maskfinder',...
+%            'channels', 'signalchannel', 'slices', 'averaged',...
+%             'excludedtiffs', 'metaonly', 'hugetiffs'};
+%
+%fid = fopen(dstructPath, 'w');
+%if ~exist(dstructPath)
+%    fprintf(fid, '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\r\n', headers{1:end});
+%else
+%    fprintf(fid, '%s\t%s\t%i\t%s\%s\t%s\t%i\t%s\t%s\t%s\t%i\t%i\t%s\t%i\t%s\t%s\t%i\t%i', dstructoptions{1:end});
+%    fclose(fid);
+%end
+%
 
 
 %% Get SI volume info:
@@ -1008,6 +1035,8 @@ switch D.roiType
                     end
                     % Add 1 to x,y bec python 0-indexes (no need to do this for
                     % slice #)
+                    % NOTE:  05/24/2017 -- roi_blob_detector.ipynb saves output of [y,x,r] for slices as:
+                    % [x,y,z+1] -- don't need to +1 for z, and don't need to swap x,y.
                     seeds(:,1) = seeds(:,1)+1;
                     seeds(:,2) = seeds(:,2)+1;
 
@@ -1039,14 +1068,14 @@ switch D.roiType
                     radii = zeros(length(roinames), 1);
                     roiIDs = zeros(length(roinames), 1);
                     for roi=1:length(roinames)
-                        centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
+                        centers(roi,:) = roimat.(roinames{roi}).TEFO + 1; % +1 bec python 0-indexing
                         radii(roi) = 1.5;
                         roiname = roinames{roi};
                         roiIDs(roi) = str2double(roiname(5:end));
                     end
                     
                     D.maskInfo.seeds = centers;
-                    D.maskInfo.seeds(:,1) = centers(:,2); % Compare dstruct014-015 in retinotopyFinal..
+                    D.maskInfo.seeds(:,1) = centers(:,2); % Swap x,y so that i,j = y,x in image...
                     D.maskInfo.seeds(:,2) = centers(:,1);
                     D.maskInfo.roiIDs = roiIDs;
                     D.maskInfo.keepAll = false; %true;
@@ -1071,8 +1100,8 @@ switch D.roiType
                 params.K = 10;                                   % number of components to be found                           
                 D.maskInfo.patches = true;
             else
-                %params.K = 2000;                                            % number of components to be found
-                params.K = 300;
+                params.K = 2000;                                            % number of components to be found
+                %params.K = 300;
                 %params.tau = [3,3,1];                                    % std of gaussian kernel (size of neuron) 
                 params.tau = [2,2,1];
                 params.p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
@@ -1101,13 +1130,13 @@ switch D.roiType
         % TODO:  Allow for specifying nmf options out here (and just pass
         % in options to NMF, instead of setting inside getRois3Dnmf.m).
 
-        merge_thr = 0.85;
+        merge_thr = 0.80;
         D.maskInfo.nmfoptions = CNMFSetParms(...
             'd1',meta.volumeSizePixels(1),...
             'd2',meta.volumeSizePixels(2),...
             'd3',meta.volumeSizePixels(3),...
-            'spatial_method', 'constrained', 'search_method','ellipse','dist',2,'se', strel('disk', 2, 0),...      % search locations when updating spatial components
-            'max_size', 4, 'min_size', 1,...            % max/min size of ellipse axis (default: 8, 3)
+            'spatial_method', 'constrained', 'search_method','ellipse','dist',2,'se', strel('disk', 1, 0),...      % search locations when updating spatial components
+            'max_size', 3, 'min_size', 1,...            % max/min size of ellipse axis (default: 8, 3)
             'deconv_method','constrained_foopsi',...    % activity deconvolution method
             'temporal_iter',2,...                       % number of block-coordinate descent steps 
             'cluster_pixels',false,...                  
@@ -1116,13 +1145,13 @@ switch D.roiType
             'fudge_factor',0.96,...                     % bias correction for AR coefficients
             'merge_thr',merge_thr,...                   % merging threshold
             'gSig',params.tau,... 
-            'max_size_thr',4,'min_size_thr',1,...    % max/min acceptable size for each component
+            'max_size_thr',3,'min_size_thr',1,...    % max/min acceptable size for each component
             'spatial_method','regularized',...       % method for updating spatial components ('constrained')
             'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
             'time_thresh',0.6,...
             'space_thresh',0.6,...
             'thr_method', 'max',...                 % method to threshold ('max' or 'nrg', default 'max')
-            'maxthr', 0.0001,... %); %...                   % threshold of max value below which values are discarded (default: 0.1)
+            'maxthr', 0.05,... %); %...                   % threshold of max value below which values are discarded (default: 0.1)
             'conn_comp', false);                   % extract largest connected component (binary, default: true)
             
         % Run 3D CNMF pipeline:
@@ -1184,6 +1213,21 @@ switch D.roiType
         
         fprintf('DONE:  Extracted traces!\n');
         toc(tracestart);
+
+
+%        if make_videos
+%            for nmfpathdx = 1:length(D.maskInfo.nmfPaths)
+%                nmf = matfile(D.maskInfo.maskPaths{nmfpathidx});
+%                [A_or,C_or,S_or,P_or] = order_ROIs(nmf.A,nmf.C,nmf.S,nmf.P); % order components
+%                nmfoptions.ind = [1:10];        % indices of components to be shown
+%                nmfoptions.mak_avi = 1;         % flag for saving avi video (default: 0)
+%                nmfoptions.show_contours = 1;   % flag for showing contour plots of patches in FoV (default: 0)
+%                movname = sprintf('Movie_components_File%03d.avi', nmfpathidx)
+%                nmfoptions.name = fullfile(D.nmfPath, movname);
+%                [Coords, jsonCoords] = plot_contours(A_or, ... 
+%                make_patch_video(A_or, C_or, nmf.b, nmf.f, nmf.Yr, Coords, nmfoptions);
+
+
 end        
         
         

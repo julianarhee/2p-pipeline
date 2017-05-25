@@ -19,7 +19,7 @@ experiment = 'retinotopyFinal';
 
 %experiment = 'test_crossref/nmf';
 
-analysis_no = 15 %13 %13 %9 %7;
+analysis_no = 17 %16 %15 %13 %13 %9 %7;
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -378,7 +378,7 @@ end
 nrois = size(masks,2);
 clear maskmat
 
-for roi=1:2:nrois
+for roi=1:200:nrois
     %rmapidx = find(abs(ratiospace-ratioMat(roi))==min(abs(ratiospace-ratioMat(roi))));
     switch metric
         case 'phase'
