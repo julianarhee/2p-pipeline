@@ -1,11 +1,12 @@
 #!/usr/bin/env python2
 '''
-Run this script to parse RAW acquisition files (.tif) from SI.
+Combine repetitions of a given run-type/trial-type if corresponding TIFF files are the same in stucture and size.  Need to provide matching file indices from list.
+
 Native format is int16. This script will remove all artifact and discard frames, and save to new .tif (int16, uint1`6).
 
 Append _visible.tif to crop display range for viewing on BOSS.
 
-Run python createsubstacks.py -h for all input options.
+Run python create_averaged_tiffs.py -h for all input options.
 '''
 import os
 import numpy as np
@@ -41,12 +42,10 @@ parser.add_option('--uint16', action='store_true', dest='uint16', default=False,
 parser.add_option('-m', '--min', action='store', dest='displaymin', default=10, help='min display range value [default: 10]')
 parser.add_option('-M', '--max', action='store', dest='displaymax', default=2000, help='max display range value [default: 2000]')
 #parser.add_option('-P', '--savepath', action='store', dest='savepath', default='', help='path to save new TIFFs.')
-#parser.add_option('--flyback', action='store', dest='nflyback', default=8, help='Num flyback frames at top of stack [default: 8]')
-#parser.add_option('--discard', action='store', dest='ndiscard', default=8, help='Num discard frames at end of stack [default: 8]')
 #parser.add_option('--channels', action='store', dest='nchannels', default=2, help='Num interleaved channels in raw tiffs to be processed [default: 2]')
 #parser.add_option('--volumes', action='store', dest='nvolumes', default=340, help='Num volumes acquired [default: 340]')
 #parser.add_option('--nslices', action='store', dest='nslices', default=30, help='Num slices specified, no discard [default: 30]')
-#parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
+parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
 #parser.add_option('--substack', action='store_true', dest='create_substacks', default=False, help='Create substacks of data-only by removing all artifact/discard frames [default: False]')
 #
 (options, args) = parser.parse_args() 
@@ -127,8 +126,8 @@ for trial in range(len(tiffs_to_join)):
             uint16tiff_fn = 'File%03d_uint16.tif' % int(trial+1)
             tf.imsave(os.path.join(savepath, uint16tiff_fn), uint16_stack)
 
-
-    ranged = exposure.rescale_intensity(avgstack, in_range=(displaymin, displaymax))
-    rangetiff_fn = 'File%03d_visible.tif' % int(trial+1)
-    tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
+    if visible:
+	ranged = exposure.rescale_intensity(avgstack, in_range=(displaymin, displaymax))
+	rangetiff_fn = 'File%03d_visible.tif' % int(trial+1)
+	tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
