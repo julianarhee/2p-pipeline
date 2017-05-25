@@ -51,11 +51,12 @@ parser.add_option('--substack', action='store_true', dest='create_substacks', de
 
 create_substacks = options.create_substacks
 uint16 = options.uint16
-nflyback = options.nflyback
-ndiscard = options.ndiscard
-nchannels = options.nchannels
-nvolumes = options.nvolumes
-nslices_full = options.nslices + options.ndiscard
+nflyback = int(options.nflyback)
+ndiscard = int(options.ndiscard)
+nchannels = int(options.nchannels)
+nvolumes = int(options.nvolumes)
+nslices = int(options.nslices)
+nslices_full = nslices + ndiscard
 
 
 source = options.source 
@@ -72,6 +73,10 @@ tiffpath = os.path.join(source, session, run)
 
 tiffs = os.listdir(tiffpath)
 tiffs = [t for t in tiffs if t.endswith('.tif')]
+
+print "Found %i TIFFs for processing."
+for i,tiff in enumerate(tiffs):
+    print i, tiff
 
 if len(savepath)==0:
     savepath = os.path.join(tiffpath, 'DATA')
@@ -123,10 +128,11 @@ for tiffidx in range(len(tiffs)):
 
     newtiff_fn = 'File%03d.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
-
-    ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
-    rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
-    tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
+    
+    if visible: 
+        ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
+        rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
+        tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
 
 
