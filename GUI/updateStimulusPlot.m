@@ -6,6 +6,11 @@ if selectedSliceIdx > length(D.slices)
 end
 selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
+if strcmp(D.stimType, 'bar') && length(handles.runMenu.String)==length(handles.stimMenu.String)
+    if handles.stimMenu.Value ~= selectedFile
+        handles.stimMenu.Value = selectedFile;
+    end
+end
 selectedStimIdx = handles.stimMenu.Value;
 stimNames = handles.stimMenu.String;
 selectedStim = handles.stimMenu.String{selectedStimIdx};

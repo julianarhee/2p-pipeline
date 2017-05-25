@@ -134,10 +134,10 @@ else
             end
         %otherwise
     elseif isempty(strfind(tcourseTypes{selected_tcourse}, 'NMF'))
-        if ~isempty(strfind(selectedMapType, 'output')
+        if ~isempty(strfind(selectedMapType, 'output'))
             selectedMapType = selectedMapType(1:end-9);
             updateMapMenu = true;
-        elseif ~isempty(strfind(selectedMapType, 'NMF')
+        elseif ~isempty(strfind(selectedMapType, 'NMF'))
             selectedMapType = selectedMapType(1:end-3);
             updateMapMenu = true;
         else
@@ -147,7 +147,7 @@ else
     else
         magMap = mapStruct.file(selectedFile).ratio;
         updateMapMenu = false;
-    end
+    
     end
     
     if updateMapMenu
@@ -257,6 +257,9 @@ if strcmp(D.stimType, 'bar')
     if length(find(condmatches))>1
         % Get corresponding FILE:
         findidx = regexp(currRunName, '[\d]');
+        if isempty(findidx)
+            stimMenuIdx = 1;
+        else
         stimMenuIdx = condmatches(findidx);
     else
         stimMenuIdx = find(condmatches);

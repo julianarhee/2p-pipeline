@@ -144,7 +144,11 @@ switch tcourseTypes{handles.timecourseMenu.Value}
     case 'processed'
         % laodtracemat
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
-        tracemat = tracestruct.file(selectedFile).traceMatDC;
+        if ~isfield(tracestruct.file(selectedFile), 'traceMatDC')
+            tracemat = tracestruct.file(selectedFile).traceMat;
+        else
+            tracemat = tracestruct.file(selectedFile).traceMatDC;
+        end
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else

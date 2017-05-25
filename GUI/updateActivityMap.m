@@ -253,11 +253,15 @@ title(handles.ax2, currRunName);
 % If BAR, run=file=stimulus, so update stim-plot:
 if strcmp(D.stimType, 'bar')
     condtypes = handles.stimMenu.String;
-    condmatches = cellfun(@(c) any(strfind(c, currRunName)), condtypes);
+    condmatches = find(cellfun(@(c) any(strfind(c, currRunName)), condtypes));
     if length(find(condmatches))>1
         % Get corresponding FILE:
         findidx = regexp(currRunName, '[\d]');
-        stimMenuIdx = condmatches(findidx);
+        if isempty(findidx)
+            stimMenuIdx = condmatches(1);
+        else
+            stimMenuIdx = condmatches(findidx);
+        end
     else
         stimMenuIdx = find(condmatches);
     end

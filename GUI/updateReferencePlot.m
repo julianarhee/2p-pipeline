@@ -136,7 +136,7 @@ switch D.maskType
 %             end
         else
             %if newReference==1
-                if D.tefo
+                if isfield(D, 'tefo') && D.tefo
                     handles.avgimg = imagesc2(D.RGBimg, [cmin, cmax]);
                 else
                     handles.avgimg = imagesc2(scalefov(D.RGBimg), [cmin, cmax]); %, 'Parent',handles.ax1, 'PickableParts','none', 'HitTest','off');%imagesc(D.masksRGBimg); %imshow(D.masksRGBimg);
