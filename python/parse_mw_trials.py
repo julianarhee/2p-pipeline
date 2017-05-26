@@ -2,7 +2,7 @@
 
 import numpy as np
 import os
-from skimage.measure import block_reduce
+#from skimage.measure import block_reduce
 from scipy.misc import imread
 import cPickle as pkl
 import scipy.signal
