@@ -16,13 +16,18 @@ end
 if D.average
     mempath = D.averagePath;
 else
-    mempath = fullfile(D.nmfPath, 'memfiles');
+    %mempath = fullfile(D.nmfPath, 'memfiles');
+    mempath = D.mempath;
 end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
-subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
-files = tmpfiles(subidxs);
+if ~D.processedtiffs
+    subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
+    files = tmpfiles(subidxs);
+else
+    files = tmpfiles;
+end
 
 if D.maskInfo.patches
     patch_size = D.maskInfo.params.patch_size;
@@ -36,56 +41,53 @@ merge_thr = D.maskInfo.params.merge_thr;
 for tiffidx = 1:length(files)
   
    
-if ~getref && tiffidx~=D.maskInfo.ref.tiffidx
+    if ~getref && tiffidx~=D.maskInfo.ref.tiffidx
 
-    usePreviousA = true;
-    
-elseif getref && tiffidx~=D.maskInfo.ref.tiffidx
-    
-    fprintf('Skipping... tiff idx: %i.\n', tiffidx)
-    continue;
+        usePreviousA = true;
 
-elseif getref && tiffidx==D.maskInfo.ref.tiffidx
-    fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx)
-    usePreviousA = false;
-    
-end
-    
-    
-    
-    
-first_tic = tic();
+    elseif getref && tiffidx~=D.maskInfo.ref.tiffidx
 
-tpath = fullfile(mempath, files{tiffidx});
-[filepath, filename, ext] = fileparts(tpath);
+        fprintf('Skipping... tiff idx: %i.\n', tiffidx)
+        continue;
 
-matpath = fullfile(mempath, sprintf('%s.mat', filename));
-data = matfile(matpath,'Writable',true);
+    elseif getref && tiffidx==D.maskInfo.ref.tiffidx
+        fprintf('Getting REF components! Specified ref tiff is %i.\n', D.maskInfo.ref.tiffidx)
+        usePreviousA = false;
 
-fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+    end
+ 
+    first_tic = tic();
 
-    
-nSlices = meta.file(tiffidx).si.nFramesPerVolume;
-nRealFrames = meta.file(tiffidx).si.nSlices;
-nVolumes = meta.file(tiffidx).si.nVolumes;
-if D.tefo
-    nChannels=2;
-else
-    nChannels=1;
-end
+    tpath = fullfile(mempath, files{tiffidx});
+    [filepath, filename, ext] = fileparts(tpath);
 
-if ndims(data.Y) == 4
-    [d1,d2,d3,T] = size(data.Y);                            % dimensions of dataset
-else
-    [d1,d2,T] = size(data.Y);
-    d3 = 1;
-end
-d = d1*d2*d3;                                          % total number of pixels
+    matpath = fullfile(mempath, sprintf('%s.mat', filename));
+    data = matfile(matpath,'Writable',true);
+
+    fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+
+
+    nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+    nRealFrames = meta.file(tiffidx).si.nSlices;
+    nVolumes = meta.file(tiffidx).si.nVolumes;
+    if D.tefo
+        nChannels=2;
+    else
+        nChannels=1;
+    end
+
+    if ndims(data.Y) == 4
+        [d1,d2,d3,T] = size(data.Y)                            % dimensions of dataset
+    else
+        [d1,d2,T] = size(data.Y);
+        d3 = 1;
+    end
+    d = d1*d2*d3;                                          % total number of pixels
 
 
 %% Test NoRMCorre moition correction:
 
-MC = false;
+    MC = false;
 
 % % Rigid:
 % 
@@ -192,6 +194,7 @@ sizY = data.sizY;                       % size of data matrix
 % merge_thr = 0.8;                                  % merging threshold
 
 options = D.maskInfo.nmfoptions;
+options
 % options = CNMFSetParms(...
 %     'd1',d1,'d2',d2,'d3',d3,...
 %     'search_method','ellipse','dist',3,...      % search locations when updating spatial components
@@ -272,23 +275,28 @@ else
         
         % Initialize components, or set input args:
         % -----------------------------------------------------------------
-        if D.maskInfo.centroidsOnly
+        if isfield(P, 'ROI_list')
+            if D.maskInfo.centroidsOnly
+                fprintf('Initializing components...\n');
+                [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
+                %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
+        %         
+        %         if ~D.maskInfo.keepAll
+        %             fprintf('Filtering out very small components...\n');
+        %             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
+        %         end
+            else
+                fprintf('Using input masks (no initialization)...\n');
+                Ain = D.maskInfo.seeds;
+                Ain = Ain>0;
+                Cin = [];
+                fin = [];
+                bin = [];
+                fprintf('Size of input spatial footprint mask is: %s\n', mat2str(size(Ain)));
+            end
+        else
             fprintf('Initializing components...\n');
             [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
-            %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
-    %         
-    %         if ~D.maskInfo.keepAll
-    %             fprintf('Filtering out very small components...\n');
-    %             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
-    %         end
-        else
-            fprintf('Using input masks (no initialization)...\n');
-            Ain = D.maskInfo.seeds;
-            Ain = Ain>0;
-            Cin = [];
-            fin = [];
-            bin = [];
-            fprintf('Size of input spatial footprint mask is: %s\n', mat2str(size(Ain)));
         end
 
         % Get centers of each ROI:
@@ -317,13 +325,14 @@ else
         % -----------------------------------------------------------------
         fprintf('Updating spatial...\n');
         Yr = reshape(Y,d,T);
-        switch options.spatial_method
-            case 'regularized'
-                %[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
-                [A,b,Cin] = update_spatial_components(Yr,Cin,fin,[Ain,bin],P,options);
-            case 'constrained'
-                [A,b,Cin] = update_spatial_components(Yr,Cin,fin,Ain,P,options);
-        end
+        [A, b, Cin, P] = update_spatial_components(Yr, Cin, fin, [Ain, bin], P, options); 
+%         switch options.spatial_method
+%             case 'regularized'
+%                 %[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
+%                 [A,b,Cin] = update_spatial_components(Yr,Cin,fin,[Ain,bin],P,options);
+%             case 'constrained'
+%                 [A,b,Cin] = update_spatial_components(Yr,Cin,fin,Ain,P,options);
+%         end
         
         % Update temporal components:
         % -----------------------------------------------------------------
@@ -339,16 +348,17 @@ else
             fprintf('Merging components...\n');
             fprintf('Starting size A: %s', mat2str(size(A))); 
             [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
-            switch options.spatial_method 
-                case 'regularized' 
-                    [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
-                case 'constrained' 
-                    [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, Am, P, options);
-            end
+            [A, b, C, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
+%             switch options.spatial_method 
+%                 case 'regularized' 
+%                     [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
+%                 case 'constrained' 
+%                     [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, Am, P, options);
+%             end
             fprintf('Done merging. Post-merge size A is: %s', mat2str(size(A))); 
             P.p = p;
             fprintf('Updating temporal components again.\n');
-            [C, F, P, S] = update_temporal_components(Yr, A, b, Cm, f, P, options);
+            [C, F, P, S] = update_temporal_components(Yr, A, b, C, f, P, options);
         end        
         % Classify components:
         % -----------------------------------------------------------------
@@ -397,21 +407,26 @@ else
         refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
         refA = refnmf.A;
         Ain = refA>0;
+        fprintf('size ref A: %s\n', mat2str(size(Ain)))
         refb = refnmf.b;
         bin = refb>0;
+        fprintf('size ref b: %s\n', mat2str(size(bin)));
         fprintf('Using spatial comps from REF tiff %i, A islogical %i.\n', D.maskInfo.ref.tiffidx, islogical(Ain))
         
         % Update spatial components:
         % -----------------------------------------------------------------
         Yr = reshape(Y,d,T);
         %[A,b,Cin] = update_spatial_components(data.Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
-        [A,b,Cin] = update_spatial_components(Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
+%         [A,b,Cin] = update_spatial_components(Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
+        [A,b,Cin] = update_spatial_components(Yr,[],[],[Ain,bin],P,refnmf.options);
         
         % Update temporal components:
         % -----------------------------------------------------------------
         P.p = 0;
         %[C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,refnmf.f,P,options);
-        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,refnmf.f,P,options);
+        %[C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,refnmf.f,P,options);
+        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,[],P,options);
+
         P.p = 2;
         
         % Classify components:

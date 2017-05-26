@@ -1,6 +1,7 @@
 function S = get_si_info(D)
         
-        sourceDir = D.sourceDir;
+        %sourceDir = D.sourceDir;
+        sourceDir = D.dataDir;
         acquisitionName = D.acquisitionName;
         siMetaStruct = struct();
         
@@ -19,6 +20,7 @@ function S = get_si_info(D)
             % Sort Parsed files into separate directories if needed:
             nChannels = length(currMeta.SI.hChannels.channelSave);            
             nVolumes = currMeta.SI.hFastZ.numVolumes;
+
             nSlices = currMeta.SI.hFastZ.numFramesPerVolume;
             nDiscard = currMeta.SI.hFastZ.numDiscardFlybackFrames;
             nFramesPerVolume = nSlices; % + nDiscard;
@@ -31,15 +33,17 @@ function S = get_si_info(D)
             frameWidth = currMeta.SI.hRoiManager.pixelsPerLine;
             slowMultiplier = currMeta.SI.hRoiManager.scanAngleMultiplierSlow;
             linesPerFrame = currMeta.SI.hRoiManager.linesPerFrame;
-            frameHeight = linesPerFrame/slowMultiplier;
+            frameHeight = linesPerFrame %linesPerFrame/slowMultiplier
 
             siMetaStruct.file(fidx).nChannels = nChannels;
             siMetaStruct.file(fidx).nVolumes = nVolumes;
+
             siMetaStruct.file(fidx).nSlices = nSlices - nDiscard;
             siMetaStruct.file(fidx).nDiscard = nDiscard;
             siMetaStruct.file(fidx).nFramesPerVolume = nFramesPerVolume;
             siMetaStruct.file(fidx).nTotalFrames = nTotalFrames;
             siMetaStruct.file(fidx).siFrameTimes = siFrameTimes;
+            
             siMetaStruct.file(fidx).siFrameRate = siFrameRate;
             siMetaStruct.file(fidx).siVolumeRate = siVolumeRate;
             siMetaStruct.file(fidx).frameWidth = frameWidth;

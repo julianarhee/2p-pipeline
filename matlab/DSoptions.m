@@ -1,4 +1,4 @@
-function dsoptions = DFoptions(varargin)
+function options = DFoptions(varargin)
 
 % This is lifted from CNMFSetParams.m as a way to provide large set of inputs without things being overly clunky...
 
@@ -26,9 +26,11 @@ Names = [
     'run                '       % experiment type (e.g., 'retinotopyX')
     'datastruct         '       % datastruct index (default: 1)
     'acquisition        '       % acquisition name
+    'datapath           '       % alternate datapath if preprocessed (default: '')
     % acquisition info
     'tefo               '       % microscope type/revision (default: false)
     'preprocessing      '       % tiff processing ['raw', 'fiji', 'Acquisition2P']
+    'corrected          '       % motion corrected or not, standard is Acquisition2P methods (default: true)
     'meta               '       % source of meta info ['SI', 'manual'] (default: 'SI')
     'channels           '       % number of acquired channels (default: 2)
     'signalchannel      '       % channel num of activity channel (default: 1)
@@ -41,15 +43,16 @@ Names = [
     % analysis meta info
     'slices             '       % indices of acquired slices that are included for analysis (data-only)
     'averaged           '       % single runs/trials or averaged (default: false)
+    'matchedtiffs       '       % array of tiff idxs to average together (default: [[]])
     'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])
     'metaonly           '       % only get meta info because tiff files too large (default: false)
-    'nhugetiffs          '      % number of too-large tiffs from which to get meta info (default: 0)
+    'nmetatiffs         '       % number of tiffs need meta-only info for (default: 0)
     ];
 
 [m, n] = size(Names);
 names = lower(Names);
 
-option = [];
+options = [];
 for nameidx=1:m
     eval(['options.' Names(nameidx,:) ' = [];']);
 end
@@ -132,14 +135,16 @@ Values = [
     {'run'}                  % 'run                '       % experiment type (e.g., 'retinotopyX')
     {1}                  % 'datastruct         '       % datastruct index (default: 1)
     {'acquisition'}                  % 'acquisition        '       % acquisition name
-    % acquisition info
+    {''}                             % 'datapath           '       % alternate datapath of preprocessed
+    % acquisition tiff info
     {false}                  % 'tefo               '       % microscope type/revision (default: false)
     {'raw'}                  % 'preprocessing      '       % tiff processing ['raw', 'fiji', 'Acquisition2P']
+    {false}                  % 'corrected          '        % motion-corrected (with Acq2P)
     {'SI'}                  % 'meta               '       % source of meta info ['SI', 'manual'] (default: 'SI')
     {2}                  % 'channels           '       % number of acquired channels (default: 2)
     {1}                  % 'signalchannel      '       % channel num of activity channel (default: 1)
     % ROI mask info
-    {'pixels'}                  %'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
+    {'pixels'}                  % 'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
     {false}                  % 'seedrois           '       % provide seeds (centroids or masks) for initial ROI locations (default: false)
     {'2D'}                  % 'maskdims           '       % dimensions of ROI masks ['2D', '3D']
     {'circles'}                  % 'maskshape          '       % mask shape ['circles','contours','3Dcontours','spheres']
@@ -147,13 +152,16 @@ Values = [
     % analysis meta info
     {[1:20]}                  % 'slices             '       % indices of acquired slices that are included for analysis (data-only, default: [1:20])
     {false}                  % 'averaged           '       % single runs/trials or averaged (default: false)
+    {[]}                     % 'matchedtiffs       '       % average matching tiffs or no?
     {[]}                  % 'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])
     {false}                  % 'metaonly           '       % only get meta info because tiff files too large (default: false)
-    {0}                  % 'hugetiffs          '       % number of too-large tiffs from which to get meta info (default: 0)
+    {0}                  % 'hugetiffs          '       % number of tiffs need meta-only info for (default: 0)
     ];
 
 for j = 1:m
     if eval(['isempty(options.' Names(j,:) ')'])
         eval(['options.' Names(j,:) '= Values{j};']);
     end
+end
+
 end

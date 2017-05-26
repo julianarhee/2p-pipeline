@@ -20,7 +20,18 @@ switch length(varargin)
         metaonly = false;
     case 3
         refmeta = false;
-        metaonly = true;
+        metaonly = varargin{3}; %true;
+        processedtiffs = false;
+    case 4
+        refmeta = false;
+        metaonly = varargin{3}; %true;
+        processedtiffs = varargin{4}; %true;
+        [parentDir, processedFolder, ~] = fileparts(sourceDir);
+    case 5
+        refmeta = false;
+        metaonly = varargin{3}; %true;
+        processedtiffs = varargin{4}; %true;
+        parentDir = varargin{5};
 end
 %% Load movies and motion correct
 %Calculate Number of movies and arrange processing order so that
@@ -39,9 +50,15 @@ for movNum = movieOrder
         scanImageMetadata = sirefs.metaDataSI{refMovIdx};
         [mov, ~] = tiffRead(fullfile(sourceDir, movies{movNum}));
     else
-        if metaonly
+        if metaonly && ~processedtiffs
             fprintf('Only getting metadata...\n');
             scanImageMetadata = tiffReadMeta(fullfile(sourceDir, movies{movNum}));
+        elseif metaonly && processedtiffs
+            % meta source info comes from original tiffs:
+            origMovies = dir(fullfile(parentDir,'*.tif'));
+            origMovies = {origMovies(:).name};
+            [~, scanImageMetadata] = tiffReadMeta(fullfile(parentDir, origMovies{movNum}));
+            [mov, ~] = tiffRead(fullfile(sourceDir, movies{movNum}));
         else
             [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
         end
@@ -66,7 +83,8 @@ for movNum = movieOrder
 %     fprintf('Line Shift Correcting Movie #%03.0f of #%03.0f\n', movNum, nMovies),
 %     mov = correctLineShift(mov);
 
-    if metaonly
+    if metaonly && ~processedtiffs
+        fprintf('No movie read. Only getting metadata...\n');
         siStruct = scanImageMetadata.SI;
         fZ              = siStruct.hFastZ.enable; %siStruct.fastZEnable;
         nChannels = numel(siStruct.hChannels.channelSave); %numel(siStruct.channelsSave);
@@ -75,7 +93,45 @@ for movNum = movieOrder
         nSlices = nSlices - discard; %nSlices-(fZ*siStruct.fastZDiscardFlybackFrames);
     else
         try
-            [movStruct, nSlices, nChannels] = parseScanimageTiff(mov, scanImageMetadata);
+           if processedtiffs
+               fprintf('Parsing processed SI tiff and getting adjusted meta data...\n');
+               nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices;
+               nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames;
+               nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
+               nSlicesSelected = nSlicesTmp - nDiscardTmp;
+               nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
+               
+               scanImageMetadata.SI.hStackManager.numSlices = nSlicesSelected;
+               scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames = 0;
+               scanImageMetadata.SI.hFastZ.numFramesPerVolume = scanImageMetadata.SI.hStackManager.numSlices;
+               
+               nFramesSelected = nChannelsTmp*nSlicesSelected*nVolumesTmp;
+               
+               metanames = fieldnames(scanImageMetadata);
+               for field=1:length(metanames)
+                   if strcmp(metanames{field}, 'SI')
+                       continue;
+                   else
+                       currfield = scanImageMetadata.(metanames{field});
+                       startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+                       if iscell(currfield)
+                           tmpfield = cell(1, nFramesSelected);
+                       else
+                           tmpfield = zeros(1, nFramesSelected);
+                       end
+                       newidx = 1;
+                       for startidx = startidxs
+                           tmpfield(newidx:newidx+(nSlicesSelected*nChannelsTmp - 1)) = currfield(startidx:startidx+(nSlicesSelected*nChannelsTmp - 1));
+                           newidx = newidx + (nSlicesSelected*nChannelsTmp);
+                       end
+                       scanImageMetadata.(metanames{field}) = tmpfield;
+                   end
+               end
+               %[movStruct, nSlices, nChannels] = parseProcessedScanimageTiff(mov, scanImageMetadata);
+           end
+           
+           [movStruct, nSlices, nChannels] = parseScanimageTiff(mov, scanImageMetadata);
+           
         catch
             error('parseScanimageTiff failed to parse metadata'),
         end
@@ -91,7 +147,8 @@ for movNum = movieOrder
 %     fprintf('Applying Motion Correction for Movie #%03.0f of #%03.0f\n', movNum, nMovies),
 %     movStruct = obj.motionCorrectionFunction(obj, movStruct, scanImageMetadata, movNum, 'apply');
     
-    if ~metaonly
+    if ~metaonly || processedtiffs
+        fprintf('Writing parsed tiffs to file...\n');
         for nSlice = 1:nSlices
             for nChannel = 1:nChannels
                 % Create movie fileName and save in acq object

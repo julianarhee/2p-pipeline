@@ -1,10 +1,18 @@
-function memmap3D(D, meta, create_substack)
+function memmap3D(D, meta)
 
-if create_substack
-    startSliceIdx = D.slices(1);
-else
+if D.processedtiffs
+    create_substack = false;
     startSliceIdx = 1;
+else
+    create_substack = true;
+    startSliceIdx = D.slices(1);
+    fprintf('Creating substacks made starting from slice %i.\n', startSliceIdx);
 end
+% if create_substack
+%     startSliceIdx = D.slices(1);
+% else
+%     startSliceIdx = 1;
+% end
 fprintf('Substacks made starting from slice %i.\n', startSliceIdx);
 
 mempath = fullfile(D.mempath);
@@ -20,14 +28,17 @@ end
 
 % Get all TIFFs to be processed and stored as memmapped file:
 % -------------------------------------------------------------------------
-if isfield(D, 'dataDir')
-    tiffs = dir(fullfile(D.dataDir, '*.tif'));
-    fprintf('Getting TIFFs from alternate data dir: %s', D.dataDir);
-    tiffDir = D.dataDir;
-else
-    tiffs = dir(fullfile(D.sourceDir, '*.tif'));
-    tiffDir = D.sourceDir;
-end
+% if isfield(D, 'dataDir')
+%     tiffs = dir(fullfile(D.dataDir, '*.tif'));
+%     fprintf('Getting TIFFs from alternate data dir: %s', D.dataDir);
+%     tiffDir = D.dataDir;
+% else
+%     tiffs = dir(fullfile(D.sourceDir, '*.tif'));
+%     tiffDir = D.sourceDir;
+% end
+tiffs = dir(fullfile(D.dataDir, '*.tif'));
+fprintf('Getting TIFFs from alternate data dir: %s', D.dataDir);
+tiffDir = D.dataDir;
 tiffs = {tiffs(:).name}'
 
 
@@ -56,27 +67,32 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
     matpath = fullfile(mempath, sprintf('%s.mat', filename));
     data = matfile(matpath,'Writable',true);
     
-    if create_substack % i.e., TIFFs to be turned into memmapped files contain all the extra junk
-        nSlices = meta.file(tiffidx).si.nFramesPerVolume;
-        nRealFrames = meta.file(tiffidx).si.nSlices;
-        nVolumes = meta.file(tiffidx).si.nVolumes;
-    else
-        % TODO:  FIX this so it's not hard-coded...
-        nSlices = 22;
-        nRealFrames = 22;
-        nVolumes = meta.file(1).si.nVolumes;
-    end
-    
+%     if create_substack % i.e., TIFFs to be turned into memmapped files contain all the extra junk
+%         nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+%         nRealFrames = meta.file(tiffidx).si.nSlices;
+%         nVolumes = meta.file(tiffidx).si.nVolumes;
+%     else
+%         % TODO:  FIX this so it's not hard-coded...
+%         nSlices = 22;
+%         nRealFrames = 22;
+%         nVolumes = meta.file(1).si.nVolumes;
+%     end
+
+    nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+    nRealFrames = meta.file(tiffidx).si.nSlices;
+    nVolumes = meta.file(tiffidx).si.nVolumes;
+                
     if D.tefo
         nChannels=2;
     else
         nChannels=1;
     end
     
-    if D.metaonly % i.e., tiff is too huge to load into matlab
+    if D.metaonly && ~D.processedtiffs % i.e., tiff is too huge to load into matlab
         
         % Since too large (for Matlab), already parsed in Fiji:
-        tiffsourcePath = fullfile(D.sourceDir, D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
+        %tiffsourcePath = fullfile(D.sourceDir, D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
+        tiffsourcePath = fullfile(D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
         tiffslices = dir(fullfile(tiffsourcePath, '*.tif'));
         tiffslices = {tiffslices(:).name}';
         
@@ -284,11 +300,19 @@ end
 
 tmpfiles = dir(fullfile(mempath, '*.mat'));
 tmpfiles = {tmpfiles(:).name}';
-% if create_substacks
-subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
-inputfiles = tmpfiles(subidxs);
-% else
-%     inputfiles = tmpfiles;
+% % if create_substacks
+% subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+% inputfiles = tmpfiles(subidxs);
+% % else
+% %     inputfiles = tmpfiles;
+
+if create_substack
+    subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
+    inputfiles = tmpfiles(subidxs);
+else
+    inputfiles = tmpfiles;
+end
+
 
 if isempty(inputfiles)
     files = tmpfiles(~subidxs);

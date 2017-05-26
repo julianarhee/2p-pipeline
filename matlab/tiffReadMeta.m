@@ -1,4 +1,5 @@
-function siHeader = tiffReadMeta(fPath, castType, isSilent)
+function varargout = tiffReadMeta(fPath, castType, isSilent)
+%[origtiff, siHeader] = tiffReadMeta(fPath, castType, isSilent)
 % [img, metadata] = tiffRead(fPath, castType, isSilent)
 
 %turn off warning thrown by reading in scanImage3 files
@@ -26,29 +27,31 @@ end
 % Create Tiff object:
 t = Tiff(fPath);
 
-% % Get number of directories (= frames):
-% t.setDirectory(1);
-% while ~t.lastDirectory
-%     t.nextDirectory;
-% end
-% nDirectories = t.currentDirectory;
-
-% % Load all directories (= frames):
-% img = zeros(t.getTag('ImageLength'), ...
-%     t.getTag('ImageWidth'), ...
-%     nDirectories, ...
-%     castType);
-% 
-% for i = 1:nDirectories
-%     t.setDirectory(i);
-%     img(:,:,i) = t.read;
-%     
-%     if ~isSilent && ~mod(i, 200)
-%         fprintf('%1.0f frames of %d loaded.\n', i, nDirectories);
+% if nargout>1
+%     % Get number of directories (= frames):
+%     t.setDirectory(1);
+%     while ~t.lastDirectory
+%         t.nextDirectory;
 %     end
+%     nDirectories = t.currentDirectory;
+% 
+%     % Load all directories (= frames):
+%     img = zeros(t.getTag('ImageLength'), ...
+%         t.getTag('ImageWidth'), ...
+%         nDirectories, ...
+%         castType);
+% 
+%     for i = 1:nDirectories
+%         t.setDirectory(i);
+%         img(:,:,i) = t.read;
+% 
+%         if ~isSilent && ~mod(i, 200)
+%             fprintf('%1.0f frames of %d loaded.\n', i, nDirectories);
+%         end
+%     end
+% 
+%     varargout{1} = img;
 % end
-
-%varargout{1} = img;
 %varargout{1} = img;
 % rescale if needed?
 % scale_vec = [2 1 1];
@@ -101,9 +104,14 @@ if nargout >= 1
             end
             varargout{2} = s.scanimage;
         case 2016
-            %siHeader = scanimage.util.opentif(fPath);
-            siHeader = opentifmeta(fPath);
-            %varargout{2} = siHeader;
+            if nargout>1
+                fprintf('Reading all tiff headers from original tiffs.\n');
+                siHeader = scanimage.util.opentif(fPath);
+            else
+                fprintf('Only getting tiff headers from first.\n');
+                siHeader = opentifmeta(fPath);
+            end
+            varargout{2} = siHeader;
             %tiffmeta = siHeader;
         case -1
             % Not a scanimage file. Since a second output argument was

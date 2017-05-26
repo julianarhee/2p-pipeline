@@ -47,7 +47,8 @@ mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection, crossref);
 
 % Get paths to CORRECTED tiffs:
 channelDir = sprintf('Channel%02d', channelIdx);
-tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+%tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+tmpTiffs = dir(fullfile(tiffSource, channelDir));
 tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpTiffs));
 tiffDirs = {tmpTiffs(:).name}';
 nTiffFiles = length(tiffDirs);
@@ -58,7 +59,8 @@ fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffFiles);
 % end
 tiffPaths = cell(1,length(tiffDirs));
 for tidx=1:nTiffFiles
-    tiffPaths{tidx} = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{tidx});
+    %tiffPaths{tidx} = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{tidx});
+    tiffPaths{tidx} = fullfile(tiffSource, channelDir, tiffDirs{tidx});
 end
 
 
@@ -137,6 +139,7 @@ for fidx=1:nTiffs
             siDur = (siSec(end) - siSec(1));
         else
             % Use MW trigger times:
+            fprintf('No SI frame times specified (are you using metaonly on a large tiff?), using MW and interpolating...\n');
             siDur = (double(mw.pymat.(currRunName).MWtriggertimes(2)) - double(mw.pymat.(currRunName).MWtriggertimes(1)))/1E6;
             siSec = linspace(0, siDur, nTotalFrames);
         end
