@@ -131,7 +131,7 @@ switch dsoptions.roitype
 
 
         roiparams.options = CNMFSetParms(...
-            'spatial_method', 'constrained',...
+            'spatial_method','constrained',...       % method for updating spatial components
             'search_method','ellipse','dist',2,...
             'se', strel('disk', 1, 0),...      
             'max_size', 3, 'min_size', 1,...         % max/min size of ellipse axis (default: 8, 3)
@@ -153,6 +153,8 @@ switch dsoptions.roitype
             'conn_comp', false);                     % extract largest connected component (binary, default: true)
 
 end
+roiparams.options.spatial_method = 'constrained';
+roiparams.options
 
 % -----------------------------------------------------------------   
 % Create datastruct for analysis:
