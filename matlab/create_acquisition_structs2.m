@@ -156,33 +156,22 @@ end
 roiparams.options.spatial_method = 'constrained';
 roiparams.options
 
+
+
+
+%%
 % -----------------------------------------------------------------   
 % Create datastruct for analysis:
 % -----------------------------------------------------------------   
 fprintf('Creating new datastruct...\n')
 D = create_datastruct(dsoptions);
 
+
+
 % --------------------------------------------
 % 3.  Specify ROI/mask params/paths:
 % --------------------------------------------
 D = set_mask_paths(D, dsoptions);
-
-% TODO:  create txt file with datastruct info.
-%dstructFile = 'datastructs.txt'
-%dstructPath = fullfile(source, session, run, dstructFile)
-%headers = {'datastruct', 'acquisition', 'tefo', 'preprocessing', 'meta',...
-%            'roiType', 'seedrois', 'maskdims', 'maskshape', 'maskfinder',...
-%            'channels', 'signalchannel', 'slices', 'averaged',...
-%             'excludedtiffs', 'metaonly', 'hugetiffs'};
-%
-%fid = fopen(dstructPath, 'w');
-%if ~exist(dstructPath)
-%    fprintf(fid, '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\r\n', headers{1:end});
-%else
-%    fprintf(fid, '%s\t%s\t%i\t%s\%s\t%s\t%i\t%s\t%s\t%s\t%i\t%i\t%s\t%i\t%s\t%s\t%i\t%i', dstructoptions{1:end});
-%    fclose(fid);
-%end
-%
 
 
 % Set paths to input tiffs:

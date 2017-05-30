@@ -13,6 +13,7 @@ analysisDir = fullfile(sourceDir, 'analysis');
 if ~exist(analysisDir, 'dir') 
     mkdir(analysisDir); 
 end 
+
  
 datastruct = sprintf('datastruct_%03d', didx); 
 dstructPath = fullfile(analysisDir, datastruct); 
@@ -64,5 +65,22 @@ save(fullfile(dstructPath, datastruct), '-struct', 'D');
  
 fprintf('Created new datastruct analysis: %s\n', D.datastructPath) 
 
+% Add datastruct info to info file:
+infotable = struct2table(dsoptions, 'AsArray', true, 'RowNames', {D.name});
+
+% Check previously-made analyses:
+analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
+if exist(analysisinfo, 'file')
+    % Load it and check it:
+    previousInfo = readtable(analysisinfo);
+    allInfo = [previousInfo; infotable];
+else
+    allInfo = infotable; 
 
 end
+
+writetable(allInfo, analysinfo_fn, 'WriteRowNames', true, 'Delimiter', '\t');
+type analysisinfo_fn
+
+
+
