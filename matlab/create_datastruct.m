@@ -57,10 +57,16 @@ D.extraTiffsExcluded = dsoptions.excludedtiffs; %extraTiffsExcluded;
 D.slices = dsoptions.slices; %slicesToUse; 
 D.tefo = dsoptions.tefo; %tefo; 
 D.average = dsoptions.averaged; %average; 
- 
+
 if D.average 
     D.matchtrials = dsoptions.matchedtiffs; 
 end 
+
+D.roiType = dsoptions.roitype;
+D.seedRois = dsoptions.seedrois;
+D.maskType = dsoptions.maskshape;
+D.roiSource = dsoptions.maskpath;
+
  
 save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  

@@ -1,4 +1,4 @@
-function rois_to_masks(D)
+function [pathToMasks] = rois_to_masks(D)
    
 %  ROIs are created automatically in python (saved to .mat file).
 %  This assumes that ROI segmentation was done on some averaged volume
@@ -19,14 +19,19 @@ if ~exist(maskPath, 'dir')
 end
 
 % rois = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
-rois = load(D.maskInfo.roiPath);
-
+if ~isfile(D.maskInfo.roiSource)
+    [fn, fp, ~] = uigetfile;
+    rois = load(fullfile(fp, fn));
+else
+    rois = load(D.maskInfo.roiSource);
+end
 slicesToUse = D.slices;
 
-maskSlicePaths = dir(fullfile(D.slicePaths, '*.tif'));
+maskSlicePaths = dir(fullfile(D.sliceimagepath, '*.tif'));
 maskSlicePaths = {maskSlicePaths(:).name}';
 
 M = struct();
+pathToMasks = {};
 
 for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     
@@ -39,7 +44,7 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     end
     
     %sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.file(refNum).si.nTotalFrames;
-    mapSlicePath = fullfile(D.maskInfo.mapSlicePaths, sprintf('%i.tif', sidx-1));
+    mapSlicePath = fullfile(D.sliceimagepath, maskSlicePaths{sidx}) %maskInfo.mapSlicePaths, sprintf('%i.tif', sidx-1));
     mapSliceImg = tiffRead(mapSlicePath);
     
     centers = [double(currRois(:,2)), double(currRois(:,1))];
@@ -99,10 +104,12 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     %M.refPath = refMeta.file(refNum).si.tiffPath; %refMeta.tiffPath;
 
     % Save reference masks:        
-    pathprts = strsplit(D.maskInfo.mapSource, '/');
+    % pathprts = strsplit(D.maskInfo.mapSource, '/');
     
-    maskStructName = char(sprintf('masks_%s_Slice%02d.mat', pathprts{end}, sidx));
+    % maskStructName = char(sprintf('masks_%s_Slice%02d.mat', pathprts{end}, sidx));
+    maskStructName = sprintf('masks_Slice%02d.mat', sidx);
     save(fullfile(maskPath, maskStructName), '-struct', 'M', '-v7.3');
+    pathToMasks{end+1} = fullfile(maskPath, maskStructName);
 
 end
 

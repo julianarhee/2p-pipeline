@@ -370,9 +370,9 @@ for tiffidx=1:length(inputfiles)
     end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
 
-    if ~exist(D.slicesPath) || isempty(dir(fullfile(D.slicesPath, '*.tif')))
-        if ~exist(D.slicesPath)
-            mkdir(D.slicesPath)
+    if ~exist(D.sliceimagepath) || isempty(dir(fullfile(D.sliceimagepath, '*.tif')))
+        if ~exist(D.sliceimagepath)
+            mkdir(D.sliceimagepath)
         end 
         fprintf('Averaging slices...\n');
         d1=data.sizY(1,1); d2=data.sizY(1,2); d3=data.sizY(1,3);

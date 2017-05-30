@@ -185,6 +185,7 @@ D = set_datafile_paths(D, dsoptions);
 % Get SI volume info:
 [D, meta] = get_meta(D, dsoptions);
 
+
 % Create memmapped files:
 % -----------------------------------------------------------------
 memmap3D(D, meta);
@@ -194,7 +195,7 @@ memmap3D(D, meta);
 % Save analysis info:
 % =========================================================================
 
-save(fullfile(D.datastructPath, D.name), '-struct', 'D');
+save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('Got source info for creating ROI masks.\n')
 
@@ -226,48 +227,47 @@ tic()
 
 switch D.roiType
     case 'create_rois'
-        
+        D.maskType = 'circles';
+        D.maskInfo.maskType = D.maskType;
+        D.maskInfo = struct();
+        D.maskInfo.slices = D.slices;
+       
         % Choose reference:
         % -----------------------------------------------------------------
         refMeta = load(meta.metaPath);     
         if isfield(refMeta.file(1).si, 'motionRefNum')
-            D.refRun = refMeta.file(1).si.motionRefNum;
-            D.refPath = refMeta.file(D.refRun).si.tiffPath;
+            D.maskInfo.refRun = refMeta.file(1).si.motionRefNum;
+            D.maskInfo.refPath = refMeta.file(D.refRun).si.tiffPath;
         else
-            D.refRun = round(length(refMeta.file)/2);
-            D.refPath = 'na';
+            D.maskInfo.refRun = round(length(refMeta.file)/2);
+            D.maskInfo.refPath = '';
         end
         
         % Create ROIs:
         % -----------------------------------------------------------------
-        create_rois(D, refMeta);
+        D.maskInfo.maskPaths = create_rois(D, refMeta);
                 
         
         % Set up mask info struct to reuse masks across files:
         % -----------------------------------------------------------------
-        D.maskType = 'circles';
-        D.maskInfo = struct();
-        D.maskInfo.refNum = D.refRun;
-        D.maskInfo.refMeta = refMeta;
-        D.maskInfo.maskType = D.maskType;
-
-        maskDir = fullfile(D.datastructPath, 'masks');
-        maskStructs = dir(fullfile(maskDir, '*.mat'));
-        maskStructs = {maskStructs(:).name}';
-        slicesToUse = zeros(1,length(maskStructs));
-        for m=1:length(maskStructs)
-            mparts = strsplit(maskStructs{m}, 'Slice');
-            mparts = strsplit(mparts{2}, '_');
-            slicesToUse(m) = str2num(mparts{1});
-        end
-        maskPaths = cell(1,length(maskStructs));
-        for m=1:length(maskStructs)
-            maskPaths{m} = fullfile(maskDir, maskStructs{m});
-        end
-        D.maskInfo.maskPaths = maskPaths;
-        D.maskInfo.slices = slicesToUse;
-        D.slices = slicesToUse; 
-       
+%         
+%         maskDir = fullfile(D.datastructPath, 'masks');
+%         maskStructs = dir(fullfile(maskDir, '*.mat'));
+%         maskStructs = {maskStructs(:).name}';
+%         slicesToUse = zeros(1,length(maskStructs));
+%         for m=1:length(maskStructs)
+%             mparts = strsplit(maskStructs{m}, 'Slice');
+%             mparts = strsplit(mparts{2}, '_');
+%             slicesToUse(m) = str2num(mparts{1});
+%         end
+%         maskPaths = cell(1,length(maskStructs));
+%         for m=1:length(maskStructs)
+%             maskPaths{m} = fullfile(maskDir, maskStructs{m});
+%         end
+%         D.maskInfo.maskPaths = maskPaths;
+%         D.maskInfo.slices = slicesToUse;
+%         D.slices = slicesToUse; 
+%        
  
         % =================================================================
         % Get traces with masks:
@@ -282,23 +282,23 @@ switch D.roiType
         D.maskType = 'circles';
         D.maskInfo = struct();
         %D.maskInfo.mapSource = mapSource;
-        D.maskInfo.mapSlicePaths = mapSlicesPath;
-        D.maskInfo.roiPath = D.maskSource; %roiPath; 
-        D.maskInfo.slices = slicesToUse;
+        %D.maskInfo.mapSlicePaths = D.sliceimagepath; %mapSlicesPath;
+        D.maskInfo.roiSource = D.roiSource; %roiPath; 
+        D.maskInfo.slices = D.slices; %slicesToUse;
         D.maskInfo.blobType = 'difference';
        
         % Create masks from ROI maps: 
         % -----------------------------------------------------------------
-        rois_to_masks(D);
+        D.maskInfo.maskPaths = rois_to_masks(D);
         
-        maskDir = fullfile(D.datastructPath, 'masks');
-        maskStructs = dir(fullfile(maskDir, '*.mat'));
-        maskStructs = {maskStructs(:).name}';
-        for m=1:length(maskStructs)
-            maskPaths{m} = fullfile(maskDir, maskStructs{m});
-        end
-        D.maskInfo.maskPaths = maskPaths;
-
+%         maskDir = fullfile(D.datastructPath, 'masks');
+%         maskStructs = dir(fullfile(maskDir, '*.mat'));
+%         maskStructs = {maskStructs(:).name}';
+%         for m=1:length(maskStructs)
+%             maskPaths{m} = fullfile(maskDir, maskStructs{m});
+%         end
+%         D.maskInfo.maskPaths = maskPaths;
+% 
         
         % =================================================================
         % Get traces with masks:
@@ -317,25 +317,26 @@ switch D.roiType
        
         % Create memmapped files and substack if needed:
         % -----------------------------------------------------------------          
-        memmap3D(D, meta); %, create_substack);
-        fprintf('Memmapped TIFF files.\n');
-        
+%         memmap3D(D, meta); %, create_substack);
+%         fprintf('Memmapped TIFF files.\n');
+%         
         
         % Specify ROI map source(s), if seeding:
         % -----------------------------------------------------------------   
         D.maskInfo = struct();
 
-        D.maskInfo.mapSource = mapSource;  % path to AVG volumes from which ROIs selected
-        D.maskInfo.mapSlicePaths = mapSlicesPath;  % path to each slice of AVG volume (mapSource is parent)
-         
+        %D.maskInfo.mapSource = mapSource;  % path to AVG volumes from which ROIs selected
+        %D.maskInfo.mapSlicePaths = D.sliceimagepath; %mapSlicesPath;  % path to each slice of AVG volume (mapSource is parent) 
         D.maskInfo.slices = D.slices; %slicesToUse;
+        D.maskInfo.roiSource = D.roiSource;
 
         % Create MASKMAT -- single mask for each trace:
         % ----------------------------------------------------------------- 
         if strcmp(D.maskType, 'spheres')
             D.maskInfo.roiPath = roiCentroidPath;
             
-            roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            % roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            roimat = load(D.maskInfo.roiSource); 
             roinames = sort(fieldnames(roimat));
 
             centers = zeros(length(roinames), 3);
@@ -364,8 +365,9 @@ switch D.roiType
             % USE ACTUAL MASKS:
             % LOAD MASK
             volumesize = meta.volumeSizePixels;
-            D.maskInfo.roiPath = roiMaskPath;
-            roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            %D.maskInfo.roiPath = roiMaskPath;
+            %roimat = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+            roimat = load(D.maskInfo.roiSource);
             roinames = sort(fieldnames(roimat));
             tmpmat = arrayfun(@(i) reshape(roimat.(roinames{i}), prod(volumesize), []), 1:length(roinames), 'UniformOutput', 0);
             maskmat = cat(2, tmpmat{1:end});
@@ -400,16 +402,20 @@ switch D.roiType
        
     case 'condition'
         % Use masks from a different condition:
-        ref = load(fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, sprintf('datastruct_%03i.mat', D.maskDidx)));
+        D.maskInfo = struct();
+        D.maskInfo.roiSource = D.roiSource;      
+        
+        % ref = load(fullfile(D.maskSourcePath, 'analysis', D.maskDatastruct, sprintf('datastruct_%03i.mat', D.maskDidx)));
+        ref = load(D.maskInfo.roiSource);
         D.refRun = ref.refRun;
         refMeta = load(ref.metaPath);
          
         D.refPath = ref.refPath; %Meta.file(D.refRun).si.tiffPath;
         D.slices = ref.slices;
         
-        D.maskInfo = struct();
         D.maskInfo = ref.maskInfo;
         D.maskType = ref.maskType;
+        D.maskInfo.maskPaths = ref.maskInfo.maskPaths;
         
         [D.tracesPath, D.nSlicesTrace] = getTraces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
@@ -469,9 +475,9 @@ switch D.roiType
 
         % Create memmapped files and substack if needed:
         % -----------------------------------------------------------------   
-        memmap3D(D, meta); %, create_substack);
-        fprintf('Memmapped TIFF files.\n');
-        
+%         memmap3D(D, meta); %, create_substack);
+%         fprintf('Memmapped TIFF files.\n');
+%         
         
         % Specify ROI map source(s), if seeding:
         % -----------------------------------------------------------------   
@@ -479,17 +485,18 @@ switch D.roiType
         if D.seedRois
             % D.maskInfo.mapSource = mapSource;
             % D.maskInfo.mapSlicePaths = mapSlicesPath;
-            D.maskInfo.roiPath = D.maskSource;
+            D.maskInfo.roiSource = D.roiSource;
             D.maskInfo.slices = D.slices;
             D.maskInfo.seedRois = true;
-            
-            switch maskFinder
+            D.maskInfo.maskfinder = dsoptions.maskfinder;
+  
+            switch D.maskInfo.maskfinder
                 case 'blobDetector'
                     % D.maskInfo.roiPath = D.maskSource; %roiPath; 
                     D.maskInfo.blobType = 'difference';
                     D.maskInfo.keepAll = true;
                     
-		    centroids = load(D.maskInfo.roiPath); 
+		    centroids = load(D.maskInfo.roiSource); 
                     % centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
                     if isfield(D.maskInfo, 'blobType')
                         if strcmp(D.maskInfo.blobType, 'difference')
@@ -514,7 +521,7 @@ switch D.roiType
                 case 'EMmasks'
                     volumesize = meta.volumeSizePixels;
                     % D.maskInfo.roiPath = D.maskSource; %roiMaskPath;
-                    roimat = load(D.maskInfo.roiPath); % ROI keys are slices with 1-indexing
+                    roimat = load(D.maskInfo.roiSource); % ROI keys are slices with 1-indexing
                     roinames = sort(fieldnames(roimat));
                     tmpmat = arrayfun(@(i) reshape(roimat.(roinames{i}), prod(volumesize), []), 1:length(roinames), 'UniformOutput', 0);
                     maskmat = cat(2, tmpmat{1:end});
@@ -526,9 +533,9 @@ switch D.roiType
                 case 'centroids'
                     % D.maskInfo.roiPath = D.maskSource; %roiCentroidPath;
 
-                    roimat = load(D.maskInfo.roiPath); % ROI keys are slices with 1-indexing
+                    roimat = load(D.maskInfo.roiSource); % ROI keys are slices with 1-indexing
                     roinames = sort(fieldnames(roimat));
-                    fprintf('Loaded %i ROIs from file %s...\n', length(roinames), D.maskInfo.roiPath);
+                    fprintf('Loaded %i ROIs from file %s...\n', length(roinames), D.maskInfo.roiSource);
                     centers = zeros(length(roinames), 3);
                     radii = zeros(length(roinames), 1);
                     roiIDs = zeros(length(roinames), 1);
