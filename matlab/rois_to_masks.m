@@ -18,11 +18,12 @@ if ~exist(maskPath, 'dir')
     mkdir(maskPath);
 end
 
-rois = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+% rois = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+rois = load(D.maskInfo.roiPath);
 
 slicesToUse = D.slices;
 
-maskSlicePaths = dir(fullfile(D.maskInfo.mapSlicePaths, '*.tif'));
+maskSlicePaths = dir(fullfile(D.slicePaths, '*.tif'));
 maskSlicePaths = {maskSlicePaths(:).name}';
 
 M = struct();

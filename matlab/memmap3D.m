@@ -6,7 +6,7 @@ if D.processedtiffs
 else
     create_substack = true;
     startSliceIdx = D.slices(1);
-    fprintf('Creating substacks made starting from slice %i.\n', startSliceIdx);
+    fprintf('Creating substacks made stareting from slice %i.\n', startSliceIdx);
 end
 % if create_substack
 %     startSliceIdx = D.slices(1);
@@ -350,19 +350,42 @@ if isempty(inputfiles)
         fprintf('Finished:  substack size is %s\n', mat2str(data.sizY));
 
     end
-else
-   
-    fprintf('Checking TIFF substakc size...\n');
-    
-    for tiffidx=1:length(inputfiles)
-        tpath = fullfile(mempath, inputfiles{tiffidx});
-        data = matfile(tpath, 'Writable', true);
-        if ~isprop(data, 'sizY')
-            data.sizY = size(data.Y);
-        end
-        fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
-
-    end
-    
 end
+
+
+if create_substack
+    subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
+    inputfiles = tmpfiles(subidxs);
+else
+    inputfiles = tmpfiles;
+end
+
+fprintf('Checking TIFF substack size...\n');
+
+for tiffidx=1:length(inputfiles)
+    tpath = fullfile(mempath, inputfiles{tiffidx});
+    data = matfile(tpath, 'Writable', true);
+    if ~isprop(data, 'sizY')
+        data.sizY = size(data.Y);
+    end
+    fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
+
+    if ~exist(D.slicesPath) || isempty(dir(fullfile(D.slicesPath, '*.tif')))
+        if ~exist(D.slicesPath)
+            mkdir(D.slicesPath)
+        end 
+        fprintf('Averaging slices...\n');
+        d1=data.sizY(1,1); d2=data.sizY(1,2); d3=data.sizY(1,3);
+
+        avgs = zeros([data.sizY(1,1),data.sizY(1,2),data.sizY(1,3)]);
+        for slice=1:d3
+            avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+            slicename = sprintf('average_slice%03d.tif', slice);
+            tiffWrite(avgs(:,:,slice), slicename, D.slicesPath);
+        end
+    end
+end
+
+    
+
 end

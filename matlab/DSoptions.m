@@ -37,6 +37,7 @@ Names = [
     % ROI mask info
     'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
     'seedrois           '       % provide seeds (centroids or masks) for initial ROI locations (default: false)
+    'maskpath           '	% path to file containing masks/centroids/etc. (must be specified if using seedrois)
     'maskdims           '       % dimensions of ROI masks ['2D', '3D']
     'maskshape          '       % mask shape ['circles','contours','3Dcontours','spheres']
     'maskfinder         '       % source of ROIs, if providing masks ['blobDetector', 'EMmasks', 'centroids'] (default: '')
@@ -146,11 +147,12 @@ Values = [
     % ROI mask info
     {'pixels'}                  % 'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
     {false}                  % 'seedrois           '       % provide seeds (centroids or masks) for initial ROI locations (default: false)
+    {''}		     % 'maskpath'	
     {'2D'}                  % 'maskdims           '       % dimensions of ROI masks ['2D', '3D']
     {'circles'}                  % 'maskshape          '       % mask shape ['circles','contours','3Dcontours','spheres']
     {''}                  % 'maskfinder         '       % source of ROIs, if providing masks ['blobDetector', 'EMmasks', 'centroids'] (default: '')
     % analysis meta info
-    {[1:20]}                  % 'slices             '       % indices of acquired slices that are included for analysis (data-only, default: [1:20])
+    {mat2str([1:20])}                  % 'slices             '       % indices of acquired slices that are included for analysis (data-only, default: [1:20])
     {false}                  % 'averaged           '       % single runs/trials or averaged (default: false)
     {[]}                     % 'matchedtiffs       '       % average matching tiffs or no?
     {[]}                  % 'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])

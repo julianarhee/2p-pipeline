@@ -78,7 +78,7 @@ infotable = struct2table(dsoptions, 'AsArray', true, 'RowNames', {D.name});
 analysisinfo_fn_tmp = fullfile(analysisDir, 'datastructsTMP.txt');
 writetable(infotable, analysisinfo_fn_tmp, 'WriteRowNames', true, 'Delimiter', '\t');
 infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true);
-delete(analysisinfo_fn_tmp)
+eval([delete analysisinfo_fn_tmp])
 
 % Check previously-made analyses:
 analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
@@ -97,7 +97,7 @@ else
 end
 
 writetable(allInfo, analysisinfo_fn, 'WriteRowNames', true, 'Delimiter', '\t');
-type(analysisinfo_fn)
+type(infotable)
 
 
 

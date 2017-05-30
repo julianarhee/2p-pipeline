@@ -46,6 +46,10 @@ if D.average
     end
 end
 
+D.slicesPath = fullfile(D.dataDir, 'average_slices');
+if ~exist(D.slicesPath, 'dir')
+    mkdir(D.slicesPath)
+end
 
 %% Get SI volume info:
 
