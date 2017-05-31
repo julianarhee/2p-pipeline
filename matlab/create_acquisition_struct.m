@@ -24,6 +24,7 @@ dsoptions = DSoptions(...
     'signalchannel', 1,...                                      % channel num of signal
     'roitype', '3Dcnmf',...                                     % method for roi extraction
     'seedrois', false,...                                      % provide external source of seed coords
+    'maskpath', '',...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
     'maskfinder', '',...                                 % method of finding masks, given set of seed coords
@@ -31,7 +32,7 @@ dsoptions = DSoptions(...
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
-    'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
+    'metaonly', false,...                                       % only get meta data from tiffs (if files too large)
     'nmetatiffs', 4);                                           % number of huge tiffs to exclude
 
 %% Set 3Dnmf params, if using roitype='3Dcnmf':
@@ -66,7 +67,7 @@ switch dsoptions.roitype
         if dsoptions.seedrois
             roiparams.patches = false;
         else
-            roiparams.patches = true;
+            roiparams.patches = false;
         end
        
         if roiparams.patches
