@@ -15,22 +15,20 @@ from skimage import img_as_uint
 from skimage import exposure
 import optparse
 
-#source = '/nas/volume1/2photon/RESDATA/TEFO'
-#session = '20161219_JR030W'
-#run = 'retinotopyFinalMask'
-#
-#displaymin = 10
-#displaymax = 2000
-#
+#TODO:  no hard-cording
+sourcepath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/tiffs'
+tiffs = os.listdir(sourcepath)
+tiffs = [t for t in tiffs if t.endswith('.tif')]
 
-#nflyback = 8
-#ndiscard = 8
-#
-#nslices_full = 38
-#
-#nchannels = 2                         # n channels in vol (ch1, ch2, ch1, ch2, ...)
-#nvolumes = 340
-#
+acquisition_names = ['fov6_retinobar_037Hz_final_nomask', 'fov6_retinobar_037Hz_final_bluemask']
+tiffs1 = [i for i in tiffs if acquisition_names[0] in i]
+tiffs2 = [i for i in tiffs if acquisition_names[1] in i]
+
+savepath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/tiffs'
+if not os.path.exists(savepath):
+    os.mkdirs(savepath)
+
+matchtrials = np.array([[1, 1], [2, 3], [3, 2], [4, 4]]) - 1 # bec 0-indexing
 
 parser = optparse.OptionParser()
 #parser.add_option('-S', '--source', action='store', dest='source', default='', help='source dir (parent of session dir)')
@@ -67,33 +65,6 @@ if visible:
     displaymin = float(options.displaymin) # For processed, 15000 good
     displaymax = float(options.displaymax) # For processed, 22000 good
 
-
-
-
-sourcepath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/tiffs'
-tiffs = os.listdir(sourcepath)
-tiffs = [t for t in tiffs if t.endswith('.tif')]
-
-acquisition_names = ['fov6_retinobar_037Hz_final_nomask', 'fov6_retinobar_037Hz_final_bluemask']
-tiffs1 = [i for i in tiffs if acquisition_names[0] in i]
-tiffs2 = [i for i in tiffs if acquisition_names[1] in i]
-
-savepath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/tiffs'
-if not os.path.exists(savepath):
-    os.mkdirs(savepath)
-
-#savepath = options.savepath
-
-#tiffpath = os.path.join(source, session, run)
-#tiffs = os.listdir(tiffpath)
-#tiffs = [t for t in tiffs if t.endswith('.tif')]
-
-#if len(savepath)==0:
-#    savepath = os.path.join(tiffpath, 'DATA')
-#if not os.path.exists(savepath):
-#    os.mkdir(savepath)
-#
-matchtrials = np.array([[1, 1], [2, 3], [3, 2], [4, 4]]) - 1 # bec 0-indexing
 
 tiffs_to_join = [[tiffs1[matchtrials[trial,0]], tiffs2[matchtrials[trial,1]]] for trial in range(matchtrials.shape[0])]
 

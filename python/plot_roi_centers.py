@@ -6,6 +6,20 @@ import tifffile as tf
 import scipy.io as spio
 from skimage import img_as_uint, img_as_ubyte
 
+
+source = '/nas/volume1/2photon/RESDATA/TEFO'
+session = '20161219_JR030W'
+run = 'retinotopyFinal'
+didx = 14 #5
+datastruct = 'datastruct_%03d' % didx
+
+
+# Specifiy TIFF paths (if not raw):
+runpath = os.path.join(source, session, run)
+
+tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/finalvolume/R2B1_tefo_avg_channel01_RGB.tif'
+
+
 def loadmat(filename):
     '''
     this function should be called instead of direct spio.loadmat
@@ -65,24 +79,7 @@ def _tolist(ndarray):
     return elem_list
 
 
-source = '/nas/volume1/2photon/RESDATA/TEFO'
-session = '20161219_JR030W'
-run = 'retinotopyFinal'
-didx = 14 #5
-datastruct = 'datastruct_%03d' % didx
-
-
-# Specifiy TIFF paths (if not raw):
-runpath = os.path.join(source, session, run)
-#tiffdir = 'DATA/int16'
-#tiffpath = os.path.join(runpath, tiffdir)
-#tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/average_volumes/avg_frames_conditions_channel01'
-
-#tiffpath = 
-#tiffs = os.listdir(tiffpath)
-#tiffs = [t for t in tiffs if t.endswith('.tif')]
-
-tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/finalvolume/R2B1_tefo_avg_channel01_RGB.tif'
+# Load averaged TIFF stack:
 tiffstack = tf.imread(tiffpath)
 print "Avgerage volume shape: ", tiffstack.shape
 if not tiffstack.dtype=='uint8':
@@ -94,6 +91,9 @@ savepath = os.path.join(runpath, 'analysis', datastruct, 'figures')
 if not os.path.exists(savepath):
     os.mkdir(savepath)
 
+
+# TODO:  as in plot_roi_masks.py, need to fix so that can generate new colormap given 
+# some set of centroids/masks at the outset.
 
 cellmap_source = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids' 
 cellmap_fn = 'cells_mapper_2_20170519_py2.pkl'
@@ -113,6 +113,8 @@ else:
     print "Loading colormap from source: ", cellmap_source
     print "Source file: ", colormap_fn
     colormap = pkl.load(open(os.path.join(cellmap_source, colormap_fn), 'rb'))
+
+
 
 
 # Load centroids:
