@@ -201,7 +201,7 @@ switch D.roiType
             D.maskInfo.roiSource = D.roiSource;
             D.maskInfo.slices = D.slices;
             D.maskInfo.seedRois = true;
-            D.maskInfo.maskfinder = dsoptions.maskfinder;
+            D.maskInfo.maskfinder = D.maskfinder;
   
             switch D.maskInfo.maskfinder
                 case 'blobDetector'
@@ -229,7 +229,8 @@ switch D.roiType
                     seeds(discardslices,:) = [];
                     seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
                     D.maskInfo.seeds = seeds;
-                    
+                    D.maskInfo.centroidsOnly = true;
+ 
                 case 'EMmasks'
                     volumesize = meta.volumeSizePixels;
                     roimat = load(D.maskInfo.roiSource); % ROI keys are slices with 1-indexing

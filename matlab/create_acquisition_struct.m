@@ -13,7 +13,7 @@ dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA/TEFO',...           % parent dir
     'session', '20161218_CE024',...                            % session name (single FOV)
     'run', 'retinotopy5',...                                % experiment name
-    'datastruct', 1,...                                        % datastruct idx
+    'datastruct', 2,...                                        % datastruct idx
     'acquisition', 'fov2_bar5',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', true,...                                            % 'scope type' (t/f)
@@ -23,15 +23,16 @@ dsoptions = DSoptions(...
     'channels', 2,...                                           % num channels acquired
     'signalchannel', 1,...                                      % channel num of signal
     'roitype', '3Dcnmf',...                                     % method for roi extraction
-    'seedrois', false,...                                      % provide external source of seed coords
+    'seedrois', true,...                                      % provide external source of seed coords
+    'maskpath','/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/retinotopy5/DATA/ROIs_average_slices/centroids_average_slices.mat',...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
-    'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'maskfinder', 'blobDetector',...                                 % method of finding masks, given set of seed coords
     'slices', [1:12],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
-    'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
+    'metaonly', false,...                                       % only get meta data from tiffs (if files too large)
     'nmetatiffs', 4);                                           % number of huge tiffs to exclude
 
 %% Set 3Dnmf params, if using roitype='3Dcnmf':

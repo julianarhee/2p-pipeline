@@ -23,6 +23,7 @@ existingAnalyses = {existingAnalyses(:).name}';
 if ~exist(dstructPath) 
     mkdir(dstructPath) 
     D = struct(); 
+    overwrite = false;
 else 
     fprintf('*********************************************************\n'); 
     fprintf('WARNING:  Specified datastruct -- %s -- exists. Overwrite?\n', datastruct); 
@@ -66,9 +67,9 @@ D.roiType = dsoptions.roitype;
 D.seedRois = dsoptions.seedrois;
 D.maskType = dsoptions.maskshape;
 D.roiSource = dsoptions.maskpath;
-
+D.maskfinder = dsoptions.maskfinder;
  
-%save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
+save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  
  
 fprintf('Created new datastruct analysis: %s\n', D.datastructPath) 
