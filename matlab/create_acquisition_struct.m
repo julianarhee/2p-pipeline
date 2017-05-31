@@ -13,7 +13,7 @@ dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA/TEFO',...           % parent dir
     'session', '20161218_CE024',...                            % session name (single FOV)
     'run', 'retinotopy5',...                                % experiment name
-    'datastruct', 1,...                                        % datastruct idx
+    'datastruct', 4,...                                        % datastruct idx
     'acquisition', 'fov2_bar5',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', true,...                                            % 'scope type' (t/f)
@@ -23,11 +23,11 @@ dsoptions = DSoptions(...
     'channels', 2,...                                           % num channels acquired
     'signalchannel', 1,...                                      % channel num of signal
     'roitype', '3Dcnmf',...                                     % method for roi extraction
-    'seedrois', false,...                                      % provide external source of seed coords
-    'maskpath', '',...
+    'seedrois', true,...                                      % provide external source of seed coords
+    'maskpath', '/nas/volume1/2photon/RESDATA/TEFO/20161218_CE024/retinotopy5/DATA/ROIs_average_slices/centroids_average_slices.mat',...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
-    'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'maskfinder', 'blobDetector',...                                 % method of finding masks, given set of seed coords
     'slices', [1:12],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
@@ -106,7 +106,7 @@ switch dsoptions.roitype
             'conn_comp', false);                     % extract largest connected component (binary, default: true)
 
 end
-roiparams.options.spatial_method = 'constrained';
+roiparams.options.spatial_method = 'regularized'; %'constrained';
 roiparams.options
 
 
@@ -116,11 +116,11 @@ roiparams.options
 % Create datastruct from options:
 % -------------------------------------------------------------------------
 fprintf('Creating new datastruct...\n')
-D = create_datastruct(dsoptions);
+D = create_datastruct(dsoptions, true);
 
 % Save param info to txt:
-writetable(struct2table(roiparams), fullfile(D.datastructPath, 'roiparams.txt'));
-writetable(stuct2table(dsoptions), fullfile(D.datastructPath, 'dsoptions.txt'));
+writetable(struct2table(roiparams, 'AsArray', true), fullfile(D.datastructPath, 'roiparams.txt'));
+writetable(struct2table(dsoptions, 'AsArray', true), fullfile(D.datastructPath, 'dsoptions.txt'));
 
 
 % Set paths to input tiffs:
