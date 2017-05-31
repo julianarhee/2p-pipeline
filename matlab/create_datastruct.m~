@@ -57,12 +57,18 @@ D.extraTiffsExcluded = dsoptions.excludedtiffs; %extraTiffsExcluded;
 D.slices = dsoptions.slices; %slicesToUse; 
 D.tefo = dsoptions.tefo; %tefo; 
 D.average = dsoptions.averaged; %average; 
- 
+
 if D.average 
     D.matchtrials = dsoptions.matchedtiffs; 
 end 
+
+D.roiType = dsoptions.roitype;
+D.seedRois = dsoptions.seedrois;
+D.maskType = dsoptions.maskshape;
+D.roiSource = dsoptions.maskpath;
+
  
-save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
+%save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  
  
 fprintf('Created new datastruct analysis: %s\n', D.datastructPath) 
@@ -71,14 +77,14 @@ fprintf('Created new datastruct analysis: %s\n', D.datastructPath)
 fields = fieldnames(dsoptions);
 for field = 1:length(fields)
     if ~isstr(dsoptions.(fields{field}))
-        dsoptions.(fields{field}) = mat2str(dsoptions.(fields{field}));
+        dsoptions.(fields{field}) = mat2str(double(dsoptions.(fields{field})));
     end
 end
 infotable = struct2table(dsoptions, 'AsArray', true, 'RowNames', {D.name});
 analysisinfo_fn_tmp = fullfile(analysisDir, 'datastructsTMP.txt');
 writetable(infotable, analysisinfo_fn_tmp, 'WriteRowNames', true, 'Delimiter', '\t');
-infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true);
-eval([delete analysisinfo_fn_tmp])
+infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'NaN'});
+delete(analysisinfo_fn_tmp)
 
 % Check previously-made analyses:
 analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
@@ -86,8 +92,20 @@ if exist(analysisinfo_fn, 'file')
     % Load it and check it:
     if overwrite
         previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true);
-        previousInfo({D.name},:) = infotable;
-        allInfo = previousInfo;
+        rownames = previousInfo.Properties.RowNames;
+        for field=1:length(fields)
+            if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
+                idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
+                previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
+            end
+        end
+        
+        if any(arrayfun(@(r) strcmp(D.name, rownames{r}), 1:length(rownames)))
+            previousInfo({D.name},:) = infotable;
+            allInfo = previousInfo;
+        else
+            allInfo = [previousInfo; infotable];
+        end    
     else
         allInfo = [previousInfo; infotable];
     end
@@ -97,7 +115,7 @@ else
 end
 
 writetable(allInfo, analysisinfo_fn, 'WriteRowNames', true, 'Delimiter', '\t');
-type(infotable)
+type(analysisinfo_fn)
 
 
 
