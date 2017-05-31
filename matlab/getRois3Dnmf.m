@@ -363,8 +363,10 @@ else
         % Update spatial components:
         % -----------------------------------------------------------------
         Yr = reshape(Y,d,T);
-        [A,b,Cin] = update_spatial_components(Yr,[],[],[Ain,bin],P,refnmf.options);
-        
+        fprintf('size Input A: %s\n', mat2str(size([Ain, bin])));
+        %[A,b,Cin] = update_spatial_components(Yr, [],[], [Ain, bin], P, refnmf.options);
+        [A,b,Cin] = update_spatial_components(Yr, [],[], Ain, P, refnmf.options);
+ 
         % Update temporal components:
         % -----------------------------------------------------------------
         P.p = 0;
