@@ -1,4 +1,4 @@
-function D = extract_traces_from_masks(D, meta)
+function D = extract_traces_from_masks(roiparams, D, meta)
 
 switch D.roiType
     case 'create_rois'

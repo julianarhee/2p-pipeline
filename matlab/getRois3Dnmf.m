@@ -171,12 +171,6 @@ for tiffidx = 1:length(files)
 %     pause(0.02);
 % end
 % 
-% 
-% 
-
-%% Specify paths to memmapped files:
-
-
 
 %% ca_source_extraction.
 
@@ -184,39 +178,9 @@ for tiffidx = 1:length(files)
 
 
 sizY = data.sizY;                       % size of data matrix
-% patch_size = [32,32,4];                   % size of each patch along each dimension (optional, default: [32,32])
-% overlap = [4,8,3];                        % amount of overlap in each dimension (optional, default: [4,4])
-% 
-%patches = construct_patches(sizY(1:end-1),patch_size,overlap);
-% K = 7;                                            % number of components to be found
-% tau = [4,8,3];                                    % std of gaussian kernel (size of neuron) 
-% p = 2;                                            % order of autoregressive system (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
-% merge_thr = 0.8;                                  % merging threshold
-
 options = D.maskInfo.nmfoptions;
-options
-% options = CNMFSetParms(...
-%     'd1',d1,'d2',d2,'d3',d3,...
-%     'search_method','ellipse','dist',3,...      % search locations when updating spatial components
-%     'deconv_method','constrained_foopsi',...    % activity deconvolution method
-%     'temporal_iter',2,...                       % number of block-coordinate descent steps 
-%     'cluster_pixels',false,...
-%     'ssub',1,...                                % spatial downsampling when processing
-%     'tsub',1,...                                % further temporal downsampling when processing
-%     'fudge_factor',0.96,...                     % bias correction for AR coefficients
-%     'merge_thr',merge_thr,...                   % merging threshold
-%     'gSig',tau,... 
-%     'max_size_thr',4,'min_size_thr',1,...    % max/min acceptable size for each component
-%     'spatial_method','regularized',...       % method for updating spatial components ('constrained')
-%     'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
-%     'time_thresh',0.6,...
-%     'space_thresh',0.6,...
-%     'thr_method', 'max',...
-%     'maxthr', 0.01); %...                      
 
-
-
-%%
+%
 
 %K = 1705;
 if D.maskInfo.params.patches
@@ -279,12 +243,6 @@ else
             if D.maskInfo.centroidsOnly
                 fprintf('Initializing components...\n');
                 [Ain,Cin,bin,fin,center] = initialize_components(Y,K,tau,options,P);  % initialize
-                %[Ain,Cin,bin,fin,center] = initialize_components(data.Y,K,tau,options,P);  % initialize
-        %         
-        %         if ~D.maskInfo.keepAll
-        %             fprintf('Filtering out very small components...\n');
-        %             ff = find(sum(Ain)<1e-3*mean(sum(Ain)));   % remove very small components
-        %         end
             else
                 fprintf('Using input masks (no initialization)...\n');
                 Ain = D.maskInfo.seeds;
@@ -326,14 +284,8 @@ else
         fprintf('Updating spatial...\n');
         Yr = reshape(Y,d,T);
         [A, b, Cin, P] = update_spatial_components(Yr, Cin, fin, [Ain, bin], P, options); 
-%         switch options.spatial_method
-%             case 'regularized'
-%                 %[A,b,Cin] = update_spatial_components(data.Yr,Cin,fin,[Ain,bin],P,options);
-%                 [A,b,Cin] = update_spatial_components(Yr,Cin,fin,[Ain,bin],P,options);
-%             case 'constrained'
-%                 [A,b,Cin] = update_spatial_components(Yr,Cin,fin,Ain,P,options);
-%         end
-        
+
+       
         % Update temporal components:
         % -----------------------------------------------------------------
         fprintf('Size A, after update spatial: %s\n', mat2str(size(A)));
@@ -349,12 +301,7 @@ else
             fprintf('Starting size A: %s', mat2str(size(A))); 
             [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
             [A, b, C, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
-%             switch options.spatial_method 
-%                 case 'regularized' 
-%                     [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
-%                 case 'constrained' 
-%                     [A, b, Cm, P] = update_spatial_components(Yr, Cm, f, Am, P, options);
-%             end
+
             fprintf('Done merging. Post-merge size A is: %s', mat2str(size(A))); 
             P.p = p;
             fprintf('Updating temporal components again.\n');
@@ -416,15 +363,11 @@ else
         % Update spatial components:
         % -----------------------------------------------------------------
         Yr = reshape(Y,d,T);
-        %[A,b,Cin] = update_spatial_components(data.Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
-%         [A,b,Cin] = update_spatial_components(Yr,refnmf.C,refnmf.f,[Ain,bin],P,refnmf.options);
         [A,b,Cin] = update_spatial_components(Yr,[],[],[Ain,bin],P,refnmf.options);
         
         % Update temporal components:
         % -----------------------------------------------------------------
         P.p = 0;
-        %[C,f,P,S,YrA] = update_temporal_components(data.Yr,A,b,Cin,refnmf.f,P,options);
-        %[C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,refnmf.f,P,options);
         [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,[],P,options);
 
         P.p = 2;

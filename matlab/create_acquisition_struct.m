@@ -66,7 +66,7 @@ switch dsoptions.roitype
         if dsoptions.seedrois
             roiparams.patches = false;
         else
-            roiparams.patches = false;
+            roiparams.patches = true;
         end
        
         if roiparams.patches
@@ -144,7 +144,7 @@ fprintf('Got source info for creating ROI masks.\n')
 
 tic()
 
-D = extract_traces_from_masks(D, meta);
+D = extract_traces_from_masks(roiparams, D, meta);
 
 toc();
 

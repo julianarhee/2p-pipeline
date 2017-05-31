@@ -92,7 +92,7 @@ if exist(analysisinfo_fn, 'file')
     % Load it and check it:
     if overwrite
         previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true); % 'TreatAsEmpty', {'Na'});
-%         rownames = previousInfo.Properties.RowNames;
+        rownames = previousInfo.Properties.RowNames;
 %         for field=1:length(fields)
 %             if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
 %                 idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
