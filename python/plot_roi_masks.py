@@ -10,21 +10,15 @@ import pandas as pd
 import optparse
 from skimage import img_as_uint
 
-## optparse for user-input:
-#source = '/nas/volume1/2photon/RESDATA/TEFO'
-#session = '20161219_JR030W'
-##experiment = 'gratingsFinalMask2'
-## datastruct_idx = 1
-#animal = 'R2B1'
-#receipt_date = '2016-12-30'
-#create_new = True 
-#
-# todo:  parse everything by session, instead of in bulk (i.e., all animals)...
-# animals = ['R2B1', 'R2B2']
-# receipt_dates = ['2016-12-20', '2016-12-30']
+
+
+# TODO:  fix so that all datapath naming is consistent, and don't have to hard-code.
+dstructpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/analysis/datastruct_014/datastruct_014.mat'
+outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
+outfile_fn = 'nmf_File%03d_masks_color.tif' % int(tiffidx+1)
+
 
 # Need better loadmat for dealing with .mat files in a non-annoying way:
-
 def loadmat(filename):
     '''
     this function should be called instead of direct spio.loadmat
@@ -83,6 +77,8 @@ def _tolist(ndarray):
 
     return elem_list
 
+
+# TODO:  hard-coded for EM masks that ship w/ colors, fix to generate new maps
 cellmap_source = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids' 
 cellmap_path = os.path.join(cellmap_source, 'cells_mapper_2_20170519_py2.pkl')
 cellmap = pkl.load(open(cellmap_path, 'rb'))
@@ -98,7 +94,8 @@ else:
     colormap_fn = get_colormap[0]
     colormap = pkl.load(open(os.path.join(cellmap_source, colormap_fn), 'rb'))
 
-dstructpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/analysis/datastruct_014/datastruct_014.mat'
+
+# Load datastruct and meta info:
 dstruct = loadmat(dstructpath)
 meta = loadmat(dstruct['metaPath'])
 
@@ -118,7 +115,7 @@ if check_masks:
     roimask = np.reshape(masks[:, roi], volumesize, order='F')
     roimask = np.swapaxes(roimask, 0, 1)
 
-    roimask = np.reshape(masks[:, roi], [22, 120, 120], order='C')
+    roimask = np.reshape(masks[:, roi], [szZ, szY, szX], order='C')
     roimask = np.swapaxes(roimask, 1, 2)
 
     from mayavi import mlab
@@ -148,8 +145,6 @@ for roi in range(nrois):
 #nmfvolume = np.swapaxes(nmfvolume, 0, 2)
 #nmfvolume = np.swapaxes(nmfvolume, 1, 2) # swap x,y again to draw in image-coords
 
-outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
-outfile_fn = 'nmf_File%03d_masks_color.tif' % int(tiffidx+1)
 tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
 
 
