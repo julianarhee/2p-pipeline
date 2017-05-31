@@ -112,8 +112,6 @@ roiparams.options
 
 
 %% Create datastruct for current analysis:
-
-
 % Create datastruct from options:
 % -------------------------------------------------------------------------
 fprintf('Creating new datastruct...\n')
@@ -152,4 +150,4 @@ toc();
 
 fprintf('FINISHED!\n')
 
-    
+   
