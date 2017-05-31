@@ -118,6 +118,10 @@ roiparams.options
 fprintf('Creating new datastruct...\n')
 D = create_datastruct(dsoptions);
 
+% Save param info to txt:
+writetable(struct2table(roiparams), fullfile(D.datastructPath, 'roiparams.txt'));
+writetable(stuct2table(dsoptions), fullfile(D.datastructPath, 'dsoptions.txt'));
+
 
 % Set paths to input tiffs:
 % -------------------------------------------------------------------------
