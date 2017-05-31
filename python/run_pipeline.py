@@ -42,3 +42,4 @@ dsoptions = eng.DSoptions(opts)
 
 # D = eng.create_datastruct(dsoptions, 'true') # add flag to overwrite automatically 
 
+eng.quit()
