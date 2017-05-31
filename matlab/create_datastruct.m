@@ -85,20 +85,20 @@ analysisinfo_fn_tmp = fullfile(analysisDir, 'datastructsTMP.txt');
 writetable(infotable, analysisinfo_fn_tmp, 'WriteRowNames', true, 'Delimiter', '\t');
 infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'Na'});
 delete(analysisinfo_fn_tmp)
-
+   
 % Check previously-made analyses:
 analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
 if exist(analysisinfo_fn, 'file')
     % Load it and check it:
     if overwrite
-        previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'Na'});
-        rownames = previousInfo.Properties.RowNames;
-        for field=1:length(fields)
-            if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
-                idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
-                previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
-            end
-        end
+        previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true); % 'TreatAsEmpty', {'Na'});
+%         rownames = previousInfo.Properties.RowNames;
+%         for field=1:length(fields)
+%             if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
+%                 idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
+%                 previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
+%             end
+%         end
         
         if any(arrayfun(@(r) strcmp(D.name, rownames{r}), 1:length(rownames)))
             previousInfo({D.name},:) = infotable;
