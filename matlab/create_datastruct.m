@@ -1,4 +1,4 @@
-function D = create_datastruct(dsoptions)
+function D = create_datastruct(dsoptions, overwriteflag)
 
 % --------------------------------------------------------------------
 % Create datastruct and save to file using input parameters.
@@ -27,8 +27,12 @@ if ~exist(dstructPath)
 else 
     fprintf('*********************************************************\n'); 
     fprintf('WARNING:  Specified datastruct -- %s -- exists. Overwrite?\n', datastruct); 
-    uinput = input('Press Y/n to overwrite or create new: \n', 's'); 
-    if strcmp(uinput, 'Y') 
+    if ~overwriteflag   
+	 uinput = input('Press Y/n to overwrite or create new: \n', 's')
+    else
+	uinput = 'Y'
+    end
+    if strcmp(uinput, 'Y') || overwriteflag 
         D = struct(); 
         fprintf('New datastruct created: %s.\n', datastruct); 
         fprintf('Not yet saved. Exit now to load existing datastruct.\n'); 
@@ -97,16 +101,17 @@ end
 analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
 if exist(analysisinfo_fn, 'file')
     % Load it and check it:
+    previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true) %, 'TreatAsEmpty', {'Na'})
+    rownames = previousInfo.Properties.RowNames;
+    for field=1:length(fields)
+	if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
+	    idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
+	    previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
+	end
+    end
+
     if overwrite
-        previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true) %, 'TreatAsEmpty', {'Na'})
-        rownames = previousInfo.Properties.RowNames;
-        for field=1:length(fields)
-            if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
-                idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
-                previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
-            end
-        end
-        
+       
         if any(arrayfun(@(r) strcmp(D.name, rownames{r}), 1:length(rownames)))
             previousInfo({D.name},:) = infotable;
             allInfo = previousInfo;
