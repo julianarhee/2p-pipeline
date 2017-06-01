@@ -230,6 +230,7 @@ switch D.roiType
                     seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
                     D.maskInfo.seeds = seeds;
                     D.maskInfo.centroidsOnly = true;
+                    D.maskInfo.roiIDs = 1:size(centroids.DoG, 1);
  
                 case 'EMmasks'
                     volumesize = meta.volumeSizePixels;
