@@ -172,7 +172,7 @@ for fidx=1:nTiffs
 %     for sl=1:nslices
 %         currSliceRois{end+1} = find(centers(:,3)==sl);
 %     end
-    roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:22, 'UniformOutput', 0))), maskcell, 'UniformOutput', 0);
+    roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:nslices, 'UniformOutput', 0))), maskcell, 'UniformOutput', 0);
 
     currSliceRois = {};
     % for sl=1:nslices
