@@ -30,7 +30,7 @@ D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
 %trimEnd = true;
 slicesToUse = D.slices;
 
-meta = load(D.metaPath);
+meta = load(D.metaPath)
 nTiffs = meta.nTiffs;
 
 % -------------------------------------------------------------------------
@@ -79,6 +79,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 % Get legends:
 if ~isfield(meta, 'legends')
+    fprintf('Creating legends.\n');
     legends = makeLegends(D.outputDir);
     meta.legends = legends;
     save(D.metaPath, '-append', '-struct', 'meta');
