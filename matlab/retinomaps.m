@@ -21,7 +21,7 @@ experiment = 'retinotopy5'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 4
+analysis_no = 5 %3 %4
 tefo = true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -327,7 +327,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 % VISUALIZE a given metric across (some of) the volume:
 % =========================================================================
 
-
+if strfind(D.roiType, '3D')
 fidx = 4;
 roi = 1;
 
@@ -345,7 +345,7 @@ metric = 'ratio';
 
 currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
 
-inputSource = 'NMFoutput'
+inputSource = 'NMF' %output'
 
 switch inputSource
     case 'NMF'
@@ -381,7 +381,9 @@ end
 nrois = size(masks,2);
 clear maskmat
 
-for roi=1:200:nrois
+step=round(nrois/100)
+
+for roi=1:step:nrois
     %rmapidx = find(abs(ratiospace-ratioMat(roi))==min(abs(ratiospace-ratioMat(roi))));
     switch metric
         case 'phase'
@@ -446,6 +448,8 @@ savefig(fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.fig', inputSource)))
 saveas(p1, fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.png', inputSource)), 'png')
 
 clf;
+
+end
 
 %% 2D maps (per slice):
 % =========================================================================

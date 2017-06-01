@@ -26,7 +26,7 @@ maskstruct = load(D.maskmatPath);
 if D.average
     memfilepath = D.averagePath;
 else
-    memfilepath = D.memPath;
+    memfilepath = D.mempath;
 end
 
 data_fns = dir(fullfile(memfilepath, '*.mat')); % Load memmaped movie files
@@ -72,8 +72,9 @@ maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2, d3), 1:nRois, 'Unif
 maskcell3D = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
 %maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
 
+nslices = d3;
 
-roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:22, 'UniformOutput', 0))), maskcell3D, 'UniformOutput', 0);
+roislices = cellfun(@(roimask) find(cell2mat(arrayfun(@(sl) any(find(roimask(:,:,sl))), 1:nslices, 'UniformOutput', 0))), maskcell3D, 'UniformOutput', 0);
 
 
 
@@ -191,7 +192,7 @@ maskStruct3D.maskcell3D = maskcell3D;
 maskStruct3D.centers = centers;
 maskStruct3D.coms = coms;
 maskStruct3D.roiMat = roiMat;
-maskStruct3D.roiIDs = maskstruct.roiIDs;
+maskStruct3D.roi3Didxs = maskstruct.roiIDs;
 
 % This maskPath points to the 3D mask cell array, i.e., each cell contains
 % 3D mask, and length of cell array is nRois:

@@ -87,7 +87,7 @@ if strfind(D.roiType, '3D')
         % TODO:  currently, nmf is run on EACH file (i.e., each file may have
         % different masks)... deal with this. [try:  use binary spatial comps
         % for A to enforce same locs. across files/runs]
-       tmpmasks = load(D.maskInfo.maskPaths{4});
+       tmpmasks = load(D.maskInfo.maskPaths{4})
        if strcmp(D.roiType, '3Dcnmf')
            masks = struct();
            fprintf('Getting masks and ids for 3Dnmf\n')
@@ -98,8 +98,9 @@ if strfind(D.roiType, '3D')
            masks.maskmat = maskmat;
            masks.maskids = maskids;
        else
-           masks.maskmat = full(double(tmpmasks.roiMat));
-           masks.maskids = tmpmasks.roi3Didxs;
+           maskmat = full(double(tmpmasks.roiMat));
+           masks.maskmat = maskmat;
+           masks.maskids = tmpmasks.roiIDs;
        end
        % maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
        
