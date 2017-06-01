@@ -27,7 +27,7 @@ dsoptions = DSoptions(...
     'maskpath', '',...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
-    'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'maskfinder', 'blobDetector',...                                 % method of finding masks, given set of seed coords
     'slices', [1:12],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging

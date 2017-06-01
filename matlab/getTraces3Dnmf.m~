@@ -126,11 +126,7 @@ for fidx=1:nTiffs
 
         maskStruct.file(fidx).maskcell = maskcell;
         maskStruct.file(fidx).centers = centers(currSliceRois{sl},:); %currSliceRois{sl};
-        %if isfield(D.maskInfo, 'roiIDs')
         maskStruct.file(fidx).roi3Didxs = D.maskInfo.roiIDs(currSliceRois{sl});  %currSliceRois{sl};
-        %else
-        %    maskStruct.file(fidx).roi3Didxs = currSliceRois{sl};
-        %end
 
 
         [fp,fn,fe] = fileparts(maskPath);
