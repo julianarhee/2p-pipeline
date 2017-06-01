@@ -13,7 +13,7 @@ dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA/TEFO',...           % parent dir
     'session', '20161218_CE024',...                            % session name (single FOV)
     'run', 'retinotopy5',...                                % experiment name
-    'datastruct', 1,...                                        % datastruct idx
+    'datastruct', 3,...                                        % datastruct idx
     'acquisition', 'fov2_bar5',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', true,...                                            % 'scope type' (t/f)
@@ -106,7 +106,7 @@ switch dsoptions.roitype
             'conn_comp', false);                     % extract largest connected component (binary, default: true)
 
 end
-roiparams.options.spatial_method = 'constrained';
+roiparams.options.spatial_method = 'regularized'; %'constrained';
 roiparams.options
 
 
@@ -116,11 +116,11 @@ roiparams.options
 % Create datastruct from options:
 % -------------------------------------------------------------------------
 fprintf('Creating new datastruct...\n')
-D = create_datastruct(dsoptions);
+D = create_datastruct(dsoptions, true);
 
 % Save param info to txt:
-writetable(struct2table(roiparams), fullfile(D.datastructPath, 'roiparams.txt'));
-writetable(stuct2table(dsoptions), fullfile(D.datastructPath, 'dsoptions.txt'));
+writetable(struct2table(roiparams, 'AsArray', true), fullfile(D.datastructPath, 'roiparams.txt'));
+writetable(struct2table(dsoptions, 'AsArray', true), fullfile(D.datastructPath, 'dsoptions.txt'));
 
 
 % Set paths to input tiffs:
