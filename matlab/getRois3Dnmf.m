@@ -284,7 +284,16 @@ else
         fprintf('Updating spatial...\n');
         Yr = reshape(Y,d,T);
         [A, b, Cin, P] = update_spatial_components(Yr, Cin, fin, [Ain, bin], P, options); 
-
+        
+        % Remove small components:
+        if ~D.maskInfo.keepAll
+            ff = find(sum(A)==0);
+            if ~isempty(ff)
+                fprintf('Removing %i empty components.\n', length(ff));
+                A(:,ff) = [];
+                Cin(ff,:) = [];
+            end
+        end    
        
         % Update temporal components:
         % -----------------------------------------------------------------
@@ -301,6 +310,13 @@ else
             fprintf('Starting size A: %s', mat2str(size(A))); 
             [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
             [A, b, C, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
+
+            ff = find(sum(A)==0);
+            if ~isempty(ff)
+                fprintf('Round 2: Removing %i empty components.\n', length(ff));
+                A(:,ff) = [];
+                C(ff,:) = [];
+            end
 
             fprintf('Done merging. Post-merge size A is: %s', mat2str(size(A))); 
             P.p = p;
