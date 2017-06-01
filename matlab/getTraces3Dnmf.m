@@ -70,7 +70,7 @@ for fidx=1:nTiffs
     maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2, d3), 1:nRois, 'UniformOutput', false);
     maskcell3D = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
     %maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
-    
+     
     
     % Sort ROIs by which slices they have sptial footprint on:
     % ---------------------------------------------------------------------
@@ -126,11 +126,11 @@ for fidx=1:nTiffs
 
         maskStruct.file(fidx).maskcell = maskcell;
         maskStruct.file(fidx).centers = centers(currSliceRois{sl},:); %currSliceRois{sl};
-        %if isfield(D.maskInfo, 'roiIDs')
-        maskStruct.file(fidx).roi3Didxs = D.maskInfo.roiIDs(currSliceRois{sl});  %currSliceRois{sl};
-        %else
-        %    maskStruct.file(fidx).roi3Didxs = currSliceRois{sl};
-        %end
+        if isfield(D.maskInfo, 'roiIDs')
+            maskStruct.file(fidx).roi3Didxs = D.maskInfo.roiIDs(currSliceRois{sl});  %currSliceRois{sl};
+        else
+            maskStruct.file(fidx).roi3Didxs = currSliceRois{sl};
+        end
 
 
         [fp,fn,fe] = fileparts(maskPath);
@@ -194,8 +194,11 @@ for fidx=1:nTiffs
     maskStruct3D.centers = centers;
     maskStruct3D.spatialcomponents = spatialcomponents;
     maskStruct3D.roiMat = roiMat;
-    maskStruct3D.roi3Didxs = D.maskInfo.roiIDs; %maskstruct.roiIDs;
-
+    if ~isfield(D.maskInfo, 'roiIDs')
+        maskStruct3D.roi3Didxs = 1:nrois;
+    else
+        maskStruct3D.roi3Didxs = D.maskInfo.roiIDs; %maskstruct.roiIDs;
+    end
 
     % This maskPath points to the 3D mask cell array, i.e., each cell contains
     % 3D mask, and length of cell array is nRois:
