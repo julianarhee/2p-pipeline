@@ -245,7 +245,7 @@ for sidx = 1:length(slicesToUse)
 %                 end
                 tOff = currSecs(3);
                 if length(currSecs) < 4
-                    %continue;
+                    continue;
                     fprintf('Not enough tstamps found in stim %s, file %i, trial %i.\n', currStim, tiffIdx, trialIdx);
                     tPost = tOff + ITI;
                 else
