@@ -74,7 +74,7 @@ tiffpath = os.path.join(source, session, run)
 tiffs = os.listdir(tiffpath)
 tiffs = [t for t in tiffs if t.endswith('.tif')]
 
-print "Found %i TIFFs for processing."
+print "Found %i TIFFs for processing." % len(tiffs)
 for i,tiff in enumerate(tiffs):
     print i, tiff
 
