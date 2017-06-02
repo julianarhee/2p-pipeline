@@ -1,5 +1,12 @@
 #!/usr/bin/env python2
 
+'''
+Create TIFF of extracted activity traces. Needs to be read into FIJI to create hyperstack.
+
+Visualize with movie in spimagine.
+
+'''
+
 import scipy.io as spio
 import os
 import uuid
@@ -10,6 +17,7 @@ import pandas as pd
 import optparse
 from skimage import img_as_uint
 import scipy
+import tifffile as tf
 
 ## optparse for user-input:
 #source = '/nas/volume1/2photon/RESDATA/TEFO'
@@ -86,7 +94,7 @@ def _tolist(ndarray):
 
 
 
-tiffidx = 1
+tiffidx = 0
 source = '/nas/volume1/2photon/RESDATA/TEFO'
 session = '20161218_CE024'
 run = 'retinotopy5'
@@ -191,6 +199,7 @@ check_average = False
 
 # Try averaging cycles:
 currtrace = rawtraces[:, 45]
+ncycles = 30
 stepsize = len(currtrace)/ncycles
 cycidxs = np.arange(0, len(currtrace), stepsize)
 
