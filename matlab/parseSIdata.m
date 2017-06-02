@@ -58,19 +58,25 @@ for movNum = movieOrder
             origMovies = dir(fullfile(parentDir,'*.tif'));
             origMovies = {origMovies(:).name};
             [~, scanImageMetadata] = tiffReadMeta(fullfile(parentDir, origMovies{movNum}));
+            % but movie file comes from processed tiff:
             [mov, ~] = tiffRead(fullfile(sourceDir, movies{movNum}));
         else
             [mov, scanImageMetadata] = tiffRead(fullfile(sourceDir, movies{movNum}));
         end
     end
     
-    if ~metaonly
+    % If using processedtiffs, check to make sure FOV isn't cropped/changed. Fix, if so:    
+    if ~metaonly || processedtiffs
         fprintf('Mov size is: %s\n.', mat2str(size(mov)));
         fprintf('Mov type is: %s\n.', class(mov)); 
+        fprintf('Pixels Per Line: %i\n', scanImageMetadata.SI.hRoiManager.pixelsPerLine)
+        fprintf('Lines Per Frame: %i\n', scanImageMetadata.SI.hRoiManager.linesPerFrame)
         if size(mov,2)~=scanImageMetadata.SI.hRoiManager.pixelsPerLine
+            fprintf('Cropping pixels per line to %i\n', size(mov,2));
             scanImageMetadata.SI.hRoiManager.pixelsPerLine = size(mov,2);
         end
         if size(mov,1)~=scanImageMetadata.SI.hRoiManager.linesPerFrame
+            fprintf('Cropping lines per frame to %i\n', size(mov,1));
             scanImageMetadata.SI.hRoiManager.linesPerFrame = size(mov,1);
         end
     end
@@ -95,12 +101,20 @@ for movNum = movieOrder
         try
            if processedtiffs
                fprintf('Parsing processed SI tiff and getting adjusted meta data...\n');
+               fprintf('Size of movie: %s\n', mat2str(size(mov)));
                nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices;
                nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames;
-               nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
-               nSlicesSelected = nSlicesTmp - nDiscardTmp;
                nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
-               
+               nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
+               expectedSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp; 
+                if expectedSlices ~= (nSlicesTmp - nDiscardTmp)
+                    nDiscardTmp = nSlicesTmp - expectedSlices;
+                    falseDiscard = true
+                else
+                    falseDiscard = false
+                end
+                nSlicesSelected = nSlicesTmp - nDiscardTmp;
+                              
                scanImageMetadata.SI.hStackManager.numSlices = nSlicesSelected;
                scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames = 0;
                scanImageMetadata.SI.hFastZ.numFramesPerVolume = scanImageMetadata.SI.hStackManager.numSlices;
@@ -113,7 +127,12 @@ for movNum = movieOrder
                        continue;
                    else
                        currfield = scanImageMetadata.(metanames{field});
-                       startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+                        if falseDiscard
+                            % there are no additional empty flybacks at the end of volume, so just skip every nSlicesTmp
+                            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield)); fprintf('N volumes based on start indices: %i\n', length(startidxs));
+                        else
+                            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+                        end
                        if iscell(currfield)
                            tmpfield = cell(1, nFramesSelected);
                        else

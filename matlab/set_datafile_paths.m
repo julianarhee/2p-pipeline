@@ -29,6 +29,7 @@ function D = set_datafile_paths(D, dsoptions)
 if isempty(dsoptions.datapath)
     D.processedtiffs = false;
 else
+    fprintf('Using processed tiffs from:\n %s\n', fullfile(D.sourceDir, dsoptions.datapath));
     D.processedtiffs = true;
 end
 D.dataDir = fullfile(D.sourceDir, dsoptions.datapath);
