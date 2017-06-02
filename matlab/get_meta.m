@@ -60,7 +60,7 @@ switch metaInfo
                     end
 
                 otherwise
-                    if D.metaonly
+                    if D.metaonly || D.processedtiffs
                         parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, [], [], D.metaonly, D.processedtiffs);
                     else
                         parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir);
