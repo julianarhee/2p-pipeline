@@ -192,7 +192,7 @@ if D.maskInfo.params.patches && usePreviousA
     %% Run on patches (around 15 minutes)
 
     tic;
-    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
+    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data.Y ,K,patches,tau,p,options);
     fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
 
     results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
@@ -210,6 +210,24 @@ if D.maskInfo.params.patches && usePreviousA
 
     fprintf('Saved results of run_CNMF_patches, File%03d.\n', tiffidx);
 
+    toc
+
+    % Classify components:
+    fprintf('Classifing components!\n');
+    tic;
+
+    %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+    classification_fn = ['classification_refpatch_' + filename + '.mat'];
+    classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+    
+    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+    [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+    classify.ROIvars = ROIvars;
+    classify.keep = keep;
+    classify.A_ordered = A_or;
+    classify.C_ordered = C_or;
+    classify.S_ordered = S_or;
+    classify.P_ordered = P_or;
     toc
 
     % 256x256x20 volume:
@@ -306,6 +324,7 @@ else
         P.p = 2;
         
         if ~D.maskInfo.keepAll
+            classify = true;
             fprintf('Merging components...\n');
             fprintf('Starting size A: %s', mat2str(size(A))); 
             [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
@@ -323,10 +342,26 @@ else
             fprintf('Updating temporal components again.\n');
             [C, F, P, S] = update_temporal_components(Yr, A, b, C, f, P, options);
         end        
-        % Classify components:
+      
+       % Classify components:
         % -----------------------------------------------------------------
         %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(double(Y),A,C,b,f,YrA,options);
         %[A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+        if classify
+            classification_fn = ['classification_ref_' + filename + '.mat'];
+            classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+
+            fprintf('Classifing components!\n');
+            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+            [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+            classify.ROIvars = ROIvars;
+            classify.keep = keep;
+            classify.A_ordered = A_or;
+            classify.C_ordered = C_or;
+            classify.S_ordered = S_or;
+            classify.P_ordered = P_or;
+        end      
+
         [~,background_df] = extract_DF_F(Yr,A,C,P,options);         
         %[C_df,~] = extract_DF_F(Yr,A,C,P,options); 
         
@@ -392,8 +427,22 @@ else
         
         % Classify components:
         % -----------------------------------------------------------------
-        %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(double(Y),A,C,b,f,YrA,options);
-        %[A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+        classification_fn = ['classification_' + filename + '.mat'];
+        classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+        [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+        classify.ROIvars = ROIvars;
+        classify.keep = keep;
+        classify.A_ordered = A_or;
+        classify.C_ordered = C_or;
+        classify.S_ordered = S_or;
+        classify.P_ordered = P_or;
+              
+
+
+
+
+        
         [~,background_df] = extract_DF_F(Yr,A,C,P,options); 
         
         % Extract fluorescence and DF/F on native temporal resolution

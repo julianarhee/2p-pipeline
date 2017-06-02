@@ -347,7 +347,7 @@ switch D.roiType
             end
         end
         if getref
-            if roiparam.patches
+            if roiparams.patches
                 D.maskInfo.params.K = roiparams.patchK;
             end
             [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
