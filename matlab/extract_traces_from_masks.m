@@ -59,25 +59,61 @@ switch D.roiType
         D.maskInfo = struct();
         D.maskInfo.slices = D.slices; %slicesToUse;
         D.maskInfo.roiSource = D.roiSource;
-
+        D.maskInfo.maskfinder = D.maskfinder;
         
         % Create MASKMAT -- single mask for each trace:
         % ----------------------------------------------------------------- 
+
         if strcmp(D.maskType, 'spheres')
             D.maskInfo.roiPath = D.roiSource;
             roimat = load(D.maskInfo.roiSource); 
             roinames = sort(fieldnames(roimat));
 
-            centers = zeros(length(roinames), 3);
-            radii = zeros(length(roinames), 1);
-            roiIDs = zeros(length(roinames), 1);
-            for roi=1:length(roinames)
-                centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
-                radii(roi) = 1.5;
-                roiname = roinames{roi};
-                roiIDs(roi) = str2double(roiname(5:end));
+            switch D.maskInfo.maskfinder
+                case 'blobDetector'
+                    D.maskInfo.blobType = 'difference';
+                    D.maskInfo.keepAll = true;
+                    
+                    centroids = load(D.maskInfo.roiSource); 
+                    % centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+                    if isfield(D.maskInfo, 'blobType')
+                        if strcmp(D.maskInfo.blobType, 'difference')
+                            seeds = centroids.DoG;
+                        else
+                            seeds = centroids.LoG;
+                        end
+                    end
+                    % Add 1 to x,y bec python 0-indexes (no need to do this for
+                    % slice #)
+                    % NOTE:  05/24/2017 -- roi_blob_detector.ipynb saves output of [y,x,r] for slices as:
+                    % [x,y,z+1] -- don't need to +1 for z, and don't need to swap x,y.
+                    seeds(:,1) = seeds(:,1)+1;
+                    seeds(:,2) = seeds(:,2)+1;
+
+                    % Remove ignored slics:
+                    discardslices = find(seeds(:,3)<D.slices(1));
+                    seeds(discardslices,:) = [];
+                    seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
+                    %D.maskInfo.seeds = seeds;
+                    centers = seeds;
+                    radii = repmat(roiparams.radius, length(centers), 1);
+                    roiIDs = 1:size(centroids.DoG, 1);
+ 
+                case 'centroids'
+                    centers = zeros(length(roinames), 3);
+                    radii = zeros(length(roinames), 1);
+                    roiIDs = zeros(length(roinames), 1);
+                    for roi=1:length(roinames)
+                        centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
+                        radii(roi) = roiparams.radius; %1.5;
+                        roiname = roinames{roi};
+                        roiIDs(roi) = str2double(roiname(5:end));
+                    end
             end
-        
+
+            D.maskInfo.centroidsOnly = true;
+            D.maskInfo.roiIDs = roiIDs;
+                
             volumesize = meta.volumeSizePixels;
             %centers = round(centers);
             view_sample = false;
@@ -101,6 +137,10 @@ switch D.roiType
             maskstruct.maskmat = maskmat;
             maskstruct.roiIDs = cellfun(@(roiname) str2double(roiname(5:end)), roinames);
             maskstuct.volumesize = volumesize;
+
+            D.maskInfo.centroidsOnly = false;
+            D.maskInfo.roiIDs = maskstruct.roiIDs;
+            
             D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
             save(D.maskmatPath, '-struct', 'maskstruct');
         end
