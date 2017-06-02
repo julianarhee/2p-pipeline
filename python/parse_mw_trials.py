@@ -159,9 +159,10 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
             # Find all trigger LOW events after the first onset trigger:
             tmp_first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0] # First find 1st set assignment to DI 
             first_off_ev = next(i for i in trigg_evs[tmp_first_trigger:] if i['value']==1) # Since 1=frame OFF, first find this one
-            first_off_idx = np.where([i.time==first_off_ev.time for i in trigg_evs])[0]
+            first_off_idx = np.where([i.time==first_off_ev.time for i in trigg_evs])[0][0]
             first_trigger_idx = first_off_idx - 1 # since prev versions of protocol incorrectly re-assign trigger variable, sometimes there are repeats of "0" (which means frame-start, and shoudl not have been re-assigned in protocol -- this is fixed in later versions)
-            first_trigger_ev = trigg_evs[first_trigger_idx]
+            print "first trigger idx: ", first_trigger_idx
+	    first_trigger_ev = trigg_evs[first_trigger_idx]
 
             curr_idx = copy.copy(first_off_idx)
 
