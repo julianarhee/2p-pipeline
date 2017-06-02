@@ -344,8 +344,11 @@ roi = 1;
 metric = 'ratio';
 
 currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
-
+if strcmp(D.roiType, '3Dcnmf')
 inputSource = 'NMF' %output'
+else
+inputSource = ''
+end
 
 switch inputSource
     case 'NMF'
@@ -373,7 +376,7 @@ end
 % Test viewing:
 maskPaths3D = D.maskInfo.maskPaths;
 maskmat = load(maskPaths3D{fidx});
-if strcmp(D.roiType, '3Dcnmf') || strcmp(D.roType, '3Dnmf')
+if strcmp(D.roiType, '3Dcnmf') || strcmp(D.roiType, '3Dnmf')
     masks = maskmat.spatialcomponents;
 elseif strcmp(D.roiType, 'manual3Drois')
     masks = maskmat.roiMat;
