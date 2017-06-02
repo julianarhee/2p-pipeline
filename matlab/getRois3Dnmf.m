@@ -183,7 +183,7 @@ options = D.maskInfo.nmfoptions;
 %
 
 %K = 1705;
-if D.maskInfo.params.patches && usePreviousA
+if D.maskInfo.params.patches && ~usePreviousA
     
     fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
@@ -217,7 +217,7 @@ if D.maskInfo.params.patches && usePreviousA
     tic;
 
     %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,keep] = classify_components(data.Y,A,C,b,f,YrA,options);
-    classification_fn = ['classification_refpatch_' + filename + '.mat'];
+    classification_fn = ['classification_refpatch_' filename '.mat'];
     classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
     
     [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
@@ -348,7 +348,7 @@ else
         %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(double(Y),A,C,b,f,YrA,options);
         %[A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         if classify
-            classification_fn = ['classification_ref_' + filename + '.mat'];
+            classification_fn = ['classification_ref_' filename '.mat'];
             classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
 
             fprintf('Classifing components!\n');
@@ -427,7 +427,7 @@ else
         
         % Classify components:
         % -----------------------------------------------------------------
-        classification_fn = ['classification_' + filename + '.mat'];
+        classification_fn = ['classification_' filename '.mat'];
         classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
         [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
         [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
