@@ -383,7 +383,7 @@ for tiffidx=1:length(inputfiles)
         for slice=1:d3
             avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
             slicename = sprintf('average_slice%03d.tif', slice);
-            tiffWrite(avgs(:,:,slice), slicename, D.slicesPath);
+            tiffWrite(avgs(:,:,slice), slicename, D.sliceimagepath);
         end
     end
 end
