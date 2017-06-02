@@ -1,4 +1,4 @@
-function D = extract_traces_from_masks(roiparams, D, meta)
+function D = extract_traces_from_masks(roiparams, D, meta, getref)
 
 switch D.roiType
     case 'create_rois'
@@ -329,18 +329,44 @@ switch D.roiType
          
         % Run ONCE to get reference components:
         roistart = tic();
-
-        getref = true;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
-        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
-        
-        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
-        D.maskInfo.ref.nmfoptions = nmfoptions;
+        if isempty(getref)
+            getref = true;
+            fprintf('Getting reference components first...\n');
+        elseif ~getref
+            nmffiles = dir(fullfile(D.nmfPath, '*.mat'));
+            if isempty(nmffiles)
+                fprintf('No previous ref NMF found.  Getting new reference.\n');
+                getref = true;
+            else
+                fprintf('Loading previous ref: %s\n', nmffiles{1}.name);
+                D.maskInfo.ref.refnmfPath = fullfile(D.nmfPath, nmffiles{1}.name);
+                tmpnmf = matfile(D.maskInfo.ref.refnmfPath);
+                D.maskInfo.ref.nmfoptions = tmpnmf.options;
+                getref = false;
+                clear tmpnmf
+            end
+        end
+        if getref
+            if roiparam.patches
+                D.maskInfo.params.K = roiparams.patchK;
+            end
+            [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
+            fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
+            
+            D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
+            D.maskInfo.ref.nmfoptions = nmfoptions;
+        end
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         toc(roistart);
         
         % Run AGAIN to get other components with same spatials:
+        fprintf('Getting components from previously extracted components.\n');
         getref = false;
+        if roiparam.patches
+            % Use masks from REF, don't run patches.
+            D.maskInfo.params.K = roiparams.fullK;
+            D.maskInfo.patches = false;
+        end
         [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
        
         D.maskInfo.params.nmfoptions = nmfoptions;
@@ -367,7 +393,6 @@ switch D.roiType
  
         % Get traces:
         % -----------------------------------------------------------------   
-        tracestart = tic();
         [D.tracesPath, D.nSlicesTrace] = getTraces3Dnmf(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 

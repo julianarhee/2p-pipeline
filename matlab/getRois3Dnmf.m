@@ -183,7 +183,7 @@ options = D.maskInfo.nmfoptions;
 %
 
 %K = 1705;
-if D.maskInfo.params.patches
+if D.maskInfo.params.patches && usePreviousA
     
     fprintf('Processing patches for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
@@ -471,7 +471,8 @@ if getref
 else
     nmf_outfile = ['nmfoutput_' filename, '.mat']
 end
-        
+
+% patch output:  [A,b,C,f,S,P,RESULTS,YrA]        
         
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
