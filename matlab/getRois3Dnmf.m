@@ -349,7 +349,7 @@ else
         %[A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         if classify
             classification_fn = ['classification_ref_' filename '.mat'];
-            classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+            classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
 
             fprintf('Classifing components!\n');
             [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
@@ -428,7 +428,7 @@ else
         % Classify components:
         % -----------------------------------------------------------------
         classification_fn = ['classification_' filename '.mat'];
-        classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+        classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
         [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
         [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         classify.ROIvars = ROIvars;
