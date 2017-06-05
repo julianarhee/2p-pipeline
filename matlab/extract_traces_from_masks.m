@@ -1,4 +1,4 @@
-function D = extract_traces_from_masks(roiparams, D, meta)
+function D = extract_traces_from_masks(roiparams, D, meta, getref)
 
 switch D.roiType
     case 'create_rois'
@@ -59,25 +59,61 @@ switch D.roiType
         D.maskInfo = struct();
         D.maskInfo.slices = D.slices; %slicesToUse;
         D.maskInfo.roiSource = D.roiSource;
-
+        D.maskInfo.maskfinder = D.maskfinder;
         
         % Create MASKMAT -- single mask for each trace:
         % ----------------------------------------------------------------- 
+
         if strcmp(D.maskType, 'spheres')
             D.maskInfo.roiPath = D.roiSource;
             roimat = load(D.maskInfo.roiSource); 
             roinames = sort(fieldnames(roimat));
 
-            centers = zeros(length(roinames), 3);
-            radii = zeros(length(roinames), 1);
-            roiIDs = zeros(length(roinames), 1);
-            for roi=1:length(roinames)
-                centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
-                radii(roi) = 1.5;
-                roiname = roinames{roi};
-                roiIDs(roi) = str2double(roiname(5:end));
+            switch D.maskInfo.maskfinder
+                case 'blobDetector'
+                    D.maskInfo.blobType = 'difference';
+                    D.maskInfo.keepAll = true;
+                    
+                    centroids = load(D.maskInfo.roiSource); 
+                    % centroids = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
+                    if isfield(D.maskInfo, 'blobType')
+                        if strcmp(D.maskInfo.blobType, 'difference')
+                            seeds = centroids.DoG;
+                        else
+                            seeds = centroids.LoG;
+                        end
+                    end
+                    % Add 1 to x,y bec python 0-indexes (no need to do this for
+                    % slice #)
+                    % NOTE:  05/24/2017 -- roi_blob_detector.ipynb saves output of [y,x,r] for slices as:
+                    % [x,y,z+1] -- don't need to +1 for z, and don't need to swap x,y.
+                    seeds(:,1) = seeds(:,1)+1;
+                    seeds(:,2) = seeds(:,2)+1;
+
+                    % Remove ignored slics:
+                    discardslices = find(seeds(:,3)<D.slices(1));
+                    seeds(discardslices,:) = [];
+                    seeds(:,3) = seeds(:,3) - D.slices(1) + 1; % shift so that starting slice is slice 1
+                    %D.maskInfo.seeds = seeds;
+                    centers = seeds;
+                    radii = repmat(roiparams.radius, length(centers), 1);
+                    roiIDs = 1:size(centroids.DoG, 1);
+ 
+                case 'centroids'
+                    centers = zeros(length(roinames), 3);
+                    radii = zeros(length(roinames), 1);
+                    roiIDs = zeros(length(roinames), 1);
+                    for roi=1:length(roinames)
+                        centers(roi,:) = roimat.(roinames{roi}).TEFO + 1;
+                        radii(roi) = roiparams.radius; %1.5;
+                        roiname = roinames{roi};
+                        roiIDs(roi) = str2double(roiname(5:end));
+                    end
             end
-        
+
+            D.maskInfo.centroidsOnly = true;
+            D.maskInfo.roiIDs = roiIDs;
+                
             volumesize = meta.volumeSizePixels;
             %centers = round(centers);
             view_sample = false;
@@ -101,6 +137,10 @@ switch D.roiType
             maskstruct.maskmat = maskmat;
             maskstruct.roiIDs = cellfun(@(roiname) str2double(roiname(5:end)), roinames);
             maskstuct.volumesize = volumesize;
+
+            D.maskInfo.centroidsOnly = false;
+            D.maskInfo.roiIDs = maskstruct.roiIDs;
+            
             D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
             save(D.maskmatPath, '-struct', 'maskstruct');
         end
@@ -289,18 +329,44 @@ switch D.roiType
          
         % Run ONCE to get reference components:
         roistart = tic();
-
-        getref = true;
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
-        fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
-        
-        D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
-        D.maskInfo.ref.nmfoptions = nmfoptions;
+        if isempty(getref)
+            getref = true;
+            fprintf('Getting reference components first...\n');
+        elseif ~getref
+            nmffiles = dir(fullfile(D.nmfPath, '*.mat'));
+            if isempty(nmffiles)
+                fprintf('No previous ref NMF found.  Getting new reference.\n');
+                getref = true;
+            else
+                fprintf('Loading previous ref: %s\n', nmffiles{1}.name);
+                D.maskInfo.ref.refnmfPath = fullfile(D.nmfPath, nmffiles{1}.name);
+                tmpnmf = matfile(D.maskInfo.ref.refnmfPath);
+                D.maskInfo.ref.nmfoptions = tmpnmf.options;
+                getref = false;
+                clear tmpnmf
+            end
+        end
+        if getref
+            if roiparams.patches
+                D.maskInfo.params.K = roiparams.patchK;
+            end
+            [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
+            fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
+            
+            D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
+            D.maskInfo.ref.nmfoptions = nmfoptions;
+        end
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         toc(roistart);
         
         % Run AGAIN to get other components with same spatials:
+        fprintf('Getting components from previously extracted components.\n');
         getref = false;
+        if roiparam.patches
+            % Use masks from REF, don't run patches.
+            D.maskInfo.params.K = roiparams.fullK;
+            D.maskInfo.patches = false;
+        end
         [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
        
         D.maskInfo.params.nmfoptions = nmfoptions;
@@ -327,7 +393,6 @@ switch D.roiType
  
         % Get traces:
         % -----------------------------------------------------------------   
-        tracestart = tic();
         [D.tracesPath, D.nSlicesTrace] = getTraces3Dnmf(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 

@@ -62,6 +62,7 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
     tic()
     for tiffidx = 1:length(tiffs)
     tpath = fullfile(tiffDir, tiffs{tiffidx});
+    fprintf('Processing tiff to mem from path:\n%s\n', tpath);
     [source, filename, ext] = fileparts(tpath);
 
     matpath = fullfile(mempath, sprintf('%s.mat', filename));
@@ -78,16 +79,17 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
 %         nVolumes = meta.file(1).si.nVolumes;
 %     end
 
-    nSlices = meta.file(tiffidx).si.nFramesPerVolume;
-    nRealFrames = meta.file(tiffidx).si.nSlices;
-    nVolumes = meta.file(tiffidx).si.nVolumes;
-                
-    if D.tefo
-        nChannels=2;
-    else
-        nChannels=1;
-    end
-    
+    nSlices = meta.file(tiffidx).si.nFramesPerVolume
+    nRealFrames = meta.file(tiffidx).si.nSlices
+    nVolumes = meta.file(tiffidx).si.nVolumes
+    nChannels = meta.file(tiffidx).si.nChannels
+ 
+%     if D.tefo
+%         nChannels=2;
+%     else
+%         nChannels=1;
+%     end
+%     
     if D.metaonly && ~D.processedtiffs % i.e., tiff is too huge to load into matlab
         
         % Since too large (for Matlab), already parsed in Fiji:
@@ -121,7 +123,7 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
         tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
         
         % Only grab green channel:
-        if strcmp(D.preprocessing, 'raw') && D.tefo
+        if strcmp(D.preprocessing, 'raw') %&& D.tefo
             Yt = Yt(:,:,1:2:end);
         end
 
@@ -389,7 +391,7 @@ for tiffidx=1:length(inputfiles)
         for slice=1:d3
             avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
             slicename = sprintf('average_slice%03d.tif', slice);
-            tiffWrite(avgs(:,:,slice), slicename, D.slicesPath);
+            tiffWrite(avgs(:,:,slice), slicename, D.sliceimagepath);
         end
     end
 end

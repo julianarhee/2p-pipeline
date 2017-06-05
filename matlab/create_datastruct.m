@@ -88,12 +88,12 @@ end
 infotable = struct2table(dsoptions, 'AsArray', true, 'RowNames', {D.name});
 analysisinfo_fn_tmp = fullfile(analysisDir, 'datastructsTMP.txt');
 writetable(infotable, analysisinfo_fn_tmp, 'WriteRowNames', true, 'Delimiter', '\t');
-infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true) %, 'TreatAsEmpty', {'Na'})
+infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'Na'});
 delete(analysisinfo_fn_tmp)
 for field=1:length(fields)
     if ~iscell(infotable{1,fields{field}}) && any(find(isnan(infotable{1,fields{field}})))
         % idxs2fix = find(isnan(infotable{1,fields{field}))
-        infotable.(fields{field}) = {'NaN'}
+        infotable.(fields{field}) = {'NaN'};
     end
 end
  
@@ -101,12 +101,14 @@ end
 analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
 if exist(analysisinfo_fn, 'file')
     % Load it and check it:
-    previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true) %, 'TreatAsEmpty', {'Na'})
+    previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'Na'})
     rownames = previousInfo.Properties.RowNames;
     for field=1:length(fields)
 	if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
 	    idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
-	    previousInfo{idxs2fix, fields{field}} = repmat('NaN', length(idxs2fix), 1);
+            for idx = idxs2fix
+	    previousInfo(idx,:).(fields{field}) = ['NaN']; %, length(idxs2fix), 1);
+            end
 	end
     end
 

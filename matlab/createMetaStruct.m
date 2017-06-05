@@ -4,7 +4,11 @@ function meta = createMetaStruct(D, varargin)
 % Outputs 1 struct that contains info about current acquisition.
 % Struct fields include "mw" and "si" relevant info that is parsed by TIFF
 % datafile (a single .tiff saved in ScanImage).
-interpolateSI = true;
+if D.processedtiffs
+    interpolateSI = false;
+else
+    interpolateSI = true;
+end
 
 nvargin = length(varargin);
 switch nvargin
@@ -113,7 +117,7 @@ for fidx=1:nTiffs
     
     nFramesPerVolume = si.nFramesPerVolume;
     nTotalFrames = si.nTotalFrames;
-    if isfield(mw, 'ardPath')
+    if isfield(mw, 'ardPath') && ~D.processedtiffs
         fprintf('Using ARD frame trigger times...\n');
         ardSec = (double(mw.pymat.(currRunName).tframe) - double(mw.pymat.(currRunName).tframe(1))) / 1E6;
 
@@ -125,6 +129,8 @@ for fidx=1:nTiffs
                 tFramesExpected = linspace(ardSec(1), ardSec(end), nTotalFrames);
                 ardSecInterp = interp1(ardSec, ardSec, tFramesExpected);
                 siSec = ardSecInterp;
+	    else
+		siSec = ardSec;
             end
         else
             siSec = ardSec;
@@ -227,7 +233,9 @@ meta.condTypes = condtypes;
 % TODO2:  fix so that sessionmeta is parent of ALL runs.
 % New stuff for DB: -------------------
 meta.volumerate = si.siVolumeRate;
-meta.volumeSizePixels = [si.frameWidth, si.linesPerFrame, si.nSlices-D.slices(1)+1]
+%meta.volumeSizePixels = [si.frameWidth, si.linesPerFrame, si.nSlices-D.slices(1)+1]
+meta.volumeSizePixels = [si.linesPerFrame, si.frameWidth, si.nSlices-D.slices(1)+1]
+
 if D.tefo
     meta.volumesize = [500, 500, meta.volumeSizePixels(end)*10];
 else
