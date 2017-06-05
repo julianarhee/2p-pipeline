@@ -223,7 +223,7 @@ if D.maskInfo.params.patches && ~usePreviousA
     [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
     [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
     classify.ROIvars = ROIvars;
-    classify.keep = keep;
+    classify.keep = ROIvars.keep;
     classify.A_ordered = A_or;
     classify.C_ordered = C_or;
     classify.S_ordered = S_or;
@@ -355,7 +355,7 @@ else
             [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
             [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
             classify.ROIvars = ROIvars;
-            classify.keep = keep;
+            classify.keep = ROIvars.keep;
             classify.A_ordered = A_or;
             classify.C_ordered = C_or;
             classify.S_ordered = S_or;
@@ -432,7 +432,7 @@ else
         [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
         [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         classify.ROIvars = ROIvars;
-        classify.keep = keep;
+        classify.keep = ROIvars.keep;
         classify.A_ordered = A_or;
         classify.C_ordered = C_or;
         classify.S_ordered = S_or;
