@@ -362,7 +362,7 @@ switch D.roiType
         % Run AGAIN to get other components with same spatials:
         fprintf('Getting components from previously extracted components.\n');
         getref = false;
-        if roiparam.patches
+        if roiparams.patches
             % Use masks from REF, don't run patches.
             D.maskInfo.params.K = roiparams.fullK;
             D.maskInfo.patches = false;
