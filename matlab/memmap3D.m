@@ -105,9 +105,13 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
             tic(); tmpYt = loadtiff(fullfile(tiffsourcePath, tiffslices{sliceidx})); toc();
             data.Y(:,:,sliceidx,:) = reshape(tmpYt, [size(Yt,1) size(Yt,2) 1 nVolumes]);
         end
-        data.sizY = size(data.Y);
-        data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-        data.nY = min(data.Yr(:,:));
+        sizY = size(data.Y);
+	data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
+	data.sizY = sizY;	
+	data.nY = min(data.Yr(:));
+	fprintf('size nY: %s\n.', mat2str(size(data.nY)))
+        %data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+        %data.nY = min(data.Yr(:,:));
         
         fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
         fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
@@ -132,9 +136,13 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
         Y = Y -  min(Y(:));                         % make data non-negative
 
         data.Y = Y;
-        data.sizY = size(data.Y);
-        data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-        data.nY = min(data.Yr(:,:));
+        sizY = size(data.Y);
+        data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
+	data.sizY = sizY;
+	data.nY = min(data.Yr(:));
+	%data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+        %data.nY = min(data.Yr(:,:));
+	fprintf('size nY: %s\n.', mat2str(size(data.nY)))
 
         fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
         fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
