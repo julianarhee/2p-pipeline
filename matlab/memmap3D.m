@@ -381,6 +381,9 @@ for tiffidx=1:length(inputfiles)
     if length(data.nY)>1
         data.nY = min(data.nY(:,:));
     end
+    if isprop(data, 'F_dark') && length(data.F_dark)>1
+	data.F_dark = min(data.F_dark(:,:));
+    end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
 
     if ~exist(D.sliceimagepath) || isempty(dir(fullfile(D.sliceimagepath, '*.tif')))
