@@ -378,6 +378,9 @@ for tiffidx=1:length(inputfiles)
     if ~isprop(data, 'sizY')
         data.sizY = size(data.Y);
     end
+    if length(data.nY)>1
+        data.nY = min(data.nY(:,:));
+    end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
 
     if ~exist(D.sliceimagepath) || isempty(dir(fullfile(D.sliceimagepath, '*.tif')))

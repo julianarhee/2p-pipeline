@@ -218,7 +218,7 @@ if D.maskInfo.params.patches && ~usePreviousA
 
     %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,keep] = classify_components(data.Y,A,C,b,f,YrA,options);
     classification_fn = ['classification_refpatch_' filename '.mat'];
-    classify = matfile(D.nmfPath, classification_fn, 'Writable', true);
+    classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
     
     [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
     [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
