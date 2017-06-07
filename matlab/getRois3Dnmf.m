@@ -484,7 +484,7 @@ end
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-Cn = correlation_image_3D(data); 
+Cn = correlation_image_3D(data, 6, data.sizY); 
 % 
 %     
 % %% classify components
