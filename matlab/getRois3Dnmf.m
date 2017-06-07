@@ -41,8 +41,9 @@ merge_thr = D.maskInfo.params.merge_thr;
 for tiffidx = 1:length(files)
   
    
-    if ~getref && tiffidx~=D.maskInfo.ref.tiffidx
-
+    if ~getref %&& tiffidx~=D.maskInfo.ref.tiffidx
+        
+        fprintf('Using components from previous run.\n')
         usePreviousA = true;
 
     elseif getref && tiffidx~=D.maskInfo.ref.tiffidx
@@ -402,7 +403,7 @@ else
         
         % Load A from previous:
         % -----------------------------------------------------------------
-        refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
+        refnmf = matfile(D.maskInfo.ref.refnmfPath);
         refA = refnmf.A;
         Ain = refA>0;
         fprintf('size ref A: %s\n', mat2str(size(Ain)))
