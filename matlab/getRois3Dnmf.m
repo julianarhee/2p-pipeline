@@ -193,7 +193,7 @@ if D.maskInfo.params.patches && ~usePreviousA
     %% Run on patches (around 15 minutes)
 
     tic;
-    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data.Y ,K,patches,tau,p,options);
+    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
     fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
 
     results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
@@ -221,7 +221,7 @@ if D.maskInfo.params.patches && ~usePreviousA
     classification_fn = ['classification_refpatch_' filename '.mat'];
     classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
     
-    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
     [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
     classify.ROIvars = ROIvars;
     classify.keep = ROIvars.keep;
@@ -237,7 +237,7 @@ if D.maskInfo.params.patches && ~usePreviousA
 
 else
 
-    [P,Y] = preprocess_data(data.Y,p);    
+    [P,Y] = preprocess_data(data,p);    
 
     %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
     %roiA = rois.all;
@@ -353,7 +353,7 @@ else
             classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
 
             fprintf('Classifing components!\n');
-            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
             [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
             classify.ROIvars = ROIvars;
             classify.keep = ROIvars.keep;
@@ -430,7 +430,7 @@ else
         % -----------------------------------------------------------------
         classification_fn = ['classification_' filename '.mat'];
         classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
-        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data.Y,A,C,b,f,YrA,options);
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
         [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         classify.ROIvars = ROIvars;
         classify.keep = ROIvars.keep;
@@ -484,7 +484,7 @@ end
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-Cn = correlation_image_3D(data.Y); 
+Cn = correlation_image_3D(data); 
 % 
 %     
 % %% classify components
