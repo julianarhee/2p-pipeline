@@ -333,13 +333,14 @@ switch D.roiType
             getref = true;
             fprintf('Getting reference components first...\n');
         elseif ~getref
-            nmffiles = dir(fullfile(D.nmfPath, '*.mat'));
+            nmffiles = dir(fullfile(D.nmfPath, 'nmfoutput_ref_*.mat'));
             if isempty(nmffiles)
                 fprintf('No previous ref NMF found.  Getting new reference.\n');
                 getref = true;
             else
-                fprintf('Loading previous ref: %s\n', nmffiles{1}.name);
-                D.maskInfo.ref.refnmfPath = fullfile(D.nmfPath, nmffiles{1}.name);
+                display(nmffiles)
+                fprintf('Loading previous ref: %s\n', nmffiles(1).name);
+                D.maskInfo.ref.refnmfPath = fullfile(D.nmfPath, nmffiles(1).name);
                 tmpnmf = matfile(D.maskInfo.ref.refnmfPath);
                 D.maskInfo.ref.nmfoptions = tmpnmf.options;
                 getref = false;

@@ -10,19 +10,20 @@
 % acquisition_info;
 %session = '20161219_JR030W';
 %session = '20161221_JR030W';
-session = '20161218_CE024';
+%session = '20161218_CE024';
+session = '20161222_JR030W'
 
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
 %experiment = 'retinotopyFinalMask';
 %experiment = 'retinotopyFinal';
 %experiment = 'retinotopyControl';
-experiment = 'retinotopy5'
+experiment = 'retinotopy1'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 5 %3 %4
-tefo = true;
+analysis_no = 1 %3 %4
+tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
 
@@ -328,7 +329,8 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 % =========================================================================
 
 if strfind(D.roiType, '3D')
-fidx = 4;
+for fidx=1:length(meta.file)
+%fidx = 4;
 roi = 1;
 
 volsize = meta.volumeSizePixels;
@@ -337,13 +339,13 @@ fftstruct = load(fullfile(D.outputDir, D.fftStructNames3D{fidx}));
 %fftstruct = fftmat.file(fidx);
 
 condtypes = fieldnames(meta.cmaps);
-
-fidx = 4;
-roi = 1;
-
 metric = 'ratio';
+condmatch = find(cellfun(@(i) ~isempty(strfind(meta.file(fidx).mw.runName, i)), condtypes))
+if numel(condmatch)>1
+    condmatch = condmatch(1)
+end
+currcond = condtypes{condmatch};
 
-currcond = condtypes{cellfun(@(i) ~isempty(strfind(i, meta.file(fidx).mw.runName)), condtypes)};
 if strcmp(D.roiType, '3Dcnmf')
 inputSource = 'NMF' %output'
 else
@@ -451,6 +453,8 @@ savefig(fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.fig', inputSource)))
 saveas(p1, fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.png', inputSource)), 'png')
 
 clf;
+
+end
 
 end
 
