@@ -12,9 +12,9 @@ clc;
 dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
     'session', '20161222_JR030W',...                            % session name (single FOV)
-    'run', 'gratings1',...                                % experiment name
-    'datastruct', 5,...                                        % datastruct idx
-    'acquisition', 'fov1_gratings10reps_run1',...      % acquisition name
+    'run', 'retinotopy1',...                                % experiment name
+    'datastruct', 2,...                                        % datastruct idx
+    'acquisition', 'fov1_bar037Hz_run4',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'raw',...                                  % preprocessed or no
@@ -33,7 +33,7 @@ dsoptions = DSoptions(...
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
     'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
-    'nmetatiffs', 12);                                           % number of huge tiffs to exclude
+    'nmetatiffs', 6);                                           % number of huge tiffs to exclude
 
 % TEFO:
 
@@ -106,8 +106,8 @@ switch dsoptions.roitype
             roiparams.K = 10;                        % number of components to be found
             roiparams.patch_size = [32,64,4]; %[15,15,5];        % size of each patch along each dimension (optional, default: [32,32])
             roiparams.overlap = [8,16,2]; %[6,6,2];             % amount of overlap in each dimension (optional, default: [4,4])
-	    roiparams.fullK = 4000;
-	    roiparams.patchK = 10;
+            roiparams.fullK = 4000;
+            roiparams.patchK = 10;
         else
             roiparams.K = 2000;
         end
@@ -118,28 +118,26 @@ switch dsoptions.roitype
 
 
         roiparams.options = CNMFSetParms(...
-	    'd1', 256,...
-	    'd2', 512,...
-	    'd3', 12,...
+            'd1',256,'d2',512,'d3',12,...
             'spatial_method','constrained',...       % method for updating spatial components
-            'search_method','ellipse','dist',4,...
+            'search_method','ellipse','dist',3,...
             'se', strel('disk', 4, 0),...      
             'max_size', 8, 'min_size', 3,...         % max/min size of ellipse axis (default: 8, 3)
             'deconv_method','constrained_foopsi',... % activity deconvolution method
             'temporal_iter',2,...                    % number of block-coordinate descent steps 
             'cluster_pixels',false,...                  
             'ssub',4,...                             % spatial downsampling when processing
-            'tsub',1,...                             % further temporal downsampling when processing
+            'tsub',2,...                             % further temporal downsampling when processing
             'fudge_factor',0.96,...                  % bias correction for AR coefficients
             'merge_thr', roiparams.merge_thr,...                   % merging threshold
             'gSig',roiparams.tau,... 
-            'max_size_thr',300,'min_size_thr',9,...    % max/min acceptable size for each component
+            'max_size_thr',300,'min_size_thr',9,...    % max/min acceptable size for each component (default: 300, 9)
             'spatial_method','regularized',...       % method for updating spatial components ('constrained')
             'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
             'time_thresh',0.6,...
             'space_thresh',0.6,...
             'thr_method', 'max',...                  % method to threshold ('max' or 'nrg', default 'max')
-            'maxthr', 0.1,...                       % threshold of max value below which values are discarded (default: 0.1)
+            'maxthr', 0.05,...                       % threshold of max value below which values are discarded (default: 0.1)
             'conn_comp', false);                     % extract largest connected component (binary, default: true)
         roiparams.options.spatial_method = 'regularized'; %'constrained';
         roiparams.options
@@ -185,7 +183,7 @@ fprintf('Got source info for creating ROI masks.\n')
 %% Create masks and get traces:
 
 tic()
-getref = true
+getref = true;
 D = extract_traces_from_masks(roiparams, D, meta, getref);
 
 toc();
