@@ -34,7 +34,15 @@ else
 end
 D.dataDir = fullfile(D.sourceDir, dsoptions.datapath);
 
-D.mempath = fullfile(D.dataDir, 'memfiles');
+if strcmp(D.preprocessing, 'raw')
+    D.mempath = fullfile(D.dataDir, 'memfiles', 'raw');
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'raw');
+
+else
+    D.mempath = fullfile(D.dataDir, 'memfiles')
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices');
+end
+
 if ~exist(D.mempath)
     mkdir(D.mempath)
 end
@@ -47,7 +55,6 @@ if D.average
     end
 end
 
-D.sliceimagepath = fullfile(D.dataDir, 'average_slices');
 if ~exist(D.sliceimagepath, 'dir')
     mkdir(D.sliceimagepath)
 end

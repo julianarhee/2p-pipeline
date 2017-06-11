@@ -62,6 +62,7 @@ D.extraTiffsExcluded = dsoptions.excludedtiffs; %extraTiffsExcluded;
 D.slices = dsoptions.slices; %slicesToUse; 
 D.tefo = dsoptions.tefo; %tefo; 
 D.average = dsoptions.averaged; %average; 
+D.metaonly = dsoptions.metaonly;
 
 if D.average 
     D.matchtrials = dsoptions.matchedtiffs; 
