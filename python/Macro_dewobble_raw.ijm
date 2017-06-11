@@ -24,6 +24,9 @@ for (fidx=0; fidx<filenames.length; fidx++) {
 	
 	//filenames = getFileList(directory);
 	nchannels = 2;
+	nvolumes = 340;
+	nslices = 22;
+	
 	imlist = newArray(nchannels);
 	for (c=1; c<=nchannels; c++) {
 		selectImage(c);
@@ -44,11 +47,11 @@ for (fidx=0; fidx<filenames.length; fidx++) {
 		selectWindow(imname);
 	
 	    
-			for (i=0; i<340; i++) {
+			for (i=0; i<nvolumes; i++) {
 				index = i;
 				selectWindow(imname);
 				
-				if (i==339) {
+				if (i==(nvolumes-1)) {
 					run("MultiStackReg", "stack_1=imname action_1=[Load Transformation File] file_1=[/nas/volume1/2photon/RESDATA/phase1_block2/alignment2/MSR_avg_transform.txt] stack_2=None action_2=Ignore file_2=[] transformation=[Rigid Body]");
 					rename("Substack_" + index + ".tif");
 					//saveAs("Tiff", "/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/DATA/" +  "/" +getTitle());
@@ -58,7 +61,7 @@ for (fidx=0; fidx<filenames.length; fidx++) {
 				} else{
 					
 				
-				run("Make Substack...", "delete slices=1-22");
+				run("Make Substack...", "delete slices=1-22"); // This needs to be hard-coded based on nslices.
 				run("MultiStackReg", "stack_1=[Substack (1-22)] action_1=[Load Transformation File] file_1=[/nas/volume1/2photon/RESDATA/phase1_block2/alignment2/MSR_avg_transform.txt] stack_2=None action_2=Ignore file_2=[] transformation=[Rigid Body]");
 				
 				//run("Tiff...");
