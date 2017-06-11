@@ -99,7 +99,8 @@ if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case 
         tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
         
         % Only grab green channel:
-        if strcmp(D.preprocessing, 'raw') %&& D.tefo
+        if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
+            fprintf('Grabbing every other channel.\n')
             Yt = Yt(:,:,1:2:end);
         end
 
@@ -285,7 +286,7 @@ for tiffidx=1:length(inputfiles)
     end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
 
-    if ~exist(D.sliceimagepath) || isempty(dir(fullfile(D.sliceimagepath, '*.tif')))
+    if ~exist(D.sliceimagepath) || length(dir(fullfile(D.sliceimagepath, '*.tif')))<data.sizY(1,3)
         if ~exist(D.sliceimagepath)
             mkdir(D.sliceimagepath)
         end 
