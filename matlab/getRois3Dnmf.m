@@ -237,7 +237,7 @@ if D.maskInfo.params.patches && ~usePreviousA
 
 else
 
-    [P,Y] = preprocess_data(data,p);    
+    [P,Y] = preprocess_data(data.Y,p);    
 
     %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
     %roiA = rois.all;
@@ -403,7 +403,11 @@ else
         
         % Load A from previous:
         % -----------------------------------------------------------------
-        refnmf = matfile(D.maskInfo.ref.refnmfPath);
+        if iscell(D.maskInfo.ref.refnmfPath)
+	    refnmf = matfile(D.maskInfo.ref.refnmfPath{1});
+        else
+	    refnmf = matfile(D.maskInfo.ref.refnmfPath);
+	end
         refA = refnmf.A;
         Ain = refA>0;
         fprintf('size ref A: %s\n', mat2str(size(Ain)))
@@ -484,7 +488,7 @@ end
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-Cn = correlation_image_3D(data, 6, data.sizY); 
+Cn = correlation_image_3D(single(data.Y),8); 
 % 
 %     
 % %% classify components
