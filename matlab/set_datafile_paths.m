@@ -37,7 +37,9 @@ D.dataDir = fullfile(D.sourceDir, dsoptions.datapath);
 if strcmp(D.preprocessing, 'raw')
     D.mempath = fullfile(D.dataDir, 'memfiles', 'raw');
     D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'raw');
-
+elseif D.corrected
+    D.mempath = fullfile(D.dataDir, 'memfiles', 'corrected');
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'corrected');
 else
     D.mempath = fullfile(D.dataDir, 'memfiles')
     D.sliceimagepath = fullfile(D.dataDir, 'average_slices');

@@ -73,6 +73,8 @@ D.seedRois = dsoptions.seedrois;
 D.maskType = dsoptions.maskshape;
 D.roiSource = dsoptions.maskpath;
 D.maskfinder = dsoptions.maskfinder;
+
+D.memmapped = dsoptions.memmapped;
  
 save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  
@@ -103,12 +105,36 @@ analysisinfo_fn = fullfile(analysisDir, 'datastructs.txt');
 if exist(analysisinfo_fn, 'file')
     % Load it and check it:
     previousInfo = readtable(analysisinfo_fn, 'Delimiter', '\t', 'ReadRowNames', true, 'TreatAsEmpty', {'Na'})
-    rownames = previousInfo.Properties.RowNames;
+    if isfield(previousInfo, 'Properties')
+        previousInfo = rmfield(previousInfo, 'Properties');
+    end
+    nrows = size(previousInfo, 1);
+    ncols = size(previousInfo, 2);
+    prevFields = fieldnames(previousInfo);
+    fprintf('N prev fields: %i\n', length(prevFields));
+    fprintf('N curr fields: %i\n', length(fields));
+    display(sum(ismember(fields, prevFields)))
+    display(prevFields)
+    if length(fields) ~= sum(ismember(fields, prevFields)) %length(prevFields)
+        newfieldids = find(~ismember(fields, prevFields));
+        fprintf('Found new fields:\n');
+        display(fields{newfieldids});
+        tmptable = struct();
+        for f = newfieldids  
+            display(fields{f})
+            tmptable.(fields{f}) = ones(nrows,1);        
+        end
+        display(struct2table(tmptable))
+        previousInfo = [previousInfo struct2table(tmptable)];
+    end
+    
+    display(fieldnames(previousInfo))     
+    rownames = previousInfo.Properties.RowNames
     for field=1:length(fields)
-	if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
+    	if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
 	    idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
             for idx = idxs2fix
-	    previousInfo(idx,:).(fields{field}) = ['NaN']; %, length(idxs2fix), 1);
+	        previousInfo(idx,:).(fields{field}) = ['NaN']; %, length(idxs2fix), 1);
             end
 	end
     end
@@ -130,7 +156,7 @@ else
 end
 
 writetable(allInfo, analysisinfo_fn, 'WriteRowNames', true, 'Delimiter', '\t');
-type(analysisinfo_fn)
+%type(analysisinfo_fn)
 
 
 
