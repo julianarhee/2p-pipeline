@@ -22,7 +22,7 @@ experiment = 'retinotopy1'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 1 %3 %4
+analysis_no = 6 %3 %4
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);

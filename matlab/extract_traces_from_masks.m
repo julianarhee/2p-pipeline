@@ -361,6 +361,7 @@ switch D.roiType
         toc(roistart);
         
         % Run AGAIN to get other components with same spatials:
+        roistart = tic();
         fprintf('Getting components from previously extracted components.\n');
         getref = false;
         if roiparams.patches
@@ -406,8 +407,9 @@ switch D.roiType
         end
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
-        fprintf('DONE:  Extracted traces!\n');
-        toc(tracestart);
+        fprintf('DONE:  TOTAL TIME for source extraction:\n');
+        fprintf('**********************************\n');
+        toc(fstart);
 
 
 %        if make_videos

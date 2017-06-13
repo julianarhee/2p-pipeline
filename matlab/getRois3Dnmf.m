@@ -454,7 +454,7 @@ else
         % -----------------------------------------------------------------
         % C is deconvolved activity, C + YrA is non-deconvolved fluorescence 
         % F_df is the DF/F computed on the non-deconvolved fluorescence
-        extractstart = tic();
+        %extractstart = tic();
         Ts = size(C,2);
         tsub = options.tsub;
         i = 1;
@@ -477,7 +477,7 @@ else
         F0 = cellfun(@plus, cellfun(@(x,y) x-y,F_us,Fd_us,'un',0), Ab_d,'un',0);   % add and get F0 fluorescence for each component
         F_df = cellfun(@(x,y) x./y, Fd_us, F0 ,'un',0);                            % DF/F value
         fprintf('Extracted fluorescence traces!\n');
-        toc(extractstart);
+        %toc(extractstart);
         
     end
        
