@@ -21,8 +21,13 @@ else
     mempath = D.mempath;
 end
 
-tmpfiles = dir(fullfile(mempath, '*.mat'));
+if memmapped
+    tmpfiles = dir(fullfile(mempath, '*.mat'));
+else
+    tmpfiles = dir(fullfile(D.dataDir, '*.tif'));
+end
 tmpfiles = {tmpfiles(:).name}';
+
 if ~D.processedtiffs
     subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
     files = tmpfiles(subidxs);
