@@ -7,6 +7,7 @@ function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots, getref)
 
 %% Specify tiff sources and covnert to matfile objs:
 memmapped = D.memmapped;
+correct_bidi = D.correctbidi;
 
 if isfield(D.maskInfo, 'nmfPaths')
     nmf_outpaths = D.maskInfo.nmfPaths;
@@ -196,7 +197,7 @@ for tiffidx = 1:length(files)
 
 % Test patches:
 
-if memmappped
+if memmapped
     sizY = data.sizY;                       % size of data matrix
 else
     sizY = size(Y);
@@ -215,7 +216,7 @@ if D.maskInfo.params.patches && ~usePreviousA
     %% Run on patches (around 15 minutes)
 
     tic;
-    if memmmapped
+    if memmapped
         [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
     else
         [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(Y,K,patches,tau,p,options);
@@ -246,8 +247,12 @@ if D.maskInfo.params.patches && ~usePreviousA
     %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,keep] = classify_components(data.Y,A,C,b,f,YrA,options);
     classification_fn = ['classification_refpatch_' filename '.mat'];
     classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
- 
-    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+    if memmapped 
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+    else
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(Y,A,C,b,f,YrA,options);
+    end
+
     [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
 
     classify.ROIvars = ROIvars;
@@ -525,7 +530,11 @@ end
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-Cn = correlation_image_3D(single(data.Y),8); 
+if memmapped
+    Cn = correlation_image_3D(single(data.Y),8); 
+else
+    Cn = correlation_image_3D(single(Y),8); 
+end
 % 
 %     
 % %% classify components
@@ -577,8 +586,6 @@ end
         
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
-
-nmfoutput.mempath = mempath;
 nmfoutput.outpath = nmf_outputpath; %fullfile(sourcepath, savedir);
 nmfoutput.tiff = [filename, '.tif'];
 nmfoutput.K = K;

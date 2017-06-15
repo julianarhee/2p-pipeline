@@ -75,6 +75,7 @@ D.roiSource = dsoptions.maskpath;
 D.maskfinder = dsoptions.maskfinder;
 
 D.memmapped = dsoptions.memmapped;
+D.correctbidi = dsoptions.correctbidi;
  
 save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  
@@ -95,7 +96,6 @@ infotable = readtable(analysisinfo_fn_tmp, 'Delimiter', '\t', 'ReadRowNames', tr
 delete(analysisinfo_fn_tmp)
 for field=1:length(fields)
     if ~iscell(infotable{1,fields{field}}) && any(find(isnan(infotable{1,fields{field}})))
-        % idxs2fix = find(isnan(infotable{1,fields{field}))
         infotable.(fields{field}) = {'NaN'};
     end
 end
@@ -114,38 +114,41 @@ if exist(analysisinfo_fn, 'file')
     fprintf('N prev fields: %i\n', length(prevFields));
     fprintf('N curr fields: %i\n', length(fields));
     display(sum(ismember(fields, prevFields)))
-    display(prevFields)
+    fprintf('Found previous fields:\n');
+    %display(prevFields)
     if length(fields) ~= sum(ismember(fields, prevFields)) %length(prevFields)
         newfieldids = find(~ismember(fields, prevFields));
         fprintf('Found new fields:\n');
         display(fields{newfieldids});
         tmptable = struct();
         for f = newfieldids  
-            display(fields{f})
-            tmptable.(fields{f}) = ones(nrows,1);        
+            for r=1:nrows
+                tmptable(r,:).(fields{f}) = {'NaN'}; 
+            end            
         end
         display(struct2table(tmptable))
+        display(size(previousInfo));
+        display(size(struct2table(tmptable)));
         previousInfo = [previousInfo struct2table(tmptable)];
     end
     
-    display(fieldnames(previousInfo))     
+    %display(previousInfo)     
     rownames = previousInfo.Properties.RowNames
-    for field=1:length(fields)
-    	if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
-	    idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)));
+    for field=1:length(fields)	
+        if ~iscell(previousInfo{1, fields{field}}) && any(find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames))))
+            
+	    idxs2fix = find(arrayfun(@(d) isnan(previousInfo{d, fields{field}}), 1:length(rownames)))
             for idx = idxs2fix
-	        previousInfo(idx,:).(fields{field}) = ['NaN']; %, length(idxs2fix), 1);
+                display(size(previousInfo(idx,:).(fields{field})))
+	        previousInfo(idx,:).(fields{field}) = {'NaN'}; %, length(idxs2fix), 1);
             end
 	end
     end
-
-    if overwrite
-       
+% 
+    if overwrite       
         if any(arrayfun(@(r) strcmp(D.name, rownames{r}), 1:length(rownames)))
-            previousInfo({D.name},:) = infotable;
-            allInfo = previousInfo;
-        else
-            allInfo = [previousInfo; infotable];
+            previousInfo({D.name},:) = [];
+            allInfo = [previousInfo; infotable];%previousInfo;
         end    
     else
         allInfo = [previousInfo; infotable];
