@@ -1,5 +1,7 @@
 function D = memmap3D(D, meta)
 
+%TODO: Fix case when averaging runs together. Currently, memmapping for averaged runs is true.
+ 
 if D.processedtiffs
     create_substack = false;
     startSliceIdx = 1;
@@ -15,10 +17,7 @@ end
 % end
 fprintf('Substacks made starting from slice %i.\n', startSliceIdx);
 
-mempath = fullfile(D.mempath);
-if ~exist(mempath, 'dir')
-    mkdir(mempath)
-end
+memmapped = D.memmapped;
 
 % -------------------------------------------------------------------------
 % STEP 1:  TIFFS to memmapped .mat files:
@@ -32,102 +31,106 @@ fprintf('Getting TIFFs from alternate data dir: %s', D.dataDir);
 tiffDir = D.dataDir;
 tiffs = {tiffs(:).name}'
 
+if memmapped
+    extension = 'mat';
 
-% Check if D.mempath already contains memmaped (.mat) files:
-% -------------------------------------------------------------------------
-tmpfiles = dir(fullfile(mempath, '*.mat'));
-tmpfiles = {tmpfiles(:).name}';
-%subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
-if create_substack
-    subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
-    files = tmpfiles(subidxs)
-else
-    files = tmpfiles;
-end
+    % Check if D.mempath already contains memmaped (.mat) files:
+    % -------------------------------------------------------------------------
+    tmpfiles = dir(fullfile(D.mempath, '*.mat'));
+    tmpfiles = {tmpfiles(:).name}';
+    if create_substack
+        subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
+        files = tmpfiles(subidxs)
+    else
+        files = tmpfiles;
+    end
 
-% If no memmaped files found in D.mempath, make them for each TIFF:
-% -------------------------------------------------------------------------
-if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case NOT using '_substack):
-    
-    % NO memmat files found, create new from TIFFs:
-    tic()
-    for tiffidx = 1:length(tiffs)
-    tpath = fullfile(tiffDir, tiffs{tiffidx});
-    fprintf('Processing tiff to mem from path:\n%s\n', tpath);
-    [source, filename, ext] = fileparts(tpath);
+    % If no memmaped files found in D.mempath, make them for each TIFF:
+    % -------------------------------------------------------------------------
+    if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case NOT using '_substack):
+        
+        % NO memmat files found, create new from TIFFs:
+        tic()
+        for tiffidx = 1:length(tiffs)
+        tpath = fullfile(tiffDir, tiffs{tiffidx});
+        fprintf('Processing tiff to mem from path:\n%s\n', tpath);
+        [source, filename, ext] = fileparts(tpath);
 
-    matpath = fullfile(mempath, sprintf('%s.mat', filename));
-    data = matfile(matpath,'Writable',true);
-    
-    nSlices = meta.file(tiffidx).si.nFramesPerVolume
-    nRealFrames = meta.file(tiffidx).si.nSlices
-    nVolumes = meta.file(tiffidx).si.nVolumes
-    nChannels = meta.file(tiffidx).si.nChannels
- 
+        matpath = fullfile(D.mempath, sprintf('%s.mat', filename));
+        data = matfile(matpath,'Writable',true);
+        
+        nSlices = meta.file(tiffidx).si.nFramesPerVolume
+        nRealFrames = meta.file(tiffidx).si.nSlices
+        nVolumes = meta.file(tiffidx).si.nVolumes
+        nChannels = meta.file(tiffidx).si.nChannels
      
-    if D.metaonly && ~D.processedtiffs % i.e., tiff is too huge to load into matlab
-        
-        % Since too large (for Matlab), already parsed in Fiji:
-        %tiffsourcePath = fullfile(D.sourceDir, D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
-        tiffsourcePath = fullfile(D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
-        tiffslices = dir(fullfile(tiffsourcePath, '*.tif'));
-        tiffslices = {tiffslices(:).name}';
-        
-        Yt = loadtiff(fullfile(tiffsourcePath, tiffslices{1}));
-        
-        data.Y(size(Yt,1), size(Yt,2), nRealFrames, nVolumes) = Yt(1)*0; 
-        data.Yr(size(Yt,1)*size(Yt,2)*nRealFrames, nVolumes) = Yt(1)*0;
-        
-        for sliceidx=1:length(tiffslices)
-            tic(); tmpYt = loadtiff(fullfile(tiffsourcePath, tiffslices{sliceidx})); toc();
-            data.Y(:,:,sliceidx,:) = reshape(tmpYt, [size(Yt,1) size(Yt,2) 1 nVolumes]);
-        end
-        sizY = size(data.Y);
-	data.Yr(1:prod(sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
-	data.sizY = sizY;	
-	data.nY = min(min(data.Yr(:,:)));
-	fprintf('size nY: %s\n.', mat2str(size(data.nY)))
-        %data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-        %data.nY = min(data.Yr(:,:));
-        
-        fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
-        fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
-        
-    else % ok to read in whole thing
-        
-        tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
-        
-        % Only grab green channel:
-        if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
-            fprintf('Grabbing every other channel.\n')
-            Yt = Yt(:,:,1:2:end);
-        end
+         
+        if D.metaonly && ~D.processedtiffs % i.e., tiff is too huge to load into matlab
+            
+            % Since too large (for Matlab), already parsed in Fiji:
+            %tiffsourcePath = fullfile(D.sourceDir, D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
+            tiffsourcePath = fullfile(D.tiffSource, 'Channel01', sprintf('File%03d', tiffidx));
+            tiffslices = dir(fullfile(tiffsourcePath, '*.tif'));
+            tiffslices = {tiffslices(:).name}';
+            
+            Yt = loadtiff(fullfile(tiffsourcePath, tiffslices{1}));
+            
+            data.Y(size(Yt,1), size(Yt,2), nRealFrames, nVolumes) = Yt(1)*0; 
+            data.Yr(size(Yt,1)*size(Yt,2)*nRealFrames, nVolumes) = Yt(1)*0;
+            
+            for sliceidx=1:length(tiffslices)
+                tic(); tmpYt = loadtiff(fullfile(tiffsourcePath, tiffslices{sliceidx})); toc();
+                data.Y(:,:,sliceidx,:) = reshape(tmpYt, [size(Yt,1) size(Yt,2) 1 nVolumes]);
+            end
+            sizY = size(data.Y);
+            data.Yr(1:prod(sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
+            data.sizY = sizY;	
+            data.nY = min(min(data.Yr(:,:)));
+            fprintf('size nY: %s\n.', mat2str(size(data.nY)))
+            %data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+            %data.nY = min(data.Yr(:,:));
+            
+            fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
+            fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
+            
+        else % ok to read in whole thing
+            
+            tic; Yt = loadtiff(tpath, 1, nSlices*nVolumes*nChannels); toc;
+            
+            % Only grab green channel:
+            if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
+                fprintf('Grabbing every other channel.\n')
+                Yt = Yt(:,:,1:2:end);
+            end
 
-        Y = cell(1, nVolumes);
-        firstslice = startSliceIdx; %1;
-        for vol=1:nVolumes
-            Y{vol} = Yt(:,:,firstslice:(firstslice+nRealFrames-1));
-            firstslice = firstslice+nSlices;
+            Y = cell(1, nVolumes);
+            firstslice = startSliceIdx; %1;
+            for vol=1:nVolumes
+                Y{vol} = Yt(:,:,firstslice:(firstslice+nRealFrames-1));
+                firstslice = firstslice+nSlices;
+            end
+            Y = cat(4, Y{1:end});
+            if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
+            Y = Y -  min(Y(:));                         % make data non-negative
+
+            data.Y = Y;
+            sizY = size(data.Y);
+            data.Yr(1:prod(sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
+            data.sizY = sizY;
+            data.nY = min(min(data.Yr(:,:)));
+            %data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
+            %data.nY = min(data.Yr(:,:));
+            fprintf('size nY: %s\n.', mat2str(size(data.nY)))
+
+            fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
+            fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
         end
-        Y = cat(4, Y{1:end});
-        if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-        Y = Y -  min(Y(:));                         % make data non-negative
-
-        data.Y = Y;
-        sizY = size(data.Y);
-        data.Yr(1:prod(sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);
-	data.sizY = sizY;
-	data.nY = min(min(data.Yr(:,:)));
-	%data.Yr(1:prod(data.sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(data.sizY(:,1:end-1)),[]);
-        %data.nY = min(data.Yr(:,:));
-	fprintf('size nY: %s\n.', mat2str(size(data.nY)))
-
-        fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
-        fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
+        
+        end
+        
     end
-    
-    end
-    
+else
+    extension = 'tif';
 end
 
 
@@ -139,39 +142,40 @@ end
 % memapped files for "averaged" tiffs using the original .mat files:
 % -------------------------------------------------------------------------
 
-tmpmemfiles = dir(fullfile(mempath, '*.mat'));
-tmpfiles = {tmpmemfiles(:).name}';
-%subidxs = cell2mat(cellfun(@(x) isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0))
-if create_substack
-    subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
-    memfiles = tmpfiles(subidxs);
-else
-    memfiles = tmpfiles;
-end
-
 if D.average
-    % For now, there is 1 acquisition ("run" in DB lingo) that we are
-    % counting as the primary run.  Use this to appropriate match and index
-    % the files from whatever other run(s) we are averaging.
-    fileidxs1 = cell2mat(cellfun(@(f) any(strfind(f, D.acquisitionName)), memfiles, 'UniformOutput', 0));
-    files1 = memfiles(fileidxs1);
-    files2 = memfiles(~fileidxs1);
-    
-    checkfiles = dir(fullfile(D.averagePath, '*.mat'));
+    checkfiles = dir(fullfile(D.averagePath, strcat('*.', extension)));
     checkfiles = {checkfiles(:).name}';
+    if memmapped
+        inputfiles = dir(fullfile(D.mempath, '*.mat'));
+    else
+        inputfiles = dir(fullfile(D.dataDir, '*.tif'));
+    end
+    inputfiles = {inputfiles(:).name}';
 
     if isempty(checkfiles) % AVERAGE:
+
+        if create_substack
+            subidxs = cell2mat(cellfun(@(x) any(strfind(x, '_substack')), inputfiles, 'UniformOutput', 0));
+            files4averaging = inputfiles(subidxs);
+        else
+            files4averaging = inputfiles;
+        end
+
+        % For now, there is 1 acquisition ("run" in DB lingo) that we are
+        % counting as the primary run.  Use this to appropriate match and index
+        % the files from whatever other run(s) we are averaging.
+        fileidxs1 = cell2mat(cellfun(@(f) any(strfind(f, D.acquisitionName)), files4averaging, 'UniformOutput', 0));
+        files1 = files4averaging(fileidxs1);
+        files2 = files4averaging(~fileidxs1);
+        
         matchtrials = D.matchtrials;
         fprintf('Averagin tiffs...\n')
         for runidx=1:length(matchtrials)
             curr_match_idxs = matchtrials{runidx};
-            filename = sprintf('File%03d_substack.mat', runidx);
-            avgdir = D.averagePath; %fullfile(D.datastructPath, 'averaged');
-
-            matfilepath = fullfile(avgdir, filename);
-            filedata = matfile(matfilepath, 'Writable', true);
-            f1 = matfile(fullfile(mempath, files1{curr_match_idxs(1)}));
-            f2 = matfile(fullfile(mempath, files2{curr_match_idxs(2)}));
+            filename = sprintf('File%03d_averagerun.mat', runidx);
+            filedata = matfile(fullfile(D.averagePath, filename), 'Writable', true);
+            f1 = matfile(fullfile(D.mempath, files1{curr_match_idxs(1)}));
+            f2 = matfile(fullfile(D.mempath, files2{curr_match_idxs(2)}));
             fprintf('Primary file is: %s\n', files1{curr_match_idxs(1)});
             fprintf('Secondary file is: %s\n', files2{curr_match_idxs(2)});
 
@@ -184,6 +188,7 @@ if D.average
             filedata.Yr(:,:) = reshape(avgfile, d1*d2*d3,[]);
             filedata.nY = min(filedata.Yr(:,:));
             clear newfiletmp avgfile
+
         end
 
     end
@@ -285,7 +290,7 @@ for tiffidx=1:length(inputfiles)
     end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
     
-    pathbyfile = fullfile(D.sliceimagepath, sprintf('File%03', tiffidx));
+    pathbyfile = fullfile(D.sliceimagepath, sprintf('File%03d', tiffidx));
     if ~exist(pathbyfile) || length(dir(fullfile(pathbyfile, '*.tif')))<data.sizY(1,3)
         if ~exist(pathbyfile, 'dir')
             mkdir(pathbyfile)

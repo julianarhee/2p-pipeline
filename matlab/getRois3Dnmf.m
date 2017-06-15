@@ -268,7 +268,7 @@ if D.maskInfo.params.patches && ~usePreviousA
 
 
 else
-    if memmmapped
+    if memmapped
         [P,Y] = preprocess_data(data.Y,p);    
     else
         [P,Y] = preprocess_data(Y,p);
@@ -605,7 +605,11 @@ nmfoutput.C = C;
 nmfoutput.b = b;
 nmfoutput.f = f;
 nmfoutput.YrA = YrA; % add C to get non-deconvolved fluorescence
-nmfoutput.Y = data.Y;
+if memmapped
+    nmfoutput.Y = data.Y;
+else
+    nmfoutput.Y = Y;
+end
 if ~getref
     nmfoutput.background_df = background_df;    % Divide C by this to get "inferred"
     %nmfoutput.classify = ROIvars;               % output of classify_components
