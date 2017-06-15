@@ -20,7 +20,6 @@ if ~exist(mempath, 'dir')
     mkdir(mempath)
 end
 
-
 % -------------------------------------------------------------------------
 % STEP 1:  TIFFS to memmapped .mat files:
 % -------------------------------------------------------------------------
@@ -297,11 +296,6 @@ for tiffidx=1:length(inputfiles)
         for slice=1:d3
             avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
             slicename = sprintf('average_slice%03d.tif', slice);
-            if strcmp(D.preprocessing, 'raw')
-                D.sliceimagepath = fullfile(D.sliceimagepath, 'raw');
-            elseif strfind(D.preprocessing, 'Acqusition2P')
-                D.sliceimagepath = fullfile(D.sliceimagepath, 'corrected');
-            end
             tiffWrite(avgs(:,:,slice), slicename, D.sliceimagepath);
         end
     end
