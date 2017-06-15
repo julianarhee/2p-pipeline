@@ -284,10 +284,11 @@ for tiffidx=1:length(inputfiles)
 	data.F_dark = min(data.F_dark(:,:));
     end
     fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(data.sizY));
-
-    if ~exist(D.sliceimagepath) || length(dir(fullfile(D.sliceimagepath, '*.tif')))<data.sizY(1,3)
-        if ~exist(D.sliceimagepath)
-            mkdir(D.sliceimagepath)
+    
+    pathbyfile = fullfile(D.sliceimagepath, sprintf('File%03', tiffidx));
+    if ~exist(pathbyfile) || length(dir(fullfile(pathbyfile, '*.tif')))<data.sizY(1,3)
+        if ~exist(pathbyfile, 'dir')
+            mkdir(pathbyfile)
         end 
         fprintf('Averaging slices...\n');
         d1=data.sizY(1,1); d2=data.sizY(1,2); d3=data.sizY(1,3);
@@ -295,8 +296,8 @@ for tiffidx=1:length(inputfiles)
         avgs = zeros([data.sizY(1,1),data.sizY(1,2),data.sizY(1,3)]);
         for slice=1:d3
             avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-            slicename = sprintf('average_slice%03d.tif', slice);
-            tiffWrite(avgs(:,:,slice), slicename, D.sliceimagepath);
+            slicename = sprintf('average_Slice%02d_File%03d.tif', slice, tiffidx);
+            tiffWrite(avgs(:,:,slice), slicename, pathbyfile);
         end
     end
 end
