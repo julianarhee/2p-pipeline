@@ -87,7 +87,8 @@ for tiffidx = 1:length(files)
         end
         d = d1*d2*d3;                                          % total number of pixels
     else
-        Y = readfile(fullfile(D.dataDir, files{tiffidx}));
+        display(fullfile(D.dataDir, files{tiffidx})); 
+        Y = read_file(fullfile(D.dataDir, files{tiffidx}));
         Y = Y(:,:,1:2:end);
         [d1,d2,dm] = size(Y);
         d3 = 12;
@@ -544,7 +545,8 @@ for slice=1:d3
     end
 end
 if correct_bidi
-    D.sliceimagepath = fullfile(D.sliceimagepath, 'bidi');
+    [parent, source, ~] = fileparts(D.sliceimagepath);
+    D.sliceimagepath = fullfile(parent, 'bidi');
     save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
     fprintf('Updated image path for dstruct to:\n  %s\n', D.sliceimagepath)
     for slice=1:d3
