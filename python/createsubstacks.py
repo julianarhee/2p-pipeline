@@ -151,7 +151,9 @@ for tiffidx,tiffname in enumerate(tiffs):
 	final = final[:, y_startidx:y_endidx, x_startidx:x_endidx]
 	print "Cropped FOV. New size: ", final.shape
 
-    newtiff_fn = '{filename}.tif'.format(filename=tiffname.split('.')[0]) #'File%03d.tif' % int(tiffidx+1)
+    origname = tiffname.split('.')[0]
+    prefix = '_'.join(origname.split('_')[0:-1])
+    newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
     
     if visible: 
