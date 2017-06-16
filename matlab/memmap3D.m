@@ -112,7 +112,10 @@ if memmapped
             Y = cat(4, Y{1:end});
             if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
             Y = Y -  min(Y(:));                         % make data non-negative
-
+            if D.correctbidi
+                Y = correct_bidirectional_phasing(Y);
+            end
+            
             data.Y = Y;
             sizY = size(data.Y);
             data.Yr(1:prod(sizY(:,1:end-1)), 1:nVolumes) = reshape(data.Y,prod(sizY(1:end-1)),[]);

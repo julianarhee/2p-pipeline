@@ -269,6 +269,7 @@ if D.maskInfo.params.patches && ~usePreviousA
 
 else
     if memmapped
+        tmpmat = matfile(fullfile(D.nmfPath, 'processingNMF.mat'), 'Writable', true);
         [P,Y] = preprocess_data(data.Y,p);    
     else
         [P,Y] = preprocess_data(Y,p);
@@ -456,14 +457,18 @@ else
         % Update spatial components:
         % -----------------------------------------------------------------
         Yr = reshape(Y,d,T);
+        tmpmat.Y = Y;
+        tmpmat.Yr = Yr;
+        clear Y
+        clear Yr
         fprintf('size Input A: %s\n', mat2str(size([Ain, bin])));
-        [A,b,Cin] = update_spatial_components(Yr, [],[], [Ain, bin], P, refnmf.options);
+        [A,b,Cin] = update_spatial_components(tmpmat, [],[], [Ain, bin], P, refnmf.options);
         %[A,b,Cin] = update_spatial_components(Yr, refnmf.C, refnmf.f, [Ain,bin], P, refnmf.options);
  
         % Update temporal components:
         % -----------------------------------------------------------------
         P.p = 0;
-        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,[],P,options);
+        [C,f,P,S,YrA] = update_temporal_components(tmpmat,A,b,Cin,[],P,options);
 
         P.p = 2;
         
