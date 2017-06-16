@@ -95,7 +95,7 @@ if not os.path.exists(savepath):
 
 
 
-for tiffidx in range(len(tiffs)):
+for tiffidx,tiffname in enumerate(tiffs):
     stack = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
     if uint16:
         stack = img_as_uint(stack)
@@ -151,12 +151,12 @@ for tiffidx in range(len(tiffs)):
 	final = final[:, y_startidx:y_endidx, x_startidx:x_endidx]
 	print "Cropped FOV. New size: ", final.shape
 
-    newtiff_fn = 'File%03d.tif' % int(tiffidx+1)
+    newtiff_fn = '{filename}.tif'.format(filename=tiffname.split('.')[0]) #'File%03d.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
     
     if visible: 
         ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
-        rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
+        rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
         tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
 
