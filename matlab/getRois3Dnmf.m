@@ -6,6 +6,8 @@ function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots, getref)
 % addpath(genpath('~/Repositories/NoRMCorre'));
 
 %% Specify tiff sources and covnert to matfile objs:
+memmapped = D.memmapped;
+correct_bidi = D.correctbidi;
 
 if isfield(D.maskInfo, 'nmfPaths')
     nmf_outpaths = D.maskInfo.nmfPaths;
@@ -20,8 +22,13 @@ else
     mempath = D.mempath;
 end
 
-tmpfiles = dir(fullfile(mempath, '*.mat'));
+if memmapped
+    tmpfiles = dir(fullfile(mempath, '*.mat'));
+else
+    tmpfiles = dir(fullfile(D.dataDir, '*.tif'));
+end
 tmpfiles = {tmpfiles(:).name}';
+
 if ~D.processedtiffs
     subidxs = cell2mat(cellfun(@(x) ~isempty(strfind(x, '_substack')), tmpfiles, 'UniformOutput', 0));
     files = tmpfiles(subidxs);
@@ -62,29 +69,42 @@ for tiffidx = 1:length(files)
     tpath = fullfile(mempath, files{tiffidx});
     [filepath, filename, ext] = fileparts(tpath);
 
-    matpath = fullfile(mempath, sprintf('%s.mat', filename));
-    data = matfile(matpath,'Writable',true);
+    if memmapped
+        matpath = fullfile(mempath, sprintf('%s.mat', filename));
+        data = matfile(matpath,'Writable',true);
 
-    fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
+        fprintf('Processing components for FILE %s (%i of %i tiffs).\n', filename, tiffidx, length(files));
 
 
-    nSlices = meta.file(tiffidx).si.nFramesPerVolume;
-    nRealFrames = meta.file(tiffidx).si.nSlices;
-    nVolumes = meta.file(tiffidx).si.nVolumes;
-    if D.tefo
-        nChannels=2;
+        nSlices = meta.file(tiffidx).si.nFramesPerVolume;
+        nRealFrames = meta.file(tiffidx).si.nSlices;
+        nVolumes = meta.file(tiffidx).si.nVolumes;
+        if D.tefo
+            nChannels=2;
+        else
+            nChannels=1;
+        end
+
+        if ndims(data.Y) == 4
+            [d1,d2,d3,T] = size(data.Y)                            % dimensions of dataset
+        else
+            [d1,d2,T] = size(data.Y);
+            d3 = 1;
+        end
+        d = d1*d2*d3;                                          % total number of pixels
     else
-        nChannels=1;
+        display(fullfile(D.dataDir, files{tiffidx})); 
+        Y = read_file(fullfile(D.dataDir, files{tiffidx}));
+        Y = Y(:,:,1:2:end);
+        [d1,d2,dm] = size(Y);
+        d3 = 12;
+        T = dm/d3;
+        d = d1*d2*d3;
+        Y = reshape(Y,[d1,d2,d3,T]);
+        Y = single(Y); 
+        Y = Y - min(Y(:));
+        Y = correct_bidirectional_phasing(Y);
     end
-
-    if ndims(data.Y) == 4
-        [d1,d2,d3,T] = size(data.Y)                            % dimensions of dataset
-    else
-        [d1,d2,T] = size(data.Y);
-        d3 = 1;
-    end
-    d = d1*d2*d3;                                          % total number of pixels
-
 
 %% Test NoRMCorre moition correction:
 
@@ -177,8 +197,11 @@ for tiffidx = 1:length(files)
 
 % Test patches:
 
-
-sizY = data.sizY;                       % size of data matrix
+if memmapped
+    sizY = data.sizY;                       % size of data matrix
+else
+    sizY = size(Y);
+end
 options = D.maskInfo.nmfoptions;
 
 %
@@ -193,7 +216,11 @@ if D.maskInfo.params.patches && ~usePreviousA
     %% Run on patches (around 15 minutes)
 
     tic;
-    [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
+    if memmapped
+        [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,p,options);
+    else
+        [A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(Y,K,patches,tau,p,options);
+    end 
     fprintf('Completed CNMF patches for %i of %i tiffs.\n', tiffidx, length(files));
 
     results_fn = fullfile(D.nmfPath, sprintf('patch_results_File%03d_substack', tiffidx) );
@@ -220,9 +247,14 @@ if D.maskInfo.params.patches && ~usePreviousA
     %[ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,keep] = classify_components(data.Y,A,C,b,f,YrA,options);
     classification_fn = ['classification_refpatch_' filename '.mat'];
     classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
-    
-    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+    if memmapped 
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+    else
+        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(Y,A,C,b,f,YrA,options);
+    end
+
     [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
+
     classify.ROIvars = ROIvars;
     classify.keep = ROIvars.keep;
     classify.A_ordered = A_or;
@@ -236,16 +268,17 @@ if D.maskInfo.params.patches && ~usePreviousA
 
 
 else
+    if memmapped
+        tmpmat = matfile(fullfile(D.nmfPath, 'processingNMF.mat'), 'Writable', true);
+        [P,Y] = preprocess_data(data.Y,p);    
+    else
+        [P,Y] = preprocess_data(Y,p);
+    end
 
-    [P,Y] = preprocess_data(data.Y,p);    
-
-    %rois = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinalMask/analysis/datastruct_006/rois.mat');
-    %roiA = rois.all;
     if D.maskInfo.seedRois && D.maskInfo.centroidsOnly
         P.ROI_list = double(D.maskInfo.seeds);
         fprintf('Starting with %i centroids as seeds.\n', length(P.ROI_list));
     end
-
     
     if ~usePreviousA
 
@@ -287,17 +320,17 @@ else
 
         % Get avgs of each slice (instead of corr imgs):
         % -----------------------------------------------------------------
-        fprintf('Averaging slices...\n');
-        avgs = zeros([d1,d2,d3]);
-        for slice=1:d3
-            avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
-            %avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-        end
-        
-        if show_plots
-            plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
-        end
-        
+%         fprintf('Averaging slices...\n');
+%         avgs = zeros([d1,d2,d3]);
+%         for slice=1:d3
+%             avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
+%             %avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+%         end
+%         
+%         if show_plots
+%             plotCenteroverY(avgs, center, [d1,d2,d3]);  % plot found centers against max-projections of background image
+%         end
+%         
         % Update spatial components:
         % -----------------------------------------------------------------
         fprintf('Updating spatial...\n');
@@ -353,7 +386,12 @@ else
             classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
 
             fprintf('Classifing components!\n');
-            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+            if memmapped
+                [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+            else
+                [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(Y,A,C,b,f,YrA,options);
+            end
+
             [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
             classify.ROIvars = ROIvars;
             classify.keep = ROIvars.keep;
@@ -419,14 +457,18 @@ else
         % Update spatial components:
         % -----------------------------------------------------------------
         Yr = reshape(Y,d,T);
+        tmpmat.Y = Y;
+        tmpmat.Yr = Yr;
+        clear Y
+        clear Yr
         fprintf('size Input A: %s\n', mat2str(size([Ain, bin])));
-        [A,b,Cin] = update_spatial_components(Yr, [],[], [Ain, bin], P, refnmf.options);
+        [A,b,Cin] = update_spatial_components(tmpmat, [],[], [Ain, bin], P, refnmf.options);
         %[A,b,Cin] = update_spatial_components(Yr, refnmf.C, refnmf.f, [Ain,bin], P, refnmf.options);
  
         % Update temporal components:
         % -----------------------------------------------------------------
         P.p = 0;
-        [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,[],P,options);
+        [C,f,P,S,YrA] = update_temporal_components(tmpmat,A,b,Cin,[],P,options);
 
         P.p = 2;
         
@@ -434,7 +476,12 @@ else
         % -----------------------------------------------------------------
         classification_fn = ['classification_' filename '.mat'];
         classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
-        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+        if memmapped
+            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+        else
+            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(Y,A,C,b,f,YrA,options);
+        end
+
         [A_or,C_or,S_or,P_or] = order_ROIs(A,C,S,P); % order components
         classify.ROIvars = ROIvars;
         classify.keep = ROIvars.keep;
@@ -454,7 +501,7 @@ else
         % -----------------------------------------------------------------
         % C is deconvolved activity, C + YrA is non-deconvolved fluorescence 
         % F_df is the DF/F computed on the non-deconvolved fluorescence
-        extractstart = tic();
+        %extractstart = tic();
         Ts = size(C,2);
         tsub = options.tsub;
         i = 1;
@@ -477,7 +524,7 @@ else
         F0 = cellfun(@plus, cellfun(@(x,y) x-y,F_us,Fd_us,'un',0), Ab_d,'un',0);   % add and get F0 fluorescence for each component
         F_df = cellfun(@(x,y) x./y, Fd_us, F0 ,'un',0);                            % DF/F value
         fprintf('Extracted fluorescence traces!\n');
-        toc(extractstart);
+        %toc(extractstart);
         
     end
        
@@ -488,7 +535,11 @@ end
 
 % Cn = correlation_image_max(single(data.Y),8);
 % 
-Cn = correlation_image_3D(single(data.Y),8); 
+if memmapped
+    Cn = correlation_image_3D(single(data.Y),8); 
+else
+    Cn = correlation_image_3D(single(Y),8); 
+end
 % 
 %     
 % %% classify components
@@ -506,12 +557,22 @@ Cn = correlation_image_3D(single(data.Y),8);
 % Cn looks crappy, try just avg to do sanity check of ROIs:
 avgs = zeros([d1,d2,d3]);
 for slice=1:d3
-    avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+    if memmapped
+        avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+    else
+        avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
+    end
+end
+if correct_bidi
+    [parent, source, ~] = fileparts(D.sliceimagepath);
+    D.sliceimagepath = fullfile(parent, 'bidi');
+    save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+    fprintf('Updated image path for dstruct to:\n  %s\n', D.sliceimagepath)
+    for slice=1:d3
+        tiffWrite(avgs(:,:,slice), sprintf('bidi_average_slice%02d.tif', slice), D.sliceimagepath)
+    end
 end
 
-%[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,Cn,options);
-%[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,A,C,b,f,avgs,options);
-% [T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(Y,A,C,b,f,avgs,options);
 if show_plots
     plot_components_3D_GUI(Y,A,C,b,f,avgs,options);
 end
@@ -530,8 +591,6 @@ end
         
 nmf_outputpath = fullfile(D.nmfPath, nmf_outfile);
 nmfoutput = matfile(nmf_outputpath, 'Writable', true);
-
-nmfoutput.mempath = mempath;
 nmfoutput.outpath = nmf_outputpath; %fullfile(sourcepath, savedir);
 nmfoutput.tiff = [filename, '.tif'];
 nmfoutput.K = K;
@@ -551,7 +610,11 @@ nmfoutput.C = C;
 nmfoutput.b = b;
 nmfoutput.f = f;
 nmfoutput.YrA = YrA; % add C to get non-deconvolved fluorescence
-nmfoutput.Y = data.Y;
+if memmapped
+    nmfoutput.Y = data.Y;
+else
+    nmfoutput.Y = Y;
+end
 if ~getref
     nmfoutput.background_df = background_df;    % Divide C by this to get "inferred"
     %nmfoutput.classify = ROIvars;               % output of classify_components

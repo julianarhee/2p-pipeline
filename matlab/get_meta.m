@@ -79,7 +79,7 @@ switch metaInfo
         tmpchannels = tmpchannels([tmpchannels.isdir]);
         tmpchannels = {tmpchannels(:).name}';
         %if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
-        if isempty(tmpchannels) || strfind(D.tiffSource, 'Parsed')
+        if isempty(tmpchannels) || any(strfind(D.tiffSource, 'Parsed'))
             sort_parsed_tiffs(D, nchannels);
         end
 
@@ -100,7 +100,7 @@ switch metaInfo
 end
 
 D.metaPath = meta.metaPath; 
-D.nTiffs = meta.nTiffs; 
+D.nTiffs = meta.nTiffs 
 D.nChannels = meta.nChannels; 
 D.stimType = meta.stimType; 
  

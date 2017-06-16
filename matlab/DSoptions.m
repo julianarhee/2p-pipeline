@@ -48,6 +48,8 @@ Names = [
     'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])
     'metaonly           '       % only get meta info because tiff files too large (default: false)
     'nmetatiffs         '       % number of tiffs need meta-only info for (default: 0)
+    'memmapped          '       % TMP:  use memmapped or no
+    'correctbidi        '       % TMP: only correct bidirectional scan phase offset
     ];
 
 [m, n] = size(Names);
@@ -158,6 +160,8 @@ Values = [
     {[]}                  % 'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])
     {false}                  % 'metaonly           '       % only get meta info because tiff files too large (default: false)
     {0}                  % 'hugetiffs          '       % number of tiffs need meta-only info for (default: 0)
+    {true}              % 'memmapped or no for get3DRois...' TMP
+    {false}
     ];
 
 for j = 1:m

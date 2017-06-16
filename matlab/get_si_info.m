@@ -8,10 +8,10 @@ function S = get_si_info(D)
         siMetaName = sprintf('%s.mat', acquisitionName);
         meta = load(fullfile(sourceDir, siMetaName));
         
-        if D.metaonly
+        if D.metaonly && isfield(D,'nTiffs')
             nTiffs = D.nTiffs;
         else
-            nTiffs = length(meta.(acquisitionName).metaDataSI);
+            nTiffs = length(meta.(acquisitionName).metaDataSI)
         end
         
         for fidx=1:nTiffs
