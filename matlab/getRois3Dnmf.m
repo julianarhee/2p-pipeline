@@ -495,7 +495,7 @@ else
 
 
         
-        [~,background_df] = extract_DF_F(Yr,A,C,P,options); 
+        [~,background_df] = extract_DF_F(tmpmat.Yr,A,C,P,options); 
         
         % Extract fluorescence and DF/F on native temporal resolution
         % -----------------------------------------------------------------
@@ -511,8 +511,8 @@ else
         S_us = cell(1,1);
         int = sum(floor(Ts(1:i-1)/tsub))+1:sum(floor(Ts(1:i)/tsub));
         Cin_tmp = imresize([C(:,int);f(:,int)],[size(C,1)+size(f,1),Ts(i)]);
-        [C_us{i},f_us{i},P_us{i},S_us{i},YrA_us{i}] = update_temporal_components_fast(Y,A,b,Cin_tmp(1:end-1,:),Cin_tmp(end,:),P,options);
-        b_us{i} = max(mm_fun(f_us{i},Yr) - A*(C_us{i}*f_us{i}'),0)/norm(f_us{i})^2;
+        [C_us{i},f_us{i},P_us{i},S_us{i},YrA_us{i}] = update_temporal_components_fast(tmpmat.Y,A,b,Cin_tmp(1:end-1,:),Cin_tmp(end,:),P,options);
+        b_us{i} = max(mm_fun(f_us{i},tmpmat.Yr) - A*(C_us{i}*f_us{i}'),0)/norm(f_us{i})^2;
         
         prctfun = @(data) prctfilt(data,20,30);       % first detrend fluorescence (remove 20%th percentile on a rolling 1000 timestep window)
         F_us = cellfun(@plus,C_us,YrA_us,'un',0);     % cell array for projected fluorescence
@@ -536,7 +536,7 @@ end
 % Cn = correlation_image_max(single(data.Y),8);
 % 
 if memmapped
-    Cn = correlation_image_3D(single(data.Y),8); 
+    Cn = correlation_image_3D(single(tmpmat.Y),8); 
 else
     Cn = correlation_image_3D(single(Y),8); 
 end
@@ -558,7 +558,7 @@ end
 avgs = zeros([d1,d2,d3]);
 for slice=1:d3
     if memmapped
-        avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+        avgs(:,:,slice) = mean(tmpmat.Y(:,:,slice,:), 4);
     else
         avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
     end
@@ -574,7 +574,7 @@ if correct_bidi
 end
 
 if show_plots
-    plot_components_3D_GUI(Y,A,C,b,f,avgs,options);
+    plot_components_3D_GUI(tmpmat.Y,A,C,b,f,avgs,options);
 end
 
 %[T_out, Y_r_out, C_out, Df_out] = plot_components_3D_GUI(data.Y,patch.A,patch.C,patch.b,patch.f,avgs,options);
@@ -611,9 +611,11 @@ nmfoutput.b = b;
 nmfoutput.f = f;
 nmfoutput.YrA = YrA; % add C to get non-deconvolved fluorescence
 if memmapped
-    nmfoutput.Y = data.Y;
+    nmfoutput.Y = tmpmat.Y;
+    nmfoutput.Yr = tmpmat.Yr;
 else
     nmfoutput.Y = Y;
+    nmfoutput.Yr = Yr;
 end
 if ~getref
     nmfoutput.background_df = background_df;    % Divide C by this to get "inferred"

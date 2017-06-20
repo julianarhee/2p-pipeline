@@ -59,15 +59,15 @@ for fidx=1:nTiffs
 
     % Create "masks" from 3D spatial components:
     % -----------------------------------------
-    roiMat = full(nmf.A); % TODO:  IS this normalized to unit energy?? check aginst "spatialcomponents" above...
-    nRois = size(roiMat,2);
+    %roiMat = full(nmf.A); % TODO:  IS this normalized to unit energy?? check aginst "spatialcomponents" above...
+    nRois = size(nmf.A,2);
 
 
     % Create cell array of sparse mats, each of which is a 3D ROI "mask".
     % ---------------------------------------------------------------------
     % MASKCELL3D - each ROI of the current FILE is stored as a sparse mat
 
-    maskcellTmp = arrayfun(@(roi) reshape(roiMat(:,roi), d1, d2, d3), 1:nRois, 'UniformOutput', false);
+    maskcellTmp = arrayfun(@(roi) reshape(full(nmf.A(:,roi)), d1, d2, d3), 1:nRois, 'UniformOutput', false);
     maskcell3D = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
     %maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
      
@@ -193,7 +193,7 @@ for fidx=1:nTiffs
     maskStruct3D.maskcell3D = maskcell3D;
     maskStruct3D.centers = centers;
     maskStruct3D.spatialcomponents = spatialcomponents;
-    maskStruct3D.roiMat = roiMat;
+    maskStruct3D.roiMat = full(nmf.A); %roiMat;
     if ~isfield(D.maskInfo, 'roiIDs')
         maskStruct3D.roi3Didxs = 1:nrois;
     else

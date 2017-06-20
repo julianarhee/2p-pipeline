@@ -42,7 +42,8 @@ switch D.roiType
         % Create masks from ROI maps: 
         % -----------------------------------------------------------------
         D.maskInfo.maskPaths = rois_to_masks(D);
-                
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+         
         % Get traces with masks:
         % -----------------------------------------------------------------
         tic()
@@ -323,7 +324,9 @@ switch D.roiType
         D.maskInfo.maskType = D.maskType;
         D.maskInfo.slices = D.slices;
         D.maskInfo.ref.tiffidx = roiparams.refidx;
-             
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+
+ 
         % Run 3D CNMF pipeline:
         % -----------------------------------------------------------------   
          
@@ -375,7 +378,7 @@ switch D.roiType
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
         fprintf('Extracted all 3D ROIs!\n')
-        
+        fprintf('**********************************\n'); 
         toc(roistart);
         
         
