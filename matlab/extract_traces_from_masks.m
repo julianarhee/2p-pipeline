@@ -324,6 +324,7 @@ switch D.roiType
         D.maskInfo.maskType = D.maskType;
         D.maskInfo.slices = D.slices;
         D.maskInfo.ref.tiffidx = roiparams.refidx;
+        D.maskInfo
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
  

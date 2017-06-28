@@ -198,7 +198,8 @@ for tiffidx = 1:length(files)
 % Test patches:
 
 if memmapped
-    sizY = data.sizY;                       % size of data matrix
+    fprintf('Memmapped.\n')
+    sizY = data.sizY                       % size of data matrix
 else
     sizY = size(Y);
 end
@@ -362,6 +363,8 @@ else
             fprintf('Merging components...\n');
             fprintf('Starting size A: %s', mat2str(size(A))); 
             [Am, Cm, ~, ~, P] = merge_components(Yr, A, b, C, f, P, S, options); 
+            
+            % Update components again since merging double-counts:
             [A, b, C, P] = update_spatial_components(Yr, Cm, f, [Am, b], P, options); 
 
             ff = find(sum(A)==0);
@@ -536,7 +539,11 @@ end
 % Cn = correlation_image_max(single(data.Y),8);
 % 
 if memmapped
-    Cn = correlation_image_3D(single(tmpmat.Y),8); 
+    if usePreviousA
+        Cn = correlation_image_3D(single(tmpmat.Y),8);
+    else
+        Cn = correlation_image_3D(single(data.Y),8);
+    end
 else
     Cn = correlation_image_3D(single(Y),8); 
 end
@@ -558,7 +565,11 @@ end
 avgs = zeros([d1,d2,d3]);
 for slice=1:d3
     if memmapped
-        avgs(:,:,slice) = mean(tmpmat.Y(:,:,slice,:), 4);
+        if usePreviousA
+            avgs(:,:,slice) = mean(tmpmat.Y(:,:,slice,:), 4);
+        else
+            avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+        end
     else
         avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
     end
