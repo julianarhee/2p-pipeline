@@ -13,9 +13,9 @@ dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
     'session', '20161222_JR030W',...                            % session name (single FOV)
     'run', 'retinotopy1',...                                % experiment name
-    'datastruct', 2,...                                        % datastruct idx
-    'acquisition', 'fov1_bar037Hz_run4',...      % acquisition name
-    'datapath', 'DATA',...          % preprocessed datapath 
+    'datastruct', 8,...                                        % datastruct idx
+    'acquisition', 'File001',...      % acquisition name
+    'datapath', 'DATA/fullfov',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'raw',...                                  % preprocessed or no
     'corrected', false,...                                      % corrected (w/ Acq2P or no)
@@ -28,6 +28,8 @@ dsoptions = DSoptions(...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
     'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'memmapped', true,...
+    'correctbidi', true,...
     'slices', [1:12],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
@@ -92,8 +94,8 @@ switch dsoptions.roitype
  
     case '3Dcnmf'
         roiparams.refidx = 1; % 3;%2;                       % tiff idx to use as reference for spatial components
-        roiparams.tau = [3,6,2] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
-        roiparams.p = 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
+        roiparams.tau = [10,18,3] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
+        roiparams.p = 0; % 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
         roiparams.merge_thr = 0.8;                  % merging threshold
      
         if dsoptions.seedrois
@@ -104,8 +106,8 @@ switch dsoptions.roitype
        
         if roiparams.patches
             roiparams.K = 10;                        % number of components to be found
-            roiparams.patch_size = [32,64,4]; %[15,15,5];        % size of each patch along each dimension (optional, default: [32,32])
-            roiparams.overlap = [8,16,2]; %[6,6,2];             % amount of overlap in each dimension (optional, default: [4,4])
+            roiparams.patch_size = [32,32,8]; %[15,15,5];        % size of each patch along each dimension (optional, default: [32,32])
+            roiparams.overlap = [4,4,2]; %[6,6,2];             % amount of overlap in each dimension (optional, default: [4,4])
             roiparams.fullK = 4000;
             roiparams.patchK = 10;
         else
@@ -115,33 +117,45 @@ switch dsoptions.roitype
         roiparams.plotoutputs = false;
         %params.scaleFOV = true;
         %params.removeBadFrames = false;
-
-
+        merge_thr = 0.8;
+        
         roiparams.options = CNMFSetParms(...
-            'd1',256,'d2',512,'d3',12,...
-            'spatial_method','constrained',...       % method for updating spatial components
-            'search_method','ellipse','dist',3,...
-            'se', strel('disk', 4, 0),...      
-            'max_size', 8, 'min_size', 3,...         % max/min size of ellipse axis (default: 8, 3)
-            'deconv_method','constrained_foopsi',... % activity deconvolution method
-            'temporal_iter',2,...                    % number of block-coordinate descent steps 
-            'cluster_pixels',false,...                  
-            'ssub',4,...                             % spatial downsampling when processing
-            'tsub',2,...                             % further temporal downsampling when processing
-            'fudge_factor',0.96,...                  % bias correction for AR coefficients
-            'merge_thr', roiparams.merge_thr,...                   % merging threshold
+            'deconv_method','constrained_foopsi',...    % activity deconvolution method
+            'temporal_iter',2,...                       % number of block-coordinate descent steps 
+            'cluster_pixels',false,...
+            'ssub',1,...
+            'tsub',1,...
+            'fudge_factor',0.98,...                     % bias correction for AR coefficients
+            'merge_thr',merge_thr,...                   % merging threshold
             'gSig',roiparams.tau,... 
-            'max_size_thr',300,'min_size_thr',9,...    % max/min acceptable size for each component (default: 300, 9)
-            'spatial_method','regularized',...       % method for updating spatial components ('constrained')
-            'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
-            'time_thresh',0.6,...
-            'space_thresh',0.6,...
-            'thr_method', 'max',...                  % method to threshold ('max' or 'nrg', default 'max')
-            'maxthr', 0.05,...                       % threshold of max value below which values are discarded (default: 0.1)
-            'conn_comp', false);                     % extract largest connected component (binary, default: true)
-        roiparams.options.spatial_method = 'regularized'; %'constrained';
-        roiparams.options
+            'spatial_method','regularized'...
+            );
 
+%         roiparams.options = CNMFSetParms(...
+%             'd1',256,'d2',1024,'d3',12,...
+%             'spatial_method','constrained',...       % method for updating spatial components
+%             'search_method','ellipse','dist',8,...
+%             'se', strel('disk', 8, 0),...      
+%             'max_size', 32, 'min_size', 4,...         % max/min size of ellipse axis (default: 8, 3)
+%             'deconv_method','constrained_foopsi',... % activity deconvolution method
+%             'temporal_iter',2,...                    % number of block-coordinate descent steps 
+%             'cluster_pixels',false,...                  
+%             'ssub',2,...                             % spatial downsampling when processing
+%             'tsub',2,...                             % further temporal downsampling when processing
+%             'fudge_factor',0.96,...                  % bias correction for AR coefficients
+%             'merge_thr', roiparams.merge_thr,...                   % merging threshold
+%             'gSig',roiparams.tau,... 
+%             'max_size_thr',300,'min_size_thr',9,...    % max/min acceptable size for each component (default: 300, 9)
+%             'spatial_method','regularized',...       % method for updating spatial components ('constrained')
+%             'df_prctile',50,...                      % take the median of background fluorescence to compute baseline fluorescence 
+%             'time_thresh',0.6,...
+%             'space_thresh',0.6,...
+%             'thr_method', 'max',...                  % method to threshold ('max' or 'nrg', default 'max')
+%             'maxthr', 0.05,...                       % threshold of max value below which values are discarded (default: 0.1)
+%             'conn_comp', false);                     % extract largest connected component (binary, default: true)
+%         roiparams.options.spatial_method = 'regularized'; %'constrained';
+%         roiparams.options
+% 
 
 end
 
@@ -183,8 +197,9 @@ fprintf('Got source info for creating ROI masks.\n')
 %% Create masks and get traces:
 
 tic()
-getref = true;
-D = extract_traces_from_masks(roiparams, D, meta, getref);
+getref = false; %true;
+orderROIs = true;
+D = extract_traces_from_masks(roiparams, D, meta, getref, orderROIs);
 
 toc();
 

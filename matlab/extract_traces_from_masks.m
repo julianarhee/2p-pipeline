@@ -1,4 +1,8 @@
-function D = extract_traces_from_masks(roiparams, D, meta, getref)
+function D = extract_traces_from_masks(roiparams, D, meta, getref, orderROIs)
+
+if isempty(orderROIs)
+    orderROIs = false;
+end
 
 switch D.roiType
     case 'create_rois'
@@ -355,7 +359,8 @@ switch D.roiType
             if roiparams.patches
                 D.maskInfo.params.K = roiparams.patchK;
             end
-            [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
+            fprintf('Order ROIs: %i\n', orderROIs);
+            [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
             fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
             
             D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
@@ -368,6 +373,7 @@ switch D.roiType
         roistart = tic();
         fprintf('Getting components from previously extracted components.\n');
         getref = false;
+        orderROIs = false;
         if roiparams.patches
             % Use masks from REF, don't run patches.
             D.maskInfo.params.K = roiparams.fullK;
