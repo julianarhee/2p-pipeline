@@ -1,37 +1,50 @@
-function parseSIdata(acquisition_name, movies, sourceDir, writeDir, varargin)
+function parseSIdata(D, movies, writeDir, varargin)
+%function parseSIdata(acquisition_name, movies, sourceDir, writeDir, varargin)
 % Parse and save TIFFs that are not preprocessed (motion corrected).
 % Rename by Channel, Slice, and File.
 
 %% Set params:
 
 namingFunction = @defaultNamingFunction;
+sourceDir = D.dataDir;
+acquisition_name = D.acquisitionName;
+processedtiffs = D.processedtiffs;
+metaonly = D.metaonly;
+corrected = D.corrected;
+
 switch length(varargin)
     case 0
         refmeta = false;
-        metaonly = false;
+        %metaonly = false;
+	[parentDir, processedFolder, ~] = fileparts(sourceDir);
     case 1
         sirefs = varargin{1};
         sirefFidx = 1;
-        metaonly = false;
+        refmeta = true;
+	%metaonly = false;
     case 2
         sirefs = varargin{1};
         sirefFidx = varargin{2};
         refmeta = true;
-        metaonly = false;
+        %metaonly = false;
     case 3
+%         refmeta = false;
+%         metaonly = varargin{3}; %true;
+%         processedtiffs = false;
         refmeta = false;
-        metaonly = varargin{3}; %true;
-        processedtiffs = false;
-    case 4
-        refmeta = false;
-        metaonly = varargin{3}; %true;
-        processedtiffs = varargin{4}; %true;
-        [parentDir, processedFolder, ~] = fileparts(sourceDir);
-    case 5
-        refmeta = false;
-        metaonly = varargin{3}; %true;
-        processedtiffs = varargin{4}; %true;
         parentDir = varargin{5};
+
+% 
+%     case 4
+%         refmeta = false;
+%         metaonly = varargin{3}; %true;
+%         processedtiffs = varargin{4}; %true;
+%         [parentDir, processedFolder, ~] = fileparts(sourceDir);
+%     case 5
+%         refmeta = false;
+%         metaonly = varargin{3}; %true;
+%         processedtiffs = varargin{4}; %true;
+%         parentDir = varargin{5};
 end
 %% Load movies and motion correct
 %Calculate Number of movies and arrange processing order so that
@@ -166,7 +179,7 @@ for movNum = movieOrder
 %     fprintf('Applying Motion Correction for Movie #%03.0f of #%03.0f\n', movNum, nMovies),
 %     movStruct = obj.motionCorrectionFunction(obj, movStruct, scanImageMetadata, movNum, 'apply');
     
-    if ~metaonly || processedtiffs
+    if (~metaonly || processedtiffs) && ~corrected
         fprintf('Writing parsed tiffs to file...\n');
         for nSlice = 1:nSlices
             for nChannel = 1:nChannels
