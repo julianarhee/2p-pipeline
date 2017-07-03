@@ -7,7 +7,7 @@ function D = create_datastruct(dsoptions, overwriteflag)
 sourceDir = fullfile(dsoptions.source, dsoptions.session, dsoptions.run); 
 didx = dsoptions.datastruct; 
 acquisitionName = dsoptions.acquisition; 
-corrected = dsoptions.corrected; 
+%D.corrected = dsoptions.corrected; 
  
 analysisDir = fullfile(sourceDir, 'analysis'); 
 if ~exist(analysisDir, 'dir') 
@@ -76,6 +76,7 @@ D.maskfinder = dsoptions.maskfinder;
 
 D.memmapped = dsoptions.memmapped;
 D.correctbidi = dsoptions.correctbidi;
+D.corrected = dsoptions.corrected;
  
 save(fullfile(dstructPath, datastruct), '-struct', 'D'); 
  

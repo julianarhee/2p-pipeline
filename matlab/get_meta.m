@@ -45,7 +45,8 @@ switch metaInfo
                     if length(movies)==1
                         siRefFidx = input('Select FILE idx from current reference acquisition:\n');
                         siRefMetaStruct = siRef.metaDataSI{siRefFidx};
-                        parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct);
+                        %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct);
+			parseSIdata(D, movies, writeDir, siRefMetaStruct);
                     else
                         siRefMetaStruct = siRef;
                         if length(movies) ~= length(siRef.metaDataSI)
@@ -56,15 +57,20 @@ switch metaInfo
                         else
                             siRefStartIdx = 1;
                         end
-                        parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct, siRefStartIdx);
+                        %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct, siRefStartIdx);
+			parseSIdata(D, movies, writeDir, siRefMetaStruct, siRefStartIdx);
+
                     end
 
                 otherwise
-                    if D.metaonly || D.processedtiffs
-                        parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, [], [], D.metaonly, D.processedtiffs);
-                    else
-                        parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir);
-                    end
+		    parseSIdata(D, movies, writeDir);
+%                     if D.metaonly || D.processedtiffs
+%                         %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, [], [], D.metaonly, D.processedtiffs);
+% 			parseSIdata(D, movies, writeDir);
+% 
+%                     else
+%                         parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir);
+%                     end
             end
 
             % Load newly-created meta struct:
