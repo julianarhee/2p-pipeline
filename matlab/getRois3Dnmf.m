@@ -531,7 +531,7 @@ for tiffidx = 1:length(files)
 
 
     % Extract df/f:
-    [~,background_df] = extract_DF_F(Yr,A,C,P,options);         
+    %[~,background_df] = extract_DF_F(tmpmat.Yr,A,C,P,options);         
 
 
     %% compute correlation image on a small sample of the data (optional - for visualization purposes) 
@@ -540,8 +540,14 @@ for tiffidx = 1:length(files)
     % 
     if memmapped
         if usePreviousA
-            Cn = correlation_image_3D(single(tmpmat.Y),8);
+            % Extract df/f:
+            [~,background_df] = extract_DF_F(tmpmat.Yr,A,C,P,options);         
+	    % compute correlation image  
+	    Cn = correlation_image_3D(single(tmpmat.Y),8);
         else
+	    % Extract df/f:
+            [~,background_df] = extract_DF_F(data.Yr,A,C,P,options);         
+	    % compute correlation image  
             Cn = correlation_image_3D(single(data.Y),8);
         end
     else
@@ -620,7 +626,7 @@ for tiffidx = 1:length(files)
         nmfoutput.S = S_or;
         nmfoutput.C = C_or;
         nmfoutput.b = b(srt);
-        nmfoutput.f = f(srt);
+        nmfoutput.f = f; %(srt);
         nmfoutput.components = srt_val;
         nmfoutput.sorted = srt;
     else
