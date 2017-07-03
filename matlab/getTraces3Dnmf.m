@@ -61,11 +61,11 @@ for fidx=1:nTiffs
     % aa = nmf.A'*nmf.A;
     % traces = ay - aa*nmf.C;
     ntpoints = sizY(end);
-    traces = nmf.A' * reshape(double(nmf.Y), d1*d2*d3, ntpoints); % nRows = nROIS, nCols = tpoints 
+    traces = logical(nmf.A)' * reshape(double(nmf.Y), d1*d2*d3, ntpoints); % nRows = nROIS, nCols = tpoints 
     T.rawTraces = traces'; %rawTraces; 
     clear traces;
   
-    rawTracesNMF = nmf.A'*(nmf.A*nmf.C + nmf.b*nmf.f);
+    rawTracesNMF = logical(nmf.A)'*(nmf.A*nmf.C + nmf.b*nmf.f);
     T.rawTracesNMF = rawTracesNMF'; clear rawTracesNMF;
     %avgs = nmf.avgs;
 
@@ -96,7 +96,7 @@ for fidx=1:nTiffs
     maskcellTmp = arrayfun(@(roi) reshape(full(nmf.A(:,roi)), d1, d2, d3), 1:nrois, 'UniformOutput', false);
     maskcell3D = cellfun(@logical, maskcellTmp, 'UniformOutput', false); % Does this work on sparse mats?
     %maskcell = cellfun(@sparse, maskcell, 'UniformOutput', false);
-     
+    clear maskcellTmp;     
     
     % Sort ROIs by which slices they have sptial footprint on:
     % ---------------------------------------------------------------------
