@@ -482,7 +482,7 @@ for tiffidx = 1:length(files)
             [C_us{i},f_us{i},P_us{i},S_us{i},YrA_us{i}] = update_temporal_components_fast(tmpmat.Y,A,b,Cin_tmp(1:end-1,:),Cin_tmp(end,:),P,options);
             b_us{i} = max(mm_fun(f_us{i},tmpmat.Yr) - A*(C_us{i}*f_us{i}'),0)/norm(f_us{i})^2;
             
-            prctfun = @(tmpmat) prctfilt(data,20,30);       % first detrend fluorescence (remove 20%th percentile on a rolling 1000 timestep window)
+            prctfun = @(tmpmat) prctfilt(tmpmat,20,30);       % first detrend fluorescence (remove 20%th percentile on a rolling 1000 timestep window)
             F_us = cellfun(@plus,C_us,YrA_us,'un',0);     % cell array for projected fluorescence
             Fd_us = cellfun(prctfun,F_us,'un',0);         % detrended fluorescence
 
@@ -620,7 +620,7 @@ for tiffidx = 1:length(files)
     nmfoutput.Cn = Cn;
     nmfoutput.avgs = avgs;
 
-    if orderROIs
+    if orderROIs && getref
         nmfoutput.A = A_or;
         nmfoutput.P = P_or;
         nmfoutput.S = S_or;

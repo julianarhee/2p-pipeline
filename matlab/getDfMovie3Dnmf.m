@@ -251,7 +251,8 @@ end
 %end
 
 dfName = sprintf('dfstruct.mat');
-save_struct(D.outputDir, dfName, DF);
+%save_struct(D.outputDir, dfName, DF);
+save(fullfile(D.outputDir, dfName), '-v7.3', '-struct', 'DF');
 
 DF.name = dfName;
 

@@ -379,7 +379,7 @@ switch D.roiType
             D.maskInfo.params.K = roiparams.fullK;
             D.maskInfo.patches = false;
         end
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref);
+        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
        
         D.maskInfo.params.nmfoptions = nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
