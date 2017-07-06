@@ -1184,12 +1184,12 @@ function roigui_WindowButtonMotionFcn(hObject, eventdata, handles)
 % %         candidateY = find(abs(line.YData-Cy)==min(abs(line.YData-Cy)));
 % %         candidateX = find(abs(line.XData-Cx)==min(abs(line.XData-Cx)));
 % %         if min(abdiffsY)+min(abdiffsX) < 1
-% %             candidatesX(lidx) = abdiffsX(candidateX);
+% %             candidatesX(elidx) = abdiffsX(candidateX);
 % %             candidatesY(lidx) = abdiffsY(candidateY);
 % %         end
 % %         lidx = lidx+1;
 % %     end
-% %     bestmatch = [bestmatch find(candidatesY==min(candidatesY))];
+% %     bestmatch = [bestmatch find(icandidatesY==min(candidatesY))];
 % %     
 % %         
 % %     %end
