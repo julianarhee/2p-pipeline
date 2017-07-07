@@ -432,7 +432,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             curr_idx = copy.copy(first_off_idx)
 
             trigg_times = [[first_trigger_ev, first_off_ev]] # placeholder for off ev
-            start_idx = copy.copy(curr_idx)
+            start_idx = int(copy.copy(curr_idx))
             while start_idx < len(trigg_evs)-1: 
                 try:
                     found_new_start = False
@@ -558,7 +558,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
                 tmp_trialevents = sorted(tmp_trialevents, key=get_timekey)
 
 
-            if stimtype=='grating':
+            elif stimtype=='grating':
                 imdevs = [d for d in devs for i in d.value if i['name']=='gabor']
 
                 start_times = [i.value[1]['start_time'] for i in imdevs] # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
@@ -592,6 +592,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             
             # E.append(trial_ends)
             trialevents.append(tmp_trialevents)
+            print "LEN tevs: ", len(trialevents)
         
         # GET INFO:
         info = dict()
