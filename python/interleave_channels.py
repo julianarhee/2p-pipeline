@@ -29,6 +29,7 @@ if not os.path.exists(channel_dir):
 
 tiffs = os.listdir(source)
 tiffs = [t for t in tiffs if t.endswith('.tif')]
+print "Found %i tiffs." % len(tiffs)
 
 if len(tiffs)%2 > 0:
     print "Found uneven number of tiffs to interleave in source:\n%s" % source
