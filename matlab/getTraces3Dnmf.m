@@ -162,9 +162,11 @@ for fidx=1:nTiffs
         [fp,fn,fe] = fileparts(maskPath);
 
         if exist(maskPath, 'file')
-            save_struct(fp, strcat(fn,fe), maskstruct, '-append')
-        else
-            save_struct(fp, strcat(fn,fe), maskstruct)
+            %save_struct(fp, strcat(fn,fe), maskstruct, '-append')
+            save(maskPath, '-append', '-struct', 'maskstruct', '-v7.3');
+	else
+	    %save_struct(fp, strcat(fn,fe), maskstruct)
+      	    save(maskPath,'-struct', 'maskstruct', '-v7.3');
         end
 
         % Also extract traces for curr-slice masks:
@@ -205,10 +207,12 @@ for fidx=1:nTiffs
         tracestruct.file(fidx).info.nRois = length(currSliceRois{sl}); %size(tr,1); %length(maskcell);
 
         if exist(fullfile(tracesPath, tracesName), 'file')
-            save_struct(tracesPath, tracesName, tracestruct, '-append');
+            save(fullfile(tracesPath, tracesName), '-append', '-struct', 'tracestruct', '-v7.3');
+	    %save_struct(tracesPath, tracesName, tracestruct, '-append');
         else
             fprintf('Saving struct: %s.\n', tracesName);
-            save_struct(tracesPath, tracesName, tracestruct);
+            save(fullfile(tracesPath, tracesName), '-struct', 'tracestruct', '-v7.3');
+	    %save_struct(tracesPath, tracesName, tracestruct);
         end
         
     end
