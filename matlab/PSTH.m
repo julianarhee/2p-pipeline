@@ -16,7 +16,7 @@ session = '20161222_JR030W'
 
 % experiment = 'gratingsFinalMask2';
 % experiment = 'retinotopyFinalMask';
-experiment = 'gratings1';
+experiment = 'gratings2';
 
 analysis_no = 1; %8;
 tefo = false; %true;

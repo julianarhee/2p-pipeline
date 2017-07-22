@@ -12,9 +12,9 @@ clc;
 dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
     'session', '20161222_JR030W',...                            % session name (single FOV)
-    'run', 'gratings1',...                                % experiment name
+    'run', 'gratings2',...                                % experiment name
     'datastruct', 1,...                                        % datastruct idx
-    'acquisition', 'fov1_gratings_10reps_run1',...      % acquisition name
+    'acquisition', 'fov1_gratings_20reps_run2',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'Acquisition2P',...                                  % preprocessed or no
@@ -33,7 +33,7 @@ dsoptions = DSoptions(...
     'slices', [1:12],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
-    'excludedtiffs', [19],...                                     % idxs of tiffs to exclude from analysis
+    'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
     'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
     'nmetatiffs', 12);                                           % number of huge tiffs to exclude
 
@@ -93,7 +93,7 @@ switch dsoptions.roitype
         roiparams.radius = 1.5;
  
     case '3Dcnmf'
-        roiparams.refidx = 1; % 3;%2;                       % tiff idx to use as reference for spatial components
+        roiparams.refidx = 3; % 3;%2;                       % tiff idx to use as reference for spatial components
         roiparams.tau = [10,18,3] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
         roiparams.p = 0; % 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
         roiparams.merge_thr = 0.8;                  % merging threshold
@@ -128,8 +128,11 @@ switch dsoptions.roitype
             'fudge_factor',0.98,...                     % bias correction for AR coefficients
             'merge_thr',merge_thr,...                   % merging threshold
             'gSig',roiparams.tau,... 
-            'spatial_method','regularized'...
-            );
+            'spatial_method','regularized',...
+            'min_size_thr', 20,... 
+	    'time_thresh', 0.6,...
+	    'space_thresh', 0.6...
+	    );
 
 %         roiparams.options = CNMFSetParms(...
 %             'd1',256,'d2',1024,'d3',12,...
