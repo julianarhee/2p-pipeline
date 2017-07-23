@@ -9,13 +9,17 @@ import h5py
 import pandas as pd
 import optparse
 from skimage import img_as_uint
-
+import tifffile as tf
 
 
 # TODO:  fix so that all datapath naming is consistent, and don't have to hard-code.
 dstructpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/analysis/datastruct_014/datastruct_014.mat'
 outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
-outfile_fn = 'nmf_File%03d_masks_color.tif' % int(tiffidx+1)
+
+tiffidx = 3
+outfile_fn = 'nmf_File%03d_masks_color_overlay.tif' % int(tiffidx+1)
+
+tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/finalvolume/R2B1_tefo_avg_channel01_RGB.tif'
 
 
 # Need better loadmat for dealing with .mat files in a non-annoying way:
@@ -95,6 +99,15 @@ else:
     colormap = pkl.load(open(os.path.join(cellmap_source, colormap_fn), 'rb'))
 
 
+# Load averaged TIFF stack:
+tiffstack = tf.imread(tiffpath)
+print "Avgerage volume shape: ", tiffstack.shape
+if not tiffstack.dtype=='uint8':
+    tiffstack = img_as_ubyte(tiffstack)
+print "Dtype: ", tiffstack.dtype
+
+
+
 # Load datastruct and meta info:
 dstruct = loadmat(dstructpath)
 meta = loadmat(dstruct['metaPath'])
@@ -146,5 +159,18 @@ for roi in range(nrois):
 #nmfvolume = np.swapaxes(nmfvolume, 1, 2) # swap x,y again to draw in image-coords
 
 tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
+
+#     volume[coord[0], coord[1], coord[2],:] = colormap[currcellname]
+#     tiffstack[coord[0], coord[1], coord[2], :] = np.zeros(colormap[currcellname].shape)
+# 
+# outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/processed_tiffs'
+# outfile_fn = 'nmf_File%03d_centroid_color.tif' % int(tiffidx+1)
+# tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
+# 
+tiffstack[nmfvolume!=0] = 0
+overlayvolume = np.add(tiffstack, nmfvolume)
+outfile_fn = 'nmf_File%03d_masks_color_overlay.tif' % int(tiffidx+1)
+tf.imsave(os.path.join(outpath, outfile_fn), overlayvolume)
+
 
 
