@@ -11,16 +11,16 @@ clc;
 
 dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
-    'session', '20161222_JR030W',...                            % session name (single FOV)
-    'run', 'gratings2',...                                % experiment name
+    'session', '20170721_CE050W',...                            % session name (single FOV)
+    'run', 'retinotopy3',...                                % experiment name
     'datastruct', 1,...                                        % datastruct idx
-    'acquisition', 'fov1_gratings_20reps_run2',...      % acquisition name
+    'acquisition', 'CE050W_bar_run3',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'Acquisition2P',...                                  % preprocessed or no
     'corrected', true,...                                      % corrected (w/ Acq2P or no)
     'meta', 'SI',...                                            % source of meta info
-    'channels', 2,...                                           % num channels acquired
+    'channels', 1,...                                           % num channels acquired
     'signalchannel', 1,...                                      % channel num of signal
     'roitype', '3Dcnmf',...                                     % method for roi extraction
     'seedrois', false,...                                      % provide external source of seed coords
@@ -28,14 +28,14 @@ dsoptions = DSoptions(...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
     'maskfinder', '',...                                 % method of finding masks, given set of seed coords
-    'memmapped', true,...
+    'memmapped', false,...
     'correctbidi', false,...
-    'slices', [1:12],...                                        % slices from acquis. that actually contain data
+    'slices', [1:11],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
     'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
-    'nmetatiffs', 12);                                           % number of huge tiffs to exclude
+    'nmetatiffs', 8);                                           % number of huge tiffs to exclude
 
 % TEFO:
 
@@ -108,7 +108,7 @@ switch dsoptions.roitype
             roiparams.K = 10;                        % number of components to be found
             roiparams.patch_size = [32,32,8]; %[15,15,5];        % size of each patch along each dimension (optional, default: [32,32])
             roiparams.overlap = [4,4,2]; %[6,6,2];             % amount of overlap in each dimension (optional, default: [4,4])
-            roiparams.fullK = 4000;
+            roiparams.fullK = 2000; %4000;
             roiparams.patchK = 10;
         else
             roiparams.K = 2000;
