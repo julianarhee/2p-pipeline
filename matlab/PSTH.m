@@ -22,6 +22,7 @@ analysis_no = 1; %8;
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
+parse_trials_only = true
 
 slicesToUse = D.slices;
 
@@ -29,6 +30,7 @@ slicesToUse = D.slices;
 % -------------------------------------------------------------------------
 % Process traces for TRIAL analysis:
 % -------------------------------------------------------------------------
+if ~parse_trials_only
 tic()
 
 winUnit = 3; 
@@ -66,6 +68,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('Done extracting DF/F!\n');
 
+end
 
 % Get colormap:
 % legends = makeLegends(D.outputDir);
