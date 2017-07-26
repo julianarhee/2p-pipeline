@@ -28,7 +28,7 @@ dsoptions = DSoptions(...
     'maskdims', '3D',...                                        % dimensions of masks
     'maskshape', '3Dcontours',...                               % shape of masks
     'maskfinder', '',...                                 % method of finding masks, given set of seed coords
-    'memmapped', false,...
+    'memmapped', true,...
     'correctbidi', false,...
     'slices', [1:11],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
@@ -93,7 +93,7 @@ switch dsoptions.roitype
         roiparams.radius = 1.5;
  
     case '3Dcnmf'
-        roiparams.refidx = 3; % 3;%2;                       % tiff idx to use as reference for spatial components
+        roiparams.refidx = 4; % 3;%2;                       % tiff idx to use as reference for spatial components
         roiparams.tau = [10,18,3] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
         roiparams.p = 0; % 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
         roiparams.merge_thr = 0.8;                  % merging threshold

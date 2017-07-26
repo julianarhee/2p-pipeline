@@ -5,7 +5,7 @@ function S = get_si_info(D)
         acquisitionName = D.acquisitionName;
         siMetaStruct = struct();
         
-        siMetaName = sprintf('%s.mat', acquisitionName);
+        siMetaName = sprintf('Acq_%s.mat', acquisitionName);
         meta = load(fullfile(sourceDir, siMetaName));
         
         if D.metaonly && isfield(D,'nTiffs')
@@ -33,7 +33,7 @@ function S = get_si_info(D)
             frameWidth = currMeta.SI.hRoiManager.pixelsPerLine;
             slowMultiplier = currMeta.SI.hRoiManager.scanAngleMultiplierSlow;
             linesPerFrame = currMeta.SI.hRoiManager.linesPerFrame;
-            frameHeight = linesPerFrame %linesPerFrame/slowMultiplier
+            frameHeight = linesPerFrame; %linesPerFrame/slowMultiplier
 
             siMetaStruct.file(fidx).nChannels = nChannels;
             siMetaStruct.file(fidx).nVolumes = nVolumes;

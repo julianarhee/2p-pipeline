@@ -117,29 +117,36 @@ for fidx=1:nTiffs
     
     nFramesPerVolume = si.nFramesPerVolume;
     nTotalFrames = si.nTotalFrames;
-    if isfield(mw, 'ardPath') && ~D.processedtiffs
+    if isfield(mw, 'ardPath') %&& ~D.processedtiffs
         fprintf('Using ARD frame trigger times...\n');
         ardSec = (double(mw.pymat.(currRunName).tframe) - double(mw.pymat.(currRunName).tframe(1))) / 1E6;
-
+	siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
         % Check for missing SI triggers on ard/mw side:
         if D.metaonly || (length(ardSec) < nTotalFrames)
             fprintf('Missing %i of expected %i frame timestamps.\n', (nTotalFrames - length(ardSec)), nTotalFrames);
+            siDur_tmp = (double(mw.pymat.(currRunName).MWtriggertimes(2)) - double(mw.pymat.(currRunName).MWtriggertimes(1)))/1E6;	
             if interpolateSI
                 fprintf('Interpolating...\n');
+		fprintf('MW trigger duration: %s', double2str(siDur_tmp));
+		fprintf('Last ARD trigger: %s', double2str(ardSec(end)-ardSec(1)));
                 tFramesExpected = linspace(ardSec(1), ardSec(end), nTotalFrames);
                 ardSecInterp = interp1(ardSec, ardSec, tFramesExpected);
                 siSec = ardSecInterp;
 	    else
-		siSec = ardSec;
+	    %     siSec = ardSec;
+		siSec = linspace(0, siDur, nTotalFrames);
             end
         else
-            siSec = ardSec;
+            % siSec = ardSec;
+            % TODO:  fix this in PY script to check ARD trigger times/vals (if any missed, etc.)
+	    siSec = linspace(0, siDur, nTotalFrames);
         end
-        siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
+        %siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
     else
         % Can either just use SI's time stamps, or interpolate from MW
         % duration...
         if length(si.siFrameTimes)>1
+	    fprintf('Using ScanImage frame times.\n');
             siSec = si.siFrameTimes; % This is already in SECS.
             %siSec = linspace(0, mwDur, nTotalFrames);
             siDur = (siSec(end) - siSec(1));
