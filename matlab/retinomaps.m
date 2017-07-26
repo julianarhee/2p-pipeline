@@ -11,18 +11,20 @@
 %session = '20161219_JR030W';
 %session = '20161221_JR030W';
 %session = '20161218_CE024';
-session = '20161222_JR030W'
+%session = '20161222_JR030W'
+session = '20170721_CE050W'
 
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
 %experiment = 'retinotopyFinalMask';
 %experiment = 'retinotopyFinal';
 %experiment = 'retinotopyControl';
-experiment = 'retinotopy1'
+%experiment = 'retinotopy1'
+experiment = 'retinotopy3'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 6 %3 %4
+analysis_no = 1 %3 %4
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
