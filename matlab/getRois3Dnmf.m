@@ -95,15 +95,18 @@ for tiffidx = 1:length(files)
     else
         display(fullfile(D.dataDir, files{tiffidx})); 
         Y = read_file(fullfile(D.dataDir, files{tiffidx}));
-        Y = Y(:,:,1:2:end);
+        nchannels = D.nChannels;
+	Y = Y(:,:,1:nchannels:end);
         [d1,d2,dm] = size(Y);
-        d3 = 12;
+        d3 = length(D.slices);
         T = dm/d3;
         d = d1*d2*d3;
         Y = reshape(Y,[d1,d2,d3,T]);
         Y = single(Y); 
         Y = Y - min(Y(:));
-        Y = correct_bidirectional_phasing(Y);
+	if correct_bidi
+            Y = correct_bidirectional_phasing(Y);
+	end
     end
 
 %% Test NoRMCorre moition correction:
@@ -648,8 +651,8 @@ for tiffidx = 1:length(files)
             nmfoutput.Yr = data.Yr;
         end
     else
-        nmfoutput.Y = Y;
-        nmfoutput.Yr = Yr;
+        nmfoutput.Y = tmpmat.Y;
+        nmfoutput.Yr = tmpmat.Yr;
     end
     if ~getref
         nmfoutput.background_df = background_df;    % Divide C by this to get "inferred"
