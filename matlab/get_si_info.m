@@ -5,7 +5,7 @@ function S = get_si_info(D)
         acquisitionName = D.acquisitionName;
         siMetaStruct = struct();
         
-        siMetaName = sprintf('Acq_%s.mat', acquisitionName);
+        siMetaName = sprintf('%s.mat', acquisitionName);
         meta = load(fullfile(sourceDir, siMetaName));
         
         if D.metaonly && isfield(D,'nTiffs')
