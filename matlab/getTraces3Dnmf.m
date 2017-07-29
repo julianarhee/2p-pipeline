@@ -19,7 +19,7 @@ if ~exist(masksPath, 'dir')
 end
 
 % Get file names of NMF results:
-nmf_fns = dir(fullfile(D.nmfPath, 'nmfoutput_File*.mat'));
+nmf_fns = dir(fullfile(D.nmfPath, 'nmfoutput_*.mat'));
 
 
 for fidx=1:nTiffs
@@ -38,7 +38,7 @@ for fidx=1:nTiffs
 
     % Load NMF results:
     % -------------------------
-    nmf = matfile(fullfile(D.nmfPath, nmf_fns(fidx).name)); %This is equiv. to 'maskstruct' in 2d
+    display(fidx); nmf = matfile(fullfile(D.nmfPath, nmf_fns(fidx).name)); %This is equiv. to 'maskstruct' in 2d
     
     nopts = nmf.options;
     d1=nopts.d1;
