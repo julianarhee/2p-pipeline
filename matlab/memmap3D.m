@@ -101,6 +101,7 @@ if memmapped
             if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
                 fprintf('Grabbing every other channel.\n')
                 Yt = Yt(:,:,1:D.nChannels:end);
+		fprintf('Single channel, mov size is: %s', mat2str(size(Yt)));
             end
 
             Y = cell(1, nVolumes);
