@@ -44,9 +44,26 @@ neuronID_map = dict((cuuid, {'cell_name': cellinfo[cuuid]['cell_idx'], 'neuron_i
 with open(savepath, 'wb') as f:
     pkl.dump(neuronID_map, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-
+# dump into pkl
 idkeyfn = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/expressing_cell2neuron_key.pkl'
 expressing_cell2neuron_dict = dict((c, matches[c]) for c in cellids)
 with open(idkeyfn, 'wb') as fw:
     pkl.dump(expressing_cell2neuron_dict, fw, protocol=pkl.HIGHEST_PROTOCOL)
+
+# dump in json to match neuron-locations.json:
+import json
+neurondict = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/neuron-locations.json'
+with open(neurondict, 'r') as f:
+    data = json.load(f)
+
+foundcells = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/expressing_cell2neuron_key.pkl'
+with open(foundcells, 'rb') as ff:
+    cells = pkl.load(ff)
+
+jneurons = [i for i in data if i['cell_id'] in cells.keys()]
+
+jfn = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/expressing_cell2neuron_key.json'
+with open(jfn, 'w') as wf:
+    json.dump(jneurons, wf)
+
 
