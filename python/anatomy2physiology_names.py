@@ -121,6 +121,14 @@ for cidx,cellid in enumerate(cellids):
             j['func_y'] = found_centers[cidx][1]
             j['func_z'] = found_centers[cidx][2]
 
+false_cells = []
+for jidx,j in enumerate(JN):
+    if math.isnan(j['func_x']):
+        false_cells.append(jidx)
+for f in false_cells:
+    JN.pop(f)
+
+
 jfn_found_centroids = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/em7_centroids/expressing_neurons_all_centroids.json'
 with open(jfn_found_centroids, 'w') as f:
     json.dump(JN, f)
