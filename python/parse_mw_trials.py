@@ -159,9 +159,10 @@ def get_bar_events(dfns, remove_orphans=True, stimtype='image'):
             # Find all trigger LOW events after the first onset trigger:
             tmp_first_trigger = [i for i,e in enumerate(trigg_evs) if e.value==0][0] # First find 1st set assignment to DI 
             first_off_ev = next(i for i in trigg_evs[tmp_first_trigger:] if i['value']==1) # Since 1=frame OFF, first find this one
-            first_off_idx = np.where([i.time==first_off_ev.time for i in trigg_evs])[0]
+            first_off_idx = np.where([i.time==first_off_ev.time for i in trigg_evs])[0][0]
             first_trigger_idx = first_off_idx - 1 # since prev versions of protocol incorrectly re-assign trigger variable, sometimes there are repeats of "0" (which means frame-start, and shoudl not have been re-assigned in protocol -- this is fixed in later versions)
-            first_trigger_ev = trigg_evs[first_trigger_idx]
+            print "first trigger idx: ", first_trigger_idx
+	    first_trigger_ev = trigg_evs[first_trigger_idx]
 
             curr_idx = copy.copy(first_off_idx)
 
@@ -431,7 +432,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             curr_idx = copy.copy(first_off_idx)
 
             trigg_times = [[first_trigger_ev, first_off_ev]] # placeholder for off ev
-            start_idx = copy.copy(curr_idx)
+            start_idx = int(copy.copy(curr_idx))
             while start_idx < len(trigg_evs)-1: 
                 try:
                     found_new_start = False
@@ -557,7 +558,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
                 tmp_trialevents = sorted(tmp_trialevents, key=get_timekey)
 
 
-            if stimtype=='grating':
+            elif stimtype=='grating':
                 imdevs = [d for d in devs for i in d.value if i['name']=='gabor']
 
                 start_times = [i.value[1]['start_time'] for i in imdevs] # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
@@ -591,6 +592,7 @@ def get_stimulus_events(dfns, remove_orphans=True, stimtype='image'):
             
             # E.append(trial_ends)
             trialevents.append(tmp_trialevents)
+            print "LEN tevs: ", len(trialevents)
         
         # GET INFO:
         info = dict()
