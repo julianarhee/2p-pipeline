@@ -122,6 +122,7 @@ def get_session_bounds(dfn):
 
     return df, bounds
 
+
 def get_trigger_times(df, boundary):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
@@ -182,18 +183,19 @@ def get_trigger_times(df, boundary):
             getout=1
 
     #print "first_on_idx: ", first_on_idx
-    print "first on event: ", first_on_ev
+    print "first SI-trigger ON event received: ", first_on_ev
     #print "first_off_idx: ", first_off_idx
-    print "first off event: ", first_off_ev
+    print "first SI-trigger OFF event received: ", first_off_ev
     print "Duration of first run: {0:.4f} sec.".format((first_off_ev.time - first_on_ev.time)/1E6)
 
+    
     # Now, get all "trigger" boundaries that demarcate each "run" after first run:
-
+    print "Incrementally searching to find each pair of ON/OFF trigger events..."
     found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
     start_idx = copy.copy(first_off_idx)
-    print trigg_evs
+    #print trigg_evs
     while start_idx < len(trigg_evs)-1: 
-        print start_idx
+        #print start_idx
         try:
             found_new_start = False
             early_abort = False
@@ -215,7 +217,7 @@ def get_trigger_times(df, boundary):
             last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
             found_trigger_evs.append([curr_start_ev, curr_off_ev])
             start_idx = last_found_idx #start_idx + found_idx
-            print start_idx
+            #print start_idx
         except StopIteration:
             print "Got to STOP."
             if found_new_start is True:
@@ -242,16 +244,33 @@ def get_trigger_times(df, boundary):
     print "........................................................................................"
     runs_selected = 0
     while not runs_selected:
-        user_run_selection = raw_input("Select indices [EX: 0,1,2,4] of runs to include, or press <enter> to accept all:\n")
-        user_run_selection = [int(i) for i in user_run_selection]
-        if any([i>= len(trigger_times) for i in user_run_selection]):
-            print len(user_run_selection)
-            print "Bad index selected, try again."
-            continue
-        elif len(user_run_selection)==0:
+        print "Choose runs. Formatting hints:"
+        print "To choose RANGE:  <0:20> to include 0th through 20th runs."
+        print "To select specific runs:  <0,1,2,5> to only include runs 0,1,2, and 5."
+        tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
+        # user_run_selection = [int(i) for i in user_run_selection]
+        # if any([i>= len(trigger_times) for i in user_run_selection]):
+        if ',' in tmp_user_run_selection:
+            user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
+            if any([i>= len(trigger_times) for i in user_run_selection]):
+                print len(user_run_selection)
+                print "Bad index selected, try again."
+                continue
+            else:
+                for i in user_run_selection:
+                    print "Run:", i
+                confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+                if confirm_selection=='':
+                    runs_selected = 1
+                else:
+                    continue
+        elif len(tmp_user_run_selection)==0:
             user_run_selection = np.arange(0, len(trigger_times))
+            print "Selected ALL runs.\n"
             runs_selected = 1
-        else:
+        elif ':' in tmp_user_run_selection:
+            firstrun, lastrun = tmp_user_run_selection.split(':')
+            user_run_selection = [i for i in np.arange(int(firstrun), int(lastrun)+1)]
             for i in user_run_selection:
                 print "Run:", i
             confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
@@ -259,6 +278,15 @@ def get_trigger_times(df, boundary):
                 runs_selected = 1
             else:
                 continue
+        # else:
+        #     for i in user_run_selection:
+        #         print "Run:", i
+        #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+        #     if confirm_selection=='':
+        #         runs_selected = 1
+        #     else:
+        #         continue
+        
     print "Selected %i runs." % len(user_run_selection)
     trigger_times = [trigger_times[i] for i in user_run_selection]
 
@@ -275,7 +303,7 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
     print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
 
     pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
-    print "Got %i pix code events for current session." % len(pixelclock_evs)
+    print "Got %i pix code events within SI frame-trigger bounds." % len(pixelclock_evs)
     #pixelevents.append(pixelclock_evs)
     
     return pixelclock_evs
@@ -409,6 +437,7 @@ def get_bar_events(dfn, stimtype='bar', remove_orphans=True):
     #return pixelevents, stimevents, triggtimes, session_info
     return pixelevents, stimulusevents, triggertimes, info
 
+
 def get_session_info(df, stimtype='grating'):
     info = dict()
     if stimtype=='bar':
@@ -417,15 +446,19 @@ def get_session_info(df, stimtype='grating'):
         info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
         info['barwidth'] = df.get_events('bar_size_deg')[-1].value
     else:
+        stimdurs = df.get_events('distractor_presentation_time')
+        info['stimduration'] = stimdurs[-1].value
         itis = df.get_events('ITI_time')
         info['ITI'] = itis[-1].value
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
+        info['ITI'] = itis[-1].value
         # stimulus types?
         # ntrials?
     return info
+
      
-def get_stimulus_events(dfn, stimtype='grating'):
+def get_stimulus_events(dfn, stimtype='grating', pixelclock=True):
     df, bounds = get_session_bounds(dfn)
     print bounds
 
@@ -451,8 +484,11 @@ def get_stimulus_events(dfn, stimtype='grating'):
         trigg_times, user_run_selection = get_trigger_times(df, boundary)
       
         print "selected runs:", user_run_selection
-        pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
-        num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
+        if pixelclock:
+            num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
+            pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
+        else:
+            num_non_stimuli = 2 # background + image
         pixelevents.append(pixelclock_evs)
 
         # Get Image events:
@@ -468,11 +504,12 @@ def get_stimulus_events(dfn, stimtype='grating'):
             find_static = np.append(find_static, 0)
             find_static = sorted(find_static)
             image_evs = [tmp_image_evs[i+1] for i in find_static]
-            print "got %i image events" % len(image_evs)
+            print "Found %i total image onset events." % len(image_evs)
             #stimevents.append(imtrials)
     
 
             # Get blank ITIs:
+            print "Getting subsequent ITI for each image event..."
             im_idx = [[t.time for t in pixelclock_evs].index(i.time) for i in image_evs]
             iti_evs = []
             for im in im_idx:
@@ -480,24 +517,23 @@ def get_stimulus_events(dfn, stimtype='grating'):
                     next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
                     iti_evs.append(next_iti)
                 except StopIteration:
-                    print "No ITI found after this (should be last image_ev).\n"
+                    print "No ITI found after last image onset event.\n"
                 #print display_evs[im]
-            print "got %i iti events" % len(iti_evs)
-            print len(iti_evs)
+            print "Found %i iti events after a stimulus onset." % len(iti_evs)
 
-            # Check that stim onsets are happening before iti onsets (should be very close to stim ON duration):
+            
+            # Double-check that stim onsets are happening BEFORE iti onsets (should be very close to stim ON duration):
             stim_durs = []
             off_sync = []
             for idx,(stim,iti) in enumerate(zip(image_evs, iti_evs)):
                 stim_durs.append(iti.time - stim.time)
                 if (iti.time - stim.time) < 0:
                     off_sync.append(idx)
-            print "WARNING: found %i off-sync events." % len(off_sync)
-            print "N stim ONs:", len(stim_durs)
-            print "min:", min(stim_durs)
-            print "max:", max(stim_durs)
+            if len(off_sync)>0:
+                print "WARNING: found %i off-sync events." % len(off_sync)
+            print "Confirming {nonsets} stimulus onsets, with min-max durations of {0:.6f}-{0:.6f} sec.".format(min(stim_durs)/1E6, max(stim_durs)/1E6, nonsets=len(stim_durs))
 
-            # Append a "trial off" at end, if needed:
+            # Remove extra image-event if it does not have offset/ITI:
             if image_evs[-1].time > iti_evs[-1].time: # early-abort
                 print "Removing extra image event that has no offset."
                 image_evs.pop(-1) 
