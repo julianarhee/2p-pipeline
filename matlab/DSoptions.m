@@ -30,17 +30,17 @@ Names = [
     % acquisition info
     'tefo               '       % microscope type/revision (default: false)
     'preprocessing      '       % tiff processing ['raw', 'fiji', 'Acquisition2P']
-    'corrected          '       % motion corrected or not, standard is Acquisition2P methods (default: true)
+    'corrected          '       % motion corrected, standard is Acquisition2P methods (default: true)
     'meta               '       % source of meta info ['SI', 'manual'] (default: 'SI')
     'channels           '       % number of acquired channels (default: 2)
     'signalchannel      '       % channel num of activity channel (default: 1)
     % ROI mask info
-    'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
-    'seedrois           '       % provide seeds (centroids or masks) for initial ROI locations (default: false)
-    'maskpath           '	% path to file containing masks/centroids/etc. (must be specified if using seedrois)
+    'roitype            '       % roi mask type ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
+    'seedrois           '       % seeds (centroids or masks) for initial ROI locs (default: false)
+    'maskpath           '       % path to file of masks/centroids/etc (must specify if 'seedrois')
     'maskdims           '       % dimensions of ROI masks ['2D', '3D']
     'maskshape          '       % mask shape ['circles','contours','3Dcontours','spheres']
-    'maskfinder         '       % source of ROIs, if providing masks ['blobDetector', 'EMmasks', 'centroids'] (default: '')
+    'maskfinder         '       % mask source, if providing ['blobDetector', 'EMmasks', 'centroids'] 
     % analysis meta info
     'slices             '       % indices of acquired slices that are included for analysis (data-only)
     'averaged           '       % single runs/trials or averaged (default: false)
@@ -48,9 +48,11 @@ Names = [
     'excludedtiffs      '       % acquired tiffs that should be excluded from analysis (default: [])
     'metaonly           '       % only get meta info because tiff files too large (default: false)
     'nmetatiffs         '       % number of tiffs need meta-only info for (default: 0)
-    'memmapped          '       % TMP:  use memmapped or no
-    'correctbidi        '       % TMP: only correct bidirectional scan phase offset
+    'memmapped          '       % use memmapped or no
+    'correctbidi        '       % correct bidirectional scan phase offset
     ];
+
+
 
 [m, n] = size(Names);
 names = lower(Names);

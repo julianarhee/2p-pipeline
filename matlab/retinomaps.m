@@ -7,24 +7,30 @@
 % This gives FFT analysis script access to all neeed vars stored from
 % create_acquisition_structs.m pipeline.
 
+parse_trials_only = false
+
 % acquisition_info;
 %session = '20161219_JR030W';
 %session = '20161221_JR030W';
 %session = '20161218_CE024';
 %session = '20161222_JR030W'
-session = '20170721_CE050W'
+session = '20170811_CE052'
+%session = '20170721_CE050W'
 
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
 %experiment = 'retinotopyFinalMask';
 %experiment = 'retinotopyFinal';
 %experiment = 'retinotopyControl';
+%experiment = 'retinotopyCombined';
+%experiment = 'retinotopy1'
+%experiment = 'test_crossref/nmf';
 %experiment = 'retinotopy1'
 experiment = 'retinotopy3'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 1 %3 %4
+analysis_no = 4 %3 %4
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -36,6 +42,7 @@ slicesToUse = D.slices;
 meta = load(D.metaPath)
 nTiffs = meta.nTiffs;
 
+if ~parse_trials_only
 % -------------------------------------------------------------------------
 % Process traces for FFT analysis:
 % -------------------------------------------------------------------------
@@ -79,6 +86,7 @@ end
 D.dfStructName = dfstruct.name;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
+end
 
 % Get legends:
 if ~isfield(meta, 'legends')
@@ -452,7 +460,7 @@ camlight headlight;
 lighting gouraud;
 
 savefig(fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.fig', inputSource)))
-saveas(p1, fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.png', inputSource)), 'png')
+saveas(gca, fullfile(D.figDir, sprintf('ratio3Dmap_File004_%s.png', inputSource)), 'png')
 
 clf;
 
@@ -774,7 +782,8 @@ for sidx = 1:length(slicesToUse)
                 phaseMapNMFoutput = assignRoiMap(maskcell, phaseMapNMFoutput, phaseMatNMFoutput, freqIdx);
                 magMapNMFoutput = assignRoiMap(maskcell, magMapNMFoutput, magMatNMFoutput, freqIdx);
                 ratioMapNMFoutput = assignRoiMap(maskcell, ratioMapNMFoutput, ratioMatNMFoutput);
-                phaseMaxMagNMFoutput = assignRoiMap(maskcell, phaseMatNMFoutput, magMatNMFoutput, [], freqs);
+                fprintf('nmasks: %i\n', length(maskcell)); fprintf('phaseMat: %s\n', mat2str(size(phaseMatNMFoutput))); fprintf('magMat: %s\n', mat2str(size(magMatNMFoutput))); fprintf('nfreqs: %i\n', length(freqs));
+		%phaseMaxMagNMFoutput = assignRoiMap(maskcell, phaseMatNMFoutput, magMatNMFoutput, [], freqs);
 
 
             end

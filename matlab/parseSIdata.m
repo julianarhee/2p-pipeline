@@ -106,6 +106,7 @@ for movNum = movieOrder
                nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
                nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
    	       desiredSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp
+	       nDiscardedExtra = nSlicesTmp - desiredSlices;	
 	       if desiredSlices ~= nSlicesTmp  % input (processed) tiff does not have discard removed, or has extra flyback frames removed.
 	            if nDiscardTmp == 0
 		        % This means discard frames were not specified and acquired, and flyback frames removed from top in processed tiff.
@@ -129,12 +130,12 @@ for movNum = movieOrder
 %                 else
 %                     falseDiscard = false
 %                 end
-               nSlicesSelected = nSlicesTmp - nDiscardTmp;
+               nSlicesSelected = desiredSlices; %nSlicesTmp - nDiscardTmp;
 	       
 		scanImageMetadata.SI.hStackManager.numSlices = nSlicesSelected;
 	        scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames = 0;
 		scanImageMetadata.SI.hFastZ.numFramesPerVolume = scanImageMetadata.SI.hStackManager.numSlices;
-		scanImageMetadata.SI.hStackManager.zs = scanImageMetadata.SI.hStackManager.zs(nDiscardTmp+1:end);
+		scanImageMetadata.SI.hStackManager.zs = scanImageMetadata.SI.hStackManager.zs(nDiscardedExtra+1:end);
 		scanImageMetadata.SI.hFastZ.discardFlybackFrames = 0;  % Need to disflag this so that parseScanimageTiff (from Acquisition2P) takes correct n slices
 		nFramesSelected = nChannelsTmp*nSlicesSelected*nVolumesTmp
        
