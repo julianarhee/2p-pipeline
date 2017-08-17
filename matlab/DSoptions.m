@@ -50,6 +50,7 @@ Names = [
     'nmetatiffs         '       % number of tiffs need meta-only info for (default: 0)
     'memmapped          '       % use memmapped or no
     'correctbidi        '       % correct bidirectional scan phase offset
+    'reference          '       % reference File for motion-correction, averaged slice views, ROI reference, etc.
     ];
 
 
@@ -164,6 +165,7 @@ Values = [
     {0}                  % 'hugetiffs          '       % number of tiffs need meta-only info for (default: 0)
     {true}              % 'memmapped or no for get3DRois...' TMP
     {false}
+    {1}
     ];
 
 for j = 1:m

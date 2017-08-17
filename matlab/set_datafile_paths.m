@@ -34,15 +34,21 @@ else
 end
 D.dataDir = fullfile(D.sourceDir, dsoptions.datapath);
 
-if strcmp(D.preprocessing, 'raw')
-    D.mempath = fullfile(D.dataDir, 'memfiles', 'raw');
-    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'raw');
-elseif D.corrected
-    D.mempath = fullfile(D.dataDir, 'memfiles', 'corrected');
-    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'corrected');
+if D.memmapped
+    analysis_source = 'memfiles';
 else
-    D.mempath = fullfile(D.dataDir, 'memfiles')
-    D.sliceimagepath = fullfile(D.dataDir, 'average_slices');
+    analysis_source = 'tiffiles';
+end
+
+if strcmp(D.preprocessing, 'raw')
+    D.mempath = fullfile(D.dataDir, analysis_source, 'raw');
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'raw', sprintf('File%03d', dsoptions.reference));
+elseif D.corrected
+    D.mempath = fullfile(D.dataDir, analysis_source, 'corrected');
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', 'corrected', sprintf('File%03d', dsoptions.reference));
+else
+    D.mempath = fullfile(D.dataDir, analysis_source)
+    D.sliceimagepath = fullfile(D.dataDir, 'average_slices', sprintf('File%03d', dsoptions.reference));
 end
 
 if ~exist(D.mempath)
