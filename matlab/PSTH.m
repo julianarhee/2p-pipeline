@@ -16,13 +16,13 @@ session = '20161222_JR030W'
 
 % experiment = 'gratingsFinalMask2';
 % experiment = 'retinotopyFinalMask';
-experiment = 'gratings2';
+experiment = 'gratings1';
 
-analysis_no = 1; %8;
+analysis_no = 2; %8;
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
-parse_trials_only = true
+parse_trials_only = false
 
 slicesToUse = D.slices;
 

@@ -15,12 +15,16 @@ parse_trials_only = false
 %session = '20161218_CE024';
 %session = '20161222_JR030W'
 session = '20170811_CE052'
+%session = '20170721_CE050W'
 
 %experiment = 'retinotopy2';
 %experiment = 'test_crossref';
 %experiment = 'retinotopyFinalMask';
 %experiment = 'retinotopyFinal';
 %experiment = 'retinotopyControl';
+%experiment = 'retinotopyCombined';
+%experiment = 'retinotopy1'
+%experiment = 'test_crossref/nmf';
 %experiment = 'retinotopy1'
 experiment = 'retinotopy3'
 %experiment = 'test_crossref/nmf';

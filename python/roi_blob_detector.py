@@ -32,15 +32,17 @@ parser.add_option('-m', '--minsigma', action='store', dest='min_sigma', default=
 parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', default=0.005, help='Threshold for blob detector [default: 0.005]')
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
+parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
+
 (options, args) = parser.parse_args() 
 
 
-nslices = int(options.nslices)
+nslices = options.nslices
 max_sigma_val = float(options.max_sigma)
-min_sigma_val = float(otions.min_sigma)
+min_sigma_val = float(options.min_sigma)
 blob_threshold = float(options.blob_threshold)
 hist_kernel = float(options.hist_kernel)
-gaussian_sigma = float(options.gauss_sigma)
+gaussian_sigma = float(options.gaussian_sigma)
 
 source_dir = options.source
 avg_vol_dir = options.slicedir
@@ -63,7 +65,10 @@ avg_vol_dir = options.slicedir
 avg_slices = os.listdir(os.path.join(source_dir, avg_vol_dir))
 avg_slices = [i for i in avg_slices if i.endswith('.tif')]
 print "N slices: ", len(avg_slices)
-
+if len(nslices)==0:
+    nslices = len(avg_slices)
+else:
+    nslices = int(nslices)
 
 # In[3]:
 
@@ -111,7 +116,7 @@ image_processed = equalize_adapthist(image_gaussian, kernel_size=hist_kernel)
 # In[9]:
 
 
-plt.imshow(image_processed, cmap='gray'); plt.axis('off'); plt.imshow('Equalize hist, kernel %i' % hist_kernel); plt.show()
+plt.imshow(image_processed, cmap='gray'); plt.axis('off'); plt.title('Equalize hist, kernel {0:.3f}'.format(hist_kernel)); plt.show()
 
 
 # In[10]:
