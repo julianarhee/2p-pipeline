@@ -174,10 +174,10 @@ for idx, (blobs, color, title) in enumerate(sequence):
 
 plt.tight_layout()
 
-imname = 'Slice%02d_ROIs_%s.png' % (currslice, avg_vol_dir)
+imname = 'Slice%02d_ROIs_%s.png' % (currslice, avg_vol_dir.replace('/', '_'))
 print imname
 
-roi_dir = 'ROIs_%s' % avg_vol_dir
+roi_dir = 'ROIs_%s' % avg_vol_dir.replace('/','_')
 if not os.path.exists(os.path.join(source_dir, roi_dir)):
     os.mkdir(os.path.join(source_dir, roi_dir))
     
@@ -247,14 +247,14 @@ for currslice in range(nslices):
 
     plt.tight_layout()
 
-    imname = 'Slice%02d_ROIs_%s.png' % (currslice+1, avg_vol_dir)
+    imname = 'Slice%02d_ROIs_%s.png' % (currslice+1, avg_vol_dir.replace('/', '_'))
     print imname
 
-    roi_dir = 'ROIs_%s' % avg_vol_dir
+    roi_dir = 'ROIs_%s' % avg_vol_dir.replace('/','_')
     if not os.path.exists(os.path.join(source_dir, roi_dir, 'images')):
         os.mkdir(os.path.join(source_dir, roi_dir, 'images'))
 
-    plt.savefig(os.path.join(source_dir, roi_dir, imname))
+    plt.savefig(os.path.join(source_dir, roi_dir, 'images', imname))
 
     # plt.show()
     
@@ -263,7 +263,7 @@ for currslice in range(nslices):
 # In[16]:
 
 
-roi_mat_fn = 'rois_%s.mat' % avg_vol_dir
+roi_mat_fn = 'rois_%s.mat' % avg_vol_dir.replace('/','_')
 scipy.io.savemat(os.path.join(source_dir, roi_dir, roi_mat_fn), mdict=rois)
 print "ROI save dir: ", os.path.join(source_dir, roi_dir, roi_mat_fn)
 
@@ -313,7 +313,7 @@ print "N ROIs: ", len(centroids['LoG'])
 
 
 
-centroids_mat_fn = 'centroids_%s.mat' % avg_vol_dir
+centroids_mat_fn = 'centroids_%s.mat' % avg_vol_dir.replace('/', '_')
 scipy.io.savemat(os.path.join(source_dir, roi_dir, centroids_mat_fn), mdict=centroids)
 print "CENTROID save dir: ", os.path.join(source_dir, roi_dir, centroids_mat_fn)
 
