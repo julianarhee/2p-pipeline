@@ -43,37 +43,39 @@ clc;
 %     'nmetatiffs         '       % number of tiffs need meta-only info for (default: 0)
 %     'memmapped          '       % use memmapped or no
 %     'correctbidi        '       % correct bidirectional scan phase offset
+%     'reference          '       % reference File for motion-correction, averaged slice views, ROI reference, etc.
 %     ];
 
 % ------------------------------------------------------------------------------ 
 
 dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
-    'session', '20161222_JR030W',...                            % session name (single FOV)
-    'run', 'gratings1',...                                % experiment name
-    'datastruct', 2,...                                        % datastruct idx
-    'acquisition', 'fov1_gratings_10reps_run1',...      % acquisition name
+    'session', '20170811_CE052',...                            % session name (single FOV)
+    'run', 'retinotopy3',...                                % experiment name
+    'datastruct', 5,...                                        % datastruct idx
+    'acquisition', 'mov_20170811_CE052_run3',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'Acquisition2P',...                                  % preprocessed or no
     'corrected', true,...                                      % corrected (w/ Acq2P or no)
     'meta', 'SI',...                                            % source of meta info
-    'channels', 1,...                                           % num channels acquired
+    'channels', 2,...                                           % num channels acquired
     'signalchannel', 1,...                                      % channel num of signal
-    'roitype', '3Dcnmf',...                                     % method for roi extraction
-    'seedrois', false,...                                      % provide external source of seed coords
-    'maskpath', '',...
-    'maskdims', '3D',...                                        % dimensions of masks
-    'maskshape', '3Dcontours',...                               % shape of masks
-    'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'roitype', 'roiMap',...                                     % method for roi extraction
+    'seedrois', true,...                                      % provide external source of seed coords
+    'maskpath', '/nas/volume1/2photon/RESDATA/20170811_CE052/retinotopy3/DATA/average_slices/ROIs_corrected_File001/rois_corrected_File001.mat',...
+    'maskdims', '2D',...                                        % dimensions of masks
+    'maskshape', 'circles',...                               % shape of masks
+    'maskfinder', 'blobDetector',...                                 % method of finding masks, given set of seed coords
     'memmapped', true,...
-    'correctbidi', false,...
-    'slices', [1:12],...                                        % slices from acquis. that actually contain data
+    'correctbidi', true,...
+    'reference', 1,...
+    'slices', [1:13],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
     'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
-    'nmetatiffs', 12);                                           % number of huge tiffs to exclude
+    'nmetatiffs', 13);                                           % number of huge tiffs to exclude
  
 
 %% Set 3Dnmf params, if using roitype='3Dcnmf':
@@ -102,7 +104,7 @@ switch dsoptions.roitype
         roiparams.radius = 1.5;
  
     case '3Dcnmf'
-        roiparams.refidx = 1; % 3;%2;                       % tiff idx to use as reference for spatial components
+        roiparams.refidx = dsoptions.reference; % 3;%2;                       % tiff idx to use as reference for spatial components
         roiparams.tau = [3,6,2] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
 
         roiparams.p = 0; % 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)

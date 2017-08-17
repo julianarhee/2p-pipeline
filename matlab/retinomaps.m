@@ -30,7 +30,7 @@ experiment = 'retinotopy3'
 %experiment = 'test_crossref/nmf';
 
 %analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 4 %3 %4
+analysis_no = 5 %3 %4
 tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
@@ -109,7 +109,7 @@ end
 % =========================================================================
 % With 3D ROIs, assign a metric to 3D cell (instead of by slice):
 % =========================================================================
-
+if strfind(D.roiType, '3D')
 % IF 3D rois, use 3D traces, before splitting into slices:
 fstart = tic();
 
@@ -331,6 +331,7 @@ toc(fstart);
 %D.mapStructNames3D = mapStructNames3D;
 D.fftStructNames3D = fftStructNames3D;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+end
 
 
 %% 3D VISUALIZE:
@@ -620,6 +621,10 @@ for sidx = 1:length(slicesToUse)
                 case 'pixels'
                     %[d1,d2,tpoints] = size(T.traces.file{fidx});
                     [d1, d2] = size(avgY);
+                    nframes = size(traces,1);
+                case 'roiMap'
+                    %[d1,d2,tpoints] = size(T.traces.file{fidx});
+                    [d1, d2] = size(avgY)
                     nframes = size(traces,1);
                     nrois = d1*d2;
                 case 'cnmf'
