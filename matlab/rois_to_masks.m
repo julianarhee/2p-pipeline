@@ -19,7 +19,7 @@ if ~exist(maskPath, 'dir')
 end
 
 % rois = load(fullfile(D.maskInfo.mapSource, D.maskInfo.roiPath)); % ROI keys are slices with 1-indexing
-if ~isfile(D.maskInfo.roiSource)
+if ~exist(D.maskInfo.roiSource, 'file')
     [fn, fp, ~] = uigetfile;
     rois = load(fullfile(fp, fn));
 else
@@ -27,7 +27,11 @@ else
 end
 slicesToUse = D.slices;
 
+% if D.correctbidi
+%     maskSlicePaths = dir(fullfile(D.sliceimagepath, 'bidi', '*.tif'));
+% else
 maskSlicePaths = dir(fullfile(D.sliceimagepath, '*.tif'));
+% end
 maskSlicePaths = {maskSlicePaths(:).name}';
 
 M = struct();
@@ -50,8 +54,9 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     centers = [double(currRois(:,2)), double(currRois(:,1))];
     radii = double(currRois(:,3))-0.3;
     
-    [dim1, dim2] = size(mapSliceImg);
+    [dim2, dim1] = size(mapSliceImg);
     
+    % TODO:  if reading in image from py, may need to flip dimensions:
     [colsInImage rowsInImage] = meshgrid(1:dim1, 1:dim2);
         
     circfunc = @(r) sqrt((rowsInImage - centers(r,2)).^2 + (colsInImage - centers(r,1)).^2) < radii(r).^2;
