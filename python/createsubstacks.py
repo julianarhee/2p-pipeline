@@ -67,7 +67,9 @@ nchannels = int(options.nchannels)
 nvolumes = int(options.nvolumes)
 nslices = int(options.nslices)
 nslices_full = nslices + ndiscard
-
+print "nvolumes:", nvolumes
+print "nslices specified:", nslices
+print "n expected after substack:", nslices - nflyback
 
 source = options.source 
 session = options.session 
@@ -111,6 +113,7 @@ for tiffidx,tiffname in enumerate(tiffs):
 
 	start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
 	substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
+	print "Removing SI discard frames. Tmp stack shape:", substack.shape
 	newstart = 0
 	for x in range(len(start_idxs)):    
 	    substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
