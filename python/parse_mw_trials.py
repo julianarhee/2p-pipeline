@@ -138,14 +138,15 @@ for didx in range(len(mw_dfns)):
     else:
         stimevents = stimevents[0]
     print "Found %i stimulus on events." % len(stimevents)
-
-    if len(trialevents) > 1:
-        trialevents = [item for sublist in trialevents for item in sublist]
-        trialevents = list(set(trialevents))
-        trialevents.sort(key=operator.itemgetter(1))
-    else:
-        trialevents = trialevents[0]
-    print "Found %i trial epoch (stim ON + ITI) events." % len(trialevents)
+    
+    if not stimtype=='bar':
+	if len(trialevents) > 1:
+	    trialevents = [item for sublist in trialevents for item in sublist]
+	    trialevents = list(set(trialevents))
+	    trialevents.sort(key=operator.itemgetter(1))
+	else:
+	    trialevents = trialevents[0]
+	print "Found %i trial epoch (stim ON + ITI) events." % len(trialevents)
 
 
     if len(trigger_times) > 1:
@@ -304,35 +305,35 @@ for didx in range(len(mw_dfns)):
         parse_trials = True
 
 
-    # In[15]:
+	# In[15]:
 
-    # Check stimulus durations:
-    print len(stimevents)
-    iti_events = trialevents[1::2]
-    print len(iti_events)
+	# Check stimulus durations:
+	print len(stimevents)
+	iti_events = trialevents[1::2]
+	print len(iti_events)
 
-    stim_durs = []
-    off_syncs = []
-    for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
-        stim_durs.append(iti.time - stim.time)
-        if (iti.time - stim.time)<0:
-            off_syncs.append(idx)
-    print "%i bad sync-ing between stim-onsets and ITIs." % len(off_syncs)
+	stim_durs = []
+	off_syncs = []
+	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
+	    stim_durs.append(iti.time - stim.time)
+	    if (iti.time - stim.time)<0:
+		off_syncs.append(idx)
+	print "%i bad sync-ing between stim-onsets and ITIs." % len(off_syncs)
 
-    # PLOT stim durations:
-    print "N stim ONs:", len(stim_durs)
-    print "min:", min(stim_durs)
-    print "max:", max(stim_durs)
-    # print len([i for i,v in enumerate(stim_durs) if v>1100000])
-    # p1 = figure(title="Stim ON durations (ms)",tools="save, zoom_in, zoom_out, pan",
-    #             background_fill_color="white")
-    # hist, edges = np.histogram(np.array(stim_durs)/1E6, density=True, bins=100)
-    # p1.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:],
-    #         fill_color="#036564", line_color="#033649")
-    # show(p1)
+	# PLOT stim durations:
+	print "N stim ONs:", len(stim_durs)
+	print "min:", min(stim_durs)
+	print "max:", max(stim_durs)
+	# print len([i for i,v in enumerate(stim_durs) if v>1100000])
+	# p1 = figure(title="Stim ON durations (ms)",tools="save, zoom_in, zoom_out, pan",
+	#             background_fill_color="white")
+	# hist, edges = np.histogram(np.array(stim_durs)/1E6, density=True, bins=100)
+	# p1.quad(top=hist, bottom=0, left=edges[:-1], right=edges[1:],
+	#         fill_color="#036564", line_color="#033649")
+	# show(p1)
 
 
-    # In[16]:
+	# In[16]:
 
 
     if parse_trials is True:
@@ -445,5 +446,5 @@ for didx in range(len(mw_dfns)):
     tif_fn = fn_base+'.mat'
     # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
     scipy.io.savemat(os.path.join(data_dir, 'mw_data', tif_fn), mdict=pydict)
-    print os.path.join(source_dir, 'mw_data', tif_fn)
+    print os.path.join(data_dir, 'mw_data', tif_fn)
 
