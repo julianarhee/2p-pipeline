@@ -33,6 +33,8 @@ parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', de
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
 parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
+parser.add_option('-r', '--reference', action='store', dest='reference', default='', help='File number to use as refernce [default: 0]')
+
 
 (options, args) = parser.parse_args() 
 
@@ -45,7 +47,10 @@ hist_kernel = float(options.hist_kernel)
 gaussian_sigma = float(options.gaussian_sigma)
 
 source_dir = options.source
-avg_vol_dir = options.slicedir
+avg_vol_source = options.slicedir
+avg_vol_file = 'File%03d' % int(options.reference)
+print "Using %s as reference for blobs." % avg_vol_file
+avg_vol_dir = os.path.join(avg_vol_source, avg_vol_file)
 
 # In[2]:
 
@@ -64,6 +69,8 @@ avg_vol_dir = options.slicedir
 
 avg_slices = os.listdir(os.path.join(source_dir, avg_vol_dir))
 avg_slices = [i for i in avg_slices if i.endswith('.tif')]
+       
+            
 print "N slices: ", len(avg_slices)
 if len(nslices)==0:
     nslices = len(avg_slices)
@@ -167,10 +174,10 @@ for idx, (blobs, color, title) in enumerate(sequence):
 
 plt.tight_layout()
 
-imname = 'Slice%02d_ROIs_%s.png' % (currslice, avg_vol_dir)
+imname = 'Slice%02d_ROIs_%s.png' % (currslice, avg_vol_dir.replace('/', '_'))
 print imname
 
-roi_dir = 'ROIs_%s' % avg_vol_dir
+roi_dir = 'ROIs_%s' % avg_vol_dir.replace('/','_')
 if not os.path.exists(os.path.join(source_dir, roi_dir)):
     os.mkdir(os.path.join(source_dir, roi_dir))
     
@@ -240,14 +247,14 @@ for currslice in range(nslices):
 
     plt.tight_layout()
 
-    imname = 'Slice%02d_ROIs_%s.png' % (currslice+1, avg_vol_dir)
+    imname = 'Slice%02d_ROIs_%s.png' % (currslice+1, avg_vol_dir.replace('/', '_'))
     print imname
 
-    roi_dir = 'ROIs_%s' % avg_vol_dir
+    roi_dir = 'ROIs_%s' % avg_vol_dir.replace('/','_')
     if not os.path.exists(os.path.join(source_dir, roi_dir, 'images')):
-        os.mkdir(os.path.join(source_dir, roi_dir))
+        os.mkdir(os.path.join(source_dir, roi_dir, 'images'))
 
-    plt.savefig(os.path.join(source_dir, roi_dir, imname))
+    plt.savefig(os.path.join(source_dir, roi_dir, 'images', imname))
 
     # plt.show()
     
@@ -256,9 +263,9 @@ for currslice in range(nslices):
 # In[16]:
 
 
-roi_mat_fn = 'rois_%s.mat' % avg_vol_dir
+roi_mat_fn = 'rois_%s.mat' % avg_vol_dir.replace('/','_')
 scipy.io.savemat(os.path.join(source_dir, roi_dir, roi_mat_fn), mdict=rois)
-print "ROI save dir: ", os.path.join(source_dir, roi_mat_fn)
+print "ROI save dir: ", os.path.join(source_dir, roi_dir, roi_mat_fn)
 
 
 # In[20]:
@@ -306,9 +313,9 @@ print "N ROIs: ", len(centroids['LoG'])
 
 
 
-centroids_mat_fn = 'centroids_%s.mat' % avg_vol_dir
+centroids_mat_fn = 'centroids_%s.mat' % avg_vol_dir.replace('/', '_')
 scipy.io.savemat(os.path.join(source_dir, roi_dir, centroids_mat_fn), mdict=centroids)
-print "CENTROID save dir: ", os.path.join(source_dir, centroids_mat_fn)
+print "CENTROID save dir: ", os.path.join(source_dir, roi_dir, centroids_mat_fn)
 
 
 # In[ ]:

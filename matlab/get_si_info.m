@@ -5,7 +5,7 @@ function S = get_si_info(D)
         acquisitionName = D.acquisitionName;
         siMetaStruct = struct();
         
-        siMetaName = sprintf('%s.mat', acquisitionName);
+        siMetaName = sprintf('%s.mat', acquisitionName)
         meta = load(fullfile(sourceDir, siMetaName));
         
         if D.metaonly && isfield(D,'nTiffs')
@@ -25,8 +25,8 @@ function S = get_si_info(D)
             nDiscard = currMeta.SI.hFastZ.numDiscardFlybackFrames;
             nFramesPerVolume = nSlices; % + nDiscard;
             nTotalFrames = nFramesPerVolume * nVolumes;
-
-            siFrameTimes = currMeta.frameTimestamps_sec(1:2:end);
+            
+            siFrameTimes = currMeta.frameTimestamps_sec(1:nChannels:end);
             siFrameRate = currMeta.SI.hRoiManager.scanFrameRate;
             siVolumeRate = currMeta.SI.hRoiManager.scanVolumeRate;
 

@@ -571,28 +571,36 @@ for tiffidx = 1:length(files)
     %% Plot components and view traces:
 
     % Cn looks crappy, try just avg to do sanity check of ROIs:
+    % --------------------------------------------------------
+    % NOTE:  avg slices for each file already computed in memmap3D.m
+    % as of 8/17/2017, should also include bidi-correction.
     avgs = zeros([d1,d2,d3]);
-    for slice=1:d3
-        if memmapped
-            if usePreviousA
-                avgs(:,:,slice) = mean(tmpmat.Y(:,:,slice,:), 4);
-            else
-                avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
-            end
-        else
-            avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
-        end
+    avgslice_fns = dir(fullfile(D.sliceimagepath, sprintf('File%03d', tiffidx), '*.tif'))
+    avgslice_fns = {avgslice_fns(:).name}';
+    for slice=1:length(avgslice_fns)
+        avgs(:,:,slice) = read_file(fullfile(D.sliceimagepath, sprintf('File%03d', tiffidx), avgslice_fns{slice}));
     end
-    if correct_bidi
-        [parent, source, ~] = fileparts(D.sliceimagepath);
-        D.sliceimagepath = fullfile(parent, 'bidi');
-        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
-        fprintf('Updated image path for dstruct to:\n  %s\n', D.sliceimagepath)
-        for slice=1:d3
-            tiffWrite(avgs(:,:,slice), sprintf('bidi_average_slice%02d.tif', slice), D.sliceimagepath)
-        end
-    end
-
+%     for slice=1:d3
+%         if memmapped
+%             if usePreviousA
+%                 avgs(:,:,slice) = mean(tmpmat.Y(:,:,slice,:), 4);
+%             else
+%                 avgs(:,:,slice) = mean(data.Y(:,:,slice,:), 4);
+%             end
+%         else
+%             avgs(:,:,slice) = mean(Y(:,:,slice,:), 4);
+%         end
+%     end
+%     if correct_bidi
+%         [parent, source, ~] = fileparts(D.sliceimagepath);
+%         D.sliceimagepath = fullfile(parent, 'bidi');
+%         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
+%         fprintf('Updated image path for dstruct to:\n  %s\n', D.sliceimagepath)
+%         for slice=1:d3
+%             tiffWrite(avgs(:,:,slice), sprintf('bidi_average_slice%02d.tif', slice), D.sliceimagepath)
+%         end
+%     end
+     
     if show_plots
         plot_components_3D_GUI(tmpmat.Y,A,C,b,f,avgs,options);
     end
