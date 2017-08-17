@@ -252,7 +252,7 @@ for currslice in range(nslices):
 
     roi_dir = 'ROIs_%s' % avg_vol_dir
     if not os.path.exists(os.path.join(source_dir, roi_dir, 'images')):
-        os.mkdir(os.path.join(source_dir, roi_dir))
+        os.mkdir(os.path.join(source_dir, roi_dir, 'images'))
 
     plt.savefig(os.path.join(source_dir, roi_dir, imname))
 
@@ -265,7 +265,7 @@ for currslice in range(nslices):
 
 roi_mat_fn = 'rois_%s.mat' % avg_vol_dir
 scipy.io.savemat(os.path.join(source_dir, roi_dir, roi_mat_fn), mdict=rois)
-print "ROI save dir: ", os.path.join(source_dir, roi_mat_fn)
+print "ROI save dir: ", os.path.join(source_dir, roi_dir, roi_mat_fn)
 
 
 # In[20]:
@@ -315,7 +315,7 @@ print "N ROIs: ", len(centroids['LoG'])
 
 centroids_mat_fn = 'centroids_%s.mat' % avg_vol_dir
 scipy.io.savemat(os.path.join(source_dir, roi_dir, centroids_mat_fn), mdict=centroids)
-print "CENTROID save dir: ", os.path.join(source_dir, centroids_mat_fn)
+print "CENTROID save dir: ", os.path.join(source_dir, roi_dir, centroids_mat_fn)
 
 
 # In[ ]:
