@@ -234,7 +234,8 @@ meta.condTypes = condtypes;
 % New stuff for DB: -------------------
 meta.volumerate = si.siVolumeRate;
 %meta.volumeSizePixels = [si.frameWidth, si.linesPerFrame, si.nSlices-D.slices(1)+1]
-meta.volumeSizePixels = [si.linesPerFrame, si.frameWidth, si.nSlices-D.slices(1)+1]
+si
+meta.volumeSizePixels = [si.linesPerFrame, si.frameWidth, length(D.slices)] %si.nSlices-D.slices(1)+1]
 
 if D.tefo
     meta.volumesize = [500, 500, meta.volumeSizePixels(end)*10];
