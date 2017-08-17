@@ -104,6 +104,7 @@ switch dsoptions.roitype
     case '3Dcnmf'
         roiparams.refidx = 1; % 3;%2;                       % tiff idx to use as reference for spatial components
         roiparams.tau = [3,6,2] %[2,2,1];                    % std of gaussian kernel (size of neuron) 
+
         roiparams.p = 0; % 2;                            % order (p = 0 no dynamics, p=1 just decay, p = 2, both rise and decay)
         roiparams.merge_thr = 0.8;                  % merging threshold
      

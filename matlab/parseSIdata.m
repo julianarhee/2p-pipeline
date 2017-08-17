@@ -28,23 +28,9 @@ switch length(varargin)
         refmeta = true;
         %metaonly = false;
     case 3
-%         refmeta = false;
-%         metaonly = varargin{3}; %true;
-%         processedtiffs = false;
         refmeta = false;
-        parentDir = varargin{5};
+        parentDir = varargin{3};
 
-% 
-%     case 4
-%         refmeta = false;
-%         metaonly = varargin{3}; %true;
-%         processedtiffs = varargin{4}; %true;
-%         [parentDir, processedFolder, ~] = fileparts(sourceDir);
-%     case 5
-%         refmeta = false;
-%         metaonly = varargin{3}; %true;
-%         processedtiffs = varargin{4}; %true;
-%         parentDir = varargin{5};
 end
 %% Load movies and motion correct
 %Calculate Number of movies and arrange processing order so that
@@ -119,33 +105,57 @@ for movNum = movieOrder
                nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames;
                nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
                nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
-               expectedSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp; 
-                if expectedSlices ~= (nSlicesTmp - nDiscardTmp)
-                    nDiscardTmp = nSlicesTmp - expectedSlices;
-                    falseDiscard = true
-                else
-                    falseDiscard = false
-                end
-                nSlicesSelected = nSlicesTmp - nDiscardTmp;
-                              
-               scanImageMetadata.SI.hStackManager.numSlices = nSlicesSelected;
-               scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames = 0;
-               scanImageMetadata.SI.hFastZ.numFramesPerVolume = scanImageMetadata.SI.hStackManager.numSlices;
-               
-               nFramesSelected = nChannelsTmp*nSlicesSelected*nVolumesTmp;
-               
+   	       desiredSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp
+	       if desiredSlices ~= nSlicesTmp  % input (processed) tiff does not have discard removed, or has extra flyback frames removed.
+	            if nDiscardTmp == 0
+		        % This means discard frames were not specified and acquired, and flyback frames removed from top in processed tiff.
+		        extra_flyback_top = true;
+		        nDiscardTmp = nSlicesTmp - desiredSlices;
+		        false_discard = true;
+		    elseif nDiscardTmp > 0
+		        % Discard frames were specified/acquired but extra flyback frames removed from top of stack
+		        extra_flyback_top = true;
+		        false_discard = false;
+		    end
+	        else
+		    extra_flyback_top = false;
+		    false_discard = false;
+	        end
+
+%                expectedSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp; 
+%                 if expectedSlices ~= (nSlicesTmp - nDiscardTmp)
+%                     nDiscardTmp = nSlicesTmp - expectedSlices;
+%                     falseDiscard = true
+%                 else
+%                     falseDiscard = false
+%                 end
+               nSlicesSelected = nSlicesTmp - nDiscardTmp;
+	       
+		scanImageMetadata.SI.hStackManager.numSlices = nSlicesSelected;
+	        scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames = 0;
+		scanImageMetadata.SI.hFastZ.numFramesPerVolume = scanImageMetadata.SI.hStackManager.numSlices;
+		scanImageMetadata.SI.hStackManager.zs = scanImageMetadata.SI.hStackManager.zs(nDiscardTmp+1:end);
+		scanImageMetadata.SI.hFastZ.discardFlybackFrames = 0;  % Need to disflag this so that parseScanimageTiff (from Acquisition2P) takes correct n slices
+		nFramesSelected = nChannelsTmp*nSlicesSelected*nVolumesTmp
+       
                metanames = fieldnames(scanImageMetadata);
                for field=1:length(metanames)
                    if strcmp(metanames{field}, 'SI')
                        continue;
                    else
                        currfield = scanImageMetadata.(metanames{field});
-                        if falseDiscard
-                            % there are no additional empty flybacks at the end of volume, so just skip every nSlicesTmp
-                            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield)); fprintf('N volumes based on start indices: %i\n', length(startidxs));
-                        else
-                            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
-                        end
+
+		       if extra_flyback_top && false_discard %falseDiscard
+		   	   % there are no additional empty flybacks at the end of volume, so just skip every nSlicesTmp, starting from corrected num nDiscard removed from top:
+			   startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield));
+			   fprintf('N volumes based on start indices: %i\n', length(startidxs));
+		       elseif extra_flyback_top && ~false_discard
+			   % There were specified num of empty flybacks at end of volume, so remove those indices, if necessary, while also removing the removed frames at top:
+			   startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+		       else
+			   % There were empty flyybacks at end of volume, but correctly executed, s.t. no additional flybacks removed from top:
+			   startidxs = colon(1:nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+		       end
                        if iscell(currfield)
                            tmpfield = cell(1, nFramesSelected);
                        else

@@ -16,7 +16,10 @@ nchannels = dsoptions.channels;
 switch metaInfo
     case 'SI'
 
-        siMetaName = sprintf('%s.mat', D.acquisitionName);
+        %siMetaName = sprintf('Acq_%s.mat', D.acquisitionName);
+	%siMetaName = sprintf('Acq_%s.mat', D.acquisitionName);
+	%siMetaName = sprintf('mov_%s.mat', D.acquisitionName);
+	siMetaName = sprintf('%s.mat', D.acquisitionName);
 
         %if ~exist(fullfile(D.sourceDir, siMetaName))
         if ~exist(fullfile(D.dataDir, siMetaName))

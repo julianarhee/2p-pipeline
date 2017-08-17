@@ -100,7 +100,8 @@ if memmapped
             % Only grab green channel:
             if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
                 fprintf('Grabbing every other channel.\n')
-                Yt = Yt(:,:,1:2:end);
+                Yt = Yt(:,:,1:D.nChannels:end);
+		fprintf('Single channel, mov size is: %s', mat2str(size(Yt)));
             end
 
             Y = cell(1, nVolumes);
@@ -228,6 +229,7 @@ if create_substack
     inputfiles = tmpfiles(subidxs);
 else
     inputfiles = tmpfiles;
+    subidxs = [1:length(inputfiles)]
 end
 
 

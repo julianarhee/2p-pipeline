@@ -19,7 +19,7 @@ outpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/mem
 tiffidx = 3
 outfile_fn = 'nmf_File%03d_masks_color_overlay.tif' % int(tiffidx+1)
 
-tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged/finalvolume/R2B1_tefo_avg_channel01_RGB.tif'
+tiffpath = '/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/memfiles/averaged_/finalvolume/R2B1_tefo_avg_channel01_RGB.tif'
 
 
 # Need better loadmat for dealing with .mat files in a non-annoying way:
@@ -116,7 +116,9 @@ maskstruct = loadmat(dstruct['maskarraymatPath'])
 masks = maskstruct['maskmat']
 nrois = masks.shape[1]
 
-volumesize = meta['volumeSizePixels']
+d1 = 120
+d2 = 120
+volumesize = [d1, d2, masks.shape[0]/(d1*d2)]#meta['volumeSizePixels']
 szX = volumesize[0]
 szY = volumesize[1]
 szZ = volumesize[2]
@@ -141,19 +143,39 @@ if check_masks:
 
 
 #nmfvolume = np.empty((szX, szY, szZ, 3), dtype='uint8')
-nmfvolume = np.zeros((szZ, szY, szX, 3), dtype='uint8')
-for roi in range(nrois):
-    masks[:, roi][np.isnan(masks[:, roi])] = 0. # make sure no NaNs.
-    roimasktmp = np.reshape(masks[:,roi], volumesize, order='F') # Read in mask as in matlab
-    #roimasktmp = np.reshape(masks[:,roi], [22, 120, 120], order='C')
-    roimask = np.swapaxes(roimasktmp, 0, 1) # Swap x,y to go from row,col idxs to x,y-image idxs
-    roimask = np.swapaxes(roimask, 0, 2)    # Swap t to get t,y,x, order for img-space
-    currtrace = np.zeros((roimask.shape[0], roimask.shape[1], roimask.shape[2], 3), dtype='uint8')
-    currcellname = 'cell'+'%04d' % maskstruct['maskids'][roi]
-    currtrace[np.logical_or(currtrace[:,:,:,0], roimask)] = colormap[currcellname]  
-    nmfvolume = np.add(nmfvolume, currtrace) 
-    if nmfvolume[12, 0, 0, 0]>0:
-        print roi, currcellname
+if alpha<1.0:
+    nmfvolume = np.zeros((szZ, szY, szX, 4), dtype='uint8')
+    roimaskA = np.zeros(nmfvolume.shape, dtype='uint8')
+    for roi in range(nrois):
+	masks[:, roi][np.isnan(masks[:, roi])] = 0. # make sure no NaNs.
+	roimasktmp = np.reshape(masks[:,roi], volumesize, order='F') # Read in mask as in matlab
+	#roimasktmp = np.reshape(masks[:,roi], [22, 120, 120], order='C')
+	roimask = np.swapaxes(roimasktmp, 0, 1) # Swap x,y to go from row,col idxs to x,y-image idxs
+	roimask = np.swapaxes(roimask, 0, 2)    # Swap t to get t,y,x, order for img-space
+	#roimaskA[:,:,:,0:3] = roimask
+	#roimaskA[:,:,:,-1] = roimask*alpha_val
+	currtrace = np.zeros((roimask.shape[0], roimask.shape[1], roimask.shape[2], 3), dtype='uint8')
+	currcellname = 'cell'+'%04d' % maskstruct['maskids'][roi]
+	currtrace[np.logical_or(currtrace[:,:,:,0], roimask)] = colormap[currcellname]  
+	roimaskA[:,:,:,0:3] = currtrace
+	roimaskA[:,:,:,-1] = roimask*alpha
+	nmfvolume = np.add(nmfvolume, roimaskA) 
+	if nmfvolume[12, 0, 0, 0]>0:
+	    print roi, currcellname
+else:
+    nmfvolume = np.zeros((szZ, szY, szX, 3), dtype='uint8')
+    for roi in range(nrois):
+	masks[:, roi][np.isnan(masks[:, roi])] = 0. # make sure no NaNs.
+	roimasktmp = np.reshape(masks[:,roi], volumesize, order='F') # Read in mask as in matlab
+	#roimasktmp = np.reshape(masks[:,roi], [22, 120, 120], order='C')
+	roimask = np.swapaxes(roimasktmp, 0, 1) # Swap x,y to go from row,col idxs to x,y-image idxs
+	roimask = np.swapaxes(roimask, 0, 2)    # Swap t to get t,y,x, order for img-space
+	currtrace = np.zeros((roimask.shape[0], roimask.shape[1], roimask.shape[2], 3), dtype='uint8')
+	currcellname = 'cell'+'%04d' % maskstruct['maskids'][roi]
+	currtrace[np.logical_or(currtrace[:,:,:,0], roimask)] = colormap[currcellname]  
+	nmfvolume = np.add(nmfvolume, currtrace) 
+	if nmfvolume[12, 0, 0, 0]>0:
+	    print roi, currcellname
 
 #nmfvolume = np.swapaxes(nmfvolume, 0, 2)
 #nmfvolume = np.swapaxes(nmfvolume, 1, 2) # swap x,y again to draw in image-coords
@@ -167,8 +189,14 @@ tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
 # outfile_fn = 'nmf_File%03d_centroid_color.tif' % int(tiffidx+1)
 # tf.imsave(os.path.join(outpath, outfile_fn), nmfvolume)
 # 
-tiffstack[nmfvolume!=0] = 0
-overlayvolume = np.add(tiffstack, nmfvolume)
+if alpha<1.0:
+    tiff_alpha = np.zeros(nmfvolume.shape, dtype='uint8')
+    tiff_alpha[:,:,:,0:3] = tiffstack
+    tiff_alpha[nmfvolume!=0] = 0.5 #0
+    overlayvolume = np.add(tiff_alpha, nmfvolume)
+else:
+    tiffstack[nmfvolume!=0] = 0
+    overlayvolume = np.add(tiffstack, nmfvolume)
 outfile_fn = 'nmf_File%03d_masks_color_overlay.tif' % int(tiffidx+1)
 tf.imsave(os.path.join(outpath, outfile_fn), overlayvolume)
 
