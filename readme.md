@@ -18,7 +18,7 @@ matlab -r 'preprocess';
 python parse_mw_trials.py 
 matlab -r 'create_acquisition_struct';
 ```
-Notes: python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). edit the above matlab scripts to input experiment-specific parameters before running.
+Notes: Python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). Edit the above matlab scripts to input experiment-specific parameters before running.
 
 ## Motivation
 
@@ -26,6 +26,9 @@ Potential resource to start a semi-automated pipeline for quick viewing of datas
 
 ## Installation
 
-Developed with Matlab R2015b. Python environments can be cloned with Anaconda using the environment.yml file.
+Developed with Python2 and Matlab R2015b. Python environments can be cloned with Anaconda using the environment.yml file, which will create an Anaconda env called 2pdev, or create a new env and install reqs:
+```
+pip install -r requirements.txt
+```
 
 
