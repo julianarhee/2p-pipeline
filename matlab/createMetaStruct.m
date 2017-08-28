@@ -4,7 +4,11 @@ function meta = createMetaStruct(D, varargin)
 % Outputs 1 struct that contains info about current acquisition.
 % Struct fields include "mw" and "si" relevant info that is parsed by TIFF
 % datafile (a single .tiff saved in ScanImage).
-interpolateSI = true;
+if D.processedtiffs
+    interpolateSI = false;
+else
+    interpolateSI = true;
+end
 
 nvargin = length(varargin);
 switch nvargin
@@ -47,7 +51,8 @@ mwStruct = get_mw_info(sourceDir, nTiffs, nTiffCorrection, crossref);
 
 % Get paths to CORRECTED tiffs:
 channelDir = sprintf('Channel%02d', channelIdx);
-tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+%tmpTiffs = dir(fullfile(sourceDir, tiffSource, channelDir));
+tmpTiffs = dir(fullfile(tiffSource, channelDir));
 tmpTiffs = tmpTiffs(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpTiffs));
 tiffDirs = {tmpTiffs(:).name}';
 nTiffFiles = length(tiffDirs);
@@ -58,7 +63,8 @@ fprintf('Found %i TIFF stacks for current acquisition analysis.\n', nTiffFiles);
 % end
 tiffPaths = cell(1,length(tiffDirs));
 for tidx=1:nTiffFiles
-    tiffPaths{tidx} = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{tidx});
+    %tiffPaths{tidx} = fullfile(sourceDir, tiffSource, channelDir, tiffDirs{tidx});
+    tiffPaths{tidx} = fullfile(tiffSource, channelDir, tiffDirs{tidx});
 end
 
 
@@ -111,32 +117,42 @@ for fidx=1:nTiffs
     
     nFramesPerVolume = si.nFramesPerVolume;
     nTotalFrames = si.nTotalFrames;
-    if isfield(mw, 'ardPath')
+    if isfield(mw, 'ardPath') %&& ~D.processedtiffs
         fprintf('Using ARD frame trigger times...\n');
         ardSec = (double(mw.pymat.(currRunName).tframe) - double(mw.pymat.(currRunName).tframe(1))) / 1E6;
-
+	siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
         % Check for missing SI triggers on ard/mw side:
         if D.metaonly || (length(ardSec) < nTotalFrames)
             fprintf('Missing %i of expected %i frame timestamps.\n', (nTotalFrames - length(ardSec)), nTotalFrames);
+            siDur_tmp = (double(mw.pymat.(currRunName).MWtriggertimes(2)) - double(mw.pymat.(currRunName).MWtriggertimes(1)))/1E6;	
             if interpolateSI
                 fprintf('Interpolating...\n');
+		fprintf('MW trigger duration: %s', double2str(siDur_tmp));
+		fprintf('Last ARD trigger: %s', double2str(ardSec(end)-ardSec(1)));
                 tFramesExpected = linspace(ardSec(1), ardSec(end), nTotalFrames);
                 ardSecInterp = interp1(ardSec, ardSec, tFramesExpected);
                 siSec = ardSecInterp;
+	    else
+	    %     siSec = ardSec;
+		siSec = linspace(0, siDur, nTotalFrames);
             end
         else
-            siSec = ardSec;
+            % siSec = ardSec;
+            % TODO:  fix this in PY script to check ARD trigger times/vals (if any missed, etc.)
+	    siSec = linspace(0, siDur, nTotalFrames);
         end
-        siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
+        %siDur = double(mw.pymat.(currRunName).SIdur); %/ 1E6;
     else
         % Can either just use SI's time stamps, or interpolate from MW
         % duration...
         if length(si.siFrameTimes)>1
+	    fprintf('Using ScanImage frame times.\n');
             siSec = si.siFrameTimes; % This is already in SECS.
             %siSec = linspace(0, mwDur, nTotalFrames);
             siDur = (siSec(end) - siSec(1));
         else
             % Use MW trigger times:
+            fprintf('No SI frame times specified (are you using metaonly on a large tiff?), using MW and interpolating...\n');
             siDur = (double(mw.pymat.(currRunName).MWtriggertimes(2)) - double(mw.pymat.(currRunName).MWtriggertimes(1)))/1E6;
             siSec = linspace(0, siDur, nTotalFrames);
         end
@@ -224,7 +240,10 @@ meta.condTypes = condtypes;
 % TODO2:  fix so that sessionmeta is parent of ALL runs.
 % New stuff for DB: -------------------
 meta.volumerate = si.siVolumeRate;
-meta.volumeSizePixels = [si.frameWidth, si.linesPerFrame, si.nSlices-D.slices(1)+1]
+%meta.volumeSizePixels = [si.frameWidth, si.linesPerFrame, si.nSlices-D.slices(1)+1]
+si
+meta.volumeSizePixels = [si.linesPerFrame, si.frameWidth, length(D.slices)] %si.nSlices-D.slices(1)+1]
+
 if D.tefo
     meta.volumesize = [500, 500, meta.volumeSizePixels(end)*10];
 else

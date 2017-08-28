@@ -16,8 +16,11 @@ switch nargin
         % 'freqs', then use this to index into 'roimap'
         freqs = varargin{2};
         outmap = zeros(size(maskcell{1},1), size(maskcell{1},2));
-        for i=1:length(maskcell)
-            idx = find(freqs==freqs(roivecs(:,i)==max(roivecs(:,i))));
+        for i=1:length(maskcell)	    
+            idx = find(freqs==freqs(roivecs(:,i)==max(roivecs(:,i))))
+            if length(idx)>1
+                idx = idx(1);
+            end
             outmap(maskcell{i}) = roimap(idx,i);
         end
     case 0

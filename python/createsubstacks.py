@@ -46,17 +46,30 @@ parser.add_option('--volumes', action='store', dest='nvolumes', default=340, hel
 parser.add_option('--nslices', action='store', dest='nslices', default=30, help='Num slices specified, no discard [default: 30]')
 parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
 parser.add_option('--substack', action='store_true', dest='create_substacks', default=False, help='Create substacks of data-only by removing all artifact/discard frames [default: False]')
+parser.add_option('--crop', action='store_true', dest='crop_fov', default=False, help='Crop FOV in x,y for smaller data size [default: False]')
+parser.add_option('-X', '--xstart', action='store', dest='x_startidx', default=0, help='Starting idx for x-dimension, i.e., columns [default: 0]')
+parser.add_option('-Y', '--ystart', action='store', dest='y_startidx', default=0, help='Starting idx for y-dimension, i.e., rows [default: 0]')
+parser.add_option('-W', '--width', action='store', dest='width', default='', help='Width of FOV, i.e., cols [default: '']')
+parser.add_option('-H', '--height', action='store', dest='height', default='', help='Height of FOV, i.e., rows [default: '']')
+
 
 (options, args) = parser.parse_args() 
 
+crop_fov = options.crop_fov
+x_startidx = int(options.x_startidx)
+y_startidx = int(options.y_startidx)
+
 create_substacks = options.create_substacks
 uint16 = options.uint16
-nflyback = options.nflyback
-ndiscard = options.ndiscard
-nchannels = options.nchannels
-nvolumes = options.nvolumes
-nslices_full = options.nslices + options.ndiscard
-
+nflyback = int(options.nflyback)
+ndiscard = int(options.ndiscard)
+nchannels = int(options.nchannels)
+nvolumes = int(options.nvolumes)
+nslices = int(options.nslices)
+nslices_full = nslices + ndiscard
+print "nvolumes:", nvolumes
+print "nslices specified:", nslices
+print "n expected after substack:", nslices - nflyback
 
 source = options.source 
 session = options.session 
@@ -80,7 +93,7 @@ if not os.path.exists(savepath):
 
 
 
-for tiffidx in range(len(tiffs)):
+for tiffidx,tiffname in enumerate(tiffs):
     stack = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
     if uint16:
         stack = img_as_uint(stack)
@@ -88,7 +101,6 @@ for tiffidx in range(len(tiffs)):
     print "TIFF: %s" % tiffs[tiffidx]
     print "size: ", stack.shape
     print "dtype: ", stack.dtype
-
     if create_substacks:
        
 	# First, remove DISCARD frames:
@@ -96,6 +108,7 @@ for tiffidx in range(len(tiffs)):
 
 	start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
 	substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
+	print "Removing SI discard frames. Tmp stack shape:", substack.shape
 	newstart = 0
 	for x in range(len(start_idxs)):    
 	    substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
@@ -120,13 +133,34 @@ for tiffidx in range(len(tiffs)):
         
         final = tf.imread(os.path.join(tiffpath, tiffs[tiffidx]))
         final = img_as_uint(final)
+   
+    if crop_fov:
+	if len(options.width)==0:
+	    width = int(input('No width specified. Starting idx is: %i.\nEnter image width: ' % x_startidx))
+	else:
+	    width = int(options.width)
+	if len(options.height)==0:
+	    height = int(input('No height specified. Starting idx is: %i.\nEnter image height: ' % y_startidx))
+	else:
+	    height = int(options.height)
+	x_endidx = x_startidx + width
+	y_endidx = y_startidx + height
+	
+	final = final[:, y_startidx:y_endidx, x_startidx:x_endidx]
+	print "Cropped FOV. New size: ", final.shape
 
-    newtiff_fn = 'File%03d.tif' % int(tiffidx+1)
+    origname = tiffname.split('.')[0]
+    prefix = '_'.join(origname.split('_')[0:-1])
+    newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, newtiff_fn), final)
+    
+    if visible: 
+        ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
+        rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
+        tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
     ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
     rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
     tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
-
 
 

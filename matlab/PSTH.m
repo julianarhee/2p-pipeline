@@ -11,13 +11,18 @@
 % session = '20161222_JR030W';
 % experiment = 'gratings1';
 % analysis_no = 4;
-session = '20161219_JR030W';
+% session = '20161219_JR030W';
+session = '20161222_JR030W'
+
 % experiment = 'gratingsFinalMask2';
-experiment = 'retinotopyFinalMask';
-analysis_no = 8;
-tefo = true;
+% experiment = 'retinotopyFinalMask';
+experiment = 'gratings1';
+
+analysis_no = 2; %8;
+tefo = false; %true;
 
 D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
+parse_trials_only = false
 
 slicesToUse = D.slices;
 
@@ -25,6 +30,7 @@ slicesToUse = D.slices;
 % -------------------------------------------------------------------------
 % Process traces for TRIAL analysis:
 % -------------------------------------------------------------------------
+if ~parse_trials_only
 tic()
 
 winUnit = 3; 
@@ -62,6 +68,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('Done extracting DF/F!\n');
 
+end
 
 % Get colormap:
 % legends = makeLegends(D.outputDir);
@@ -245,7 +252,7 @@ for sidx = 1:length(slicesToUse)
 %                 end
                 tOff = currSecs(3);
                 if length(currSecs) < 4
-                    %continue;
+                    continue;
                     fprintf('Not enough tstamps found in stim %s, file %i, trial %i.\n', currStim, tiffIdx, trialIdx);
                     tPost = tOff + ITI;
                 else
@@ -510,8 +517,9 @@ for sliceIdx=1:length(D.slices)
             % have different # of ROIs -- just use max nRois, s.t. trials in
             % which there are less than max nRois should be a trace of NaNs.
         else
-            nRois = size(siTraces.(currStim){1},2);
-            roivec = 1:nRois; 
+	    fprintf('trials have same N rois.\n');
+            nrois = size(siTraces.(currstim){1},2);
+            roivec = 1:nrois; 
             rawTraceCell = arrayfun(@(roi) cellfun(@(c) c(:,roi), siTraces.(currStim), 'UniformOutput', false), roivec, 'UniformOutput',false);
         end
     
@@ -525,6 +533,9 @@ for sliceIdx=1:length(D.slices)
         
         tic()
         trialvec = 1:nTrials;
+        nrois = size(siTraces.(currStim){1},2);
+        roivec = 1:nrois; 
+
         interpTraceCell = arrayfun(@(roi) arrayfun(@(trial) interpolateTraces(siTimes.(currStim){trial}, rawTraceCell{roi}{trial}, mwinterpMat(trial,:)), trialvec, 'UniformOutput', false), roivec, 'UniformOutput', false);
         toc()
 
@@ -533,7 +544,7 @@ for sliceIdx=1:length(D.slices)
         stimstruct.slice(currSlice).(currStim).mwinterpMat = mwinterpMat;
         stimstruct.slice(currSlice).(currStim).interpTraceCell = interpTraceCell;
         stimstruct.slice(currSlice).(currStim).rawTraceCell = rawTraceCell;
-        stimstruct.slice(currSlice).(currStim).nRois = nRois;
+        stimstruct.slice(currSlice).(currStim).nRois = nrois;
         stimstruct.slice(currSlice).(currStim).nFramesPerTrial = currnpoints;
         stimstruct.slice(currSlice).(currStim).nTrials = nTrials;
         stimstruct.slice(currSlice).(currStim).mwTrialTimes = tMW;
@@ -822,436 +833,436 @@ fprintf('DONE!!!\n');
 
 %%
 %% PLOT:
-
-currSlice = 15;
-currRoi = 20;
-
-figure();
-pRows = 2;
-
-nStim = length(fieldnames(stimstruct.slice(currSlice)));
-
-for pIdx=1:nStim
-    
-    currStim = sprintf('stim%i', pIdx);
-
-    %raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
-    interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
-    mwinterpMat = stimstruct.slice(currSlice).(currStim).mwinterpMat;
-    tMW = stimstruct.slice(currSlice).(currStim).mwTrialTimes;
-
-
+% 
+% currSlice = 15;
+% currRoi = 20;
+% 
+% figure();
+% pRows = 2;
+% 
+% nStim = length(fieldnames(stimstruct.slice(currSlice)));
+% 
+% for pIdx=1:nStim
+%     
+%     currStim = sprintf('stim%i', pIdx);
+% 
+%     %raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
+%     interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
+%     mwinterpMat = stimstruct.slice(currSlice).(currStim).mwinterpMat;
+%     tMW = stimstruct.slice(currSlice).(currStim).mwTrialTimes;
+% 
+% 
+% %     [baseR, baseC] = find(mwinterpMat>=0);
+% %     baselineMatTmp = interp.*(mwinterpMat<0);
+% %     baselineMatTmp(baseR, baseC) = NaN;
+% %     baselines = nanmean(baselineMatTmp,2);
+% %     baselineMat = repmat(baselines, [1, size(interp,2)]);
+% %     dfMat = ((interp - baselineMat) ./ baselineMat)*100;
+% 
+%     dfMat = dfstruct.slice(currSlice).(currStim).dfCell{currRoi};
+%     
+%     subplot(pRows, round(nStim/pRows), pIdx)
+% 
+%     % Plot each trial for current stimulus:
+%     figure();
+%     for trial=1:size(dfMat, 1);
+%         trial
+%         plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
+%         hold on;
+%     end
+% 
+%     % Plot MW stim ON patch:
+%     stimOnset = mean(tMW(:,2));
+%     stimOffset = mean(tMW(:,3));
+%     ylims = get(gca, 'ylim');
+%     v = [stimOnset ylims(1); stimOffset ylims(1);...
+%         stimOffset ylims(2); stimOnset ylims(2)];
+%     f = [1 2 3 4];
+%     patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2, 'EdgeColor', 'none')
+%     hold on;
+% 
+%     % Plot MEAN trace for current ROI across stimulus reps:
+%     meanTraceInterp = mean(dfMat, 1);
+%     meanMWTime = mean(mwinterpMat,1);
+%     plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
+%     hold on;
+%     title(sprintf('Stim ID: %s', currStim));
+% 
+%     %plot(mean(mwinterpMat,1), zeros(1,length(mean(mwinterpMat,1))), '.'), 
+% 
+%     pIdx = pIdx + 1;
+% %
+% end
+% 
+% 
+% %%
+% %%
+% 
+% currSlice = 15;
+% currStim = 'stim1';
+% 
+% currRoi = 20;
+% nFramesPerTrial = stimstruct.slice(currSlice).(currStim).nFramesPerTrial;
+% minFrames = min(nFramesPerTrial);
+% rawMat = arrayfun(@(i) stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{i}(1:minFrames), 1:length(stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}), 'UniformOutput', false);
+% raw = cat(2, rawMat{1:end}); %mxn mat: frame, n=trial
+% interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
+% interp = interp.';
+% 
+% %         rawTraceMat = cat(1, rawTraceMat{1}{1:end});
+% %         interpTraceMat = cat(1, interpTraceCell{1}{1:end});
+%         
+% %
+% figure();
+% subplot(1,2,1)
+% plot(raw, 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
+% hold on;
+% plot(mean(raw,2), 'k', 'LineWidth', 1);
+% title('no interp')
+% 
+% subplot(1,2,2)
+% plot(interp, 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
+% hold on;
+% plot(mean(interp,2), 'k', 'LineWidth', 1);
+% title('interp')
+% 
+% %         
+% figure();
+% for i=1:nTrials
+%     subplot(2,9, i)
+%     plot(raw(:,i), 'k');
+%     hold on;
+%     plot(interp(:,i), 'r');
+% end
+% suptitle('Interp vs Raw traces by trial');
+% 
+% 
+% 
+% 
+% 
+% 
+% %     currnpoints = [];
+% %     for tsi=1:length(siTimes.(currStim))
+% %         currnpoints = [currnpoints length(siTimes.(currStim){tsi})];
+% %     end
+% %     minpoints = min(currnpoints);
+% %     if length(unique(currnpoints)) > 1
+% %         minpoints = min(currnpoints);
+% %         for tsi=1:length(siTimes.(currStim))
+% %             oIdx = find(siTimes.(currStim){tsi}>0);
+% %             if oIdx(1)==6
+% %                 siTimes.(currStim){tsi} = siTimes.(currStim){tsi}(1:minpoints);
+% %                 siTraces.(currStim){tsi} = siTraces.(currStim){tsi}(:, 1:minpoints);
+% %             elseif oIdx(1)==7
+% %                 siTimes.(currStim){tsi} = siTimes.(currStim){tsi}(2:end);
+% %                 deltaFs.(currStim){tsi} = siTraces.(currStim){tsi}(:, 2:end);
+% %             end
+% %         end
+% %     end
+% %         
+% %     tSI = cat(1, siTimes.(currStim){1:end});
+% % 
+% %     interpfunc = @(x) linspace(x(1), x(end), size(tSI,2));
+% %     mwinterpMat = cell2mat(arrayfun(@(i) interpfunc(tMW(i,:)), 1:size(tMW,1), 'UniformOutput', false)');
+% %     nFrames = size(mwinterpMat,2);
+% % 
+% %     nTrials= size(tMW,1);
+% %     for trial=1:nTrials
+% %         nRois = size(deltaFs.(currStim){trial},1);
+% %         roiInterp = zeros(nRois, nFrames);
+% %         for roi=1:nRois
+% %             F = griddedInterpolant(siTimes.(currStim){trial}, deltaFs.(currStim){trial}(roi,:));
+% %             roiInterp(roi,:) = F(mwinterpMat(2,:));    
+% %         end
+% %         iTraces.(currStim){end+1} = roiInterp;    
+% %     end
+% % 
+% %     interpTraceMat = cat(1, iTraces.(currStim){1:end});
+% %     currRoiTracesInterp = interpTraceMat(currRoi:nRois:end, :);
+% 
+%     % 
+% %     subplot(1,2,2)
+% %     dfTraceMat = cat(1, deltaFs.(currStim){1:end});
+% %     currRoiTraces = dfTraceMat(currRoi:nRois:end, :);
+% %     for trial=1:size(currRoiTraces, 1);
+% %         plot(mwinterpMat(trial,:), currRoiTraces(trial,:), 'k', 'LineWidth', 0.2);
+% %         hold on;
+% %     end
+% %     meanTrace = mean(currRoiTraces, 1);
+% %     %meanMWTime = mean(tMW,1);
+% %     plot(meanMWTime, meanTrace, 'LineWidth', 2);
+% %     hold on;
+% 
+% 
+% %%
+% % ---------------------------------------------------------------------
+% % LOAD:
+% % ---------------------------------------------------------------------
+% 
+% acquisition_info;
+% stimstruct = load(fullfile(D.outputDir, D.stimStructName));
+% 
+% %trialstruct = load(fullfile(D.outputDir, D.trialStructName));
+% 
+% %% PLOT:
+% 
+% currSlice = 15;
+% currRoi = 20;
+% 
+% figure();
+% pRows = 2;
+% 
+% nStim = length(fieldnames(stimstruct.slice(currSlice)));
+% 
+% for pIdx=1:nStim
+%     
+%     currStim = sprintf('stim%i', pIdx);
+% 
+%     %raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
+%     interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
+%     mwinterpMat = stimstruct.slice(currSlice).(currStim).mwinterpMat;
+%     tMW = stimstruct.slice(currSlice).(currStim).mwTrialTimes;
+% 
+% 
 %     [baseR, baseC] = find(mwinterpMat>=0);
 %     baselineMatTmp = interp.*(mwinterpMat<0);
 %     baselineMatTmp(baseR, baseC) = NaN;
 %     baselines = nanmean(baselineMatTmp,2);
 %     baselineMat = repmat(baselines, [1, size(interp,2)]);
 %     dfMat = ((interp - baselineMat) ./ baselineMat)*100;
-
-    dfMat = dfstruct.slice(currSlice).(currStim).dfCell{currRoi};
-    
-    subplot(pRows, round(nStim/pRows), pIdx)
-
-    % Plot each trial for current stimulus:
-    figure();
-    for trial=1:size(dfMat, 1);
-        trial
-        plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
-        hold on;
-    end
-
-    % Plot MW stim ON patch:
-    stimOnset = mean(tMW(:,2));
-    stimOffset = mean(tMW(:,3));
-    ylims = get(gca, 'ylim');
-    v = [stimOnset ylims(1); stimOffset ylims(1);...
-        stimOffset ylims(2); stimOnset ylims(2)];
-    f = [1 2 3 4];
-    patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2, 'EdgeColor', 'none')
-    hold on;
-
-    % Plot MEAN trace for current ROI across stimulus reps:
-    meanTraceInterp = mean(dfMat, 1);
-    meanMWTime = mean(mwinterpMat,1);
-    plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
-    hold on;
-    title(sprintf('Stim ID: %s', currStim));
-
-    %plot(mean(mwinterpMat,1), zeros(1,length(mean(mwinterpMat,1))), '.'), 
-
-    pIdx = pIdx + 1;
-%
-end
-
-
-%%
-%%
-
-currSlice = 15;
-currStim = 'stim1';
-
-currRoi = 20;
-nFramesPerTrial = stimstruct.slice(currSlice).(currStim).nFramesPerTrial;
-minFrames = min(nFramesPerTrial);
-rawMat = arrayfun(@(i) stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{i}(1:minFrames), 1:length(stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}), 'UniformOutput', false);
-raw = cat(2, rawMat{1:end}); %mxn mat: frame, n=trial
-interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
-interp = interp.';
-
-%         rawTraceMat = cat(1, rawTraceMat{1}{1:end});
-%         interpTraceMat = cat(1, interpTraceCell{1}{1:end});
-        
-%
-figure();
-subplot(1,2,1)
-plot(raw, 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
-hold on;
-plot(mean(raw,2), 'k', 'LineWidth', 1);
-title('no interp')
-
-subplot(1,2,2)
-plot(interp, 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
-hold on;
-plot(mean(interp,2), 'k', 'LineWidth', 1);
-title('interp')
-
-%         
-figure();
-for i=1:nTrials
-    subplot(2,9, i)
-    plot(raw(:,i), 'k');
-    hold on;
-    plot(interp(:,i), 'r');
-end
-suptitle('Interp vs Raw traces by trial');
-
-
-
-
-
-
-%     currnpoints = [];
-%     for tsi=1:length(siTimes.(currStim))
-%         currnpoints = [currnpoints length(siTimes.(currStim){tsi})];
-%     end
-%     minpoints = min(currnpoints);
-%     if length(unique(currnpoints)) > 1
-%         minpoints = min(currnpoints);
-%         for tsi=1:length(siTimes.(currStim))
-%             oIdx = find(siTimes.(currStim){tsi}>0);
-%             if oIdx(1)==6
-%                 siTimes.(currStim){tsi} = siTimes.(currStim){tsi}(1:minpoints);
-%                 siTraces.(currStim){tsi} = siTraces.(currStim){tsi}(:, 1:minpoints);
-%             elseif oIdx(1)==7
-%                 siTimes.(currStim){tsi} = siTimes.(currStim){tsi}(2:end);
-%                 deltaFs.(currStim){tsi} = siTraces.(currStim){tsi}(:, 2:end);
-%             end
-%         end
-%     end
-%         
-%     tSI = cat(1, siTimes.(currStim){1:end});
 % 
-%     interpfunc = @(x) linspace(x(1), x(end), size(tSI,2));
-%     mwinterpMat = cell2mat(arrayfun(@(i) interpfunc(tMW(i,:)), 1:size(tMW,1), 'UniformOutput', false)');
-%     nFrames = size(mwinterpMat,2);
+%     subplot(pRows, round(nStim/pRows), pIdx)
 % 
-%     nTrials= size(tMW,1);
-%     for trial=1:nTrials
-%         nRois = size(deltaFs.(currStim){trial},1);
-%         roiInterp = zeros(nRois, nFrames);
-%         for roi=1:nRois
-%             F = griddedInterpolant(siTimes.(currStim){trial}, deltaFs.(currStim){trial}(roi,:));
-%             roiInterp(roi,:) = F(mwinterpMat(2,:));    
-%         end
-%         iTraces.(currStim){end+1} = roiInterp;    
-%     end
-% 
-%     interpTraceMat = cat(1, iTraces.(currStim){1:end});
-%     currRoiTracesInterp = interpTraceMat(currRoi:nRois:end, :);
-
-    % 
-%     subplot(1,2,2)
-%     dfTraceMat = cat(1, deltaFs.(currStim){1:end});
-%     currRoiTraces = dfTraceMat(currRoi:nRois:end, :);
-%     for trial=1:size(currRoiTraces, 1);
-%         plot(mwinterpMat(trial,:), currRoiTraces(trial,:), 'k', 'LineWidth', 0.2);
+%     % Plot each trial for current stimulus:
+%     for trial=1:size(dfMat, 1);
+%         trial
+%         plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
 %         hold on;
 %     end
-%     meanTrace = mean(currRoiTraces, 1);
-%     %meanMWTime = mean(tMW,1);
-%     plot(meanMWTime, meanTrace, 'LineWidth', 2);
+% 
+%     % Plot MW stim ON patch:
+%     stimOnset = mean(tMW(:,2));
+%     stimOffset = mean(tMW(:,3));
+%     ylims = get(gca, 'ylim');
+%     v = [stimOnset ylims(1); stimOffset ylims(1);...
+%         stimOffset ylims(2); stimOnset ylims(2)];
+%     f = [1 2 3 4];
+%     patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2, 'EdgeColor', 'none')
 %     hold on;
-
-
-%%
-% ---------------------------------------------------------------------
-% LOAD:
-% ---------------------------------------------------------------------
-
-acquisition_info;
-stimstruct = load(fullfile(D.outputDir, D.stimStructName));
-
-%trialstruct = load(fullfile(D.outputDir, D.trialStructName));
-
-%% PLOT:
-
-currSlice = 15;
-currRoi = 20;
-
-figure();
-pRows = 2;
-
-nStim = length(fieldnames(stimstruct.slice(currSlice)));
-
-for pIdx=1:nStim
-    
-    currStim = sprintf('stim%i', pIdx);
-
-    %raw = cat(1, stimstruct.slice(currSlice).(currStim).rawTraceCell{currRoi}{1:end});
-    interp = cat(1, stimstruct.slice(currSlice).(currStim).interpTraceCell{currRoi}{1:end});
-    mwinterpMat = stimstruct.slice(currSlice).(currStim).mwinterpMat;
-    tMW = stimstruct.slice(currSlice).(currStim).mwTrialTimes;
-
-
-    [baseR, baseC] = find(mwinterpMat>=0);
-    baselineMatTmp = interp.*(mwinterpMat<0);
-    baselineMatTmp(baseR, baseC) = NaN;
-    baselines = nanmean(baselineMatTmp,2);
-    baselineMat = repmat(baselines, [1, size(interp,2)]);
-    dfMat = ((interp - baselineMat) ./ baselineMat)*100;
-
-    subplot(pRows, round(nStim/pRows), pIdx)
-
-    % Plot each trial for current stimulus:
-    for trial=1:size(dfMat, 1);
-        trial
-        plot(mwinterpMat(trial,:), dfMat(trial,:), 'Color', [0.7 0.7 0.7], 'LineWidth',0.1);
-        hold on;
-    end
-
-    % Plot MW stim ON patch:
-    stimOnset = mean(tMW(:,2));
-    stimOffset = mean(tMW(:,3));
-    ylims = get(gca, 'ylim');
-    v = [stimOnset ylims(1); stimOffset ylims(1);...
-        stimOffset ylims(2); stimOnset ylims(2)];
-    f = [1 2 3 4];
-    patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2, 'EdgeColor', 'none')
-    hold on;
-
-    % Plot MEAN trace for current ROI across stimulus reps:
-    meanTraceInterp = mean(dfMat, 1);
-    meanMWTime = mean(mwinterpMat,1);
-    plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
-    hold on;
-    title(sprintf('Stim ID: %s', currStim));
-
-    %plot(mean(mwinterpMat,1), zeros(1,length(mean(mwinterpMat,1))), '.'), 
-
-    pIdx = pIdx + 1;
-%
-end
-
-%% LOOK AT DF/f MAPS
-
-
-DF = load(fullfile(D.outputDir, D.dfStructName));
-
-currSlice = 15;
-nMovies = length(DF.slice(currSlice).file);
-
-figure();
-pRows = 2;
-for tiffidx=1:nMovies
-    
-    dfstruct = DF.slice(currSlice).file(tiffidx);
-    
-    h = subplot(pRows, ceil(nMovies/pRows), tiffidx);
-    imagesc2(dfstruct.maxMap, h);
-    axis off
-    colormap(hot)
-    colorbar()
-    title(sprintf('Movie %i', tiffidx))
-    hold on;
-    
-end
-
-figTitle = strrep(D.acquisitionName, '_', '-');
-suptitle(sprintf('Max dF/Fs: %s', figTitle))
-
-%% Look at DF/F traces:
-
-currSlice = 15;
-currRoi = 20;
-
-DF = load(fullfile(D.outputDir, D.dfStructName));
-meta = load(D.metaPath);
-
-nStimuli = length(meta.condTypes);
-colors = zeros(nStimuli,3);
-for c=1:nStimuli
-    colors(c,:,:) = rand(1,3);
-end
-    
-nMovies = length(DF.slice(currSlice).file);
-
-figure();
-pRows = nMovies;
-
-for tiffidx=1:nMovies
-    
-    meta = meta.file(tiffidx);
-    dfstruct = DF.slice(currSlice).file(tiffidx);
-    
-    volumeIdxs = currSlice:meta.si.nFramesPerVolume:meta.si.nTotalFrames;
-    currFrameTimes = meta.mw.siSec(volumeIdxs);
-    currMWTimes = meta.mw.mwSec;
-    currMWCodes = meta.mw.pymat.(meta.mw.runName).stimIDs;
-
-    currtrace = dfstruct.dfMat(currRoi,:);
-    
-    subplot(pRows, ceil(nMovies/pRows), tiffidx);
-    plot(currFrameTimes, currtrace, 'k')
-    ylims = get(gca, 'ylim');
-    sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
-    hold on;
-    for trial=1:2:length(currMWTimes)
-        sx = [currMWTimes(trial) currMWTimes(trial+1) currMWTimes(trial+1) currMWTimes(trial)];
-        currStim = currMWCodes(trial);
-        patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
-        hold on;
-    end
-    xlim([0 currFrameTimes(end)]);
-
-end
-
-
-
-%%
-
-% %%
 % 
-% interpolant = griddedInterpolant(gridcell, siTimes.stim1{1}.');
+%     % Plot MEAN trace for current ROI across stimulus reps:
+%     meanTraceInterp = mean(dfMat, 1);
+%     meanMWTime = mean(mwinterpMat,1);
+%     plot(meanMWTime, meanTraceInterp, 'k', 'LineWidth', 2);
+%     hold on;
+%     title(sprintf('Stim ID: %s', currStim));
 % 
+%     %plot(mean(mwinterpMat,1), zeros(1,length(mean(mwinterpMat,1))), '.'), 
 % 
-% for trial=1:length(siTraces.stim1)
-%     siTraces.stim1{trial}(20,:);
-%     
-% fStim1 = cat(1,siTraces.stim1{1:end});
-% 
-% 
-% roi=1;
-% testmat = zeros(size(tSI));
-% for i=1:size(siTraces.stim1, 2)
-%     
-%     testmat(i,:) = siTraces.stim1{i}(roi,:);
+%     pIdx = pIdx + 1;
+% %
 % end
 % 
+% %% LOOK AT DF/f MAPS
+% 
+% 
+% DF = load(fullfile(D.outputDir, D.dfStructName));
+% 
+% currSlice = 15;
+% nMovies = length(DF.slice(currSlice).file);
+% 
+% figure();
+% pRows = 2;
+% for tiffidx=1:nMovies
+%     
+%     dfstruct = DF.slice(currSlice).file(tiffidx);
+%     
+%     h = subplot(pRows, ceil(nMovies/pRows), tiffidx);
+%     imagesc2(dfstruct.maxMap, h);
+%     axis off
+%     colormap(hot)
+%     colorbar()
+%     title(sprintf('Movie %i', tiffidx))
+%     hold on;
+%     
+% end
+% 
+% figTitle = strrep(D.acquisitionName, '_', '-');
+% suptitle(sprintf('Max dF/Fs: %s', figTitle))
+% 
+% %% Look at DF/F traces:
+% 
+% currSlice = 15;
+% currRoi = 20;
+% 
+% DF = load(fullfile(D.outputDir, D.dfStructName));
+% meta = load(D.metaPath);
+% 
+% nStimuli = length(meta.condTypes);
+% colors = zeros(nStimuli,3);
+% for c=1:nStimuli
+%     colors(c,:,:) = rand(1,3);
+% end
+%     
+% nMovies = length(DF.slice(currSlice).file);
+% 
+% figure();
+% pRows = nMovies;
+% 
+% for tiffidx=1:nMovies
+%     
+%     meta = meta.file(tiffidx);
+%     dfstruct = DF.slice(currSlice).file(tiffidx);
+%     
+%     volumeIdxs = currSlice:meta.si.nFramesPerVolume:meta.si.nTotalFrames;
+%     currFrameTimes = meta.mw.siSec(volumeIdxs);
+%     currMWTimes = meta.mw.mwSec;
+%     currMWCodes = meta.mw.pymat.(meta.mw.runName).stimIDs;
+% 
+%     currtrace = dfstruct.dfMat(currRoi,:);
+%     
+%     subplot(pRows, ceil(nMovies/pRows), tiffidx);
+%     plot(currFrameTimes, currtrace, 'k')
+%     ylims = get(gca, 'ylim');
+%     sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
+%     hold on;
+%     for trial=1:2:length(currMWTimes)
+%         sx = [currMWTimes(trial) currMWTimes(trial+1) currMWTimes(trial+1) currMWTimes(trial)];
+%         currStim = currMWCodes(trial);
+%         patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.5, 'EdgeAlpha', 0);
+%         hold on;
+%     end
+%     xlim([0 currFrameTimes(end)]);
+% 
+% end
+% 
+% 
+% 
 % %%
 % 
-% for sidx = slicesToUse
-%     currSlice = trialstruct.slice(sidx).sliceIdx;
-%     
-%     roi = 20;
-%     for stimIdx=1:length(condTypes)
-%         currStim = condTypes{stimIdx};
-%         
-%         currDfs = trialstruct.slice(sidx).deltaFs.(currStim);
-%         currTimes = trialstruct.slice(sidx).siTimes.(currStim);
-%         for dfIdx=1:length(currDfs)
-%             t = currTimes{dfIdx}; % - currTimes{dfIdx}(1);
-%             df = currDfs{dfIdx}(roi,:);
-%             plot(t, df, 'k', 'LineWidth', 0.5);
-%             hold on;
-%         end
-%         trialsBySlice = cat(3, currDfs{:});
-%         meanTracesCurrSlice = mean(trialsBySlice, 3);
-%         plot(t, meanTracesCurrSlice(roi,:), 'k', 'LineWidth', 2);
-%         
-%         % ---
-%         for roi=1:size(meanTracesCurrSlice,1)
-%             plot(t, meanTracesCurrSlice(roi,:), 'k', 'LineWidth', .2);
-%             hold on;
-%         end
-%         % ---
-% 
-%         
-%         
-% %         for roi=1:size(meanTracesCurrSlice,1)
-% %             plot(meanTracesCurrSlice(roi,:));
+% % %%
+% % 
+% % interpolant = griddedInterpolant(gridcell, siTimes.stim1{1}.');
+% % 
+% % 
+% % for trial=1:length(siTraces.stim1)
+% %     siTraces.stim1{trial}(20,:);
+% %     
+% % fStim1 = cat(1,siTraces.stim1{1:end});
+% % 
+% % 
+% % roi=1;
+% % testmat = zeros(size(tSI));
+% % for i=1:size(siTraces.stim1, 2)
+% %     
+% %     testmat(i,:) = siTraces.stim1{i}(roi,:);
+% % end
+% % 
+% % %%
+% % 
+% % for sidx = slicesToUse
+% %     currSlice = trialstruct.slice(sidx).sliceIdx;
+% %     
+% %     roi = 20;
+% %     for stimIdx=1:length(condTypes)
+% %         currStim = condTypes{stimIdx};
+% %         
+% %         currDfs = trialstruct.slice(sidx).deltaFs.(currStim);
+% %         currTimes = trialstruct.slice(sidx).siTimes.(currStim);
+% %         for dfIdx=1:length(currDfs)
+% %             t = currTimes{dfIdx}; % - currTimes{dfIdx}(1);
+% %             df = currDfs{dfIdx}(roi,:);
+% %             plot(t, df, 'k', 'LineWidth', 0.5);
+% %             hold on;
 % %         end
-%         
-%     end
-%     
-%     y = T.traces.file{tiffIdx}(roi,:);
-%     dff = (y - mean(y))./mean(y);
-%     plot(meta.mw.siSec(volumeIdxs), dff);
-%     hold on;
-%     stimOnsets = meta.mw.mwSec(meta.mw.stimStarts);
-%     stimOffsets = meta.mw.mwSec(2:2:end);
-%     for onset=1:length(stimOnsets)
-%         %line([stimOnsets(onset) stimOnsets(onset)], get(gca, 'ylim'));
-%         ylims = get(gca, 'ylim');
-%         v = [stimOnsets(onset) ylims(1); stimOffsets(onset) ylims(1);...
-%             stimOffsets(onset) ylims(2); stimOnsets(onset) ylims(2)];
-%         f = [1 2 3 4];
-%         patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2)
-%         hold on;
-%     end
-%     
-%     stimNames = fieldnames(mwTrials);
-%     for stimIdx=1:length(stimNames)
-%         fprintf('%i trials found for %s.\n', length(fieldnames(mwTrials.(stimNames{stimIdx}))), stimNames{stimIdx});
-%     end
-%     
-%     
-%     
-%     v = [0 0; 1 0; 1 1; 0 1];
-% f = [1 2 3 4];
-% patch('Faces',f,'Vertices',v,'FaceColor','red')
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     
-%     siTrials = struct();
-%     for stimIdx=1:length(condTypes)
-%         if ~isfield(mwTrials, condTypes{stimIdx})
-%             fprintf('
-%         
-% 
-% 
-%             
-%             
-%             
-%     
-%     
-%     
-% end
+% %         trialsBySlice = cat(3, currDfs{:});
+% %         meanTracesCurrSlice = mean(trialsBySlice, 3);
+% %         plot(t, meanTracesCurrSlice(roi,:), 'k', 'LineWidth', 2);
+% %         
+% %         % ---
+% %         for roi=1:size(meanTracesCurrSlice,1)
+% %             plot(t, meanTracesCurrSlice(roi,:), 'k', 'LineWidth', .2);
+% %             hold on;
+% %         end
+% %         % ---
+% % 
+% %         
+% %         
+% % %         for roi=1:size(meanTracesCurrSlice,1)
+% % %             plot(meanTracesCurrSlice(roi,:));
+% % %         end
+% %         
+% %     end
+% %     
+% %     y = T.traces.file{tiffIdx}(roi,:);
+% %     dff = (y - mean(y))./mean(y);
+% %     plot(meta.mw.siSec(volumeIdxs), dff);
+% %     hold on;
+% %     stimOnsets = meta.mw.mwSec(meta.mw.stimStarts);
+% %     stimOffsets = meta.mw.mwSec(2:2:end);
+% %     for onset=1:length(stimOnsets)
+% %         %line([stimOnsets(onset) stimOnsets(onset)], get(gca, 'ylim'));
+% %         ylims = get(gca, 'ylim');
+% %         v = [stimOnsets(onset) ylims(1); stimOffsets(onset) ylims(1);...
+% %             stimOffsets(onset) ylims(2); stimOnsets(onset) ylims(2)];
+% %         f = [1 2 3 4];
+% %         patch('Faces',f,'Vertices',v,'FaceColor','red', 'FaceAlpha', 0.2)
+% %         hold on;
+% %     end
+% %     
+% %     stimNames = fieldnames(mwTrials);
+% %     for stimIdx=1:length(stimNames)
+% %         fprintf('%i trials found for %s.\n', length(fieldnames(mwTrials.(stimNames{stimIdx}))), stimNames{stimIdx});
+% %     end
+% %     
+% %     
+% %     
+% %     v = [0 0; 1 0; 1 1; 0 1];
+% % f = [1 2 3 4];
+% % patch('Faces',f,'Vertices',v,'FaceColor','red')
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     
+% %     siTrials = struct();
+% %     for stimIdx=1:length(condTypes)
+% %         if ~isfield(mwTrials, condTypes{stimIdx})
+% %             fprintf('
+% %         
+% % 
+% % 
+% %             
+% %             
+% %             
+% %     
+% %     
+% %     
+% % end

@@ -57,7 +57,7 @@ end
 % metaPath = D.metaPath;
 % maskType = D.maskType;
 if isfield(D, 'maskInfo')
-    if strcmp(D.roiType, '3Dcnmf')
+    if strfind(D.roiType, '3D')
         
         % DO this silly thing where create paths to individual mask files
         % for each slice/file -- this is just to be consistent with
@@ -80,26 +80,54 @@ else
 end
 
 %  Save 3D masks to D stuct:
-if strcmp(D.roiType, '3Dcnmf')
-    % Just need to load 3D masks:
-    % if length(D.maskInfo.maskPaths) > 1
-    % TODO:  currently, nmf is run on EACH file (i.e., each file may have
-    % different masks)... deal with this. [try:  use binary spatial comps
-    % for A to enforce same locs. across files/runs]
-   tmpmasks = load(D.maskInfo.maskPaths{1});
-   masks = full(tmpmasks.spatialcomponents);
-   maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
-%    for ridx=1:size(masks,2)
-%        roimask = reshape(full(masks(:,ridx)), 120, 120, 22);
-%        roiname = sprintf('roi%04d', ridx);
-%        hdf5save(maskarrayPath, 'roimask', roiname);
-%    end
-   hdf5save(maskarrayPath, 'masks', 'masks');
-   D.maskarrayPath = maskarrayPath;
-   D.nRois = size(masks,2);
+if strfind(D.roiType, '3D')
+       fprintf('Creating mask array for NDB...\n');
+        % Just need to load 3D masks:
+        % if length(D.maskInfo.maskPaths) > 1
+        % TODO:  currently, nmf is run on EACH file (i.e., each file may have
+        % different masks)... deal with this. [try:  use binary spatial comps
+        % for A to enforce same locs. across files/runs]
+       tmpmasks = load(D.maskInfo.maskPaths{4})
+       if strcmp(D.roiType, '3Dcnmf')
+           masks = struct();
+           fprintf('Getting masks and ids for 3Dnmf\n')
+           %masks.maskmat = full(tmpmasks.spatialcomponents);
+           %masks.maskids = tmpmasks.roi3Didxs;
+           maskmat = tmpmasks.spatialcomponents; %full(tmpmasks.spatialcomponents);
+           maskids = tmpmasks.roi3Didxs;
+           masks.maskmat = maskmat;
+           masks.maskids = maskids;
+       else
+           maskmat = full(double(tmpmasks.roiMat));
+           masks.maskmat = maskmat;
+           masks.maskids = tmpmasks.roiIDs;
+       end
+       % maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
+       
+       %hdf5save(maskarrayPath, 'masks', 'masks');
+       %if ~exist(maskarrayPath, 'file')
+       %    h5create(maskarrayPath, '/maskmat', size(maskmat));
+       %    h5create(maskarrayPath, '/maskids', size(maskids));
+       %end
+       %h5write(maskarrayPath, '/maskmat', maskmat);
+       %h5write(maskarrayPath, '/maskids', maskids);
 
-   %h5create(maskarrayPath, '/masks', size(masks))
-   %h5write(maskarrayPath, '/masks', masks);
+       maskarraymatPath = fullfile(D.outputDir, 'maskarray.mat')
+       save(maskarraymatPath, '-struct', 'masks');       
+
+       %D.maskarrayPath = maskarrayPath;
+       D.maskarraymatPath = maskarraymatPath;
+       D.nRois = size(maskmat,2);
+% elseif strcmp(D.roiType, 'manual3D') && ~isfield(D, 'maskarrayPath')
+%        fprintf('Creating hdf5 mask array for NDB...\n');
+% 
+%        tmpmasks = load(D.maskInfo.maskPaths{1});
+%        masks = full(tmpmasks.roiMat);
+%        maskarrayPath = fullfile(D.outputDir, 'maskarary.h5');
+% 
+%        hdf5save(maskarrayPath, 'masks', 'masks');
+%        D.maskarrayPath = maskarrayPath;
+%        D.nRois = size(masks,2);
 end
        
 

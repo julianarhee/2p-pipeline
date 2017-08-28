@@ -17,6 +17,7 @@ end
 slicesToUse = D.slices;
 
 M = struct();
+pathToMasks = {};
 
 for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     
@@ -71,6 +72,7 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     % Save reference masks:        
     maskStructName = char(sprintf('masks_%s_Slice%02d_File%03d.mat', D.experiment, sidx, refNum));
     save(fullfile(maskPath, maskStructName), '-struct', 'M', '-v7.3');
+    pathToMasks{end+1} = maskStructName;
 
 end
 
