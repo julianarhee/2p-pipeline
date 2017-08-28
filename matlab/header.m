@@ -7,6 +7,10 @@ processed = true;
 source = '/nas/volume1/2photon/RESDATA';
 session = '20170825_CE055';
 run = 'fxnal_data/gratings1';
+if processed
+    fprintf('Motion correcting processed tiffs.\n');
+    run = fullfile(run, 'DATA');
+end
 
 mc_ref_channel = 1;
 mc_ref_movie = 1;
