@@ -6,6 +6,11 @@ if selectedSliceIdx > length(D.slices)
 end
 selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
 selectedFile = handles.runMenu.Value;
+if strcmp(D.stimType, 'bar') && length(handles.runMenu.String)==length(handles.stimMenu.String)
+    if handles.stimMenu.Value ~= selectedFile
+        handles.stimMenu.Value = selectedFile;
+    end
+end
 selectedStimIdx = handles.stimMenu.Value;
 stimNames = handles.stimMenu.String;
 selectedStim = handles.stimMenu.String{selectedStimIdx};
@@ -22,7 +27,23 @@ if strcmp(D.stimType, 'bar')
     fftStructName = sprintf('fft_Slice%02d.mat', selectedSlice); %D.slices(selectedSliceIdx)); 
     fftstruct = load(fullfile(D.guiPrepend, D.outputDir, fftStructName));
     freqs = fftstruct.file(selectedFile).freqs;
-    mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+    tcourseTypes = handles.timecourseMenu.String;
+    selected_tcourse = handles.timecourseMenu.Value;
+%     switch tcourseTypes{selected_tcourse}
+%         case 'processedNMF'
+%             mags = fftstruct.file(selectedFile).magMatNMF(:, selectedRoi);
+%         case 'dfNMF'
+%             mags = fftstruct.file(selectedFile).magMatNMFoutput(:, selectedRoi);
+%         otherwise
+%             mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+%     end
+    if ~isempty(strfind(tcourseTypes{selected_tcourse}, '- NMF'))
+        mags = fftstruct.file(selectedFile).magMatNMF(:, selectedRoi);
+    elseif ~isempty(strfind(tcourseTypes{selected_tcourse}, 'NMFoutput'))
+        mags = fftstruct.file(selectedFile).magMatNMFoutput(:, selectedRoi);
+    else
+        mags = fftstruct.file(selectedFile).magMat(:, selectedRoi);
+    end
     targetfreqIdx = fftstruct.file(selectedFile).targetFreqIdx;
     targetfreq = fftstruct.file(selectedFile).targetFreq;
     handles.fft = plot(freqs, mags, 'k', 'LineWidth', 2);

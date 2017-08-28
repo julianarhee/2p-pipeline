@@ -114,7 +114,7 @@ FFT.fft2 = fft2;
 FFT.fft3 = fft3;
 FFT.fft4 = fft4;
 
-niter = 1000;
+niter = 10000;
 threshold = 0.01;
 percent_active = zeros(1,niter);
 [nfreqs, nrois] = size(FFT.fft1.magMatNMF);
@@ -135,7 +135,7 @@ for run=1:nconds
     end
 end
 
-pthresh = 0.05
+pthresh = 0.05/nconds
 cells = find(min(pvals, [], 1) < pthresh);
 ncells = length(cells);
 percent_excluded = 1 - (ncells/nrois)

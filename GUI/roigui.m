@@ -192,6 +192,8 @@ hObject.UserData.runValue = hObject.Value;
 switch D.roiType
     case '3Dcnmf'
         newReference=1;
+    case 'manual3Drois'
+        newReference=1;     
     otherwise
         if ~isfield(handles.currSlice.UserData, 'sliceValue')
             newReference=1;
@@ -727,9 +729,10 @@ end
 
 %fprintf('ROI: %i\n', roiMatch);
 handles.currRoi.String = num2str(roiMatch);
+handles.currRoi.Value = roiMatch;
 handles.currRoiSlider.Value = str2double(handles.currRoi.String);
 
-newReference = 0;
+newReference = 1;
 showRois = handles.roiToggle.Value;
 %D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
@@ -927,6 +930,11 @@ meta = getappdata(handles.roigui, 'meta');
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
 set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+
+[handles, D] =  updateActivityMap(handles, D, meta);
+set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+
+[handles, D] = updateStimulusPlot(handles, D);
 
 guidata(hObject,handles)
 
@@ -1176,12 +1184,12 @@ function roigui_WindowButtonMotionFcn(hObject, eventdata, handles)
 % %         candidateY = find(abs(line.YData-Cy)==min(abs(line.YData-Cy)));
 % %         candidateX = find(abs(line.XData-Cx)==min(abs(line.XData-Cx)));
 % %         if min(abdiffsY)+min(abdiffsX) < 1
-% %             candidatesX(lidx) = abdiffsX(candidateX);
+% %             candidatesX(elidx) = abdiffsX(candidateX);
 % %             candidatesY(lidx) = abdiffsY(candidateY);
 % %         end
 % %         lidx = lidx+1;
 % %     end
-% %     bestmatch = [bestmatch find(candidatesY==min(candidatesY))];
+% %     bestmatch = [bestmatch find(icandidatesY==min(candidatesY))];
 % %     
 % %         
 % %     %end
@@ -1465,9 +1473,10 @@ end
 
 %fprintf('ROI: %i\n', roiMatch);
 handles.currRoi.String = num2str(roiMatch);
+handles.currRoi.Value = roiMatch;
 handles.currRoiSlider.Value = str2double(handles.currRoi.String);
 
-newReference = 0;
+newReference = 1;
 showRois = handles.roiToggle.Value;
 %D = getappdata(handles.roigui,'D');
 [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
@@ -1509,8 +1518,10 @@ function roi3D_Callback(hObject, eventdata, handles)
 
 selectedFile = handles.runMenu.Value;
 selectedSliceIdx = handles.currSlice.Value;
+selectedSlice = handles.currSlice.String{selectedSliceIdx};
 
 D = getappdata(handles.roigui, 'D');
+meta = getappdata(handles.roigui, 'meta');
 
 if strcmp(D.roiType, 'pixels')
 
@@ -1520,6 +1531,10 @@ if strcmp(D.roiType, 'pixels')
     
     [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
     set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
+
+    im
+    [handles, D] = updateActivityMap(handles, D, meta);
+    set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
     %TODO
     % ********************
@@ -1550,15 +1565,36 @@ else
 
     if ~ismember(curr3Droi, roiIdxs)
         maskstruct3D = load(D.maskInfo.maskPaths{selectedFile});
-        correspondingSlice = maskstruct3D.centers(curr3Droi, 3);
+        if isfield(maskstruct3D, 'roiIDs')
+            % Sometimes IDs are NOT continuous (like when we use EM ids to
+            % get ROIs...)
+            matidx = find(maskstruct3D.roiIDs == curr3Droi);
+            correspondingSlice = maskstruct3D.centers(matidx, 3);
+        elseif isfield(maskstruct3D, 'roi3Didxs')
+            matidx = find(maskstruct3D.roi3Didxs == curr3Droi);
+            correspondingSlice = maskstruct3D.centers(matidx, 3);
+            
+        else
+            correspondingSlice = maskstruct3D.centers(curr3Droi, 3);
+        end
         if correspondingSlice ~= selectedSliceIdx
             handles.currSlice.Value = correspondingSlice;
             newReference = 1;
             showRois = handles.roiToggle.Value;
-
+            
+            [maskcell, roiIdxs] = getCurrentSliceMasks(handles,D);
+            roiSliceID = find(curr3Droi==roiIdxs)
+            handles.currRoi.Value = roiSliceID;
+            handles.currRoi.String = num2str(roiSliceID);
+            handles.currRoiSlider.Value = roiSliceID;
+            
             [handles, D] = updateReferencePlot(handles, D, newReference, showRois);
             set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
+
+            [handles, D] = updateActivityMap(handles, D, meta);
+            set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
+            
             %TODO
             % ********************
             % Update "stimulus PSTH" plot

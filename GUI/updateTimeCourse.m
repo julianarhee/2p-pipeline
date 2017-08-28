@@ -49,8 +49,12 @@ switch tcourseTypes{handles.timecourseMenu.Value}
 %             if isfield(handles, 'timecourse')
 %                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
 %             else 
-            handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-%             end
+            if isempty(dfMat)
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), zeros(size(dfMat,1)), 'k', 'LineWidth', 1);
+                hold on;
+            else
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+            end
             xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
             hold on;
         else
@@ -60,14 +64,35 @@ switch tcourseTypes{handles.timecourseMenu.Value}
         xlabel('time (s)');
         ylabel('dF/f');
         
-    case 'inferred'
+%     case 'inferred'
+%         if ~noDF
+%             dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMatInferred;
+% %             if isfield(handles, 'timecourse')
+% %                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+% %             else 
+%             handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+% %             end
+%             xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
+%             hold on;
+%         else
+%             handles.timecourse = plot(tstamps, zeros(1,1:length(tstamps)), 'k', 'LineWidth', 1);
+%             hold on;
+%         end
+%         xlabel('time (s)');
+%         ylabel('dF/f');
+        
+    case 'df/F - NMF'
         if ~noDF
-            dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMatInferred;
+            dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMatNMF;
 %             if isfield(handles, 'timecourse')
 %                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
 %             else 
-            handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
-%             end
+            if isempty(dfMat)
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), zeros(size(dfMat,1)), 'k', 'LineWidth', 1);
+            else
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+            end
+
             xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
             hold on;
         else
@@ -77,6 +102,27 @@ switch tcourseTypes{handles.timecourseMenu.Value}
         xlabel('time (s)');
         ylabel('dF/f');
         
+    case 'dfNMFoutput'
+        if ~noDF
+            dfMat = dfstruct.slice(selectedSlice).file(selectedFile).dfMatNMFoutput;
+%             if isfield(handles, 'timecourse')
+%                 handles.timecourse.CData = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+%             else 
+            if isempty(dfMat)
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), zeros(size(dfMat,1)), 'k', 'LineWidth', 1);
+            else
+                handles.timecourse = plot(tstamps(1:size(dfMat,1)), dfMat(:,selectedRoi), 'k', 'LineWidth', 1);
+            end
+            xlim([0 tstamps(size(dfMat,1))]); % Crop extra white space
+            hold on;
+        else
+            handles.timecourse = plot(tstamps, zeros(size(tstamps)), 'k', 'LineWidth', 1);
+            hold on;
+        end
+        xlabel('time (s)');
+        ylabel('dF/f');
+        
+        
     case 'raw'
         % laod traces raw
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
@@ -84,7 +130,11 @@ switch tcourseTypes{handles.timecourseMenu.Value}
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else
-        handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+        if isempty(rawmat)
+            handles.timecourse = plot(tstamps(1:size(rawmat,1)), zeros(size(rawmat,1)), 'k', 'LineWidth', 1);
+        else
+            handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+        end
 %         end
         xlim([0 tstamps(end)]);
         hold on;
@@ -94,16 +144,59 @@ switch tcourseTypes{handles.timecourseMenu.Value}
     case 'processed'
         % laodtracemat
         tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
-        tracemat = tracestruct.file(selectedFile).traceMat;
+        if ~isfield(tracestruct.file(selectedFile), 'traceMatDC')
+            tracemat = tracestruct.file(selectedFile).traceMat;
+        else
+            tracemat = tracestruct.file(selectedFile).traceMatDC;
+        end
 %         if isfield(handles, 'timecourse')
 %             handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
 %         else
-        handles.timecourse = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
-%         end
-        xlim([0 tstamps(size(tracemat,1))]); % Crop extra white space
+        if isempty(tracemat)
+            handles.timecourse = plot(tstamps(1:size(tracemat,1)), zeros(size(tracemat,1)), 'k', 'LineWidth', 1);
+        else
+            handles.timecourse = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
+        end
+        xlim([0 tstamps(end)]); % Crop extra white space
         hold on;
         xlabel('time (s)');
         ylabel('intensity');
+        
+    case 'raw - NMF'
+        % laod traces raw
+        tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
+        rawmat = tracestruct.file(selectedFile).rawTracesNMF;
+%         if isfield(handles, 'timecourse')
+%             handles.timecourse.CData = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         else
+        if isempty(rawmat)
+            handles.timecourse = plot(tstamps(1:size(rawmat,1)), zeros(size(rawmat,1)), 'k', 'LineWidth', 1);
+        else
+            handles.timecourse = plot(tstamps, rawmat(:,selectedRoi), 'k', 'LineWidth', 1);
+        end
+        xlim([0 tstamps(end)]);
+        hold on;
+        xlabel('time (s)');
+        ylabel('intensity');
+
+    case 'processed - NMF'
+        % laodtracemat
+        tracestruct = load(fullfile(D.tracesPath, D.traceNames{selectedSliceIdx}));
+        tracemat = tracestruct.file(selectedFile).rawTraceMatDCNMF;
+%         if isfield(handles, 'timecourse')
+%             handles.timecourse.CData = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
+%         else
+        if isempty(tracemat)
+            handles.timecourse = plot(tstamps(1:size(tracemat,1)), zeros(size(tracemat,1)), 'k', 'LineWidth', 1);
+        else
+            handles.timecourse = plot(tstamps(1:size(tracemat,1)), tracemat(:,selectedRoi), 'k', 'LineWidth', 1);
+        end
+        xlim([0 tstamps(end)]); % Crop extra white space
+        hold on;
+        xlabel('time (s)');
+        ylabel('intensity');
+        
+        
 end
 
 ylims = get(gca,'ylim');

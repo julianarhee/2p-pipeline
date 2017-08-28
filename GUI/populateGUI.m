@@ -13,7 +13,7 @@ while loading==1
         tload = tic();
     end
     
-    % Load main analysis MAT: ---------------------------------------------
+    % Load main analysis MAT: -----------------n----------------------------
     currPath = tmpCurrPath;
     currDatastruct = tmpCurrDatastruct;
     D = load(fullfile(currPath, currDatastruct));
@@ -63,7 +63,7 @@ while loading==1
         sliceNames{s} = sprintf('Slice%02d', D.slices(s)); % - D.slices(1) + 1);
     end
     handles.currSlice.String = sliceNames;
-
+    
     
     % Get default slice idx and value: ------------------------------------
     selectedSliceIdx = handles.currSlice.Value; %str2double(handles.currSlice.String);
@@ -71,7 +71,24 @@ while loading==1
         selectedSliceIdx = length(D.slices);
     end
     selectedSlice = D.slices(selectedSliceIdx); % - D.slices(1) + 1;
-
+    
+%     tmp_mstruct = load(D.maskPaths{selectedSlice});
+%     if isfield(tmp_mstruct, 'file') && isempty(tmp_mstruct.file(1).maskcell)
+%         slicesWithMasks = [];
+%         for sidx=1:length(D.slices)
+%             tmp_mstruct = lorad(D.maskPaths{sidx});
+%             if ~isempty(tmp_mstruct.file(1).maskcell)
+%                 slicesWithMasks = [slicesWithMasks sidx];
+%             end
+%         end
+%         sliceNames = cell(1,length(slicesWithMasks));
+%         for s=1:length(sliceNames)
+%             sliceNames{s} = sprintf('Slice%02d', D.slices(s)); % - D.slices(1) + 1);
+%         end
+%         handles.currSlice.String = sliceNames;
+%         D.slices = slicesWithMasks
+%         setappdata(handles.roigui, 'D', D);
+%     end
     
     % Set file name options for RUN menu: ---------------------------------
     fileNames = cell(1,length(meta.file));
@@ -124,10 +141,22 @@ while loading==1
     
     % Populate STIM menu options: -----------------------------------------
     %meta = getappdata(handles.roigui, 'meta');
-    handles.stimMenu.String = sort_nat(meta.condTypes);
+    if strcmp(D.stimType, 'bar') && length(meta.file)>length(meta.condTypes)
+        condlist = {};
+        for fidx=1:length(meta.file)
+            condlist{end+1} = meta.file(fidx).mw.runName;
+        end
+        handles.stimMenu.String = sort_nat(condlist);
+    else    
+        handles.stimMenu.String = sort_nat(meta.condTypes);
+    end
     handles.stimMenu.UserData.stimType = handles.stimMenu.String;
-    if handles.stimMenu.Value > length(handles.stimMenu.String)
+    if isempty(handles.stimMenu.Value)
         handles.stimMenu.Value = 1;
+    else
+        if handles.stimMenu.Value > length(handles.stimMenu.String)
+            handles.stimMenu.Value = length(handles.stimMenu.String);
+        end
     end
     handles.stimMenu.UserData.currStimName =  handles.stimMenu.String{handles.stimMenu.Value};
     if ~strcmp(D.stimType, 'bar')
@@ -161,6 +190,9 @@ while loading==1
     % Populate Time-Course menu options: ----------------------------------
     if isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatInferred')
         timecourseTypes = {'dF/F', 'raw', 'processed', 'inferred'};
+    elseif isfield(dfStruct.slice(selectedSlice).file(selectedFile), 'dfMatNMF')
+        timecourseTypes = {'dF/F', 'raw', 'processed',...
+                            'df/F - NMF', 'raw - NMF', 'processed - NMF', 'dfNMFoutput'};
     else
         timecourseTypes = {'dF/F', 'raw', 'processed'};
     end
