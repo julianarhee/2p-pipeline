@@ -13,10 +13,16 @@ Acquisition2P_class (Harvey Lab, Harvard), helperFunctions (Harvey Lab, Harvard)
 
 Basic workflow currently uses both Python and Matlab, until we choose a smaller subset of methods to use.
 ```
+# 1. Pre-processing
 python create_substacks.py 
 matlab -r 'preprocess';
+
+# 2. Extract traces and align to trials
 python parse_mw_trials.py 
 matlab -r 'create_acquisition_struct';
+
+# 3. Quick visualization (should just run this in Matlab GUI)
+matlab -r 'roigui'; 
 ```
 Notes: Python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). Edit the above matlab scripts to input experiment-specific parameters before running.
 
