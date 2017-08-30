@@ -15,10 +15,17 @@ import datetime
 import pandas as pd
 import scipy.io
 import copy
+import re
 
 def get_timekey(item):
     return item.time
 
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
 
 # In[3]:
 
@@ -52,12 +59,16 @@ parser.add_option('-s', '--session', action="store", dest="session",
 parser.add_option('-r', '--run', action="append", dest="experiment_list",
                   default=[], help="(list of) runs or experiment folder [ex., 'retinotopy5']")
 parser.add_option('--stim', action="store",
-                  dest="stimtype", default="grating", help="stimulus type (gratings or rsvp)?")
+                  dest="stimtype", default="grating", help="stimulus type (grating, image, or bar)?")
 parser.add_option('--noard', action="store_true",
                   dest="no_ard", default=False, help="No arduino triggers saved? [default: False]")
+parser.add_option('-t', '--triggervar', action="store",
+                  dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
+
 
 
 (options, args) = parser.parse_args()
+trigger_varname = options.frametrigger_varname
 
 # fn_base = options.fn_base #'20160118_AG33_gratings_fov1_run1'
 source_dir = options.source_dir #'/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1'
@@ -105,11 +116,17 @@ print "MW files: ", mw_dfns
 
 # Get MW events
 # didx = 0
+mw_dfns = sorted(mw_dfns, key=natural_keys)
+ar_dfns = sorted(ar_dfns, key=natural_keys)
+
 for didx in range(len(mw_dfns)):
+    curr_dfn = mw_dfns[didx]
+    curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
+    print "Current file: ", curr_dfn
     if stimtype=='bar':
-        pixelevents, stimevents, trigger_times, session_info = get_bar_events(mw_dfns[didx])
+        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(mw_dfns[0], stimtype=stimtype)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, triggername=trigger_varname)
 
     # In[8]:
 
@@ -244,7 +261,7 @@ for didx in range(len(mw_dfns)):
 
 
     # save trial info as pkl for easyloading: 
-    trialinfo_fn = 'trial_info.pkl'
+    trialinfo_fn = 'trial_info_%s.pkl' % curr_dfn_base 
     with open(os.path.join(data_dir, 'mw_data', trialinfo_fn), 'wb') as f:
         pkl.dump(trial, f, protocol=pkl.HIGHEST_PROTOCOL)
         f.close()
@@ -430,7 +447,7 @@ for didx in range(len(mw_dfns)):
     #pydict['mw_codes_by_file'] = mw_codes_by_file
     pydict['mw_dfn'] = mw_dfn
     pydict['source_dir'] = source_dir
-    pydict['fn_base'] = fn_base
+    pydict['fn_base'] = curr_dfn_base #fn_base
     pydict['stimtype'] = stimtype
     if stimtype=='bar':
         pydict['condtypes'] = ['left', 'right', 'top', 'bottom']
@@ -443,7 +460,8 @@ for didx in range(len(mw_dfns)):
         pydict['condtypes'] = sorted(image_ids)
         pydict['runs'] = runs.keys()
 
-    tif_fn = fn_base+'.mat'
+    tif_fn = curr_dfn_base+'.mat' #fn_base+'.mat'
+    print tif_fn
     # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
     scipy.io.savemat(os.path.join(data_dir, 'mw_data', tif_fn), mdict=pydict)
     print os.path.join(data_dir, 'mw_data', tif_fn)

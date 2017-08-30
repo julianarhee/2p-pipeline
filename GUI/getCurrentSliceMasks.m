@@ -25,7 +25,7 @@ if strcmp(D.roiType, 'pixels')
     
 else
 
-    if strcmp(D.roiType, '3Dcnmf')
+    if strfind(D.roiType, '3D')
         [mp,mn,me] = fileparts(D.maskPaths{selectedSlice});
     else
         [mp,mn,me] = fileparts(D.maskInfo.maskPaths{selectedSlice});
@@ -36,17 +36,33 @@ else
 
     if isfield(maskStruct, 'file')
         maskcell = maskStruct.file(selectedFile).maskcell; % masks created with create_rois.m
-        while isempty(maskcell)
-            for fidx=1:length(maskStruct.file)
-                maskcell = maskStruct.file(fidx).maskcell;
-                handles.runMenu.Value = fidx;
-            end
-        end
+%         while isempty(maskcell)
+% %             for fidx=1:length(maskStruct.file)
+% %                 maskcell = maskStruct.file(fidx).maskcell;
+% %                 handles.runMenu.Value = fidx;
+% %             end
+%             for sidx=1:length(D.slices)
+%                 tmpmasks = load(D.maskPaths{sidx});
+%                 maskcell = tmpmasks.file(selectedFile).maskcell;
+%             end
+%             selectedSlice = sidx;
+%             handles.currSlice.Value = selectedSlice;
+%                 
+%         end
 
-        if strcmp(D.roiType, '3Dcnmf') && isfield(maskStruct.file(handles.runMenu.Value), 'roi3Didxs')
-            roiIdxs = maskStruct.file(handles.runMenu.Value).roi3Didxs;
+        if isempty(maskcell)
+            roiIdxs = 1;
+            maskcell = {0};
         else
-            roiIdxs = 1:length(maskcell);
+            if strfind(D.roiType, '3D') 
+                if isfield(maskStruct.file(handles.runMenu.Value), 'roi3Didxs')
+                    roiIdxs = maskStruct.file(handles.runMenu.Value).roi3Didxs;
+                else
+                   roiIdxs = maskStruct.file(handles.runMenu.Value).roiIDs;
+                end
+            else
+                roiIdxs = 1:length(maskcell);
+            end
         end
 
     else

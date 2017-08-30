@@ -123,18 +123,21 @@ def get_session_bounds(dfn):
     return df, bounds
 
 
-def get_trigger_times(df, boundary):
+def get_trigger_times(df, boundary, triggername=''):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
-    trigger_names = [i for i in codec_list.values() if ('trigger' in i or 'Trigger' in i) and 'flag' not in i]
-    if len(trigger_names) > 1:
-        print "Found > 1 name for frame-trigger:"
-        print "Choose: ", trigger_names
-        print "Hint: RSVP could be FrameTrigger, otherwise frame_trigger."
-        trigg_var_name = raw_input("Type var name to use: ")
-        trigg_evs = df.get_events(trigg_var_name)
+    if len(triggername)==0:
+	trigger_names = [i for i in codec_list.values() if ('trigger' in i or 'Trigger' in i) and 'flag' not in i]
+        if len(trigger_names) > 1:
+	    print "Found > 1 name for frame-trigger:"
+	    print "Choose: ", trigger_names
+            print "Hint: RSVP could be FrameTrigger, otherwise frame_trigger."
+	    trigg_var_name = raw_input("Type var name to use: ")
+	    trigg_evs = df.get_events(trigg_var_name)
+	else:
+	    trigg_evs = df.get_events(trigger_names[0])
     else:
-        trigg_evs = df.get_events(trigger_names[0])
+	trigg_evs = df.get_events(triggername)
 
     # Only include SI trigger events if they were acquired while MW was actually "running" (i.e., start/stop time boundaries):
     trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
@@ -250,7 +253,7 @@ def get_trigger_times(df, boundary):
         tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
         # user_run_selection = [int(i) for i in user_run_selection]
         # if any([i>= len(trigger_times) for i in user_run_selection]):
-        if ',' in tmp_user_run_selection:
+        if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
             user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
             if any([i>= len(trigger_times) for i in user_run_selection]):
                 print len(user_run_selection)
@@ -310,7 +313,7 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
 
 
 
-def get_bar_events(dfn, stimtype='bar', remove_orphans=True):
+def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
     """
     Open MW file and get time-stamped boundaries for acquisition.
 
@@ -348,7 +351,7 @@ def get_bar_events(dfn, stimtype='bar', remove_orphans=True):
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
         print "selected runs:", user_run_selection
         pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
 
@@ -458,7 +461,7 @@ def get_session_info(df, stimtype='grating'):
     return info
 
      
-def get_stimulus_events(dfn, stimtype='grating', pixelclock=True):
+def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True):
     df, bounds = get_session_bounds(dfn)
     print bounds
 
@@ -481,7 +484,7 @@ def get_stimulus_events(dfn, stimtype='grating', pixelclock=True):
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
       
         print "selected runs:", user_run_selection
         if pixelclock:
