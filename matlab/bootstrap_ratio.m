@@ -23,85 +23,7 @@ for roi=1:nrois
 end
 n_actual = length(find(maxratios>=threshold)) / nrois;
 
-%%
-
-allvals = [fft1.ratioMatNMF, fft2.ratioMatNMF, fft3.ratioMatNMF, fft4.ratioMatNMF];
-nvals = length(allvals);
-nconds = 4;
-
-niter = 1000;
-
-% Assume normal distN, calculate mag-ratio as p-val:
-actual_mean = nanmean(allvals);
-actual_std = nanstd(allvals);
-
-r = actual_mean + actual_std.*randn(niter,1);
-figure(); hist(abs(r),100);
-[H, STATS] = cdfplot(abs(r));
-
-
-% Bootstrap, random draw and take max. Calculate p that % expressing >=
-% actual value:
-threshold = 0.01;
-percent_active = zeros(1,niter);
-for n=1:niter
-    
-   % draw 4 runs for each cell:
-   draw = zeros(1,nrois);
-   for roi=1:nrois
-      shuffler = randi(nvals, 1, nconds);
-      draw(roi) = max(allvals(shuffler));
-   end
-   
-   percent_active(n) = length(find(draw>=threshold)) / nrois;
-   
-end
-
-figure(); hist(percent_active);
-
-pval = length(find(percent_active >= n_actual)) / niter;
-hold on;
-title(sprintf('p = %s', num2str(pval)));
-
-%%
-
-% Bootstrap, random draw and take max. Calculate p that % expressing >=
-% actual value:
-FFT = struct();
-FFT.fft1 = fft1;
-FFT.fft2 = fft2;
-FFT.fft3 = fft3;
-FFT.fft4 = fft4;
-
-niter = 10000000;
-threshold = 0.01;
-percent_active = zeros(1,niter);
-[nfreqs, nrois] = size(fft1.magMatNMF);
-target_idx = fft1.targetFreqIdx;
-for n=1:niter
-    
-    % Shuffle magnitudes, calculate ratio-mag:
-    ratios_by_cond = zeros(nconds, nrois);
-    for run=1:nconds
-        curr_run = sprintf('fft%i', run);
-        magtmp = num2cell(FFT.(curr_run).magMatNMF, 1);
-        shuffled_freqs = randi(nfreqs, 1, nfreqs);
-        shuffled_mags = cellfun(@(r) r(shuffled_freqs), magtmp, 'UniformOutput', false);
-        shuffled_ratios = cellfun(@(r) r(target_idx)/(sum(r)-r(target_idx)), shuffled_mags);
-        ratios_by_cond(run, :) = shuffled_ratios;
-    end
-    draw = max(ratios_by_cond, [], 1);
-    
-    percent_active(n) = length(find(draw>=threshold)) / nrois;
-   
-end
-
-figure(); hist(percent_active);
-
-pval = length(find(percent_active >= n_actual)) / niter;
-hold on;
-title(sprintf('p = %s', num2str(pval)));
-
+nconds = 4
 
 %%
 
@@ -135,6 +57,7 @@ for run=1:nconds
     end
 end
 
+%%
 pthresh = 0.05
 cells = find(min(pvals, [], 1) < pthresh);
 ncells = length(cells);
@@ -145,28 +68,28 @@ D = load('/nas/volume1/2photon/RESDATA/TEFO/20161219_JR030W/retinotopyFinal/anal
 masks = load(D.maskInfo.maskPaths{1});
 cellIDs = masks.roi3Didxs(cells);
 
-
-for n=1:niter
-    
-    % Shuffle magnitudes, calculate ratio-mag:
-    shuffled_ratios_by_cond = zeros(nconds, nrois);
-    for run=1:nconds
-        curr_run = sprintf('fft%i', run);
-        true_ratios_by_cond(run, :) = FFT.(curr_run).ratioMatNMF;
-        magtmp = num2cell(FFT.(curr_run).magMatNMF, 1);
-        shuffled_freqs = randi(nfreqs, 1, nfreqs);
-        shuffled_mags = cellfun(@(r) r(shuffled_freqs), magtmp, 'UniformOutput', false);
-        shuffled_ratios = cellfun(@(r) r(target_idx)/(sum(r)-r(target_idx)), shuffled_mags);
-        shuffled_ratios_by_cond(run, :) = shuffled_ratios;
-    end
-    draw = max(ratios_by_cond, [], 1);
-    
-    percent_active(n) = length(find(draw>=threshold)) / nrois;
-   
-end
-
-figure(); hist(percent_active);
-
-pval = length(find(percent_active >= n_actual)) / niter;
-hold on;
-title(sprintf('p = %s', num2str(pval)));
+% 
+% for n=1:niter
+%     
+%     % Shuffle magnitudes, calculate ratio-mag:
+%     shuffled_ratios_by_cond = zeros(nconds, nrois);
+%     for run=1:nconds
+%         curr_run = sprintf('fft%i', run);
+%         true_ratios_by_cond(run, :) = FFT.(curr_run).ratioMatNMF;
+%         magtmp = num2cell(FFT.(curr_run).magMatNMF, 1);
+%         shuffled_freqs = randi(nfreqs, 1, nfreqs);
+%         shuffled_mags = cellfun(@(r) r(shuffled_freqs), magtmp, 'UniformOutput', false);
+%         shuffled_ratios = cellfun(@(r) r(target_idx)/(sum(r)-r(target_idx)), shuffled_mags);
+%         shuffled_ratios_by_cond(run, :) = shuffled_ratios;
+%     end
+%     draw = max(ratios_by_cond, [], 1);
+%     
+%     percent_active(n) = length(find(draw>=threshold)) / nrois;
+%    
+% end
+% 
+% figure(); hist(percent_active);
+% 
+% pval = length(find(percent_active >= n_actual)) / niter;
+% hold on;
+% title(sprintf('p = %s', num2str(pval)));
