@@ -1,4 +1,4 @@
-function maskmat = getGolfballs(centers, radii, volumesize, view_sample)
+function maskmat = get_golfballs(centers, radii, volumesize, view_sample)
 
 % r=4;
 % phi=linspace(0,pi,120);

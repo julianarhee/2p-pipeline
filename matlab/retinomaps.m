@@ -33,7 +33,7 @@ experiment = 'retinotopy3'
 analysis_no = 5 %3 %4
 tefo = false; %true;
 
-D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
+D = load_analysis_info(session, experiment, analysis_no, tefo);
 
 
 %trimEnd = true;
@@ -58,13 +58,13 @@ crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
 nWinUnits = 3;
 switch D.roiType
     case '3Dcnmf'
-        processTraces3Dnmf(D, winUnit, nWinUnits, crop)
+        process_traces_3Dnmf(D, winUnit, nWinUnits, crop)
     case 'manual3Drois'
-        processTraces3Dnmf(D, winUnit, nWinUnits, crop)
+        process_traces_3Dnmf(D, winUnit, nWinUnits, crop)
     case 'cnmf'
         % do other stuff
     otherwise
-        processTraces(D, winUnit, nWinUnits, crop)
+        process_traces(D, winUnit, nWinUnits, crop)
 end
 
 % end
@@ -75,13 +75,13 @@ end
 dfMin = 5; %0;
 switch D.roiType
     case '3Dcnmf'
-        dfstruct = getDfMovie3Dnmf(D, dfMin);
+        dfstruct = get_dfs_3D(D, dfMin);
     case 'manual3Drois'
-        dfstruct = getDfMovie3Dnmf(D, dfMin);
+        dfstruct = get_dfs_3D(D, dfMin);
     case 'cnmf'
         % do other stuff
     otherwise
-        dfstruct = getDfMovie(D, dfMin);
+        dfstruct = get_dfs(D, dfMin);
 end
 D.dfStructName = dfstruct.name;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
@@ -91,7 +91,7 @@ end
 % Get legends:
 if ~isfield(meta, 'legends')
     fprintf('Creating legends.\n');
-    legends = makeLegends(D.outputDir);
+    legends = make_legends(D.outputDir);
     meta.legends = legends;
     save(D.metaPath, '-append', '-struct', 'meta');
 end
@@ -264,18 +264,18 @@ for fidx=1:nTiffs
         
 %         % TOD:  Make 3D maps??
 % 
-%         phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
-%         magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
-%         ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
-%         phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
+%         phaseMap = assign_roimap(maskcell, phaseMap, phaseMat, freqIdx);
+%         magMap = assign_roimap(maskcell, magMap, magMat, freqIdx);
+%         ratioMap = assign_roimap(maskcell, ratioMap, ratioMat);
+%         phaseMaxMag = assign_roimap(maskcell, phaseMat, magMat, [], freqs);
 % 
 % 
 %         % --
 %         if inferred
-%             phaseMapInferred = assignRoiMap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
-%             magMapInferred = assignRoiMap(maskcell, magMapInferred, magMatInferred, freqIdx);
-%             ratioMapInferred = assignRoiMap(maskcell, ratioMapInferred, ratioMatInferred);
-%             phaseMaxMagInferred = assignRoiMap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
+%             phaseMapInferred = assign_roimap(maskcell, phaseMapInferred, phaseMatInferred, freqIdx);
+%             magMapInferred = assign_roimap(maskcell, magMapInferred, magMatInferred, freqIdx);
+%             ratioMapInferred = assign_roimap(maskcell, ratioMapInferred, ratioMatInferred);
+%             phaseMaxMagInferred = assign_roimap(maskcell, phaseMatInferred, magMatInferred, [], freqs);
 %         end
 %         % ---
 %         
@@ -767,28 +767,28 @@ for sidx = 1:length(slicesToUse)
                     phasesAtMaxMag = arrayfun(@(i) freqs(magMat(:,i)==max(magMat(:,i))), 1:nrois);
                     phaseMaxMag = reshape(phasesAtMaxMag, [d1, d2]);
     %             case '3Dcnmf'
-    %                 phaseMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfs);
+    %                 phaseMap = assign_roimap3D(maskcell, centers, nslices, blankMap, meanDfs);
     %                 
                 otherwise
-                    phaseMap = assignRoiMap(maskcell, phaseMap, phaseMat, freqIdx);
-                    magMap = assignRoiMap(maskcell, magMap, magMat, freqIdx);
-                    ratioMap = assignRoiMap(maskcell, ratioMap, ratioMat);
-                    phaseMaxMag = assignRoiMap(maskcell, phaseMat, magMat, [], freqs);
+                    phaseMap = assign_roimap(maskcell, phaseMap, phaseMat, freqIdx);
+                    magMap = assign_roimap(maskcell, magMap, magMat, freqIdx);
+                    ratioMap = assign_roimap(maskcell, ratioMap, ratioMat);
+                    phaseMaxMag = assign_roimap(maskcell, phaseMat, magMat, [], freqs);
             end
 
     %         % --
             if inferred
                 %display('hi')
-                phaseMapNMF = assignRoiMap(maskcell, phaseMapNMF, phaseMatNMF, freqIdx);
-                magMapNMF = assignRoiMap(maskcell, magMapNMF, magMatNMF, freqIdx);
-                ratioMapNMF = assignRoiMap(maskcell, ratioMapNMF, ratioMatNMF);
-                phaseMaxMagNMF = assignRoiMap(maskcell, phaseMatNMF, magMatNMF, [], freqs);
+                phaseMapNMF = assign_roimap(maskcell, phaseMapNMF, phaseMatNMF, freqIdx);
+                magMapNMF = assign_roimap(maskcell, magMapNMF, magMatNMF, freqIdx);
+                ratioMapNMF = assign_roimap(maskcell, ratioMapNMF, ratioMatNMF);
+                phaseMaxMagNMF = assign_roimap(maskcell, phaseMatNMF, magMatNMF, [], freqs);
 
-                phaseMapNMFoutput = assignRoiMap(maskcell, phaseMapNMFoutput, phaseMatNMFoutput, freqIdx);
-                magMapNMFoutput = assignRoiMap(maskcell, magMapNMFoutput, magMatNMFoutput, freqIdx);
-                ratioMapNMFoutput = assignRoiMap(maskcell, ratioMapNMFoutput, ratioMatNMFoutput);
+                phaseMapNMFoutput = assign_roimap(maskcell, phaseMapNMFoutput, phaseMatNMFoutput, freqIdx);
+                magMapNMFoutput = assign_roimap(maskcell, magMapNMFoutput, magMatNMFoutput, freqIdx);
+                ratioMapNMFoutput = assign_roimap(maskcell, ratioMapNMFoutput, ratioMatNMFoutput);
                 fprintf('nmasks: %i\n', length(maskcell)); fprintf('phaseMat: %s\n', mat2str(size(phaseMatNMFoutput))); fprintf('magMat: %s\n', mat2str(size(magMatNMFoutput))); fprintf('nfreqs: %i\n', length(freqs));
-		%phaseMaxMagNMFoutput = assignRoiMap(maskcell, phaseMatNMFoutput, magMatNMFoutput, [], freqs);
+		%phaseMaxMagNMFoutput = assign_roimap(maskcell, phaseMatNMFoutput, magMatNMFoutput, [], freqs);
 
 
             end
@@ -894,7 +894,7 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 %         adjusted = filtered + mean(raw,3);
 %         %dfFunc = @(x) (x-mean(x))./mean(x);
 %         %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
-%         dfMat = arrayfun(@(i) extractDfTrace(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false);
+%         dfMat = arrayfun(@(i) extract_df(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false);
 %         dfMat = cat(1, dfMat{1:end})*100;
 %         
 %         meanDfs = mean(dfMat,2);
@@ -902,8 +902,8 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 %         activeRois = find(maxDfs >= minDf);
 %         fprintf('Found %i ROIs with dF/F > %02.f%%.\n', length(activeRois), minDf);
 %         
-%         meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
-%         maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+%         meanMap = assign_roimap(maskcell, meanMap, meanDfs);
+%         maxMap = assign_roimap(maskcell, maxMap, maxDfs);
 %         
 %         %meanMap(masks(:,:,1:nRois)==1) = mean(dF,2);
 %         %maxMap(masks(:,:,1:nRois)==1) = max(dF,2);

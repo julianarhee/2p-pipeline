@@ -1,4 +1,4 @@
-function [interpTraces] = interpolateTraces(dtimes, dtraces, reftimes)
+function [interpTraces] = interpolate_traces(dtimes, dtraces, reftimes)
 
 
         %roiTraces = rawTracemat{1};

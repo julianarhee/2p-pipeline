@@ -1,4 +1,4 @@
-function [options, nmf_outpaths] = getRois3Dnmf(D, meta, show_plots, getref, orderROIs)
+function [options, nmf_outpaths] = get_rois_3Dnmf(D, meta, show_plots, getref, orderROIs)
 % clear all;
 % clc;
 % 

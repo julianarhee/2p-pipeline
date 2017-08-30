@@ -1,4 +1,4 @@
-function outmap = assignRoiMap(maskcell, roimap, roivecs, varargin)
+function outmap = assign_roimap(maskcell, roimap, roivecs, varargin)
 
 nargin = length(varargin);
 

@@ -1,4 +1,4 @@
-function DF = getDfMovie3Dnmf(D, varargin)
+function DF = get_dfs_3D(D, varargin)
 
 % Get dF/F maps:
 
@@ -37,7 +37,7 @@ dfstruct = struct();
 % selection.
 % "3D masks" is in D.maskInfo.maskPaths, this is really just a single path,
 % and it is different than the "standard" masks_Slice0x_File00y.mat naming
-% stucture, since it is created/set during getRois3Dnmf()
+% stucture, since it is created/set during get_rois_3Dnmf()
 
 % Load 3D Traces:
 %tracestruct = load(fullfile(D.tracesPath, D.tracesName3D{fidx}));
@@ -113,8 +113,8 @@ for fidx=1:nTiffs
 
     %dfFunc = @(x) (x-mean(x))./mean(x);
     %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
-%         dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
-    dfMat = arrayfun(@(i) extractDfTrace(adjustedTraces(:,i)), 1:nrois, 'UniformOutput', false);
+%         dfMat = arrayfun(@(i) extract_df(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
+    dfMat = arrayfun(@(i) extract_df(adjustedTraces(:,i)), 1:nrois, 'UniformOutput', false);
     dfMat = cat(2, dfMat{1:end})*100;
 
     
@@ -126,15 +126,15 @@ for fidx=1:nTiffs
     fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, minDf);
     
     nslices =  size(avgY,3);
-    meanMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfs);
-    maxMap = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfs);
+    meanMap = assign_roimap_3D(maskcell, centers, nslices, blankMap, meanDfs);
+    maxMap = assign_roimap_3D(maskcell, centers, nslices, blankMap, maxDfs);
     
     % ----------------------------------------------------------
     % Make mean/max maps & get ROI traces from inferred traces:
     blankMap = zeros([d1, d2]);
     %if isfield(tracestruct, 'inferredTraces')
     if inferred 
-        dfMatNMF = arrayfun(@(i) extractDfTrace(adjustedTracesNMF(:,i)), 1:nrois, 'UniformOutput', false);
+        dfMatNMF = arrayfun(@(i) extract_df(adjustedTracesNMF(:,i)), 1:nrois, 'UniformOutput', false);
         dfMatNMF = cat(2, dfMatNMF{1:end})*100;
 
         meanDfsNMF = mean(dfMatNMF,1);
@@ -145,8 +145,8 @@ for fidx=1:nTiffs
         fprintf('Found %i of %i ROIs with raw NMF dF/F > %02.f%%.\n', length(activeRoisNMF), nrois, minDf);
 
         nslices =  size(avgY,3);
-        meanMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMF);
-        maxMapNMF = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsNMF);
+        meanMapNMF = assign_roimap_3D(maskcell, centers, nslices, blankMap, meanDfsNMF);
+        maxMapNMF = assign_roimap_3D(maskcell, centers, nslices, blankMap, maxDfsNMF);
         
         
         % AND ON NMF DF OUTPUT ITSELF:
@@ -159,8 +159,8 @@ for fidx=1:nTiffs
         fprintf('Found %i of %i ROIs with NMF dF/F > %02.f%%.\n', length(activeRoisNMFoutput), nrois, minDf);
 
         nslices =  size(avgY,3);
-        meanMapNMFoutput = assignRoiMap3D(maskcell, centers, nslices, blankMap, meanDfsNMFoutput);
-        maxMapNMFoutput = assignRoiMap3D(maskcell, centers, nslices, blankMap, maxDfsNMFoutput);
+        meanMapNMFoutput = assign_roimap_3D(maskcell, centers, nslices, blankMap, meanDfsNMFoutput);
+        maxMapNMFoutput = assign_roimap_3D(maskcell, centers, nslices, blankMap, maxDfsNMFoutput);
         
     end
     % ----------------------------------------------------------

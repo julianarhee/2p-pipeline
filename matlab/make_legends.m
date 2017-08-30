@@ -1,4 +1,4 @@
-function legends = makeLegends(outputDir)
+function legends = make_legends(outputDir)
 
 sim_acquisition = zeros(10,50);
 sim_acquisition(:,1) = ones(size(sim_acquisition(:,1)));

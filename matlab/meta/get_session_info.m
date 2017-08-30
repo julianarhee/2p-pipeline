@@ -1,4 +1,4 @@
-function sessionmeta = getSessionMeta(sessionpath, tefo)
+function sessionmeta = get_session_info(sessionpath, tefo)
 
     runpaths = uipickfiles('FilterSpec', sessionpath)
 

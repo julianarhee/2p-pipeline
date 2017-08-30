@@ -1,4 +1,4 @@
-function [tracesPath, nSlicesTrace] = getTraces3D(D)
+function [tracesPath, nSlicesTrace] = get_traces_3D(D)
 
 
 acquisitionName = D.acquisitionName;

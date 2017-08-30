@@ -21,7 +21,7 @@ experiment = 'gratings1';
 analysis_no = 2; %8;
 tefo = false; %true;
 
-D = loadAnalysisInfo(session, experiment, analysis_no, tefo);
+D = load_analysis_info(session, experiment, analysis_no, tefo);
 parse_trials_only = false
 
 slicesToUse = D.slices;
@@ -38,11 +38,11 @@ nWinUnits = 3;
 
 switch D.roiType
     case '3Dcnmf'
-        processTraces3Dnmf(D, winUnit, nWinUnits)
+        process_traces_3Dnmf(D, winUnit, nWinUnits)
     case 'cnmf'
         % do other stuff
     otherwise
-        processTraces(D, winUnit, nWinUnits)
+        process_traces(D, winUnit, nWinUnits)
 end
 fprintf('Done processing Traces!\n');
 
@@ -56,11 +56,11 @@ fprintf('Getting df structs for each movie file...\n');
 dfMin = 20;
 switch D.roiType
     case '3Dcnmf'
-        dfstruct = getDfMovie3Dnmf(D, dfMin);
+        dfstruct = get_dfs_3D(D, dfMin);
     case 'cnmf'
         % do other stuff
     otherwise
-        dfstruct = getDfMovie(D, dfMin);
+        dfstruct = get_dfs(D, dfMin);
 end
 
 D.dfStructName = dfstruct.name;
@@ -71,7 +71,7 @@ fprintf('Done extracting DF/F!\n');
 end
 
 % Get colormap:
-% legends = makeLegends(D.outputDir);
+% legends = make_legends(D.outputDir);
 % meta.legends = legends;
 % save(D.metaPath, '-append', '-struct', 'meta');
 meta = load(D.metaPath);
@@ -226,7 +226,7 @@ for sidx = 1:length(slicesToUse)
 %                 % (each row of currTraces is the trace of an ROI).
 %                 % Interpolate NaN frames if there are any.
 %                 winsz = round(meta.si.siVolumeRate*3*2);
-%                 [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(currTraces(i, :), winsz), 1:size(currTraces, 1), 'UniformOutput', false);
+%                 [traceMat, DCs] = arrayfun(@(i) subtract_rolling_mean(currTraces(i, :), winsz), 1:size(currTraces, 1), 'UniformOutput', false);
 %                 traceMat = cat(1, traceMat{1:end});
 %                 DCs = cat(1, DCs{1:end});
 %                 traceMat = bsxfun(@plus, DCs, traceMat);
@@ -536,7 +536,7 @@ for sliceIdx=1:length(D.slices)
         nrois = size(siTraces.(currStim){1},2);
         roivec = 1:nrois; 
 
-        interpTraceCell = arrayfun(@(roi) arrayfun(@(trial) interpolateTraces(siTimes.(currStim){trial}, rawTraceCell{roi}{trial}, mwinterpMat(trial,:)), trialvec, 'UniformOutput', false), roivec, 'UniformOutput', false);
+        interpTraceCell = arrayfun(@(roi) arrayfun(@(trial) interpolate_traces(siTimes.(currStim){trial}, rawTraceCell{roi}{trial}, mwinterpMat(trial,:)), trialvec, 'UniformOutput', false), roivec, 'UniformOutput', false);
         toc()
 
         %
@@ -672,7 +672,7 @@ for sliceIdx=1:length(D.slices)
             siTimes.(currStim)(trialsTooLong) = trimmedTrialTimes(1:end);
             %siTraces.(currStim)(trialsTooLong) = trimmedTrialTraces(1:end);
             %roiRawTraceCell{:}(trialsTooLong) = trimmedTrialTraces{1:end}(1:end);
-            roiTrimmedTraceCell = arrayfun(@(roi) trimRoiTrials(roiRawTraceCell{roi}, trimmedTrialTraces{roi}, trialsTooLong), 1:length(roiRawTraceCell), 'UniformOutput', false);
+            roiTrimmedTraceCell = arrayfun(@(roi) trim_trials(roiRawTraceCell{roi}, trimmedTrialTraces{roi}, trialsTooLong), 1:length(roiRawTraceCell), 'UniformOutput', false);
             
 
             % 2.  Check to see if removing >3.0 trial-offsets makes dim same:
@@ -687,7 +687,7 @@ for sliceIdx=1:length(D.slices)
                     trimmedTrialTraces2 = cellfun(@(roiTrials) arrayfun(@(t) roiTrials{t}(1:end-1,:), trialsStillTooLong, 'UniformOutput', false), roiTrimmedTraceCell, 'UniformOutput', false);
                 end
                 siTimes.(currStim)(trialsStillTooLong) = trimmedTrialTimes2(1:end);
-                roiTrimmedTraceCell = arrayfun(@(roi) trimRoiTrials(roiTrimmedTraceCell{roi}, trimmedTrialTraces2{roi}, trialsStillTooLong), 1:length(roiTrimmedTraceCell), 'UniformOutput', false);
+                roiTrimmedTraceCell = arrayfun(@(roi) trim_trials(roiTrimmedTraceCell{roi}, trimmedTrialTraces2{roi}, trialsStillTooLong), 1:length(roiTrimmedTraceCell), 'UniformOutput', false);
             end
                 
                 
@@ -705,7 +705,7 @@ for sliceIdx=1:length(D.slices)
 
                 siTimes.(currStim)(trialsTooShort) = paddedTimes(1:end);
                 %siTraces.(currStim)(trialsTooShortIdxs) = paddedTraces(1:end);
-                roiPaddedTraceCell = arrayfun(@(roi) padRoiTrials(roiTrimmedTraceCell{roi}, paddedTraces{roi}, trialsTooShort), 1:length(roiTrimmedTraceCell), 'UniformOutput', false);
+                roiPaddedTraceCell = arrayfun(@(roi) pad_trials(roiTrimmedTraceCell{roi}, paddedTraces{roi}, trialsTooShort), 1:length(roiTrimmedTraceCell), 'UniformOutput', false);
             end
             
             % Cat into MAT:

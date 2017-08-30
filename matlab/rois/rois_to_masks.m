@@ -74,7 +74,7 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
 
 
     %masks = ROIselect_circle(mat2gray(avgY));
-    maskcell = arrayfun(@(roi) makeSparseMasks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
+    maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
     % ------------------------------------
     % TODO:  below is temporary... Line 35 is standard for creating ROIs.
     % Fix ROI select function to store sparse matrices (faster?)...
@@ -84,7 +84,7 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
 %     if ~isfield(old, 'maskcell')
 %         masks = old.masks;
 %         tic()
-%         maskcell = arrayfun(@(roi) makeSparseMasks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
+%         maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
 %         toc()
 %     else
 %         maskcell = old.maskcell;

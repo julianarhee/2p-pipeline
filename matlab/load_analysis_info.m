@@ -1,7 +1,7 @@
 % Run this to grab relevant experiment info after acquisition struct has
 % been created.
 
-function [D] = loadAnalysisInfo(session,experiment, varargin)
+function [D] = load_analysis_info(session,experiment, varargin)
 % -------------------------------------------------------------------------
 % USER-INUPT:
 % -------------------------------------------------------------------------

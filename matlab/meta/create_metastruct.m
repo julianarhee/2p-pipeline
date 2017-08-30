@@ -1,4 +1,4 @@
-function meta = createMetaStruct(D, varargin)
+function meta = create_metastruct(D, varargin)
 
 % Combine meta info from acquisition (SI) and experiment (MW/Python).
 % Outputs 1 struct that contains info about current acquisition.

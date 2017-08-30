@@ -1,7 +1,7 @@
-function processTraces3Dnmf(D, winUnit, nWinUnits, varargin)
+function process_traces_3Dnmf(D, winUnit, nWinUnits, varargin)
 
 % Process traces:
-% getTraces.m extracts raw traces using ROI masks (saves tracestruct)
+% get_traces.m extracts raw traces using ROI masks (saves tracestruct)
 % This function processes these raw traces and adds to tracestruct:
 % 1. Remove bad frames.
 % 2. Subtract rolling mean, and store DC offsets.
@@ -88,8 +88,8 @@ for tiffIdx=1:nTiffs
         % (each row of currTraces is the trace of an ROI).
         % Interpolate NaN frames if there are any.
         winsz = round(meta.si.siVolumeRate*winUnit*nWinUnits);
-        %[traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
-        [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
+        %[traceMat, DCs] = arrayfun(@(i) subtract_rolling_mean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
+        [traceMat, DCs] = arrayfun(@(roi) subtract_rolling_mean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         traceMat = cat(2, traceMat{1:end});
         DCs = cat(2, DCs{1:end});
         traceMatDC = bsxfun(@plus, DCs, traceMat); % ROWs = tpoints, COLS = ROI
@@ -100,7 +100,7 @@ for tiffIdx=1:nTiffs
         tracestruct.DCs = DCs;
         if inferred 
             %tracestruct.inferredTraceMat = inferredTraces;
-            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtractRollingMean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
+            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtract_rolling_mean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
             rawTraceMatNMF = cat(2, rawTraceMatNMF{1:end});
             rawDCsNMF = cat(2, rawDCsNMF{1:end});
             rawTraceMatDCNMF = bsxfun(@plus, rawDCsNMF, rawTraceMatNMF); % ROWs = tpoints, COLS = ROI
@@ -114,7 +114,7 @@ for tiffIdx=1:nTiffs
         
         if trimEnd
 
-            [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtractRollingMean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
+            [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtract_rolling_mean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
             untrimmedTraceMat = cat(2, untrimmedTraceMat{1:end});
             untrimmedDCs = cat(2, untrimmedDCs{1:end});
             untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat);
@@ -200,8 +200,8 @@ for tiffIdx=1:nTiffs
         % (each row of currTraces is the trace of an ROI).
         % Interpolate NaN frames if there are any.
         winsz = round(meta.si.siVolumeRate*winUnit*nWinUnits);
-%             [traceMat, DCs] = arrayfun(@(i) subtractRollingMean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
-        [traceMat, DCs] = arrayfun(@(roi) subtractRollingMean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
+%             [traceMat, DCs] = arrayfun(@(i) subtract_rolling_mean(traces(i,:), winsz), 1:size(traces, 1), 'UniformOutput', false);
+        [traceMat, DCs] = arrayfun(@(roi) subtract_rolling_mean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         traceMat = cat(2, traceMat{1:end});
         DCs = cat(2, DCs{1:end});
         traceMatDC = bsxfun(@plus, traceMat, DCs); % ROWs = tpoints, COLS = ROI
@@ -216,7 +216,7 @@ for tiffIdx=1:nTiffs
 %         end
         if inferred
             %tracestruct.inferredTraceMat = inferredTraces;
-            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtractRollingMean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
+            [rawTraceMatNMF, rawDCsNMF] = arrayfun(@(roi) subtract_rolling_mean(rawTracesNMF(:,roi), winsz), 1:size(rawTracesNMF,2), 'UniformOutput', false);
             rawTraceMatNMF = cat(2, rawTraceMatNMF{1:end});
             rawDCsNMF = cat(2, rawDCsNMF{1:end});
             rawTraceMatDCNMF = bsxfun(@plus, rawTraceMatNMF, rawDCsNMF); % ROWs = tpoints, COLS = ROI
@@ -230,7 +230,7 @@ for tiffIdx=1:nTiffs
         
         if trimEnd
 
-            [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtractRollingMean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
+            [untrimmedTraceMat, untrimmedDCs] = arrayfun(@(i) subtract_rolling_mean(currTraces(:,i), winsz), 1:size(currTraces,2), 'UniformOutput', false);
             untrimmedTraceMat = cat(2, untrimmedTraceMat{1:end});
             untrimmedDCs = cat(2, untrimmedDCs{1:end});
             untrimmedTraceMat = bsxfun(@plus, untrimmedDCs, untrimmedTraceMat);

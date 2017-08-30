@@ -1,4 +1,4 @@
-function outmap = assignRoiMap3D(maskcell, centers, nslices, roimap, roivecs, varargin)
+function outmap = assign_roimap_3D(maskcell, centers, nslices, roimap, roivecs, varargin)
 
 nargin = length(varargin);
 

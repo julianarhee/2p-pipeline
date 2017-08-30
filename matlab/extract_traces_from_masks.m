@@ -29,7 +29,7 @@ switch D.roiType
         % Get traces with masks:
         % -----------------------------------------------------------------
         tic()
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
         toc()
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
@@ -51,7 +51,7 @@ switch D.roiType
         % Get traces with masks:
         % -----------------------------------------------------------------
         tic()
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
         toc()
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
     
@@ -122,7 +122,7 @@ switch D.roiType
             volumesize = meta.volumeSizePixels;
             %centers = round(centers);
             view_sample = false;
-            maskmat = getGolfballs(centers, radii, volumesize, view_sample);
+            maskmat = get_golfballs(centers, radii, volumesize, view_sample);
             D.maskmatPath = fullfile(D.datastructPath, 'maskmat.mat');
             maskstruct = struct();
             maskstruct.centroids = centers;
@@ -153,7 +153,7 @@ switch D.roiType
         % Get Traces for 3D masks:
         % ----------------------------------------------------------------- 
         tracestart = tic();
-        [D.tracesPath, D.nSlicesTrace] = getTraces3D(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces_3D(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
         % Generate paths for "masks":
@@ -187,7 +187,7 @@ switch D.roiType
         D.maskType = ref.maskType;
         D.maskInfo.maskPaths = ref.maskInfo.maskPaths;
         
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
         
@@ -205,7 +205,7 @@ switch D.roiType
         % Get traces:
         % -----------------------------------------------------------------       
         tic()
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         toc();
         
@@ -226,7 +226,7 @@ switch D.roiType
 
         % Get traces:
         % -----------------------------------------------------------------       
-        [D.tracesPath, D.nSlicesTrace] = getTraces(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
     
         
@@ -360,7 +360,7 @@ switch D.roiType
                 D.maskInfo.params.K = roiparams.patchK;
             end
             fprintf('Order ROIs: %i\n', orderROIs);
-            [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
+            [nmfoptions, D.maskInfo.nmfPaths] = get_rois_3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
             fprintf('Extracted components for REFERENCE tiff: File%03d!\n', D.maskInfo.ref.tiffidx)
             
             D.maskInfo.ref.refnmfPath = D.maskInfo.nmfPaths;
@@ -379,7 +379,7 @@ switch D.roiType
             D.maskInfo.params.K = roiparams.fullK;
             D.maskInfo.patches = false;
         end
-        [nmfoptions, D.maskInfo.nmfPaths] = getRois3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
+        [nmfoptions, D.maskInfo.nmfPaths] = get_rois_3Dnmf(D, meta, roiparams.plotoutputs, getref, orderROIs);
        
         D.maskInfo.params.nmfoptions = nmfoptions;
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
@@ -405,7 +405,7 @@ switch D.roiType
  
         % Get traces:
         % -----------------------------------------------------------------   
-        [D.tracesPath, D.nSlicesTrace] = getTraces3Dnmf(D);
+        [D.tracesPath, D.nSlicesTrace] = get_traces_3Dnmf(D);
         save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
         % Generate paths for "masks":

@@ -1,9 +1,9 @@
-function [currDf] = extractDfTrace(currTrace)
+function [currDf] = extract_df(curr_trace)
 
 method = 'simple';
     switch method
         case 'simple'
-            currDf = (currTrace - mean(currTrace)) ./ mean(currTrace);
+            currDf = (currTrace - mean(curr_trace)) ./ mean(curr_trace);
         case 'simple_baseline'
             % do stuff
     end

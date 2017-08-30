@@ -1,4 +1,4 @@
-function DF = getDfMovie(D, varargin)
+function DF = get_dfs(D, varargin)
 
 % Get dF/F maps:
 
@@ -89,8 +89,8 @@ for sidx = 1:length(slicesToUse)
         
         %dfFunc = @(x) (x-mean(x))./mean(x);
         %dfMat = cell2mat(arrayfun(@(i) dfFunc(adjusted(i, :)), 1:size(adjusted, 1), 'UniformOutput', false)');
-%         dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
-        dfMat = arrayfun(@(i) extractDfTrace(adjustTraces(:,i)), 1:nrois, 'UniformOutput', false);
+%         dfMat = arrayfun(@(i) extract_df(adjustTraces(i, :)), 1:size(adjustTraces, 1), 'UniformOutput', false);
+        dfMat = arrayfun(@(i) extract_df(adjustTraces(:,i)), 1:nrois, 'UniformOutput', false);
         dfMat = cat(2, dfMat{1:end})*100;
         
         meanDfs = mean(dfMat,1);
@@ -105,8 +105,8 @@ for sidx = 1:length(slicesToUse)
             meanMap = reshape(meanDfs, [d1, d2]);
             maxMap = reshape(maxDfs, [d1, d2]);
         else
-            meanMap = assignRoiMap(maskcell, meanMap, meanDfs);
-            maxMap = assignRoiMap(maskcell, maxMap, maxDfs);
+            meanMap = assign_roimap(maskcell, meanMap, meanDfs);
+            maxMap = assign_roimap(maskcell, maxMap, maxDfs);
         end
         
         % --- Need to reshape into 2d image if using pixels:

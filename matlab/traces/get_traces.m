@@ -1,4 +1,4 @@
-function [tracesPath, nSlicesTrace] = getTraces(D)
+function [tracesPath, nSlicesTrace] = get_traces(D)
 
 %                                     
 % CASES:

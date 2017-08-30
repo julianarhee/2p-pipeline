@@ -1,4 +1,4 @@
-function [tracesPath, nSlicesTrace] = getTraces3Dnmf(D)
+function [tracesPath, nSlicesTrace] = get_traces_3Dnmf(D)
 
 acquisitionName = D.acquisitionName;
 nTiffs = D.nTiffs;

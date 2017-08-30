@@ -93,7 +93,7 @@ switch metaInfo
         end
 
         % Creata META with SI (acquisition) and MW (experiment) info:
-        meta = createMetaStruct(D);
+        meta = create_metastruct(D);
         fprintf('Created meta struct for current acquisition,\n');
 
     case 'manual' 
