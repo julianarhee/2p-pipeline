@@ -354,7 +354,8 @@ for tiffidx=1:length(inputfiles)
         d1=size(tiffdata,1); d2=size(tiffdata,2); d3=size(tiffdata,3);
         fprintf('TIFF %i of %i: size is %s.\n', tiffidx, length(inputfiles), mat2str(size(tiffdata)));
     end
-    pathbyfile = fullfile(D.sliceimagepath, sprintf('File%03d', tiffidx));
+    [path_to_averages, ref_file, ~] = fileparts(D.sliceimagepath);
+    pathbyfile = fullfile(path_to_averages, sprintf('File%03d', tiffidx));
     if ~exist(pathbyfile) || length(dir(fullfile(pathbyfile, '*.tif')))<data.sizY(1,3)
         if ~exist(pathbyfile, 'dir')
             mkdir(pathbyfile)
