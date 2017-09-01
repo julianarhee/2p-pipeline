@@ -67,21 +67,9 @@ switch metaInfo
 
                 otherwise
 		    parseSIdata(D, movies, writeDir);
-%                     if D.metaonly || D.processedtiffs
-%                         %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, [], [], D.metaonly, D.processedtiffs);
-% 			parseSIdata(D, movies, writeDir);
-% 
-%                     else
-%                         parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir);
-%                     end
             end
-
-            % Load newly-created meta struct:
-            %siMeta = load(fullfile(sourceDir, siMetaName));
-            %meta = struct();
-            %meta.(acquisitionName) = siMeta.metaDataSI; % Have info for each file, but this was not corrected in previosuly run MCs...
         end
-        %
+        
         % Sort Parsed files into separate directories if needed:
         tmpchannels = dir(D.tiffSource);
         tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels));

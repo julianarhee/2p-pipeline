@@ -45,7 +45,7 @@ tau = D.maskInfo.params.tau;
 p = D.maskInfo.params.p;
 merge_thr = D.maskInfo.params.merge_thr;
  
-for tiffidx = 1:length(files)
+for tiffidx = 2:length(files)
   
    
     if ~getref %&& tiffidx~=D.maskInfo.ref.tiffidx
@@ -429,8 +429,8 @@ for tiffidx = 1:length(files)
             % Update spatial components:
             % -----------------------------------------------------------------
             Yr = reshape(Y,d,T);
-            tmpmat.Y = Y;
-            tmpmat.Yr = Yr;
+            tmpmat.Y = double(Y);
+            tmpmat.Yr = double(Yr);
             clear Y
             clear Yr
             fprintf('size Input A: %s\n', mat2str(size([Ain, bin])));
@@ -515,7 +515,11 @@ for tiffidx = 1:length(files)
     end
     classify = matfile(fullfile(D.nmfPath, classification_fn), 'Writable', true);
     if memmapped 
-        [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+	if usePreviousA
+	    [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(tmpmat,A,C,b,f,YrA,options);
+	else
+            [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(data,A,C,b,f,YrA,options);
+	end
     else
         [ROIvars.rval_space,ROIvars.rval_time,ROIvars.max_pr,ROIvars.sizeA,ROIvars.keep] = classify_components(Y,A,C,b,f,YrA,options);
     end

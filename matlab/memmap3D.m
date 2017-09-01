@@ -32,7 +32,7 @@ tiffs = {tiffs(:).name}'
 % -------------------------------------------------------------------------
 
 if memmapped
-    extension = 'mat';
+    extension = 'mat'
 else
     extension = 'tif';
 end
@@ -49,6 +49,7 @@ else
 end
 
 if memmapped
+    fprintf('memmapping...\n')
     % If no memmaped files found in D.mempath, make them for each TIFF:
     % -------------------------------------------------------------------------
     if isempty(files) || isempty(tmpfiles) || length(tiffs)>length(files) % in case NOT using '_substack):
@@ -57,7 +58,7 @@ if memmapped
         tic()
         for tiffidx = 1:length(tiffs)
             tpath = fullfile(tiffDir, tiffs{tiffidx});
-            fprintf('Processing tiff to mem from path:\n%s\n', tpath);
+            fprintf('Processing tiff %i of %i to mem from path:\n%s\n', tiffidx, length(tiffs), tpath);
             [source, filename, ext] = fileparts(tpath);
 
             matpath = fullfile(D.mempath, sprintf('%s.mat', filename));
@@ -143,10 +144,8 @@ if memmapped
 
                 fprintf('Memmapping finished for %i of %i files.\n', tiffidx, length(tiffs));
                 fprintf('Size of memmaped movie is: %s\n', mat2str(data.sizY));
-            end
-            
+            end            
         end
-        
     end
 else
     for tiffidx = 1:length(tiffs)
@@ -162,7 +161,7 @@ else
         if strcmp(D.preprocessing, 'raw') || D.processedtiffs %&& D.tefo
             fprintf('Grabbing every other channel.\n')
             Yt = Yt(:,:,1:D.nChannels:end);
-            fprintf('Single channel, mov size is: %s', mat2str(size(Yt)));
+            fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
         end
 
         Y = cell(1, nVolumes);
@@ -179,9 +178,8 @@ else
             Y = correct_bidirectional_phasing(Y);
         end
         tiffWrite(Y, strcat(filename, '.tif'), D.mempath)
+    end
 end
-            
-
 
 % -------------------------------------------------------------------------
 % STEP 2:  AVERAGE, if needed.
@@ -377,5 +375,5 @@ for tiffidx=1:length(inputfiles)
 end
 
     
-
 end
+
