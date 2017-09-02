@@ -1,3 +1,4 @@
+function retinomaps(D, parse_trials_only)
 % RETINOTOPY.
 
 % -------------------------------------------------------------------------
@@ -6,34 +7,34 @@
 % Get info for a given acquisition for each slice from specified analysis.
 % This gives FFT analysis script access to all neeed vars stored from
 % create_acquisition_structs.m pipeline.
-
-parse_trials_only = false
-
-% acquisition_info;
-%session = '20161219_JR030W';
-%session = '20161221_JR030W';
-%session = '20161218_CE024';
-%session = '20161222_JR030W'
-session = '20170811_CE052'
-%session = '20170721_CE050W'
-
-%experiment = 'retinotopy2';
-%experiment = 'test_crossref';
-%experiment = 'retinotopyFinalMask';
-%experiment = 'retinotopyFinal';
-%experiment = 'retinotopyControl';
-%experiment = 'retinotopyCombined';
-%experiment = 'retinotopy1'
-%experiment = 'test_crossref/nmf';
-%experiment = 'retinotopy1'
-experiment = 'retinotopy3'
-%experiment = 'test_crossref/nmf';
-
-%analysis_no = 17 %16 %15 %13 %13 %9 %7;
-analysis_no = 5 %3 %4
-tefo = false; %true;
-
-D = load_analysis_info(session, experiment, analysis_no, tefo);
+% 
+% parse_trials_only = false
+% 
+% % acquisition_info;
+% %session = '20161219_JR030W';
+% %session = '20161221_JR030W';
+% %session = '20161218_CE024';
+% %session = '20161222_JR030W'
+% session = '20170811_CE052'
+% %session = '20170721_CE050W'
+% 
+% %experiment = 'retinotopy2';
+% %experiment = 'test_crossref';
+% %experiment = 'retinotopyFinalMask';
+% %experiment = 'retinotopyFinal';
+% %experiment = 'retinotopyControl';
+% %experiment = 'retinotopyCombined';
+% %experiment = 'retinotopy1'
+% %experiment = 'test_crossref/nmf';
+% %experiment = 'retinotopy1'
+% experiment = 'retinotopy3'
+% %experiment = 'test_crossref/nmf';
+% 
+% %analysis_no = 17 %16 %15 %13 %13 %9 %7;
+% analysis_no = 5 %3 %4
+% tefo = false; %true;
+% 
+% D = load_analysis_info(session, experiment, analysis_no, tefo);
 
 
 %trimEnd = true;
@@ -612,7 +613,7 @@ for sidx = 1:length(slicesToUse)
             %crop = meta.file(fidx).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
 
             switch D.roiType
-                case 'create_rois'
+                case 'manual2D'
                     [d1,d2] = size(avgY);
                     [nframes,nrois] = size(traces);
                 case 'condition'
@@ -858,6 +859,7 @@ D.mapStructNames = mapStructNames;
 D.fftStructNames = fftStructNames;
 save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
+end
 
 %% Get dF/F maps:
 % 

@@ -1,3 +1,4 @@
+function PSTH(D, parse_trials_only)
 % PSTHs.
 
 % -------------------------------------------------------------------------
@@ -12,19 +13,19 @@
 % experiment = 'gratings1';
 % analysis_no = 4;
 % session = '20161219_JR030W';
-session = '20161222_JR030W'
-
-% experiment = 'gratingsFinalMask2';
-% experiment = 'retinotopyFinalMask';
-experiment = 'gratings1';
-
-analysis_no = 2; %8;
-tefo = false; %true;
-
-D = load_analysis_info(session, experiment, analysis_no, tefo);
-parse_trials_only = false
-
-slicesToUse = D.slices;
+% session = '20161222_JR030W'
+% 
+% % experiment = 'gratingsFinalMask2';
+% % experiment = 'retinotopyFinalMask';
+% experiment = 'gratings1';
+% 
+% analysis_no = 2; %8;
+% tefo = false; %true;
+% 
+% D = load_analysis_info(session, experiment, analysis_no, tefo);
+% parse_trials_only = false
+% 
+% slicesToUse = D.slices;
 
 %
 % -------------------------------------------------------------------------
@@ -810,6 +811,10 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('DONE!!!\n');
 
+
+end
+
+%%
 % 
 %     mwinterpMat: [MxN double] - M = trial, N = interpolated tpoints to
 %     match length of SI traces
