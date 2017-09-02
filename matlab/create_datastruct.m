@@ -63,6 +63,8 @@ D.slices = dsoptions.slices; %slicesToUse;
 D.tefo = dsoptions.tefo; %tefo; 
 D.average = dsoptions.averaged; %average; 
 D.metaonly = dsoptions.metaonly;
+D.reference = dsoptions.reference;
+D.stimtype = dsoptions.stimulus;
 
 if D.average 
     D.matchtrials = dsoptions.matchedtiffs; 

@@ -1,4 +1,4 @@
-function create_rois(D, refMeta)
+function pathToMasks = create_rois(D, refMeta)
    
 %  Create ROIs manually with circle-mask, save to struct:
 
@@ -24,15 +24,16 @@ for sidx = slicesToUse %12:2:16 %1:tiff_info.nslices
     if strcmp(D.roiType, 'manual3Drois')
         refNum = D.localRefNum;
     else
-        refNum = D.refRun; %refMeta.file(1).si.motionRefNum; % All files should have some refNum for motion correction.
+        refNum = D.reference; %refMeta.file(1).si.motionRefNum; % All files should have some refNum for motion correction.
     end
     
     %sliceIdxs = sidx:refMeta.file(refNum).si.nFramesPerVolume:refMeta.file(refNum).si.nTotalFrames;
 
-    sliceFns = dir(fullfile(refMeta.file(refNum).si.tiffPath, '*.tif'));
+    %sliceFns = dir(fullfile(refMeta.file(refNum).si.tiffPath, '*.tif'));
+    sliceFns = dir(fullfile(D.sliceimagepath, '*.tif'));
     sliceFns = {sliceFns(:).name}';
-    Y = tiffRead(fullfile(refMeta.file(refNum).si.tiffPath, sliceFns{sidx}));
-    avgY = mean(Y, 3);
+    avgY = tiffRead(fullfile(D.sliceimagepath, sliceFns{sidx}));
+    %avgY = mean(Y, 3);
 
     masks = ROIselect_circle(mat2gray(avgY));
     maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);

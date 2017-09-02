@@ -35,7 +35,7 @@ Names = [
     'channels           '       % number of acquired channels (default: 2)
     'signalchannel      '       % channel num of activity channel (default: 1)
     % ROI mask info
-    'roitype            '       % roi mask type ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
+    'roitype            '       % roi mask type ['manual2D', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
     'seedrois           '       % seeds (centroids or masks) for initial ROI locs (default: false)
     'maskpath           '       % path to file of masks/centroids/etc (must specify if 'seedrois')
     'maskdims           '       % dimensions of ROI masks ['2D', '3D']
@@ -51,6 +51,7 @@ Names = [
     'memmapped          '       % use memmapped or no
     'correctbidi        '       % correct bidirectional scan phase offset
     'reference          '       % reference File for motion-correction, averaged slice views, ROI reference, etc.
+    'stimulus           '       % stimulus type ['bar', 'grating', 'image']
     ];
 
 
@@ -150,7 +151,7 @@ Values = [
     {2}                  % 'channels           '       % number of acquired channels (default: 2)
     {1}                  % 'signalchannel      '       % channel num of activity channel (default: 1)
     % ROI mask info
-    {'pixels'}                  % 'roitype            '       % type of roi mask ['create_new', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
+    {'pixels'}                  % 'roitype            '       % type of roi mask ['manual2D', 'pixels', 'roiMap', 'cnmf', 'manual3Drois', '3Dcnmf']
     {false}                  % 'seedrois           '       % provide seeds (centroids or masks) for initial ROI locations (default: false)
     {''}		     % 'maskpath'	
     {'2D'}                  % 'maskdims           '       % dimensions of ROI masks ['2D', '3D']
@@ -166,6 +167,7 @@ Values = [
     {true}              % 'memmapped or no for get3DRois...' TMP
     {false}
     {1}
+    {''}    
     ];
 
 for j = 1:m
