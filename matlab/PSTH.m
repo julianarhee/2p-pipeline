@@ -518,8 +518,8 @@ for sliceIdx=1:length(D.slices)
             % have different # of ROIs -- just use max nRois, s.t. trials in
             % which there are less than max nRois should be a trace of NaNs.
         else
-	    fprintf('trials have same N rois.\n');
-            nrois = size(siTraces.(currstim){1},2);
+            fprintf('trials have same N rois.\n');
+            nrois = size(siTraces.(currStim){1},2);
             roivec = 1:nrois; 
             rawTraceCell = arrayfun(@(roi) cellfun(@(c) c(:,roi), siTraces.(currStim), 'UniformOutput', false), roivec, 'UniformOutput',false);
         end
@@ -785,7 +785,7 @@ for sliceIdx=1:length(D.slices)
         fprintf('Done processing STIM %s for slice %i.\n', currStim, currSlice);
         
     end
-    fprintf('Finished Slice %s!\n', currSlice);
+    fprintf('Finished Slice %i!\n', currSlice);
     
 end
 toc()
