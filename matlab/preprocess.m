@@ -4,9 +4,9 @@ run_multi_acquisitions = false;
 crossref = false;
 processed = true;
 
-source = '/nas/volume1/2photon/RESDATA';
-session = '20170825_CE055';
-run = 'fxnal_data/gratings1';
+source = '/nas/volume1/2photon/projects/retino_bar';
+session = '20170902_CE054';
+run = 'functional_zoom3x_run1';
 if processed
     fprintf('Motion correcting processed tiffs.\n');
     run = fullfile(run, 'DATA');
