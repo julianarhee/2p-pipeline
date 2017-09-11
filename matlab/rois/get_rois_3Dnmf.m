@@ -45,7 +45,7 @@ tau = D.maskInfo.params.tau;
 p = D.maskInfo.params.p;
 merge_thr = D.maskInfo.params.merge_thr;
  
-for tiffidx = 2:length(files)
+for tiffidx = 4:length(files)
   
    
     if ~getref %&& tiffidx~=D.maskInfo.ref.tiffidx
