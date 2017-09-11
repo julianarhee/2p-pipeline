@@ -28,7 +28,7 @@ maskFinder = dsoptions.maskfinder; %'centroids'
 switch maskDimensions
     case '2D'
         switch roiType
-            case 'create_rois'
+            case 'manual2D'
                 [fpath,fcond,~] = fileparts(D.sourceDir);
                 D.maskSource = fcond;
 

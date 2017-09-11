@@ -3,7 +3,7 @@ function [currDf] = extract_df(curr_trace)
 method = 'simple';
     switch method
         case 'simple'
-            currDf = (currTrace - mean(curr_trace)) ./ mean(curr_trace);
+            currDf = (curr_trace - mean(curr_trace)) ./ mean(curr_trace);
         case 'simple_baseline'
             % do stuff
     end

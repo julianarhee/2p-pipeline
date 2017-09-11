@@ -80,7 +80,7 @@ for fidx=1:nTiffs
     end
     
     switch D.roiType
-        case 'create_rois'
+        case 'manual2D'
             [d1,d2] = size(avgY);
             [nframes, nrois] = size(adjustedTraces);
         case 'condition'

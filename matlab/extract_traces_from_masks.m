@@ -5,7 +5,7 @@ if isempty(orderROIs)
 end
 
 switch D.roiType
-    case 'create_rois'
+    case 'manual2D'
         D.maskType = 'circles';
         D.maskInfo.maskType = D.maskType;
         D.maskInfo = struct();
@@ -13,18 +13,24 @@ switch D.roiType
        
         % Choose reference:
         % -----------------------------------------------------------------
-        refMeta = load(meta.metaPath);     
-        if isfield(refMeta.file(1).si, 'motionRefNum')
-            D.maskInfo.refRun = refMeta.file(1).si.motionRefNum;
-            D.maskInfo.refPath = refMeta.file(D.refRun).si.tiffPath;
-        else
-            D.maskInfo.refRun = round(length(refMeta.file)/2);
-            D.maskInfo.refPath = '';
-        end
+        refMeta = load(meta.metaPath);   
+        D.maskInfo.refRun = D.reference;
+        D.maskInfo.refPath = D.sliceimagepath;
+%         if isfield(refMeta.file(1).si, 'motionRefNum')
+%             D.maskInfo.refRun = refMeta.file(1).si.motionRefNum;
+%             D.maskInfo.refPath = refMeta.file(D.refRun).si.tiffPath;
+%         else
+%             D.maskInfo.refRun = round(length(refMeta.file)/2);
+%             D.maskInfo.refPath = '';
+%         end
 
         % Create ROIs:
         % -----------------------------------------------------------------
         D.maskInfo.maskPaths = create_rois(D, refMeta);
+        for p=1:length(D.maskInfo.maskPaths)
+            D.maskInfo.maskPaths{p} = fullfile(D.datastructPath, 'masks', D.maskInfo.maskPaths{p});
+        end
+        save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
         
         % Get traces with masks:
         % -----------------------------------------------------------------

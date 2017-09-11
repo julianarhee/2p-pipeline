@@ -44,17 +44,16 @@ clc;
 %     'memmapped          '       % use memmapped or no
 %     'correctbidi        '       % correct bidirectional scan phase offset
 %     'reference          '       % reference File for motion-correction, averaged slice views, ROI reference, etc.
-%     'stimulus           '       % stimulus type ['bar', 'grating', 'image']
 %     ];
 
 % ------------------------------------------------------------------------------ 
 
 dsoptions = DSoptions(...
     'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
-    'session', '20170825_CE055',...                            % session name (single FOV)
-    'run', 'fxnal_data/gratings1',...                                % experiment name
-    'datastruct', 2,...                                        % datastruct idx
-    'acquisition', 'mov_20170825_CE055_gratings_run10',...      % acquisition name
+    'session', '20170811_CE052',...                            % session name (single FOV)
+    'run', 'retinotopy3',...                                % experiment name
+    'datastruct', 5,...                                        % datastruct idx
+    'acquisition', 'mov_20170811_CE052_run3',...      % acquisition name
     'datapath', 'DATA',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'Acquisition2P',...                                  % preprocessed or no
@@ -62,21 +61,20 @@ dsoptions = DSoptions(...
     'meta', 'SI',...                                            % source of meta info
     'channels', 2,...                                           % num channels acquired
     'signalchannel', 1,...                                      % channel num of signal
-    'roitype', 'manual2D',...                                     % method for roi extraction
-    'seedrois', false,...                                      % provide external source of seed coords
-    'maskpath', '',...
+    'roitype', 'roiMap',...                                     % method for roi extraction
+    'seedrois', true,...                                      % provide external source of seed coords
+    'maskpath', '/nas/volume1/2photon/RESDATA/20170811_CE052/retinotopy3/DATA/average_slices/ROIs_corrected_File001/rois_corrected_File001.mat',...
     'maskdims', '2D',...                                        % dimensions of masks
     'maskshape', 'circles',...                               % shape of masks
-    'maskfinder', '',...                                 % method of finding masks, given set of seed coords
+    'maskfinder', 'blobDetector',...                                 % method of finding masks, given set of seed coords
     'memmapped', true,...
     'correctbidi', true,...
     'reference', 1,...
-    'stimulus', 'grating',...       % stimulus type ['bar', 'grating', 'image']
     'slices', [1:13],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
-    'metaonly', false,...                                       % only get meta data from tiffs (if files too large)
+    'metaonly', true,...                                       % only get meta data from tiffs (if files too large)
     'nmetatiffs', 13);                                           % number of huge tiffs to exclude
  
 
@@ -218,32 +216,9 @@ tic()
 getref = false; % true; %false; %true;
 orderROIs = true;
 D = extract_traces_from_masks(roiparams, D, meta, getref, orderROIs);
-save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 toc();
 
 fprintf('FINISHED!\n')
 
-%% Parse trials:
-
-parse_trials_only = false
-
-session = dsoptions.session; %'20161222_JR030W'
-
-% experiment = 'gratingsFinalMask2';
-% experiment = 'retinotopyFinalMask';
-experiment = dsoptions.run; %'gratings1';
-
-analysis_no = dsoptions.datastruct; %8;
-tefo = dsoptions.tefo; %true;
-
-D = load_analysis_info(session, experiment, analysis_no, tefo);
-
-slicesToUse = D.slices;
-
-if strcmp(D.stimtype, 'bar')
-    retinomaps(D, parse_trials_only);
-else
-    PSTH(D, parse_trials_only);
-end
-
+   

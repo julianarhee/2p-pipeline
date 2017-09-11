@@ -1,3 +1,4 @@
+function PSTH(D, parse_trials_only)
 % PSTHs.
 
 % -------------------------------------------------------------------------
@@ -12,19 +13,19 @@
 % experiment = 'gratings1';
 % analysis_no = 4;
 % session = '20161219_JR030W';
-session = '20161222_JR030W'
-
-% experiment = 'gratingsFinalMask2';
-% experiment = 'retinotopyFinalMask';
-experiment = 'gratings1';
-
-analysis_no = 2; %8;
-tefo = false; %true;
-
-D = load_analysis_info(session, experiment, analysis_no, tefo);
-parse_trials_only = false
-
-slicesToUse = D.slices;
+% session = '20161222_JR030W'
+% 
+% % experiment = 'gratingsFinalMask2';
+% % experiment = 'retinotopyFinalMask';
+% experiment = 'gratings1';
+% 
+% analysis_no = 2; %8;
+% tefo = false; %true;
+% 
+% D = load_analysis_info(session, experiment, analysis_no, tefo);
+% parse_trials_only = false
+% 
+% slicesToUse = D.slices;
 
 %
 % -------------------------------------------------------------------------
@@ -517,8 +518,8 @@ for sliceIdx=1:length(D.slices)
             % have different # of ROIs -- just use max nRois, s.t. trials in
             % which there are less than max nRois should be a trace of NaNs.
         else
-	    fprintf('trials have same N rois.\n');
-            nrois = size(siTraces.(currstim){1},2);
+            fprintf('trials have same N rois.\n');
+            nrois = size(siTraces.(currStim){1},2);
             roivec = 1:nrois; 
             rawTraceCell = arrayfun(@(roi) cellfun(@(c) c(:,roi), siTraces.(currStim), 'UniformOutput', false), roivec, 'UniformOutput',false);
         end
@@ -784,7 +785,7 @@ for sliceIdx=1:length(D.slices)
         fprintf('Done processing STIM %s for slice %i.\n', currStim, currSlice);
         
     end
-    fprintf('Finished Slice %s!\n', currSlice);
+    fprintf('Finished Slice %i!\n', currSlice);
     
 end
 toc()
@@ -810,6 +811,10 @@ save(fullfile(D.datastructPath, D.name), '-append', '-struct', 'D');
 
 fprintf('DONE!!!\n');
 
+
+end
+
+%%
 % 
 %     mwinterpMat: [MxN double] - M = trial, N = interpolated tpoints to
 %     match length of SI traces

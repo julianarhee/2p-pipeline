@@ -59,7 +59,7 @@ for sidx = 1:length(slicesToUse)
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
         
         switch D.roiType
-            case 'create_rois'
+            case 'manual2D'
                 [d1,d2] = size(avgY);
                 [nframes, nrois] = size(adjustTraces);
             case 'roiMap'
