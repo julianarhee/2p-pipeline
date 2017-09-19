@@ -123,7 +123,7 @@ def get_session_bounds(dfn):
     return df, bounds
 
 
-def get_trigger_times(df, boundary, triggername=''):
+def get_trigger_times(df, boundary, triggername='', arduino_sync=True):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
     if len(triggername)==0:
@@ -189,56 +189,67 @@ def get_trigger_times(df, boundary, triggername=''):
     print "first SI-trigger ON event received: ", first_on_ev
     #print "first_off_idx: ", first_off_idx
     print "first SI-trigger OFF event received: ", first_off_ev
-    print "Duration of first run: {0:.4f} sec.".format((first_off_ev.time - first_on_ev.time)/1E6)
-
     
-    # Now, get all "trigger" boundaries that demarcate each "run" after first run:
-    print "Incrementally searching to find each pair of ON/OFF trigger events..."
-    found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
-    start_idx = copy.copy(first_off_idx)
-    #print trigg_evs
-    while start_idx < len(trigg_evs)-1: 
-        #print start_idx
-        try:
-            found_new_start = False
-            early_abort = False
-            curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
+    if arduino_sync:
+        last_on_ev = [t for t in trigg_evs[first_on_idx:] if t.value==0][-1]
+        last_on_idx = [t.time for t in trigg_evs].index(last_on_ev.time)
+        #last_off_idx = last_on_idx + 1
+        #last_off_ev = trigg_evs[last_off_idx]
+        trigger_evs = [[first_on_ev, last_on_ev]] #, [first_on_ev, last_on_ev]] 
+        trigger_times = [[first_on_ev.time, last_on_ev.time]] #, [first_on_ev.time, last_off_ev.time]]
+        print "Duration of first run: {0:.4f} sec.".format((last_on_ev.time - first_on_ev.time)/1E6)
+        
+    else:
+        print "Duration of first run: {0:.4f} sec.".format((first_off_ev.time - first_on_ev.time)/1E6)
 
-            # try:
-            curr_off_ev = next(i for i in curr_chunk if i['value']==1)
-            curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
-            curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
-            curr_start_ev = trigg_evs[curr_start_idx]
-            # if trigg_evs[curr_start_idx]['value']!=0:
-            # # i.e., if prev-found ev with value=1 is not a true frame-on trigger (just a repeated event with same value), just ignore it.
-            #     continue
-            # else:
-            found_new_start = True
-            # except IndexError:
-            #     break
-
-            last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
-            found_trigger_evs.append([curr_start_ev, curr_off_ev])
-            start_idx = last_found_idx #start_idx + found_idx
+        # Now, get all "trigger" boundaries that demarcate each "run" after first run:
+        print "Incrementally searching to find each pair of ON/OFF trigger events..."
+        found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
+        start_idx = copy.copy(first_off_idx)
+        #print trigg_evs
+        while start_idx < len(trigg_evs)-1: 
             #print start_idx
-        except StopIteration:
-            print "Got to STOP."
+            try:
+                found_new_start = False
+                early_abort = False
+                curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
+
+                # try:
+                curr_off_ev = next(i for i in curr_chunk if i['value']==1)
+                curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
+                curr_start_ev = trigg_evs[curr_start_idx]
+                # if trigg_evs[curr_start_idx]['value']!=0:
+                # # i.e., if prev-found ev with value=1 is not a true frame-on trigger (just a repeated event with same value), just ignore it.
+                #     continue
+                # else:
+                found_new_start = True
+                # except IndexError:
+                #     break
+
+                last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                found_trigger_evs.append([curr_start_ev, curr_off_ev])
+                start_idx = last_found_idx #start_idx + found_idx
+                #print start_idx
+            except StopIteration:
+                print "Got to STOP."
+                if found_new_start is True:
+                    early_abort = True
+                break
+
+        # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
+        # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
+        # This likely means that there is another frame-ON event, but not corresponding OFF event.
+        if early_abort is True: 
             if found_new_start is True:
-                early_abort = True
-            break
-
-    # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
-    # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
-    # This likely means that there is another frame-ON event, but not corresponding OFF event.
-    if early_abort is True: 
-        if found_new_start is True:
-            found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
-        else:
-            found_trigger_evs[-1][1] = end_ev
+                found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
+            else:
+                found_trigger_evs[-1][1] = end_ev
 
 
-    trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]
-    trigger_times = [[t[0].time, t[1].time] for t in trigger_evs]
+        trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]
+        trigger_times = [[t[0].time, t[1].time] for t in trigger_evs]
+        
     print "........................................................................................"
     print "Found %i chunks from frame-on/-off triggers:" % len(trigger_times)
     print "........................................................................................"
@@ -304,8 +315,12 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
 
     tmp_pixelclock_evs = [i for i in display_evs for v in i.value if 'bit_code' in v.keys()]                      # Filter out any display-update events without a pixel-clock event
     print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
+    
+    if len(trigger_times)>1:
+        pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
+    else:
+        pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[0][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
 
-    pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
     print "Got %i pix code events within SI frame-trigger bounds." % len(pixelclock_evs)
     #pixelevents.append(pixelclock_evs)
     
@@ -500,7 +515,9 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
             pass
         elif stimtype=='grating':
             #tmp_image_evs = [d for d in display_evs for i in d.value if i['name']=='gabor']
-            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+            #tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+            all_tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+            tmp_image_evs = [d for d in all_tmp_image_evs if '2' not in d.value[1]['name']]    # add correction so that phase-modulation experiments do not get multi-counted
 
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs] # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
             find_static = np.where(np.diff(start_times) > 0)[0]
