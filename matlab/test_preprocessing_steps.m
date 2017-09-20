@@ -17,8 +17,8 @@ save(strcat(mcparams.acquisition_dir, 'mcparams.mat'), 'mcparams');
 
 %% Clean-up and organize corrected TIFFs into file hierarchy:
 
-split_channels = false;
-post_mc_cleanup(mcparams, split_channels);
+%split_channels = false;
+%post_mc_cleanup(mcparams, split_channels);
 
 %% Do additional bidi correction (optional):
 
@@ -28,4 +28,5 @@ mcparams.bidi_corrected_dir = fullfile(mcparams.acquisition_dir, 'Corrected_Bidi
 
 
 %% Create and save average slices:
+
 

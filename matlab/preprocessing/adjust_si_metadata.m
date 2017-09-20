@@ -12,7 +12,7 @@ nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames;
 nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
 nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
 desiredSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp
-nDiscardedExtra = nSlicesTmp - desiredSlices;	
+nDiscardedExtra = nSlicesTmp - desiredSlices	
 if desiredSlices ~= nSlicesTmp  % input (processed) tiff does not have discard removed, or has extra flyback frames removed.
    if nDiscardTmp == 0
        % This means discard frames were not specified and acquired, and flyback frames removed from top in processed tiff.
@@ -52,6 +52,7 @@ for field=1:length(metanames)
             % nDiscard removed from top (i.e., nDiscardedExtra):
             startidxs = colon(nDiscardedExtra*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield));
         elseif extra_flyback_top && ~false_discard
+	    fprintf('TOP AND BOTTOM\n')
             % There were specified num of empty flybacks at end of volume, 
             % so remove those indices, if necessary, while also removing 
             % the removed frames at top:
@@ -70,7 +71,7 @@ for field=1:length(metanames)
         end
         newidx = 1;
         for startidx = startidxs
-            startidx
+            %startidx
            tmpfield(newidx:newidx+(nSlicesSelected*nChannelsTmp - 1)) = currfield(startidx:startidx+(nSlicesSelected*nChannelsTmp - 1));
            newidx = newidx + (nSlicesSelected*nChannelsTmp);
         end
