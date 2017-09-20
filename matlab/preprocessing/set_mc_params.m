@@ -2,9 +2,9 @@
 
 % 1.  Acquisition info:
 % -------------------------------------------------------------------------
-source = '/nas/volume1/2photon/projects/retino_bar';
-session = '20170902_CE054';
-run = 'functional_zoom3x_run1';
+source = '/nas/volume1/2photon/projects/gratings_phaseMod';
+session = '20170901_CE054';
+run = 'functional_test';
 
 % 2.  Motion Correction info:
 % -------------------------------------------------------------------------
