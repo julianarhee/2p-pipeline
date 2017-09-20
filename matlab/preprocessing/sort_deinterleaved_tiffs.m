@@ -1,9 +1,7 @@
-function sort_parsed_tiffs(D, nchannels)
+function sort_deinterleaved_tiffs(mcparams)
 
-
-%acquisition_dir = D.sourceDir;
-%tiff_dir = D.tiffSource;
-corrected_path = D.tiffSource;
+corrected_path = mcparams.output_dir;
+nchannels = mcparams.nchannels;
 
 if ~exist('namingFunction', 'var')
     namingFunction = @defaultNamingFunction;
@@ -61,7 +59,7 @@ for cidx=1:length(channels)
                     splits = regexp(tiffs{tidx}, '\s', 'split');
                     nChannel = str2double(splits{2}(regexp(splits{2}, '\d')));
                     nSlice = str2double(splits{3}(regexp(splits{3}, '\d')));
-                    new_file_name = feval(namingFunction, D.acquisitionName, nSlice, nChannel, fpath);
+                    new_file_name = feval(namingFunction, mcparams.acquisition_name, nSlice, nChannel, fpath);
                     movefile(fullfile(channel_path, file_paths{fpath}, tiffs{tidx}), fullfile(channel_path, file_paths{fpath}, new_file_name));
                 end
             end

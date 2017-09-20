@@ -49,7 +49,7 @@ switch metaInfo
                         siRefFidx = input('Select FILE idx from current reference acquisition:\n');
                         siRefMetaStruct = siRef.metaDataSI{siRefFidx};
                         %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct);
-			parseSIdata(D, movies, writeDir, siRefMetaStruct);
+                        parseSIdata(D, movies, writeDir, siRefMetaStruct);
                     else
                         siRefMetaStruct = siRef;
                         if length(movies) ~= length(siRef.metaDataSI)
@@ -61,24 +61,24 @@ switch metaInfo
                             siRefStartIdx = 1;
                         end
                         %parseSIdata(D.acquisitionName, movies, D.dataDir, writeDir, siRefMetaStruct, siRefStartIdx);
-			parseSIdata(D, movies, writeDir, siRefMetaStruct, siRefStartIdx);
+                        parseSIdata(D, movies, writeDir, siRefMetaStruct, siRefStartIdx);
 
                     end
 
                 otherwise
-		    parseSIdata(D, movies, writeDir);
+                        parseSIdata(D, movies, writeDir);
             end
         end
         
-        % Sort Parsed files into separate directories if needed:
-        tmpchannels = dir(D.tiffSource);
-        tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels));
-        tmpchannels = tmpchannels([tmpchannels.isdir]);
-        tmpchannels = {tmpchannels(:).name}';
-        %if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
-        if isempty(tmpchannels) || any(strfind(D.tiffSource, 'Parsed'))
-            sort_parsed_tiffs(D, nchannels);
-        end
+%         % Sort Parsed files into separate directories if needed:
+%         tmpchannels = dir(D.tiffSource);
+%         tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels));
+%         tmpchannels = tmpchannels([tmpchannels.isdir]);
+%         tmpchannels = {tmpchannels(:).name}';
+%         %if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2
+%         if isempty(tmpchannels) || any(strfind(D.tiffSource, 'Parsed'))
+%             sort_parsed_tiffs(D, nchannels);
+%         end
 
         % Creata META with SI (acquisition) and MW (experiment) info:
         meta = create_metastruct(D);
