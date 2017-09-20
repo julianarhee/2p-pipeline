@@ -4,7 +4,9 @@
 % -------------------------------------------------------------------------
 source = '/nas/volume1/2photon/projects/retino_bar';
 session = '20170902_CE054';
-run = 'functional_zoom3x_run1';
+acquisition = 'functional_zoom3x_run1';
+% -------------------------------------------------------------------------
+
 
 % 2.  Motion Correction info:
 % -------------------------------------------------------------------------
@@ -20,9 +22,9 @@ mcparams.algorithm = @lucasKanade_plus_nonrigid; % @withinFile_withinFrame_lucas
 
 if mcparams.processed
     fprintf('Motion correcting processed tiffs.\n');
-    run = fullfile(run, 'DATA');
+    acquisition = fullfile(acquisition, 'DATA');
 end
 
-acquisition_dir = fullfile(source, session, run);
+acquisition_dir = fullfile(source, session, acquisition);
 mcparams.acquisition_dir = acquisition_dir;
 
