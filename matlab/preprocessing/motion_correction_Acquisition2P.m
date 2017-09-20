@@ -1,5 +1,5 @@
 function myObj = motion_correction_Acquisition2P(mcparams)
-gcp;
+%gcp;
 
 % MC params are set in set_mc_params.m
 % -------------------------------------------------------------------------
@@ -23,7 +23,7 @@ gcp;
 % Acq2P:  @lucasKanade_plus_nonrigid | @withinFile_withinFrame_lucasKanade
 % NoRMCorre:  rigid | nonrigid
 
-fprintf('Processing acquisition %s...\n', acquisition_dir);
+fprintf('Processing acquisition %s...\n', mcparams.acquisition_dir);
 
 if mcparams.crossref
     myObj = Acquisition2P([],{@SC2Pinit_noUI_crossref,[],mcparams.acquisition_dir,mcparams.crossref});
@@ -47,7 +47,7 @@ else
     myObj.save;
 end
     
-end
+%end
 
 
 

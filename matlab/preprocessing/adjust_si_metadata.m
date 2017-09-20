@@ -47,14 +47,19 @@ for field=1:length(metanames)
         currfield = scanImageMetadata.(metanames{field});
 
         if extra_flyback_top && false_discard %falseDiscard
-            % there are no additional empty flybacks at the end of volume, so just skip every nSlicesTmp, starting from corrected num nDiscard removed from top:
-            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield));
+            % There are no additional empty flybacks at the end of volume, 
+            % so just skip every nSlicesTmp, starting from corrected num of
+            % nDiscard removed from top (i.e., nDiscardedExtra):
+            startidxs = colon(nDiscardedExtra*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp), length(currfield));
         elseif extra_flyback_top && ~false_discard
-            % There were specified num of empty flybacks at end of volume, so remove those indices, if necessary, while also removing the removed frames at top:
-            startidxs = colon(nDiscardTmp*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+            % There were specified num of empty flybacks at end of volume, 
+            % so remove those indices, if necessary, while also removing 
+            % the removed frames at top:
+            startidxs = colon(nDiscardedExtra*nChannelsTmp+1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
         else
-            % There were empty flyybacks at end of volume, but correctly executed, s.t. no additional flybacks removed from top:
-            startidxs = colon(1:nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
+            % There were empty flyybacks at end of volume, but correctly 
+            % executed, s.t. no additional flybacks removed from top:
+            startidxs = colon(1, nChannelsTmp*(nSlicesTmp+nDiscardTmp), length(currfield));
         end
         fprintf('N volumes based on start indices: %i\n', length(startidxs));
 

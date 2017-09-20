@@ -5,9 +5,10 @@ function mcparams = do_motion_correction(mcparams)
 switch mcparams.source
     
     case 'Acquisition2P'
-        acqObj = motion_correction_Acqusition2P(mcparams);
+        gcp;
+        acqObj = motion_correction_Acquisition2P(mcparams);
         [corrected_path, ~, ~] = fileparts(acqObj.correctedMovies.slice(1).channel(1).fileName{1});
-        mcparams.output_dir = corrected_path;
+        mcparams.corrected_dir = corrected_path;
         mcparams.acquisition_name = acqObj.acqName;
         mcparams.nchannels = length(acqObj.correctedMovies.slice(1).channel);
         mcparams.acq_object_path = fullfile(acqObj.defaultDir, strcat('Acq_', acqObj.acqName));
