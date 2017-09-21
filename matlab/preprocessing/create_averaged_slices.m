@@ -1,15 +1,15 @@
 function create_averaged_slices(mcparams)
 
 % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
-tiffs = dir(fullfile(mcparams.acquisition_dir, '*.tif'));
-fprintf('Creating averaged slice images for TIFFs in:\n%s\n', mcparams.acquisition_dir);
-tiff_dir = mcparams.acquisition_dir; %D.dataDir;
+tiffs = dir(fullfile(mcparams.tiff_dir, '*.tif'));
+fprintf('Creating averaged slice images for TIFFs in:\n%s\n', mcparams.tiff_dir);
+tiff_dir = mcparams.tiff_dir; %D.dataDir;
 tiffs = {tiffs(:).name}';
 
 path_to_averages = mcparams.averaged_slices_dir;
 
 for tiff_idx=1:length(tiffs)
-    tpath = fullfile(mcparams.acquisition_dir, tiffs{tiff_idx});
+    tpath = fullfile(mcparams.tiff_dir, tiffs{tiff_idx});
     tiffdata = read_file(tpath);
     d1=size(tiffdata,1); d2=size(tiffdata,2); d3=size(tiffdata,3);
     fprintf('TIFF %i of %i: size is %s.\n', tiff_idx, length(tiffs), mat2str(size(tiffdata)));

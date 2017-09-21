@@ -1,22 +1,17 @@
-% PREPROCESSING.
-%% Clear all and make sure paths set
+%% PREPROCESSING.
 
-clc; clear all;
 
-% add repo paths
-add_repo_paths
-fprintf('Added repo paths.\n');
+%% Do motion correction:
 
-%% Run script to populate MC params:
+% 1.  Set MC parameters:
 set_mc_params;
 
-%% Do motion-correction:
+% 2.  Use params to do correction on raw TIFFs:
 mcparams = do_motion_correction(mcparams);
+save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams');
+fprintf('Completed motion-correction!\n');
 
-save(fullfile(mcparams.acquisition_dir, 'mcparams.mat'), 'mcparams');
-
-%% Clean-up and organize corrected TIFFs into file hierarchy:
-
+% 3.  Clean-up and organize corrected TIFFs into file hierarchy:
 mcparams.split_channels = true;
 post_mc_cleanup(mcparams);
 
@@ -25,19 +20,20 @@ post_mc_cleanup(mcparams);
 correct_bidi = true;
 mcparams.correct_bidi = correct_bidi;
 
-mcparams.bidi_corrected_dir = fullfile(mcparams.acquisition_dir, 'Corrected_Bidi');
+mcparams.bidi_corrected_dir = fullfile(mcparams.tiff_dir, 'Corrected_Bidi');
 if ~exist(mcparams.bidi_corrected_dir, 'dir')
     mkdir(mcparams.bidi_corrected_dir);
 end
 do_bidi_correction(mcparams);
+fprintf('Finished bidi-correction.\n');
 
 
 %% Create and save average slices:
 
-mcparams.averaged_slices_dir = fullfile(mcparams.acquisition_dir, 'Averaged_Slices');
+mcparams.averaged_slices_dir = fullfile(mcparams.tiff_dir, 'Averaged_Slices');
 if ~exist(mcparams.averaged_slices_dir, 'dir')
     mkdir(mcparams.averaged_slices_dir);
 end
 create_averaged_slices(mcparams);
-
+fprintf('Finished creating average slices.\n');
 

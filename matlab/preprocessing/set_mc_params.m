@@ -1,12 +1,6 @@
 %% Set preprocessing parameters:
 
-% 1.  Acquisition info:
-% -------------------------------------------------------------------------
-source = '/nas/volume1/2photon/projects/gratings_phaseMod';
-session = '20170901_CE054';
-acquisition = 'functional_test';
-
-% 2.  Motion Correction info:
+% 1. Specify Motion Correction params:
 % -------------------------------------------------------------------------
 % run_multi_acquisitions = false;
 mcparams.source = 'Acquisition2P'; % ['Acqusition2P', 'NoRMCorre']
@@ -20,9 +14,11 @@ mcparams.algorithm = @lucasKanade_plus_nonrigid; % @withinFile_withinFrame_lucas
 
 if mcparams.processed
     fprintf('Motion correcting processed tiffs.\n');
-    acquisition = fullfile(acquisition, 'DATA');
+    acquisition_file_dir = fullfile(A.acquisition, 'DATA');
+else
+    acquisition_file_dir = A.acquisition;
 end
 
-acquisition_dir = fullfile(source, session, acquisition);
-mcparams.acquisition_dir = acquisition_dir;
+tiff_dir = fullfile(A.source, A.session, acquisition_file_dir);
+mcparams.tiff_dir = tiff_dir;
 

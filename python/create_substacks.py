@@ -159,8 +159,8 @@ for tiffidx,tiffname in enumerate(tiffs):
         rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
         tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
-    ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
-    rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
-    tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
+        ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
+        rangetiff_fn = 'File%03d_visible.tif' % int(tiffidx+1)
+        tf.imsave(os.path.join(savepath, rangetiff_fn), ranged)
 
 
