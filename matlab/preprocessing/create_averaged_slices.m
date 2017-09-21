@@ -6,6 +6,11 @@ fprintf('Creating averaged slice images for TIFFs in:\n%s\n', mcparams.tiff_dir)
 data_dir = mcparams.tiff_dir; %D.dataDir;
 data_files = {data_files(:).name}';
 
+if mcparams.split_channels
+    nfiles = length(data_files)/2;
+else
+    nfiles = length(data_files);
+end
 path_to_averages = mcparams.averaged_slices_dir;
 
 for tiff_idx=1:length(data_files)
