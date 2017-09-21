@@ -22,6 +22,4 @@ switch mcparams.source
         
 end
 
-fprintf('Completed motion-correction!\n');
-
 end

@@ -13,9 +13,9 @@ nslices = acq_obj.metaDataSI{1}.SI.hFastZ.numFramesPerVolume;
 nvolumes = acq_obj.metaDataSI{1}.SI.hFastZ.numVolumes;
 
 % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
-tiffs = dir(fullfile(mcparams.acquisition_dir, '*.tif'));
-fprintf('Doing bidi-correction on TIFFs in dir: %s', mcparams.acquisition_dir);
-tiff_dir = mcparams.acquisition_dir; %D.dataDir;
+tiffs = dir(fullfile(mcparams.tiff_dir, '*.tif'));
+fprintf('Doing bidi-correction on TIFFs in dir: %s', mcparams.tiff_dir);
+tiff_dir = mcparams.tiff_dir; %D.dataDir;
 tiffs = {tiffs(:).name}'
 
 

@@ -12,7 +12,7 @@ end
 % own dirs:
 fprintf('Moving files...\n');
 
-%corrected_path = fullfile(acquisition_dir, tiff_dir);
+%corrected_path = fullfile(tiff_dir, tiff_dir);
 corrected_tiff_fns = dir(fullfile(corrected_path, '*.tif'));
 corrected_tiff_fns = {corrected_tiff_fns(:).name};
 corrected_ch1_path = fullfile(corrected_path, 'Channel01');

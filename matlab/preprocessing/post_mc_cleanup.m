@@ -19,6 +19,6 @@ tmpchannels = {tmpchannels(:).name}';
 if isempty(tmpchannels) %|| any(strfind(D.tiffSource, 'Parsed'))
     sort_deinterleaved_tiffs(mcparams);
 end
-        
+fprintf('Finished sorting parsed TIFFs.\n')        
 
 end
