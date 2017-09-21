@@ -19,6 +19,6 @@ else
     acquisition_file_dir = A.acquisition;
 end
 
-tiff_dir = fullfile(source, session, acquisition_file_dir);
+tiff_dir = fullfile(A.source, A.session, acquisition_file_dir);
 mcparams.tiff_dir = tiff_dir;
 
