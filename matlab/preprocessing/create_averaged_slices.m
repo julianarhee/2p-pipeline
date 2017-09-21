@@ -36,10 +36,10 @@ for tiff_idx=1:length(tiffs)
 	end
 	% make visible
 	tmp = (avgs-min(avgs(:)))./(max(avgs(:))-min(avgs(:)));
-	avgs_visible = adapthisteq(tmp);
-	slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
-	for sl=1:d3                
-	    tiffWrite(avgs_visible(:,:,sl)*((2^16)-1), slicename_vis, ch_path_vis);
+	for sl=1:d3       
+            avgs_visible = adapthisteq(tmp(:,:,sl));
+	    slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
+	    tiffWrite(avgs_visible*((2^16)-1), slicename_vis, ch_path_vis);
         end
     end
 end
