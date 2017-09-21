@@ -1,4 +1,4 @@
-function interleaveTiffs(obj, split_channels)
+function reinterleave_tiffs(obj, split_channels)
     if nargin<2
 	split_channels = false;
     end

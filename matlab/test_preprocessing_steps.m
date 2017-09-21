@@ -13,7 +13,7 @@ set_mc_params;
 %% Do motion-correction:
 mcparams = do_motion_correction(mcparams);
 
-save(strcat(mcparams.acquisition_dir, 'mcparams.mat'), 'mcparams');
+save(fullfile(mcparams.acquisition_dir, 'mcparams.mat'), 'mcparams');
 
 %% Clean-up and organize corrected TIFFs into file hierarchy:
 

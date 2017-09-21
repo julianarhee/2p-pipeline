@@ -4,7 +4,7 @@
 % -------------------------------------------------------------------------
 source = '/nas/volume1/2photon/projects/gratings_phaseMod';
 session = '20170901_CE054';
-run = 'functional_test';
+acquisition = 'functional_test';
 
 % 2.  Motion Correction info:
 % -------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 function sort_deinterleaved_tiffs(mcparams)
 
-corrected_path = mcparams.output_dir;
+corrected_path = mcparams.corrected_dir;
 nchannels = mcparams.nchannels;
 
 if ~exist('namingFunction', 'var')
