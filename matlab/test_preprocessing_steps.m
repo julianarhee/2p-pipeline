@@ -34,4 +34,10 @@ do_bidi_correction(mcparams);
 
 %% Create and save average slices:
 
+mcparams.averaged_slices_dir = fullfile(mcparams.acquisition_dir, 'Averaged_Slices');
+if ~exist(mcparams.averaged_slices_dir, 'dir')
+    mkdir(mcparams.averaged_slices_dir);
+end
+create_averaged_slices(mcparams);
+
 
