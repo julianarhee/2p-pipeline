@@ -3,7 +3,7 @@
 % 1.  Acquisition info:
 % -------------------------------------------------------------------------
 source = '/nas/volume1/2photon/projects/gratings_phaseMod';
-session = '20170901_CE054';
+session = '20170901_CE054_zoom3x';
 acquisition = 'functional_test';
 
 % 2.  Motion Correction info:
