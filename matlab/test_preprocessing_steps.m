@@ -26,7 +26,9 @@ correct_bidi = true;
 mcparams.correct_bidi = correct_bidi;
 
 mcparams.bidi_corrected_dir = fullfile(mcparams.acquisition_dir, 'Corrected_Bidi');
-
+if ~exist(mcparams.bidi_corrected_dir, 'dir')
+    mkdir(mcparams.bidi_corrected_dir);
+end
 do_bidi_correction(mcparams);
 
 
