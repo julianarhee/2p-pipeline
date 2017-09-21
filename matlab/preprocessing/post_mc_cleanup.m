@@ -1,7 +1,9 @@
-function post_mc_cleanup(mcparams, split_channels)
+function post_mc_cleanup(mcparams)
 
+split_channels = mcparams.split_channels;
 tmp_acq_obj = load(mcparams.acq_object_path);
 acq_obj = tmp_acq_obj.(mcparams.acquisition_name);
+clear tmp_acq_obj
 
 % Sort Parsed files into separate directories if needed:
 tmpchannels = dir(mcparams.output_dir);
