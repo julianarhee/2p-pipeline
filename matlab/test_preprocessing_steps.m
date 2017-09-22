@@ -13,6 +13,8 @@ fprintf('Completed motion-correction!\n');
 
 % 3.  Clean-up and organize corrected TIFFs into file hierarchy:
 mcparams.split_channels = false;
+reinterleave_parsed_tiffs(mcparams);
+
 post_mc_cleanup(mcparams);
 
 %% Do additional bidi correction (optional):
