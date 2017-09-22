@@ -64,10 +64,14 @@ parser.add_option('--noard', action="store_true",
                   dest="no_ard", default=False, help="No arduino triggers saved? [default: False]")
 parser.add_option('-t', '--triggervar', action="store",
                   dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
+parser.add_option('-A', '--arduinosync', action="store_true",
+                  dest='arduino_sync', default=False, help="include if using py-arduino v2 with all frame-triggers[default: False]")
+
 
 
 
 (options, args) = parser.parse_args()
+arduino_sync = options.arduino_sync
 trigger_varname = options.frametrigger_varname
 
 # fn_base = options.fn_base #'20160118_AG33_gratings_fov1_run1'
@@ -126,7 +130,7 @@ for didx in range(len(mw_dfns)):
     if stimtype=='bar':
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, triggername=trigger_varname)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, triggername=trigger_varname, arduino_sync=arduino_sync)
 
     # In[8]:
 
@@ -326,12 +330,13 @@ for didx in range(len(mw_dfns)):
 
 	# Check stimulus durations:
 	print len(stimevents)
-	iti_events = trialevents[1::2]
-	print len(iti_events)
+	#iti_events = trialevents[1::2]
+	iti_events = trialevents[0::2]
+        print len(iti_events)
 
 	stim_durs = []
 	off_syncs = []
-	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
+	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events[1:])):
 	    stim_durs.append(iti.time - stim.time)
 	    if (iti.time - stim.time)<0:
 		off_syncs.append(idx)
@@ -364,7 +369,7 @@ for didx in range(len(mw_dfns)):
 
             # Get TIME for each stimulus trial start:
             mw_times = np.array([i.time for i in curr_trialevents])
-
+            print "first 10 mw t-intervals:", (mw_times[0:11]-mw_times[0])/1E6
             # Get ID of each stimulus:
             mw_codes = []
             for i in curr_trialevents:
@@ -380,6 +385,7 @@ for didx in range(len(mw_dfns)):
                     stim_idx = 0
                 mw_codes.append(stim_idx)
             mw_codes = np.array(mw_codes)
+            print "First 10 mw_codes:", mw_codes[0:11]
 
             # Append list of stimulus times and IDs for each SI file:
             mw_times_by_file.append(mw_times)

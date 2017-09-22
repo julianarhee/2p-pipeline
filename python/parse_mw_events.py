@@ -476,7 +476,7 @@ def get_session_info(df, stimtype='grating'):
     return info
 
      
-def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True):
+def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True, arduino_sync=True):
     df, bounds = get_session_bounds(dfn)
     print bounds
 
@@ -499,7 +499,7 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername, arduino_sync=arduino_sync)
       
         print "selected runs:", user_run_selection
         if pixelclock:
@@ -540,12 +540,18 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
                     print "No ITI found after last image onset event.\n"
                 #print display_evs[im]
             print "Found %i iti events after a stimulus onset." % len(iti_evs)
-
             
+            # Get first blank ITI before first stim-trial:
+            print "Looking for first ITI period."
+            prev_blank_evs = [i for i in pixelclock_evs[0:im_idx[0]] if len(i.value)==(num_non_stimuli-1)]
+            first_iti_ev = prev_blank_evs[-1]
+            print "Dur of 1st ITI: ", (image_evs[0].time-first_iti_ev.time)/1E6, "sec"
+            iti_evs.append(first_iti_ev)
+            iti_evs = sorted(iti_evs, key=get_timekey)   
             # Double-check that stim onsets are happening BEFORE iti onsets (should be very close to stim ON duration):
             stim_durs = []
             off_sync = []
-            for idx,(stim,iti) in enumerate(zip(image_evs, iti_evs)):
+            for idx,(stim,iti) in enumerate(zip(image_evs, iti_evs[1:])):
                 stim_durs.append(iti.time - stim.time)
                 if (iti.time - stim.time) < 0:
                     off_sync.append(idx)
