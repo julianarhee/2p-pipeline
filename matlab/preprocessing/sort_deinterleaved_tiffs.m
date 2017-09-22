@@ -1,6 +1,10 @@
-function sort_deinterleaved_tiffs(mcparams)
+function sort_deinterleaved_tiffs(mcparams, varargin)
 
-corrected_path = mcparams.corrected_dir;
+if length(varargin)==0
+    corrected_path = mcparams.corrected_dir;
+else
+    corrected_path = mcparams.bidi_corrected_dir;
+end
 nchannels = mcparams.nchannels;
 
 if ~exist('namingFunction', 'var')

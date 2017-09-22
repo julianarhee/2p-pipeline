@@ -20,17 +20,22 @@ tiffs = {tiffs(:).name}'
 
 
 for tiff_idx = 1:length(tiffs)
-    
+           
     tpath = fullfile(tiff_dir, tiffs{tiff_idx});
     fprintf('Processing tiff from path:\n%s\n', tpath);
     [source, filename, ext] = fileparts(tpath);
 
     tic; Yt = read_file(tpath); toc; % is this faster
 
+    fi = strfind(filename, 'File');
+    fid = str2num(filename(fi+6));
+
+
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
     if mcparams.processed && ~mcparams.split_channels
-        fprintf('Grabbing every other channel.\n')
+   
+	fprintf('Grabbing every other channel.\n')
         for cidx=1:mcparms.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
             fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
@@ -57,7 +62,7 @@ for tiff_idx = 1:length(tiffs)
                 frame_idx = ch + (sl-1)*nchannels;
                 
                 % Create movie fileName and save to default format
-                mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, tiff_idx);
+                mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
                 try
                     tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
                 catch
@@ -96,7 +101,7 @@ for tiff_idx = 1:length(tiffs)
             elseif strfind(filename, 'Channel02')
                 ch=2;
             end
-            mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, tiff_idx);
+            mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
             
             try
                 tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);

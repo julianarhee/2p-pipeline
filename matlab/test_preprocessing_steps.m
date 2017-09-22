@@ -27,7 +27,6 @@ end
 do_bidi_correction(mcparams);
 fprintf('Finished bidi-correction.\n');
 
-% clean-up:
 % Sort Parsed files into separate directories if needed: 
 tmpchannels = dir(mcparams.bidi_corrected_dir); 
 tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels)); 
@@ -37,8 +36,8 @@ tmpchannels = {tmpchannels(:).name}';
 if isempty(tmpchannels) %|| any(strfind(D.tiffSource, 'Parsed')) 
     bidi=true;
     sort_deinterleaved_tiffs(mcparams, bidi); 
-end
-fprintf('Finished sorting parsed TIFFs.\n')
+end 
+fprintf('Finished sorting parsed TIFFs.\n')        
 
 
 %% Create and save average slices:
