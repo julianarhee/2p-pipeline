@@ -1,6 +1,7 @@
 function get_df_traces(A, varargin)
 
-% Get dF/F maps:
+
+file_type = 'visible';
 
 ntiffs = A.ntiffs;
 
@@ -11,7 +12,7 @@ switch length(varargin)
         df_min = varargin{1};
 end
 
-dfstruct = struct();
+DF = struct();
 for sidx = 1:length(A.slices)
    
     sl = A.slices(sidx);
@@ -35,30 +36,33 @@ for sidx = 1:length(A.slices)
         avg_slice_dir = fullfile(A.tiff_source, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
         
         
-        avgY = tiffRead(avg_slice_dir, sprintf('*_Slice%02d*', sl))
+        avgY = tiffRead(avg_slice_dir, sprintf('*_Slice%02d*', sl));
         traces = tracestruct.file(fidx).tracematDC; 
         % --> This is already corrected with DC -- do the following to get back
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
-        
-        switch D.roiType
-            case 'manual2D'
-                [d1,d2] = size(avgY);
-                [nframes, nrois] = size(traces);
-            case 'roiMap'
-                [d1,d2] = size(avgY);
-                [nframes, nrois] = size(traces);
-            case 'condition'
-                [d1,d2] = size(avgY);
-                [nframes, nrois] = size(traces);
-            case 'pixels'
-                %[d1,d2,tpoints] = size(T.traces.file{fidx});
-                [d1, d2] = size(avgY);
-                nframes = size(traces,1);
-                nrois = d1*d2;
-            case 'cnmf'
-                [d1,d2] = size(avgY);
-                [nframes, nrois] = size(traces);
-        end
+        [d1,d2] = size(avgY);
+        [nframes, nrois] = size(traces);
+        fprintf('N frames: %i, N rois: %i\n', nframes, nrois);
+                
+%         switch D.roiType
+%             case 'manual2D'
+%                 [d1,d2] = size(avgY);
+%                 [nframes, nrois] = size(traces);
+%             case 'roiMap'
+%                 [d1,d2] = size(avgY);
+%                 [nframes, nrois] = size(traces);
+%             case 'condition'
+%                 [d1,d2] = size(avgY);
+%                 [nframes, nrois] = size(traces);
+%             case 'pixels'
+%                 %[d1,d2,tpoints] = size(T.traces.file{fidx});
+%                 [d1, d2] = size(avgY);
+%                 nframes = size(traces,1);
+%                 nrois = d1*d2;
+%             case 'cnmf'
+%                 [d1,d2] = size(avgY);
+%                 [nframes, nrois] = size(traces);
+%         end
         meanMap = zeros(d1, d2, 1);
         maxMap = zeros(d1, d2, 1);
             
@@ -77,8 +81,9 @@ for sidx = 1:length(A.slices)
         
         meanDfs = mean(dfMat,1);
         maxDfs = max(dfMat);
+        
         % Get rid of ridiculous values, prob edge effects:
-        maxDfs(abs(maxDfs)>400) = NaN;
+        maxDfs(abs(maxDfs)>500) = NaN;
         activeRois = find(maxDfs >= df_min);
         fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, df_min);
         
@@ -121,7 +126,7 @@ for sidx = 1:length(A.slices)
 end
 
 dfName = sprintf('dfstruct.mat');
-save_struct(D.outputDir, dfName, DF);
+save_struct(A.trace_dir, dfName, DF);
 
 DF.name = dfName;
 
