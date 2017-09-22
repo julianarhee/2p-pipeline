@@ -228,6 +228,7 @@ fprintf('FINISHED!\n')
 
 parse_trials_only = false
 
+source = dsoptions.source;
 session = dsoptions.session; %'20161222_JR030W'
 
 % experiment = 'gratingsFinalMask2';
@@ -237,7 +238,7 @@ experiment = dsoptions.run; %'gratings1';
 analysis_no = dsoptions.datastruct; %8;
 tefo = dsoptions.tefo; %true;
 
-D = load_analysis_info(session, experiment, analysis_no, tefo);
+D = load_analysis_info(source, session, experiment, analysis_no, tefo);
 
 slicesToUse = D.slices;
 
