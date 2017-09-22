@@ -3,7 +3,9 @@ function sort_deinterleaved_tiffs(mcparams, varargin)
 if length(varargin)==0
     corrected_path = mcparams.corrected_dir;
 else
-    corrected_path = mcparams.bidi_corrected_dir;
+    if mcparams.correct_bidi
+        corrected_path = mcparams.bidi_corrected_dir;
+    end
 end
 nchannels = mcparams.nchannels;
 
