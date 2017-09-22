@@ -94,7 +94,8 @@ set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -152,8 +153,9 @@ handles.ax3.Children = flipud(handles.ax3.Children);
 end
 
 [handles, D] = updateTimeCourse(handles, D, meta);
-nEpochs = handles.ax4.UserData.trialEpochs
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+nEpochs = handles.ax4.UserData.trialEpochs;
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 guidata(hObject,handles);
 
@@ -212,7 +214,8 @@ set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -275,7 +278,8 @@ set(handles.avgimg, 'ButtonDownFcn', @ax1_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -345,7 +349,8 @@ set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 % Update Timecourse plot:
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 % Update Stimulus plot:
 [handles, D] = updateStimulusPlot(handles, D);
@@ -409,7 +414,8 @@ set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -626,7 +632,8 @@ sStruct = handles.selectDatastructPush.UserData.currStruct;
     % Update timecourse plot:
     [handles, D] = updateTimeCourse(handles, D, meta);
     nEpochs = handles.ax4.UserData.trialEpochs;
-    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    %set(handles.mwepochs(1:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
     
     % Update stimulus plot:
     [handles, D] = updateStimulusPlot(handles, D);
@@ -745,7 +752,8 @@ meta = getappdata(handles.roigui, 'meta');
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -788,7 +796,8 @@ end
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 % [handles, D] = updateStimulusPlot(handles, D);
 % 
@@ -849,7 +858,8 @@ for stimidx=1:nStim
     dfMat = stimstruct.slice(selectedSlice).(currstim).dfTraceCell{selectedRoi}.*100;
     if handles.smooth.Value
         for tridx=1:size(dfMat, 2)
-            dfMat(:,tridx) = smooth(dfMat(:,tridx), 'rlowess');
+            %dfMat(:,tridx) = smooth(dfMat(:,tridx), 'rlowess');
+            dfMat(:,tridx) = smooth(dfMat(:,tridx), 5);
         end
     end
         
@@ -929,7 +939,8 @@ meta = getappdata(handles.roigui, 'meta');
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] =  updateActivityMap(handles, D, meta);
 set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
@@ -1082,7 +1093,8 @@ if handles.ax3.UserData.viewTrial
     
     [handles, D] = updateTimeCourse(handles, D, meta);
     nEpochs = handles.ax4.UserData.trialEpochs;
-    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    %set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
     
     [handles, D] =  updateActivityMap(handles, D, meta);
     set(handles.map, 'ButtonDownFcn', @ax2_ButtonDownFcn);
@@ -1281,10 +1293,12 @@ selectedFile = handles.runMenu.Value;
 currRunName = meta.file(selectedFile).mw.runName;
 
 mwTimes = meta.file(selectedFile).mw.mwSec;
-mwTimes = mwTimes(1:2:end);
+%mwTimes = mwTimes(1:2:end);
+mwTimes = mwTimes(2:2:end);
 nTrials = length(mwTimes);
 mwCodes = meta.file(selectedFile).mw.pymat.(currRunName).stimIDs;
-mwCodes = mwCodes(1:2:end);
+%mwCodes = mwCodes(1:2:end);
+mwCodes = mwCodes(2:2:end);
 
 colors = getappdata(handles.roigui, 'stimcolors');
 
@@ -1489,7 +1503,8 @@ meta = getappdata(handles.roigui, 'meta');
 
 [handles, D] = updateTimeCourse(handles, D, meta);
 nEpochs = handles.ax4.UserData.trialEpochs;
-set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+%set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
 [handles, D] = updateStimulusPlot(handles, D);
 if ~strcmp(D.stimType, 'bar')
@@ -1543,8 +1558,9 @@ if strcmp(D.roiType, 'pixels')
 
     [handles, D] = updateTimeCourse(handles, D, meta);
     nEpochs = handles.ax4.UserData.trialEpochs;
-    set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
-
+    %set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+    
     [handles, D] = updateStimulusPlot(handles, D);
     if ~strcmp(D.stimType, 'bar')
     if handles.stimShowAvg.Value
@@ -1602,7 +1618,8 @@ else
 
             [handles, D] = updateTimeCourse(handles, D, meta);
             nEpochs = handles.ax4.UserData.trialEpochs;
-            set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+            %set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+            set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
             [handles, D] = updateStimulusPlot(handles, D);
             if ~strcmp(D.stimType, 'bar')
@@ -1625,7 +1642,8 @@ else
 
         [handles, D] = updateTimeCourse(handles, D, meta);
         nEpochs = handles.ax4.UserData.trialEpochs;
-        set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+        %set(handles.mwepochs(1:2:nEpochs), 'ButtonDownFcn', @ax4_ButtonDownFcn);
+        set(handles.mwepochs(2:2:end), 'ButtonDownFcn', @ax4_ButtonDownFcn);
 
         [handles, D] = updateStimulusPlot(handles, D);
         if ~strcmp(D.stimType, 'bar')
