@@ -50,12 +50,12 @@ clc;
 % ------------------------------------------------------------------------------ 
 
 dsoptions = DSoptions(...
-    'source', '/nas/volume1/2photon/RESDATA',...           % parent dir
+    'source', '/nas/volume1/2photon/projects/gratings_phaseMod/FOV_tests',...           % parent dir
     'session', '20170825_CE055',...                            % session name (single FOV)
-    'run', 'fxnal_data/gratings1',...                                % experiment name
-    'datastruct', 2,...                                        % datastruct idx
-    'acquisition', 'mov_20170825_CE055_gratings_run10',...      % acquisition name
-    'datapath', 'DATA',...          % preprocessed datapath 
+    'run', 'functional_single',...                                % experiment name
+    'datastruct', 1,...                                        % datastruct idx
+    'acquisition', 'mov_20170825_CE055_FOV1',...      % acquisition name
+    'datapath', '',...          % preprocessed datapath 
     'tefo', false,...                                            % 'scope type' (t/f)
     'preprocessing', 'Acquisition2P',...                                  % preprocessed or no
     'corrected', true,...                                      % corrected (w/ Acq2P or no)
@@ -72,12 +72,12 @@ dsoptions = DSoptions(...
     'correctbidi', true,...
     'reference', 1,...
     'stimulus', 'grating',...       % stimulus type ['bar', 'grating', 'image']
-    'slices', [1:13],...                                        % slices from acquis. that actually contain data
+    'slices', [1],...                                        % slices from acquis. that actually contain data
     'averaged', false,...                                        % using tiffs that are the averaged tcourses of runs
     'matchedtiffs', [],...                                      % matched tiffs, if averaging
     'excludedtiffs', [],...                                     % idxs of tiffs to exclude from analysis
     'metaonly', false,...                                       % only get meta data from tiffs (if files too large)
-    'nmetatiffs', 13);                                           % number of huge tiffs to exclude
+    'nmetatiffs', 1);                                           % number of huge tiffs to exclude
  
 
 %% Set 3Dnmf params, if using roitype='3Dcnmf':
