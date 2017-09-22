@@ -12,7 +12,7 @@ save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams');
 fprintf('Completed motion-correction!\n');
 
 % 3.  Clean-up and organize corrected TIFFs into file hierarchy:
-mcparams.split_channels = true;
+mcparams.split_channels = false;
 post_mc_cleanup(mcparams);
 
 %% Do additional bidi correction (optional):
@@ -28,15 +28,8 @@ do_bidi_correction(mcparams);
 fprintf('Finished bidi-correction.\n');
 
 % Sort Parsed files into separate directories if needed: 
-tmpchannels = dir(mcparams.bidi_corrected_dir); 
-tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels)); 
-tmpchannels = tmpchannels([tmpchannels.isdir]); 
-tmpchannels = {tmpchannels(:).name}'; 
-%if length(dir(fullfile(D.sourceDir, D.tiffSource, tmpchannels{1}))) > length(tmpchannels)+2 
-if isempty(tmpchannels) %|| any(strfind(D.tiffSource, 'Parsed')) 
-    bidi=true;
-    sort_deinterleaved_tiffs(mcparams, bidi); 
-end 
+bidi=mcparams.correct_bidi;
+sort_deinterleaved_tiffs(mcparams, bidi); 
 fprintf('Finished sorting parsed TIFFs.\n')        
 
 
