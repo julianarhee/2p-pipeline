@@ -446,7 +446,7 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
         stimulusevents.append(stimevents)
         triggertimes.append(trigg_times)
     
-        session_info = get_session_info(df, stimtype='bar')
+        session_info = get_session_info(df, boundary, stimtype='bar')
         session_info['tboundary'] = boundary
         
         info.append(session_info)
@@ -456,7 +456,7 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
     return pixelevents, stimulusevents, triggertimes, info
 
 
-def get_session_info(df, stimtype='grating'):
+def get_session_info(df, boundary, stimtype='grating'):
     info = dict()
     if stimtype=='bar':
         ncycles = df.get_events('ncycles')[-1].value
@@ -465,12 +465,14 @@ def get_session_info(df, stimtype='grating'):
         info['barwidth'] = df.get_events('bar_size_deg')[-1].value
     else:
         stimdurs = df.get_events('distractor_presentation_time')
-        info['stimduration'] = stimdurs[-1].value
+        stimdurs = [e for e in stimdurs if e.time<=boundary[1] and e.time>=boundary[0]]
+        info['stimduration'] = stimdurs[0].value
         itis = df.get_events('ITI_time')
-        info['ITI'] = itis[-1].value
+        itis = [e for e in itis if e.time<=boundary[1] and e.time>=boundary[0]] 
+        info['ITI'] = itis[0].value
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
-        info['ITI'] = itis[-1].value
+        #info['ITI'] = itis[-1].value
         # stimulus types?
         # ntrials?
     return info
@@ -575,7 +577,7 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
         trialevents.append(trial_evs)
         triggertimes.append(trigg_times)
         
-        session_info = get_session_info(df, stimtype=stimtype)
+        session_info = get_session_info(df, boundary, stimtype=stimtype)
         session_info['tboundary'] = boundary
         info.append(session_info)
 
