@@ -35,8 +35,9 @@ for sidx = 1:length(A.slices)
         end
         avg_slice_dir = fullfile(A.tiff_source, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
         
-        
-        avgY = tiffRead(avg_slice_dir, sprintf('*_Slice%02d*', sl));
+        slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
+        slice_file = slice_files(1).name 
+        avgY = tiffRead(fullfile(avg_slice_dir, slice_file));
         traces = tracestruct.file(fidx).tracematDC; 
         % --> This is already corrected with DC -- do the following to get back
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
@@ -87,14 +88,14 @@ for sidx = 1:length(A.slices)
         activeRois = find(maxDfs >= df_min);
         fprintf('Found %i of %i ROIs with dF/F > %02.f%%.\n', length(activeRois), nrois, df_min);
         
-        if strcmp(D.roiType, 'pixels')
-            % Just need to reshape into 2d image if using pixels:
-            meanMap = reshape(meanDfs, [d1, d2]);
-            maxMap = reshape(maxDfs, [d1, d2]);
-        else
-            meanMap = assign_roimap(maskcell, meanMap, meanDfs);
-            maxMap = assign_roimap(maskcell, maxMap, maxDfs);
-        end
+%         if strcmp(D.roiType, 'pixels')
+%             % Just need to reshape into 2d image if using pixels:
+%             meanMap = reshape(meanDfs, [d1, d2]);
+%             maxMap = reshape(maxDfs, [d1, d2]);
+%         else
+          meanMap = assign_roimap(maskcell, meanMap, meanDfs);
+          maxMap = assign_roimap(maskcell, maxMap, maxDfs);
+%         end
         
         % --- Need to reshape into 2d image if using pixels:
 %         if strcmp(D.roiType, 'pixels')
