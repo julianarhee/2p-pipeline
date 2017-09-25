@@ -1,14 +1,14 @@
-function S = get_scan_info(A, mcparams)
+function simeta = get_scan_info(A, mcparams)
         
         tiff_source = mcparams.tiff_dir;
         acquisition_name = mcparams.acquisition_name;
-        sistruct = struct();
+        simeta = struct();
         
         metadata_fn = sprintf('%s.mat', acquisition_name)
         metadata = load(fullfile(tiff_source, metadata_fn));
         
         ntiffs = length(metadata.(acquisition_name).metaDataSI);
-        
+        sistruct = struct();  
         for fidx=1:ntiffs
             curr_meta = metadata.(acquisition_name).metaDataSI{fidx};
             
@@ -57,9 +57,9 @@ function S = get_scan_info(A, mcparams)
             end
             
         end
-        S.acquisition_name = acquisition_name;
-        S.ntiffs = ntiffs;
-        S.nchannels = nchannels;
-        S.SI = sistruct;
+        simeta.acquisition_name = acquisition_name;
+        simeta.ntiffs = ntiffs;
+        simeta.nchannels = nChannels;
+        simeta.SI = sistruct;
 
 end
