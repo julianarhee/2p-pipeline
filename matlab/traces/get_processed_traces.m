@@ -22,7 +22,7 @@ switch length(varargin)
 end
 
 simeta = load(A.simeta_path);
-meta = simeta.SI;
+metastruct = simeta.SI;
 
 for sidx = 1:length(A.slices)
     sl = A.slices(sidx);
