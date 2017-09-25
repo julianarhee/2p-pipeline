@@ -54,8 +54,8 @@ switch A.roi_method
                 tracestruct.file(fidx).maskpath = roiparams.maskpaths{sidx};
                 tracestruct.file(fidx).nrois = size(masks,3);
             end
-            tracestruct_name = sprintf('traces_Slice%02d_Channel%02.mat', sl, A.signal_channel);
-            save(fullfile(A.trace_dir, tracestruct_name));
+            tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
+            save(fullfile(A.trace_dir, tracestruct_name), '-struct', 'tracestruct');
         end
         
         
