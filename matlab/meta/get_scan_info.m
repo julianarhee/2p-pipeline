@@ -1,5 +1,8 @@
-function simeta = get_scan_info(A, mcparams)
+function simeta = get_scan_info(A)
         
+        % Load mcparam info:
+        load(A.mcparams_path);
+ 
         tiff_source = mcparams.tiff_dir;
         acquisition_name = mcparams.acquisition_name;
         simeta = struct();
