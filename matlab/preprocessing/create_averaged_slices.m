@@ -7,13 +7,13 @@ data_dir = mcparams.tiff_dir; %D.dataDir;
 data_files = {data_files(:).name}';
 
 if mcparams.split_channels
-    nfiles = length(data_files)/2;
+    nfiles = length(data_files)/2
 else
-    nfiles = length(data_files);
+    nfiles = length(data_files)
 end
 path_to_averages = mcparams.averaged_slices_dir;
 
-for tiff_idx=1:length(data_files)
+for tiff_idx=1:nfiles %length(data_files)
       
     for ch=1:mcparams.nchannels
         ch_path = fullfile(path_to_averages, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
