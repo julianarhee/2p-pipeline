@@ -8,15 +8,15 @@ fprintf('Added repo paths.\n');
 %% Create Acquisition Struct:
 
 A.source = '/nas/volume1/2photon/projects/gratings_phaseMod';
-A.session = '20170901_CE054_zoom3x';
+A.session = '20170901_CE054';
 A.base_dir = fullfile(A.source, A.session);
-A.acquisition = 'functional_test';
+A.acquisition = 'FOV1_zoom3x/functional_sub';
 
 A.preprocess = true;
 A.correct_bidi = true;
 
-A.slices
-A.signal_channel
+A.slices = [1:13]
+A.signal_channel = 1;
 
 %% Specify MC param struct path:
 if A.preprocess
@@ -33,9 +33,12 @@ test_preprocessing_steps;
 
 
 %% Specify ROI param struct path:
+A.roi_method = 'pyblob2D';
 A.roi_id = 'blobs_DoG';
 
-A.roiparams_path = fullfile(A.base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
+pts = strsplit(A.acquisition, '/');
+A.acquisition_base = pts{1}
+A.roiparams_path = fullfile(A.base_dir, A.acquisition_base, 'ROIs', A.roi_id, 'roiparams.mat');
 
 %% GET ROIS.
 
@@ -43,7 +46,7 @@ A.roiparams_path = fullfile(A.base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
 %% Specify Traces param struct path:
 
 A.trace_id = 'blobs_DoG';
-A.trace_dir = fullfile(A.base_dir, 'Traces', A.trace_id);
+A.trace_dir = fullfile(A.base_dir, A.acquisition_base, 'Traces', A.trace_id);
 if ~exist(A.trace_dir, 'dir')
     mkdir(A.trace_dir)
 end
@@ -54,7 +57,7 @@ extract_traces(A);
 %% GET metadata for SI tiffs:
 
 si = get_scan_info(A, mcparams)
-save(fullfile(A.tiff_source, 'simeta.mat'), 'si', '-struct');
+save(fullfile(A.tiff_source, 'simeta.mat'), '-struct', 'si');
 A.simeta_path = fullfile(A.tiff_source, 'simeta.mat');
 
 %% Process traces
