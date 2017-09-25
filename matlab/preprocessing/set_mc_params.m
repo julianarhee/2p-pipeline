@@ -8,7 +8,7 @@ mcparams.crossref = false;
 mcparams.processed = true;
 
 mcparams.ref_channel = 1;
-mcparams.ref_movie = 1;
+mcparams.ref_movie = 3;
 mcparams.algorithm = @lucasKanade_plus_nonrigid; % @withinFile_withinFrame_lucasKanade;
 % -------------------------------------------------------------------------
 
