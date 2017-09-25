@@ -40,6 +40,19 @@ pts = strsplit(A.acquisition, '/');
 A.acquisition_base = pts{1}
 A.roiparams_path = fullfile(A.base_dir, A.acquisition_base, 'ROIs', A.roi_id, 'roiparams.mat');
 
+
+%% Save n files:
+if A.correct_bidi
+    base_slice_dir = fullfile(A.tiff_source,'Corrected_Bidi', sprintf('Channel%02d', A.signal_channel))
+elseif A.corrected && ~A.correct_bidi
+    base_slice_dir = fullfile(A.tiff_source, 'Corrected', sprintf('Channel%02d', A.signal_channel));
+else
+    base_slice_dir = fullfile(A.tiff_source, 'Parsed', sprintf('Channel%02d', A.signal_channel));
+end
+file_dirs = dir(fullfile(base_slice_dir, 'File*'));
+file_dirs = {file_dirs(:).name}';
+A.ntiffs = length(file_dirs);
+
 %% GET ROIS.
 
 
@@ -56,7 +69,7 @@ extract_traces(A);
 
 %% GET metadata for SI tiffs:
 
-si = get_scan_info(A, mcparams)
+si = get_scan_info(A)
 save(fullfile(A.tiff_source, 'simeta.mat'), '-struct', 'si');
 A.simeta_path = fullfile(A.tiff_source, 'simeta.mat');
 
