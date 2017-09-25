@@ -20,25 +20,14 @@ switch A.roi_method
         
     case 'pyblob2D'
         % Load roistruct created in roi_blob_detector.py:
-	if A.correct_bidi
-	    base_slice_dir = fullfile(A.tiff_source,'Corrected_Bidi', sprintf('Channel%02d', A.signal_channel))
-	elseif A.corrected && ~A.correct_bidi
-	    base_slice_dir = fullfile(A.tiff_source, 'Corrected', sprintf('Channel%02d', A.signal_channel));
-	else
-	    base_slice_dir = fullfile(A.tiff_source, 'Parsed', sprintf('Channel%02d', A.signal_channel));
-	end
-        file_dirs = dir(fullfile(base_slice_dir, 'File*'));
-        file_dirs = {file_dirs(:).name}'
-
         for sidx = 1:length(A.slices)
-            sl = A.slices(sidx);
-            masks = roiparams.maskpaths{sidx};
+           sl = A.slices(sidx);
+            load(roiparams.maskpaths{sidx});
             maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
             maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
              
             % load time-series for current slice:
-	    ntiffs = length(file_dirs);
-            for fidx=1:ntiffs
+            for fidx=1:A.ntiffs
                 curr_file_path = fullfile(base_slice_dir, sprintf('File%03d', fidx));
                 curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.acquisition_name, sl, A.signal_channel, fidx)
                 Y = tiffRead(fullfile(curr_file_path, curr_file));
