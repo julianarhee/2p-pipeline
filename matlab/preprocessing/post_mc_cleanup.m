@@ -8,7 +8,11 @@ else
 end
 
 % Sort Parsed files into separate directories if needed:
-tmpchannels = dir(mcparams.corrected_dir);
+if bidi
+    tmpchannels = dir(mcparams.bidi_corrected_dir);
+else
+    tmpchannels = dir(mcparams.corrected_dir);
+end
 tmpchannels = tmpchannels(arrayfun(@(x) ~strcmp(x.name(1),'.'), tmpchannels));
 tmpchannels = tmpchannels([tmpchannels.isdir]);
 tmpchannels = {tmpchannels(:).name}';
