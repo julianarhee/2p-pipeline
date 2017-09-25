@@ -34,7 +34,7 @@ for tiff_idx = 1:length(tiffs)
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
     if mcparams.processed && ~mcparams.split_channels
-   
+        fprintf('Correcting TIFF: %s\n', filename); 
 	fprintf('Grabbing every other channel.\n')
         for cidx=1:mcparms.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
@@ -75,6 +75,7 @@ for tiff_idx = 1:length(tiffs)
         end
                 
     elseif mcparams.processed && mcparams.split_channels
+	fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
         Y = cell(1, nvolumes);
         firstslice = 1; %startSliceIdx; %1;

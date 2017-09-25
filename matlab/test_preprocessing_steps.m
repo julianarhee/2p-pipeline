@@ -12,7 +12,7 @@ save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams');
 fprintf('Completed motion-correction!\n');
 
 % 3.  Clean-up and organize corrected TIFFs into file hierarchy:
-mcparams.split_channels = false;
+mcparams.split_channels = true;
 reinterleave_parsed_tiffs(mcparams);
 
 post_mc_cleanup(mcparams);
@@ -31,9 +31,9 @@ fprintf('Finished bidi-correction.\n');
 
 % Sort Parsed files into separate directories if needed: 
 bidi=mcparams.correct_bidi;
-sort_deinterleaved_tiffs(mcparams, bidi); 
+post_mc_cleanup(mcparams, bidi); 
 fprintf('Finished sorting parsed TIFFs.\n')        
-
+save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
 
 %% Create and save average slices:
 

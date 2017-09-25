@@ -1,6 +1,6 @@
-function sort_deinterleaved_tiffs(mcparams, varargin)
+function sort_deinterleaved_tiffs(mcparams, bidi)
 
-if length(varargin)==0
+if ~bidi 
     corrected_path = mcparams.corrected_dir;
 else
     if mcparams.correct_bidi
