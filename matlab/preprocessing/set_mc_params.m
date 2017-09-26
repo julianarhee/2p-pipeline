@@ -6,7 +6,7 @@
 mcparams.corrected = true;
 mcparams.method = 'Acquisition2P'; % ['Acqusition2P', 'NoRMCorre']
 mcparams.crossref = false;
-mcparams.processed_flyback = true;
+mcparams.flyback_corrected = true;
 
 mcparams.ref_channel = 1;
 mcparams.ref_file = 3;

@@ -9,7 +9,7 @@ function myObj = motion_correction_Acquisition2P(mcparams)
 % mcparams.crossref - coregister across acquisitions that are the same FOV
 % [true or false]
 % 
-% mcparams.processed_flyback - using raw tiffs or substacks made from
+% mcparams.flyback_corrected - using raw tiffs or substacks made from
 % create_substacks.py [true or false]
 % 
 % mcparams.ref_channel - if multi-channel, which channel to use as ref
@@ -30,7 +30,7 @@ if mcparams.crossref
     myObj.motionRefMovNum = mcparams.ref_file;
     myObj.motionCorrectCrossref;
     myObj.save;
-elseif mcparams.processed_flyback
+elseif mcparams.flyback_corrected
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],mcparams.tiff_dir});
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
