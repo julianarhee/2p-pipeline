@@ -6,13 +6,16 @@ add_repo_paths
 fprintf('Added repo paths.\n');
 
 %% Create Acquisition Struct:
+% 
+source = '/nas/volume1/2photon/projects/gratings_phaseMod';
+session = '20170901_CE054';
+acquisition = 'FOV1_zoom3x';
+functional = 'functional_sub';
+acquisition_base_dir = fullfile(A.source, A.session, A.acquisition);
 
-A.source = '/nas/volume1/2photon/projects/gratings_phaseMod';
-A.session = '20170901_CE054';
-A.acquisition = 'FOV1_zoom3x';
-A.functional = 'functional_sub';
+A = load(fullfile(acquisition_base_dir, 'reference.mat'));
 
-A.acquisition_base_dir = fullfile(A.source, A.session, A.acquisition);
+A.acquisition_base_dir = acquisition_base_dir;
 A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
 A.use_bidi_corrected = true;
@@ -23,8 +26,8 @@ A.signal_channel = 1;
 % themselves, instead of user-input. Run meta-data parsing after
 % flyback-correction (py), including SI-meta correction if
 % flyback-correction changes the TIFF volumes.
-A.slices = [1:13];
-A.nchannels = 2;
+% A.slices = [1:13];
+% A.nchannels = 2;
 
 %% Specify MC param struct path:
 
