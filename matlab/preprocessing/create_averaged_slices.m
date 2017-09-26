@@ -7,11 +7,13 @@ data_dir = mcparams.tiff_dir; %D.dataDir;
 data_files = {data_files(:).name}';
 
 if mcparams.split_channels
-    nfiles = length(data_files)/2
+    nfiles = length(data_files)/2;
 else
-    nfiles = length(data_files)
+    nfiles = length(data_files);
 end
-path_to_averages = mcparams.averaged_slices_dir;
+fprintf('Found %i files.\n', nfiles);
+
+path_to_averages = fullfile(mcparams.tiff_dir, mcparams.averaged_slices_dir);
 
 for tiff_idx=1:nfiles %length(data_files)
       
@@ -22,34 +24,36 @@ for tiff_idx=1:nfiles %length(data_files)
             mkdir(ch_path)
             mkdir(ch_path_vis)
         end 
-	fprintf('Averaging Channel %i, File %i...\n', ch, tiff_idx);
-        if mcparams.correct_bidi
-            slice_dir = fullfile(mcparams.tiff_dir, 'Corrected_Bidi', sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
+        fprintf('Averaging Channel %i, File %i...\n', ch, tiff_idx);
+        if mcparams.bidi_corrected
+            slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
         else
-            slice_dir = fullfile(mcparams.tiff_dir, 'Corrected', sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
-	end
-        tiffs = dir(fullfile(slice_dir, '*.tif'));
-        tiffs = {tiffs(:).name}'
-        d3 = length(tiffs);
-        sample = read_file(fullfile(slice_dir, tiffs{1}));
-	d1=size(sample,1); d2=size(sample,2); clear sample
-	
-	avgs = zeros([d1,d2,d3]);
-	for sl=1:d3
-	    tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
-	    fprintf('TIFF %i (slice %i) of %i: size is %s.\n', tiff_idx, sl, length(tiffs), mat2str(size(tiffdata)));
-	    avgs(:,:,sl) = mean(tiffdata, 3);
-	    slicename = sprintf('average_Slice%02d_Channel%02d_File%03d.tif', sl, ch, tiff_idx);
-      	    tiffWrite(avgs(:,:,sl), slicename, ch_path);	
-            fprintf('Saved slice %s to path %s.\n', slicename, ch_path)
-	end
-	% make visible
-	tmp = (avgs-min(avgs(:)))./(max(avgs(:))-min(avgs(:)));
-	for sl=1:d3       
-            avgs_visible = adapthisteq(tmp(:,:,sl));
-	    slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
-	    tiffWrite(avgs_visible*((2^16)-1), slicename_vis, ch_path_vis);
+            slice_dir = fullfile(mcparams.tiff_dir, mcparams.corrected_dir, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
         end
-    end
+        tiffs = dir(fullfile(slice_dir, '*.tif'));
+        tiffs = {tiffs(:).name}';
+        d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
+        sample = read_file(fullfile(slice_dir, tiffs{1}));
+        d1=size(sample,1); d2=size(sample,2); clear sample
+	
+        avgs = zeros([d1,d2,d3]);
+        for sl=1:d3
+            tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
+            fprintf('TIFF %i (slice %i) of %i: size is %s.\n', tiff_idx, sl, length(tiffs), mat2str(size(tiffdata)));
+            avgs(:,:,sl) = mean(tiffdata, 3);
+            slicename = sprintf('average_Slice%02d_Channel%02d_File%03d.tif', sl, ch, tiff_idx);
+            tiffWrite(avgs(:,:,sl), slicename, ch_path);	
+            fprintf('Saved slice %s to path %s.\n', slicename, ch_path)
+        end
+        
+        % make visible
+        tmp = (avgs-min(avgs(:)))./(max(avgs(:))-min(avgs(:)));
+        for sl=1:d3       
+            avgs_visible = adapthisteq(tmp(:,:,sl));
+            slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
+            tiffWrite(avgs_visible*((2^16)-1), slicename_vis, ch_path_vis);
+            end
+        end
 end
+
 end

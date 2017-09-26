@@ -1,10 +1,14 @@
 function sort_deinterleaved_tiffs(mcparams, bidi)
 
 if ~bidi 
-    corrected_path = mcparams.corrected_dir;
+    if mcparams.corrected
+        sorting_path = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+    else
+        sorting_path = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
+    end
 else
     if mcparams.correct_bidi
-        corrected_path = mcparams.bidi_corrected_dir;
+        sorting_path = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
     end
 end
 nchannels = mcparams.nchannels;
@@ -16,14 +20,14 @@ end
 % ---------------------------------------------------------------------
 % If using (and including) 2 channels for MC, separate them into their
 % own dirs:
+
 fprintf('Moving files...\n');
 
-%corrected_path = fullfile(tiff_dir, tiff_dir);
-corrected_tiff_fns = dir(fullfile(corrected_path, '*.tif'));
+corrected_tiff_fns = dir(fullfile(sorting_path, '*.tif'));
 corrected_tiff_fns = {corrected_tiff_fns(:).name};
-corrected_ch1_path = fullfile(corrected_path, 'Channel01');
+corrected_ch1_path = fullfile(sorting_path, 'Channel01');
 if nchannels == 2
-    corrected_ch2_path = fullfile(corrected_path, 'Channel02');
+    corrected_ch2_path = fullfile(sorting_path, 'Channel02');
 end
 if ~exist(corrected_ch1_path, 'dir')
     mkdir(corrected_ch1_path);
@@ -33,9 +37,9 @@ if ~exist(corrected_ch1_path, 'dir')
 end
 for tiff_idx=1:length(corrected_tiff_fns)
     if strfind(corrected_tiff_fns{tiff_idx}, 'Channel01')
-        movefile(fullfile(corrected_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch1_path, corrected_tiff_fns{tiff_idx}));
+        movefile(fullfile(sorting_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch1_path, corrected_tiff_fns{tiff_idx}));
     else
-        movefile(fullfile(corrected_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch2_path, corrected_tiff_fns{tiff_idx}));
+        movefile(fullfile(sorting_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch2_path, corrected_tiff_fns{tiff_idx}));
     end
 end 
 
@@ -43,12 +47,12 @@ end
 % ---------------------------------------------------------------------
 % If multiple files/runs of a given acqusition (i.e., FOV), separate files:
 files_found = {};
-channel_dirs = dir(corrected_path);
+channel_dirs = dir(sorting_path);
 %csub = [channel_dirs(:).isdir];
 channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1),'.'),channel_dirs));
 channels = {channel_dirs(:).name}';   
 for cidx=1:length(channels)
-    channel_path = fullfile(corrected_path, channels{cidx});
+    channel_path = fullfile(sorting_path, channels{cidx});
     channel_tiffs = dir(fullfile(channel_path, '*.tif'));
     channel_tiffs = {channel_tiffs(:).name}';
     if isempty(channel_tiffs)

@@ -30,7 +30,7 @@ for sidx = 1:length(A.slices)
     
     tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
     tracestruct = load(fullfile(A.trace_dir, tracestruct_name));
-    ntiffs = length(tracestruct);
+    ntiffs = length(tracestruct.file);
     for fidx=1:ntiffs
         meta = metastruct.file(fidx);
 
@@ -90,11 +90,13 @@ for sidx = 1:length(A.slices)
             tracestruct.file(fidx).untrimmedDCs = untrimmedDCs;
             tracestruct.file(fidx).last_frame = last_frame;
         end
-
-        save(fullfile(A.trace_dir, tracestruct_name), '-append', '-struct', 'tracestruct');
-        tracestruct_names{end+1} = tracestruct_name;
-
+        
     end
+    
+    % Save slice ROIs (including all files):
+    save(fullfile(A.trace_dir, tracestruct_name), '-append', '-struct', 'tracestruct');
+    tracestruct_names{end+1} = tracestruct_name;
+
 end
             
 end

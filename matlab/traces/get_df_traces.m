@@ -33,7 +33,7 @@ for sidx = 1:length(A.slices)
         else
             file_dir = sprintf('File%03d', fidx);
         end
-        avg_slice_dir = fullfile(A.tiff_source, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
+        avg_slice_dir = fullfile(A.data_dir, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
         slice_file = slice_files(1).name 

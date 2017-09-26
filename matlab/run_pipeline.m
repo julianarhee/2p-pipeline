@@ -9,22 +9,26 @@ fprintf('Added repo paths.\n');
 
 A.source = '/nas/volume1/2photon/projects/gratings_phaseMod';
 A.session = '20170901_CE054';
-A.base_dir = fullfile(A.source, A.session);
-A.acquisition = 'FOV1_zoom3x/functional_sub';
+A.acquisition = 'FOV1_zoom3x';
+A.functional = 'functional_sub';
 
-A.preprocess = true;
-A.correct_bidi = true;
+A.acquisition_base_dir = fullfile(A.source, A.session, A.acquisition);
+A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
-A.slices = [1:13]
+A.use_bidi_corrected = true;
 A.signal_channel = 1;
 
+
+% TODO:  This (and other) info should just be read from SI TIFFs
+% themselves, instead of user-input. Run meta-data parsing after
+% flyback-correction (py), including SI-meta correction if
+% flyback-correction changes the TIFF volumes.
+A.slices = [1:13];
+A.nchannels = 2;
+
 %% Specify MC param struct path:
-if A.preprocess
-    A.tiff_source = fullfile(A.base_dir, A.acquisition, 'DATA');
-else
-    A.tiff_source = fullfile(A.base_dir, A.acquisition);
-end
-A.mcparams_path = fullfile(A.tiff_source, 'mcparams.mat');
+
+A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');
 
 %% Preprocess data:
 
@@ -32,26 +36,25 @@ A.mcparams_path = fullfile(A.tiff_source, 'mcparams.mat');
 test_preprocessing_steps;
 
 
-%% Specify ROI param struct path:
-A.roi_method = 'pyblob2D';
-A.roi_id = 'blobs_DoG';
-
-pts = strsplit(A.acquisition, '/');
-A.acquisition_base = pts{1}
-A.roiparams_path = fullfile(A.base_dir, A.acquisition_base, 'ROIs', A.roi_id, 'roiparams.mat');
-
-
 %% Save n files:
-if A.correct_bidi
-    base_slice_dir = fullfile(A.tiff_source,'Corrected_Bidi', sprintf('Channel%02d', A.signal_channel))
+if A.use_bidi_corrected
+    base_slice_dir = fullfile(A.data_dir, mcparams.bidi_corrected_dir, sprintf('Channel%02d', A.signal_channel));
 elseif A.corrected && ~A.correct_bidi
-    base_slice_dir = fullfile(A.tiff_source, 'Corrected', sprintf('Channel%02d', A.signal_channel));
+    base_slice_dir = fullfile(A.data_dir, mcparams.corrected_dir, sprintf('Channel%02d', A.signal_channel));
 else
-    base_slice_dir = fullfile(A.tiff_source, 'Parsed', sprintf('Channel%02d', A.signal_channel));
+    base_slice_dir = fullfile(A.data_dir, mcparams.parsed_dir, sprintf('Channel%02d', A.signal_channel));
 end
 file_dirs = dir(fullfile(base_slice_dir, 'File*'));
 file_dirs = {file_dirs(:).name}';
 A.ntiffs = length(file_dirs);
+
+%% Specify ROI param struct path:
+
+A.roi_method = 'pyblob2D';
+A.roi_id = 'blobs_DoG';
+
+A.roiparams_path = fullfile(A.acquisition_base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
+
 
 %% GET ROIS.
 
@@ -59,7 +62,7 @@ A.ntiffs = length(file_dirs);
 %% Specify Traces param struct path:
 
 A.trace_id = 'blobs_DoG';
-A.trace_dir = fullfile(A.base_dir, A.acquisition_base, 'Traces', A.trace_id);
+A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces', A.trace_id);
 if ~exist(A.trace_dir, 'dir')
     mkdir(A.trace_dir)
 end
@@ -70,8 +73,8 @@ extract_traces(A);
 %% GET metadata for SI tiffs:
 
 si = get_scan_info(A)
-save(fullfile(A.tiff_source, 'simeta.mat'), '-struct', 'si');
-A.simeta_path = fullfile(A.tiff_source, 'simeta.mat');
+save(fullfile(A.data_dir, 'simeta.mat'), '-struct', 'si');
+A.simeta_path = fullfile(A.data_dir, 'simeta.mat');
 
 %% Process traces
 

@@ -4,9 +4,16 @@ namingFunction = @defaultNamingFunction;
 write_dir = mcparams.bidi_corrected_dir;
 
 % Load SI meta info (from MC, for now) to get TIFF info:
-tmp_acq_obj = load(mcparams.acq_object_path);
-acq_obj = tmp_acq_obj.(mcparams.acquisition_name);
-clear tmp_acq_obj
+switch mcparams.method
+    case 'Acquisition2P'
+        tmp_acq_obj = load(mcparams.info.acq_object_path);
+        acq_obj = tmp_acq_obj.(mcparams.info.acquisition_name);
+        clear tmp_acq_obj
+    case 'NoRMCorre'
+        % TODO:  do this
+    otherwise
+        % TODO:  need a way to get meta info     
+end
 
 nchannels = mcparams.nchannels;
 nslices = acq_obj.metaDataSI{1}.SI.hFastZ.numFramesPerVolume;
@@ -33,10 +40,10 @@ for tiff_idx = 1:length(tiffs)
 
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
-    if mcparams.processed && ~mcparams.split_channels
+    if mcparams.processed_flyback && ~mcparams.split_channels
         fprintf('Correcting TIFF: %s\n', filename); 
-	fprintf('Grabbing every other channel.\n')
-        for cidx=1:mcparms.nchannels
+        fprintf('Grabbing every other channel.\n')
+        for cidx=1:mcparams.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
             fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
             Y = cell(1, nvolumes);
@@ -62,19 +69,22 @@ for tiff_idx = 1:length(tiffs)
                 frame_idx = ch + (sl-1)*nchannels;
                 
                 % Create movie fileName and save to default format
-                mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
-                try
-                    tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
-                catch
-                    % Sometimes, disk access fails due to intermittent
-                    % network problem. In that case, wait and re-try once:
-                    pause(60);
-                    tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+                % TODO: set this to work with other mc methods....
+                if strcmp(mcparams.method, 'Acquisition2P')
+                    mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
+                    try
+                        tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+                    catch
+                        % Sometimes, disk access fails due to intermittent
+                        % network problem. In that case, wait and re-try once:
+                        pause(60);
+                        tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+                    end
                 end
             end
         end
                 
-    elseif mcparams.processed && mcparams.split_channels
+    elseif mcparams.processed_flyback && mcparams.split_channels
 	fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
         Y = cell(1, nvolumes);
@@ -102,16 +112,20 @@ for tiff_idx = 1:length(tiffs)
             elseif strfind(filename, 'Channel02')
                 ch=2;
             end
-            mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
             
-            try
-                tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
-                tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
-            catch
-                % Sometimes, disk access fails due to intermittent
-                % network problem. In that case, wait and re-try once:
-                pause(60);
-                tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+            % Create movie fileName and save to default format
+            % TODO: set this to work with other mc methods....
+            if strcmp(mcparams.method, 'Acquisition2P')
+                mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
+                try
+                    tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+                    tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+                catch
+                    % Sometimes, disk access fails due to intermittent
+                    % network problem. In that case, wait and re-try once:
+                    pause(60);
+                    tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+                end
             end
             
         end

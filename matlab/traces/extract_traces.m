@@ -10,6 +10,17 @@ function extract_traces(A)
 load(A.mcparams_path);
 load(A.roiparams_path);
 
+% Set path for slice time-series tiffs:
+if A.use_bidi_corrected
+    base_slice_dir = mcparams.bidi_corrected_dir;
+else
+    if mcparams.corrected
+        base_slice_dir = mcparams.corrected_dir;
+    else
+        base_slice_dir = mcparams.parsed_dir;
+    end
+end
+
 switch A.roi_method
     
     case 'pixels'
@@ -28,7 +39,7 @@ switch A.roi_method
              
             % load time-series for current slice:
             for fidx=1:A.ntiffs
-                curr_file_path = fullfile(base_slice_dir, sprintf('File%03d', fidx));
+                curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', A.signal_channel), sprintf('File%03d', fidx));
                 curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.acquisition_name, sl, A.signal_channel, fidx)
                 Y = tiffRead(fullfile(curr_file_path, curr_file));
                 
