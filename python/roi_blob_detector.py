@@ -1,6 +1,15 @@
+#!/usr/bin/env python2
+
+'''
+Given parameters for blurring, thresholding, etc., this script automatically detects blobs. Adapted from the skimage blob detector example code. Outputs figures displaying detected blobs on each slice. Saves parameters and paths to masks to roiparams.mat.
+
+Example:
+
+python roi_blob_detector.py -S /nas/volume1/2photon/projects/gratings_phaseMod -s 20170901_CE054 -A FOV1_zoom3x -f functional_sub -r3 -m3 -M10 -H100 -t.05 -G3
+
+'''
 
 # coding: utf-8
-
 
 # Adapted from the skimage blob detector example code
 import tifffile as tf
@@ -36,16 +45,26 @@ def createCircularMask(h, w, center=None, radius=None):
 
 # get_ipython().magic(u'matplotlib inline')
 parser = optparse.OptionParser()
+
+# PATH options:
 parser.add_option('-S', '--source', action='store', dest='source', default='', help='source dir (parent of slice dir)')
 parser.add_option('-s', '--sess', action='store', dest='sess', default='', help='session name')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help='acquisition folder')
+parser.add_option('-f', '--func', action='store', dest='functional_dir', default='functional', help="folder containing functional tiffs [default: 'functional']")
+
+# ACQUISITION-specific options:
+parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
+parser.add_option('-r', '--reference', action='store', dest='reference', default=1, help='File number to use as refernce [default: 1]')
+parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
+
+# BLOB param options:
 parser.add_option('-M', '--maxsigma', action='store', dest='max_sigma', default=2.0, help='Max val for blob detector [default: 2.0]')
 parser.add_option('-m', '--minsigma', action='store', dest='min_sigma', default=0.2, help='Min val for blob detector [default: 0.2]')
 parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', default=0.005, help='Threshold for blob detector [default: 0.005]')
+
+# IMAGE processing options:
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
-parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
-parser.add_option('-r', '--reference', action='store', dest='reference', default='', help='File number to use as refernce [default: 0]')
-parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
 
 (options, args) = parser.parse_args() 
 
@@ -60,19 +79,24 @@ gaussian_sigma = float(options.gaussian_sigma)
 
 source_dir = options.source
 sess = options.sess
-subdir_str = 'functional/DATA/Averaged_Slices'
-print(options.channel)
-print(type(options.channel))
+acquisition = options.acquisition
+functional_subdir = options.functional_dir
+subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
+
 signal_ch = 'Channel%02d' % int(options.channel)
 file_idx = 'File%03d' % int(options.reference)
 
-#define directories
-slice_directory = os.path.join(source_dir,sess,subdir_str,signal_ch,file_idx)
-log_roi_dir = os.path.join(source_dir,sess,'ROIs/blobs_LoG/')
+print "Specified signal channel is:", signal_ch
+print "Selected reference file:", file_idx
+
+slice_directory = os.path.join(source_dir, sess, acquisition, subdir_str, signal_ch, file_idx)
+
+# Define output directories:
+log_roi_dir = os.path.join(source_dir, sess, acquisition, 'ROIs/blobs_LoG/')
 if not os.path.exists(log_roi_dir):
     os.mkdir(log_roi_dir)
 
-dog_roi_dir = os.path.join(source_dir,sess,'ROIs/blobs_DoG/')
+dog_roi_dir = os.path.join(source_dir, sess, acquisition, 'ROIs/blobs_DoG/')
 if not os.path.exists(dog_roi_dir):
     os.mkdir(dog_roi_dir)
     
@@ -92,8 +116,9 @@ dog_mask_dir = os.path.join(dog_roi_dir,'masks')
 if not os.path.exists(dog_mask_dir):
     os.mkdir(dog_mask_dir)
 
-#save parameter names and values used for ROI creation
-#to a record structure to be saved as a MATLAB structure
+
+# Save parameter names and values used for ROI creation to a record structure 
+# to be saved as a MATLAB structure
 roiparams = dict()
 params_dict = dict()
 params_dict['max_sigma_val'] = max_sigma_val
@@ -179,7 +204,7 @@ for currslice in range(nslices):
     plt.tight_layout()
 
     #write image to file
-    imname = '%s_Slice%02d_%s_%s_ROI.png' % (sess,currslice+1,signal_ch,file_idx)
+    imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (sess,acquisition,currslice+1,signal_ch,file_idx)
     plt.savefig(os.path.join(log_fig_dir, imname))
     plt.savefig(os.path.join(dog_fig_dir, imname))
 
@@ -199,7 +224,7 @@ for currslice in range(nslices):
     #save to structure
     rois['masks']=masks
     #save structure to file, record path in structure
-    mat_filename = '%s_Slice%02d_%s_masks.mat' % (sess,currslice+1,signal_ch)
+    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_ch)
     mat_filepath = os.path.join(log_roi_dir,'masks', mat_filename)
     log_maskpaths[currslice] = mat_filepath
     scipy.io.savemat(mat_filepath, mdict=rois)
@@ -212,7 +237,7 @@ for currslice in range(nslices):
     #save to structure
     rois['masks']=masks
     #save structure to file, record path in structure
-    mat_filename = '%s_Slice%02d_%s_masks.mat' % (sess,currslice+1,signal_ch)
+    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_ch)
     mat_filepath = os.path.join(dog_roi_dir,'masks', mat_filename)
     dog_maskpaths[currslice] = mat_filepath
     scipy.io.savemat(mat_filepath, mdict=rois)
