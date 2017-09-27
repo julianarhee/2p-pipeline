@@ -32,7 +32,7 @@ switch A.roi_method
     case 'pyblob2D'
         % Load roistruct created in roi_blob_detector.py:
         for sidx = 1:length(A.slices)
-           sl = A.slices(sidx);
+            sl = A.slices(sidx);
             load(roiparams.maskpaths{sidx});
             maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
             maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
