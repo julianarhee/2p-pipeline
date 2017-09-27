@@ -9,12 +9,12 @@ fprintf('Added repo paths.\n');
 
 noUI = true;
 
-if noUI:
+if noUI
 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
     experiment = 'gratings_phaseMod';
-    session = '20170825_CE054';
+    session = '20170825_CE055';
     acquisition = 'FOV1_planar';
     tiff_source = 'functional_test';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
