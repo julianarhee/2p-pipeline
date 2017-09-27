@@ -24,13 +24,15 @@ def natural_keys(text):
 
 
 def main(options):
-    raw_simeta_basename = 'scanimage_metadata_raw'
+ 
     parser = optparse.OptionParser()
 
     # PATH opts:
     parser.add_option('-P', '--sipath', action='store', dest='path_to_si_reader', default='~/Downloads/ScanImageTiffReader-1.1-Linux/share/python', help='path to dir containing ScanImageTiffReader.py')
 
-    parser.add_option('-S', '--source', action='store', dest='source', default='', help='source dir (parent of session dir)')
+    parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
+ 
     parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
@@ -40,10 +42,18 @@ def main(options):
     path_to_si_reader = options.path_to_si_reader
 
     source = options.source
+    experiment = options.experiment
     session = options.session
     acquisition = options.acquisition
     functional_dir = options.functional_dir
 
+    # -------------------------------------------------------------
+    # Set basename for files created containing meta/reference info:
+    # -------------------------------------------------------------
+    raw_simeta_basename = 'SI_raw_%s' % functional_dir
+    reference_info_basename = 'reference_%s' % functional_dir
+    # -------------------------------------------------------------
+    # -------------------------------------------------------------
 
     if '~' in path_to_si_reader:
 	path_to_si_reader = path_to_si_reader.replace('~', home)
@@ -51,7 +61,7 @@ def main(options):
     sys.path.append(path_to_si_reader)
     from ScanImageTiffReader import ScanImageTiffReader
 
-    acquisition_dir = os.path.join(source, session, acquisition)
+    acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
     rawtiffs = os.listdir(acquisition_dir)
     rawtiffs = [t for t in rawtiffs if t.endswith('.tif')]
@@ -59,7 +69,10 @@ def main(options):
 
     scanimage_metadata = dict()
     scanimage_metadata['files'] = []
+    scanimage_metadata['session'] = session
     scanimage_metadata['acquisition'] = acquisition
+    scanimage_metadata['experiment'] = experiment 
+
 
     for fidx,rawtiff in enumerate(sorted(rawtiffs, key=natural_keys)):
 	curr_file = 'File{:03d}'.format(fidx+1)
@@ -106,6 +119,7 @@ def main(options):
     # Create REFERENCE info file:
     refinfo = dict()
     refinfo['source'] = source
+    refinfo['experiment'] = experiment
     refinfo['session'] = session
     refinfo['acquisition'] = acquisition
     refinfo['functional'] = functional_dir
@@ -113,11 +127,11 @@ def main(options):
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
 
-    refinfo_json = 'reference.json'
+    refinfo_json = '%s.json' % reference_info_basename
     with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
         json.dump(refinfo, fp, indent=4)
     
-    refinfo_mat = 'reference.mat'
+    refinfo_mat = '%s.mat' % reference_info_basename
     scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
 
 

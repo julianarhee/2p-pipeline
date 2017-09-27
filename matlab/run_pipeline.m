@@ -5,51 +5,79 @@ clc; clear all;
 add_repo_paths
 fprintf('Added repo paths.\n');
 
-%% Create Acquisition Struct:
-% 
-source = '/nas/volume1/2photon/projects/gratings_phaseMod';
-session = '20170901_CE054';
-acquisition = 'FOV1_zoom3x';
-functional = 'functional_sub';
-acquisition_base_dir = fullfile(A.source, A.session, A.acquisition);
+%% Select TIFF dirs for current analysis
+ 
+% source = '/nas/volume1/2photon/projects/gratings_phaseMod';
+% session = '20170901_CE054';
+% acquisition = 'FOV1_zoom3x';
+% functional = 'functional_sub';
+% acquisition_base_dir = fullfile(A.source, A.session, A.acquisition);
 
-A = load(fullfile(acquisition_base_dir, 'reference.mat'));
+default_root = '/nas/volume1/2photon/projects';                            % DIR containing all experimental data
+tiff_dirs = uipickfiles('FilterSpec', default_root);                       % Returns cell-array of full paths to selected folders containing TIFFs to be processed
+
+%% Get PY-created Acquisition Struct. Add paths/params for MAT steps:
+
+% Iterate through selected tiff-folders to build paths:
+% TODO:  do similar selection step for PYTHON (Step1 preprocessing)
+curr_tiff_dir = tiff_dirs{1};
+
+[tiff_parent, tiff_source, ~] = fileparts(curr_tiff_dir);
+[acq_parent, acquisition, ~] = fileparts(tiff_parent);
+[sess_parent, session, ~] = fileparts(acq_parent);
+[source, experiment, ~] = fileparts(sess_parent);
+
+
+% Build acq path and get reference struct:
+% ----------------------------------------
+acquisition_base_dir = fullfile(source, experiment, session, acquisition)
+A = load(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)));
 
 A.acquisition_base_dir = acquisition_base_dir;
 A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
-A.use_bidi_corrected = true;
-A.signal_channel = 1;
+A
+%% Set MC-related params:
+% ----------------------------------------
 
+A.use_bidi_corrected = true;                                               % Use standard-corrected or extra-bidi-corrected files for processing traces/ROIs (must set mcparams.bidi_corrected=true)
+A.signal_channel = 1;                                                      % If multi-channel, Ch index for extracting activity traces
 
-% TODO:  This (and other) info should just be read from SI TIFFs
-% themselves, instead of user-input. Run meta-data parsing after
+A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');                    % Standard path to mcparams struct
+
+% Names = [
+%     'corrected          '       % corrected or raw (T/F)
+%     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
+%     'flyback_corrected  '       % True if did correct_flyback.py 
+%     'ref_channel        '       % Ch to use as reference for correction
+%     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
+%     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
+%     'split_channels     '       % *MC methods should parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
+%     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
+%     ];
+
+mcparams = set_mc_params(...
+    'corrected', 'true',...
+    'method', 'Acquisition2P',...
+    'flyback_corrected', true,...
+    'ref_channel', 1,...
+    'ref_file', 1,...
+    'algorithm', @lucasKanade_plus_nonrigid,...
+    'split_channels', false,...
+    'bidi_corrected', true,...
+    'tiff_dir', A.data_dir);                                                             % Edit this file to populate MC-param fields
+    
+
+save(fullfile(A.data_dir, 'mcparams.mat'), 'mcparams');
+
+% TODO (?):  Run meta-data parsing after
 % flyback-correction (py), including SI-meta correction if
 % flyback-correction changes the TIFF volumes.
-% A.slices = [1:13];
-% A.nchannels = 2;
-
-%% Specify MC param struct path:
-
-A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');
 
 %% Preprocess data:
 
-% do_preprocessing();
-test_preprocessing_steps;
-
-
-%% Save n files:
-if A.use_bidi_corrected
-    base_slice_dir = fullfile(A.data_dir, mcparams.bidi_corrected_dir, sprintf('Channel%02d', A.signal_channel));
-elseif A.corrected && ~A.correct_bidi
-    base_slice_dir = fullfile(A.data_dir, mcparams.corrected_dir, sprintf('Channel%02d', A.signal_channel));
-else
-    base_slice_dir = fullfile(A.data_dir, mcparams.parsed_dir, sprintf('Channel%02d', A.signal_channel));
-end
-file_dirs = dir(fullfile(base_slice_dir, 'File*'));
-file_dirs = {file_dirs(:).name}';
-A.ntiffs = length(file_dirs);
+preprocess_data(mcparams);
+generate_slice_images(mcparams);
 
 %% Specify ROI param struct path:
 
