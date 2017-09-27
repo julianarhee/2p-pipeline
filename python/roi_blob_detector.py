@@ -47,7 +47,9 @@ def createCircularMask(h, w, center=None, radius=None):
 parser = optparse.OptionParser()
 
 # PATH options:
-parser.add_option('-S', '--source', action='store', dest='source', default='', help='source dir (parent of slice dir)')
+
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
 parser.add_option('-s', '--sess', action='store', dest='sess', default='', help='session name')
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help='acquisition folder')
 parser.add_option('-f', '--func', action='store', dest='functional_dir', default='functional', help="folder containing functional tiffs [default: 'functional']")
@@ -77,7 +79,8 @@ hist_kernel = float(options.hist_kernel)
 gaussian_sigma = float(options.gaussian_sigma)
 
 
-source_dir = options.source
+source = options.source
+experiment = options.experiment
 sess = options.sess
 acquisition = options.acquisition
 functional_subdir = options.functional_dir
@@ -89,14 +92,14 @@ file_idx = 'File%03d' % int(options.reference)
 print "Specified signal channel is:", signal_ch
 print "Selected reference file:", file_idx
 
-slice_directory = os.path.join(source_dir, sess, acquisition, subdir_str, signal_ch, file_idx)
+slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_ch, file_idx)
 
 # Define output directories:
-log_roi_dir = os.path.join(source_dir, sess, acquisition, 'ROIs/blobs_LoG/')
+log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs/blobs_LoG/')
 if not os.path.exists(log_roi_dir):
     os.mkdir(log_roi_dir)
 
-dog_roi_dir = os.path.join(source_dir, sess, acquisition, 'ROIs/blobs_DoG/')
+dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs/blobs_DoG/')
 if not os.path.exists(dog_roi_dir):
     os.mkdir(dog_roi_dir)
     
