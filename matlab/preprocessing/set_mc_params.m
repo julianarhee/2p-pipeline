@@ -25,8 +25,9 @@ Names = [
     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
     'split_channels     '       % *MC methods should parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
-    'tiff_dir           '       % Path to folder containing TIFFs to be corrected
+    'tiff_dir           '       % Path to folder containing TIFFs to be corrected (A.data_dir)
     'crossref           '       % True if correcting across experiment-types (but same FOV). (Not fully tested)
+    'nchannels          '       % From ref-struct. useful here, for post-mc-cleanup steps. [default: 1]
     ];
 
 % TODO: * fields indicate potential auto-populated fields based on
@@ -125,6 +126,7 @@ Values = [
     {true}                                      % bidi_corrected
     {''}                                        % tiff_dir
     {false}                                     % crossref
+    {1}                                         % nchannels
     ];
 
 for j = 1:m
