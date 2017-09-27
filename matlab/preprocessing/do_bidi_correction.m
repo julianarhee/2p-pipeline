@@ -49,7 +49,7 @@ for tiff_idx = 1:length(tiffs)
             Y = cell(1, nvolumes);
             firstslice = 1; %startSliceIdx; %1;
             for vol=1:nvolumes
-                Y{vol} = Yt_ch(:,:,firstslice:(firstslice+nRealFrames-1));
+                Y{vol} = Yt_ch(:,:,firstslice:(firstslice+nslices-1));
                 firstslice = firstslice+nslices;
             end
             Y = cat(4, Y{1:end});
