@@ -126,6 +126,7 @@ def main(options):
     specified_nslices =  int(scanimage_metadata[curr_file]['SI']['hStackManager']['numSlices'])
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
+    refinfo['nchannels'] = len([i for i in scanimage_metadata[curr_file]['SI']['hChannels']['channelSave'] if i.isdigit()])
 
     refinfo_json = '%s.json' % reference_info_basename
     with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
