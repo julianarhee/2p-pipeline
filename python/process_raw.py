@@ -24,9 +24,9 @@ import json
 
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
-session = '20170825_CE055' #'20170902_CE054' #'20170825_CE055'
-acquisition = 'FOV1_planar' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = 'functional_test'
+session = '20170927_CE059' #'20170902_CE054' #'20170825_CE055'
+acquisition = 'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
+functional_dir = 'functional'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 # -------------------------------------------------------------
@@ -38,7 +38,9 @@ reference_info_basename = 'reference_%s' % functional_dir
 # -------------------------------------------------------------
 
 
-do_flyback_correction = False #True
+do_flyback_correction = True #True
+flyback = 1       # Num flyback frames at top of stack [default: 8]
+
 
 # ----------------------------------------------------------------------------
 # 1.  Get SI meta data from raw tiffs:
@@ -54,7 +56,7 @@ get_scanimage_data.main(simeta_options)
 # ----------------------------------------------------------------------------
 # Only need to do this if creating substacks due to incorret flyback frames in volumes:
 
-flyback = 2      # Num flyback frames at top of stack [default: 8]
+# flyback = 2      # Num flyback frames at top of stack [default: 8]
 
 # discard = 1      # Num discard frames at end of stack [default: 8]
 # nchannels = 2    # Num interleaved channels in raw tiffs to be processed [default: 2]

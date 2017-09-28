@@ -68,7 +68,7 @@ def main(options):
     print rawtiffs
 
     scanimage_metadata = dict()
-    scanimage_metadata['files'] = []
+    scanimage_metadata['filenames'] = []
     scanimage_metadata['session'] = session
     scanimage_metadata['acquisition'] = acquisition
     scanimage_metadata['experiment'] = experiment 
@@ -76,6 +76,7 @@ def main(options):
 
     for fidx,rawtiff in enumerate(sorted(rawtiffs, key=natural_keys)):
 	curr_file = 'File{:03d}'.format(fidx+1)
+        print "Processing:", curr_file
 	scanimage_metadata[curr_file] = {'SI': None}
 
 	metadata = ScanImageTiffReader(os.path.join(acquisition_dir, rawtiff)).metadata()
@@ -101,7 +102,7 @@ def main(options):
 		else:
 		    t = t.setdefault(part, {})
 	# print SI_struct.keys()
-	scanimage_metadata['files'].append(rawtiff)
+	scanimage_metadata['filenames'].append(rawtiff)
 	scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
 
     # Save dict:
@@ -123,7 +124,7 @@ def main(options):
     refinfo['session'] = session
     refinfo['acquisition'] = acquisition
     refinfo['functional'] = functional_dir
-    specified_nslices =  int(scanimage_metadata[curr_file]['SI']['hStackManager']['numSlices'])
+    specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
     refinfo['nchannels'] = len([i for i in scanimage_metadata[curr_file]['SI']['hChannels']['channelSave'] if i.isdigit()])
