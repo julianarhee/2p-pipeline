@@ -95,13 +95,13 @@ print "Selected reference file:", file_idx
 slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_ch, file_idx)
 
 # Define output directories:
-log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs/blobs_LoG/')
+log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_LoG')
 if not os.path.exists(log_roi_dir):
-    os.mkdir(log_roi_dir)
+    os.makedirs(log_roi_dir)
 
-dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs/blobs_DoG/')
+dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_DoG')
 if not os.path.exists(dog_roi_dir):
-    os.mkdir(dog_roi_dir)
+    os.makedirs(dog_roi_dir)
     
 log_fig_dir = os.path.join(log_roi_dir,'figures')
 if not os.path.exists(log_fig_dir):
