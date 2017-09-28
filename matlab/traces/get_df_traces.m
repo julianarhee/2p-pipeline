@@ -105,12 +105,16 @@ for sidx = 1:length(A.slices)
 
         % ----------------------------------------------------
         
-        
+        tracestruct.file(fidx).df_f = dfMat;
+        tracestruct.file(fidx).active_rois = activeRois;
+        tracestruct.file(fidx).active_thresh = df_min;
+        save(fullfile(A.trace_dir, A.trace_structs{sidx}), '-struct', 'tracestruct', '-append');
+
         DF.slice(sl).file(fidx).meanMap = meanMap;
         DF.slice(sl).file(fidx).maxMap = maxMap;
-        DF.slice(sl).file(fidx).dfMat = dfMat;
+        %DF.slice(sl).file(fidx).dfMat = dfMat;
         DF.slice(sl).file(fidx).activeRois = activeRois;
-        DF.slice(sl).file(fidx).df_min = df_min;
+        %DF.slice(sl).file(fidx).df_min = df_min;
         DF.slice(sl).file(fidx).maxDfs = maxDfs;
         
     end
