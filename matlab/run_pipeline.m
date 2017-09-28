@@ -8,15 +8,17 @@ fprintf('Added repo paths.\n');
 %% Select TIFF dirs for current analysis
 
 noUI = true;
+get_rois_and_traces = false;
+do_preprocessing = true;
 
 if noUI
 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
     experiment = 'gratings_phaseMod';
-    session = '20170825_CE055';
-    acquisition = 'FOV1_planar';
-    tiff_source = 'functional_test';
+    session = '20170927_CE059';
+    acquisition = 'FOV1_zoom3x';
+    tiff_source = 'functional';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
 else
@@ -44,110 +46,116 @@ end
 % ----------------------------------------
 acquisition_base_dir = fullfile(source, experiment, session, acquisition)
 A = load(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)));
-
-A.acquisition_base_dir = acquisition_base_dir;
-A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
-
 A
-%% Set MC-related params:
-% ----------------------------------------
 
-A.use_bidi_corrected = true;                                               % Use standard-corrected or extra-bidi-corrected files for processing traces/ROIs (must set mcparams.bidi_corrected=true)
-A.signal_channel = 1;                                                      % If multi-channel, Ch index for extracting activity traces
+if do_preprocessing
+    A.acquisition_base_dir = acquisition_base_dir;
+    A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
-A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');                    % Standard path to mcparams struct
+    A
+    %% Set MC-related params:
+    % ----------------------------------------
 
-% Names = [
-%     'corrected          '       % corrected or raw (T/F)
-%     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
-%     'flyback_corrected  '       % True if did correct_flyback.py 
-%     'ref_channel        '       % Ch to use as reference for correction
-%     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
-%     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
-%     'split_channels     '       % *MC methods should parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
-%     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
-%     ];
+    A.use_bidi_corrected = true;                                               % Use standard-corrected or extra-bidi-corrected files for processing traces/ROIs (must set mcparams.bidi_corrected=true)
+    A.signal_channel = 1;                                                      % If multi-channel, Ch index for extracting activity traces
 
-mcparams = set_mc_params(...
-    'corrected', 'true',...
-    'method', 'Acquisition2P',...
-    'flyback_corrected', true,...
-    'ref_channel', 1,...
-    'ref_file', 1,...
-    'algorithm', @lucasKanade_plus_nonrigid,...
-    'split_channels', false,...
-    'bidi_corrected', true,...
-    'tiff_dir', A.data_dir,...
-    'nchannels', A.nchannels);                                                             % Edit this file to populate MC-param fields
-    
+    A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');                    % Standard path to mcparams struct
 
-save(fullfile(A.data_dir, 'mcparams.mat'), 'mcparams');
+    % Names = [
+    %     'corrected          '       % corrected or raw (T/F)
+    %     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
+    %     'flyback_corrected  '       % True if did correct_flyback.py 
+    %     'ref_channel        '       % Ch to use as reference for correction
+    %     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
+    %     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
+    %     'split_channels     '       % *MC methods should parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
+    %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
+    %     ];
 
-% TODO (?):  Run meta-data parsing after
-% flyback-correction (py), including SI-meta correction if
-% flyback-correction changes the TIFF volumes.
+    mcparams = set_mc_params(...
+        'corrected', 'true',...
+        'method', 'Acquisition2P',...
+        'flyback_corrected', true,...
+        'ref_channel', 1,...
+        'ref_file', 6,...
+        'algorithm', @lucasKanade_plus_nonrigid,...
+        'split_channels', false,...
+        'bidi_corrected', true,...
+        'tiff_dir', A.data_dir,...
+        'nchannels', A.nchannels);                                                             % Edit this file to populate MC-param fields
+        
 
-%% Preprocess data:
+    save(fullfile(A.data_dir, 'mcparams.mat'), 'mcparams');
 
-preprocess_data(mcparams);
-load(A.mcparams_path) % Load mcparams again to get updated struct info
-generate_slice_images(mcparams);
+    % TODO (?):  Run meta-data parsing after
+    % flyback-correction (py), including SI-meta correction if
+    % flyback-correction changes the TIFF volumes.
 
+    %% Preprocess data:
 
-fprintf('Finished preprocessing data.\n');
-fprintf('MC params saved:\n');
-mcparams
-
-%% Specify ROI param struct path:
-
-A.roi_method = 'pyblob2D';
-A.roi_id = 'blobs_DoG';
-
-A.roiparams_path = fullfile(A.acquisition_base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
-
-%% GET ROIS.
+    preprocess_data(mcparams);
+    load(A.mcparams_path) % Load mcparams again to get updated struct info
+    generate_slice_images(mcparams);
 
 
-%% Specify Traces param struct path:
+    fprintf('Finished preprocessing data.\n');
+    fprintf('MC params saved:\n');
+    mcparams
 
-A.trace_id = 'blobs_DoG';
-A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces', A.trace_id);
-if ~exist(A.trace_dir, 'dir')
-    mkdir(A.trace_dir)
+    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
 end
 
-%% Get traces
-extract_traces(A);
-fprintf('Extracted raw traces.\n')
 
-%% GET metadata for SI tiffs:
+%% Specify ROI param struct path:
+if get_rois_and_traces
+    A.roi_method = 'pyblob2D';
+    A.roi_id = 'blobs_DoG';
 
-si = get_scan_info(A)
-save(fullfile(A.data_dir, 'simeta.mat'), '-struct', 'si');
-A.simeta_path = fullfile(A.data_dir, 'simeta.mat');
+    A.roiparams_path = fullfile(A.acquisition_base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
 
-%% Process traces
+    %% GET ROIS.
 
-% For retino-movie:
-% targetFreq = meta.file(1).mw.targetFreq;
-% winUnit = (1/targetFreq);
-% crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
-% nWinUnits = 3;
 
-% For PSTH:
-win_unit = 3; 
-num_units = 3;
+    %% Specify Traces param struct path:
 
-tracestruct_names = get_processed_traces(A, win_unit, num_units);
-A.trace_structs = tracestruct_names;
+    A.trace_id = 'blobs_DoG';
+    A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces', A.trace_id);
+    if ~exist(A.trace_dir, 'dir')
+        mkdir(A.trace_dir)
+    end
 
-fprintf('Done processing Traces!\n');
+    %% Get traces
+    extract_traces(A);
+    fprintf('Extracted raw traces.\n')
 
-%% Get df/f for full movie:
+    %% GET metadata for SI tiffs:
 
-df_min = 20;
+    si = get_scan_info(A)
+    save(fullfile(A.data_dir, 'simeta.mat'), '-struct', 'si');
+    A.simeta_path = fullfile(A.data_dir, 'simeta.mat');
 
-get_df_traces(A, df_min);
+    %% Process traces
 
-save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
+    % For retino-movie:
+    % targetFreq = meta.file(1).mw.targetFreq;
+    % winUnit = (1/targetFreq);
+    % crop = meta.file(1).mw.nTrueFrames; %round((1/targetFreq)*ncycles*Fs);
+    % nWinUnits = 3;
 
+    % For PSTH:
+    win_unit = 3; 
+    num_units = 3;
+
+    tracestruct_names = get_processed_traces(A, win_unit, num_units);
+    A.trace_structs = tracestruct_names;
+
+    fprintf('Done processing Traces!\n');
+
+    %% Get df/f for full movie:
+
+    df_min = 20;
+
+    get_df_traces(A, df_min);
+
+    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
+end
