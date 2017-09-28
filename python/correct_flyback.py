@@ -196,12 +196,13 @@ def main(options):
         
       
         # Rewrite reference info, if need to: 
+        refinfo_json = "%s.json" % refinfo_basename
         if correct_flyback:    
 	    with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
 		refinfo = json.load(fr)
 	    print "Changing REF info:" 
-            print "Orig N slices: %i", len(refinfo['slices'])
-            print "New N slices with correction: %i", len(range(1, nslices_crop+1))  
+            print "Orig N slices:", nslices_orig
+            print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
             refinfo['slices'] = range(1, nslices_crop+1)
             refinfo['ntiffs'] = len(tiffs) 
 
