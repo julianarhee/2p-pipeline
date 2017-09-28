@@ -63,7 +63,7 @@ def main(options):
 
     acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
-    rawtiffs = os.listdir(acquisition_dir)
+    rawtiffs = os.listdir(os.path.join(acquisition_dir, functional_dir))
     rawtiffs = [t for t in rawtiffs if t.endswith('.tif')]
     print rawtiffs
 
@@ -75,11 +75,13 @@ def main(options):
 
 
     for fidx,rawtiff in enumerate(sorted(rawtiffs, key=natural_keys)):
-	curr_file = 'File{:03d}'.format(fidx+1)
+	
+        curr_file = 'File{:03d}'.format(fidx+1)
         print "Processing:", curr_file
+
 	scanimage_metadata[curr_file] = {'SI': None}
 
-	metadata = ScanImageTiffReader(os.path.join(acquisition_dir, rawtiff)).metadata()
+	metadata = ScanImageTiffReader(os.path.join(acquisition_dir, functional_dir, rawtiff)).metadata()
 	meta = metadata.splitlines()
 
 	# descs = ScanImageTiffReader(os.path.join(acquisition_dir, rawtiff)).descriptions()
@@ -127,7 +129,7 @@ def main(options):
     specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
-    refinfo['nchannels'] = len([i for i in scanimage_metadata[curr_file]['SI']['hChannels']['channelSave'] if i.isdigit()])
+    refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave'] if i.isdigit()])
 
     refinfo_json = '%s.json' % reference_info_basename
     with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
