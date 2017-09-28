@@ -29,7 +29,7 @@ else
 
 end
     
-    %% Get PY-created Acquisition Struct. Add paths/params for MAT steps:
+%% Get PY-created Acquisition Struct. Add paths/params for MAT steps:
 
 % Iterate through selected tiff-folders to build paths:
 % TODO:  do similar selection step for PYTHON (Step1 preprocessing)
@@ -90,9 +90,10 @@ save(fullfile(A.data_dir, 'mcparams.mat'), 'mcparams');
 %% Preprocess data:
 
 preprocess_data(mcparams);
+load(A.mcparams_path) % Load mcparams again to get updated struct info
 generate_slice_images(mcparams);
 
-load(A.mcparams_path);
+
 fprintf('Finished preprocessing data.\n');
 fprintf('MC params saved:\n');
 mcparams
@@ -117,6 +118,7 @@ end
 
 %% Get traces
 extract_traces(A);
+fprintf('Extracted raw traces.\n')
 
 %% GET metadata for SI tiffs:
 
@@ -147,5 +149,5 @@ df_min = 20;
 
 get_df_traces(A, df_min);
 
-
+save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
 

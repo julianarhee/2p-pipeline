@@ -4,7 +4,7 @@ function simeta = get_scan_info(A)
         load(A.mcparams_path);
  
         tiff_source = mcparams.tiff_dir;
-        acquisition_name = mcparams.acquisition_name;
+        acquisition_name = mcparams.info.acquisition_name; % TODO: again, make sure this isn't specific to mcparms.method
         simeta = struct();
         
         metadata_fn = sprintf('%s.mat', acquisition_name)

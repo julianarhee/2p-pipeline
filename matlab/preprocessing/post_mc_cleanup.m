@@ -9,7 +9,7 @@ end
 
 % Sort Parsed files into separate directories if needed:
 if bidi
-    tmpchannels = dir(fullfilfe(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
+    tmpchannels = dir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
 else
     tmpchannels = dir(fullfile(mcparams.tiff_dir, mcparams.corrected_dir));
 end

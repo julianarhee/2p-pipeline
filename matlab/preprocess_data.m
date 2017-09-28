@@ -26,7 +26,7 @@ if mcparams.corrected
     end
     
     % Run specified MC and store method-specific info:
-    mcparams.info = do_motion_correction(mcparams);
+    mcparams.info = do_motion_correction(mcparams)
 
 else
     

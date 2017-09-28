@@ -1,7 +1,7 @@
 function do_bidi_correction(mcparams)
 
 namingFunction = @defaultNamingFunction;
-write_dir = mcparams.bidi_corrected_dir;
+write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 
 % Load SI meta info (from MC, for now) to get TIFF info:
 switch mcparams.method
@@ -33,7 +33,8 @@ for tiff_idx = 1:length(tiffs)
     [source, filename, ext] = fileparts(tpath);
 
     tic; Yt = read_file(tpath); toc; % is this faster
-
+    [d1,d2,d3] = size(Yt);
+    fprintf('Size slice t-series tiff: %s\n', mat2str(size(Yt)))
     fi = strfind(filename, 'File');
     fid = str2num(filename(fi+6));
 
@@ -41,6 +42,7 @@ for tiff_idx = 1:length(tiffs)
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
     if mcparams.flyback_corrected && ~mcparams.split_channels
+        newtiff = zeros(d1,d2,nslices*nchannels*nvolumes);
         fprintf('Correcting TIFF: %s\n', filename); 
         fprintf('Grabbing every other channel.\n')
         for cidx=1:mcparams.nchannels
@@ -57,7 +59,7 @@ for tiff_idx = 1:length(tiffs)
             Y = Y -  min(Y(:));                         % make data non-negative
             fprintf('Correcting bidirectional scanning offset.\n');
             Y = correct_bidirectional_phasing(Y);
-            newtiff(:,:,cidx:mcparams.nchannels:end) = Y;
+            newtiff(:,:,cidx:nchannels:end) = Y;
             clearvars Y Yt_ch
         end
         tiffWrite(newtiff, strcat(filename, '.tif'), source)
@@ -71,7 +73,7 @@ for tiff_idx = 1:length(tiffs)
                 % Create movie fileName and save to default format
                 % TODO: set this to work with other mc methods....
                 if strcmp(mcparams.method, 'Acquisition2P')
-                    mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
+                    mov_filename = feval(namingFunction,mcparams.info.acquisition_name, sl, ch, fid);
                     try
                         tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
                     catch
@@ -116,7 +118,7 @@ for tiff_idx = 1:length(tiffs)
             % Create movie fileName and save to default format
             % TODO: set this to work with other mc methods....
             if strcmp(mcparams.method, 'Acquisition2P')
-                mov_filename = feval(namingFunction,mcparams.acquisition_name, sl, ch, fid);
+                mov_filename = feval(namingFunction,mcparams.info.acquisition_name, sl, ch, fid);
                 try
                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);

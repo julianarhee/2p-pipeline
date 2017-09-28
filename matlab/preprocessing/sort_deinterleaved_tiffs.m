@@ -7,7 +7,7 @@ if ~bidi
         sorting_path = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
     end
 else
-    if mcparams.correct_bidi
+    if mcparams.bidi_corrected
         sorting_path = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
     end
 end
@@ -85,7 +85,7 @@ for cidx=1:length(channels)
             end
         end
         nfiles = unique([files_found{:}]);
-        if length(nfiles) > 1
+        if length(nfiles) >= 1
             for fidx=1:length(nfiles)
                 %corrected_file_path = sprintf('%s_Channel%02d_File%03d', tiff_dir, cidx, fidx);
                 corrected_file_path = sprintf('File%03d', fidx);
