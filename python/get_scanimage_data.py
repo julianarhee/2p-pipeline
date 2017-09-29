@@ -130,6 +130,10 @@ def main(options):
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
     refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave'] if i.isdigit()])
+    refinfo['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
+    refinfo['lines_per_frame'] = int(scanimage_metadata['File0001']['SI']['linesPerFrame'])
+    refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['pixelsPerLine'])
+
 
     refinfo_json = '%s.json' % reference_info_basename
     with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
