@@ -53,8 +53,8 @@ fprintf('Completed motion-correction!\n');
 
 % TODO:  recreate too-big-TIFF error to make a try-catch statement that
 % re-interleaves by default, and otherwise splits the channels if too large
-
-reinterleave_parsed_tiffs(mcparams);
+deinterleaved_tiff_dir = fullfile(A.data_dir, mcparams.corrected_dir);
+reinterleave_parsed_tiffs(A, deinterleaved_tiff_dir, mcparams);
 
 post_mc_cleanup(mcparams);
 
@@ -73,14 +73,15 @@ if mcparams.bidi_corrected
     if ~exist(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir), 'dir')
         mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
     end
+
+    do_bidi_correction(mcparams);
+    fprintf('Finished bidi-correction.\n');
+
+    % Sort Parsed files into separate directories if needed: 
+    post_mc_cleanup(mcparams, mcparams.bidi_corrected); 
+    fprintf('Finished sorting parsed TIFFs.\n')        
 end
 
-do_bidi_correction(mcparams);
-fprintf('Finished bidi-correction.\n');
-
-% Sort Parsed files into separate directories if needed: 
-post_mc_cleanup(mcparams, mcparams.bidi_corrected); 
-fprintf('Finished sorting parsed TIFFs.\n')        
 save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
 
 
