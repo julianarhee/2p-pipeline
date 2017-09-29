@@ -26,7 +26,7 @@ source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
 session = '20170927_CE059' #'20170902_CE054' #'20170825_CE055'
 acquisition = 'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = 'functional'
+functional_dir = 'functional_subset'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 # -------------------------------------------------------------
