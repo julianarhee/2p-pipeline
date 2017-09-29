@@ -57,10 +57,10 @@ for acquisition_idx = 14:14 %1:length(acquisitions)
         end
         average_stack_fn = sprintf('avg_%s_sub%i_%i.tif', subvolumes{subvolume_idx}, start_slice, nslices);
         try
-            tiffWrite(average_stack, average_stack_fn, avgerage_stack_dir);
+            tiffWrite(average_stack, average_stack_fn, avgerage_stack_dir, 'int16');
         catch
             pause(60);
-            tiffWrite(average_stack, average_stack_fn, avgerage_stack_dir) %, 'int16');
+            tiffWrite(average_stack, average_stack_fn, avgerage_stack_dir, 'int16');
         end
             
     end

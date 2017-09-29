@@ -1,6 +1,10 @@
-function deinterleave_tiffs(newtiff, filename, acquisition_name, nslices, nchannels, fid,  write_dir)
+function deinterleave_tiffs(newtiff, filename, fid, write_dir, A)
 
 namingFunction = @defaultNamingFunction;
+
+acquisition_name = A.acquisition;
+nslices = length(A.slices);
+nchannels = A.nchannels'
 
 fprintf('Saving deinterleaved slices to:\n%s\n', write_dir);
 for sl = 1:nslices
@@ -24,13 +28,12 @@ for sl = 1:nslices
         % TODO: set this to work with other mc methods....
         mov_filename = feval(namingFunction,acquisition_name, sl, ch, fid);
         try
-            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
-            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         catch
             % Sometimes, disk access fails due to intermittent
             % network problem. In that case, wait and re-try once:
             pause(60);
-            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         end
         
     else
@@ -40,14 +43,14 @@ for sl = 1:nslices
             
             % Create movie fileName and save to default format
             % TODO: set this to work with other mc methods....
-            mov_filename = feval(namingFunction,acquisition_name, sl, ch, fid);
+            mov_filename = feval(namingFunction, acquisition_name, sl, ch, fid);
             try
-                tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+                tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir, 'int16');
             catch
                 % Sometimes, disk access fails due to intermittent
                 % network problem. In that case, wait and re-try once:
                 pause(60);
-                tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+                tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir, 'int16');
             end
         end
     end

@@ -18,7 +18,7 @@ if noUI
     experiment = 'gratings_phaseMod';
     session = '20170927_CE059';
     acquisition = 'FOV1_zoom3x';
-    tiff_source = 'functional';
+    tiff_source = 'functional_subset';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
 else
@@ -45,21 +45,17 @@ end
 % Build acq path and get reference struct:
 % ----------------------------------------
 acquisition_base_dir = fullfile(source, experiment, session, acquisition)
-A = load(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)));
-A
+path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
+A = load(path_to_reference);
 
 if do_preprocessing
     A.acquisition_base_dir = acquisition_base_dir;
     A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
-    A
-    %% Set MC-related params:
-    % ----------------------------------------
-
-    A.use_bidi_corrected = true;                                               % Use standard-corrected or extra-bidi-corrected files for processing traces/ROIs (must set mcparams.bidi_corrected=true)
-    A.signal_channel = 1;                                                      % If multi-channel, Ch index for extracting activity traces
-
-    A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');                    % Standard path to mcparams struct
+    %% SET PARAMS FOR PREPROCESSING:
+    % -----------------------------------------------------------------------------------------
+    A.use_bidi_corrected = false;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+    A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
 
     % Names = [
     %     'corrected          '       % corrected or raw (T/F)
@@ -68,7 +64,7 @@ if do_preprocessing
     %     'ref_channel        '       % Ch to use as reference for correction
     %     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
     %     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
-    %     'split_channels     '       % *MC methods should parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
+    %     'split_channels     '       % *MC methods parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
     %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
     %     ];
 
@@ -77,32 +73,48 @@ if do_preprocessing
         'method', 'Acquisition2P',...
         'flyback_corrected', true,...
         'ref_channel', 1,...
-        'ref_file', 6,...
+        'ref_file', 3,...
         'algorithm', @lucasKanade_plus_nonrigid,...
         'split_channels', false,...
-        'bidi_corrected', true,...
+        'bidi_corrected', false,...
         'tiff_dir', A.data_dir,...
-        'nchannels', A.nchannels);                                                             % Edit this file to populate MC-param fields
-        
-
-    save(fullfile(A.data_dir, 'mcparams.mat'), 'mcparams');
+        'nchannels', A.nchannels);              
+    % ----------------------------------------------------------------------------------
+ 
+    A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
+    save(A.mcparams_path, 'mcparams');
+    save(path_to_reference, '-struct', 'A', '-append');
 
     % TODO (?):  Run meta-data parsing after
     % flyback-correction (py), including SI-meta correction if
     % flyback-correction changes the TIFF volumes.
 
-    %% Preprocess data:
+    %% DO PREPROCESSING:
+    % ----------------------------------------------------------------------------------
 
-    preprocess_data(mcparams);
-    load(A.mcparams_path) % Load mcparams again to get updated struct info
-    generate_slice_images(mcparams);
-
+    % Do motion-correction and create slice time-series
+    mcparams = preprocess_data(mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
+    
+    % Create averaged slices from desired source: 
+    if A.corrected
+        if A.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
+            source_to_average = mcparams.bidi_corrected_dir;
+        else
+            source_to_average = mcparams.corrected_dir;
+        end
+    else
+        source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
+    end
+    source_tiff_base_path = fullfile(mcparams.tiff_dir, source_to_average);
+    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', source_to_average));
+    mcparams.averaged_slices_dir = dest_tiff_basepath;
+    save(A.mcparams_path, 'mcparams', '-append');
+ 
+    create_avearged_slices(source_tiff_basepath, dest_tiff_basepath, A);
+    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
 
     fprintf('Finished preprocessing data.\n');
-    fprintf('MC params saved:\n');
-    mcparams
 
-    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
 end
 
 

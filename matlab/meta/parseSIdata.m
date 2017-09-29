@@ -190,14 +190,12 @@ for movNum = movieOrder
                 % Write corrected movie to disk
                 fprintf('Writing Movie #%03.0f of #%03.0f\n',movNum,nMovies),
                 try
-                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
-                    %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
+                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'int16');
                 catch
                     % Sometimes, disk access fails due to intermittent
                     % network problem. In that case, wait and re-try once:
                     pause(60);
-                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir) %, 'int16');
-                    %tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'uint16');
+                    tiffWrite(movStruct.slice(nSlice).channel(nChannel).mov, movFileName, writeDir, 'int16');
                 end
             end
         end

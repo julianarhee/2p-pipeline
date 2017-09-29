@@ -41,6 +41,15 @@ else
     
     % Store empty method-specific info struct:
     mcparams.info = struct();
+
+    % Parse TIFFs in ./functional/DATA (may be copies of raw tiffs, or flyback-corrected tiffs).
+    tiffs_to_parse = dir(fullfile(A.data_dir, '*.tif'));
+    tiffs_to_parse = {tiffs_to_parse(:).name}';
+    deinterleaved_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir); 
+    for fid=1:length(tiffs_to_parse)
+        Y = read_file(fullfile(A.data_dir, tiffs_to_parse{fid}));
+        deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
+    end
 end
 
 save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
@@ -53,10 +62,12 @@ fprintf('Completed motion-correction!\n');
 
 % TODO:  recreate too-big-TIFF error to make a try-catch statement that
 % re-interleaves by default, and otherwise splits the channels if too large
-deinterleaved_tiff_dir = fullfile(A.data_dir, mcparams.corrected_dir);
-reinterleave_parsed_tiffs(A, deinterleaved_tiff_dir, mcparams);
 
-post_mc_cleanup(mcparams);
+deinterleaved_tiff_dir = fullfile(A.data_dir, mcparams.corrected_dir);
+reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, mcparams.split_channels);
+
+path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+post_mc_cleanup(path_to_cleanup, A);
 
 % -------------------------------------------------------------------------
 % 3.  Do additional bidi correction (optional):
@@ -74,12 +85,13 @@ if mcparams.bidi_corrected
         mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
     end
 
-    do_bidi_correction(mcparams);
+    do_bidi_correction(A, mcparams);
     fprintf('Finished bidi-correction.\n');
 
     % Sort Parsed files into separate directories if needed: 
-    post_mc_cleanup(mcparams, mcparams.bidi_corrected); 
-    fprintf('Finished sorting parsed TIFFs.\n')        
+    path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+    post_mc_cleanup(path_to_cleanup, A); 
+            
 end
 
 save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');

@@ -1,17 +1,7 @@
-function sort_deinterleaved_tiffs(mcparams, bidi)
+function sort_deinterleaved_tiffs(path_to_sort, A)
 
-if ~bidi 
-    if mcparams.corrected
-        sorting_path = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
-    else
-        sorting_path = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
-    end
-else
-    if mcparams.bidi_corrected
-        sorting_path = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
-    end
-end
-nchannels = mcparams.nchannels;
+nchannels = A.nchannels;
+acquisition_name = A.acquisition;
 
 if ~exist('namingFunction', 'var')
     namingFunction = @defaultNamingFunction;
@@ -23,11 +13,11 @@ end
 
 fprintf('Moving files...\n');
 
-corrected_tiff_fns = dir(fullfile(sorting_path, '*.tif'));
+corrected_tiff_fns = dir(fullfile(path_to_sort, '*.tif'));
 corrected_tiff_fns = {corrected_tiff_fns(:).name};
-corrected_ch1_path = fullfile(sorting_path, 'Channel01');
+corrected_ch1_path = fullfile(path_to_sort, 'Channel01');
 if nchannels == 2
-    corrected_ch2_path = fullfile(sorting_path, 'Channel02');
+    corrected_ch2_path = fullfile(path_to_sort, 'Channel02');
 end
 if ~exist(corrected_ch1_path, 'dir')
     mkdir(corrected_ch1_path);
@@ -37,9 +27,9 @@ if ~exist(corrected_ch1_path, 'dir')
 end
 for tiff_idx=1:length(corrected_tiff_fns)
     if strfind(corrected_tiff_fns{tiff_idx}, 'Channel01')
-        movefile(fullfile(sorting_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch1_path, corrected_tiff_fns{tiff_idx}));
+        movefile(fullfile(path_to_sort, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch1_path, corrected_tiff_fns{tiff_idx}));
     else
-        movefile(fullfile(sorting_path, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch2_path, corrected_tiff_fns{tiff_idx}));
+        movefile(fullfile(path_to_sort, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch2_path, corrected_tiff_fns{tiff_idx}));
     end
 end 
 
@@ -47,30 +37,30 @@ end
 % ---------------------------------------------------------------------
 % If multiple files/runs of a given acqusition (i.e., FOV), separate files:
 files_found = {};
-channel_dirs = dir(sorting_path);
+channel_dirs = dir(path_to_sort);
 %csub = [channel_dirs(:).isdir];
 channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1),'.'),channel_dirs));
 channels = {channel_dirs(:).name}';   
 for cidx=1:length(channels)
-    channel_path = fullfile(sorting_path, channels{cidx});
+    channel_path = fullfile(path_to_sort, channels{cidx});
     channel_tiffs = dir(fullfile(channel_path, '*.tif'));
     channel_tiffs = {channel_tiffs(:).name}';
     if isempty(channel_tiffs)
         % check naming:
         file_paths = dir(fullfile(channel_path, 'File*'));
         file_paths = {file_paths(:).name}';
-        for fpath = 1:length(file_paths)
-            tiffs = dir(fullfile(channel_path, file_paths{fpath}, '*.tif'));
+        for fi = 1:length(file_paths)
+            tiffs = dir(fullfile(channel_path, file_paths{fi}, '*.tif'));
             tiffs = {tiffs(:).name}';
-            if isempty(strfind(tiffs{1}, sprintf('File%03d', fpath)))
+            if isempty(strfind(tiffs{1}, sprintf('File%03d', fi)))
                 % Rename files:
                 for tidx=1:length(tiffs)
-                    % Fiji-split:
+                    % Fiji-split: only need to check naming if did deinterleaving in Fiji (i.e., naming scheme is split with spaces)
                     splits = regexp(tiffs{tidx}, '\s', 'split');
-                    nChannel = str2double(splits{2}(regexp(splits{2}, '\d')));
-                    nSlice = str2double(splits{3}(regexp(splits{3}, '\d')));
-                    new_file_name = feval(namingFunction, mcparams.acquisition_name, nSlice, nChannel, fpath);
-                    movefile(fullfile(channel_path, file_paths{fpath}, tiffs{tidx}), fullfile(channel_path, file_paths{fpath}, new_file_name));
+                    ch_num = str2double(splits{2}(regexp(splits{2}, '\d')));
+                    sl_num = str2double(splits{3}(regexp(splits{3}, '\d')));
+                    new_file_name = feval(namingFunction, acquisition_name, sl_num, ch_num, fi);
+                    movefile(fullfile(channel_path, file_paths{fi}, tiffs{tidx}), fullfile(channel_path, file_paths{fi}, new_file_name));
                 end
             end
         end

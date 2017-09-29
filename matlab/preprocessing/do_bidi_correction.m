@@ -1,26 +1,12 @@
-function do_bidi_correction(mcparams)
+function do_bidi_correction(A, mcparams)
 
 namingFunction = @defaultNamingFunction;
 write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 
-% Load SI meta info (from MC, for now) to get TIFF info:
-switch mcparams.method
-    case 'Acquisition2P'
-        tmp_acq_obj = load(mcparams.info.acq_object_path);
-        acq_obj = tmp_acq_obj.(mcparams.info.acquisition_name);
-        clear tmp_acq_obj
-    case 'NoRMCorre'
-        % TODO:  do this
-    otherwise
-        % TODO:  need a way to get meta info     
-end
-
-% TODO:  replace acq_obj-specific stuff with SI meta struct for processed tiffs:
-
-nchannels = mcparams.nchannels;
-nslices = acq_obj.metaDataSI{1}.SI.hFastZ.numFramesPerVolume;
-nvolumes = acq_obj.metaDataSI{1}.SI.hFastZ.numVolumes;
-
+nchannels = A.nchannels;
+nslices = length(A.slices);
+nvolumes = A.nvolumes;
+ 
 % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
 tiffs = dir(fullfile(mcparams.tiff_dir, '*.tif'));
 fprintf('Doing bidi-correction on TIFFs in dir: %s', mcparams.tiff_dir);
@@ -50,7 +36,7 @@ for tiff_idx = 1:length(tiffs)
         for cidx=1:mcparams.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
             fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
-            Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices, nvolumes); 
+            Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices, nvolumes]); 
 %             Y = cell(1, nvolumes);
 %             firstslice = 1; %startSliceIdx; %1;
 %             for vol=1:nvolumes
@@ -67,10 +53,10 @@ for tiff_idx = 1:length(tiffs)
             newtiff(:,:,cidx:nchannels:end) = Y;
             clearvars Y Yt_ch
         end
-        tiffWrite(newtiff, strcat(filename, '.tif'), source)
+        tiffWrite(newtiff, strcat(filename, '.tif'), source, 'int16')
         
         % Also save deinterleaved:
-        deinterleave_tiffs(newtiff, filename, mcparams.info.acquisition_name, nslices, nchannels, fid, write_dir);
+        deinterleave_tiffs(newtiff, filename, fid, write_dir, A);
 
 %         fprintf('Saving deinterleaved slices to:\n%s\n', write_dir);
 %         for sl = 1:nslices
@@ -82,12 +68,12 @@ for tiff_idx = 1:length(tiffs)
 %                 if strcmp(mcparams.method, 'Acquisition2P')
 %                     mov_filename = feval(namingFunction,mcparams.info.acquisition_name, sl, ch, fid);
 %                     try
-%                         tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+%                         tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir, 'int16');
 %                     catch
 %                         % Sometimes, disk access fails due to intermittent
 %                         % network problem. In that case, wait and re-try once:
 %                         pause(60);
-%                         tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir);
+%                         tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir, 'int16');
 %                     end
 %                 end
 %             end
@@ -96,7 +82,7 @@ for tiff_idx = 1:length(tiffs)
     elseif mcparams.flyback_corrected && mcparams.split_channels
 	fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
-        Y = reshape(Yt, [size(Yt,1), size(Yt,2), nslices, nvolumes); 
+        Y = reshape(Yt, [size(Yt,1), size(Yt,2), nslices, nvolumes]); 
 
 %         Y = cell(1, nvolumes);
 %         firstslice = 1; %startSliceIdx; %1;
@@ -110,10 +96,10 @@ for tiff_idx = 1:length(tiffs)
         Y = Y -  min(Y(:));                         % make data non-negative
         fprintf('Correcting bidirectional scanning offset.\n');
         Y = correct_bidirectional_phasing(Y);
-        tiffWrite(Y, strcat(filename, '.tif'), source)
+        tiffWrite(Y, strcat(filename, '.tif'), source, 'int16')
         
         % Also save deinterleaved:
-        deinterleave_tiffs(Y, filename, mcparams.info.acquisition_name, nslices, nchannels, fid, write_dir);
+        deinterleave_tiffs(Y, filename, fid, write_dir, A);
 
 %         fprintf('Saving deinterleaved slices to:\n%s\n', write_dir);
 %         for sl = 1:nslices
@@ -132,13 +118,13 @@ for tiff_idx = 1:length(tiffs)
 %             if strcmp(mcparams.method, 'Acquisition2P')
 %                 mov_filename = feval(namingFunction,mcparams.info.acquisition_name, sl, ch, fid);
 %                 try
-%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
-%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
+%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
 %                 catch
 %                     % Sometimes, disk access fails due to intermittent
 %                     % network problem. In that case, wait and re-try once:
 %                     pause(60);
-%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir);
+%                     tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
 %                 end
 %             end
 %             
