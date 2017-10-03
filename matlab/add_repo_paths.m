@@ -11,6 +11,6 @@ if ~exist('~/Documents/MATLAB/cvx', 'dir')
 else
     cd ~/Documents/MATLAB/cvx; cvx_setup;
 end
-cd ~/Repositories/2p-tester-scripts/matlab
+cd ~/Repositories/2p-pipeline/matlab
 
 
