@@ -131,8 +131,8 @@ def main(options):
     refinfo['ntiffs'] = len(rawtiffs)
     refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave'] if i.isdigit()])
     refinfo['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
-    refinfo['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['linesPerFrame'])
-    refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['pixelsPerLine'])
+    refinfo['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
+    refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
 
 
     refinfo_json = '%s.json' % reference_info_basename
