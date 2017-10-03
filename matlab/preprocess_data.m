@@ -85,7 +85,8 @@ if mcparams.bidi_corrected
         mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
     end
 
-    do_bidi_correction(A, mcparams);
+    do_bidi_correction(A, mcparams);  
+    % If doing BiDi on tiffs other than those in ./DATA (i.e., post MC + reinterleaving, provide path as 3rd arg. -- presumably, this is ./DATA/Corrected after deinterleaved slices have already been sorted into Channel-File directories.
     fprintf('Finished bidi-correction.\n');
 
     % Sort Parsed files into separate directories if needed: 

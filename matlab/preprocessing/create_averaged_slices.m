@@ -1,6 +1,6 @@
 function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_basepath, A)
 
-nfiles = A.nfiles;
+nfiles = A.ntiffs;
 nchannels = A.nchannels;
 
 if A.corrected
@@ -48,8 +48,8 @@ for tiff_idx=1:nfiles %length(data_files)
             avgs_visible = adapthisteq(tmp(:,:,sl));
             slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
             tiffWrite(avgs_visible*((2^16)-1), slicename_vis, ch_path_vis); % default dtype=uint16
-            end
         end
+    end
 end
 
 end
