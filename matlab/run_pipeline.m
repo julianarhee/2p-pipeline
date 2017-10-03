@@ -105,12 +105,12 @@ if do_preprocessing
     else
         source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
     end
-    source_tiff_base_path = fullfile(mcparams.tiff_dir, source_to_average);
+    source_tiff_basepath = fullfile(mcparams.tiff_dir, source_to_average);
     dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', source_to_average));
     mcparams.averaged_slices_dir = dest_tiff_basepath;
     save(A.mcparams_path, 'mcparams', '-append');
  
-    create_avearged_slices(source_tiff_basepath, dest_tiff_basepath, A);
+    create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, A);
     save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
 
     fprintf('Finished preprocessing data.\n');
