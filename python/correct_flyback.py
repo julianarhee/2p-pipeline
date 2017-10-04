@@ -198,28 +198,29 @@ def main(options):
       
         # Rewrite reference info, if need to: 
         refinfo_json = "%s.json" % refinfo_basename
-        if correct_flyback:    
-	    with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
-		refinfo = json.load(fr)
+        with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
+	    refinfo = json.load(fr)
+        refinfo['base_filename'] = prefix
+
+         if correct_flyback:    
 	    print "Changing REF info:" 
             print "Orig N slices:", nslices_orig
             print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
             refinfo['slices'] = range(1, nslices_crop+1)
             refinfo['ntiffs'] = len(tiffs) 
-
-	    # Save updated JSON:
-            refinfo_json = "%s.json" % refinfo_basename
-            with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
-                json.dump(refinfo, fw)
-
-            # Also save updated MAT:
-            refinfo_mat = "%s.mat" % refinfo_basename
-            scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
-
         else:
             if not visible and not crop_fov and not uint16:
                 print "Moving RAW tiff to DATA dir. No changes."
                 shutil.copy(os.path.join(raw_tiff_dir, tiffs[tiffidx]), os.path.join(savepath, newtiff_fn))
+
+        # Save updated JSON:
+        refinfo_json = "%s.json" % refinfo_basename
+        with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
+	    json.dump(refinfo, fw)
+
+        # Also save updated MAT:
+        refinfo_mat = "%s.mat" % refinfo_basename
+        scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
 
 
 if __name__ == '__main__':
