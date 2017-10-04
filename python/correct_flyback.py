@@ -110,6 +110,7 @@ def main(options):
 	
         origname = tiffname.split('.')[0]
 	prefix = '_'.join(origname.split('_')[0:-1])
+        prefix = prefix.replace('-', '_')
 	newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
         print "Creating file in DATA dir:", newtiff_fn
 
