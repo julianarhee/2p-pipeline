@@ -1,4 +1,4 @@
-function mcparams = preprocess_data(mcparams)
+function mcparams = preprocess_data(A, mcparams)
 
 % PREPROCESSING:  motion-correction.
 

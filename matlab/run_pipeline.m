@@ -80,7 +80,7 @@ if do_preprocessing
         'tiff_dir', A.data_dir,...
         'nchannels', A.nchannels);              
     % ----------------------------------------------------------------------------------
- 
+    A.corrected = mcparams.corrected; 
     A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
     save(A.mcparams_path, 'mcparams');
     save(path_to_reference, '-struct', 'A', '-append');
@@ -93,7 +93,7 @@ if do_preprocessing
     % ----------------------------------------------------------------------------------
 
     % Do motion-correction and create slice time-series
-    mcparams = preprocess_data(mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
+    mcparams = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
     
     % Create averaged slices from desired source: 
     if A.corrected
@@ -111,7 +111,7 @@ if do_preprocessing
     save(A.mcparams_path, 'mcparams', '-append');
  
     create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, A);
-    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
+    save(path_to_reference, '-struct', 'A', '-append')
 
     fprintf('Finished preprocessing data.\n');
 
