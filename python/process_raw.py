@@ -23,10 +23,10 @@ import os
 import json
 
 source = '/nas/volume1/2photon/projects'
-experiment = 'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
-session = '20170927_CE059' #'20170902_CE054' #'20170825_CE055'
-acquisition = 'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = 'functional_subset'
+experiment = 'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
+session = '20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
+acquisition = 'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
+functional_dir = 'functional' #'functional_subset'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 # -------------------------------------------------------------
@@ -38,8 +38,8 @@ reference_info_basename = 'reference_%s' % functional_dir
 # -------------------------------------------------------------
 
 
-do_flyback_correction = True #True
-flyback = 1       # Num flyback frames at top of stack [default: 8]
+do_flyback_correction = False #True #True
+flyback = 0 #1       # Num flyback frames at top of stack [default: 8]
 
 
 # ----------------------------------------------------------------------------
