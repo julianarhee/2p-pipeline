@@ -202,7 +202,7 @@ def main(options):
 	    refinfo = json.load(fr)
         refinfo['base_filename'] = prefix
 
-         if correct_flyback:    
+        if correct_flyback:    
 	    print "Changing REF info:" 
             print "Orig N slices:", nslices_orig
             print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  

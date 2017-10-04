@@ -38,7 +38,7 @@ reference_info_basename = 'reference_%s' % functional_dir
 # -------------------------------------------------------------
 
 
-do_flyback_correction = False #True #True
+do_flyback_correction = True #True #True
 flyback = 0 #1       # Num flyback frames at top of stack [default: 8]
 
 
