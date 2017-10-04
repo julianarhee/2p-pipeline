@@ -22,7 +22,7 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
          newtiff = zeros(d1, d2, nframes);
          for sl = 1:nslices
              for ch=1:nchannels
-                 suffix = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.acquisition, sl, ch, fi)
+                 suffix = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, ch, fi)
                  curr_tiff_idx = find(arrayfun(@(fn) length(strfind(tiffnames{fn}, suffix)), 1:length(tiffnames)))
                  
                  % This currently assumes only 2 channels...
@@ -37,11 +37,11 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
          end
          if split_channels
              for ch=1:nchannels
-                newtiffname = sprintf('%s_File%03d_Channel%02d.tif', A.acquisition, fi, ch);
+                newtiffname = sprintf('%s_File%03d_Channel%02d.tif', A.base_filename, fi, ch);
                 tiffWrite(newtiff(:,:,ch:nchannels:end), newtiffname, dest_dir, 'int16');
              end 
          else
-             newtiffname = sprintf('%s_File%03d.tif', A.acquisition, fi);
+             newtiffname = sprintf('%s_File%03d.tif', A.base_filename, fi);
              tiffWrite(newtiff, newtiffname, dest_dir, 'int16');
          end
      end

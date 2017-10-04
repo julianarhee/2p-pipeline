@@ -1,7 +1,7 @@
 function sort_deinterleaved_tiffs(path_to_sort, A)
 
 nchannels = A.nchannels;
-acquisition_name = A.acquisition;
+base_filename = A.base_filename;
 
 if ~exist('namingFunction', 'var')
     namingFunction = @defaultNamingFunction;
@@ -59,7 +59,7 @@ for cidx=1:length(channels)
                     splits = regexp(tiffs{tidx}, '\s', 'split');
                     ch_num = str2double(splits{2}(regexp(splits{2}, '\d')));
                     sl_num = str2double(splits{3}(regexp(splits{3}, '\d')));
-                    new_file_name = feval(namingFunction, acquisition_name, sl_num, ch_num, fi);
+                    new_file_name = feval(namingFunction, base_filename, sl_num, ch_num, fi);
                     movefile(fullfile(channel_path, file_paths{fi}, tiffs{tidx}), fullfile(channel_path, file_paths{fi}, new_file_name));
                 end
             end

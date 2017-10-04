@@ -1,19 +1,21 @@
 function simeta = get_scan_info(A)
+
+% TODO:  Replace this tmp func with metadata info extracted from raw .mat (or .json) from Step1 (process_raw.py)
         
         % Load mcparam info:
         load(A.mcparams_path);
  
         tiff_source = mcparams.tiff_dir;
-        acquisition_name = mcparams.info.acquisition_name; % TODO: again, make sure this isn't specific to mcparms.method
+        base_filename = mcparams.info.acquisition_namee; % TODO: again, make sure this isn't specific to mcparms.method
         simeta = struct();
         
-        metadata_fn = sprintf('%s.mat', acquisition_name)
+        metadata_fn = sprintf('%s.mat', base_filename)
         metadata = load(fullfile(tiff_source, metadata_fn));
         
-        ntiffs = length(metadata.(acquisition_name).metaDataSI);
+        ntiffs = length(metadata.(base_filename).metaDataSI);
         sistruct = struct();  
         for fidx=1:ntiffs
-            curr_meta = metadata.(acquisition_name).metaDataSI{fidx};
+            curr_meta = metadata.(base_filename).metaDataSI{fidx};
             
             % Sort Parsed files into separate directories if needed:
             nChannels = length(curr_meta.SI.hChannels.channelSave);            
@@ -48,19 +50,19 @@ function simeta = get_scan_info(A)
             sistruct.file(fidx).slowMultiplier = slowMultiplier;
             sistruct.file(fidx).linesPerFrame = linesPerFrame;
             sistruct.file(fidx).frameHeight = frameHeight;
-            if isfield(metadata.(acquisition_name), 'motionRefMovNum')
-                motionRefNum = metadata.(acquisition_name).motionRefMovNum;
-                motionRefPath = metadata.(acquisition_name).Movies{motionRefNum};
+            if isfield(metadata.(base_filename), 'motionRefMovNum')
+                motionRefNum = metadata.(base_filename).motionRefMovNum;
+                motionRefPath = metadata.(base_filename).Movies{motionRefNum};
             
                 sistruct.file(fidx).motionRefNum = motionRefNum;
                 sistruct.file(fidx).motionRefPath = motionRefPath;
             
-                sistruct.file(fidx).rawTiffPath = metadata.(acquisition_name).Movies{fidx};
+                sistruct.file(fidx).rawTiffPath = metadata.(base_filename).Movies{fidx};
             %sistruct.file(fidx) = sistruct;
             end
             
         end
-        simeta.acquisition_name = acquisition_name;
+        simeta.base_filename = base_filename;
         simeta.ntiffs = ntiffs;
         simeta.nchannels = nChannels;
         simeta.SI = sistruct;

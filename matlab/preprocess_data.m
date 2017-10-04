@@ -1,4 +1,4 @@
-function mcparams = preprocess_data(A, mcparams)
+function [A, mcparams]= preprocess_data(A, mcparams)
 
 % PREPROCESSING:  motion-correction.
 
@@ -54,6 +54,14 @@ end
 
 save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
 fprintf('Completed motion-correction!\n');
+
+% Add base filename if missing from ref struct:
+% For now, this is specific to Acquisition2P, since this uses the base filename to name field for acq obj.
+if ~isfield(A, 'base_filename') || ~strcmp(A.base_filename, mcparams.info.acquisition_name)
+    A.base_filename = mcparams.info.acquisition_name;
+end
+
+
 
 % -------------------------------------------------------------------------
 % 2.  Clean-up and organize corrected TIFFs into file hierarchy:

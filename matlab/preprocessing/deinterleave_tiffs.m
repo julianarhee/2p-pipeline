@@ -2,7 +2,7 @@ function deinterleave_tiffs(newtiff, filename, fid, write_dir, A)
 
 namingFunction = @defaultNamingFunction;
 
-acquisition_name = A.acquisition;
+base_filename = A.base_filename;
 nslices = length(A.slices);
 nchannels = A.nchannels'
 
@@ -26,7 +26,7 @@ for sl = 1:nslices
 
         % Create movie fileName and save to default format
         % TODO: set this to work with other mc methods....
-        mov_filename = feval(namingFunction,acquisition_name, sl, ch, fid);
+        mov_filename = feval(namingFunction,base_filename, sl, ch, fid);
         try
             tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         catch
@@ -43,7 +43,7 @@ for sl = 1:nslices
             
             % Create movie fileName and save to default format
             % TODO: set this to work with other mc methods....
-            mov_filename = feval(namingFunction, acquisition_name, sl, ch, fid);
+            mov_filename = feval(namingFunction, base_filename, sl, ch, fid);
             try
                 tiffWrite(newtiff(:, :, frame_idx:(nslices*nchannels):end), mov_filename, write_dir, 'int16');
             catch

@@ -15,10 +15,10 @@ if noUI
 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
-    experiment = 'gratings_phaseMod';
-    session = '20170927_CE059';
-    acquisition = 'FOV1_zoom3x';
-    tiff_source = 'functional_subset';
+    experiment = 'scenes'; %'gratings_phaseMod';
+    session = '20171003_JW016'; %'20170927_CE059';
+    acquisition = 'FOV1'; %'FOV1_zoom3x';
+    tiff_source = 'functional'; %'functional_subset';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
 else
@@ -73,7 +73,7 @@ if do_preprocessing
         'method', 'Acquisition2P',...
         'flyback_corrected', true,...
         'ref_channel', 1,...
-        'ref_file', 3,...
+        'ref_file', 2,...
         'algorithm', @lucasKanade_plus_nonrigid,...
         'split_channels', false,...
         'bidi_corrected', false,...
@@ -93,7 +93,7 @@ if do_preprocessing
     % ----------------------------------------------------------------------------------
 
     % Do motion-correction and create slice time-series
-    mcparams = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
+    [A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
     
     % Create averaged slices from desired source: 
     if A.corrected
