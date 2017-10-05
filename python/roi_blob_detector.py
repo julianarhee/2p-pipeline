@@ -5,8 +5,7 @@ Given parameters for blurring, thresholding, etc., this script automatically det
 
 Example:
 
-python roi_blob_detector.py -S /nas/volume1/2photon/projects/gratings_phaseMod -s 20170901_CE054 -A FOV1_zoom3x -f functional_sub -r3 -m3 -M10 -H100 -t.05 -G3
-
+python roi_blob_detector.py -S'/nas/volume1/2photon/projects' -E'gratings_phaseMod' -s'20170901_CE054' -A'FOV1_zoom3x' -f'functional_sub' -r3 -m3 -M10 -H100 -t.05 -G3
 '''
 
 # coding: utf-8
@@ -53,6 +52,7 @@ parser.add_option('-E', '--experiment', action='store', dest='experiment', defau
 parser.add_option('-s', '--sess', action='store', dest='sess', default='', help='session name')
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help='acquisition folder')
 parser.add_option('-f', '--func', action='store', dest='functional_dir', default='functional', help="folder containing functional tiffs [default: 'functional']")
+parser.add_option('-a', '--slicedir', action='store', dest='avgsource', default='', help="folder name from which to get averaged slices, e.g., 'Corrected', 'Corrected_Bidi', 'Parsed' [default: '', or 'source_to_average' field of ref struct]")
 
 # ACQUISITION-specific options:
 parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
@@ -72,6 +72,9 @@ parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', defaul
 
 
 nslices = options.nslices
+reference_file_idx = options.reference
+signal_channel_idx = options.channel
+
 max_sigma_val = float(options.max_sigma)
 min_sigma_val = float(options.min_sigma)
 blob_threshold = float(options.blob_threshold)
@@ -84,15 +87,24 @@ experiment = options.experiment
 sess = options.sess
 acquisition = options.acquisition
 functional_subdir = options.functional_dir
-subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
+avgsource = options.avgsource
 
-signal_ch = 'Channel%02d' % int(options.channel)
-file_idx = 'File%03d' % int(options.reference)
+# Specify and create directories:
+if len(avgsource)==0:
+    avgsource = ''
+else:
+    avgsource = '_%s' % avgsource
+    
+subdir_str = '{tiffstr}/DATA/Averaged_Slices{avgsource}'.format(avgsource=avgsource, tiffstr=functional_subdir)
+# subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
 
-print "Specified signal channel is:", signal_ch
-print "Selected reference file:", file_idx
+signal_channel = 'Channel%02d' % int(signal_channel_idx)
+reference_file = 'File%03d' % int(reference_file_idx)
 
-slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_ch, file_idx)
+print "Specified signal channel is:", signal_channel
+print "Selected reference file:", reference_file
+
+slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_channel, reference_file)
 
 # Define output directories:
 log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_LoG')
@@ -207,7 +219,7 @@ for currslice in range(nslices):
     plt.tight_layout()
 
     #write image to file
-    imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (sess,acquisition,currslice+1,signal_ch,file_idx)
+    imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (sess,acquisition,currslice+1,signal_channel,reference_file)
     plt.savefig(os.path.join(log_fig_dir, imname))
     plt.savefig(os.path.join(dog_fig_dir, imname))
 
