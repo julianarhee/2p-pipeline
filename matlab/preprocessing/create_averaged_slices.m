@@ -32,7 +32,7 @@ for tiff_idx=1:nfiles %length(data_files)
         d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
         %sample = read_file(fullfile(slice_dir, tiffs{1}));
         currtiffpath = fullfile(slice_dir, tiffs{1});
-        curr_file_name = sprintf('File%03d', fidx);
+        curr_file_name = sprintf('File%03d', tiff_idx);
         if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
             sample = read_file(currtiffpath);
         else
@@ -44,7 +44,7 @@ for tiff_idx=1:nfiles %length(data_files)
         for sl=1:d3
             %tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
             currtiffpath = fullfile(slice_dir, tiffs{sl});
-            curr_file_name = sprintf('File%03d', fidx);
+            curr_file_name = sprintf('File%03d', tiff_idx);
             if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
                 tiffdata = read_file(currtiffpath);
             else

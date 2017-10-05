@@ -1,4 +1,4 @@
-function do_bidi_correction(A, mcparams, varargin)
+function [A, mcparams] = do_bidi_correction(A, mcparams, varargin)
 
 % If provided opt arg, do Bi-Di correction from deinterleaved TIFFs.
 % Otherwise, read TIFFs in ./DATA dir (output from first MC + reinterleaving step.
@@ -10,6 +10,13 @@ if length(varargin)>0
     from_source = true;
 else
     from_source = false;
+end
+
+if A.use_bidi_corrected
+mcparams.bidi_corrected_dir = 'Corrected_Bidi';
+if ~exist(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir), 'dir')
+    mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
+end
 end
 
 namingFunction = @defaultNamingFunction;
@@ -80,7 +87,7 @@ for tiff_idx = 1:length(tiffs)
         deinterleave_tiffs(newtiff, filename, fid, write_dir, A);
                  
     elseif mcparams.flyback_corrected && mcparams.split_channels
-	fprintf('Correcting TIFF: %s\n', filename);
+	    fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
         Y = reshape(Yt, [size(Yt,1), size(Yt,2), nslices, nvolumes]); 
 
@@ -95,7 +102,12 @@ for tiff_idx = 1:length(tiffs)
     end
 
 end
-   
+
+fprintf('Finished bidi-correction.\n');
+
+save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
+
+  
 
 function mov_filename = defaultNamingFunction(acqName, nSlice, nChannel, movNum)
 

@@ -48,12 +48,29 @@ acquisition_base_dir = fullfile(source, experiment, session, acquisition)
 path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
 A = load(path_to_reference);
 
+
+%% PREPROCESSING:  motion-correction.
+
+% 1. Set parameters for motion-correction.
+% 2. If correcting, make standard directories and run correction.
+% 3. Re-interleave parsed TIFFs and save in tiff base dir (child of
+% functional-dir). Sort parsed TIFFs by Channel-File-Slice.
+% 4. Do additional correction for bidirectional scanning (and do
+% post-mc-cleanup). [optional]
+% 5. Create averaged time-series for all slices using selected correction
+% method. Save in standard Channel-File-Slice format.
+
+% Note:  This step also adds fields to mcparams struct that are immutable,
+% i.e., standard across all analyses.
+
 if do_preprocessing
     A.acquisition_base_dir = acquisition_base_dir;
     A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
 
-    %% SET PARAMS FOR PREPROCESSING:
-    % -----------------------------------------------------------------------------------------
+    % -------------------------------------------------------------------------
+    %% 1.  Set MC params
+    % -------------------------------------------------------------------------
+
     A.use_bidi_corrected = false;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
     A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
 
@@ -72,7 +89,7 @@ if do_preprocessing
         'corrected', 'true',...
         'method', 'Acquisition2P',...
         'flyback_corrected', true,...
-        'ref_channel', 2,...
+        'ref_channel', 1,...
         'ref_file', 2,...
         'algorithm', @lucasKanade_plus_nonrigid,...
         'split_channels', false,...
@@ -89,24 +106,71 @@ if do_preprocessing
     % flyback-correction (py), including SI-meta correction if
     % flyback-correction changes the TIFF volumes.
 
-    %% DO PREPROCESSING:
-    % ----------------------------------------------------------------------------------
+    % -------------------------------------------------------------------------
+    %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
+    % -------------------------------------------------------------------------
 
-    % Do motion-correction and create slice time-series
-    [A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
+    if A.corrected
+        %[A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
+       [A, mcparams] = motion_correct_data(A, mcparams);
+    else
+        % Just parse raw tiffs:
+        [A, mcparams] = create_deinterleaved_tiffs(A, mcparams);
+    end
+
+    % -------------------------------------------------------------------------
+    %% 3.  Clean-up and organize corrected TIFFs into file hierarchy:
+    % -------------------------------------------------------------------------
+    % mcparams.split_channels = true;
+        
+    % TODO:  recreate too-big-TIFF error to make a try-catch statement that
+    % re-interleaves by default, and otherwise splits the channels if too large
     
-    % Create averaged slices from desired source: 
+    % PYTHON equivalent faster: 
+    if A.corrected
+        deinterleaved_source = mcparams.corrected_dir;
+    else
+        deinterleaved_source = mcparams.parsed_dir;
+    end
+    deinterleaved_tiff_dir = fullfile(A.data_dir, deinterleaved_source);
+    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, mcparams.split_channels);
+
+    % Sort parsed slices by Channel-File:
+    path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+    post_mc_cleanup(path_to_cleanup, A);
+
+
+    % -------------------------------------------------------------------------
+    %% 4.  Do additional bidi correction (optional)
+    % -------------------------------------------------------------------------
+    % mcparams.bidi_corrected = true;
+
+    if A.use_bidi_corrected
+        [A, mcparams] = do_bidi_correction(A, mcparams);
+    end
+    
+    % Sort bidi-corrected:
+    if isfield(mcparams, 'bidi_corrected_dir')
+        path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+        post_mc_cleanup(path_to_cleanup, A);     
+    end
+
+    % -------------------------------------------------------------------------
+    %% 5.  Create averaged slices from desired source:
+    % -------------------------------------------------------------------------
+
     if A.corrected
         if A.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
-            source_to_average = mcparams.bidi_corrected_dir;
+            A.source_to_average = mcparams.bidi_corrected_dir;
         else
-            source_to_average = mcparams.corrected_dir;
+            A.source_to_average = mcparams.corrected_dir;
         end
     else
-        source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
+        A.source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
     end
-    source_tiff_basepath = fullfile(mcparams.tiff_dir, source_to_average);
-    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', source_to_average));
+
+    source_tiff_basepath = fullfile(mcparams.tiff_dir, A.source_to_average);
+    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', A.source_to_average));
     mcparams.averaged_slices_dir = dest_tiff_basepath;
     save(A.mcparams_path, 'mcparams', '-append');
  
