@@ -81,7 +81,7 @@ for ch_dir in channel_dirs:
         slice_fns = os.listdir(os.path.join(average_source_dir, ch_dir, fi_dir))
         slice_fns = sorted([t for t in slice_fns if t.endswith('.tif')], key=natural_keys)
         curr_write_dir = os.path.join(write_dir, ch_dir, fi_dir)
-        curr_write_dir_vis = os.path.join(write_dir, ch_dir, '%s_vis' % fi_dir)
+        curr_write_dir_vis = os.path.join(write_dir, ch_dir, '%s_visible' % fi_dir)
         if not os.path.exists(curr_write_dir):
             os.makedirs(curr_write_dir)
         if not os.path.exists(curr_write_dir_vis): 
