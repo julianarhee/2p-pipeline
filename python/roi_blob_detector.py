@@ -239,7 +239,7 @@ for currslice in range(nslices):
     #save to structure
     rois['masks']=masks
     #save structure to file, record path in structure
-    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_ch)
+    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_channel)
     mat_filepath = os.path.join(log_roi_dir,'masks', mat_filename)
     log_maskpaths[currslice] = mat_filepath
     scipy.io.savemat(mat_filepath, mdict=rois)
@@ -252,7 +252,7 @@ for currslice in range(nslices):
     #save to structure
     rois['masks']=masks
     #save structure to file, record path in structure
-    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_ch)
+    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_channel)
     mat_filepath = os.path.join(dog_roi_dir,'masks', mat_filename)
     dog_maskpaths[currslice] = mat_filepath
     scipy.io.savemat(mat_filepath, mdict=rois)
