@@ -38,7 +38,15 @@ for tiff_idx = 1:length(tiffs)
         tic; Yt = reinterleave_from_source(curr_filedir, path_to_parsed, A); toc;
         fprintf('Got reinterleaved TIFF from source. Size is: %s\n', mat2str(size(Yt)));
     else
-        tic; Yt = read_file(tpath); toc; % is this faster
+        %tic; Yt = read_file(tpath); toc; % is this faster
+        currtiffpath = tpath;
+        curr_file_name = sprintf('File%03d', fidx);
+        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+            Yt = read_file(currtiffpath);
+        else
+            Yt = read_imgdata(currtiffpath);
+        end
+
     end
     [d1,d2,~] = size(Yt);
     fprintf('Size interleaved tiff: %s\n', mat2str(size(Yt)))

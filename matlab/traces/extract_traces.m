@@ -9,6 +9,7 @@ function extract_traces(A)
 
 load(A.mcparams_path);
 load(A.roiparams_path);
+simeta = load(A.raw_simeta_path);
 
 % Set path for slice time-series tiffs:
 if A.use_bidi_corrected
@@ -43,8 +44,16 @@ switch A.roi_method
                 % TODO: adjust so that path to slice tiff is not dependent on mcparams.info.acquisition_name
                 % since this is currently specific to mcparams.method=Acquisition2P
                 curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.info.acquisition_name, sl, A.signal_channel, fidx)
-                Y = tiffRead(fullfile(curr_file_path, curr_file));
+                %Y = tiffRead(fullfile(curr_file_path, curr_file));
                 
+                currtiffpath = fullfile(curr_file_path, curr_file);
+                curr_file_name = sprintf('File%03d', fidx);
+                if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+                    [tmp,~] = tiffRead(fullfile(source_dir,currtiff));
+                else
+                    tmp = read_imgdata(currtiffpath);
+                end 
+ 
                 % TODO: add option to check for MC-evalation for
                 % interpolating frames.
                 

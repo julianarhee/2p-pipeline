@@ -7,10 +7,15 @@ function scanImageMetadata = adjust_si_metadata(scanImageMetadata, mov)
 fprintf('Parsing processed SI tiff and getting adjusted meta data...\n');
 fprintf('Size of movie: %s\n', mat2str(size(mov)));
 
-nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices;
-nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames;
-nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes;
-nChannelsTmp = numel(scanImageMetadata.SI.hChannels.channelSave);
+nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices
+nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames
+nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes
+nChannelsTmp = length(scanImageMetadata.SI.hChannels.channelSave);
+% nChannelsTmp = scanImageMetadata.SI.hChannels.channelSave
+% if length(nChannelsTmp)>3
+%     nChannelsTmp = length(str2num(scanImageMetadata.SI.hChannels.channelSave));
+% end
+
 desiredSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp
 nDiscardedExtra = nSlicesTmp - desiredSlices	
 if desiredSlices ~= nSlicesTmp  % input (processed) tiff does not have discard removed, or has extra flyback frames removed.

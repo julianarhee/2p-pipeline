@@ -20,8 +20,15 @@ for ch=1:length(channel_dirs)
     tiff_slice_fns = {tiff_slice_fns(:).name}'
  
     for sl=1:length(tiff_slice_fns)
-        curr_slice = read_file(fullfile(sourcedir, channel_dirs{ch}, filedir, tiff_slice_fns{sl}));
-         
+        
+         %curr_slice = read_file(fullfile(sourcedir, channel_dirs{ch}, filedir, tiff_slice_fns{sl}));
+         currtiffpath = fullfile(sourcedir, channel_dirs{ch}, filedir, tiff_slice_fns{sl});
+         curr_file_name = sprintf('File%03d', fidx);
+         if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+             curr_slice = read_file(currtiffpath);
+         else
+             curr_slice = read_imgdata(currtiffpath);
+         end  
          if ch==1
              Yr(:,:,sliceidxs(sl):(nslices*nchannels):end) = curr_slice;
          else

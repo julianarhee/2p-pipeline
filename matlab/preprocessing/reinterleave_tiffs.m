@@ -1,5 +1,7 @@
 function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
 
+    simeta = load(A.raw_simeta_path);
+
     if ~exist('split_channels', 'var')
         split_channels = false;
     end
@@ -27,7 +29,13 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
                  
                  % This currently assumes only 2 channels...
                  currtiff = tiffnames{curr_tiff_idx};
-                 [tmp,~] = tiffRead(fullfile(source_dir,currtiff));
+                 currtiffpath = fullfile(source_dir, currtiff);
+                 curr_file_name = sprintf('File%03d', fi);
+                 if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+                     [tmp,~] = tiffRead(fullfile(source_dir,currtiff));
+                 else
+                     tmp = read_imgdata(currtiffpath);
+                 end
                  if ch==1
                      newtiff(:,:,sliceidxs(sl):(nslices*nchannels):end) = tmp;
                  else

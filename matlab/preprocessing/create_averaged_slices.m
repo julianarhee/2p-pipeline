@@ -2,6 +2,7 @@ function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_base
 
 nfiles = A.ntiffs;
 nchannels = A.nchannels;
+simeta = load(A.raw_simeta_path);
 
 if A.corrected
     load(A.mcparams_path);
@@ -29,12 +30,27 @@ for tiff_idx=1:nfiles %length(data_files)
         tiffs = dir(fullfile(slice_dir, '*.tif'));
         tiffs = {tiffs(:).name}';
         d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
-        sample = read_file(fullfile(slice_dir, tiffs{1}));
+        %sample = read_file(fullfile(slice_dir, tiffs{1}));
+        currtiffpath = fullfile(slice_dir, tiffs{1});
+        curr_file_name = sprintf('File%03d', fidx);
+        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+            sample = read_file(currtiffpath);
+        else
+            sample = read_imgdata(currtiffpath);
+        end
         d1=size(sample,1); d2=size(sample,2); clear sample
 	
         avgs = zeros([d1,d2,d3]);
         for sl=1:d3
-            tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
+            %tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
+            currtiffpath = fullfile(slice_dir, tiffs{sl});
+            curr_file_name = sprintf('File%03d', fidx);
+            if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+                tiffdata = read_file(currtiffpath);
+            else
+                tiffdata = read_imgdata(currtiffpath);
+            end
+    
             fprintf('TIFF %i (slice %i) of %i: size is %s.\n', tiff_idx, sl, length(tiffs), mat2str(size(tiffdata)));
             avgs(:,:,sl) = mean(tiffdata, 3);
             slicename = sprintf('average_Slice%02d_Channel%02d_File%03d.tif', sl, ch, tiff_idx);

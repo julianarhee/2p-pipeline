@@ -13,6 +13,7 @@ import optparse
 import json
 import re
 import scipy.io
+import numpy as np
 from os.path import expanduser
 home = expanduser("~")
 
@@ -95,8 +96,27 @@ def main(options):
 	SI_struct = {}
 	for item in SI:
 	    t = SI_struct
-	    fieldname = item.split(' = ')[0]
+	    fieldname = item.split(' = ')[0]; print fieldname
 	    value = item.split(' = ')[1]
+            num_format = re.compile(r'\-?[0-9]+\.?[0-9]*|\.?[0-9]')
+            sci_format = re.compile('-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?')
+            if "'" in item:
+                value = str(value) 
+            #elif len(re.findall(sci_format, value))>0:
+            #    value = float(value)
+            #elif any(c.isalpha() for c in value):
+            #    value = str(value)   
+            elif len(re.findall(num_format, value))>0:  # has numbers 
+                if value.isdigit():
+                    value = int(value)
+                elif '[' in value:
+                    ends = [value.index('[')+1,  value.index(']')]
+                    tmpvalue = value[ends[0]:ends[1]]
+                    if ';' in value:
+                        rows = tmpvalue.split(';'); 
+                        value = [[float(i) for i in re.findall(num_format, row)] for row in rows]
+                    else:
+                        value = [float(i) for i in re.findall(num_format, tmpvalue)]                    
 	    for ix,part in enumerate(fieldname.split('.')):
 		nsubfields = len(fieldname.split('.'))
 		if ix==nsubfields-1:
@@ -129,11 +149,11 @@ def main(options):
     specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
-    refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave'] if i.isdigit()])
+    refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave']]) # if i.isdigit()])
     refinfo['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
     refinfo['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
     refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
-
+    refinfo['raw_simeta_path'] = os.path.join(acquisition_dir, raw_simeta_mat)
 
     refinfo_json = '%s.json' % reference_info_basename
     with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:

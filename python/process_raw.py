@@ -72,7 +72,8 @@ discard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
 nvolumes = int(simeta['File001']['SI']['hFastZ']['numVolumes'])
 # nslices = int(simeta['File001']['SI']['hFastZ']['numFramesPerVolume'])
 nslices = int(simeta['File001']['SI']['hStackManager']['numSlices'])
-nchannels = len([int(i) for i in simeta['File001']['SI']['hChannels']['channelSave'] if i.isnumeric()])
+nchannels = len(simeta['File001']['SI']['hChannels']['channelSave']) 
+#nchannels = #len([int(i) for i in simeta['File001']['SI']['hChannels']['channelSave']]) # if i.isnumeric()])
 print "Raw SI info:"
 print "N channels: {nchannels}, N slices: {nslices}, N volumes: {nvolumes}".format(nchannels=nchannels, nslices=nslices, nvolumes=nvolumes)
 print "Num discarded frames for flyback:", discard

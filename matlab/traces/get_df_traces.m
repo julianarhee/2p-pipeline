@@ -4,6 +4,7 @@ function get_df_traces(A, varargin)
 file_type = 'visible';
 
 ntiffs = A.ntiffs;
+simeta = load(A.raw_simeta_path);
 
 switch length(varargin)
     case 0
@@ -36,8 +37,17 @@ for sidx = 1:length(A.slices)
         avg_slice_dir = fullfile(A.data_dir, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
-        slice_file = slice_files(1).name 
-        avgY = tiffRead(fullfile(avg_slice_dir, slice_file));
+        slice_file = slice_files(1).name
+        %avgY = tiffRead(fullfile(avg_slice_dir, slice_file));
+
+        currtiffpath = fullfile(avg_slice_dir, slice_file;
+	curr_file_name = sprintf('File%03d', fidx);
+	if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+	    [avgY,~] = tiffRead(currtiffpath);
+	else
+	    avgY = read_imgdata(currtiffpath);
+	end
+
         traces = tracestruct.file(fidx).tracematDC; 
         % --> This is already corrected with DC -- do the following to get back
         % DC offset removed:  traceMat = bsxfun(@plus, DCs, traceMat);
