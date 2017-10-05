@@ -49,9 +49,9 @@ switch A.roi_method
                 currtiffpath = fullfile(curr_file_path, curr_file);
                 curr_file_name = sprintf('File%03d', fidx);
                 if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-                    [tmp,~] = tiffRead(fullfile(source_dir,currtiff));
+                    Y = read_file(fullfile(source_dir,currtiff));
                 else
-                    tmp = read_imgdata(currtiffpath);
+                    Y = read_imgdata(currtiffpath);
                 end 
  
                 % TODO: add option to check for MC-evalation for

@@ -8,8 +8,8 @@ fprintf('Added repo paths.\n');
 %% Select TIFF dirs for current analysis
 
 noUI = true;
-get_rois_and_traces = false;
-do_preprocessing = true;
+get_rois_and_traces = true %false;
+do_preprocessing = false %true;
 
 if noUI
 
@@ -229,9 +229,12 @@ if get_rois_and_traces
 
     %% Get df/f for full movie:
 
-    df_min = 20;
+    df_min = 50;
 
     get_df_traces(A, df_min);
 
-    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
+
+    save(path_to_reference, '-struct', 'A', '-append')
+    fprintf('DONE!\n');
+
 end
