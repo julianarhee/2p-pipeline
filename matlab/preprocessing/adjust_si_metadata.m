@@ -10,7 +10,7 @@ fprintf('Size of movie: %s\n', mat2str(size(mov)));
 nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices
 nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames
 nVolumesTmp = scanImageMetadata.SI.hFastZ.numVolumes
-nChannelsTmp = length(scanImageMetadata.SI.hChannels.channelSave);
+nChannelsTmp = length(scanImageMetadata.SI.hChannels.channelSave)
 % nChannelsTmp = scanImageMetadata.SI.hChannels.channelSave
 % if length(nChannelsTmp)>3
 %     nChannelsTmp = length(str2num(scanImageMetadata.SI.hChannels.channelSave));
