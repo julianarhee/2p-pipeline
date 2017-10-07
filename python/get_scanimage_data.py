@@ -149,7 +149,10 @@ def main(options):
     specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
     refinfo['slices'] = range(1, specified_nslices+1) 
     refinfo['ntiffs'] = len(rawtiffs)
-    refinfo['nchannels'] = len([i for i in scanimage_metadata['File001']['SI']['hChannels']['channelSave']]) # if i.isdigit()])
+    if isinstance(scanimage_metadata['File001']['SI']['hChannels']['channelSave'], int):
+        refinfo['nchannels'] =  scanimage_metadata['File001']['SI']['hChannels']['channelSave']
+    else:
+        refinfo['nchannels'] = len(scanimage_metadata['File001']['SI']['hChannels']['channelSave']) # if i.isdigit()])
     refinfo['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
     refinfo['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
     refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
