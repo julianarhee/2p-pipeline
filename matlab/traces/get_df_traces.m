@@ -34,19 +34,20 @@ for sidx = 1:length(A.slices)
         else
             file_dir = sprintf('File%03d', fidx);
         end
-        avg_slice_dir = fullfile(A.data_dir, 'Averaged_Slices', sprintf('Channel%02d', A.signal_channel), file_dir);
+        avg_source = sprintf('Averaged_Slices_%s', A.source_to_average);
+        avg_slice_dir = fullfile(A.data_dir, avg_source, sprintf('Channel%02d', A.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
         slice_file = slice_files(1).name
         %avgY = tiffRead(fullfile(avg_slice_dir, slice_file));
 
-        currtiffpath = fullfile(avg_slice_dir, slice_file;
-	curr_file_name = sprintf('File%03d', fidx);
-	if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-	    [avgY,~] = tiffRead(currtiffpath);
-	else
-	    avgY = read_imgdata(currtiffpath);
-	end
+        currtiffpath = fullfile(avg_slice_dir, slice_file);
+  	    curr_file_name = sprintf('File%03d', fidx);
+        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+            [avgY,~] = tiffRead(currtiffpath);
+        else
+            avgY = read_imgdata(currtiffpath);
+        end
 
         traces = tracestruct.file(fidx).tracematDC; 
         % --> This is already corrected with DC -- do the following to get back
@@ -115,9 +116,10 @@ for sidx = 1:length(A.slices)
 
         % ----------------------------------------------------
         
-        tracestruct.file(fidx).df_f = dfMat;
+        tracestruct.file(fidx).df_f = dfMat
         tracestruct.file(fidx).active_rois = activeRois;
         tracestruct.file(fidx).active_thresh = df_min;
+        tracestruct.file(fidx).average_img = avgY;
         save(fullfile(A.trace_dir, A.trace_structs{sidx}), '-struct', 'tracestruct', '-append');
 
         DF.slice(sl).file(fidx).meanMap = meanMap;

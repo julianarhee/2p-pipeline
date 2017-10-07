@@ -6,7 +6,7 @@ function simeta = get_scan_info(A)
         load(A.mcparams_path);
  
         tiff_source = mcparams.tiff_dir;
-        base_filename = mcparams.info.acquisition_namee; % TODO: again, make sure this isn't specific to mcparms.method
+        base_filename = A.base_filename; % TODO: again, make sure this isn't specific to mcparms.method
         simeta = struct();
         
         metadata_fn = sprintf('%s.mat', base_filename)
@@ -26,7 +26,7 @@ function simeta = get_scan_info(A)
             nFramesPerVolume = nSlices; % + nDiscard;
             nTotalFrames = nFramesPerVolume * nVolumes;
             
-            siFrameTimes = curr_meta.frameTimestamps_sec(1:nChannels:end);
+            %siFrameTimes = curr_meta.frameTimestamps_sec(1:nChannels:end);
             siFrameRate = curr_meta.SI.hRoiManager.scanFrameRate;
             siVolumeRate = curr_meta.SI.hRoiManager.scanVolumeRate;
 
@@ -42,7 +42,7 @@ function simeta = get_scan_info(A)
             sistruct.file(fidx).nDiscard = nDiscard;
             sistruct.file(fidx).nFramesPerVolume = nFramesPerVolume;
             sistruct.file(fidx).nTotalFrames = nTotalFrames;
-            sistruct.file(fidx).siFrameTimes = siFrameTimes;
+            %sistruct.file(fidx).siFrameTimes = siFrameTimes;
             
             sistruct.file(fidx).siFrameRate = siFrameRate;
             sistruct.file(fidx).siVolumeRate = siVolumeRate;

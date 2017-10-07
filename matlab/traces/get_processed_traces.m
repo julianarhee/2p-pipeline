@@ -69,7 +69,7 @@ for sidx = 1:length(A.slices)
         % 3. Next, get subtract rolling average from each trace
         % (each row of rawtracemat is the trace of an ROI).
         % Interpolate NaN frames if there are any.
-        winsz = round(meta.siVolumeRate*win_unit*num_units);
+        winsz = floor(str2num(meta.siVolumeRate)*win_unit*num_units);
         [tracemat, DCs] = arrayfun(@(roi) subtract_rolling_mean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         tracemat = cat(2, tracemat{1:end});
         DCs = cat(2, DCs{1:end});

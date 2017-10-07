@@ -8,16 +8,16 @@ fprintf('Added repo paths.\n');
 %% Select TIFF dirs for current analysis
 
 noUI = true;
-get_rois_and_traces = false;
-do_preprocessing = true;
+get_rois_and_traces = false %true %false;
+do_preprocessing = true %false %true;
 
 if noUI
 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
-    experiment = 'scenes'; %'gratings_phaseMod';
-    session = '20171003_JW016'; %'20170927_CE059';
-    acquisition = 'FOV1'; %'FOV1_zoom3x';
+    experiment = 'gratings_phaseMod';
+    session = '20171005_CE059';
+    acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
     tiff_source = 'functional'; %'functional_subset';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
@@ -46,6 +46,8 @@ end
 % ----------------------------------------
 acquisition_base_dir = fullfile(source, experiment, session, acquisition)
 path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
+path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s2.json', tiff_source))
+
 A = load(path_to_reference);
 
 
@@ -71,7 +73,7 @@ if do_preprocessing
     %% 1.  Set MC params
     % -------------------------------------------------------------------------
 
-    A.use_bidi_corrected = false;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+    A.use_bidi_corrected = true;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
     A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
 
     % Names = [
@@ -90,10 +92,10 @@ if do_preprocessing
         'method', 'Acquisition2P',...
         'flyback_corrected', true,...
         'ref_channel', 1,...
-        'ref_file', 2,...
+        'ref_file', 6,...
         'algorithm', @lucasKanade_plus_nonrigid,...
         'split_channels', false,...
-        'bidi_corrected', false,...
+        'bidi_corrected', true,...
         'tiff_dir', A.data_dir,...
         'nchannels', A.nchannels);              
     % ----------------------------------------------------------------------------------
@@ -229,9 +231,15 @@ if get_rois_and_traces
 
     %% Get df/f for full movie:
 
-    df_min = 20;
+    df_min = 50;
 
     get_df_traces(A, df_min);
 
-    save(fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source)), '-struct', 'A', '-append')
+
+    save(path_to_reference, '-struct', 'A', '-append')
+    
+    % Also save json:
+    savejson('', A, path_to_reference_json);
+    fprintf('DONE!\n');
+
 end
