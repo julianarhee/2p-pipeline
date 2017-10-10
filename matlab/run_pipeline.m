@@ -46,7 +46,7 @@ end
 % ----------------------------------------
 acquisition_base_dir = fullfile(source, experiment, session, acquisition)
 path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
-path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s2.json', tiff_source))
+path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
 
 A = load(path_to_reference);
 
@@ -178,6 +178,9 @@ if do_preprocessing
  
     create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, A);
     save(path_to_reference, '-struct', 'A', '-append')
+
+    % Also save json:
+    savejson('', A, path_to_reference_json);
 
     fprintf('Finished preprocessing data.\n');
 
