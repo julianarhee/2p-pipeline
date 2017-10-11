@@ -166,7 +166,8 @@ if do_preprocessing
     % -------------------------------------------------------------------------
     %% 5.  Create averaged slices from desired source:
     % -------------------------------------------------------------------------
-
+    %A.use_bidi_corrected = false;
+    
     if A.corrected
         if A.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
             A.source_to_average = mcparams.bidi_corrected_dir;
