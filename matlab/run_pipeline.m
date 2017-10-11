@@ -72,39 +72,43 @@ A = load(path_to_reference);
 % i.e., standard across all analyses.
 
 if do_preprocessing
-    A.acquisition_base_dir = acquisition_base_dir;
-    A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
+     A.acquisition_base_dir = acquisition_base_dir;
+     A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
+     mcparams.tiff_dir = A.data_dir;
+     mcparams.nchannels = A.nchannels;              
 
-    % -------------------------------------------------------------------------
-    %% 1.  Set MC params
-    % -------------------------------------------------------------------------
+% 
+%     % -------------------------------------------------------------------------
+%     %% 1.  Set MC params
+%     % -------------------------------------------------------------------------
+% 
+%     A.use_bidi_corrected = true;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+%     A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
+% 
+%     % Names = [
+%     %     'corrected          '       % corrected or raw (T/F)
+%     %     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
+%     %     'flyback_corrected  '       % True if did correct_flyback.py 
+%     %     'ref_channel        '       % Ch to use as reference for correction
+%     %     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
+%     %     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
+%     %     'split_channels     '       % *MC methods parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
+%     %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
+%     %     ];
+% 
+%     mcparams = set_mc_params(...
+%         'corrected', 'true',...
+%         'method', 'Acquisition2P',...
+%         'flyback_corrected', true,...
+%         'ref_channel', 1,...
+%         'ref_file', 6,...
+%         'algorithm', @lucasKanade_plus_nonrigid,...
+%         'split_channels', false,...
+%         'bidi_corrected', true,...
+%         'tiff_dir', A.data_dir,...
+%         'nchannels', A.nchannels);              
+%     % ----------------------------------------------------------------------------------
 
-    A.use_bidi_corrected = true;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
-    A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
-
-    % Names = [
-    %     'corrected          '       % corrected or raw (T/F)
-    %     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
-    %     'flyback_corrected  '       % True if did correct_flyback.py 
-    %     'ref_channel        '       % Ch to use as reference for correction
-    %     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
-    %     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
-    %     'split_channels     '       % *MC methods parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
-    %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
-    %     ];
-
-    mcparams = set_mc_params(...
-        'corrected', 'true',...
-        'method', 'Acquisition2P',...
-        'flyback_corrected', true,...
-        'ref_channel', 1,...
-        'ref_file', 6,...
-        'algorithm', @lucasKanade_plus_nonrigid,...
-        'split_channels', false,...
-        'bidi_corrected', true,...
-        'tiff_dir', A.data_dir,...
-        'nchannels', A.nchannels);              
-    % ----------------------------------------------------------------------------------
     A.corrected = mcparams.corrected; 
     A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
     save(A.mcparams_path, 'mcparams');
