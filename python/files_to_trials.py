@@ -4,14 +4,7 @@ import json
 import re
 import scipy.io as spio
 import numpy as np
-from bokeh.plotting import figure
-import tifffile as tf
-import seaborn as sns
-# %matplotlib notebook
-from matplotlib import gridspec
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.pyplot as plt
-import skimage.color
+from json_tricks.np import dump, dumps, load, loads
 
 def loadmat(filename):
     '''
@@ -88,95 +81,43 @@ class StimInfo:
         self.stim_on_idx = []
 
 
+
 source = '/nas/volume1/2photon/projects'
 experiment = 'scenes'
 session = '20171003_JW016'
 acquisition = 'FOV1'
 functional_dir = 'functional'
 
-curr_file_idx = 2
-curr_slice_idx = 20
-curr_roi_method = 'blobs_DoG'
-
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figdir = os.path.join(acquisition_dir, 'example_figures')
+
+trial_dir = os.path.join(acquisition_dir, 'Trials')
+if not os.path.exists(trial_dir):
+    os.mkdir(trial_dir)
+
 
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
     ref = json.load(fr)
 
-# Get ROI methods:
+curr_roi_method = ref['roi_id'] #'blobs_DoG'
+curr_trace_method = ref['trace_id'] #'blobs_DoG'
+
+# Get masks for each slice: 
 roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roi_methods = os.listdir(roi_methods_dir)
-roi_methods = [str(r) for r in roi_methods]
-roi_methods_dict = dict()
-print "Loading..."
-for r in roi_methods:
-    roiparams = loadmat(os.path.join(roi_methods_dir, r, 'roiparams.mat'))
-    roiparams = roiparams['roiparams']
-    roi_methods_dict[r] = dict()
-    #roi_methods_dict[r]['maskpaths'] = roiparams['maskpaths']
-    maskpaths = roiparams['maskpaths']
-    if isinstance(maskpaths, unicode):
-        roi_methods_dict[r]['Slice01'] = dict()
-        masks = loadmat(maskpaths); masks = masks['masks']
-        roi_methods_dict[r]['Slice01']['nrois'] = masks.shape[2]
-        roi_methods_dict[r]['Slice01']['masks'] = masks       
-    else:
-        for si,sl in enumerate(maskpaths):
-            masks = loadmat(sl); masks = masks['masks']
-            roi_methods_dict[r]['Slice{:02d}'.format(si+1)] = dict()
-            roi_methods_dict[r]['Slice{:02d}'.format(si+1)]['nrois'] = masks.shape[2]
-            roi_methods_dict[r]['Slice{:02d}'.format(si+1)]['masks'] = masks
+roiparams = loadmat(os.path.join(roi_methods_dir, curr_roi_method, 'roiparams.mat'))
+maskpaths = roiparams['roiparams']['maskpaths']
+if not isinstance(maskpaths, list):
+    maskpaths = [maskpaths]
 
-# Get TRACE methods:
-trace_methods_dir = os.path.join(acquisition_dir, 'Traces')
-trace_methods = os.listdir(trace_methods_dir)
-trace_methods = [str(r) for r in trace_methods]
-
-print "Trace methods:", trace_methods
-
-# Get SLICE list:
-if isinstance(ref['slices'], int):
-    slice_names = ['Slice01']
-else:
-    slice_names = ["Slice{:02d}".format(i+1) for i in range(len(ref['slices']))]
-slice_names = sorted(slice_names, key=natural_keys)
-curr_slice_name = slice_names[curr_slice_idx]
-
-# Get FILE list:
-average_source = 'Averaged_Slices_Corrected'
-signal_channel = 1
-average_slice_dir = os.path.join(acquisition_dir, functional_dir, 'DATA', average_source, "Channel{:02d}".format(signal_channel))
-file_names = [f for f in os.listdir(average_slice_dir) if '_vis' not in f]
-print "File names:", file_names
-nfiles = len(file_names)
-
-# Get AVERAGE slices for current file:
-curr_file_name = file_names[curr_file_idx]
-curr_slice_dir = os.path.join(average_slice_dir, curr_file_name)
-slice_fns = sorted([f for f in os.listdir(curr_slice_dir) if f.endswith('.tif')], key=natural_keys)
-
-# Get TRACE structs for current-file, current-slice:
-trace_types = ['raw', 'meansub', 'df/f']
-tracestruct = loadmat(os.path.join(ref['trace_dir'], ref['trace_structs'][curr_slice_idx]))
-traces = tracestruct['file'][0]
-print traces.df_f.T.shape
-
-# Print summary info:
-nfiles = len(tracestruct['file'])
-nframes = traces.df_f.T.shape[1]
-nrois = traces.df_f.T.shape[0]
-print "N files:", nfiles
-print "N frames:", nframes
-print "N rois:", nrois
-
-# Get average slice image for current-file, current-slice:
-curr_slice_fn = slice_fns[curr_slice_idx]
-avg_tiff_path = os.path.join(curr_slice_dir, curr_slice_fn)
-with tf.TiffFile(avg_tiff_path) as tif:
-    avgimg = tif.asarray()
+masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len(maskpaths)))
+for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
+    slice_name = "Slice%02d" % int(slice_idx+1)
+    print "Loading masks: %s..." % slice_name 
+    currmasks = loadmat(maskpath); currmasks = currmasks['masks']
+    masks[slice_name]['nrois'] =  currmasks.shape[2]
+    masks[slice_name]['masks'] = currmasks
 
 
 # Get PARADIGM INFO:
@@ -186,10 +127,14 @@ path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 
 stiminfo_basename = 'stiminfo'
 
-# Load reference info:
-ref_json = 'reference_%s.json' % functional_dir
-with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
-    ref = json.load(fr)
+# ================================================================================
+# frame info:
+# ================================================================================
+first_frame_on = 50
+stim_on_sec = 0.5
+iti = 1.
+vols_per_trial = 15
+# =================================================================================
 
 # Load SI meta data:
 si_basepath = ref['raw_simeta_path'][0:-4]
@@ -197,34 +142,30 @@ simeta_json_path = '%s.json' % si_basepath
 with open(simeta_json_path, 'r') as fs:
     simeta = json.load(fs)
 
-nframes = int(simeta[curr_file_name]['SI']['hFastZ']['numVolumes'])
-framerate = float(simeta[curr_file_name]['SI']['hRoiManager']['scanFrameRate'])
-volumerate = float(simeta[curr_file_name]['SI']['hRoiManager']['scanVolumeRate'])
-frames_tsecs = np.arange(0, nframes)*(1/volumerate)
-
-
-# frame info:
-first_frame_on = 50
-stim_on_sec = 0.5
-iti = 1.
-vols_per_trial = 15
-
-nframes_on = stim_on_sec * volumerate
-nframes_off = vols_per_trial - nframes_on
-frames_iti = round(iti * volumerate)
+file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
+nfiles = len(file_names)
 
 # Create stimulus-dict:
 stimdict = dict()
 for fi in range(nfiles):
-    currfile = "File%03d" % int(fi+1)
-    stim_fn = 'stim_order.txt'
+    currfile= "File%03d" % int(fi+1)
+       
+    nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
+    framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
+    volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+    frames_tsecs = np.arange(0, nframes)*(1/volumerate)
+
+    nframes_on = stim_on_sec * volumerate
+    nframes_off = vols_per_trial - nframes_on
+    frames_iti = round(iti * volumerate) 
 
     # Load stim-order:
+    stim_fn = 'stim_order.txt'
     with open(os.path.join(path_to_paradigm_files, stim_fn)) as f:
         stimorder = f.readlines()
     curr_stimorder = [l.strip() for l in stimorder]
     unique_stims = sorted(set(curr_stimorder), key=natural_keys)
-    first_frame_on = 50
+    first_frame_on = 50 
     for trialnum,stim in enumerate(curr_stimorder):
         #print "Stim on frame:", first_frame_on
         if not stim in stimdict.keys():
@@ -245,15 +186,6 @@ for fi in range(nfiles):
         first_frame_on = first_frame_on + vols_per_trial
 
 
-# 
-# stiminfo_json = '%s.json' % stiminfo_basename
-# stiminfo_mat = '%s.mat' % stiminfo_basename
-# 
-# with open(os.path.join(path_to_paradigm_files, stiminfo_json), 'w') as fw:
-#     json.dumps(jsonify(stimdict), fw, sort_keys=True, indent=4)
-# scipy.io.savemat(os.path.join(path_to_paradigm_files, stiminfo_mat), mdict=stimdict)
-
-
 # Split all traces by stimulus-ID:
 # ----------------------------------------------------------------------------
 stim_ntrials = dict()
@@ -262,132 +194,99 @@ for stim in stimdict.keys():
     for fi in stimdict[stim].keys():
         stim_ntrials[stim] += len(stimdict[stim][fi].trials)
 
-# To look at all traces for ROI 3 for stimulus 1:
-# traces_by_stim['1'][:,roi,:]
+# Load trace structs:
+trace_fns_by_slice = sorted(ref['trace_structs'], key=natural_keys)
+#traces_by_stim = dict((stim, dict()) for stim in stimdict.keys())
+#frames_stim_on = dict((stim, dict()) for stim in stimdict.keys())
+stimtraces_all_slices = dict()
 
-traces_by_stim = dict()
-frames_stim_on = dict()
-for stim in stimdict.keys():
-    repidx = 0
-    curr_traces_allrois = []
-    stim_on_frames = []
-    for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
-        frames_by_trial = stimdict[stim][currfile].frames
-        for currtrial in range(len(frames_by_trial)):
-            currframes = stimdict[stim][currfile].frames[currtrial]
+for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)):
 
-            curr_traces_allrois.append(tracestruct['file'][fi].tracematDC.T[:, currframes])
-            repidx += 1
-            
-            curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial]
-            
-            stim_on_frames.append([curr_frame_onset, curr_frame_onset + stim_on_sec*volumerate])
+    currslice = "Slice%02d" % int(slice_idx+1)
+    stimtraces = dict((stim, dict()) for stim in stimdict.keys())
 
-    traces_by_stim[stim] = np.asarray(curr_traces_allrois)
-    frames_stim_on[stim] = stim_on_frames
-
-
-
-# ---------------------------------------------------------------------------
-# PLOTTING:
-# ----------------------------------------------------------------------------
-
-def get_spaced_colors(n):
-    max_value = 16581375 #255**3
-    interval = int(max_value / n)
-    colors = [hex(I)[2:].zfill(6) for I in range(1, max_value, interval)]
-
-    return [(int(i[:2], 16), int(i[2:4], 16), int(i[4:], 16)) for i in colors]
-
-color_by_roi = True
-
-spacing = 25
-nstimuli = len(stimdict.keys())
-
-if color_by_roi:
-    colorvals255 = get_spaced_colors(nrois)
-else:
-    coorvals255 = get_spaced_colors(nstimuli)
-#colorvals255 = colorvals255[1:] 
-colorvals = np.true_divide(colorvals255, 255)
-print len(colorvals255)
-
-plot_rois = np.arange(0, nrois, 2) #int(nrois/2)
-fig = plt.figure(figsize=(nstimuli,int(len(plot_rois)/2)))
-gs = gridspec.GridSpec(len(plot_rois), 1) #, height_ratios=[1,1,1,1]) 
-gs.update(wspace=0.01, hspace=0.01)
-for ridx,roi in enumerate(plot_rois): #np.arange(0, nrois, 2): # range(plot_rois): # nrois
-    #rowindex = roi + roi*nstimuli
-    print "ROI:", roi
-    plt.subplot(gs[ridx])
-    plt.axis('off')
-    #ax = plt.gca()
-        
-    for stimnum,stim in enumerate(traces_by_stim.keys()):
-        #plt.subplot(gs[roi, stimnum])
-        #print stim
-        raw = traces_by_stim[stim][:, roi, :]
-        #avg = np.mean(raw, axis=0)
-        xvals = np.arange(0, raw.shape[1]) + stimnum*spacing
-        #xvals = np.tile(np.arange(0, raw.shape[1]), (raw.shape[0], 1))
-        curr_dfs = np.empty((raw.shape[0], raw.shape[1])) 
-        for trial in range(raw.shape[0]):
-            frame_on = frames_stim_on[stim][trial][0]
-            baseline = np.mean(raw[trial,0:frame_on])
-            df = (raw[trial,:] - baseline / baseline)
-            curr_dfs[trial,:] = df
-            if color_by_roi:
-                plt.plot(xvals, df, color=colorvals[roi], alpha=1, linewidth=0.2)
-            else:
-                plt.plot(xvals, df, color=colorvals[stimnum], alpha=1, linewidth=0.2)
-            
-            stim_frames = xvals[0]+frames_stim_on[stim][trial]
-            
-            plt.plot(stim_frames, np.ones((2,))*-20, color='k')
-        
-        # Plot average:
-        avg = np.mean(curr_dfs, axis=0) 
-        if color_by_roi:
-            plt.plot(xvals, avg, color=colorvals[roi], alpha=1, linewidth=2)
-        else:
-            plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=2)
+    tracestruct = loadmat(os.path.join(ref['trace_dir'], trace_fn))
     
-    if roi<len(plot_rois)-1:
-        #sns.despine(bottom=True)
-        plt.axis('off')
-        plt.ylabel(str(roi))
-    else:
-        #ax.axes.get_xaxis().set_visible(False)
-        #ax.axes.get_xaxis().set_ticks([])
-        plt.yticks([0, 100])
+    # To look at all traces for ROI 3 for stimulus 1:
+    # traces_by_stim['1']['Slice01'][:,roi,:]
+    for stim in stimdict.keys():
+        #stimtraces[stim] = dict()
+        repidx = 0
+        curr_traces_allrois = []
+        stim_on_frames = []
+        for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
+            curr_ntrials = len(stimdict[stim][currfile].frames)
+            currtraces = tracestruct['file'][fi].tracematDC
+            for currtrial_idx in range(curr_ntrials):
+                currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
+   
+                # .T to make rows = rois, cols = frames 
+                nframes = currtraces.shape[0]
+                nrois = currtraces.shape[1] 
+                curr_traces_allrois.append(currtraces[currtrial_frames, :])
+                repidx += 1
+                
+                curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
+                stim_on_frames.append([curr_frame_onset, curr_frame_onset + stim_on_sec*volumerate])
 
-#fig.tight_layout()
-sns.despine(offset=1, trim=True)
+        stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
+	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+        stimtraces[stim]['ntrials'] = stim_ntrials[stim]
+        stimtraces[stim]['nrois'] = nrois
 
-figname = 'all_rois_traces_by_stim.png'
-plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
-#plt.show()
+    curr_stimtraces_json = 'stimtraces_%s.json' % currslice
+    print curr_stimtraces_json
+    with open(os.path.join(trial_dir, curr_stimtraces_json), 'w') as f:
+        dump(stimtraces, f, indent=4)
 
-# PLOT ROIs:
-img = np.copy(avgimg)
+    stimtraces_all_slices[currslice] = stimtraces
 
-curr_masks = roi_methods_dict[curr_roi_method][curr_slice_name]['masks']
-label_masks = np.zeros((curr_masks.shape[0], curr_masks.shape[1]))
-print label_masks.shape
-roi_idx = 1
-for roi in plot_rois:
-    label_masks[curr_masks[:,:,roi]==1] = int(roi_idx)
-    roi_idx += 1
+        #traces_by_stim[stim][currslice] = np.asarray(curr_traces_allrois)
+        #frames_stim_on[stim][currslice] = stim_on_frames
 
-plt.figure()
-# plt.imshow(img)
-imgnorm = np.true_divide((img - img.min()), (img.max()-img.min()))
-#plt.imshow(imgnorm, cmap='gray'); plt.colorbar()
-plt.imshow(skimage.color.label2rgb(label_masks, image=imgnorm, alpha=0.1, colors=colorvals255, bg_label=0))
-plt.axis('off')
+# 
+# def default(obj):
+#     if isinstance(obj, np.ndarray):
+#         return obj.tolist()
+#     raise TypeError('Not serializable')
+# 
+# stimtraces_json = 'stimtraces.json'
+# with open(os.path.join(path_to_paradigm_files, stimtraces_json), 'w') as f:
+#     dump(stimtraces, f, indent=4)
+#  
+	
+# nframes = traces.df_f.T.shape[1]
+# nrois = traces.df_f.T.shape[0]
+# print "N files:", nfiles
+# print "N frames:", nframes
+# print "N rois:", nrois
+# 
+#    
 
-figname = 'all_rois_average_slice.png'
-plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
-#plt.show()
+#raw = traces_by_stim[stim][:, roi, :]
+#avg = np.mean(raw, axis=0)
+for slice_idx,currslice in enumerate(sorted(stimtraces_all_slices.keys(), key=natural_keys)):
+    traces_by_stim = stimtraces_all_slices[currslice] #[currstim]['traces']
+    nrois = traces_by_stim['1']['nrois']
+    traces_by_roi = dict((str(roi), dict()) for roi in range(nrois))
 
+    for stim in sorted(traces_by_stim.keys(), key=natural_keys):
+        for roi in range(nrois):
+            roiname = str(roi)
+            raw = traces_by_stim[stim]['traces'][:,:,roi]
+            ntrials = raw.shape[0]
+            nframes_in_trial = raw.shape[1]
+            curr_dfs = np.empty((ntrials, nframes_in_trial))
+            for trial in range(ntrials):
+		frame_on = traces_by_stim[stim]['frames_stim_on'][trial][0]
+                baseline = np.mean(raw[trial, 0:frame_on])
+                df = (raw[trial, :] - baseline) / baseline
+		curr_dfs[trial, :] = df
+              
+            traces_by_roi[roiname][stim] = curr_dfs
+
+    curr_roitraces_json = 'roitraces_%s.json' % currslice
+    print curr_roitraces_json
+    with open(os.path.join(trial_dir, curr_roitraces_json), 'w') as f:
+        dump(traces_by_roi, f, indent=4)
 
