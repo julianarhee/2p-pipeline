@@ -16,6 +16,10 @@ if length(curr_vars) > length(existing_vars)
     columns_to_add = struct2table(T);
     existsI = [existsI columns_to_add]
 end
-        
-updatedI = [existsI; itable];
+
+if any(ismember(existsI.Properties.RowNames, itable.Properties.RowNames))
+    updatedI = existsI;
+else
+    updatedI = [existsI; itable];
+end
 writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);

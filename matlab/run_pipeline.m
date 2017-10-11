@@ -252,8 +252,12 @@ if get_rois_and_traces
     end
     A.trace_id = unique(A.trace_id);
     A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
-    if ~exist(A.trace_dir, 'dir')
-        mkdir(A.trace_dir)
+    curr_trace_dir = fullfile(A.trace_dir, I.roi_id);
+%     if ~exist(A.trace_dir, 'dir')
+%         mkdir(A.trace_dir)
+%     end
+    if ~exist(curr_trace_dir)
+        mkdir(curr_trace_dir)
     end
 
     %% Get traces
@@ -287,7 +291,7 @@ if get_rois_and_traces
 
     df_min = 50;
 
-    get_df_traces(A, df_min);
+    get_df_traces(I, A, df_min);
 
 
     save(path_to_reference, '-struct', 'A', '-append')
@@ -297,3 +301,8 @@ if get_rois_and_traces
     fprintf('DONE!\n');
 
 end
+
+
+%% Update info table again:
+itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+updatedI = update_analysis_table(updatedI, itable, path_to_fn);

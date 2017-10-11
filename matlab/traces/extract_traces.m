@@ -51,7 +51,7 @@ switch I.roi_method
                 currtiffpath = fullfile(curr_file_path, curr_file);
                 curr_file_name = sprintf('File%03d', fidx);
                 if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-                    Y = read_file(fullfile(source_dir,currtiff));
+                    Y = read_file(currtiffpath);
                 else
                     Y = read_imgdata(currtiffpath);
                 end 
@@ -68,7 +68,7 @@ switch I.roi_method
                 tracestruct.file(fidx).nrois = size(masks,3);
             end
             tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
-            save(fullfile(A.trace_dir, tracestruct_name), '-struct', 'tracestruct');
+            save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-struct', 'tracestruct');
         end
         
         
