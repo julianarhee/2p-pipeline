@@ -160,7 +160,9 @@ slice_fns = sorted([f for f in os.listdir(curr_slice_dir) if f.endswith('.tif')]
 
 # Get TRACE structs for current-file, current-slice:
 trace_types = ['raw', 'meansub', 'df/f']
-tracestruct = loadmat(os.path.join(ref['trace_dir'], ref['trace_structs'][curr_slice_idx]))
+tracestruct_fns = os.listdir(os.path.join(ref['trace_dir'], curr_roi_method))
+tracestruct_fns = sorted([t for t in tracestruct_fns if 'traces_Slice' in t], key=natural_keys)
+tracestruct = loadmat(os.path.join(ref['trace_dir'], curr_roi_method, tracestruct_fns[curr_slice_idx]))
 traces = tracestruct['file'][0]
 print traces.df_f.T.shape
 

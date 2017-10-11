@@ -1,75 +1,26 @@
-
+#!/usr/bin/env python2
 import os
 import json
 import re
 import scipy.io as spio
 import numpy as np
 from json_tricks.np import dump, dumps, load, loads
-
-def loadmat(filename):
-    '''
-    this function should be called instead of direct spio.loadmat
-    as it cures the problem of not properly recovering python dictionaries
-    from mat files. It calls the function check keys to cure all entries
-    which are still mat-objects
-    '''
-    data = spio.loadmat(filename, struct_as_record=False, squeeze_me=True)
-
-    return _check_keys(data)
-
-
-def _check_keys(dict):
-    '''
-    checks if entries in dictionary are mat-objects. If yes
-    todict is called to change them to nested dictionaries
-    '''
-    for key in dict:
-        if isinstance(dict[key], spio.matlab.mio5_params.mat_struct):
-            dict[key] = _todict(dict[key])
-
-    return dict
-
-
-def _todict(matobj):
-    '''
-    A recursive function which constructs from matobjects nested dictionaries
-    '''
-    dict = {}
-    for strg in matobj._fieldnames:
-        elem = matobj.__dict__[strg]
-        if isinstance(elem, spio.matlab.mio5_params.mat_struct):
-            dict[strg] = _todict(elem)
-        elif isinstance(elem,np.ndarray):
-            dict[strg] = _tolist(elem)
-        else:
-            dict[strg] = elem
-
-    return dict
-
-
-def _tolist(ndarray):
-    '''
-    A recursive function which constructs lists from cellarrays 
-    (which are loaded as numpy ndarrays), recursing into the elements
-    if they contain matobjects.
-    '''
-    elem_list = []
-    for sub_elem in ndarray:
-        if isinstance(sub_elem, spio.matlab.mio5_params.mat_struct):
-            elem_list.append(_todict(sub_elem))
-        elif isinstance(sub_elem,np.ndarray):
-            elem_list.append(_tolist(sub_elem))
-        else:
-            elem_list.append(sub_elem)
-
-    return elem_list
-
+from mat2py import loadmat
+import cPickle as pkl
 
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
+
+class StimInfo:
+    def _init_(self, stimid=None, trials=None, frames=None, frames_sec=None, stim_on_idx=None):
+        self.stimid = stimid #''
+        self.trials = trials # []
+        self.frames = frames # []
+        self.frames_sec = frames_sec # []
+        self.stim_on_idx = stim_on_idx #[]
 
 
 class StimInfo:
@@ -80,8 +31,39 @@ class StimInfo:
         self.frames_sec = []
         self.stim_on_idx = []
 
+def serialize_json(instance=None, path=None):
+    dt = {}
+    dt.update(vars(instance))
 
+#     with open(path, "w") as file:
+#         json.dump(dt, file)
+# 
 
+# def deserialize_json(cls=None, data=None):
+#     print cls
+#     instance = object.__new__(cls)
+# 
+#     for key, value in data.items():
+#         setattr(instance, key, value)
+# 
+#     return instance
+# 
+# 
+# def deserialize_json(cls=None, path=None):
+# 
+#     def read_json(_path):
+#         with open(_path, "r") as file:
+#             return json.load(file)
+# 
+#     data = read_json(path)
+# 
+#     instance = object.__new__(cls)
+# 
+#     for key, value in data.items():
+#         setattr(instance, key, value)
+# 
+#     return instance
+ 
 source = '/nas/volume1/2photon/projects'
 experiment = 'scenes'
 session = '20171003_JW016'
@@ -91,18 +73,26 @@ functional_dir = 'functional'
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figdir = os.path.join(acquisition_dir, 'example_figures')
 
-trial_dir = os.path.join(acquisition_dir, 'Trials')
-if not os.path.exists(trial_dir):
-    os.mkdir(trial_dir)
-
 
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
     ref = json.load(fr)
 
+# =====================================================
+# Set ROI method and Trace method:
+# =====================================================
 curr_roi_method = ref['roi_id'] #'blobs_DoG'
-curr_trace_method = ref['trace_id'] #'blobs_DoG'
+#curr_trace_method = ref['trace_id'] #'blobs_DoG'
+trace_dir = os.path.join(ref['trace_dir'], curr_roi_method)
+#trace_dir = ref['trace_dir']
+# =====================================================
+
+# Create parsed-trials dir with default format:
+parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
+if not os.path.exists(parsed_traces_dir):
+    os.mkdir(parsed_traces_dir)
+
 
 # Get masks for each slice: 
 roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
@@ -125,66 +115,11 @@ path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 
-stiminfo_basename = 'stiminfo'
-
-# ================================================================================
-# frame info:
-# ================================================================================
-first_frame_on = 50
-stim_on_sec = 0.5
-iti = 1.
-vols_per_trial = 15
-# =================================================================================
-
-# Load SI meta data:
-si_basepath = ref['raw_simeta_path'][0:-4]
-simeta_json_path = '%s.json' % si_basepath
-with open(simeta_json_path, 'r') as fs:
-    simeta = json.load(fs)
-
-file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
-nfiles = len(file_names)
-
-# Create stimulus-dict:
-stimdict = dict()
-for fi in range(nfiles):
-    currfile= "File%03d" % int(fi+1)
-       
-    nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-    framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-    volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-    frames_tsecs = np.arange(0, nframes)*(1/volumerate)
-
-    nframes_on = stim_on_sec * volumerate
-    nframes_off = vols_per_trial - nframes_on
-    frames_iti = round(iti * volumerate) 
-
-    # Load stim-order:
-    stim_fn = 'stim_order.txt'
-    with open(os.path.join(path_to_paradigm_files, stim_fn)) as f:
-        stimorder = f.readlines()
-    curr_stimorder = [l.strip() for l in stimorder]
-    unique_stims = sorted(set(curr_stimorder), key=natural_keys)
-    first_frame_on = 50 
-    for trialnum,stim in enumerate(curr_stimorder):
-        #print "Stim on frame:", first_frame_on
-        if not stim in stimdict.keys():
-            stimdict[stim] = dict()
-        if not currfile in stimdict[stim].keys():
-            stimdict[stim][currfile] = StimInfo()
-            stimdict[stim][currfile].trials = []
-            stimdict[stim][currfile].frames = []
-            stimdict[stim][currfile].frames_sec = []
-            stimdict[stim][currfile].stim_on_idx = []
-
-        framenums = list(np.arange(int(first_frame_on-frames_iti), int(first_frame_on+(vols_per_trial))))
-        frametimes = [frames_tsecs[f] for f in framenums]
-        stimdict[stim][currfile].trials.append(trialnum)      
-        stimdict[stim][currfile].frames.append(framenums)
-        stimdict[stim][currfile].frames_sec.append(frametimes)
-        stimdict[stim][currfile].stim_on_idx.append(framenums.index(first_frame_on))
-        first_frame_on = first_frame_on + vols_per_trial
-
+# Load stimulus dict:
+stimdict_fn = 'stimdict.pkl'
+with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
+     stimdict = pkl.load(f) #json.load(f)
+ 
 
 # Split all traces by stimulus-ID:
 # ----------------------------------------------------------------------------
@@ -195,7 +130,10 @@ for stim in stimdict.keys():
         stim_ntrials[stim] += len(stimdict[stim][fi].trials)
 
 # Load trace structs:
-trace_fns_by_slice = sorted(ref['trace_structs'], key=natural_keys)
+curr_tracestruct_fns = os.listdir(trace_dir)
+trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t], key=natural_keys)
+#trace_fns_by_slice = sorted(ref['trace_structs'], key=natural_keys)
+
 #traces_by_stim = dict((stim, dict()) for stim in stimdict.keys())
 #frames_stim_on = dict((stim, dict()) for stim in stimdict.keys())
 stimtraces_all_slices = dict()
@@ -205,7 +143,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     currslice = "Slice%02d" % int(slice_idx+1)
     stimtraces = dict((stim, dict()) for stim in stimdict.keys())
 
-    tracestruct = loadmat(os.path.join(ref['trace_dir'], trace_fn))
+    tracestruct = loadmat(os.path.join(trace_dir, trace_fn))
     
     # To look at all traces for ROI 3 for stimulus 1:
     # traces_by_stim['1']['Slice01'][:,roi,:]
@@ -236,7 +174,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 
     curr_stimtraces_json = 'stimtraces_%s.json' % currslice
     print curr_stimtraces_json
-    with open(os.path.join(trial_dir, curr_stimtraces_json), 'w') as f:
+    with open(os.path.join(parsed_traces_dir, curr_stimtraces_json), 'w') as f:
         dump(stimtraces, f, indent=4)
 
     stimtraces_all_slices[currslice] = stimtraces
@@ -287,6 +225,6 @@ for slice_idx,currslice in enumerate(sorted(stimtraces_all_slices.keys(), key=na
 
     curr_roitraces_json = 'roitraces_%s.json' % currslice
     print curr_roitraces_json
-    with open(os.path.join(trial_dir, curr_roitraces_json), 'w') as f:
+    with open(os.path.join(parsed_traces_dir, curr_roitraces_json), 'w') as f:
         dump(traces_by_roi, f, indent=4)
 
