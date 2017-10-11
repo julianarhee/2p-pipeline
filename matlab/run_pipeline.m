@@ -82,8 +82,8 @@ if do_preprocessing
 %     %% 1.  Set MC params
 %     % -------------------------------------------------------------------------
 % 
-%     A.use_bidi_corrected = true;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
-%     A.signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
+     A.use_bidi_corrected = use_bidi_corrected;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+     A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
 % 
 %     % Names = [
 %     %     'corrected          '       % corrected or raw (T/F)
@@ -162,7 +162,7 @@ if do_preprocessing
     end
     
     % Sort bidi-corrected:
-    if isfield(mcparams, 'bidi_corrected_dir')
+    if A.use_bidi_corrected %isfield(mcparams, 'bidi_corrected_dir')
         path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
         post_mc_cleanup(path_to_cleanup, A);     
     end
