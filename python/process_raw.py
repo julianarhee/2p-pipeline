@@ -53,7 +53,7 @@ reference_info_basename = 'reference_%s' % functional_dir
 # -------------------------------------------------------------
 # -------------------------------------------------------------
 
-do_flyback_correction = option.do_flyback_correction #True #True #True
+do_flyback_correction = options.do_fyback_correction #True #True #True
 flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack [default: 8]
 
 
@@ -87,7 +87,11 @@ discard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
 nvolumes = int(simeta['File001']['SI']['hFastZ']['numVolumes'])
 # nslices = int(simeta['File001']['SI']['hFastZ']['numFramesPerVolume'])
 nslices = int(simeta['File001']['SI']['hStackManager']['numSlices'])
-nchannels = len(simeta['File001']['SI']['hChannels']['channelSave']) 
+tmp_channels = simeta['File001']['SI']['hChannels']['channelSave']
+if isinstance(tmp_channels, int):
+    nchannels = simeta['File001']['SI']['hChannels']['channelSave']
+else:
+    nchannels = len(simeta['File001']['SI']['hChannels']['channelSave']) 
 #nchannels = #len([int(i) for i in simeta['File001']['SI']['hChannels']['channelSave']]) # if i.isnumeric()])
 print "Raw SI info:"
 print "N channels: {nchannels}, N slices: {nslices}, N volumes: {nvolumes}".format(nchannels=nchannels, nslices=nslices, nvolumes=nvolumes)
