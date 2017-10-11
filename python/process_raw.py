@@ -21,14 +21,30 @@ If used, mcparams.correct_flyback = True.
 
 import os
 import json
+import optparse
 
-source = '/nas/volume1/2photon/projects'
-experiment = 'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
-session = '20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
-acquisition = 'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = 'functional' #'functional_subset'
+parser = optparse.OptionParser()
+
+# PATH opts:
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
+parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
+parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
+
+(options, args) = parser.parse_args() 
+
+source = options.source #'/nas/volume1/2photon/projects'
+experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
+session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
+acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
+functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
+
+
 # -------------------------------------------------------------
 # Set basename for files created containing meta/reference info:
 # -------------------------------------------------------------
@@ -37,9 +53,8 @@ reference_info_basename = 'reference_%s' % functional_dir
 # -------------------------------------------------------------
 # -------------------------------------------------------------
 
-
-do_flyback_correction = True #True #True
-flyback = 0 #1       # Num flyback frames at top of stack [default: 8]
+do_flyback_correction = option.do_flyback_correction #True #True #True
+flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack [default: 8]
 
 
 # ----------------------------------------------------------------------------
