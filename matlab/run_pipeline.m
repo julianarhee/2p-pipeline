@@ -11,22 +11,6 @@ fprintf('Added repo paths.\n');
 
 init_header
 
-% noUI = true;
-% get_rois_and_traces = false %true %false;
-% do_preprocessing = true %false %true;
-
-
-% if noUI
-% 
-%     % Set info manually:
-%     source = '/nas/volume1/2photon/projects';
-%     experiment = 'gratings_phaseMod';
-%     session = '20171005_CE059';
-%     acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
-%     tiff_source = 'functional'; %'functional_subset';
-%     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
-%     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
-
 if useGUI
     default_root = '/nas/volume1/2photon/projects';                            % DIR containing all experimental data
     tiff_dirs = uipickfiles('FilterSpec', default_root);                       % Returns cell-array of full paths to selected folders containing TIFFs to be processed
@@ -47,7 +31,6 @@ end
 [sess_parent, session, ~] = fileparts(acq_parent);
 [source, experiment, ~] = fileparts(sess_parent);
 
-
 % Build acq path and get reference struct:
 % ----------------------------------------
 acquisition_base_dir = fullfile(source, experiment, session, acquisition)
@@ -56,6 +39,42 @@ path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.js
 
 A = load(path_to_reference);
 
+% TODO:  Load (or generate) "analysis-trail" file to store all processing steps and iterations
+
+
+%%
+
+datetime = strsplit(analysis_id, ' ');
+rundate = datetime{1};
+
+I = struct();
+I.roi_method = roi_method; mcparams.method;
+I.roi_id = roi_id;
+I.corrected = mcparams.corrected;
+I.mc_method = mcparams.method;
+I.use_bidi_corrected = use_bidi_corrected; 
+if isempty(slices)
+    I.slices = A.slices;
+else
+    I.slices = slices;
+end
+itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+
+path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
+path_to_analysisinfo_json = fullfile(acquisition_base_dir, 'analysis_info.json');
+
+analysisinfo_fn = dir(path_to_fn);
+if isempty(analysisinfo_fn)
+    % Create new:
+    path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
+    itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+    writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+else
+    existsI = readtable(path_to_fn, 'Delimiter', '\t', 'ReadRowNames', true);
+    prevruns = existsI.Properties.RowNames;
+    updatedI = [existsI; itable];
+    writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+end
 
 %% PREPROCESSING:  motion-correction.
 
@@ -77,39 +96,22 @@ if do_preprocessing
      mcparams.tiff_dir = A.data_dir;
      mcparams.nchannels = A.nchannels;              
 
-% 
-%     % -------------------------------------------------------------------------
-%     %% 1.  Set MC params
-%     % -------------------------------------------------------------------------
-% 
-     A.use_bidi_corrected = use_bidi_corrected;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
-     A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
-% 
-%     % Names = [
-%     %     'corrected          '       % corrected or raw (T/F)
-%     %     'method             '       % Source for doing correction. Can be custom. ['Acqusition2P', 'NoRMCorre']
-%     %     'flyback_corrected  '       % True if did correct_flyback.py 
-%     %     'ref_channel        '       % Ch to use as reference for correction
-%     %     'ref_file           '       % File index (of numerically-ordered TIFFs) to use as reference
-%     %     'algorithm          '       % Depends on 'method': Acq_2P [@lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade], NoRMCorre ['rigid', 'nonrigid']
-%     %     'split_channels     '       % *MC methods parse corrected-tiffs by Channel-File-Slice (Acq2P does this already). Last step interleaves parsed tiffs, but sometimes they are too big for Matlab
-%     %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
-%     %     ];
-% 
-%     mcparams = set_mc_params(...
-%         'corrected', 'true',...
-%         'method', 'Acquisition2P',...
-%         'flyback_corrected', true,...
-%         'ref_channel', 1,...
-%         'ref_file', 6,...
-%         'algorithm', @lucasKanade_plus_nonrigid,...
-%         'split_channels', false,...
-%         'bidi_corrected', true,...
-%         'tiff_dir', A.data_dir,...
-%         'nchannels', A.nchannels);              
-%     % ----------------------------------------------------------------------------------
-
-    A.corrected = mcparams.corrected; 
+      % -------------------------------------------------------------------------
+      %% 1.  Set MC params
+      % -------------------------------------------------------------------------
+ 
+    if isfield(A, 'use_bidi_corrected')
+         A.use_bidi_corrected = unique([A.use_bidi_corrected I.use_bidi_corrected]);
+    else
+         A.use_bidi_corrected = I.use_bidi_corrected;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+    end 
+    A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
+        
+    if isfield(A, 'corrected')
+        A.corrected = unique([A.corrected mcparams.corrected]);
+    else
+        A.corrected = I.corrected; 
+    end
     A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
     save(A.mcparams_path, 'mcparams');
     save(path_to_reference, '-struct', 'A', '-append');
@@ -122,7 +124,7 @@ if do_preprocessing
     %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
     % -------------------------------------------------------------------------
 
-    if A.corrected
+    if I.corrected
         %[A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
        [A, mcparams] = motion_correct_data(A, mcparams);
     else
@@ -139,7 +141,7 @@ if do_preprocessing
     % re-interleaves by default, and otherwise splits the channels if too large
     
     % PYTHON equivalent faster: 
-    if A.corrected
+    if I.corrected
         deinterleaved_source = mcparams.corrected_dir;
     else
         deinterleaved_source = mcparams.parsed_dir;
@@ -157,12 +159,12 @@ if do_preprocessing
     % -------------------------------------------------------------------------
     % mcparams.bidi_corrected = true;
 
-    if A.use_bidi_corrected
-        [A, mcparams] = do_bidi_correction(A, mcparams);
+    if I.use_bidi_corrected
+        [A, mcparams] = do_bidi_correction(A, I, mcparams);
     end
     
     % Sort bidi-corrected:
-    if A.use_bidi_corrected %isfield(mcparams, 'bidi_corrected_dir')
+    if I.use_bidi_corrected %isfield(mcparams, 'bidi_corrected_dir')
         path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
         post_mc_cleanup(path_to_cleanup, A);     
     end
@@ -171,53 +173,91 @@ if do_preprocessing
     %% 5.  Create averaged slices from desired source:
     % -------------------------------------------------------------------------
     %A.use_bidi_corrected = false;
-    
-    if A.corrected
-        if A.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
-            A.source_to_average = mcparams.bidi_corrected_dir;
-        else
-            A.source_to_average = mcparams.corrected_dir;
-        end
-    else
-        A.source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
+    if I.corrected && I.use_bidi_corrected
+        new_average_source_dir = mcparams.bidi_corrected_dir;
+    elseif I.corrected && ~I.use_bidi_corrected
+        new_average_source_dir = mcparams.corrected_dir;
+    elseif ~I.corrected
+        new_average_source_dir = mcparams.parsed_dir;
     end
-
-    source_tiff_basepath = fullfile(mcparams.tiff_dir, A.source_to_average);
-    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', A.source_to_average));
+    if isfield(A, 'source_to_average')
+        A.source_to_average{end+1} = new_average_source_dir;
+    else
+         A.source_to_average = {new_average_source_dir};
+    end
+    I.average_source = new_average_source_dir;
+                 
+%     if I.corrected
+%         if I.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
+%             A.source_to_average = mcparams.bidi_corrected_dir;
+%         else
+%             A.source_to_average = mcparams.corrected_dir;
+%         end
+%     else
+%         A.source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
+%     end
+ 
+    source_tiff_basepath = fullfile(mcparams.tiff_dir, I.average_source);
+    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', I.average_source));
     mcparams.averaged_slices_dir = dest_tiff_basepath;
     save(A.mcparams_path, 'mcparams', '-append');
  
-    create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, A);
+    create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, I, A);
     save(path_to_reference, '-struct', 'A', '-append')
 
     % Also save json:
     savejson('', A, path_to_reference_json);
+    savejson('', I, path_to_analysisinfo_json);
 
     fprintf('Finished preprocessing data.\n');
 
 end
 
+%% Update itable:
+
+itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+updatedI = update_analysis_table(existsI, itable, path_to_fn);
+
 
 %% Specify ROI param struct path:
 if get_rois_and_traces
-    A.roi_method = 'pyblob2D';
-    A.roi_id = 'blobs_DoG';
+    I.roi_method = roi_method;
+    I.roi_id = roi_id;
+    if isfield(A, 'roi_method')
+        A.roi_method{end+1} = I.roi_method;
+    else
+        A.roi_method = {I.roi_method};
+    end
+    A.roi_method = unique(A.roi_method);
+    if isfield(A, 'roi_id')
+        A.roi_id{end+1} = I.roi_id;
+    else
+        A.roi_id = {I.roi_id};
+    end
+    A.roi_id = unique(A.roi_id);
+    
+    %A.roi_method = 'pyblob2D';
+    %A.roi_id = 'blobs_DoG';
 
-    A.roiparams_path = fullfile(A.acquisition_base_dir, 'ROIs', A.roi_id, 'roiparams.mat');
+    A.roi_dir = fullfile(A.acquisition_base_dir, 'ROIs'); %, A.roi_id, 'roiparams.mat');
 
     %% GET ROIS.
 
 
     %% Specify Traces param struct path:
-
-    A.trace_id = 'blobs_DoG';
-    A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces', A.trace_id);
+    if isfield(A, 'trace_id')
+        A.trace_id{end+1} = I.roi_id;
+    else
+        A.trace_id = {I.roi_id}; %'blobs_DoG';
+    end
+    A.trace_id = unique(A.trace_id);
+    A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
     if ~exist(A.trace_dir, 'dir')
         mkdir(A.trace_dir)
     end
 
     %% Get traces
-    extract_traces(A);
+    extract_traces(I, A);
     fprintf('Extracted raw traces.\n')
 
     %% GET metadata for SI tiffs:
@@ -238,8 +278,8 @@ if get_rois_and_traces
     win_unit = 3; 
     num_units = 3;
 
-    tracestruct_names = get_processed_traces(A, win_unit, num_units);
-    A.trace_structs = tracestruct_names;
+    tracestruct_names = get_processed_traces(I, A, win_unit, num_units);
+    %A.trace_structs = tracestruct_names;
 
     fprintf('Done processing Traces!\n');
 

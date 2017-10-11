@@ -14,16 +14,19 @@ switch length(varargin)
 end
 
 DF = struct();
-for sidx = 1:length(A.slices)
+for sidx = 1:length(I.slices)
    
-    sl = A.slices(sidx);
+    sl = I.slices(sidx);
     fprintf('Processing SLICE %i...\n', sl);
     
 %     if ~strcmp(D.roiType, 'pixels')
 %         masks = load(D.maskPaths{sidx});
 %     end
 
-    tracestruct = load(fullfile(A.trace_dir, A.trace_structs{sidx}));
+    tracestruct_fns = dir(fullfile(A.trace_dir, I.trace_id, 'traces_Slice*'));
+    tracestruct_fns = {tracestruct_fns(:).name}';
+    %tracestruct = load(fullfile(A.trace_dir, A.trace_structs{sidx}));
+    tracestruct = load(fullfile(A.trace_dir, I.trace_id, tracestruct_fns{sidx}));
         
     for fidx=1:ntiffs
         maskcell = tracestruct.file(fidx).maskcell;
@@ -34,7 +37,7 @@ for sidx = 1:length(A.slices)
         else
             file_dir = sprintf('File%03d', fidx);
         end
-        avg_source = sprintf('Averaged_Slices_%s', A.source_to_average);
+        avg_source = sprintf('Averaged_Slices_%s', I.source_to_average);
         avg_slice_dir = fullfile(A.data_dir, avg_source, sprintf('Channel%02d', A.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
@@ -120,7 +123,8 @@ for sidx = 1:length(A.slices)
         tracestruct.file(fidx).active_rois = activeRois;
         tracestruct.file(fidx).active_thresh = df_min;
         tracestruct.file(fidx).average_img = avgY;
-        save(fullfile(A.trace_dir, A.trace_structs{sidx}), '-struct', 'tracestruct', '-append');
+        %save(fullfile(A.trace_dir, A.trace_structs{sidx}), '-struct', 'tracestruct', '-append');
+        save(fullfile(A.trace_dir, I.trace_id, tracestruct_fns{sidx}), '-struct', 'tracestruct', '-append');
 
         DF.slice(sl).file(fidx).meanMap = meanMap;
         DF.slice(sl).file(fidx).maxMap = maxMap;
@@ -143,7 +147,7 @@ for sidx = 1:length(A.slices)
 end
 
 dfName = sprintf('dfstruct.mat');
-save_struct(A.trace_dir, dfName, DF);
+save_struct(A.trace_dir, I.trace_id, dfName, DF);
 
 DF.name = dfName;
 

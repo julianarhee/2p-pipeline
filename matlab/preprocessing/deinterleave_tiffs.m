@@ -1,13 +1,14 @@
-function deinterleave_tiffs(newtiff, filename, fid, write_dir, A)
+function deinterleave_tiffs(newtiff, filename, fid, write_dir, I, A)
 
 namingFunction = @defaultNamingFunction;
 
 base_filename = A.base_filename;
-nslices = length(A.slices);
+nslices = length(I.slices);
+slices = I.slices;
 nchannels = A.nchannels'
 
 fprintf('Saving deinterleaved slices to:\n%s\n', write_dir);
-for sl = 1:nslices
+for sl = slices %1:nslices
         
     % Check filename to see if Ch1/Ch2 split:
     if strfind(filename, 'Channel01')

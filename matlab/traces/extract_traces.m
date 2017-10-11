@@ -1,4 +1,4 @@
-function extract_traces(A)
+function extract_traces(I, A)
 
 % roiparams.params 
 % roiparams.nrois
@@ -8,11 +8,13 @@ function extract_traces(A)
 % roiparams.roi_info
 
 load(A.mcparams_path);
-load(A.roiparams_path);
+roiparams_path = fullfile(A.roi_dir, I.roi_id, 'roiparams.mat');
+%load(A.roiparams_path);
+load(roiparams_path);
 simeta = load(A.raw_simeta_path);
 
 % Set path for slice time-series tiffs:
-if A.use_bidi_corrected
+if I.use_bidi_corrected
     base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 else
     if mcparams.corrected
@@ -22,7 +24,7 @@ else
     end
 end
 
-switch A.roi_method
+switch I.roi_method
     
     case 'pixels'
         % do sth
@@ -32,8 +34,8 @@ switch A.roi_method
         
     case 'pyblob2D'
         % Load roistruct created in roi_blob_detector.py:
-        for sidx = 1:length(A.slices)
-            sl = A.slices(sidx);
+        for sidx = 1:length(I.slices)
+            sl = I.slices(sidx);
             load(roiparams.maskpaths{sidx});
             maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
             maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);

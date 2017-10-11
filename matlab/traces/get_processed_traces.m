@@ -1,4 +1,4 @@
-function tracestruct_names = get_processed_traces(A, win_unit, num_units, varargin)
+function tracestruct_names = get_processed_traces(I, A, win_unit, num_units, varargin)
 
 % Process traces:
 % get_traces.m extracts raw traces using ROI masks (saves tracestruct)
@@ -24,12 +24,12 @@ end
 simeta = load(A.simeta_path);
 metastruct = simeta.SI;
 
-for sidx = 1:length(A.slices)
-    sl = A.slices(sidx);
+for sidx = 1:length(I.slices)
+    sl = I.slices(sidx);
     fprintf('Processing traces for Slice %02d...\n', sl);
     
     tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
-    tracestruct = load(fullfile(A.trace_dir, tracestruct_name));
+    tracestruct = load(fullfile(A.trace_dir, I.trace_id, tracestruct_name));
     ntiffs = length(tracestruct.file);
     for fidx=1:ntiffs
         meta = metastruct.file(fidx);
@@ -94,7 +94,7 @@ for sidx = 1:length(A.slices)
     end
     
     % Save slice ROIs (including all files):
-    save(fullfile(A.trace_dir, tracestruct_name), '-append', '-struct', 'tracestruct');
+    save(fullfile(A.trace_dir, I.trace_id, tracestruct_name), '-append', '-struct', 'tracestruct');
     tracestruct_names{end+1} = tracestruct_name;
 
 end

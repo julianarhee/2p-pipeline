@@ -1,4 +1,4 @@
-function [A, mcparams] = do_bidi_correction(A, mcparams, varargin)
+function [A, mcparams] = do_bidi_correction(A, I, mcparams, varargin)
 
 % If provided opt arg, do Bi-Di correction from deinterleaved TIFFs.
 % Otherwise, read TIFFs in ./DATA dir (output from first MC + reinterleaving step.
@@ -14,7 +14,7 @@ else
     from_source = false;
 end
 
-if A.use_bidi_corrected
+if I.use_bidi_corrected
 mcparams.bidi_corrected_dir = 'Corrected_Bidi';
 if ~exist(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir), 'dir')
     mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
@@ -25,7 +25,7 @@ namingFunction = @defaultNamingFunction;
 write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 
 nchannels = A.nchannels;
-nslices = length(A.slices);
+nslices = length(I.slices);
 nvolumes = A.nvolumes;
  
 % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
@@ -44,7 +44,7 @@ for tiff_idx = 1:length(tiffs)
     if from_source
         curr_filedir = sprintf('File%03d', tiff_idx);
         fprintf('Reinterleaving tiffs from source for BiDi correction...\n');
-        tic; Yt = reinterleave_from_source(curr_filedir, path_to_parsed, A); toc;
+        tic; Yt = reinterleave_from_source(curr_filedir, path_to_parsed, I, A); toc;
         fprintf('Got reinterleaved TIFF from source. Size is: %s\n', mat2str(size(Yt)));
     else
         %tic; Yt = read_file(tpath); toc; % is this faster
