@@ -1,5 +1,7 @@
 % Put in .gitignore at top of repo. Edit to run specific acquisitions.
 
+% Add *_header.m to /2p-pipeline/.gitignore file after cloning repo.
+
 useGUI = false;
 get_rois_and_traces = false %true %false;
 do_preprocessing = true %false %true;
