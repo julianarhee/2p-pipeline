@@ -7,21 +7,27 @@ fprintf('Added repo paths.\n');
 
 %% Select TIFF dirs for current analysis
 
-noUI = true;
-get_rois_and_traces = false %true %false;
-do_preprocessing = true %false %true;
+% Run INIT_HEADER.m
 
-if noUI
+init_header
 
-    % Set info manually:
-    source = '/nas/volume1/2photon/projects';
-    experiment = 'gratings_phaseMod';
-    session = '20171005_CE059';
-    acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
-    tiff_source = 'functional'; %'functional_subset';
-    acquisition_base_dir = fullfile(source, experiment, session, acquisition);
-    curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
-else
+% noUI = true;
+% get_rois_and_traces = false %true %false;
+% do_preprocessing = true %false %true;
+
+
+% if noUI
+% 
+%     % Set info manually:
+%     source = '/nas/volume1/2photon/projects';
+%     experiment = 'gratings_phaseMod';
+%     session = '20171005_CE059';
+%     acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
+%     tiff_source = 'functional'; %'functional_subset';
+%     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
+%     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
+
+if useGUI
     default_root = '/nas/volume1/2photon/projects';                            % DIR containing all experimental data
     tiff_dirs = uipickfiles('FilterSpec', default_root);                       % Returns cell-array of full paths to selected folders containing TIFFs to be processed
     
