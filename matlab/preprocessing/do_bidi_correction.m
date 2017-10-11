@@ -5,6 +5,8 @@ function [A, mcparams] = do_bidi_correction(A, mcparams, varargin)
 % Output of BiDi correction on interleaved TIFFs will be written to ./DATA (overwrites).
 % Deinterleaved files saved to ./DATA/Corrected_Bidi. No additional reinterleaving step needed.
 
+simeta = load(A.raw_simeta_path);
+
 if length(varargin)>0
     path_to_parsed = varargin{1};
     from_source = true;
@@ -47,7 +49,7 @@ for tiff_idx = 1:length(tiffs)
     else
         %tic; Yt = read_file(tpath); toc; % is this faster
         currtiffpath = tpath;
-        curr_file_name = sprintf('File%03d', fidx);
+        curr_file_name = sprintf('File%03d', tiff_idx);
         if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
             Yt = read_file(currtiffpath);
         else
