@@ -228,14 +228,15 @@ end
 
 %% Update itable:
 
+I.roi_method = roi_method;
+I.roi_id = roi_id;
+
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 updatedI = update_analysis_table(existsI, itable, path_to_fn);
 
 
 %% Specify ROI param struct path:
 if get_rois_and_traces
-    I.roi_method = roi_method;
-    I.roi_id = roi_id;
     if isfield(A, 'roi_method')
         A.roi_method{end+1} = I.roi_method;
     else
