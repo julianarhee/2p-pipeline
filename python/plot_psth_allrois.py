@@ -95,7 +95,7 @@ path_to_trace_structs = os.path.join(acquisition_dir, 'Trials')
 # Load stim trace structs:
 print "Loading parsed traces..."
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f], key=natural_keys)
+stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and f.endswith('.json'], key=natural_keys)
 stimtrace_fn = stimtrace_fns[curr_slice_idx]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'r') as f:
     stimtraces = load(f)

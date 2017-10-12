@@ -7,6 +7,7 @@ import numpy as np
 from json_tricks.np import dump, dumps, load, loads
 from mat2py import loadmat
 import cPickle as pkl
+import scipy.io
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -94,6 +95,16 @@ if not os.path.exists(parsed_traces_dir):
     os.mkdir(parsed_traces_dir)
 
 
+# Load SI meta data:
+si_basepath = ref['raw_simeta_path'][0:-4]
+simeta_json_path = '%s.json' % si_basepath
+with open(simeta_json_path, 'r') as fs:
+    simeta = json.load(fs)
+
+file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
+nfiles = len(file_names)
+
+
 # Get masks for each slice: 
 roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
 roiparams = loadmat(os.path.join(roi_methods_dir, curr_roi_method, 'roiparams.mat'))
@@ -119,7 +130,18 @@ path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 stimdict_fn = 'stimdict.pkl'
 with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
      stimdict = pkl.load(f) #json.load(f)
- 
+
+# ================================================================================
+# frame info:
+# ================================================================================
+first_frame_on = 50
+stim_on_sec = 0.5
+iti = 1.
+vols_per_trial = 15
+same_order = True
+# =================================================================================
+
+
 
 # Split all traces by stimulus-ID:
 # ----------------------------------------------------------------------------
@@ -153,6 +175,15 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         curr_traces_allrois = []
         stim_on_frames = []
         for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
+            nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
+            framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
+            volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
+
+            nframes_on = stim_on_sec * volumerate
+            nframes_off = vols_per_trial - nframes_on
+            frames_iti = round(iti * volumerate) 
+
             curr_ntrials = len(stimdict[stim][currfile].frames)
             currtraces = tracestruct['file'][fi].tracematDC
             for currtrial_idx in range(curr_ntrials):
@@ -168,7 +199,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 stim_on_frames.append([curr_frame_onset, curr_frame_onset + stim_on_sec*volumerate])
 
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
-	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+    	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois
 
@@ -177,6 +208,19 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     with open(os.path.join(parsed_traces_dir, curr_stimtraces_json), 'w') as f:
         dump(stimtraces, f, indent=4)
 
+    # save as .mat:
+    curr_stimtraces_mat = 'stimtraces_%s.mat' % currslice
+    # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
+    stimtraces_mat = dict()
+    for stim in stimdict.keys():
+        currstim = "stim%02d" % int(stim)
+        print currstim
+        stimtraces_mat[currstim] = stimtraces[stim]
+
+    scipy.io.savemat(os.path.join(parsed_traces_dir, curr_stimtraces_mat), mdict=stimtraces_mat)
+    print os.path.join(parsed_traces_dir, curr_stimtraces_mat)
+  
+ 
     stimtraces_all_slices[currslice] = stimtraces
 
         #traces_by_stim[stim][currslice] = np.asarray(curr_traces_allrois)
