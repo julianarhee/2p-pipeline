@@ -1,10 +1,10 @@
-function Yr = reinterleave_from_source(filedir, sourcedir, A)
+function Yr = reinterleave_from_source(filedir, sourcedir, I, A)
 
 channel_dirs = dir(sourcedir);
 channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1), '.'), channel_dirs));  % remove hidden
 channel_dirs = {channel_dirs(:).name}';
 
-nslices = length(A.slices);
+nslices = length(I.slices);
 nchannels = A.nchannels;
 nfiles = A.ntiffs;
 nvolumes = A.nvolumes;

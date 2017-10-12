@@ -1,4 +1,4 @@
-function tracestruct_names = get_processed_traces(A, win_unit, num_units, varargin)
+function tracestruct_names = get_processed_traces(I, A, win_unit, num_units, varargin)
 
 % Process traces:
 % get_traces.m extracts raw traces using ROI masks (saves tracestruct)
@@ -24,15 +24,19 @@ end
 simeta = load(A.simeta_path);
 metastruct = simeta.SI;
 
-for sidx = 1:length(A.slices)
-    sl = A.slices(sidx);
+for sidx = 1:length(I.slices)
+    sl = I.slices(sidx);
     fprintf('Processing traces for Slice %02d...\n', sl);
     
     tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
-    tracestruct = load(fullfile(A.trace_dir, tracestruct_name));
+    tracestruct = load(fullfile(A.trace_dir, I.roi_id, tracestruct_name));
     ntiffs = length(tracestruct.file);
     for fidx=1:ntiffs
-        meta = metastruct.file(fidx);
+        if length(metastruct.file)==1
+            meta = metastruct.file
+        else
+            meta = metastruct.file(fidx);
+        end
 
         fprintf('TIFF %i: Creating new tracemat from processed traces...\n', fidx);
         
@@ -69,7 +73,11 @@ for sidx = 1:length(A.slices)
         % 3. Next, get subtract rolling average from each trace
         % (each row of rawtracemat is the trace of an ROI).
         % Interpolate NaN frames if there are any.
-        winsz = floor(str2num(meta.siVolumeRate)*win_unit*num_units);
+        if ischar(meta.siVolumeRate)
+            winsz = floor(str2num(meta.siVolumeRate)*win_unit*num_units);
+        else
+            winsz = floor(meta.siVolumeRate*win_unit*num_units);
+        end
         [tracemat, DCs] = arrayfun(@(roi) subtract_rolling_mean(traces(:,roi), winsz), 1:size(traces,2), 'UniformOutput', false);
         tracemat = cat(2, tracemat{1:end});
         DCs = cat(2, DCs{1:end});
@@ -94,7 +102,7 @@ for sidx = 1:length(A.slices)
     end
     
     % Save slice ROIs (including all files):
-    save(fullfile(A.trace_dir, tracestruct_name), '-append', '-struct', 'tracestruct');
+    save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-append', '-struct', 'tracestruct');
     tracestruct_names{end+1} = tracestruct_name;
 
 end

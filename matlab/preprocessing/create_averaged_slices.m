@@ -1,10 +1,10 @@
-function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_basepath, A)
+function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_basepath, I, A)
 
 nfiles = A.ntiffs;
 nchannels = A.nchannels;
 simeta = load(A.raw_simeta_path);
 
-if A.corrected
+if I.corrected
     load(A.mcparams_path);
 end
 

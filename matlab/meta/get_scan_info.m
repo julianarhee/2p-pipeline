@@ -15,7 +15,8 @@ function simeta = get_scan_info(A)
         ntiffs = length(metadata.(base_filename).metaDataSI);
         sistruct = struct();  
         for fidx=1:ntiffs
-            curr_meta = metadata.(base_filename).metaDataSI{fidx};
+            %curr_meta = metadata.(base_filename).metaDataSI{fidx};
+            curr_meta = metadata.(base_filename).metaDataSI; %.SI;
             
             % Sort Parsed files into separate directories if needed:
             nChannels = length(curr_meta.SI.hChannels.channelSave);            

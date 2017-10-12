@@ -2,6 +2,10 @@
 
 % Add *_header.m to /2p-pipeline/.gitignore file after cloning repo.
 
+analysis_id = datestr(now())
+datetime = strsplit(analysis_id, ' ');
+rundate = datetime{1};
+
 useGUI = false;
 get_rois_and_traces = false %true %false;
 do_preprocessing = true %false %true;
@@ -17,6 +21,7 @@ if ~useGUI
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
 end
 
+slices = [];
 
 signal_channel = 1;                                      % If multi-channel, Ch index for extracting activity traces
 
@@ -45,7 +50,7 @@ use_bidi_corrected = false;                              % Extra correction for 
 %     ];
 
 mcparams = set_mc_params(...
-    'corrected', 'true',...
+    'corrected', true,...
     'method', 'Acquisition2P',...
     'flyback_corrected', false,...
     'ref_channel', 1,...
@@ -56,3 +61,8 @@ mcparams = set_mc_params(...
 %    'tiff_dir', data_dir,...
 %    'nchannels', A.nchannels);              
 
+
+%% 2. ROI parmas:
+
+roi_method = 'pyblob2D';
+roi_id = 'blobs_DoG';
