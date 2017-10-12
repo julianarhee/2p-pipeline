@@ -69,10 +69,9 @@ def main(options):
     nvolumes = int(options.nvolumes)
     nslices = int(options.nslices)
     nslices_full = nslices + ndiscard
-    if correct_flyback:
-	print "nvolumes:", nvolumes
-	print "nslices specified:", nslices
-	print "n expected after substack:", nslices - nflyback
+    print "nvolumes:", nvolumes
+    print "nslices specified:", nslices
+    print "n expected after substack:", nslices - nflyback
 
     source = options.source 
     experiment = options.experiment
@@ -89,8 +88,8 @@ def main(options):
 
     visible = options.visible
     if visible:
-	displaymin = options.displaymin
-	displaymax = options.displaymax
+	    displaymin = options.displaymin
+	    displaymax = options.displaymax
 
     acquisition_dir = os.path.join(source, experiment, session, acquisition)
     raw_tiff_dir = os.path.join(source, experiment, session, acquisition, functional_dir)
@@ -99,7 +98,7 @@ def main(options):
     #savepath = options.savepath
     savepath = os.path.join(raw_tiff_dir, 'DATA')
     if not os.path.exists(savepath):
-	os.mkdir(savepath)
+	    os.mkdir(savepath)
 
 
     tiffs = os.listdir(raw_tiff_dir)
@@ -109,18 +108,17 @@ def main(options):
     for tiffidx,tiffname in enumerate(tiffs):
 	
         origname = tiffname.split('.')[0]
-	prefix = '_'.join(origname.split('_')[0:-1])
+    	prefix = '_'.join(origname.split('_')[0:-1])
         prefix = prefix.replace('-', '_')
-	newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
+	    newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
         print "Creating file in DATA dir:", newtiff_fn
 
         if correct_flyback:
-
             # Read in RAW tiff: 
             stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
 
 	    if uint16:
-		stack = img_as_uint(stack)
+		    stack = img_as_uint(stack)
 
 	    print "TIFF: %s" % tiffs[tiffidx]
 	    print "size: ", stack.shape
@@ -134,10 +132,10 @@ def main(options):
 	    print "Removing SI discard frames. Tmp stack shape:", substack.shape
 	    newstart = 0
 	    for x in range(len(start_idxs)):    
-		substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
-		newstart = newstart + (nslices_orig*nchannels)
+		    substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
+		    newstart = newstart + (nslices_orig*nchannels)
 	    
-	    print "Removed discard frames. New substack shape is: ", substack.shape    
+	        print "Removed discard frames. New substack shape is: ", substack.shape    
 
 	    # Next, crop off FLYBACK frames: 
 	    nslices_crop = nslices_orig - nflyback 
@@ -146,38 +144,38 @@ def main(options):
 	    final = np.empty((nslices_crop*nchannels*nvolumes, substack.shape[1], substack.shape[2]), dtype=stack.dtype)
 	    newstart = 0
 	    for x in range(len(start_idxs)):
-		final[newstart:newstart+(nslices_crop*nchannels),:,:] = substack[start_idxs[x]:start_idxs[x]+(nslices_crop*nchannels), :, :]
-		newstart = newstart + (nslices_crop*nchannels)
+		    final[newstart:newstart+(nslices_crop*nchannels),:,:] = substack[start_idxs[x]:start_idxs[x]+(nslices_crop*nchannels), :, :]
+		    newstart = newstart + (nslices_crop*nchannels)
 	    
-	    print "Removed flyback frames. Final shape is: ", final.shape
+	        print "Removed flyback frames. Final shape is: ", final.shape
              
-            # Write substack to DATA dir: 
+        # Write substack to DATA dir: 
 	    tf.imsave(os.path.join(savepath, newtiff_fn), final)
 		    
 	else:
 	    print "Not creating substacks from input tiffs."
 	    if uint16:
-                print "Converting raw tiff to uint16."
-                stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
+            print "Converting raw tiff to uint16."
+            stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
 	        final = img_as_uint(stack)
 
-                dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
+            dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
 	        tf.imsave(os.path.join(savepath, dtype_fn), final)
 
       
 
 	if crop_fov:
-            if not correct_flyback:  # stack not yet read in:
-                final = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
+        if not correct_flyback:  # stack not yet read in:
+            final = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
 
 	    if len(options.width)==0:
-		width = int(input('No width specified. Starting idx is: %i.\nEnter image width: ' % x_startidx))
+		    width = int(input('No width specified. Starting idx is: %i.\nEnter image width: ' % x_startidx))
 	    else:
-		width = int(options.width)
+		    width = int(options.width)
 	    if len(options.height)==0:
-		height = int(input('No height specified. Starting idx is: %i.\nEnter image height: ' % y_startidx))
+		    height = int(input('No height specified. Starting idx is: %i.\nEnter image height: ' % y_startidx))
 	    else:
-		height = int(options.height)
+		    height = int(options.height)
 
 	    x_endidx = x_startidx + width
 	    y_endidx = y_startidx + height
@@ -185,8 +183,8 @@ def main(options):
 	    final = final[:, y_startidx:y_endidx, x_startidx:x_endidx]
 	    print "Cropped FOV. New size: ", final.shape
             
-            # TODO: add extra info to SI-meta or reference-struct, if want to keep this option...
-            cropped_fn = '%s_cropped.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
+        # TODO: add extra info to SI-meta or reference-struct, if want to keep this option...
+        cropped_fn = '%s_cropped.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
 	    tf.imsave(os.path.join(savepath, cropped_fn), final)
 	    
 	if visible: 
@@ -196,31 +194,31 @@ def main(options):
 
         
       
-        # Rewrite reference info, if need to: 
-        refinfo_json = "%s.json" % refinfo_basename
-        with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
+    # Rewrite reference info, if need to: 
+    refinfo_json = "%s.json" % refinfo_basename
+    with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
 	    refinfo = json.load(fr)
         refinfo['base_filename'] = prefix
 
-        if correct_flyback:    
+    if correct_flyback:    
 	    print "Changing REF info:" 
-            print "Orig N slices:", nslices_orig
-            print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
-            refinfo['slices'] = range(1, nslices_crop+1)
-            refinfo['ntiffs'] = len(tiffs) 
-        else:
-            if not visible and not crop_fov and not uint16:
-                print "Moving RAW tiff to DATA dir. No changes."
-                shutil.copy(os.path.join(raw_tiff_dir, tiffs[tiffidx]), os.path.join(savepath, newtiff_fn))
+        print "Orig N slices:", nslices_orig
+        print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
+        refinfo['slices'] = range(1, nslices_crop+1)
+        refinfo['ntiffs'] = len(tiffs) 
+    else:
+        if not visible and not crop_fov and not uint16:
+            print "Moving RAW tiff to DATA dir. No changes."
+            shutil.copy(os.path.join(raw_tiff_dir, tiffs[tiffidx]), os.path.join(savepath, newtiff_fn))
 
-        # Save updated JSON:
-        refinfo_json = "%s.json" % refinfo_basename
-        with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
+    # Save updated JSON:
+    refinfo_json = "%s.json" % refinfo_basename
+    with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
 	    json.dump(refinfo, fw)
 
-        # Also save updated MAT:
-        refinfo_mat = "%s.mat" % refinfo_basename
-        scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
+    # Also save updated MAT:
+    refinfo_mat = "%s.mat" % refinfo_basename
+    scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
 
 
 if __name__ == '__main__':
