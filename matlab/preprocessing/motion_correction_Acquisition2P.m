@@ -42,7 +42,8 @@ else
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
-    myObj.motionCorrect;
+    %myObj.motionCorrect;
+    myObj.motionCorrectProcessed;
     myObj.save;
 end
     

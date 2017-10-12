@@ -71,9 +71,9 @@ if isempty(analysisinfo_fn)
     writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
 else
     existsI = readtable(path_to_fn, 'Delimiter', '\t', 'ReadRowNames', true);
-    prevruns = existsI.Properties.RowNames;
-    updatedI = [existsI; itable];
-    writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+    %prevruns = existsI.Properties.RowNames;
+    %updatedI = [existsI; itable];
+    %writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
 end
 
 %% PREPROCESSING:  motion-correction.
@@ -139,6 +139,19 @@ if do_preprocessing
         
     % TODO:  recreate too-big-TIFF error to make a try-catch statement that
     % re-interleaves by default, and otherwise splits the channels if too large
+   
+    if ~exist(fullfile(mcparams.tiff_dir, 'Raw'), 'dir')
+        mkdir(fullfile(mcparams.tiff_dir, 'Raw'));
+    end
+    uncorrected_tiff_fns = dir(fullfile(mcparams.tiff_dir, '*.tif'));
+    uncorrected_tiff_fns = {uncorrected_tiff_fns(:).name}'
+    for movidx=1:length(uncorrected_tiff_fns)
+        [datadir, fname, ext] = fileparts(obj.Movies{movidx});
+        movefile(fullfile(mcparams.tiff_dir, uncorrected_tiff_fns{movidx}), fullfile(mcparams.tiff_dir, 'Raw', uncorrected_tiff_fns{movidx}));
+    end
+    fprintf('Moved %i files into ./DATA/Raw before reinterleaving.\n', length(uncorrected_tiff_fns));
+
+
     
     % PYTHON equivalent faster: 
     if I.corrected
