@@ -74,6 +74,9 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
+parser.add_option('-r', '--roi', action="store",
+                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 
@@ -85,6 +88,8 @@ experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'g
 session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
+
+roi_method = options.roi_method
 
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 
@@ -122,9 +127,9 @@ with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
 # =====================================================
 # Set ROI method and Trace method:
 # =====================================================
-curr_roi_method = 'blobs_DoG' #ref['roi_id'] #'blobs_DoG'
+#curr_roi_method = 'blobs_DoG' #ref['roi_id'] #'blobs_DoG'
 #curr_trace_method = ref['trace_id'] #'blobs_DoG'
-trace_dir = os.path.join(ref['trace_dir'], curr_roi_method)
+trace_dir = os.path.join(ref['trace_dir'], roi_method)
 #trace_dir = ref['trace_dir']
 # =====================================================
 
@@ -146,7 +151,7 @@ nfiles = len(file_names)
 
 # Get masks for each slice: 
 roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, curr_roi_method, 'roiparams.mat'))
+roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
 maskpaths = roiparams['roiparams']['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
@@ -202,6 +207,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         #stimtraces[stim] = dict()
         repidx = 0
         curr_traces_allrois = []
+        curr_frames_allrois = []
         stim_on_frames = []
         for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
 #            nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
@@ -217,20 +223,36 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             currtraces = tracestruct['file'][fi].tracematDC
             for currtrial_idx in range(curr_ntrials):
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
-                print len(currtrial_frames)
+                #print len(currtrial_frames)
    
                 # .T to make rows = rois, cols = frames 
                 nframes = currtraces.shape[0]
                 nrois = currtraces.shape[1] 
                 #print currtraces[currtrial_frames, :].shape
                 curr_traces_allrois.append(currtraces[currtrial_frames, :])
+                curr_frames_allrois.append(currtrial_frames)
                 repidx += 1
                 
                 curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
-                stim_on_frames.append([curr_frame_onset, curr_frame_onset + stim_on_sec*volumerate])
-
+                stim_on_frames.append([curr_frame_onset, curr_frame_onset + (stim_on_sec*volumerate)-1])
+                
+        check_stimname = list(set(stimdict[stim][currfile].stimid))
+        if len(check_stimname)>1:
+            print "******************************"
+            print "Bad Stim to Trial parsing!."
+            print "------------------------------"
+            print check_stimname
+            print "STIM:", stim, "File:", currfile
+            print "------------------------------"
+            print "Check extract_acquisition_events.py and create_stimdict.py"
+            print "******************************"
+        else:
+            stimname = check_stimname[0]
+        
+        stimtraces[stim]['name'] = stimname
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
     	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+        stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois
 

@@ -40,10 +40,13 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
+parser.add_option('-r', '--roi', action="store",
+                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 parser.add_option('-i', '--iti', action="store",
-                  dest="iti_full", default=1., help="Time (s) between stimuli (inter-trial interval).")
+                  dest="iti_pre", default=1., help="Time (s) before stim onset to use as basline [default=1].")
 parser.add_option('-z', '--slice', action="store",
                   dest="sliceidx", default=0, help="Slice index to look at (0-index) [default: 0]")
 
@@ -61,8 +64,10 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
+roi_method = options.roi_method
+
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-iti = float(options.iti_full)
+iti_pre = float(options.iti_pre)
 
 custom_mw = options.custom_mw
 spacing = int(options.gap)
@@ -94,7 +99,7 @@ curr_slice_idx = options.sliceidx
 trial_alpha = 0.5 #0.7
 trial_width = 0.1 #0.3
 
-stim_offset = -1.5 #2.0
+stim_offset = -.75 #2.0
 ylim_min = -3
 ylim_max = 3.0
 
@@ -112,7 +117,7 @@ rois_to_plot = []
 # rois_to_plot = np.array([27, 58, 134]) #27    58   134
 
 
-curr_roi_method = 'blobs_DoG'
+#curr_roi_method = 'blobs_DoG'
 plot_traces = True #False
 #rois_to_plot = np.array([1, 20, 23, 27, 35, 42, 45, 50, 57, 66, 76, 92, 110]) - 1
 
@@ -150,9 +155,9 @@ if custom_mw is False:
 
     nframes_on = stim_on_sec * volumerate
     #nframes_off = vols_per_trial - nframes_on
-    frames_iti = round(iti * volumerate) 
+    nframes_iti_pre = round(iti_pre * volumerate) 
     print nframes_on
-    print frames_iti
+    print nframes_iti_pre
 
 
 # Create tmp fig dir:
@@ -162,7 +167,7 @@ if not os.path.exists(figdir):
 
 # Get masks for each slice: 
 roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, curr_roi_method, 'roiparams.mat'))
+roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
 maskpaths = roiparams['roiparams']['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
@@ -179,6 +184,16 @@ slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = slice_names[curr_slice_idx]
 
+nrois = masks[curr_slice_name]['nrois']['nrois']
+print "NROIS:", nrois
+
+roi_interval = 10
+if len(rois_to_plot)==0:
+    rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
+    sort_name = '_every%i' % roi_interval
+else:
+    sort_name = '_sorted'
+    
 
 # Get FILE ("tiff") list:
 average_source = 'Averaged_Slices_Corrected'
@@ -206,7 +221,7 @@ with tf.TiffFile(avg_tiff_path) as tif:
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
-path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', curr_roi_method, 'Parsed')
+path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
 
 
 # Load stim trace structs:
@@ -216,22 +231,11 @@ stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and f.ends
 stimtrace_fn = stimtrace_fns[curr_slice_idx]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)
- 
-# stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
-# stimtraces[stim]['frames_stim_on'] = stim_on_frames 
-# stimtraces[stim]['ntrials'] = stim_ntrials[stim]
-# stimtraces[stim]['nrois'] = nrois
+
 
 stimlist = sorted(stimtraces.keys(), key=natural_keys)
 nstimuli = len(stimlist)
-nrois = stimtraces[stimlist[0]]['nrois']
 
-roi_interval = 10
-if len(rois_to_plot)==0:
-    rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
-    sort_name = '_every%i' % roi_interval
-else:
-    sort_name = '_sorted'
     
 # ---------------------------------------------------------------------------
 # PLOTTING:
@@ -284,7 +288,7 @@ if plot_traces:
                     frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
                     #frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
                 else:
-                    frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+                    frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
 
                 baseline = np.mean(raw[trial, 0:frame_on])
                 df = (raw[trial,:] - baseline) / baseline
@@ -294,16 +298,19 @@ if plot_traces:
                 else:
                     plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
 
-            #frames_iti = round(iti * volumerate) 
             if custom_mw is True:
                 stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
                 # start_fr = int(frames_iti) + 1
                 # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on]
             else:
                 #stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
-                start_fr = int(frames_iti) + 1
-                stim_frames = xvals[0] + [start_fr, start_fr+nframes_on]
-
+                # start_fr = int(nframes_iti_pre) + 1
+                # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on-1]
+                on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
+                nframes_on = (stimtraces[stim]['frames_stim_on'][trial][1] - stimtraces[stim]['frames_stim_on'][trial][0] + 1)
+                off_fr_idx = on_fr_idx + nframes_on - 1
+                stim_frames = xvals[0] + [on_fr_idx, off_fr_idx]
+                
             plt.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
 
             # Plot average:
@@ -341,18 +348,8 @@ plt.figure()
 img = np.copy(avgimg)
 factor = 1
 imgnorm = np.true_divide((img - img.min()), factor*(img.max()-img.min()))
-#imgnorm += (1./factor) #0.25
-
 imgnorm[imgnorm<backgroundoffset] += 0.15
 
-
-# img_uint = img_as_ubyte(imgnorm)
-# img_float = img_as_float(img_uint)
-
-#label_masks = np.zeros((curr_masks.shape[0], curr_masks.shape[1]))
-#print label_masks.shape
-# 
-#imgnorm = np.random.rand(nr, nc)
 alpha = 0.9 #0.8 #1 #0.8 #0.5 #0.99 #0.8
 nr,nc = imgnorm.shape
 color_mask = np.zeros((nr, nc, 3))
@@ -383,51 +380,6 @@ plt.axis('off')
 
 figname = 'rois_average_slice%i%s.png' % (curr_slice_idx, sort_name)
 plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
-# 
-# figname = 'all_rois_average_slice.png'
-# plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
-#plt.show()
 
-# 
-# alphaval = 0.8 #0.5 #0.99 #0.8
-# nr,nc = imgnorm.shape
-# color_mask = np.ones((nr, nc, 3))*np.nan
-# for roi in plot_rois:
-#     color_mask[curr_masks[:,:,roi]==1] = colorvals[roi][0:3]
-# 
-# img_color = np.dstack((imgnorm, imgnorm, imgnorm))
-# #img_color = color.gray2rgb(imgnorm)
-# img_hsv = color.rgb2hsv(img_color)
-# color_mask_hsv = color.rgb2hsv(color_mask)
-# 
-# img_hsv[...,0] = color_mask_hsv[..., 0]
-# img_hsv[..., 1] = color_mask_hsv[..., 1] * alphaval
-# 
-# img_masked = color.hsv2rgb(img_hsv)
-# 
-# img_color = np.dstack( 
-# plt.figure()
-# plt.imshow(img_masked)
-# plt.axis('off')
-# 
-# roi_idx = 1
-# for roi in plot_rois:
-#     #label_masks[curr_masks[:,:,roi]==1] = int(roi) #int(roi_idx)
-#     rgb_masks[curr_masks[:,:,roi]==1, 
-#     roi_idx += 1
-# 
-# plt.axis('off')
-# 
-# plt.figure()
-# # plt.imshow(img)
-# imgnorm = np.true_divide((img - img.min()), (img.max()-img.min()))
-# #plt.imshow(imgnorm, cmap='gray'); plt.colorbar()
-# #print colorvals255
-# plt.imshow(skimage.color.label2rgb(label_masks, image=imgnorm, alpha=0.5, colors=colorvals255[roi], bg_label=0)) #, cmap=cmaptype)
-# plt.axis('off')
-# 
-# figname = 'all_rois_average_slice.png'
-# plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
-# #plt.show()
 
 
