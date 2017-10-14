@@ -16,7 +16,7 @@ def natural_keys(text):
  
 class StimInfo:
     def __init__(self):
-        self.stimid = ''
+        self.stimid = []
         self.trials = []
         self.frames = []
         self.frames_sec = []
@@ -79,11 +79,6 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
-stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-iti_pre = float(options.iti_pre)
-iti_full = float(options.iti_full)
-vols_per_trial = int(options.vols_per_trial)
-first_stim_volume_num = int(options.first_stim_volume_num)
 
 abort = False
 if custom_mw is True and (vols_per_trial==0 or first_stim_volume_num==0):
@@ -128,10 +123,12 @@ if abort is False:
     #     iti_post = iti_full - iti_pre
 
     #     same_order = True
-
+    
     stim_on_sec = float(options.stim_on_sec) #2. # 0.5
     iti_pre = float(options.iti_pre)
-    same_order = False #True
+    iti_full = float(options.iti_full)
+    vols_per_trial = int(options.vols_per_trial)
+    first_stim_volume_num = int(options.first_stim_volume_num)
 
     if custom_mw is True:
         volumerate = simeta['File001']['SI']['hRoiManager']['scanVolumeRate']
@@ -143,6 +140,7 @@ if abort is False:
         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
         iti_full = float(options.iti_full)# 4.
         iti_post = iti_full - iti_pre
+        print "ITI POST:", iti_post
     # =================================================================================
 
 
@@ -194,7 +192,7 @@ if abort is False:
 
         nframes_on = stim_on_sec * volumerate
         nframes_iti_pre = round(iti_pre * volumerate) 
-        nframes_iti_post = round(iti_pre * volumerate) 
+        nframes_iti_post = round(iti_post * volumerate) 
         nframes_iti_full = round(iti_full * volumerate)
         if custom_mw is True:
             vols_per_trial = nframes_on + nframes_iti_full
@@ -233,13 +231,16 @@ if abort is False:
                     first_frame_on = first_stimulus_volume_num
                 else:
                     first_frame_on += vols_per_trial
-                #framenums = list(np.arange(int(first_frame_on-frames_iti_pre), int(first_frame_on+vols_per_trial)))
+                framenums = list(np.arange(int(first_frame_on-frames_iti_pre), int(first_frame_on+vols_per_trial)))
             else:
                 first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx'])
-                #framenums = list(np.arange(int(first_frame_on-frames_iti_pre), int(trialdict[currfile][currtrial]['stim_off_idx']+frames_iti_post)))
+                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(trialdict[currfile][currtrial]['stim_off_idx']+nframes_iti_post)))
+                print "sec to plot:", len(framenums)/volumerate
 
-            framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+            #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
             frametimes = [frames_tsecs[f] for f in framenums]
+
+            stimdict[stim][currfile].stimid.append(trialdict[currfile][currtrial]['name'])
             stimdict[stim][currfile].trials.append(trialnum)      
             stimdict[stim][currfile].frames.append(framenums)
             stimdict[stim][currfile].frames_sec.append(frametimes)
