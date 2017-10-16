@@ -41,16 +41,16 @@ path_to_analysisinfo_json = fullfile(acquisition_base_dir, 'analysis_info.json')
 analysisinfo_fn = dir(path_to_fn);
 if isempty(analysisinfo_fn)
     % Create new:
-    path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
+    %path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
-    new_info = true;
+    %writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+    new_info_struct = true;
 else
     existsI = readtable(path_to_fn, 'Delimiter', '\t', 'ReadRowNames', true);
     %prevruns = existsI.Properties.RowNames;
     %updatedI = [existsI; itable];
     %writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
-    new_info = false;
+    new_info_struct = false;
 end
 
 
@@ -260,8 +260,12 @@ end
 I.roi_method = roi_method;
 I.roi_id = roi_id;
 
-itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-updatedI = update_analysis_table(existsI, itable, path_to_fn);
+postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+if new_info_struct
+    updatedI = update_analysis_table(itable, postprocess_itable, path_to_fn);
+else
+    updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
+end
 
 
 %% Specify ROI param struct path:
