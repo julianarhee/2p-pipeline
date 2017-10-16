@@ -18,18 +18,11 @@ mcparams.info = do_motion_correction(mcparams)
 % TODO:  add plain raw tiff parsing here.
 % notes:  need to account for flyback-correction check
 
-
-save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
-fprintf('Completed motion-correction!\n');
-
 % Add base filename if missing from ref struct:
 % For now, this is specific to Acquisition2P, since this uses the base filename to name field for acq obj.
 if ~isfield(A, 'base_filename') || ~strcmp(A.base_filename, mcparams.info.acquisition_name)
     A.base_filename = mcparams.info.acquisition_name;
 end
-
-save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
-%save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
 
 
 end

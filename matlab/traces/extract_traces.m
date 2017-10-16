@@ -8,6 +8,8 @@ function extract_traces(I, A)
 % roiparams.roi_info
 
 load(A.mcparams_path);
+mcparams = mcparams.(I.mc_id);
+
 roiparams_path = fullfile(A.roi_dir, I.roi_id, 'roiparams.mat');
 %load(A.roiparams_path);
 load(roiparams_path);

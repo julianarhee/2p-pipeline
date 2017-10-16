@@ -1,9 +1,10 @@
-function simeta = get_scan_info(A)
+function simeta = get_scan_info(I, A)
 
 % TODO:  Replace this tmp func with metadata info extracted from raw .mat (or .json) from Step1 (process_raw.py)
         
         % Load mcparam info:
         load(A.mcparams_path);
+        mcparams = mcparams.(I.mc_id)
  
         tiff_source = mcparams.tiff_dir;
         base_filename = A.base_filename; % TODO: again, make sure this isn't specific to mcparms.method

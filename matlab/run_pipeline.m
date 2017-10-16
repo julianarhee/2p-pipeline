@@ -11,47 +11,19 @@ fprintf('Added repo paths.\n');
 
 init_header
 
-if useGUI
-    default_root = '/nas/volume1/2photon/projects';                            % DIR containing all experimental data
-    tiff_dirs = uipickfiles('FilterSpec', default_root);                       % Returns cell-array of full paths to selected folders containing TIFFs to be processed
-    
-    % For now, just do 1 dir, but later can iterate over each TIFF dir
-    % selected:
-    curr_tiff_dir = tiff_dirs{1};
-
-end
-    
-%% Get PY-created Acquisition Struct. Add paths/params for MAT steps:
-
-% Iterate through selected tiff-folders to build paths:
-% TODO:  do similar selection step for PYTHON (Step1 preprocessing)
-
-[tiff_parent, tiff_source, ~] = fileparts(curr_tiff_dir);
-[acq_parent, acquisition, ~] = fileparts(tiff_parent);
-[sess_parent, session, ~] = fileparts(acq_parent);
-[source, experiment, ~] = fileparts(sess_parent);
-
-% Build acq path and get reference struct:
-% ----------------------------------------
-acquisition_base_dir = fullfile(source, experiment, session, acquisition)
-path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
-path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
-
-A = load(path_to_reference);
-
-% TODO:  Load (or generate) "analysis-trail" file to store all processing steps and iterations
-
-
 %%
+
+% Generate analysis-specific info struct:
 
 datetime = strsplit(analysis_id, ' ');
 rundate = datetime{1};
 
 I = struct();
-I.roi_method = roi_method; mcparams.method;
+I.mc_id = mc_id;
+I.roi_method = roi_method; %mcparams.method;
 I.roi_id = roi_id;
-I.corrected = mcparams.corrected;
-I.mc_method = mcparams.method;
+I.corrected = curr_mcparams.corrected;
+I.mc_method = curr_mcparams.method;
 I.use_bidi_corrected = use_bidi_corrected; 
 if isempty(slices)
     I.slices = A.slices;
@@ -90,11 +62,16 @@ end
 % Note:  This step also adds fields to mcparams struct that are immutable,
 % i.e., standard across all analyses.
 
+if ~isfield(A, 'acquisition_base_dir')
+    A.acquisition_base_dir = acquisition_base_dir;
+end
+if isfield(A, 'data_dir') && ~ismember(data_dir, A.data_dir)
+    A.data_dir{end+1} = data_dir;
+else
+    A.data_dir = {fullfile(A.acquisition_base_dir, A.functional, 'DATA')};
+end
+
 if do_preprocessing
-     A.acquisition_base_dir = acquisition_base_dir;
-     A.data_dir = fullfile(A.acquisition_base_dir, A.functional, 'DATA');
-     mcparams.tiff_dir = A.data_dir;
-     mcparams.nchannels = A.nchannels;              
 
       % -------------------------------------------------------------------------
       %% 1.  Set MC params
@@ -108,12 +85,16 @@ if do_preprocessing
     A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
         
     if isfield(A, 'corrected')
-        A.corrected = unique([A.corrected mcparams.corrected]);
+        A.corrected = unique([A.corrected curr_mcparams.corrected]);
     else
         A.corrected = I.corrected; 
     end
-    A.mcparams_path = fullfile(A.data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
-    save(A.mcparams_path, 'mcparams');
+    if isfield(A, 'mc_id')
+        A.mc_id{end+1} = I.mc_id;
+    else
+        A.mc_id = {I.mc_id};
+    end
+
     save(path_to_reference, '-struct', 'A', '-append');
 
     % TODO (?):  Run meta-data parsing after
@@ -126,11 +107,16 @@ if do_preprocessing
 
     if I.corrected
         %[A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
-       [A, mcparams] = motion_correct_data(A, mcparams);
+       [A, curr_mcparams] = motion_correct_data(A, curr_mcparams);
     else
         % Just parse raw tiffs:
-        [A, mcparams] = create_deinterleaved_tiffs(A, mcparams);
+        [A, curr_mcparams] = create_deinterleaved_tiffs(A, curr_mcparams);
     end
+    mcparams.(mc_id) = curr_mcparams;
+    save(A.mcparams_path, '-struct', 'mcparams', '-append');
+    fprintf('Completed motion-correction!\n');
+
+
 
     % -------------------------------------------------------------------------
     %% 3.  Clean-up and organize corrected TIFFs into file hierarchy:
@@ -140,14 +126,14 @@ if do_preprocessing
     % TODO:  recreate too-big-TIFF error to make a try-catch statement that
     % re-interleaves by default, and otherwise splits the channels if too large
    
-    if ~exist(fullfile(mcparams.tiff_dir, 'Raw'), 'dir')
-        mkdir(fullfile(mcparams.tiff_dir, 'Raw'));
+    if ~exist(fullfile(curr_mcparams.tiff_dir, 'Raw'), 'dir')
+        mkdir(fullfile(curr_mcparams.tiff_dir, 'Raw'));
     end
-    uncorrected_tiff_fns = dir(fullfile(mcparams.tiff_dir, '*.tif'));
+    uncorrected_tiff_fns = dir(fullfile(curr_mcparams.tiff_dir, '*.tif'));
     uncorrected_tiff_fns = {uncorrected_tiff_fns(:).name}'
     for movidx=1:length(uncorrected_tiff_fns)
         %[datadir, fname, ext] = fileparts(obj.Movies{movidx});
-        movefile(fullfile(mcparams.tiff_dir, uncorrected_tiff_fns{movidx}), fullfile(mcparams.tiff_dir, 'Raw', uncorrected_tiff_fns{movidx}));
+        movefile(fullfile(curr_mcparams.tiff_dir, uncorrected_tiff_fns{movidx}), fullfile(curr_mcparams.tiff_dir, 'Raw', uncorrected_tiff_fns{movidx}));
     end
     fprintf('Moved %i files into ./DATA/Raw before reinterleaving.\n', length(uncorrected_tiff_fns));
 
@@ -155,12 +141,12 @@ if do_preprocessing
     
     % PYTHON equivalent faster: 
     if I.corrected
-        deinterleaved_source = mcparams.corrected_dir;
+        deinterleaved_source = curr_mcparams.corrected_dir;
     else
-        deinterleaved_source = mcparams.parsed_dir;
+        deinterleaved_source = curr_mcparams.parsed_dir;
     end
     deinterleaved_tiff_dir = fullfile(A.data_dir, deinterleaved_source);
-    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, mcparams.split_channels);
+    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, curr_mcparams.split_channels);
 
     % Sort parsed slices by Channel-File:
     path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
@@ -173,12 +159,12 @@ if do_preprocessing
     % mcparams.bidi_corrected = true;
 
     if I.use_bidi_corrected
-        [A, mcparams] = do_bidi_correction(A, I, mcparams);
+        [A, curr_mcparams] = do_bidi_correction(A, I, curr_mcparams);
     end
     
     % Sort bidi-corrected:
     if I.use_bidi_corrected %isfield(mcparams, 'bidi_corrected_dir')
-        path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+        path_to_cleanup = fullfile(curr_mcparams.tiff_dir, curr_mcparams.bidi_corrected_dir);
         post_mc_cleanup(path_to_cleanup, A);     
     end
 
@@ -187,11 +173,11 @@ if do_preprocessing
     % -------------------------------------------------------------------------
     %A.use_bidi_corrected = false;
     if I.corrected && I.use_bidi_corrected
-        new_average_source_dir = mcparams.bidi_corrected_dir;
+        new_average_source_dir = curr_mcparams.bidi_corrected_dir;
     elseif I.corrected && ~I.use_bidi_corrected
-        new_average_source_dir = mcparams.corrected_dir;
+        new_average_source_dir = curr_mcparams.corrected_dir;
     elseif ~I.corrected
-        new_average_source_dir = mcparams.parsed_dir;
+        new_average_source_dir = curr_mcparams.parsed_dir;
     end
     if isfield(A, 'source_to_average')
         A.source_to_average{end+1} = new_average_source_dir;
@@ -200,20 +186,12 @@ if do_preprocessing
     end
     I.average_source = new_average_source_dir;
                  
-%     if I.corrected
-%         if I.use_bidi_corrected                                % TODO: may want to have intermediate step to evaluate first MC step...
-%             A.source_to_average = mcparams.bidi_corrected_dir;
-%         else
-%             A.source_to_average = mcparams.corrected_dir;
-%         end
-%     else
-%         A.source_to_average = mcparams.parsed_dir;               % if no correction is done in preprocessing step above, still parse tiffs by slice to get t-series
-%     end
- 
-    source_tiff_basepath = fullfile(mcparams.tiff_dir, I.average_source);
-    dest_tiff_basepath = fullfile(mcparams.tiff_dir, sprintf('Averaged_Slices_%s', I.average_source));
-    mcparams.averaged_slices_dir = dest_tiff_basepath;
-    save(A.mcparams_path, 'mcparams', '-append');
+    source_tiff_basepath = fullfile(curr_mcparams.tiff_dir, I.average_source);
+    dest_tiff_basepath = fullfile(curr_mcparams.tiff_dir, sprintf('Averaged_Slices_%s', I.average_source));
+    curr_mcparams.averaged_slices_dir = dest_tiff_basepath;
+
+    mcparams.(mc_id) = curr_mcparams; 
+    save(A.mcparams_path, '-struct', 'mcparams', '-append');
  
     create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, I, A);
     save(path_to_reference, '-struct', 'A', '-append')
@@ -312,6 +290,8 @@ if get_rois_and_traces
     
     % Also save json:
     savejson('', A, path_to_reference_json);
+    savejson('', I, path_to_analysisinfo_json);
+
     fprintf('DONE!\n');
 
 end

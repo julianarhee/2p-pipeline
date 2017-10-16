@@ -6,6 +6,7 @@ simeta = load(A.raw_simeta_path);
 
 if I.corrected
     load(A.mcparams_path);
+    mcparams = mcparams.(I.mc_id);
 end
 
 if ~exist(average_slices_basepath, 'dir')
