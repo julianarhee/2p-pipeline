@@ -146,7 +146,7 @@ if do_preprocessing
     uncorrected_tiff_fns = dir(fullfile(mcparams.tiff_dir, '*.tif'));
     uncorrected_tiff_fns = {uncorrected_tiff_fns(:).name}'
     for movidx=1:length(uncorrected_tiff_fns)
-        [datadir, fname, ext] = fileparts(obj.Movies{movidx});
+        %[datadir, fname, ext] = fileparts(obj.Movies{movidx});
         movefile(fullfile(mcparams.tiff_dir, uncorrected_tiff_fns{movidx}), fullfile(mcparams.tiff_dir, 'Raw', uncorrected_tiff_fns{movidx}));
     end
     fprintf('Moved %i files into ./DATA/Raw before reinterleaving.\n', length(uncorrected_tiff_fns));
