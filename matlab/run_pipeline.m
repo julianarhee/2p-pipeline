@@ -121,7 +121,7 @@ if do_preprocessing
 
     if I.corrected && new_mc_id
         do_motion_correction = true; 
-    elseif I.corrected && ~new_mc_struct
+    elseif I.corrected && ~new_mc_id
         found_nchannels = dir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, '*Channel*'));
         found_nchannels = {found_nchannels(:).name}';
         if isdir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, found_nchannels{1}))
