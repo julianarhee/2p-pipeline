@@ -98,7 +98,8 @@ def get_session_bounds(dfn):
     bounds = []
     bounds.append([start_ev.time, end_ev.time])
     for r in run_idxs[1:]: 
-        if modes[r].time < end_ev.time:  # Ignore any extra "run" events if there was no actual "stop" event
+        if modes[r].time < bounds[-1][1]: #end_ev.time:  # Ignore any extra "run" events if there was no actual "stop" event
+            print "skipping extra START ev..."
             continue
         else:                            # Otherwise, find the next "stop" event if any additional/new "run" events found.
             try:
