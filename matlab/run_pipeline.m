@@ -41,11 +41,13 @@ if isempty(analysisinfo_fn)
     path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
     writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+    new_info = true;
 else
     existsI = readtable(path_to_fn, 'Delimiter', '\t', 'ReadRowNames', true);
     %prevruns = existsI.Properties.RowNames;
     %updatedI = [existsI; itable];
     %writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+    new_info = false;
 end
 
 %% PREPROCESSING:  motion-correction.

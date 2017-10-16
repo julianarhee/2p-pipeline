@@ -18,7 +18,7 @@ if ~useGUI
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
     experiment = 'gratings_phaseMod';
-    session = '20171005_CE059';
+    session = '20170927_CE059';
     acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
     tiff_source = 'functional'; %'functional_subset';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
@@ -85,7 +85,7 @@ curr_mcparams = set_mc_params(...
     'ref_file', 6,...
     'algorithm', @withinFile_withinFrame_lucasKanade,...
     'split_channels', false,...
-    'bidi_corrected', true); %,...
+    'bidi_corrected', true,... %,...
     'tiff_dir', data_dir,...
     'nchannels', A.nchannels);              
 
@@ -96,7 +96,7 @@ roi_id = 'blobs_DoG';
 
 %% 3.  Check if new mcparams or not:
 new_mc_id = false;
-if exists(fullfile(data_dir, 'mcparams.mat'))
+if exist(fullfile(data_dir, 'mcparams.mat'))
     mcparams = load(fullfile(data_dir, 'mcparams.mat'));
 
     curr_fieldnames = fieldnames(curr_mcparams);
@@ -105,13 +105,17 @@ if exists(fullfile(data_dir, 'mcparams.mat'))
         num_mc_ids = length(prev_mcparams_ids);
         for mc_idx = 1:length(prev_mcparams_ids)
             curr_mcparams_id = prev_mcparams_ids{mc_idx};
-            prev_fieldnames = fieldnames(mcparams.(curr_mcprams_id)); 
-            for mf=1:length(cur_fieldnames)
+            prev_fieldnames = fieldnames(mcparams.(curr_mcparams_id)); 
+            for mf=1:length(curr_fieldnames)
                 if ~ismember(curr_fieldnames{mf}, prev_fieldnames)
                     new_mc_id = true;
                 else
                     if isstr(curr_mcparams.(curr_fieldnames{mf}))
                         if ~strcmp(curr_mcparams.(curr_fieldnames{mf}), mcparams.(curr_mcparams_id).(curr_fieldnames{mf}))
+                            new_mc_id = true;
+                        end
+                    elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'function_handle')
+                        if ~strcmp(char(curr_mcparams.(curr_fieldnames{mf})), char(mcparams.(curr_mcparams_id).(curr_fieldnames{mf})))
                             new_mc_id = true;
                         end
                     else
@@ -136,7 +140,7 @@ else
 end
 
 if new_mc_id
-    mc_id = sprintf('mcparams%02d', num_mc_structs+1;
+    mc_id = sprintf('mcparams%02d', num_mc_ids+1);
     mcparams.(mc_id) = curr_mcparams;
     save(A.mcparams_path, '-struct', 'mcparams', '-append');
 end
