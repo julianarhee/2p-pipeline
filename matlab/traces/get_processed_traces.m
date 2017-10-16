@@ -28,7 +28,7 @@ for sidx = 1:length(I.slices)
     sl = I.slices(sidx);
     fprintf('Processing traces for Slice %02d...\n', sl);
     
-    tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
+    tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
     tracestruct = load(fullfile(A.trace_dir, I.roi_id, tracestruct_name));
     ntiffs = length(tracestruct.file);
     for fidx=1:ntiffs

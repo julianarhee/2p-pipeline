@@ -31,6 +31,7 @@ else
     I.slices = slices;
 end
 I.functional = tiff_source;
+I.signal_channel = signal_channel;
 
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
@@ -91,7 +92,11 @@ if do_preprocessing
     else
          A.use_bidi_corrected = I.use_bidi_corrected;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
     end 
-    A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
+    if isfield(A, 'signal_channel') 
+        A.signal_channel = unique([A.signal_channel I.signal_channel]);                                      % If multi-channel, Ch index for extracting activity traces
+    else
+        A.signal_channel = I.signal_channel;
+    end
         
     if isfield(A, 'corrected')
         A.corrected = unique([A.corrected curr_mcparams.corrected]);

@@ -44,10 +44,10 @@ switch I.roi_method
              
             % load time-series for current slice:
             for fidx=1:A.ntiffs
-                curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', A.signal_channel), sprintf('File%03d', fidx));
+                curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
                 % TODO: adjust so that path to slice tiff is not dependent on mcparams.info.acquisition_name
                 % since this is currently specific to mcparams.method=Acquisition2P
-                curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.info.acquisition_name, sl, A.signal_channel, fidx)
+                curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.info.acquisition_name, sl, I.signal_channel, fidx)
                 %Y = tiffRead(fullfile(curr_file_path, curr_file));
                 
                 currtiffpath = fullfile(curr_file_path, curr_file);
@@ -69,7 +69,7 @@ switch I.roi_method
                 tracestruct.file(fidx).maskpath = roiparams.maskpaths{sidx};
                 tracestruct.file(fidx).nrois = size(masks,3);
             end
-            tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
+            tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
             save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-struct', 'tracestruct');
         end
         
