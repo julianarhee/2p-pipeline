@@ -164,7 +164,7 @@ for didx in range(len(mw_dfns)):
     print "================================================================"
     print "MW parsing summary:"
     print "================================================================"
-    if len(pixelevents) > 1:
+    if len(pixelevents) > 1 and type(pixelevents[0])==list:
         pixelevents = [item for sublist in pixelevents for item in sublist]
         pixelevents = list(set(pixelevents))
         pixelevents.sort(key=operator.itemgetter(1))
@@ -178,7 +178,7 @@ for didx in range(len(mw_dfns)):
         print "Check pixel clock -- missing bit values..."
 
 
-    if len(stimevents) > 1:
+    if len(stimevents) > 1 and type(stimevents[0])==list:
         stimevents = [item for sublist in stimevents for item in sublist]
         stimevents = list(set(stimevents))
         stimevents.sort(key=operator.itemgetter(1))
@@ -187,7 +187,7 @@ for didx in range(len(mw_dfns)):
     print "Found %i stimulus on events." % len(stimevents)
     
     if not stimtype=='bar':
-	if len(trialevents) > 1:
+	if len(trialevents) > 1 and type(trialevents[0])==list:
 	    trialevents = [item for sublist in trialevents for item in sublist]
 	    trialevents = list(set(trialevents))
 	    trialevents.sort(key=operator.itemgetter(1))
@@ -196,7 +196,7 @@ for didx in range(len(mw_dfns)):
 	print "Found %i trial epoch (stim ON + ITI) events." % len(trialevents)
 
 
-    if len(trigger_times) > 1:
+    if len(trigger_times) > 1 and type(trigger_times[0])==list:
         trigger_times = [item for sublist in trigger_times for item in sublist]
         trigger_times = list(set(trigger_times))
         trigger_times.sort(key=operator.itemgetter(1))
@@ -204,7 +204,7 @@ for didx in range(len(mw_dfns)):
         trigger_times = trigger_times[0]
     print "Found %i runs (i.e., trigger boundary events)." % len(trigger_times)
 
-    if len(session_info) > 1:
+    if len(session_info) > 1 and type(session_info[0])==list:
         session_info = [item for sublist in session_info for item in sublist]
         session_info = list(set(trigger_times))
         session_info.sort(key=operator.itemgetter(1))
