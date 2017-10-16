@@ -2,10 +2,6 @@
 
 % Add *_header.m to /2p-pipeline/.gitignore file after cloning repo.
 
-analysis_id = datestr(now())
-datetime = strsplit(analysis_id, ' ');
-rundate = datetime{1};
-
 useGUI = false; 
 get_rois_and_traces = true %false;
 do_preprocessing = false %true;
@@ -56,6 +52,11 @@ data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
 if ~isfield(A, 'mcparams_path')
     A.mcparams_path = fullfile(data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
 end
+
+analysis_id = datestr(now())
+datetime = strsplit(analysis_id, ' ');
+rundate = datetime{1};
+
 
 % -------------------------------------------------------------------------
 %% 1.  Set MC params
@@ -143,6 +144,20 @@ if new_mc_id
     mc_id = sprintf('mcparams%02d', num_mc_ids+1);
     mcparams.(mc_id) = curr_mcparams;
     save(A.mcparams_path, '-struct', 'mcparams', '-append');
+else
+    while (1) 
+        fprintf('Found previous mcstruct with specified params:\n')
+        for midx=1:length(prev_mcparams_ids)
+            fprintf('%i, %s', midx, prev_mcparams_ids{midx});
+        end
+        user_selected_mc = input('Enter IDX of mcparams struct to view:\n');
+        mcparams.(prev_mcprams_ids{user_selected_mc})
+        confirm_selection = input('Use these params? Press Y/n.\n');
+        if strcmp(confirm_selection, 'Y')
+            mc_id = prev_mcparams_ids{user_selected_mc});
+            break;
+        end
+    end
 end
 
 

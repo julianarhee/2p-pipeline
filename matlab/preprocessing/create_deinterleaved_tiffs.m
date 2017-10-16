@@ -1,6 +1,12 @@
-function [A, mcparams] = create_deinterleaved_tiffs(A, mcparams)
+function [A, mcparams] = create_deinterleaved_tiffs(A, mcparams, varargin)
 
 simeta = load(A.raw_simeta_path);
+
+if length(varargin)==0: 
+    funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, 'functional')), 1:length(A.data_dir))); 
+else
+    funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, varargin{1})), 1:length(A.data_dir))); 
+end
 
 % No MC, so just parse raw tiffs in standard directory in tiff base dir:
 mcparams.parsed_dir = 'Parsed';
@@ -17,12 +23,12 @@ mcparams.info.acquisition_name = A.base_filename;
 mcparams.info.ac_object_path = '';
 
 % Parse TIFFs in ./functional/DATA (may be copies of raw tiffs, or flyback-corrected tiffs).
-tiffs_to_parse = dir(fullfile(A.data_dir, '*.tif'));
+tiffs_to_parse = dir(fullfile(A.data_dir{func_idx}, '*.tif'));
 tiffs_to_parse = {tiffs_to_parse(:).name}';
 deinterleaved_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir); 
 for fid=1:length(tiffs_to_parse)
     %Y = read_file(fullfile(A.data_dir, tiffs_to_parse{fid}));
-    currtiffpath = fullfile(A.data_dir, tiffs_to_parse{fid});
+    currtiffpath = fullfile(A.data_dir{func_idx}, tiffs_to_parse{fid});
     curr_file_name = sprintf('File%03d', fidx);
     if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
         Y = read_file(currtiffpath);

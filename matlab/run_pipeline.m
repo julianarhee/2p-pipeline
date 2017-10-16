@@ -30,6 +30,8 @@ if isempty(slices)
 else
     I.slices = slices;
 end
+I.functional = tiff_source;
+
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
 path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
@@ -49,6 +51,8 @@ else
     %writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
     new_info = false;
 end
+
+
 
 %% PREPROCESSING:  motion-correction.
 
@@ -73,6 +77,9 @@ else
     A.data_dir = {fullfile(A.acquisition_base_dir, A.functional, 'DATA')};
 end
 
+funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, I.functional)), 1:length(A.data_dir))); 
+
+
 if do_preprocessing
 
       % -------------------------------------------------------------------------
@@ -92,9 +99,9 @@ if do_preprocessing
         A.corrected = I.corrected; 
     end
     if isfield(A, 'mc_id')
-        A.mc_id{end+1} = I.mc_id;
+        A.mc_id = unique([A.mc_id I.mc_id]);
     else
-        A.mc_id = {I.mc_id};
+        A.mc_id = I.mc_id;
     end
 
     save(path_to_reference, '-struct', 'A', '-append');
@@ -107,18 +114,52 @@ if do_preprocessing
     %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
     % -------------------------------------------------------------------------
 
-    if I.corrected
-        %[A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
-       [A, curr_mcparams] = motion_correct_data(A, curr_mcparams);
+    if I.corrected && new_mc_id
+        do_motion_correction = true; 
+    elseif I.corrected && ~new_mc_struct
+        found_nchannels = dir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, '*Channel*'));
+        found_nchannels = {found_nchannels(:).name}';
+        if isdir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, found_nchannels{1}))
+            found_nslices = dir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, found_nchannels{1}, '*.tif'));
+            found_nslices = {found_nslices(:).name}';
+            if found_nchannels==A.nchannels && found_nslices==length(A.nslices)
+                fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
+                user_says_mc = input('Do Motion-Correction agai
+            if strcmp(user_says_mc, 'Y')
+                do_motion_correction = true;
+            elseif strcmp(user_says_mc, 'n')
+                do_motion_correction = false;
+            end
+            
+        else
+            fprintf('Found these TIFFs in Corrected dir:\n');
+            found_nchannels
+            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+            if strcmp(user_says_mc, 'Y')
+                do_motion_correction = true;
+            elseif strcmp(user_says_mc, 'n')
+                do_motion_correction = false;
+            end
+        end
     else
         % Just parse raw tiffs:
-        [A, curr_mcparams] = create_deinterleaved_tiffs(A, curr_mcparams);
+        do_motion_correction = false;
+    end
+
+    if do_motion_correction
+        [A, curr_mcparams] = motion_correct_data(A, curr_mcparams);
+        fprintf('Completed motion-correction!\n');
+    else
+        fprintf('Not doing motion-correction...\n');
+        if ~I.corrected
+            fprintf('Parsing RAW tiffs into ./DATA/Parsed.\n');
+            [A, curr_mcparams] = create_deinterleaved_tiffs(A, curr_mcparams, I.functional);
+       end
     end
     mcparams.(mc_id) = curr_mcparams;
     save(A.mcparams_path, '-struct', 'mcparams', '-append');
-    fprintf('Completed motion-correction!\n');
-
-
+    
+    fprintf('Finished Motion-Correction step.\n');
 
     % -------------------------------------------------------------------------
     %% 3.  Clean-up and organize corrected TIFFs into file hierarchy:
@@ -147,8 +188,8 @@ if do_preprocessing
     else
         deinterleaved_source = curr_mcparams.parsed_dir;
     end
-    deinterleaved_tiff_dir = fullfile(A.data_dir, deinterleaved_source);
-    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, curr_mcparams.split_channels);
+    deinterleaved_tiff_dir = fullfile(A.data_dir{funcdir_idx}, deinterleaved_source);
+    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir{funcdir_idx}, curr_mcparams.split_channels);
 
     % Sort parsed slices by Channel-File:
     path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
