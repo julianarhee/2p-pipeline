@@ -197,8 +197,9 @@ if do_preprocessing
     reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir{funcdir_idx}, curr_mcparams.split_channels);
 
     % Sort parsed slices by Channel-File:
-    path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+    path_to_cleanup = fullfile(curr_mcparams.tiff_dir, curr_mcparams.corrected_dir);
     post_mc_cleanup(path_to_cleanup, A);
+    fprintf('Finished reinterleaving TIFFs in dir %s\n', curr_mcparams.corrected_dir);
 
 
     % -------------------------------------------------------------------------
@@ -215,6 +216,7 @@ if do_preprocessing
         path_to_cleanup = fullfile(curr_mcparams.tiff_dir, curr_mcparams.bidi_corrected_dir);
         post_mc_cleanup(path_to_cleanup, A);     
     end
+    fprintf('Finished BIDI correction step.\n')
 
     % -------------------------------------------------------------------------
     %% 5.  Create averaged slices from desired source:
@@ -243,6 +245,7 @@ if do_preprocessing
  
     create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, I, A);
     save(path_to_reference, '-struct', 'A', '-append')
+    fprintf('Finished creating AVERAGED slices from dir %s\n', I.average_source);
 
     % Also save json:
     savejson('', A, path_to_reference_json);
