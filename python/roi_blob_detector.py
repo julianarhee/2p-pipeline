@@ -42,6 +42,8 @@ def createCircularMask(h, w, center=None, radius=None):
     mask = dist_from_center <= radius
     return mask
 
+
+
 # get_ipython().magic(u'matplotlib inline')
 parser = optparse.OptionParser()
 
@@ -56,8 +58,8 @@ parser.add_option('-a', '--slicedir', action='store', dest='avgsource', default=
 
 # ACQUISITION-specific options:
 parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
-parser.add_option('-r', '--reference', action='store', dest='reference', default=1, help='File number to use as refernce [default: 1]')
-parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
+#parser.add_option('-r', '--reference', action='store', dest='reference', default=1, help='File number to use as refernce [default: 1]')
+#parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
 
 # BLOB param options:
 parser.add_option('-M', '--maxsigma', action='store', dest='max_sigma', default=2.0, help='Max val for blob detector [default: 2.0]')
@@ -71,9 +73,10 @@ parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', defaul
 (options, args) = parser.parse_args() 
 
 
-nslices = options.nslices
-reference_file_idx = options.reference
-signal_channel_idx = options.channel
+#nslices = options.nslices
+#reference_file_idx = options.reference
+#signal_channel_idx = options.channel
+
 
 max_sigma_val = float(options.max_sigma)
 min_sigma_val = float(options.min_sigma)
@@ -89,6 +92,22 @@ acquisition = options.acquisition
 functional_subdir = options.functional_dir
 avgsource = options.avgsource
 
+acquisition_dir = os.path.join(source, experiment, sess, acquisition)
+data_dir = os.path.join(acquisition_dir, functional_subdir, 'DATA')
+
+# Load mcparams.mat:
+mcparams = scipy.io.loadmat(os.path.join(data_dir, 'mcparams.mat'))
+mcparams = mcparams['mcparams']
+reference_file_idx = int(mcparams['ref_file']) 
+signal_channel_idx = int(mcparams['ref_channel'])
+
+signal_channel = 'Channel%02d' % int(signal_channel_idx)
+reference_file = 'File%03d' % int(reference_file_idx)
+
+print "Specified signal channel is:", signal_channel
+print "Selected reference file:", reference_file
+
+
 # Specify and create directories:
 if len(avgsource)==0:
     avgsource = ''
@@ -97,12 +116,6 @@ else:
     
 subdir_str = '{tiffstr}/DATA/Averaged_Slices{avgsource}'.format(avgsource=avgsource, tiffstr=functional_subdir)
 # subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
-
-signal_channel = 'Channel%02d' % int(signal_channel_idx)
-reference_file = 'File%03d' % int(reference_file_idx)
-
-print "Specified signal channel is:", signal_channel
-print "Selected reference file:", reference_file
 
 slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_channel, reference_file)
 
@@ -148,13 +161,14 @@ params_dict['gaussian_sigma'] = gaussian_sigma
 #get averaged slices
 avg_slices = os.listdir(slice_directory)
 avg_slices = [i for i in avg_slices if i.endswith('.tif')]
+nslices = len(avg_slices)
 
 print "N slices: ", len(avg_slices)
-if len(nslices)==0:
-    nslices = len(avg_slices)
-else:
-    nslices = int(nslices)    
-
+# if len(nslices)==0:
+#     nslices = len(avg_slices)
+# else:
+#     nslices = int(nslices)    
+ 
 #initialize empty dictionaries to populate as we go on
 source_paths = np.zeros((nslices,), dtype=np.object)
 log_maskpaths = np.zeros((nslices,), dtype=np.object)
