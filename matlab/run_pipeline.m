@@ -32,6 +32,7 @@ else
 end
 I.functional = tiff_source;
 I.signal_channel = signal_channel;
+I.average_source = average_source;
 
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
@@ -129,7 +130,8 @@ if do_preprocessing
             found_nslices = {found_nslices(:).name}';
             if found_nchannels==A.nchannels && found_nslices==length(A.nslices)
                 fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
-                user_says_mc = input('Do Motion-Correction agai
+                user_says_mc = input('Do Motion-Correction again? Press Y/n.\n')
+            end
             if strcmp(user_says_mc, 'Y')
                 do_motion_correction = true;
             elseif strcmp(user_says_mc, 'n')
@@ -260,13 +262,14 @@ end
 I.roi_method = roi_method;
 I.roi_id = roi_id;
 
-postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-if new_info_struct
-    updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
-else
-    updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
-end
-
+% postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+% if new_info_struct
+%     fprintf('Creating new info file.\n');
+%     updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
+% else
+%     updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
+% end
+% 
 
 %% Specify ROI param struct path:
 if get_rois_and_traces
