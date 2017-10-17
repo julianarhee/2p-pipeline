@@ -68,8 +68,13 @@ parser.add_option('-v', '--first', action="store",
 parser.add_option('-R', '--roi', action="store",
                   dest="roi_method", default='blobs_DoG', help="ROI method to use.")
 
+parser.add_option('--flyback', action="store_true",
+                  dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
+
 
 (options, args) = parser.parse_args() 
+
+flyback_corrected = options.flyback_corrected
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -252,7 +257,7 @@ if abort is False:
 		stimname = 'stimulus%02d' % int(stim)
             else:
                 first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
-	            first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
+	        first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
                 framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
                 #print "sec to plot:", len(framenums)/volumerate
 		stimname = trialdict[currfile][currtrial]['name']
