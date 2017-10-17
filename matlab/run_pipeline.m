@@ -30,6 +30,9 @@ if isempty(slices)
 else
     I.slices = slices;
 end
+I.functional = tiff_source;
+I.signal_channel = signal_channel;
+
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
 path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
@@ -38,17 +41,19 @@ path_to_analysisinfo_json = fullfile(acquisition_base_dir, 'analysis_info.json')
 analysisinfo_fn = dir(path_to_fn);
 if isempty(analysisinfo_fn)
     % Create new:
-    path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
+    %path_to_fn = fullfile(acquisition_base_dir, 'analysis_info.txt');
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
-    new_info = true;
+    %writetable(itable, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
+    new_info_struct = true;
 else
     existsI = readtable(path_to_fn, 'Delimiter', '\t', 'ReadRowNames', true);
     %prevruns = existsI.Properties.RowNames;
     %updatedI = [existsI; itable];
     %writetable(updatedI, path_to_fn, 'Delimiter', '\t', 'WriteRowNames', true);
-    new_info = false;
+    new_info_struct = false;
 end
+
+
 
 %% PREPROCESSING:  motion-correction.
 
@@ -73,6 +78,9 @@ else
     A.data_dir = {fullfile(A.acquisition_base_dir, A.functional, 'DATA')};
 end
 
+funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, I.functional)), 1:length(A.data_dir))); 
+
+
 if do_preprocessing
 
       % -------------------------------------------------------------------------
@@ -84,7 +92,11 @@ if do_preprocessing
     else
          A.use_bidi_corrected = I.use_bidi_corrected;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
     end 
-    A.signal_channel = signal_channel;                                      % If multi-channel, Ch index for extracting activity traces
+    if isfield(A, 'signal_channel') 
+        A.signal_channel = unique([A.signal_channel I.signal_channel]);                                      % If multi-channel, Ch index for extracting activity traces
+    else
+        A.signal_channel = I.signal_channel;
+    end
         
     if isfield(A, 'corrected')
         A.corrected = unique([A.corrected curr_mcparams.corrected]);
@@ -92,9 +104,9 @@ if do_preprocessing
         A.corrected = I.corrected; 
     end
     if isfield(A, 'mc_id')
-        A.mc_id{end+1} = I.mc_id;
+        A.mc_id = unique([A.mc_id I.mc_id]);
     else
-        A.mc_id = {I.mc_id};
+        A.mc_id = I.mc_id;
     end
 
     save(path_to_reference, '-struct', 'A', '-append');
@@ -107,18 +119,52 @@ if do_preprocessing
     %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
     % -------------------------------------------------------------------------
 
-    if I.corrected
-        %[A, mcparams] = preprocess_data(A, mcparams);                      % include mcparams as output since paths are updated during preprocessing (path(s) to Corrected/Parsed files)
-       [A, curr_mcparams] = motion_correct_data(A, curr_mcparams);
+    if I.corrected && new_mc_id
+        do_motion_correction = true; 
+    elseif I.corrected && ~new_mc_id
+        found_nchannels = dir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, '*Channel*'));
+        found_nchannels = {found_nchannels(:).name}';
+        if isdir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, found_nchannels{1}))
+            found_nslices = dir(fullfile(A.data_dir{funcdir_idx}, curr_mcparams.corrected_dir, found_nchannels{1}, '*.tif'));
+            found_nslices = {found_nslices(:).name}';
+            if found_nchannels==A.nchannels && found_nslices==length(A.nslices)
+                fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
+                user_says_mc = input('Do Motion-Correction agai
+            if strcmp(user_says_mc, 'Y')
+                do_motion_correction = true;
+            elseif strcmp(user_says_mc, 'n')
+                do_motion_correction = false;
+            end
+            
+        else
+            fprintf('Found these TIFFs in Corrected dir:\n');
+            found_nchannels
+            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+            if strcmp(user_says_mc, 'Y')
+                do_motion_correction = true;
+            elseif strcmp(user_says_mc, 'n')
+                do_motion_correction = false;
+            end
+        end
     else
         % Just parse raw tiffs:
-        [A, curr_mcparams] = create_deinterleaved_tiffs(A, curr_mcparams);
+        do_motion_correction = false;
+    end
+
+    if do_motion_correction
+        [A, curr_mcparams] = motion_correct_data(A, curr_mcparams);
+        fprintf('Completed motion-correction!\n');
+    else
+        fprintf('Not doing motion-correction...\n');
+        if ~I.corrected
+            fprintf('Parsing RAW tiffs into ./DATA/Parsed.\n');
+            [A, curr_mcparams] = create_deinterleaved_tiffs(A, curr_mcparams, I.functional);
+       end
     end
     mcparams.(mc_id) = curr_mcparams;
     save(A.mcparams_path, '-struct', 'mcparams', '-append');
-    fprintf('Completed motion-correction!\n');
-
-
+    
+    fprintf('Finished Motion-Correction step.\n');
 
     % -------------------------------------------------------------------------
     %% 3.  Clean-up and organize corrected TIFFs into file hierarchy:
@@ -147,12 +193,13 @@ if do_preprocessing
     else
         deinterleaved_source = curr_mcparams.parsed_dir;
     end
-    deinterleaved_tiff_dir = fullfile(A.data_dir, deinterleaved_source);
-    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir, curr_mcparams.split_channels);
+    deinterleaved_tiff_dir = fullfile(A.data_dir{funcdir_idx}, deinterleaved_source);
+    reinterleave_tiffs(A, deinterleaved_tiff_dir, A.data_dir{funcdir_idx}, curr_mcparams.split_channels);
 
     % Sort parsed slices by Channel-File:
-    path_to_cleanup = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+    path_to_cleanup = fullfile(curr_mcparams.tiff_dir, curr_mcparams.corrected_dir);
     post_mc_cleanup(path_to_cleanup, A);
+    fprintf('Finished reinterleaving TIFFs in dir %s\n', curr_mcparams.corrected_dir);
 
 
     % -------------------------------------------------------------------------
@@ -169,6 +216,7 @@ if do_preprocessing
         path_to_cleanup = fullfile(curr_mcparams.tiff_dir, curr_mcparams.bidi_corrected_dir);
         post_mc_cleanup(path_to_cleanup, A);     
     end
+    fprintf('Finished BIDI correction step.\n')
 
     % -------------------------------------------------------------------------
     %% 5.  Create averaged slices from desired source:
@@ -197,6 +245,7 @@ if do_preprocessing
  
     create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, I, A);
     save(path_to_reference, '-struct', 'A', '-append')
+    fprintf('Finished creating AVERAGED slices from dir %s\n', I.average_source);
 
     % Also save json:
     savejson('', A, path_to_reference_json);
@@ -211,8 +260,12 @@ end
 I.roi_method = roi_method;
 I.roi_id = roi_id;
 
-itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-updatedI = update_analysis_table(existsI, itable, path_to_fn);
+postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+if new_info_struct
+    updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
+else
+    updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
+end
 
 
 %% Specify ROI param struct path:
@@ -260,9 +313,16 @@ if get_rois_and_traces
 
     %% GET metadata for SI tiffs:
 
-    si = get_scan_info(A)
-    save(fullfile(A.data_dir, 'simeta.mat'), '-struct', 'si');
-    A.simeta_path = fullfile(A.data_dir, 'simeta.mat');
+    si = get_scan_info(I, A)
+    simeta_path = fullfile(A.data_dir{funcdir_idx}, 'simeta.mat');
+    save(simeta_path, '-struct', 'si');
+    if isfield(A, 'simeta_path') && ~ismember(data_dir, A.data_dir)
+        A.simeta_path{end+1} = simeta_path;
+    else
+        A.simeta_path = {simeta_path};
+    end
+
+   
 
     %% Process traces
 
@@ -299,6 +359,14 @@ if get_rois_and_traces
 end
 
 
+postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+if new_info_struct
+    updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
+else
+    updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
+end
+
+
 %% Update info table again:
-itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-updatedI = update_analysis_table(updatedI, itable, path_to_fn);
+%itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+%updatedI = update_analysis_table(updatedI, itable, path_to_fn);

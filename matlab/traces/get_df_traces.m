@@ -6,6 +6,8 @@ file_type = 'visible';
 ntiffs = A.ntiffs;
 simeta = load(A.raw_simeta_path);
 
+funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, I.functional)), 1:length(A.data_dir))); 
+
 switch length(varargin)
     case 0
         df_min = 20;
@@ -38,7 +40,7 @@ for sidx = 1:length(I.slices)
             file_dir = sprintf('File%03d', fidx);
         end
         avg_source = sprintf('Averaged_Slices_%s', I.average_source);
-        avg_slice_dir = fullfile(A.data_dir, avg_source, sprintf('Channel%02d', A.signal_channel), file_dir);
+        avg_slice_dir = fullfile(A.data_dir{funcdir_idx}, avg_source, sprintf('Channel%02d', I.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
         slice_file = slice_files(1).name

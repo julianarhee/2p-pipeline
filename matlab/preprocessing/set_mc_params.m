@@ -28,6 +28,10 @@ Names = [
     'tiff_dir           '       % Path to folder containing TIFFs to be corrected (A.data_dir)
     'crossref           '       % True if correcting across experiment-types (but same FOV). (Not fully tested)
     'nchannels          '       % From ref-struct. useful here, for post-mc-cleanup steps. [default: 1]
+    'corrected_dir      '
+    'bidi_corrected_dir '
+    'parsed_dir         '
+    'info               '    
     ];
 
 % TODO: * fields indicate potential auto-populated fields based on
@@ -127,6 +131,10 @@ Values = [
     {''}                                        % tiff_dir
     {false}                                     % crossref
     {1}                                         % nchannels
+    {'Corrected'}                               % corrected_dir
+    {'Corrected_Bidi'}                          % bidi_corrected_dir
+    {'Parsed'}                                  % parsed_dir
+    {struct()}                                  % info (struct)
     ];
 
 for j = 1:m
