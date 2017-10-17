@@ -79,6 +79,8 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
+vols_per_trial = int(options.vols_per_trial)
+first_stim_volume_num = int(options.first_stim_volume_num)
 
 abort = False
 if custom_mw is True and (vols_per_trial==0 or first_stim_volume_num==0):
@@ -126,14 +128,13 @@ if abort is False:
     
     stim_on_sec = float(options.stim_on_sec) #2. # 0.5
     iti_pre = float(options.iti_pre)
-    iti_full = float(options.iti_full)
-    vols_per_trial = int(options.vols_per_trial)
-    first_stim_volume_num = int(options.first_stim_volume_num)
+    #vols_per_trial = float(options.vols_per_trial)
+    #first_stim_volume_num = int(options.first_stim_volume_num)
 
     if custom_mw is True:
-        volumerate = simeta['File001']['SI']['hRoiManager']['scanVolumeRate']
-        first_stimulus_volume_num = int(options.first_stim_volume_num) #50
-        vols_per_trial = int(options.vols_per_trial) # 15
+        volumerate = float(simeta['File001']['SI']['hRoiManager']['scanVolumeRate'])
+        first_stimulus_volume_num = float(options.first_stim_volume_num) #50
+        vols_per_trial = float(options.vols_per_trial) # 15
         iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
         iti_post = iti_full - iti_pre
     else:
@@ -157,14 +158,15 @@ if abort is False:
     path_to_functional = os.path.join(acquisition_dir, functional_dir)
     paradigm_dir = 'paradigm_files'
     path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
-
-    with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'rb') as f:
-        trialdict = pkl.load(f)
-    trialdict.keys()
+    
+    if custom_mw is False:
+	with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'rb') as f:
+	    trialdict = pkl.load(f)
+	trialdict.keys()
 
     ### Get stim-order files:
     stimorder_fns = os.listdir(path_to_paradigm_files)
-    stimorder_fns = sorted([f for f in stimorder_fns if 'stimorder' in f])
+    stimorder_fns = sorted([f for f in stimorder_fns if 'stimorder' in f or 'stim_order' in f])
     print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), nfiles)
     if len(stimorder_fns) < nfiles:
         if same_order:
@@ -185,11 +187,22 @@ if abort is False:
     for fi in range(nfiles):
         currfile= "File%03d" % int(fi+1)
 
-        nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-        framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-        volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-        frames_tsecs = np.arange(0, nframes)*(1/volumerate)
+        nvolumes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
+        #nslices = len(ref['slices']) #int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
+	nslices = int(simeta[currfile]['SI']['hFastZ']['numFramesPerVolume'])
 
+	framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
+        volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+	print "framerate:", framerate
+	print "volumerate:", volumerate
+        frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
+# 
+# 	if custom_mw is True:
+# 	    frame_tsecs = np.arange(0, nvolumes)*(1/volumerate)
+# 	else:
+#             frames_tsecs = np.arange(0, nvolumes*nslices)*(1/framerate)
+# 	print "N frame tstamps:", len(frames_tsecs)
+# 
         nframes_on = stim_on_sec * volumerate
         nframes_iti_pre = round(iti_pre * volumerate) 
         nframes_iti_post = round(iti_post * volumerate) 
@@ -231,16 +244,25 @@ if abort is False:
                     first_frame_on = first_stimulus_volume_num
                 else:
                     first_frame_on += vols_per_trial
-                framenums = list(np.arange(int(first_frame_on-frames_iti_pre), int(first_frame_on+vols_per_trial)))
+                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
+		stimname = 'stimulus%02d' % int(stim)
             else:
-                first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx'])
-                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(trialdict[currfile][currtrial]['stim_off_idx']+nframes_iti_post)))
-                print "sec to plot:", len(framenums)/volumerate
+                first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
+		first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
+                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
+                #print "sec to plot:", len(framenums)/volumerate
+		stimname = trialdict[currfile][currtrial]['name']
 
             #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+
+            ### Correct for flyback-correction, if needed:
+	    if flyback_corrected is True:
+    
+	    print "sec to plot:", len(framenums)/volumerate
+
             frametimes = [frames_tsecs[f] for f in framenums]
 
-            stimdict[stim][currfile].stimid.append(trialdict[currfile][currtrial]['name'])
+            stimdict[stim][currfile].stimid.append(stimname) #trialdict[currfile][currtrial]['name'])
             stimdict[stim][currfile].trials.append(trialnum)      
             stimdict[stim][currfile].frames.append(framenums)
             stimdict[stim][currfile].frames_sec.append(frametimes)

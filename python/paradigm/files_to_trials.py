@@ -74,11 +74,13 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-r', '--roi', action="store",
+parser.add_option('-R', '--roi', action="store",
                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
 
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
+parser.add_option('-c', '--channel', action="store",
+                  dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 
 
 (options, args) = parser.parse_args() 
@@ -92,7 +94,7 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 roi_method = options.roi_method
 
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-
+selected_channel = int(options.selected_channel)
 # source = '/nas/volume1/2photon/projects'
 # # experiment = 'scenes'
 # # session = '20171003_JW016'
@@ -186,8 +188,9 @@ for stim in stimdict.keys():
         stim_ntrials[stim] += len(stimdict[stim][fi].trials)
 
 # Load trace structs:
+currchannel = "Channel%02d" % int(selected_channel)
 curr_tracestruct_fns = os.listdir(trace_dir)
-trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t], key=natural_keys)
+trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
 #trace_fns_by_slice = sorted(ref['trace_structs'], key=natural_keys)
 
 #traces_by_stim = dict((stim, dict()) for stim in stimdict.keys())
@@ -257,20 +260,20 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         stimtraces[stim]['nrois'] = nrois
 
 
-    curr_stimtraces_json = 'stimtraces_%s.json' % currslice
+    curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currchannel, currslice)
     print curr_stimtraces_json
     with open(os.path.join(parsed_traces_dir, curr_stimtraces_json), 'w') as f:
         dump(stimtraces, f, indent=4)
 
 
-    curr_stimtraces_pkl = 'stimtraces_%s.pkl' % currslice
+    curr_stimtraces_pkl = 'stimtraces_%s_%s.pkl' % (currchannel, currslice)
     print curr_stimtraces_pkl
     with open(os.path.join(parsed_traces_dir, curr_stimtraces_pkl), 'wb') as f:
         pkl.dump(stimtraces, f, protocol=pkl.HIGHEST_PROTOCOL)
 
 
     # save as .mat:
-    curr_stimtraces_mat = 'stimtraces_%s.mat' % currslice
+    curr_stimtraces_mat = 'stimtraces_%s_%s.mat' % (currchannel, currslice)
     # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
     stimtraces_mat = dict()
     for stim in sorted(stimdict.keys(), key=natural_keys):
