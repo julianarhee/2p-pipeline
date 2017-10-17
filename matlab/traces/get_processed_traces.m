@@ -21,7 +21,10 @@ switch length(varargin)
         last_frame = varargin{1};
 end
 
-simeta = load(A.simeta_path);
+funcdir_idx = find(arrayfun(@(c) any(strfind(A.simeta_path{c}, I.functional)), 1:length(A.simeta_path))); 
+
+
+simeta = load(A.simeta_path{funcdir_idx});
 metastruct = simeta.SI;
 
 for sidx = 1:length(I.slices)

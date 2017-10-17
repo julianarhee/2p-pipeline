@@ -3,7 +3,7 @@ function simeta = get_scan_info(I, A)
 % TODO:  Replace this tmp func with metadata info extracted from raw .mat (or .json) from Step1 (process_raw.py)
         
         % Load mcparam info:
-        load(A.mcparams_path);
+        mcparams = load(A.mcparams_path);
         mcparams = mcparams.(I.mc_id)
  
         tiff_source = mcparams.tiff_dir;
@@ -17,10 +17,11 @@ function simeta = get_scan_info(I, A)
         sistruct = struct();  
         for fidx=1:ntiffs
             %curr_meta = metadata.(base_filename).metaDataSI{fidx};
-            curr_meta = metadata.(base_filename).metaDataSI; %.SI;
-            
+            curr_meta = metadata.(base_filename).metaDataSI{fidx}; %.SI;
+            curr_meta
             % Sort Parsed files into separate directories if needed:
-            nChannels = length(curr_meta.SI.hChannels.channelSave);            
+            curr_meta.SI.hChannels
+            nChannels = length(curr_meta.SI.hChannels.channelSave);             
             nVolumes = curr_meta.SI.hFastZ.numVolumes;
 
             nSlices = curr_meta.SI.hFastZ.numFramesPerVolume;

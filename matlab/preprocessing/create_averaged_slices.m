@@ -5,8 +5,9 @@ nchannels = A.nchannels;
 simeta = load(A.raw_simeta_path);
 
 if I.corrected
-    load(A.mcparams_path);
-    mcparams = mcparams.(I.mc_id);
+    allmcparams = load(A.mcparams_path);
+    mcparams = allmcparams.(I.mc_id);
+    clear allmcparams
 end
 
 if ~exist(average_slices_basepath, 'dir')

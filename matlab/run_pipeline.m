@@ -262,7 +262,7 @@ I.roi_id = roi_id;
 
 postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 if new_info_struct
-    updatedI = update_analysis_table(itable, postprocess_itable, path_to_fn);
+    updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
 else
     updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
 end
@@ -313,9 +313,16 @@ if get_rois_and_traces
 
     %% GET metadata for SI tiffs:
 
-    si = get_scan_info(A)
-    save(fullfile(A.data_dir, 'simeta.mat'), '-struct', 'si');
-    A.simeta_path = fullfile(A.data_dir, 'simeta.mat');
+    si = get_scan_info(I, A)
+    simeta_path = fullfile(A.data_dir{funcdir_idx}, 'simeta.mat');
+    save(simeta_path, '-struct', 'si');
+    if isfield(A, 'simeta_path') && ~ismember(data_dir, A.data_dir)
+        A.simeta_path{end+1} = simeta_path;
+    else
+        A.simeta_path = {simeta_path};
+    end
+
+   
 
     %% Process traces
 
@@ -352,6 +359,14 @@ if get_rois_and_traces
 end
 
 
+postprocess_itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+if new_info_struct
+    updatedI = update_analysis_table([], postprocess_itable, path_to_fn);
+else
+    updatedI = update_analysis_table(existsI, postprocess_itable, path_to_fn);
+end
+
+
 %% Update info table again:
-itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-updatedI = update_analysis_table(updatedI, itable, path_to_fn);
+%itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+%updatedI = update_analysis_table(updatedI, itable, path_to_fn);
