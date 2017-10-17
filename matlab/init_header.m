@@ -7,8 +7,9 @@ get_rois_and_traces = true %false;
 do_preprocessing = false %true;
 
 slices = [];
-signal_channel = 1;                                 % If multi-channel, Ch index for extracting activity traces
+signal_channel = 2;                                 % If multi-channel, Ch index for extracting activity traces
 
+average_source = 'Corrected';
 
 if ~useGUI 
     % Set info manually:
@@ -86,9 +87,11 @@ curr_mcparams = set_mc_params(...
     'ref_file', 6,...
     'algorithm', @withinFile_withinFrame_lucasKanade,...
     'split_channels', false,...
-    'bidi_corrected', true,... %,...
+    'bidi_corrected', false,... %,...
     'tiff_dir', data_dir,...
     'nchannels', A.nchannels);              
+
+fields_to_check = {'corrected', 'method', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'split_channels'}
 
 %% 2. ROI parmas:
 
@@ -100,7 +103,7 @@ new_mc_id = false;
 if exist(fullfile(data_dir, 'mcparams.mat'))
     mcparams = load(fullfile(data_dir, 'mcparams.mat'));
 
-    curr_fieldnames = fieldnames(curr_mcparams);
+    curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
     prev_mcparams_ids = fieldnames(mcparams);
     if length(prev_mcparams_ids)>0
         num_mc_ids = length(prev_mcparams_ids);
@@ -119,6 +122,8 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
                         if ~strcmp(char(curr_mcparams.(curr_fieldnames{mf})), char(mcparams.(curr_mcparams_id).(curr_fieldnames{mf})))
                             new_mc_id = true;
                         end
+                    elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'struct')
+                        continue;
                     else
                         if curr_mcparams.(curr_fieldnames{mf}) ~= mcparams.(curr_mcparams_id).(curr_fieldnames{mf})
                             new_mc_id = true;
@@ -141,6 +146,7 @@ else
 end
 
 if new_mc_id
+    fprintf('Creating NEW mc struct.\n');
     mc_id = sprintf('mcparams%02d', num_mc_ids+1);
     mcparams.(mc_id) = curr_mcparams;
     save(A.mcparams_path, '-struct', 'mcparams', '-append');
@@ -148,13 +154,13 @@ else
     while (1) 
         fprintf('Found previous mcstruct with specified params:\n')
         for midx=1:length(prev_mcparams_ids)
-            fprintf('%i, %s', midx, prev_mcparams_ids{midx});
+            fprintf('%i, %s\n', midx, prev_mcparams_ids{midx});
         end
         user_selected_mc = input('Enter IDX of mcparams struct to view:\n');
-        mcparams.(prev_mcprams_ids{user_selected_mc})
-        confirm_selection = input('Use these params? Press Y/n.\n');
+        mcparams.(prev_mcparams_ids{user_selected_mc})
+        confirm_selection = input('Use these params? Press Y/n.\n', 's');
         if strcmp(confirm_selection, 'Y')
-            mc_id = prev_mcparams_ids{user_selected_mc});
+            mc_id = prev_mcparams_ids{user_selected_mc};
             break;
         end
     end
