@@ -116,7 +116,7 @@ def main(options):
         origname = tiffname.split('.')[0]
     	prefix = '_'.join(origname.split('_')[0:-1])
         prefix = prefix.replace('-', '_')
-	    newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
+	newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
         print "Creating file in DATA dir:", newtiff_fn
 
         if correct_flyback:
@@ -136,15 +136,16 @@ def main(options):
 	    start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
             start_idxs_single = np.arange(0, stack.shape[0], nslices_full)
 	    substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
+	    allframe_idxs = np.arange(0, stack.shape[0])
 	    print "Removing SI discard frames. Tmp stack shape:", substack.shape
 	    frame_idxs = np.empty((nslices_orig*nvolumes, ))
 	    newstart = 0
 	    for x in range(len(start_idxs)):    
 		    substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
-		    frame_idxs[newstart:newstart+(nslices_orig)] = start_idxs[x]:start_idxs[x] + (nslices_orig)
+		    frame_idxs[newstart:newstart+(nslices_orig)] = allframe_idxs[start_idxs[x]:start_idxs[x] + (nslices_orig)]
 		    newstart = newstart + (nslices_orig*nchannels)
 	    
-	        print "Removed discard frames. New substack shape is: ", substack.shape    
+	    print "Removed discard frames. New substack shape is: ", substack.shape    
 
 	    # Next, crop off FLYBACK frames: 
 	    nslices_crop = nslices_orig - nflyback 
@@ -159,8 +160,8 @@ def main(options):
 		    frame_idxs_final[newstart:newstart+(nslices_crop)] = frame_idxs[start_idxs[x]:start_idxs[x]:(nslices_crop)]
 		    newstart = newstart + (nslices_crop*nchannels)
 	    
-	        print "Removed flyback frames. Final shape is: ", final.shape
-                print "Created frame-idx array. Final shape: ", frame_idxs_final.shape
+	    print "Removed flyback frames. Final shape is: ", final.shape
+            print "Created frame-idx array. Final shape: ", frame_idxs_final.shape
              
         # Write substack to DATA dir: 
 	    if save_tiffs is True:
@@ -221,7 +222,7 @@ def main(options):
     refinfo['frame_idxs'] = frame_idxs_final
 
     if correct_flyback:    
-	    print "Changing REF info:" 
+        print "Changing REF info:" 
         print "Orig N slices:", nslices_orig
         print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
         refinfo['slices'] = range(1, nslices_crop+1)
