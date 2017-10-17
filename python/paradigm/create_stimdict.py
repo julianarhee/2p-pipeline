@@ -94,6 +94,10 @@ if abort is False:
     with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
         ref = json.load(fr)
 
+    if flyback_corrected is True:
+        frame_idxs = ref['frame_idxs']
+        print "Found %i frames from flyback correction." % len(frame_idxs)
+
     ### Load SI meta data:
     si_basepath = ref['raw_simeta_path'][0:-4]
     simeta_json_path = '%s.json' % si_basepath
@@ -238,6 +242,8 @@ if abort is False:
                 print "sec to plot:", len(framenums)/volumerate
 
             #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+            if flyback_corrected is True:
+                framenums = [frame_idxs.index(f) for f in framenums]
             frametimes = [frames_tsecs[f] for f in framenums]
 
             stimdict[stim][currfile].stimid.append(trialdict[currfile][currtrial]['name'])
