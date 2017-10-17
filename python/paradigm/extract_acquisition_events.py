@@ -92,7 +92,7 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
     print "Processing files:"
     print "MW: ", pydict_jsons[fid]
     print "ARD: ", serialdata_fns[fid]
-    print "================================="
+    print "---------------------------------"
     
     ### LOAD MW DATA.
     with open(os.path.join(path_to_paradigm_files, pydict_jsons[fid]), 'r') as f:
@@ -174,9 +174,9 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
                 first_found_frame.append((bitcode, first_frame)) #first_frame))
                 curr_frames = allframes[first_frame+1:] #curr_frames[idx:] #curr_frames[first_frame:]
                 
-        if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
-            print "Trial %i dur (s):" % int(trial)
-            print (first_found_frame[-1][1] - first_found_frame[0][1])/framerate
+        #if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
+        #print "Trial %i dur (s):" % int(trial)
+        print (first_found_frame[-1][1] - first_found_frame[0][1])/framerate, '[Tial %i]' % int(trial)
 
         trialdict[trial]['stim_on_idx'] = first_found_frame[0][1]
         trialdict[trial]['stim_off_idx'] = first_found_frame[-1][1]

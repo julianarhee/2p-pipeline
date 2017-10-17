@@ -54,6 +54,8 @@ parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
 parser.add_option('-g', '--gap', action="store",
                   dest="gap", default=400, help="num frames to separate subplots [default: 400]")
+parser.add_option('-c', '--channel', action="store",
+                  dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 
 (options, args) = parser.parse_args() 
 
@@ -71,7 +73,8 @@ iti_pre = float(options.iti_pre)
 
 custom_mw = options.custom_mw
 spacing = int(options.gap)
-curr_slice_idx = options.sliceidx
+curr_slice_idx = int(options.sliceidx)
+selected_channel = int(options.selected_channel)
 
 # source = '/nas/volume1/2photon/projects'
 # experiment = 'gratings_phaseMod'
@@ -96,12 +99,14 @@ curr_slice_idx = options.sliceidx
 # ---------------------------------------------------------------------------------
 # mw = False
 # spacing = 25 #400
-trial_alpha = 0.5 #0.7
+roi_interval = 1
+
+trial_alpha = 0.2 #0.5 #0.7
 trial_width = 0.1 #0.3
 
 stim_offset = -.75 #2.0
 ylim_min = -3
-ylim_max = 3.0
+ylim_max = 100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
 
@@ -184,10 +189,9 @@ slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = slice_names[curr_slice_idx]
 
-nrois = masks[curr_slice_name]['nrois']['nrois']
+nrois = masks[curr_slice_name]['nrois']
 print "NROIS:", nrois
 
-roi_interval = 10
 if len(rois_to_plot)==0:
     rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
     sort_name = '_every%i' % roi_interval
@@ -197,7 +201,7 @@ else:
 
 # Get FILE ("tiff") list:
 average_source = 'Averaged_Slices_Corrected'
-signal_channel = 1
+signal_channel = int(options.selected_channel)
 average_slice_dir = os.path.join(acquisition_dir, functional_dir, 'DATA', average_source, "Channel{:02d}".format(signal_channel))
 file_names = [f for f in os.listdir(average_slice_dir) if '_vis' not in f]
 print "File names:", file_names
@@ -226,8 +230,9 @@ path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Par
 
 # Load stim trace structs:
 print "Loading parsed traces..."
+currchannel = "Channel%02d" % int(selected_channel)
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and f.endswith('.pkl')], key=natural_keys)
+stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
 stimtrace_fn = stimtrace_fns[curr_slice_idx]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)
@@ -271,7 +276,7 @@ if plot_traces:
             #raw = stimtraces[stim]['traces'][:, :, roi]
             ntrialstmp = len(stimtraces[stim]['traces'])
             nframestmp = min([stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))])
-            raw = np.zeros((ntrialstmp, nframestmp))
+            raw = np.empty((ntrialstmp, nframestmp))
             for trialnum in range(ntrialstmp):
                 raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
                 #print raw.shape
@@ -291,12 +296,23 @@ if plot_traces:
                     frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
 
                 baseline = np.mean(raw[trial, 0:frame_on])
-                df = (raw[trial,:] - baseline) / baseline
-                curr_dfs[trial,:] = df
+                #print "baseline:", baseline
+		df = (raw[trial,:] - baseline) / baseline
+                if roi==0:
+		    print baseline
+                #print stim, trial
+		curr_dfs[trial,:] = df
                 if color_by_roi:
                     plt.plot(xvals, df, color=currcolor, alpha=trial_alpha, linewidth=trial_width)
                 else:
                     plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
+
+            # Plot average:
+            avg = np.mean(curr_dfs, axis=0) 
+            if color_by_roi:
+                plt.plot(xvals, avg, color=currcolor, alpha=1, linewidth=1.2)
+            else:
+                plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=1.2)
 
             if custom_mw is True:
                 stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
@@ -312,13 +328,6 @@ if plot_traces:
                 stim_frames = xvals[0] + [on_fr_idx, off_fr_idx]
                 
             plt.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
-
-            # Plot average:
-            avg = np.mean(curr_dfs, axis=0) 
-            if color_by_roi:
-                plt.plot(xvals, avg, color=currcolor, alpha=1, linewidth=1.2)
-            else:
-                plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=1.2)
 
         if ridx<len(rois_to_plot)-1:
             #sns.despine(bottom=True)

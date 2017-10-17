@@ -28,6 +28,14 @@ import scipy.io
 import itertools
 
 import optparse
+import re
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
 
 def createCircularMask(h, w, center=None, radius=None):
 
@@ -69,6 +77,8 @@ parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', de
 # IMAGE processing options:
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
+parser.add_option('-R', '--id', action='store', dest='roi_id', default='', help='unique ID name for current ROI set.')
+
 
 (options, args) = parser.parse_args() 
 
@@ -77,6 +87,7 @@ parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', defaul
 #reference_file_idx = options.reference
 #signal_channel_idx = options.channel
 
+roi_id = options.roi_id
 
 max_sigma_val = float(options.max_sigma)
 min_sigma_val = float(options.min_sigma)
@@ -97,7 +108,17 @@ data_dir = os.path.join(acquisition_dir, functional_subdir, 'DATA')
 
 # Load mcparams.mat:
 mcparams = scipy.io.loadmat(os.path.join(data_dir, 'mcparams.mat'))
-mcparams = mcparams['mcparams']
+mc_methods = sorted([m for m in mcparams.keys() if 'mcparams' in m], key=natural_keys)
+if len(mc_methods)>1:
+    for mcidx,mcid in enumerate(sorted(mc_methods, key=natural_keys)):
+        print mcidx, mcid
+    mc_method_idx = rawinput('Select IDX of mc-method to use: ')
+    mc_method = mc_methods[mc_method_idx]
+    print "Using MC-METHOD: ", mc_method
+else:
+    mc_method = mc_methods[0] 
+
+mcparams = mcparams[mc_method] #mcparams['mcparams01']
 reference_file_idx = int(mcparams['ref_file']) 
 signal_channel_idx = int(mcparams['ref_channel'])
 
@@ -120,11 +141,28 @@ subdir_str = '{tiffstr}/DATA/Averaged_Slices{avgsource}'.format(avgsource=avgsou
 slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_channel, reference_file)
 
 # Define output directories:
-log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_LoG')
+acquisition_dir = os.path.join(source, experiment, sess, acquisition)
+existing_rois = sorted(os.listdir(os.path.join(acquisition_dir, 'ROIs')), key=natural_keys)
+if len(existing_rois)>0:
+    print "Found existing blob ROIs:"
+    for ridx,rid in enumerate(sorted(existing_rois, key=natural_keys)):
+        print ridx, rid
+else:
+    print "No existing blob ROIs found. Starting index 1."
+
+user_id = raw_input('Enter IDX for LoG/DoG folders: ')
+if len(user_id)==0:
+    log_folder = 'blobs_LoG'
+    dog_folder = 'blobs_DoG'
+else:
+    log_folder = 'blobs_LoG%i' % int(user_id)
+    dog_folder = 'blobs_DoG%i' % int(user_id)
+
+log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', log_folder) #'blobs_LoG')
 if not os.path.exists(log_roi_dir):
     os.makedirs(log_roi_dir)
 
-dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_DoG')
+dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', dog_folder) #'blobs_DoG')
 if not os.path.exists(dog_roi_dir):
     os.makedirs(dog_roi_dir)
     
