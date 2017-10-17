@@ -250,6 +250,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             print "Check extract_acquisition_events.py and create_stimdict.py"
             print "******************************"
         else:
+	    print check_stimname
             stimname = check_stimname[0]
         
         stimtraces[stim]['name'] = stimname

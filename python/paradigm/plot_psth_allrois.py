@@ -10,6 +10,8 @@ import seaborn as sns
 # %matplotlib notebook
 from matplotlib import gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import skimage.color
 from json_tricks.np import dump, dumps, load, loads
@@ -40,7 +42,7 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-r', '--roi', action="store",
+parser.add_option('-R', '--roi', action="store",
                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
 
 parser.add_option('-O', '--stimon', action="store",
@@ -346,7 +348,7 @@ if plot_traces:
     figname = 'traces_by_stim_per_roi_slice%i%s.png' % (curr_slice_idx, sort_name)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
-    plt.show()
+    #plt.show()
 
 # PLOT ROIs:
 img = np.copy(avgimg)
