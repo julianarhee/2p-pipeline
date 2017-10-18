@@ -140,8 +140,14 @@ def main(options):
         print "Saved .MAT to: ", os.path.join(acquisition_dir, raw_simeta_mat)
 
 
-        # Create REFERENCE info file:
-        refinfo = dict()
+        # Create REFERENCE info file or overwrite relevant fields, if exists:
+        refinfo_json = '%s.json' % reference_info_basename
+        if os.path.exists(os.path.join(acquisition_dir, refinfo_json):
+            with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
+		refinfo = json.load(fp)
+        else:
+            refinfo = dict() 
+
         refinfo['source'] = source
         refinfo['experiment'] = experiment
         refinfo['session'] = session
@@ -159,7 +165,6 @@ def main(options):
         refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
         refinfo['raw_simeta_path'] = os.path.join(acquisition_dir, raw_simeta_mat)
 
-        refinfo_json = '%s.json' % reference_info_basename
         with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
             json.dump(refinfo, fp, indent=4)
         

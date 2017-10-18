@@ -68,8 +68,13 @@ parser.add_option('-v', '--first', action="store",
 parser.add_option('-R', '--roi', action="store",
                   dest="roi_method", default='blobs_DoG', help="ROI method to use.")
 
+parser.add_option('--flyback', action="store_true",
+                  dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
+
 
 (options, args) = parser.parse_args() 
+
+flyback_corrected = options.flyback_corrected
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -248,29 +253,48 @@ if abort is False:
                     first_frame_on = first_stimulus_volume_num
                 else:
                     first_frame_on += vols_per_trial
-                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
-		stimname = 'stimulus%02d' % int(stim)
+                    framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
+		    stimname = 'stimulus%02d' % int(stim)
             else:
                 first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
-	            first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
+	        first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
                 framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
                 #print "sec to plot:", len(framenums)/volumerate
 		stimname = trialdict[currfile][currtrial]['name']
 
         #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
-        if flyback_corrected is True:
-            framenums = [frame_idxs.index(f) for f in framenums]
-            first_frame_on = frame_idxs.index(first_frame_on)
+            if flyback_corrected is True:
+                for f in framenums:
+                    if f in frame_idxs:
+                        match = frame_idxs.index(f)
+                    else:
+                        if f-1 in frame_idxs:
+                            match = frame_idxs.index(f-1)
+                        elif f+1 in frame_idxs:
+                            match = frame_idxs.index(f+1)
+                        else:
+                            print "NO MATCH FOUND for frame:", f
+                            #framenums = [frame_idxs.index(f) for f in framenums]
 
-	    print "sec to plot:", len(framenums)/volumerate
+                    if first_frame_on in frame_idxs: 
+                        first_frame_on = frame_idxs.index(first_frame_on)
+                    else:
+                        if first_frame_on-1 in frame_idxs:
+                            first_frame_on = frame_idxs.index(first_frame_on-1)
+                        elif first_frame_on+1 in frame_idxs:
+                                    first_frame_on = frame_idxs.index(first_frame_on+1)
+                        else:
+                            print "NO match found for FIRST frame ON:", first_frame_on
 
-        frametimes = [frames_tsecs[f] for f in framenums]
+            print "sec to plot:", len(framenums)/volumerate
 
-        stimdict[stim][currfile].stimid.append(stimname) #trialdict[currfile][currtrial]['name'])
-        stimdict[stim][currfile].trials.append(trialnum)      
-        stimdict[stim][currfile].frames.append(framenums)
-        stimdict[stim][currfile].frames_sec.append(frametimes)
-        stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
+            frametimes = [frames_tsecs[f] for f in framenums]
+
+            stimdict[stim][currfile].stimid.append(stimname) #trialdict[currfile][currtrial]['name'])
+            stimdict[stim][currfile].trials.append(trialnum)      
+            stimdict[stim][currfile].frames.append(framenums)
+            stimdict[stim][currfile].frames_sec.append(frametimes)
+            stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
 
 
     # Save to PKL:

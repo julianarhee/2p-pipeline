@@ -10,6 +10,8 @@ import seaborn as sns
 # %matplotlib notebook
 from matplotlib import gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+#import matplotlib
+#matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import skimage.color
 from json_tricks.np import dump, dumps, load, loads
@@ -40,7 +42,7 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-r', '--roi', action="store",
+parser.add_option('-R', '--roi', action="store",
                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
 
 parser.add_option('-O', '--stimon', action="store",
@@ -57,8 +59,17 @@ parser.add_option('-g', '--gap', action="store",
 parser.add_option('-c', '--channel', action="store",
                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 
+parser.add_option('--flyback', action="store_true",
+                  dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
+parser.add_option('--interval', action="store",
+                  dest="roi_interval", default=10, help="Plot every Nth interval [default: 10]")
+
+
+
+
 (options, args) = parser.parse_args() 
 
+flyback_corrected = options.flyback_corrected
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -99,14 +110,15 @@ selected_channel = int(options.selected_channel)
 # ---------------------------------------------------------------------------------
 # mw = False
 # spacing = 25 #400
-roi_interval = 1
+roi_interval = int(options.roi_interval)
 
-trial_alpha = 0.2 #0.5 #0.7
-trial_width = 0.1 #0.3
+avg_alpha = 0
+trial_alpha = 0.8 #0.5 #0.5 #0.7
+trial_width = 0.2 #0.3
 
 stim_offset = -.75 #2.0
 ylim_min = -3
-ylim_max = 100 #5.0 # 3.0
+ylim_max = 50 #3 #100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
 
@@ -181,13 +193,15 @@ masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len
 for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
     slice_name = "Slice%02d" % int(slice_idx+1)
     print "Loading masks: %s..." % slice_name 
-    currmasks = loadmat(maskpath); currmasks = currmasks['masks']
-    masks[slice_name]['nrois'] =  currmasks.shape[2]
-    masks[slice_name]['masks'] = currmasks
+    tmp_currmasks = loadmat(maskpath); tmp_currmasks = tmp_currmasks['masks']
+    masks[slice_name]['nrois'] = tmp_currmasks.shape[2]
+    masks[slice_name]['masks'] = tmp_currmasks
 
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = slice_names[curr_slice_idx]
+currmasks = masks[curr_slice_name]['masks']
+print currmasks.shape
 
 nrois = masks[curr_slice_name]['nrois']
 print "NROIS:", nrois
@@ -298,8 +312,6 @@ if plot_traces:
                 baseline = np.mean(raw[trial, 0:frame_on])
                 #print "baseline:", baseline
 		df = (raw[trial,:] - baseline) / baseline
-                if roi==0:
-		    print baseline
                 #print stim, trial
 		curr_dfs[trial,:] = df
                 if color_by_roi:
@@ -310,7 +322,9 @@ if plot_traces:
             # Plot average:
             avg = np.mean(curr_dfs, axis=0) 
             if color_by_roi:
-                plt.plot(xvals, avg, color=currcolor, alpha=1, linewidth=1.2)
+                plt.plot(xvals, avg, color=currcolor, alpha=avg_alpha, linewidth=1.2)
+                #plt.plot(xvals, avg, color='k', alpha=.5, linewidth=1.2)
+                
             else:
                 plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=1.2)
 
@@ -322,7 +336,8 @@ if plot_traces:
                 #stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
                 # start_fr = int(nframes_iti_pre) + 1
                 # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on-1]
-                on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
+                #on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
+                on_fr_idx =  int(nframes_iti_pre)
                 nframes_on = (stimtraces[stim]['frames_stim_on'][trial][1] - stimtraces[stim]['frames_stim_on'][trial][0] + 1)
                 off_fr_idx = on_fr_idx + nframes_on - 1
                 stim_frames = xvals[0] + [on_fr_idx, off_fr_idx]
@@ -346,7 +361,7 @@ if plot_traces:
     figname = 'traces_by_stim_per_roi_slice%i%s.png' % (curr_slice_idx, sort_name)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
-    plt.show()
+    #plt.show()
 
 # PLOT ROIs:
 img = np.copy(avgimg)
@@ -363,7 +378,9 @@ alpha = 0.9 #0.8 #1 #0.8 #0.5 #0.99 #0.8
 nr,nc = imgnorm.shape
 color_mask = np.zeros((nr, nc, 3))
 #color_mask = np.dstack((imgnorm, imgnorm, imgnorm)) 
+print currmasks.shape
 for roi in rois_to_plot:
+    print roi
     color_mask[currmasks[:,:,roi]==1] = colorvals[roi][0:3]
 
 # Construct RGB version of grey-level image
