@@ -1,14 +1,10 @@
-function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_basepath, I, A)
+function create_averaged_slices(deinterleaved_tiff_basepath, average_slices_basepath, A)
 
 nfiles = A.ntiffs;
 nchannels = A.nchannels;
 simeta = load(A.raw_simeta_path);
-
-if I.corrected
-    allmcparams = load(A.mcparams_path);
-    mcparams = allmcparams.(I.mc_id);
-    clear allmcparams
-end
+d1 = A.lines_per_frame;
+d2 = A.pixels_per_line;
 
 if ~exist(average_slices_basepath, 'dir')
     mkdir(average_slices_basepath)
@@ -32,19 +28,10 @@ for tiff_idx=1:nfiles %length(data_files)
         tiffs = dir(fullfile(slice_dir, '*.tif'));
         tiffs = {tiffs(:).name}';
         d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
-        %sample = read_file(fullfile(slice_dir, tiffs{1}));
-        currtiffpath = fullfile(slice_dir, tiffs{1});
-        curr_file_name = sprintf('File%03d', tiff_idx);
-        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-            sample = read_file(currtiffpath);
-        else
-            sample = read_imgdata(currtiffpath);
-        end
-        d1=size(sample,1); d2=size(sample,2); clear sample
-	
+
         avgs = zeros([d1,d2,d3]);
+        fprintf('AVG size: %s\n', mat2str(size(avgs)));
         for sl=1:d3
-            %tiffdata = read_file(fullfile(slice_dir, tiffs{sl}));
             currtiffpath = fullfile(slice_dir, tiffs{sl});
             curr_file_name = sprintf('File%03d', tiff_idx);
             if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 

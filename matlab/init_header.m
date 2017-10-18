@@ -2,22 +2,42 @@
 
 % Add *_header.m to /2p-pipeline/.gitignore file after cloning repo.
 
+% ============================================================================
+% USER-SPECIFIED INFO:
+% ============================================================================
+
+% Specify what to run:
 useGUI = false; 
 get_rois_and_traces = true %false;
-do_preprocessing = false %true;
+do_preprocessing = false; %true; %false %true;
 
+% Specify what to run it on:
 slices = [];
 signal_channel = 2;                                 % If multi-channel, Ch index for extracting activity traces
+flyback_corrected = false;
+split_channels = false;
 
-average_source = 'Corrected';
+% Set Motion-Correction params:
+average_source = 'Raw';                             % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
+correct_motion = false;
+correct_bidi_scan = false;
+reference_channel = 1
+reference_file = 6
+method = 'Acquisition2P'; 
+algorithm = @withinFile_withinFrame_lucasKanade
 
+% Set ROI params: 
+roi_method = 'pyblob2D';
+roi_id = 'blobs_DoG';
+
+% Specify paths:
 if ~useGUI 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
     experiment = 'gratings_phaseMod';
     session = '20170927_CE059';
     acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
-    tiff_source = 'functional'; %'functional_subset';
+    tiff_source = 'functional_subset'; %'functional_subset';
     acquisition_base_dir = fullfile(source, experiment, session, acquisition);
     curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
 else
@@ -29,7 +49,8 @@ else
     curr_tiff_dir = tiff_dirs{1};
 
 end
-    
+% ============================================================================
+ 
 %% Get PY-created Acquisition Struct. Add paths/params for MAT steps:
 
 % Iterate through selected tiff-folders to build paths:
@@ -50,13 +71,10 @@ A = load(path_to_reference);
 
 data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
 
-if ~isfield(A, 'mcparams_path')
-    A.mcparams_path = fullfile(data_dir, 'mcparams.mat');    % Standard path to mcparams struct (don't change)
-end
 
-analysis_id = datestr(now())
-datetime = strsplit(analysis_id, ' ');
-rundate = datetime{1};
+% analysis_id = datestr(now())
+% datetime = strsplit(analysis_id, ' ');
+% rundate = datetime{1};
 
 
 % -------------------------------------------------------------------------
@@ -66,7 +84,7 @@ rundate = datetime{1};
 % TODO:  Autogenerate a new identifier for each parameter change. Append all mods 
 % to reference struct and update.
 
-use_bidi_corrected = false;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
+%use_bidi_corrected = false;                              % Extra correction for bidi-scanning for extracting ROIs/traces (set mcparams.bidi_corrected=true)
 
 % Names = [
 %     'corrected          '       % corrected or raw (T/F)
@@ -79,24 +97,47 @@ use_bidi_corrected = false;                              % Extra correction for 
 %     'bidi_corrected     '       % *For faster scanning, SI option for bidirectional-scanning is True -- sometimes need extra scan-phase correction for this
 %     ];
 
+% curr_mcparams = set_mc_params(...
+%     'corrected', false,...
+%     'method', 'Acquisition2P',...
+%     'flyback_corrected', false,...
+%     'ref_channel', 1,...
+%     'ref_file', 6,...
+%     'algorithm', @withinFile_withinFrame_lucasKanade,...
+%     'split_channels', false,...
+%     'bidi_corrected', false,... %,...
+%     'source_dir', data_dir,...
+%     'nchannels', A.nchannels);              
+% 
 curr_mcparams = set_mc_params(...
-    'corrected', true,...
-    'method', 'Acquisition2P',...
-    'flyback_corrected', false,...
-    'ref_channel', 1,...
-    'ref_file', 6,...
-    'algorithm', @withinFile_withinFrame_lucasKanade,...
-    'split_channels', false,...
-    'bidi_corrected', false,... %,...
-    'tiff_dir', data_dir,...
+    'method', method,...
+    'flyback_corrected', flyback_corrected,...
+    'ref_channel', reference_channel,...
+    'ref_file', reference_file,...
+    'algorithm', algorithm,...
+    'split_channels', split_channels,...
+    'source_dir', data_dir,...
     'nchannels', A.nchannels);              
 
-fields_to_check = {'corrected', 'method', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'split_channels'}
 
-%% 2. ROI parmas:
+if correct_bidi_scan
+    curr_mcparams.bidi_corrected = true;
+else
+    curr_mcparams.bidi_corrected = false;
+end
+if correct_motion
+    curr_mcparams.corrected = true;
+    curr_mcparams.dest_dir = 'Corrected';
+else
+    curr_mcparams.dest_dir = 'Raw';
+    curr_mcparams.corrected = false;
+    curr_mcparams.method = 'None';
+    curr_mcparams.algorithm = 'None';
+    curr_mcparams.ref_channel = 1;
+    curr_mcparams.ref_file = 1;
+end
 
-roi_method = 'pyblob2D';
-roi_id = 'blobs_DoG';
+fields_to_check = {'corrected', 'method', 'source_dir', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'bidi_corrected', 'split_channels', 'crossref'}
 
 %% 3.  Check if new mcparams or not:
 new_mc_id = false;

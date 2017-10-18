@@ -1,10 +1,6 @@
-function Yr = reinterleave_from_source(filedir, sourcedir, I, A)
+function Yr = reinterleave_from_source(source,  A)
 
-channel_dirs = dir(sourcedir);
-channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1), '.'), channel_dirs));  % remove hidden
-channel_dirs = {channel_dirs(:).name}';
-
-nslices = length(I.slices);
+nslices = length(A.slices);
 nchannels = A.nchannels;
 nfiles = A.ntiffs;
 nvolumes = A.nvolumes;
@@ -15,10 +11,18 @@ sliceidxs = 1:nchannels:nslices*nchannels;
 
 Yr = zeros(d1, d2, nframes);
 
+[sourcedir, filedir, ~] = fileparts(source);
+
+channel_dirs = dir(sourcedir);
+channel_dirs = channel_dirs(arrayfun(@(x) ~strcmp(x.name(1), '.'), channel_dirs));  % remove hidden
+channel_dirs = {channel_dirs(:).name}';
+
+
 for ch=1:length(channel_dirs)
     tiff_slice_fns = dir(fullfile(sourcedir, channel_dirs{ch}, filedir, '*.tif'));
     tiff_slice_fns = {tiff_slice_fns(:).name}'
- 
+    nslices = length(tiff_slice_fns);
+  
     for sl=1:length(tiff_slice_fns)
         
          %curr_slice = read_file(fullfile(sourcedir, channel_dirs{ch}, filedir, tiff_slice_fns{sl}));

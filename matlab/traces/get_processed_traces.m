@@ -21,10 +21,10 @@ switch length(varargin)
         last_frame = varargin{1};
 end
 
-funcdir_idx = find(arrayfun(@(c) any(strfind(A.simeta_path{c}, I.functional)), 1:length(A.simeta_path))); 
+%funcdir_idx = find(arrayfun(@(c) any(strfind(A.simeta_path{c}, I.functional)), 1:length(A.simeta_path))); 
 
 
-simeta = load(A.simeta_path{funcdir_idx});
+simeta = load(A.simeta_path.(I.analysis_id));
 metastruct = simeta.SI;
 
 for sidx = 1:length(I.slices)
@@ -32,7 +32,7 @@ for sidx = 1:length(I.slices)
     fprintf('Processing traces for Slice %02d...\n', sl);
     
     tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
-    tracestruct = load(fullfile(A.trace_dir, I.roi_id, tracestruct_name));
+    tracestruct = load(fullfile(A.trace_dir, A.trace_id.(I.analysis_id), tracestruct_name));
     ntiffs = length(tracestruct.file);
     for fidx=1:ntiffs
         if length(metastruct.file)==1
@@ -105,7 +105,7 @@ for sidx = 1:length(I.slices)
     end
     
     % Save slice ROIs (including all files):
-    save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-append', '-struct', 'tracestruct');
+    save(fullfile(A.trace_dir, A.trace_id.(I.analysis_id), tracestruct_name), '-append', '-struct', 'tracestruct');
     tracestruct_names{end+1} = tracestruct_name;
 
 end

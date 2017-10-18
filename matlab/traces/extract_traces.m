@@ -11,20 +11,26 @@ mcparams = load(A.mcparams_path);
 mcparams = mcparams.(I.mc_id);
 
 roiparams_path = fullfile(A.roi_dir, I.roi_id, 'roiparams.mat');
-%load(A.roiparams_path);
 load(roiparams_path);
+%roiparams = load(roiparams_path)
+%roiparams = roiparams.(I.roi_id)
+
 simeta = load(A.raw_simeta_path);
 
 % Set path for slice time-series tiffs:
-if I.use_bidi_corrected
-    base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
-else
-    if mcparams.corrected
-        base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
-    else
-        base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
-    end
-end
+% if I.use_bidi_corrected
+%     base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+% else
+%     if mcparams.corrected
+%         base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+%     else
+%         base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
+%     end
+% end
+base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
+
+curr_tracestruct_dir = fullfile(A.trace_dir, A.trace_id.(I.analysis_id));
+fprintf('Saving tracestructs to: %s\n', curr_tracestruct_dir);
 
 switch I.roi_method
     
@@ -47,7 +53,7 @@ switch I.roi_method
                 curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
                 % TODO: adjust so that path to slice tiff is not dependent on mcparams.info.acquisition_name
                 % since this is currently specific to mcparams.method=Acquisition2P
-                curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.info.acquisition_name, sl, I.signal_channel, fidx)
+                curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, I.signal_channel, fidx)
                 %Y = tiffRead(fullfile(curr_file_path, curr_file));
                 
                 currtiffpath = fullfile(curr_file_path, curr_file);
@@ -70,7 +76,7 @@ switch I.roi_method
                 tracestruct.file(fidx).nrois = size(masks,3);
             end
             tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
-            save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-struct', 'tracestruct');
+            save(fullfile(curr_tracestruct_dir, tracestruct_name), '-struct', 'tracestruct');
         end
         
         

@@ -9,6 +9,11 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
         fprintf('Splitting channels bec big TIFF.\n');
     end
 
+    if ~exist(dest_dir, 'dir')
+        mkdir(dest_dir);
+    end
+    fprintf('Writing interleaved TIFFs to: %s\n', dest_dir);
+
     nslices = length(A.slices);
     nchannels = A.nchannels;
     nfiles = A.ntiffs;
@@ -19,14 +24,14 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
     sliceidxs = 1:nchannels:nslices*nchannels;
     tiffnames= dir(fullfile(source_dir, '*.tif'));
     tiffnames = {tiffnames(:).name}';
-    fprintf('Found %i tiffs total for re-interleaving.\n', length(tiffnames));
+    fprintf('Found %i tiffs total for interleaving.\n', length(tiffnames));
     for fi=1:nfiles
          fprintf('d1: %i, d2: %s\n', d1, d2);
          newtiff = zeros(d1, d2, nframes);
          for sl = 1:nslices
              for ch=1:nchannels
-                 suffix = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, ch, fi)
-                 curr_tiff_idx = find(arrayfun(@(fn) length(strfind(tiffnames{fn}, suffix)), 1:length(tiffnames)))
+                 suffix = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, ch, fi);
+                 curr_tiff_idx = find(arrayfun(@(fn) length(strfind(tiffnames{fn}, suffix)), 1:length(tiffnames)));
                  
                  % This currently assumes only 2 channels...
                  currtiff = tiffnames{curr_tiff_idx};
@@ -54,5 +59,10 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
              tiffWrite(newtiff, newtiffname, dest_dir, 'int16');
          end
      end
+     if split_channels
+         fprintf('Finished interleaving TIFFs. There should be %i TIFFs in specified destination dir.', nfiles*nchannels);
+    else
+        fprintf('Finished interleaving TIFFs. There should be %i TIFFs in specified destination dir.', nfiles)
+    end
 
 end

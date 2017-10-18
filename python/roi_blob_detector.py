@@ -29,6 +29,8 @@ import itertools
 
 import optparse
 import re
+import json
+from json_tricks.np import dump, dumps, load, loads
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -77,7 +79,12 @@ parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', de
 # IMAGE processing options:
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
-parser.add_option('-R', '--id', action='store', dest='roi_id', default='', help='unique ID name for current ROI set.')
+
+# SAVE OPTIONS:
+parser.add_option('-R', '--roiname', action='store', dest='roi_id', default='', help="unique ID name for current ROI set (ex: 'blobsDoG01')")
+#parser.add_option('-C', '--mcname', action='store', dest='mc_id', default='', help="unique ID name of mc-params to use (ex: 'mcparams01')")
+
+
 
 
 (options, args) = parser.parse_args() 
@@ -88,6 +95,7 @@ parser.add_option('-R', '--id', action='store', dest='roi_id', default='', help=
 #signal_channel_idx = options.channel
 
 roi_id = options.roi_id
+#mc_id = options.mc_id
 
 max_sigma_val = float(options.max_sigma)
 min_sigma_val = float(options.min_sigma)
@@ -112,8 +120,8 @@ mc_methods = sorted([m for m in mcparams.keys() if 'mcparams' in m], key=natural
 if len(mc_methods)>1:
     for mcidx,mcid in enumerate(sorted(mc_methods, key=natural_keys)):
         print mcidx, mcid
-    mc_method_idx = rawinput('Select IDX of mc-method to use: ')
-    mc_method = mc_methods[mc_method_idx]
+    mc_method_idx = raw_input('Select IDX of mc-method to use: ')
+    mc_method = mc_methods[int(mc_method_idx)]
     print "Using MC-METHOD: ", mc_method
 else:
     mc_method = mc_methods[0] 
@@ -143,26 +151,62 @@ slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str
 # Define output directories:
 acquisition_dir = os.path.join(source, experiment, sess, acquisition)
 existing_rois = sorted(os.listdir(os.path.join(acquisition_dir, 'ROIs')), key=natural_keys)
+
+existing_blob_rois = sorted([r for r in existing_rois if 'LoG' in r or 'DoG' in r], key=natural_keys)
+
 if len(existing_rois)>0:
     print "Found existing blob ROIs:"
     for ridx,rid in enumerate(sorted(existing_rois, key=natural_keys)):
         print ridx, rid
 else:
-    print "No existing blob ROIs found. Starting index 1."
+    print "No existing blob ROIs found"
 
-user_id = raw_input('Enter IDX for LoG/DoG folders: ')
-if len(user_id)==0:
-    log_folder = 'blobs_LoG'
-    dog_folder = 'blobs_DoG'
-else:
-    log_folder = 'blobs_LoG%i' % int(user_id)
-    dog_folder = 'blobs_DoG%i' % int(user_id)
+if roi_id in existing_blob_rois or len(roi_id)==0:
+    while True:
+        roi_id = raw_input('Enter unique roi_id name:')
+        if roi_id in existing_blob_rois:
+            print('Exists! Pick a new name.')
+            overwrite = raw_input('To overwrite, press Y/n')
+            if overwrite is 'Y':
+                break
+        else:
+            break
+print "Creating new ROI ID: ", roi_id
+    
+# user_id = raw_input('Enter IDX for LoG/DoG folders: ')
+# if len(user_id)==0:
+#     log_folder = 'blobsLoG'
+#     dog_folder = 'blobsDoG'
+# else:
+#     log_folder = 'blobsLoG%i' % int(user_id)
+#     dog_folder = 'blobsDoG%i' % int(user_id)
+# 
+roi_reference_path = os.path.join(acquisition_dir, 'ROIs', 'roiparams.json')
 
-log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', log_folder) #'blobs_LoG')
+# Check for MC-params to save:
+# roiparams = loadmat(os.path.join(acquisition_dir, 'ROIs', 'roiparams.mat'))
+# roi_ids = [r for r in roiparams.keys() if '__' not in r]
+# for ridx,roiname in enumerate(roi_ids):
+#     if params_dict==roiparams[roiname]['params']:
+#         new_roiparams = False
+#         roiparams_idx = rid + 1
+#     else:
+#         new_roiparams = True
+# if new_roiparams is True:
+#     roiparams_idx = len(roi_ids) + 1
+#     curr_roi_id = 'roiparams%02d' % int(roiparams_idx) 
+#     roiparams[curr_roi_id] = params_dict
+# 
+
+base_roi_dir = os.path.join(acquisition_dir, 'ROIs', roi_id)
+if not os.path.exists(base_roi_dir):
+    os.mkdir(base_roi_dir)
+
+log_roi_dir = os.path.join(base_roi_dir, 'blobs_LoG')
 if not os.path.exists(log_roi_dir):
     os.makedirs(log_roi_dir)
 
-dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', dog_folder) #'blobs_DoG')
+dog_roi_dir = os.path.join(base_roi_dir, 'blobs_DoG')
 if not os.path.exists(dog_roi_dir):
     os.makedirs(dog_roi_dir)
     
@@ -329,3 +373,21 @@ roiparams['sourcepaths']=source_paths
 roiparams['maskpaths']=dog_maskpaths
 roiparams['maskpath3d']=[]
 scipy.io.savemat(os.path.join(dog_roi_dir,'roiparams'), {'roiparams': roiparams})
+
+
+# Save pertinent roi params for quick views:
+if os.path.exists(roi_reference_path):
+    with open(roi_reference_path, 'r') as f:
+        roiref = json.load(f)
+else:
+    roiref = dict()
+
+if roi_id not in roiref:
+    roiref[roi_id] = dict()
+
+roiref[roi_id]['params'] = params_dict
+roiref[roi_id]['source'] = os.path.split(source_paths[0])[0]
+roiref[roi_id]['nrois'] = dog_nrois
+with open(roi_reference_path, 'w') as f:
+    dump(roiref, f, indent=4)
+

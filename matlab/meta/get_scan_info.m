@@ -6,7 +6,7 @@ function simeta = get_scan_info(I, A)
         mcparams = load(A.mcparams_path);
         mcparams = mcparams.(I.mc_id)
  
-        tiff_source = mcparams.tiff_dir;
+        tiff_source = mcparams.source_dir;
         base_filename = A.base_filename; % TODO: again, make sure this isn't specific to mcparms.method
         simeta = struct();
         
@@ -18,7 +18,7 @@ function simeta = get_scan_info(I, A)
         for fidx=1:ntiffs
             %curr_meta = metadata.(base_filename).metaDataSI{fidx};
             curr_meta = metadata.(base_filename).metaDataSI{fidx}; %.SI;
-            curr_meta
+            %curr_meta
             % Sort Parsed files into separate directories if needed:
             curr_meta.SI.hChannels
             nChannels = length(curr_meta.SI.hChannels.channelSave);             

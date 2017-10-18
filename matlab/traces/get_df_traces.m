@@ -6,7 +6,7 @@ file_type = 'visible';
 ntiffs = A.ntiffs;
 simeta = load(A.raw_simeta_path);
 
-funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, I.functional)), 1:length(A.data_dir))); 
+%funcdir_idx = find(arrayfun(@(c) any(strfind(A.data_dir{c}, I.functional)), 1:length(A.data_dir))); 
 
 switch length(varargin)
     case 0
@@ -25,10 +25,10 @@ for sidx = 1:length(I.slices)
 %         masks = load(D.maskPaths{sidx});
 %     end
 
-    tracestruct_fns = dir(fullfile(A.trace_dir, I.roi_id, 'traces_Slice*'));
+    tracestruct_fns = dir(fullfile(A.trace_dir, A.trace_id.(I.analysis_id), 'traces_Slice*'));
     tracestruct_fns = {tracestruct_fns(:).name}';
     %tracestruct = load(fullfile(A.trace_dir, A.trace_structs{sidx}));
-    tracestruct = load(fullfile(A.trace_dir, I.roi_id, tracestruct_fns{sidx}));
+    tracestruct = load(fullfile(A.trace_dir, A.trace_id.(I.analysis_id), tracestruct_fns{sidx}));
         
     for fidx=1:ntiffs
         maskcell = tracestruct.file(fidx).maskcell;
@@ -40,7 +40,7 @@ for sidx = 1:length(I.slices)
             file_dir = sprintf('File%03d', fidx);
         end
         avg_source = sprintf('Averaged_Slices_%s', I.average_source);
-        avg_slice_dir = fullfile(A.data_dir{funcdir_idx}, avg_source, sprintf('Channel%02d', I.signal_channel), file_dir);
+        avg_slice_dir = fullfile(A.data_dir.(I.analysis_id), avg_source, sprintf('Channel%02d', I.signal_channel), file_dir);
         
         slice_files = dir(fullfile(avg_slice_dir, sprintf('*_Slice%02d*', sl)));
         slice_file = slice_files(1).name
@@ -126,7 +126,7 @@ for sidx = 1:length(I.slices)
         tracestruct.file(fidx).active_thresh = df_min;
         tracestruct.file(fidx).average_img = avgY;
         %save(fullfile(A.trace_dir, A.trace_structs{sidx}), '-struct', 'tracestruct', '-append');
-        save(fullfile(A.trace_dir, I.roi_id, tracestruct_fns{sidx}), '-struct', 'tracestruct', '-append');
+        save(fullfile(A.trace_dir, A.trace_id.(I.analysis_id), tracestruct_fns{sidx}), '-struct', 'tracestruct', '-append');
 
         DF.slice(sl).file(fidx).meanMap = meanMap;
         DF.slice(sl).file(fidx).maxMap = maxMap;
@@ -149,7 +149,7 @@ for sidx = 1:length(I.slices)
 end
 
 dfName = sprintf('dfstruct.mat');
-save_struct(fullfile(A.trace_dir, I.roi_id), dfName, DF);
+save_struct(fullfile(A.trace_dir, A.trace_id.(I.analysis_id)), dfName, DF);
 
 DF.name = dfName;
 
