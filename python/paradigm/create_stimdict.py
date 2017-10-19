@@ -258,7 +258,9 @@ if abort is False:
             else:
                 first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
 	        first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
-                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
+                #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
+		framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+
                 #print "sec to plot:", len(framenums)/volumerate
 		stimname = trialdict[currfile][currtrial]['name']
 
@@ -288,12 +290,12 @@ if abort is False:
 
             print "sec to plot:", len(framenums)/volumerate
 
-            frametimes = [frames_tsecs[f] for f in framenums]
+            #frametimes = [frames_tsecs[f] for f in framenums]
 
             stimdict[stim][currfile].stimid.append(stimname) #trialdict[currfile][currtrial]['name'])
             stimdict[stim][currfile].trials.append(trialnum)      
             stimdict[stim][currfile].frames.append(framenums)
-            stimdict[stim][currfile].frames_sec.append(frametimes)
+            #stimdict[stim][currfile].frames_sec.append(frametimes)
             stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
 
 
