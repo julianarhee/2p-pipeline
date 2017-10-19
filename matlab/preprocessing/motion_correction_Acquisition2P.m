@@ -22,23 +22,34 @@ function myObj = motion_correction_Acquisition2P(mcparams)
 % Acq2P:  @lucasKanade_plus_nonrigid | @withinFile_withinFrame_lucasKanade
 % NoRMCorre:  rigid | nonrigid
 
-fprintf('Processing acquisition %s...\n', mcparams.tiff_dir);
+%fprintf('Processing acquisition %s...\n', mcparams.source_dir);
 
+check_tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
+if length(check_tiffs)==0
+    tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+    check_tiffs = dir(fullfile(tiff_dir, '*.tif'));
+else
+    tiff_dir = mcparams.source_dir;
+end
+
+fprintf('Processing acquisition %s...\n', tiff_dir);
+fprintf('Found %i TIFFs.\n', length(check_tiffs));
+  
 if mcparams.crossref
-    myObj = Acquisition2P([],{@SC2Pinit_noUI_crossref,[],mcparams.tiff_dir,mcparams.crossref});
+    myObj = Acquisition2P([],{@SC2Pinit_noUI_crossref,[],tiff_dir,mcparams.crossref});
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
     myObj.motionCorrectCrossref;
     myObj.save;
 elseif mcparams.flyback_corrected
-    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],mcparams.tiff_dir});
+    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
     myObj.motionCorrectProcessed;
     myObj.save;
 else
-    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],mcparams.tiff_dir});
+    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;

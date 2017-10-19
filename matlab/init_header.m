@@ -8,7 +8,7 @@
 
 % Specify what to run:
 useGUI = false; 
-get_rois_and_traces = true %false;
+get_rois_and_traces = true; %false;
 do_preprocessing = true; %false; %true; %false %true;
 
 % Specify what to run it on:
@@ -19,10 +19,10 @@ split_channels = false;
 
 % Set Motion-Correction params:
 average_source = 'Raw';                             % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
-correct_motion = false;
-correct_bidi_scan = true; %false;
+correct_motion = true %false;
+correct_bidi_scan = false; %true; %false;
 reference_channel = 1
-reference_file = 6
+reference_file = 2
 method = 'Acquisition2P'; 
 algorithm = @withinFile_withinFrame_lucasKanade
 
@@ -110,6 +110,7 @@ data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
 %     'nchannels', A.nchannels);              
 % 
 curr_mcparams = set_mc_params(...
+    'corrected', correct_motion,...
     'method', method,...
     'flyback_corrected', flyback_corrected,...
     'ref_channel', reference_channel,...
@@ -126,7 +127,7 @@ else
     curr_mcparams.bidi_corrected = false;
 end
 if correct_motion
-    curr_mcparams.corrected = true;
+    curr_mcparams.corrected = true
     curr_mcparams.dest_dir = 'Corrected';
 else
     curr_mcparams.dest_dir = 'Raw';
@@ -136,11 +137,8 @@ else
     curr_mcparams.ref_channel = 1;
     curr_mcparams.ref_file = 1;
 end
-if correct_bidi_scan && ~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
-    average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
-end
 
-fields_to_check = {'corrected', 'method', 'source_dir', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'bidi_corrected', 'split_channels', 'crossref'}
+fields_to_check = {'corrected', 'method', 'source_dir', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'bidi_corrected', 'split_channels', 'crossref'};
 
 %% 3.  Check if new mcparams or not:
 new_mc_id = false;
@@ -148,44 +146,25 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
     mcparams = load(fullfile(data_dir, 'mcparams.mat'))
     new_mc_file = false;
 
-    curr_fieldnames = fields_to_check %fieldnames(curr_mcparams);
+    curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
     prev_mcparams_ids = fieldnames(mcparams);
     if length(prev_mcparams_ids)>0
         num_mc_ids = length(prev_mcparams_ids);
+        new_mc = [];
         for mc_idx = 1:length(prev_mcparams_ids)
             curr_mcparams_id = prev_mcparams_ids{mc_idx};
-            prev_fieldnames = fieldnames(mcparams.(curr_mcparams_id)); 
             for mf=1:length(curr_fieldnames)
-                if ~ismember(curr_fieldnames{mf}, prev_fieldnames)
-                    curr_fieldnames{mf}
-                    new_mc_id = true;
-                else
-                    if isstr(curr_mcparams.(curr_fieldnames{mf}))
-                        if ~strcmp(curr_mcparams.(curr_fieldnames{mf}), mcparams.(curr_mcparams_id).(curr_fieldnames{mf}))
-                            curr_fieldnames{mf}
-                            new_mc_id = true;
-                        else
-                            new_mc_id = false;
-                        end
-                    elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'function_handle')
-                        if ~strcmp(char(curr_mcparams.(curr_fieldnames{mf})), char(mcparams.(curr_mcparams_id).(curr_fieldnames{mf})))
-                            curr_fieldnames{mf}
-                            new_mc_id = true;
-                        else
-                            new_mc_id = false;
-                        end
-                    elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'struct')
-                        continue;
-                    else
-                        if curr_mcparams.(curr_fieldnames{mf}) ~= mcparams.(curr_mcparams_id).(curr_fieldnames{mf})
-                            curr_fieldnames{mf}
-                            new_mc_id = true;
-                        else
-                            new_mc_id = false;
-                        end
-                    end
-                end
+                tmp_prev.(curr_fieldnames{mf}) = mcparams.(curr_mcparams_id).(curr_fieldnames{mf});
+                tmp_curr.(curr_fieldnames{mf}) = curr_mcparams.(curr_fieldnames{mf});
             end
+            if isequal(tmp_prev, tmp_curr)
+                new_mc = [new_mc mc_idx]
+           end
+        end
+        if any(new_mc)
+            new_mc_id = false;
+        else
+            new_mc_id = true;
         end
     else
         mcparams = struct();
@@ -225,6 +204,18 @@ else
             break;
         end
     end
+end
+
+
+% Fix base mc dir to allow for multiple mcparams 'CorrectedXX' dirs
+if correct_motion && ~any(strfind(mc_id, curr_mcparams.dest_dir))
+    curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id);
+end
+if correct_motion && ~(strcmp(average_source, curr_mcparams.dest_dir))
+    average_source = curr_mcparams.dest_dir;
+end
+if correct_bidi_scan && ~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
+    average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
 end
 
 

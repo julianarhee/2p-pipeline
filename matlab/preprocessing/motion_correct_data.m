@@ -7,7 +7,7 @@ function mcparams = motion_correct_data(mcparams)
 % -------------------------------------------------------------------------
     
 % Set and create standard 'Corrected' directory in tiff base dir:
-if ~exist(fullfile(mcparams.source_dir, mcparams.dest_dir, 'dir')
+if ~exist(fullfile(mcparams.source_dir, mcparams.dest_dir, 'dir'))
     mkdir(fullfile(mcparams.source_dir, mcparams.dest_dir));
 end
 

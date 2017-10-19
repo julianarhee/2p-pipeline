@@ -32,11 +32,12 @@ tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
 tiff_dir = mcparams.source_dir; %D.dataDir;
 tiffs = {tiffs(:).name}'
 if length(tiffs)==0
-    if mcparams.corrected
-        tiff_dir = fullfile(mcparams.source_dir, 'Corrected');
-    else
-        tiff_dir = fullfile(mcparams.source_dir, 'Raw');
-    end
+    tiff_dir = fullfile(mcparams.source_dir, source);
+%     if mcparams.corrected
+%         tiff_dir = fullfile(mcparams.source_dir, 'Corrected');
+%     else
+%         tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+%     end
     tiffs = dir(fullfile(tiff_dir, '*.tif'));
     tiffs = {tiffs(:).name}';
 end

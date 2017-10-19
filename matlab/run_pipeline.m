@@ -190,13 +190,12 @@ if do_preprocessing
     % -------------------------------------------------------------------------
     %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
     % -------------------------------------------------------------------------
-
     if I.corrected && new_mc_id
         do_motion_correction = true; 
     elseif I.corrected && ~new_mc_id
         found_nchannels = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*Channel*'));
         found_nchannels = {found_nchannels(:).name}';
-        if isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
+        if length(found_nchannels)>0 && isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
             found_nslices = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}, '*.tif'));
             found_nslices = {found_nslices(:).name}';
             if found_nchannels==A.nchannels && found_nslices==length(A.nslices)
@@ -213,7 +212,7 @@ if do_preprocessing
                 do_motion_correction = false;
             end 
         else
-            fprintf('Found these TIFFs in Corrected dir:\n');
+            fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
             found_nchannels
             user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
             if strcmp(user_says_mc, 'Y')
@@ -272,7 +271,7 @@ if do_preprocessing
 
     if curr_mcparams.bidi_corrected
         if curr_mcparams.corrected
-            bidi_source = 'Corrected';
+            bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
         else
             bidi_source = 'Raw';
         end
