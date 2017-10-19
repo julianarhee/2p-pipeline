@@ -92,13 +92,15 @@ for tiff_idx = 1:length(tiffs)
 
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
-    if mcparams.flyback_corrected && ~mcparams.split_channels
+    %if mcparams.flyback_corrected && ~mcparams.split_channels
+    if ~mcparams.split_channels
+
         newtiff = zeros(d1,d2,nslices*nchannels*nvolumes);
         fprintf('Correcting TIFF: %s\n', filename); 
         fprintf('Grabbing every other channel.\n')
         for cidx=1:mcparams.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
-            fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
+            fprintf('Channel %i, mov size is: %s\n', cidx, mat2str(size(Yt_ch)));
             nslices = size(Yt_ch, 3)/nvolumes
             Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices, nvolumes]); 
 
@@ -116,7 +118,7 @@ for tiff_idx = 1:length(tiffs)
         % Also save deinterleaved:
         deinterleave_tiffs(newtiff, filename, fid, write_dir_deinterleaved, A);
                  
-    elseif mcparams.flyback_corrected && mcparams.split_channels
+    elseif mcparams.split_channels
 	    fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
         nslices = size(Yt, 3)/nchannels/nvolumes

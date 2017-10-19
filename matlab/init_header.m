@@ -14,7 +14,7 @@ do_preprocessing = true; %false; %true; %false %true;
 % Specify what to run it on:
 slices = [];
 signal_channel = 1;                                 % If multi-channel, Ch index for extracting activity traces
-flyback_corrected = false;
+flyback_corrected = true; %false;
 split_channels = false;
 
 % Set Motion-Correction params:
@@ -148,7 +148,7 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
     mcparams = load(fullfile(data_dir, 'mcparams.mat'))
     new_mc_file = false;
 
-    curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
+    curr_fieldnames = fields_to_check %fieldnames(curr_mcparams);
     prev_mcparams_ids = fieldnames(mcparams);
     if length(prev_mcparams_ids)>0
         num_mc_ids = length(prev_mcparams_ids);
@@ -157,21 +157,31 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
             prev_fieldnames = fieldnames(mcparams.(curr_mcparams_id)); 
             for mf=1:length(curr_fieldnames)
                 if ~ismember(curr_fieldnames{mf}, prev_fieldnames)
+                    curr_fieldnames{mf}
                     new_mc_id = true;
                 else
                     if isstr(curr_mcparams.(curr_fieldnames{mf}))
                         if ~strcmp(curr_mcparams.(curr_fieldnames{mf}), mcparams.(curr_mcparams_id).(curr_fieldnames{mf}))
+                            curr_fieldnames{mf}
                             new_mc_id = true;
+                        else
+                            new_mc_id = false;
                         end
                     elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'function_handle')
                         if ~strcmp(char(curr_mcparams.(curr_fieldnames{mf})), char(mcparams.(curr_mcparams_id).(curr_fieldnames{mf})))
+                            curr_fieldnames{mf}
                             new_mc_id = true;
+                        else
+                            new_mc_id = false;
                         end
                     elseif isa(curr_mcparams.(curr_fieldnames{mf}), 'struct')
                         continue;
                     else
                         if curr_mcparams.(curr_fieldnames{mf}) ~= mcparams.(curr_mcparams_id).(curr_fieldnames{mf})
+                            curr_fieldnames{mf}
                             new_mc_id = true;
+                        else
+                            new_mc_id = false;
                         end
                     end
                 end
