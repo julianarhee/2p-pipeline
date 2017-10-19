@@ -26,7 +26,7 @@ function reinterleave_tiffs(A, source_dir, dest_dir,  split_channels)
     tiffnames = {tiffnames(:).name}';
     fprintf('Found %i tiffs total for interleaving.\n', length(tiffnames));
     for fi=1:nfiles
-         fprintf('d1: %i, d2: %s\n', d1, d2);
+         fprintf('d1: %i, d2: %i\n', d1, d2);
          newtiff = zeros(d1, d2, nframes);
          for sl = 1:nslices
              for ch=1:nchannels
