@@ -62,33 +62,41 @@ if ~new_record_file
             curr_analysis_idx = aid;
         else
             new_analysis = true;
+            curr_analysis_idx = length(existing_analysis_idxs) + 1;
         end
     end
 else
     existing_analysis_ids = {};
     new_analysis = true;
 end
-if new_analysis
-    analysis_id = sprintf('analysis%02d', length(existing_analysis_idxs)+1);
-    I.analysis_id = analysis_id; 
-    itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    updatedI = update_analysis_table(itable, path_to_record);
-    varnames = fieldnames(I);
-    n_analysis_ids = length(existing_analysis_idxs)+1;
-    for var=1:length(varnames)
-        updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
-    end
-    for id=1:length(existing_analysis_idxs)
-        updated_records(id) = existing_records(id);
-    end
-    savejson('', updated_records, path_to_record_json);
-else
-    analysis_id = sprintf('analysis%02d', curr_analysis_idx);
-    fprintf('Re-running previous analysis: %s\n', analysis_id);
-    I.analysis_id = analysis_id;
-    %I = existing_records(curr_analysis_idx);
-end
+analysis_id = sprintf('analysis%02d', curr_analysis_idx);
+I.analysis_id = analysis_id;
+itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
+if new_record_file
+    writetable(itable, path_to_record, 'Delimiter', '\t', 'WriteRowNames', true);
+else
+    if new_analysis
+        update_analysis_table(itable, path_to_record);
+        
+        % Also store as json:
+        varnames = fieldnames(I);
+        n_analysis_ids = length(existing_analysis_idxs)+1;
+        if exist('updated_records', 'var'), clear updated_records, end
+        for var=1:length(varnames)
+            updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
+        end
+        for id=1:length(existing_analysis_idxs)
+            for var=1:length(varnames)
+                updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
+            end
+        end
+        for id=1:length(updated_records)
+            json_records.(updated_records(id).analysis_id) = updated_records(id);
+        end
+        savejson('', json_records, path_to_record_json);
+    end
+end
 
 
 %% PREPROCESSING:  motion-correction.
@@ -168,7 +176,7 @@ A.simeta_path.(I.analysis_id) = fullfile(A.data_dir.(I.analysis_id), 'simeta.mat
 
 
 % save updated reference struct:
-save(path_to_reference, '-struct', 'A', '-append');
+save(path_to_reference, '-struct', 'A'); %, '-append');
 savejson('', A, path_to_reference_json);
 
 
@@ -190,9 +198,9 @@ if do_preprocessing
     % -------------------------------------------------------------------------
     %% 2.  Do Motion-Correction (and/or) Get Slice t-series:
     % -------------------------------------------------------------------------
-    if I.corrected && new_mc_id
+    if I.corrected && new_mc_id && process_raw
         do_motion_correction = true; 
-    elseif I.corrected && ~new_mc_id
+    elseif I.corrected && (~new_mc_id || ~process_raw)
         found_nchannels = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*Channel*'));
         found_nchannels = {found_nchannels(:).name}';
         if length(found_nchannels)>0 && isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
@@ -212,8 +220,10 @@ if do_preprocessing
                 do_motion_correction = false;
             end 
         else
+            found_tiffs = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*.tif'));
+            found_tiffs = {found_tiffs(:).name}';
             fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
-            found_nchannels
+            found_tiffs
             user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
             if strcmp(user_says_mc, 'Y')
                 do_motion_correction = true;
@@ -253,7 +263,7 @@ if do_preprocessing
  
     % PYTHON equivalent faster?: 
     deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
-    if I.corrected 
+    if I.corrected && process_raw 
         movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
         reinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
         reinterleave_tiffs(A, deinterleaved_tiff_dir, reinterleaved_tiff_dir, curr_mcparams.split_channels);
@@ -271,7 +281,11 @@ if do_preprocessing
 
     if curr_mcparams.bidi_corrected
         if curr_mcparams.corrected
-            bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
+            if process_raw
+                bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
+            else
+                bidi_source = curr_mcparams.dest_dir;
+            end
         else
             bidi_source = 'Raw';
         end
@@ -302,7 +316,8 @@ if do_preprocessing
     % Also save MCPARAMS as json:
     [ddir, fname, ext] = fileparts(A.mcparams_path);
     mcparams_json = fullfile(ddir, strcat(fname, '.json'));
-    savejson('', mcparams, A.mcparams_path);    
+    savejson('', mcparams, mcparams_json);    
+    % TODO:  this does not save properly of n-fields (mcparam ids) > 2...
  
     save(path_to_reference, '-struct', 'A', '-append')
     

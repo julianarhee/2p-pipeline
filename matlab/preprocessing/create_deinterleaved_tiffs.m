@@ -27,7 +27,7 @@ else
                 fprintf('Found correct number of deinterleaved tiffs in dir:\n')
                 fprintf('%s\n', write_dir);
                 user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
-                if user_says_parse
+                if strcmp(user_says_parse, 'Y')
                     parse = true;
                 else
                     fprintf('Parsed tiffs look good. Not redoing deinterleave step.\n');
@@ -41,8 +41,8 @@ else
         if length(nslices)==A.ntiffs*A.nchannels*A.nvolumes
             fprintf('Found correct number of deinterleaved tiffs in dir:\n')
             fprintf('%s\n', write_dir);
-            user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
-            if user_says_parse
+            user_says_parse = input('Press Y/n to re-deinterleave tiffs from specified input.', 's');
+            if strcmp(user_says_parse, 'Y')
                 parse = true;
             else
                 fprintf('Parsed tiffs look good. Not redoing deinterleave step.\n');
@@ -60,8 +60,28 @@ mcparams.info.acq_object_path = '';
 if parse 
     fprintf('Parsing RAW tiffs into %s\n', write_dir);
     % Parse TIFFs in ./functional/DATA (may be copies of raw tiffs, or flyback-corrected tiffs).
-    tiffs_to_parse = dir(fullfile(mcparams.source_dir, '*.tif'));
+    sourcedir = mcparams.source_dir;
+    tiffs_to_parse = dir(fullfile(sourcedir, '*.tif'));
     tiffs_to_parse = {tiffs_to_parse(:).name}';
+    if length(tiffs_to_parse)==0
+        while (1)
+            fprintf('No raw tiffs found in specified source: %s\n', sourcedir);
+            alt_source = input('Checking child dir: %s [ENTER to confirm], or enter child dir for alt source: \n', 's');
+            if length(alt_source)==0
+                sourcedir = mcparams.dest_dir;
+            else
+                sourcedir = alt_source;
+            end
+            tiffs_to_parse = dir(fullfile(sourcedir, '*.tif'));
+            tiffs_to_parse = {tiffs_to_parse(:).name}';
+            if lenght(tiffs_to_parse)>0
+                break;
+            end
+        end
+    end
+    fprintf('Creating deinterleaved slice tiffs from source: %s', sourcedir);
+    fprintf('Found %i original TIFFs to splice.\n', length(tiffs_to_parse));
+           
     deinterleaved_folder = sprintf('%s_slices', mcparams.dest_dir);
     deinterleaved_dir = fullfile(mcparams.source_dir, deinterleaved_folder); 
     for fid=1:length(tiffs_to_parse)
@@ -82,6 +102,8 @@ end
 if ~exist(fullfile(mcparams.source_dir, 'Raw'), 'dir')
     mkdir(fullfile(mcparams.source_dir, 'Raw'));
 end
+tiffs_to_parse = dir(fullfile(mcparams.source_dir, '*.tif'));
+tiffs_to_parse = {tiffs_to_parse(:).name}';
 for fid=1:length(tiffs_to_parse)
     movefile(fullfile(mcparams.source_dir, tiffs_to_parse{fid}), fullfile(mcparams.source_dir, 'Raw', tiffs_to_parse{fid}));
 end

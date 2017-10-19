@@ -20,7 +20,10 @@ split_channels = false;
 % Set Motion-Correction params:
 average_source = 'Raw';                             % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
 correct_motion = true %false;
-correct_bidi_scan = false; %true; %false;
+correct_bidi_scan = true; %true; %false;
+process_raw = false;
+processed_source = '';
+
 reference_channel = 1
 reference_file = 2
 method = 'Acquisition2P'; 
@@ -208,9 +211,26 @@ end
 
 
 % Fix base mc dir to allow for multiple mcparams 'CorrectedXX' dirs
-if correct_motion && ~any(strfind(mc_id, curr_mcparams.dest_dir))
-    curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id);
-end
+if process_raw
+    if correct_motion && ~any(strfind(mc_id, curr_mcparams.dest_dir))
+        curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id);
+    end
+else
+    if ~exist('processed_source', 'var')
+        fprintf('Specified non-raw source for processing, but did not specify folder name.\n');
+        processed_source = input('Type FOLDER name of source (ex: Corrrected_mcparams03): \n', 's');
+    end
+    while (1) 
+        if ~exist(fullfile(curr_mcparams.source_dir, processed_source)) || length(dir(fullfile(curr_mcparams.source_dir, processed_source, '*.tif')))==0
+            fprintf('Processed-source dir is empty or does not exist: %s.\n', processed_source);
+            processed_source = input('Try again: ', 's'); 
+        else
+            break
+        end
+    end
+    curr_mcparams.dest_dir = sprintf('%s', processed_source);
+end 
+
 if correct_motion && ~(strcmp(average_source, curr_mcparams.dest_dir))
     average_source = curr_mcparams.dest_dir;
 end

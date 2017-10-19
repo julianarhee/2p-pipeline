@@ -6,7 +6,7 @@ curr_vars = itable.Properties.VariableNames;
  
 % turn mats into strings:
 for v=1:length(curr_vars)
-    if any(size(itable.(curr_vars{v}))>1)
+    if any(size(itable.(curr_vars{v}))>1) && ~ischar(itable.(curr_vars{v}))
         itable.(curr_vars{v}) = mat2str(itable.(curr_vars{v}));
     end
 end

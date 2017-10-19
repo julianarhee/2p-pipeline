@@ -42,7 +42,7 @@ if length(tiffs)==0
     tiffs = {tiffs(:).name}';
 end
 
-fprintf('Found %i TIFF files.\n', length(tiffs));
+fprintf('Found %i TIFF files in source:\n  %s\n', length(tiffs), tiff_dir);
 
 %write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 write_dir_deinterleaved = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
