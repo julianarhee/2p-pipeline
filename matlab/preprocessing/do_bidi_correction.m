@@ -23,6 +23,26 @@ end
 
 namingFunction = @defaultNamingFunction;
 
+nchannels = A.nchannels;
+nslices = length(A.slices);
+nvolumes = A.nvolumes;
+ 
+% Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
+tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
+tiff_dir = mcparams.source_dir; %D.dataDir;
+tiffs = {tiffs(:).name}'
+if length(tiffs)==0
+    if mcparams.corrected
+        tiff_dir = fullfile(mcparams.source_dir, 'Corrected');
+    else
+        tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+    end
+    tiffs = dir(fullfile(tiff_dir, '*.tif'));
+    tiffs = {tiffs(:).name}';
+end
+
+fprintf('Found %i TIFF files.\n', length(tiffs));
+
 %write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 write_dir_deinterleaved = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
 if ~exist(write_dir_deinterleaved)
@@ -37,15 +57,7 @@ fprintf('Starting BIDI correction...\n')
 fprintf('Writing deinterleaved files to: %s\n', write_dir_deinterleaved)
 fprintf('Writing interleaved files to: %s\n', write_dir_interleaved)
 
-nchannels = A.nchannels;
-nslices = length(I.slices);
-nvolumes = A.nvolumes;
- 
-% Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
-tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
-tiff_dir = mcparams.tiff_dir; %D.dataDir;
-tiffs = {tiffs(:).name}'
-fprintf('Found %i TIFF files.\n', length(tiffs));
+
 
 for tiff_idx = 1:length(tiffs)
     currfile = sprintf('File%03d', tiff_idx); 
@@ -124,7 +136,7 @@ end
 
 fprintf('Finished bidi-correction.\n');
 
-save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
+save(fullfile(mcparams.source_dir, 'mcparams.mat'), 'mcparams', '-append');
 
   
 

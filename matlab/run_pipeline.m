@@ -40,18 +40,28 @@ I.signal_channel = signal_channel;
 I.average_source = average_source;
 
 if ~new_record_file
-    exsting_records = readtable(path_to_record, 'Delimiter', '\t', 'ReadRowNames', true);
+    existing_records = readtable(path_to_record, 'Delimiter', '\t', 'ReadRowNames', true);
     existing_records = table2struct(existing_records);
-    existing_analysis_ids = fieldnames(existing_records);
+    existing_analysis_idxs = [1:length(existing_records)]; %fieldnames(existing_records);
     
     % Check if current analysis exists:
-    for aid = 1:length(existing_analysis_ids)
-        tmp_record = rmfield(existing_records.(existing_analysis_ids{aid}), 'analysis_id');
-        if isequal(tmp_record, I)
+    tmpI = struct();
+    curr_fields = fieldnames(I)
+    for field=1:length(fieldnames(I))
+        curr_subfield = curr_fields{field};
+        if any(size(I.(curr_subfield))>1) && ~ischar(I.(curr_subfield))
+            tmpI.(curr_subfield) = mat2str(I.(curr_subfield));
+        else
+            tmpI.(curr_subfield) = I.(curr_subfield);
+        end
+    end
+    for aid = 1:length(existing_analysis_idxs)
+        tmp_record = rmfield(existing_records(aid), 'analysis_id'); 
+        if isequal(tmp_record, tmpI)
             new_analysis = false;
             curr_analysis_idx = aid;
         else
-            new_analaysis = true;
+            new_analysis = true;
         end
     end
 else
@@ -59,19 +69,24 @@ else
     new_analysis = true;
 end
 if new_analysis
-    analysis_id = sprintf('analysis%02d', length(existing_analysis_ids)+1);
+    analysis_id = sprintf('analysis%02d', length(existing_analysis_idxs)+1);
     I.analysis_id = analysis_id; 
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    if new_record_file
-        writetable(itable, path_to_record, 'Delimiter', '\t', 'WriteRowNames', true);
-        savejson('', I, path_to_record_json);
-    else
-        updatedI = update_analysis_table(itable, path_to_record);
-        savejson('', updatedI, path_to_record_json);
+    updatedI = update_analysis_table(itable, path_to_record);
+    varnames = fieldnames(I);
+    n_analysis_ids = length(existing_analysis_idxs)+1;
+    for var=1:length(varnames)
+        updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
     end
+    for id=1:length(existing_analysis_idxs)
+        updated_records(id) = existing_records(id);
+    end
+    savejson('', updated_records, path_to_record_json);
 else
     analysis_id = sprintf('analysis%02d', curr_analysis_idx);
-    I = existing_records.(analysis_id);
+    fprintf('Re-running previous analysis: %s\n', analysis_id);
+    I.analysis_id = analysis_id;
+    %I = existing_records(curr_analysis_idx);
 end
 
 
@@ -131,7 +146,7 @@ end
 A.average_source.(I.analysis_id) = I.average_source;
 
 % ROI step:
-if ~isfield(, A, 'roi_id')
+if ~isfield(A, 'roi_id')
     A.roi_id = struct();
 end
 A.roi_id.(I.analysis_id) = I.roi_id;
@@ -223,9 +238,7 @@ if do_preprocessing
         fprintf('Not doing motion-correction...\n');
         curr_mcparams = create_deinterleaved_tiffs(A, curr_mcparams);
     end
-    mcparams.(mc_id) = curr_mcparams;
-    save(A.mcparams_path, '-struct', 'mcparams', '-append');
-    
+   
     fprintf('Finished Motion-Correction step.\n');
 
     % -------------------------------------------------------------------------
@@ -265,9 +278,7 @@ if do_preprocessing
         end
         curr_mcparams = do_bidi_correction(bidi_source, curr_mcparams, A);
     end
-    mcparams.(mc_id) = curr_mcparams; 
-    save(A.mcparams_path, '-struct', 'mcparams', '-append');
- 
+
     % NOTE: bidi function updates mcparams.dest_dir 
     deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
 
@@ -288,9 +299,7 @@ if do_preprocessing
 
     % Update mcparams struct and reference struct:
     curr_mcparams.averaged_slices_dir = dest_tiff_basepath;
-    mcparams.(mc_id) = curr_mcparams; 
-    save(A.mcparams_path, '-struct', 'mcparams', '-append');
-    
+  
     % Also save MCPARAMS as json:
     [ddir, fname, ext] = fileparts(A.mcparams_path);
     mcparams_json = fullfile(ddir, strcat(fname, '.json'));
@@ -329,7 +338,9 @@ if do_preprocessing
             
 end
 
- 
+mcparams.(mc_id) = curr_mcparams;
+save(A.mcparams_path, '-struct', 'mcparams');
+
 
 %% Specify ROI param struct path:
 if get_rois_and_traces
@@ -339,11 +350,12 @@ if get_rois_and_traces
     %% Specify Traces param struct path:
     curr_trace_dir = fullfile(A.trace_dir, A.trace_id.(I.analysis_id));
     if ~exist(curr_trace_dir)
-        mkdir(curr_trace_dir) end
+        mkdir(curr_trace_dir)
+    end
 
     %% Get traces
     fprintf('Extracting RAW traces.\n')
-    extract_traces(I, A);
+    extract_traces(I, curr_mcparams, A);
     fprintf('Extracted raw traces.\n')
 
     %% GET metadata for SI tiffs:

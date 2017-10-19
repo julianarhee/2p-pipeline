@@ -9,18 +9,18 @@
 % Specify what to run:
 useGUI = false; 
 get_rois_and_traces = true %false;
-do_preprocessing = false; %true; %false %true;
+do_preprocessing = true; %false; %true; %false %true;
 
 % Specify what to run it on:
 slices = [];
-signal_channel = 2;                                 % If multi-channel, Ch index for extracting activity traces
+signal_channel = 1;                                 % If multi-channel, Ch index for extracting activity traces
 flyback_corrected = false;
 split_channels = false;
 
 % Set Motion-Correction params:
 average_source = 'Raw';                             % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
 correct_motion = false;
-correct_bidi_scan = false;
+correct_bidi_scan = true; %false;
 reference_channel = 1
 reference_file = 6
 method = 'Acquisition2P'; 
@@ -136,13 +136,17 @@ else
     curr_mcparams.ref_channel = 1;
     curr_mcparams.ref_file = 1;
 end
+if correct_bidi_scan && ~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
+    average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
+end
 
 fields_to_check = {'corrected', 'method', 'source_dir', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'bidi_corrected', 'split_channels', 'crossref'}
 
 %% 3.  Check if new mcparams or not:
 new_mc_id = false;
 if exist(fullfile(data_dir, 'mcparams.mat'))
-    mcparams = load(fullfile(data_dir, 'mcparams.mat'));
+    mcparams = load(fullfile(data_dir, 'mcparams.mat'))
+    new_mc_file = false;
 
     curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
     prev_mcparams_ids = fieldnames(mcparams);
@@ -175,13 +179,15 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
         end
     else
         mcparams = struct();
-        save(A.mcparams_path, '-struct', 'mcparams');
+        %save(A.mcparams_path, '-struct', 'mcparams');
+        new_mc_file = true;
         new_mc_id = true;
         num_mc_ids = 0;    
     end
 else
     mcparams = struct();
-    save(A.mcparams_path, '-struct', 'mcparams');
+    %save(A.mcparams_path, '-struct', 'mcparams');
+    new_mc_file = true;
     new_mc_id = true;
     num_mc_ids = 0;
 end
@@ -190,7 +196,11 @@ if new_mc_id
     fprintf('Creating NEW mc struct.\n');
     mc_id = sprintf('mcparams%02d', num_mc_ids+1);
     mcparams.(mc_id) = curr_mcparams;
-    save(A.mcparams_path, '-struct', 'mcparams', '-append');
+    if new_mc_file
+        save(A.mcparams_path, '-struct', 'mcparams');
+    else
+        save(A.mcparams_path, '-struct', 'mcparams', '-append');
+    end
 else
     while (1) 
         fprintf('Found previous mcstruct with specified params:\n')
