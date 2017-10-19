@@ -62,13 +62,9 @@ if new_analysis
     analysis_id = sprintf('analysis%02d', length(existing_analysis_ids)+1);
     I.analysis_id = analysis_id; 
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    if new_record_file
-        writetable(itable, path_to_record, 'Delimiter', '\t', 'WriteRowNames', true);
-        savejson('', I, path_to_record_json);
-    else
-        updatedI = update_analysis_table(itable, path_to_record);
-        savejson('', updatedI, path_to_record_json);
-    end
+    updatedI = update_analysis_table(itable, path_to_record);
+    existing_records.(analysis_id) = I;
+    savejson('', existing_records, path_to_record_json);
 else
     analysis_id = sprintf('analysis%02d', curr_analysis_idx);
     I = existing_records.(analysis_id);
