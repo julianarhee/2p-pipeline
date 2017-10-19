@@ -74,14 +74,14 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-R', '--roi', action="store",
-                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+parser.add_option('-I', '--id', action="store",
+                  dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
-parser.add_option('-c', '--channel', action="store",
-                  dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
-
+# parser.add_option('-c', '--channel', action="store",
+#                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
+# 
 
 (options, args) = parser.parse_args() 
 
@@ -91,10 +91,13 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
-roi_method = options.roi_method
+#roi_method = options.roi_method
+analysis_id = options.analysis_id
 
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-selected_channel = int(options.selected_channel)
+#selected_channel = int(options.selected_channel)
+
+
 # source = '/nas/volume1/2photon/projects'
 # # experiment = 'scenes'
 # # session = '20171003_JW016'
@@ -131,14 +134,9 @@ with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
 # =====================================================
 #curr_roi_method = 'blobs_DoG' #ref['roi_id'] #'blobs_DoG'
 #curr_trace_method = ref['trace_id'] #'blobs_DoG'
-trace_dir = os.path.join(ref['trace_dir'], roi_method)
+#trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
 #trace_dir = ref['trace_dir']
 # =====================================================
-
-# Create parsed-trials dir with default format:
-parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
-if not os.path.exists(parsed_traces_dir):
-    os.mkdir(parsed_traces_dir)
 
 
 # Load SI meta data:
@@ -152,8 +150,8 @@ nfiles = len(file_names)
 
 
 # Get masks for each slice: 
-roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
+roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
+roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 maskpaths = roiparams['roiparams']['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
@@ -165,6 +163,15 @@ for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
     currmasks = loadmat(maskpath); currmasks = currmasks['masks']
     masks[slice_name]['nrois'] =  currmasks.shape[2]
     masks[slice_name]['masks'] = currmasks
+
+# Load trace structs:
+selected_channel = int(ref['signal_channel'][analysis_id])
+trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
+currchannel = "Channel%02d" % int(selected_channel)
+curr_tracestruct_fns = os.listdir(trace_dir)
+trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
+if len(trace_fns_by_slice)==0:
+    print "No trace structs found for Channel %i." % int(selected_channel)
 
 
 # Get PARADIGM INFO:
@@ -178,6 +185,11 @@ with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
      stimdict = pkl.load(f) #json.load(f)
 print "STIMDICT: ", sorted(stimdict.keys(), key=natural_keys)
 
+# Create parsed-trials dir with default format:
+parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
+if not os.path.exists(parsed_traces_dir):
+    os.mkdir(parsed_traces_dir)
+
 
 # Split all traces by stimulus-ID:
 # ----------------------------------------------------------------------------
@@ -187,14 +199,9 @@ for stim in stimdict.keys():
     for fi in stimdict[stim].keys():
         stim_ntrials[stim] += len(stimdict[stim][fi].trials)
 
-# Load trace structs:
-currchannel = "Channel%02d" % int(selected_channel)
-curr_tracestruct_fns = os.listdir(trace_dir)
-trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
-#trace_fns_by_slice = sorted(ref['trace_structs'], key=natural_keys)
 
-#traces_by_stim = dict((stim, dict()) for stim in stimdict.keys())
-#frames_stim_on = dict((stim, dict()) for stim in stimdict.keys())
+
+
 stimtraces_all_slices = dict()
 
 for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)):

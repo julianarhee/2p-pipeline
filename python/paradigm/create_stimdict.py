@@ -65,9 +65,9 @@ parser.add_option('-t', '--vol', action="store",
 parser.add_option('-v', '--first', action="store",
                   dest="first_stim_volume_num", default=0, help="First volume stimulus occurs. Specifiy if custom_mw=True")
 
-parser.add_option('-R', '--roi', action="store",
-                  dest="roi_method", default='blobs_DoG', help="ROI method to use.")
-
+# parser.add_option('-R', '--roi', action="store",
+#                   dest="roi_method", default='blobs_DoG', help="ROI method to use.")
+# 
 parser.add_option('--flyback', action="store_true",
                   dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
 
@@ -154,15 +154,15 @@ if abort is False:
     # =================================================================================
 
 
-    ### Set ROI method and Trace method:
-    curr_roi_method = options.roi_method #ref['roi_id'] #'blobs_DoG'
-    trace_dir = os.path.join(ref['trace_dir'], curr_roi_method)
-
-    ### Create parsed-trials dir with default format:
-    parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
-    if not os.path.exists(parsed_traces_dir):
-        os.mkdir(parsed_traces_dir)
-
+#     ### Set ROI method and Trace method:
+#     curr_roi_method = options.roi_method #ref['roi_id'] #'blobs_DoG'
+#     trace_dir = os.path.join(ref['trace_dir'], curr_roi_method)
+# 
+#     ### Create parsed-trials dir with default format:
+#     parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
+#     if not os.path.exists(parsed_traces_dir):
+#         os.mkdir(parsed_traces_dir)
+# 
     ### Get PARADIGM INFO:
     path_to_functional = os.path.join(acquisition_dir, functional_dir)
     paradigm_dir = 'paradigm_files'
