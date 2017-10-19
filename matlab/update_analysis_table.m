@@ -15,13 +15,13 @@ if exist(path_to_record, 'file')
     existing = readtable(path_to_record, 'Delimiter', '\t', 'ReadRowNames', true);
     existing_vars = existing.Properties.VariableNames;
 
-    for v=1:length(existing_vars)
-        if any(size(existing.(existing_vars{v}))>1) && ~iscell(existing.(existing_vars{v}))
-            existing_vars{v}
-            existing.(existing_vars{v}) = mat2str(existing.(existing_vars{v}));
-        end
-    end
-
+%     for v=1:length(existing_vars)
+%         if any(size(existing.(existing_vars{v}))>1) && ~iscell(existing.(existing_vars{v}))
+%             existing_vars{v}
+%             existing.(existing_vars{v}) = mat2str(existing.(existing_vars{v}));
+%         end
+%     end
+% 
 
     if length(curr_vars) > length(existing_vars)
          new_vars = find(arrayfun(@(i) ~ismember(curr_vars{i}, existing_vars), 1:length(curr_vars)));

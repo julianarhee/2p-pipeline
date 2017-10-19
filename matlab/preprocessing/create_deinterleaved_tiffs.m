@@ -20,13 +20,13 @@ if ~exist(write_dir, 'dir')
 else
     nchannel_dirs = dir(fullfile(write_dir, '*Channel*'));
     if length(nchannel_dirs)>0
-        nfile_dirs = dir(fullfile(write_dir, nchannel_dirs{1}, '*File*'));
+        nfile_dirs = dir(fullfile(write_dir, nchannel_dirs(1).name, '*File*'));
         if length(nfile_dirs)>0
-            nslices = dir(fullfile(write_dir, nchannel_dirs{1}, nfile_dirs{1}, '*.tif'));
+            nslices = dir(fullfile(write_dir, nchannel_dirs(1).name, nfile_dirs(1).name, '*.tif'));
             if length(nslices)==A.ntiffs
                 fprintf('Found correct number of deinterleaved tiffs in dir:\n')
                 fprintf('%s\n', write_dir);
-                user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.');
+                user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
                 if user_says_parse
                     parse = true;
                 else
@@ -41,7 +41,7 @@ else
         if length(nslices)==A.ntiffs*A.nchannels*A.nvolumes
             fprintf('Found correct number of deinterleaved tiffs in dir:\n')
             fprintf('%s\n', write_dir);
-            user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.');
+            user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
             if user_says_parse
                 parse = true;
             else
