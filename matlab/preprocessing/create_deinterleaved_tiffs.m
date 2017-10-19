@@ -18,12 +18,13 @@ if ~exist(write_dir, 'dir')
     mkdir(write_dir);
     parse = true;
 else
-    nchannel_dirs = dir(fullfile(write_dir, '*Channel*'));
+    fprintf('Found existing write-dir: %s\n', write_dir);
+    nchannel_dirs = dir(fullfile(write_dir, 'Channel*'));
     if length(nchannel_dirs)>0
-        nfile_dirs = dir(fullfile(write_dir, nchannel_dirs(1).name, '*File*'));
+        nfile_dirs = dir(fullfile(write_dir, nchannel_dirs(1).name, 'File*'));
         if length(nfile_dirs)>0
             nslices = dir(fullfile(write_dir, nchannel_dirs(1).name, nfile_dirs(1).name, '*.tif'));
-            if length(nslices)==A.ntiffs
+            if length(nslices)==length(A.slices)
                 fprintf('Found correct number of deinterleaved tiffs in dir:\n')
                 fprintf('%s\n', write_dir);
                 user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
@@ -74,7 +75,7 @@ if parse
             end
             tiffs_to_parse = dir(fullfile(sourcedir, '*.tif'));
             tiffs_to_parse = {tiffs_to_parse(:).name}';
-            if lenght(tiffs_to_parse)>0
+            if length(tiffs_to_parse)>0
                 break;
             end
         end

@@ -18,6 +18,13 @@ import json
 import scipy.io
 import shutil
 from json_tricks.np import dump, dumps, load, loads
+import re
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
 
 def main(options):
 
@@ -109,8 +116,13 @@ def main(options):
 
 
     tiffs = os.listdir(raw_tiff_dir)
-    tiffs = [t for t in tiffs if t.endswith('.tif')]
-
+    tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
+#     if len(tiffs)==0:
+#         raw_tiff_dir = os.path.join(raw_tiff_dir, 'Raw')
+#         tiffs = os.listdir(raw_tiff_dir)
+#         tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
+    print "Found %i TIFFs." % len(tiffs)
+    
 
     for tiffidx,tiffname in enumerate(tiffs):
 	
@@ -119,7 +131,7 @@ def main(options):
         prefix = prefix.replace('-', '_')
 	newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
         print "Creating file in DATA dir:", newtiff_fn
-
+       
         if correct_flyback:
             # Read in RAW tiff: 
             stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
@@ -195,8 +207,12 @@ def main(options):
                 dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
     	        if save_tiffs is True: 
                     tf.imsave(os.path.join(savepath, dtype_fn), final)
-      
-    	    frame_idxs_final = np.arange(0, stack.shape[0]);
+            else:
+                if tiffidx==0:
+                    stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]));
+                    print "SAMPLE stack shape:", stack.shape 
+    	    
+            frame_idxs_final = [] #np.arange(0, stack.shape[0]);
     
           
     
@@ -246,15 +262,16 @@ def main(options):
             refinfo['slices'] = range(1, nslices_crop+1)
             refinfo['ntiffs'] = len(tiffs) 
         else:
-            if not visible and not crop_fov and not uint16:
-                print "Moving RAW tiff to DATA dir. No changes."
-                shutil.copy(os.path.join(raw_tiff_dir, tiffs[tiffidx]), os.path.join(savepath, newtiff_fn))
-    
+            if save_tiffs is True:
+                if not visible and not crop_fov and not uint16:
+                    print "Moving RAW tiff to DATA dir. No changes."
+                    shutil.copy(os.path.join(raw_tiff_dir, tiffs[tiffidx]), os.path.join(savepath, newtiff_fn))
+        
         # Save updated JSON:
         refinfo_json = "%s.json" % refinfo_basename
         with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
     	    #json.dump(refinfo, fw)
-            dump(refinfo, fw)
+            dump(refinfo, fw, indent=4)
     
         # Also save updated MAT:
         refinfo_mat = "%s.mat" % refinfo_basename

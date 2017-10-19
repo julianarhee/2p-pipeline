@@ -37,8 +37,14 @@ def main(options):
     parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+    parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
+
 
     (options, args) = parser.parse_args(options) 
+
+    new_acquisition = options.new_acquisition
+    if new_acquisition is False:
+        print "This is a RE-RUN."
 
     path_to_si_reader = options.path_to_si_reader
 
@@ -140,11 +146,13 @@ def main(options):
         print "Saved .MAT to: ", os.path.join(acquisition_dir, raw_simeta_mat)
 
 
-        # Create REFERENCE info file or overwrite relevant fields, if exists:
+        # Create REFERENCE info file or overwrite relevant fields, if exists: 
         refinfo_json = '%s.json' % reference_info_basename
-        if os.path.exists(os.path.join(acquisition_dir, refinfo_json):
+        if new_acquisition is True:
+            refinfo = dict()
+        elif os.path.exists(os.path.join(acquisition_dir, refinfo_json)):
             with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
-		refinfo = json.load(fp)
+		        refinfo = json.load(fp)
         else:
             refinfo = dict() 
 

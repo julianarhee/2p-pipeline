@@ -67,6 +67,7 @@ if ~new_record_file
     end
 else
     existing_analysis_ids = {};
+    curr_analysis_idx = 1;
     new_analysis = true;
 end
 analysis_id = sprintf('analysis%02d', curr_analysis_idx);
@@ -113,27 +114,27 @@ end
 % Note:  This step also adds fields to mcparams struct that are immutable,
 % i.e., standard across all analyses.
 
-% Update REFERENCE struct with current analysis-info:
-if ~isfield(A, 'acquisition_base_dir')
-    A.acquisition_base_dir = acquisition_base_dir;
-end
-if ~isfield(A, 'mcparams_path')
-    A.mcparams_path = fullfile(data_dir, 'mcparams.mat');
-end
-if ~isfield(A, 'roi_dir')
-    A.roi_dir = fullfile(A.acquisition_base_dir, 'ROIs'); %, A.roi_id, 'roiparams.mat');
-end
-if ~isfield(A, 'trace_dir')
-    A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
-end
-
+% % Update REFERENCE struct with current analysis-info:
+% if ~isfield(A, 'acquisition_base_dir')
+%     A.acquisition_base_dir = acquisition_base_dir;
+% end
+% if ~isfield(A, 'mcparams_path')
+%     A.mcparams_path = fullfile(data_dir, 'mcparams.mat');
+% end
+% if ~isfield(A, 'roi_dir')
+%     A.roi_dir = fullfile(A.acquisition_base_dir, 'ROIs'); %, A.roi_id, 'roiparams.mat');
+% end
+% if ~isfield(A, 'trace_dir')
+%     A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
+% end
+% 
 % These fields get updated based on current analysis settings:
-if isfield(A, 'data_dir')
+if ~isfield(A, 'data_dir')
     A.data_dir = struct();
 end
 A.data_dir.(I.analysis_id) = data_dir;
 if ~isfield(A, 'bidi')
-     A.bidi_corrected = struct();
+     A.bidi = struct();
 end
 A.bidi.(I.analysis_id) = curr_mcparams.bidi_corrected; 
 if ~isfield(A, 'signal_channel') 
@@ -206,13 +207,13 @@ if do_preprocessing
         if length(found_nchannels)>0 && isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
             found_nslices = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}, '*.tif'));
             found_nslices = {found_nslices(:).name}';
-            if found_nchannels==A.nchannels && found_nslices==length(A.nslices)
+            if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices)
                 fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
-                user_says_mc = input('Do Motion-Correction again? Press Y/n.\n')
+                user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
             end
             if strcmp(user_says_mc, 'Y')
                 do_motion_correction = true;
-                user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n');
+                user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
                 if strcmp(user_says_delete, 'Y')
                     rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
                 end
@@ -235,6 +236,27 @@ if do_preprocessing
         % Just parse raw tiffs:
         do_motion_correction = false;
     end
+    
+    % CHECK anyway:
+    if do_motion_correction
+        % This is redundant to above, but double-check temporarily: 
+        found_nfiles = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*.tif'));
+        found_nfiles = {found_nfiles(:).name}';
+        if length(found_nfiles)==A.ntiffs 
+            fprintf('Found correct number of interleaved TIFFs in Corrected dir: %s\n', curr_mcparams.dest_dir);
+            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+        end
+        if strcmp(user_says_mc, 'Y')
+            do_motion_correction = true;
+            user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
+            if strcmp(user_says_delete, 'Y')
+                rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
+            end
+        elseif strcmp(user_says_mc, 'n')
+            do_motion_correction = false;
+        end 
+    end 
+
 
     if do_motion_correction
         % Do motion-correction on "raw" tiffs in ./DATA, save slice tiffs to curr_mcparams.dest_dir
@@ -264,7 +286,9 @@ if do_preprocessing
     % PYTHON equivalent faster?: 
     deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
     if I.corrected && process_raw 
-        movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
+        if ~isdir(deinterleaved_tiff_dir)
+            movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
+        end
         reinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
         reinterleave_tiffs(A, deinterleaved_tiff_dir, reinterleaved_tiff_dir, curr_mcparams.split_channels);
     end
@@ -316,7 +340,7 @@ if do_preprocessing
     % Also save MCPARAMS as json:
     [ddir, fname, ext] = fileparts(A.mcparams_path);
     mcparams_json = fullfile(ddir, strcat(fname, '.json'));
-    savejson('', mcparams, mcparams_json);    
+    %savejson('', mcparams, mcparams_json);    
     % TODO:  this does not save properly of n-fields (mcparam ids) > 2...
  
     save(path_to_reference, '-struct', 'A', '-append')

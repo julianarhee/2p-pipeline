@@ -23,11 +23,11 @@ for tiff_idx=1:nfiles %length(data_files)
             mkdir(ch_path_vis)
         else
             nslices = dir(fullfile(ch_path, '*.tif'));
-            if length(nslices)==A.ntiffs
+            if length(nslices)==length(A.slices)
                 fprintf('Found correct number of averaged tiffs in dir:\n')
-                fprintf('%s\n', write_dir);
+                fprintf('%s\n', ch_path);
                 user_says_parse = input('Press Y/n to re-average TIFFs', 's');
-                if user_says_parse
+                if strcmp(user_says_parse, 'Y')
                     average = true;
                 else
                     fprintf('Averaged tiffs look good. Not redoing averaging step.\n');
