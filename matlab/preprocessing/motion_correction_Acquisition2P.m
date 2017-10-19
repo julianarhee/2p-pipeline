@@ -31,6 +31,7 @@ if length(check_tiffs)==0
 else
     tiff_dir = mcparams.source_dir;
 end
+write_dir = fullfile(mcparams.source_dir, mcparams.dest_dir);
 
 fprintf('Processing acquisition %s...\n', tiff_dir);
 fprintf('Found %i TIFFs.\n', length(check_tiffs));
@@ -46,7 +47,7 @@ elseif mcparams.flyback_corrected
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
-    myObj.motionCorrectProcessed;
+    myObj.motionCorrectProcessed(write_dir);
     myObj.save;
 else
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
@@ -54,7 +55,7 @@ else
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
     %myObj.motionCorrect;
-    myObj.motionCorrectProcessed;
+    myObj.motionCorrectProcessed(write_dir);
     myObj.save;
 end
     
