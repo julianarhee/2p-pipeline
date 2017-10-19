@@ -228,7 +228,6 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 #            nframes_on = stim_on_sec * volumerate
 #            nframes_off = vols_per_trial - nframes_on
 #            frames_iti = round(iti * volumerate) 
-
             curr_ntrials = len(stimdict[stim][currfile].frames)
             currtraces = tracestruct['file'][fi].tracematDC
             for currtrial_idx in range(curr_ntrials):
