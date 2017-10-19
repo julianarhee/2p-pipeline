@@ -42,9 +42,9 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-R', '--roi', action="store",
-                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
-
+# parser.add_option('-R', '--roi', action="store",
+#                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+# 
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 parser.add_option('-i', '--iti', action="store",
@@ -56,19 +56,28 @@ parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
 parser.add_option('-g', '--gap', action="store",
                   dest="gap", default=400, help="num frames to separate subplots [default: 400]")
-parser.add_option('-c', '--channel', action="store",
-                  dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
-
+# parser.add_option('-c', '--channel', action="store",
+#                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
+# 
 parser.add_option('--flyback', action="store_true",
                   dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
 parser.add_option('--interval', action="store",
                   dest="roi_interval", default=10, help="Plot every Nth interval [default: 10]")
+# parser.add_option('-a', action="store",
+#                   dest="avg_dir", default='Corrected', help="Source for average slices (opts: Parsed, Corrected, Bidi_Corrected) [default: 'Corrected']")
+# 
+parser.add_option('-I', '--id', action="store",
+                  dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
+
 
 
 
 
 (options, args) = parser.parse_args() 
 
+analysis_id = options.analysis_id
+
+#avg_dir = options.avg_dir
 flyback_corrected = options.flyback_corrected
 
 source = options.source #'/nas/volume1/2photon/projects'
@@ -77,7 +86,7 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
-roi_method = options.roi_method
+#roi_method = options.roi_method
 
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 iti_pre = float(options.iti_pre)
@@ -85,7 +94,7 @@ iti_pre = float(options.iti_pre)
 custom_mw = options.custom_mw
 spacing = int(options.gap)
 curr_slice_idx = int(options.sliceidx)
-selected_channel = int(options.selected_channel)
+#selected_channel = int(options.selected_channel)
 
 # source = '/nas/volume1/2photon/projects'
 # experiment = 'gratings_phaseMod'
@@ -183,8 +192,8 @@ if not os.path.exists(figdir):
     os.mkdir(figdir)
 
 # Get masks for each slice: 
-roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
+roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
+roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 maskpaths = roiparams['roiparams']['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
@@ -213,9 +222,11 @@ else:
     sort_name = '_sorted'
     
 
-# Get FILE ("tiff") list:
-average_source = 'Averaged_Slices_Corrected'
-signal_channel = int(options.selected_channel)
+# Get FILE ("tiff") list
+#avg_dir = options.avg_dir
+avg_dir = ref['average_source'][analysis_id]
+average_source = 'Averaged_Slices_%s' % avg_dir
+signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
 average_slice_dir = os.path.join(acquisition_dir, functional_dir, 'DATA', average_source, "Channel{:02d}".format(signal_channel))
 file_names = [f for f in os.listdir(average_slice_dir) if '_vis' not in f]
 print "File names:", file_names
@@ -239,14 +250,16 @@ with tf.TiffFile(avg_tiff_path) as tif:
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
-path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
-
+#path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
+path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', ref['trace_id'][analysis_id], 'Parsed')
 
 # Load stim trace structs:
 print "Loading parsed traces..."
-currchannel = "Channel%02d" % int(selected_channel)
+currchannel = "Channel%02d" % int(signal_channel)
 stimtrace_fns = os.listdir(path_to_trace_structs)
 stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
+if len(stimtrace_fns)==0:
+    print "No stim traces found for Channel %i" % int(selected_channel)
 stimtrace_fn = stimtrace_fns[curr_slice_idx]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)
@@ -358,7 +371,7 @@ if plot_traces:
     #fig.tight_layout()
     sns.despine(bottom=True, offset=.5, trim=True)
 
-    figname = 'traces_by_stim_per_roi_slice%i%s.png' % (curr_slice_idx, sort_name)
+    figname = '%s_traces_by_stim_per_roi_slice%i%s.png' % (analysis_id, curr_slice_idx, sort_name)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
     #plt.show()
@@ -404,7 +417,7 @@ plt.figure()
 plt.imshow(img_masked, cmap=cmaptype)
 plt.axis('off')
 
-figname = 'rois_average_slice%i%s.png' % (curr_slice_idx, sort_name)
+figname = '%s_rois_slice%i%s.png' % (analysis_id, curr_slice_idx, sort_name)
 plt.savefig(os.path.join(figdir, figname), bbox_inches='tight')
 
 
