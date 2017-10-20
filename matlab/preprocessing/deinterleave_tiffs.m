@@ -1,11 +1,13 @@
-function deinterleave_tiffs(newtiff, filename, fid, write_dir, I, A)
+function deinterleave_tiffs(newtiff, filename, fid, write_dir, A)
 
 namingFunction = @defaultNamingFunction;
 
 base_filename = A.base_filename;
-nslices = length(I.slices);
-slices = I.slices;
-nchannels = A.nchannels'
+%nslices = length(I.slices);
+%slices = I.slices;
+slices = A.slices;
+nslices = length(A.slices);
+nchannels = A.nchannels;
 
 fprintf('Saving deinterleaved slices to:\n%s\n', write_dir);
 for sl = slices %1:nslices
@@ -55,6 +57,7 @@ for sl = slices %1:nslices
             end
         end
     end
+    fprintf('Finished splicing Slice %i, Channel %i.\n', sl, ch);
 end
 
 end

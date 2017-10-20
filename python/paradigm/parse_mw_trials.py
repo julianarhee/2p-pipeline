@@ -8,6 +8,7 @@ import os
 # output_notebook()
 
 import cPickle as pkl
+import shutil
 
 import time
 import datetime
@@ -16,6 +17,14 @@ import pandas as pd
 import scipy.io
 import copy
 import re
+
+from json_tricks.np import dump, dumps, load, loads
+
+def serialize_json(instance=None, path=None):
+    dt = {}
+    dt.update(vars(instance))
+    return dt
+
 
 def get_timekey(item):
     return item.time
@@ -50,18 +59,27 @@ from parse_mw_events import get_bar_events, get_stimulus_events
 import optparse
 
 parser = optparse.OptionParser()
-# parser.add_option('--fn', action="store", dest="fn_base",
-#                   default="", help="shared filename for ard and mw files")
-parser.add_option('-S', '--source', action="store", dest="source_dir",
-                  default="", help="source (parent) dir containing mw_data and ard_data dirs")
-parser.add_option('-s', '--session', action="store", dest="session",
-                  default="", help="session [ex., 'YYYMMDD_animalname']")
-parser.add_option('-r', '--run', action="append", dest="experiment_list",
-                  default=[], help="(list of) runs or experiment folder [ex., 'retinotopy5']")
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
+parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+
+# # parser.add_option('--fn', action="store", dest="fn_base",
+# #                   default="", help="shared filename for ard and mw files")
+# parser.add_option('-S', '--source', action="store", dest="source_dir",
+#                   default="", help="source (parent) dir containing mw_data and ard_data dirs")
+# parser.add_option('-s', '--session', action="store", dest="session",
+#                   default="", help="session [ex., 'YYYMMDD_animalname']")
+# parser.add_option('-r', '--run', action="append", dest="experiment_list",
+#                   default=[], help="(list of) runs or experiment folder [ex., 'retinotopy5']")
+
 parser.add_option('--stim', action="store",
-                  dest="stimtype", default="grating", help="stimulus type (grating, image, or bar)?")
-parser.add_option('--noard', action="store_true",
-                  dest="no_ard", default=False, help="No arduino triggers saved? [default: False]")
+                  dest="stimtype", default="grating", help="stimulus type [options: grating, image, bar].")
+parser.add_option('--phasemod', action="store_true",
+                  dest="phasemod", default=False, help="include if stimulus mod (phase-modulation).")
+parser.add_option('--ard', action="store_false",
+                  dest="no_ard", default=True, help="Flag to parse arduino serialdata")
 parser.add_option('-t', '--triggervar', action="store",
                   dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
 
@@ -70,24 +88,46 @@ parser.add_option('-t', '--triggervar', action="store",
 (options, args) = parser.parse_args()
 trigger_varname = options.frametrigger_varname
 
+(options, args) = parser.parse_args() 
+
+source = options.source #'/nas/volume1/2photon/projects'
+experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
+session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
+acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
+functional_dir = options.functional_dir #'functional' #'functional_subset'
+
+acquisition_dir = os.path.join(source, experiment, session, acquisition)
+
+
 # fn_base = options.fn_base #'20160118_AG33_gratings_fov1_run1'
-source_dir = options.source_dir #'/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1'
-session = options.session
-experiment_list = options.experiment_list
-experiment = experiment_list[0]
-if len(experiment_list)==1:
-    data_dir = os.path.join(source_dir, session, experiment)
-    
+# source_dir = options.source_dir #'/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1'
+# session = options.session
+# experiment_list = options.experiment_list
+# experiment = experiment_list[0]
+# if len(experiment_list)==1:
+#     data_dir = os.path.join(source_dir, session, experiment)
+#     
 stimtype = options.stimtype #'grating'
 no_ard = options.no_ard
-
+phasemod = options.phasemod
 
 # In[5]:
 
 # Look in child dir (of source_dir) to find mw_data paths:
-data_dir = os.path.join(source_dir, session, experiment)
-mw_dir = os.path.join(data_dir, 'mw_data')
-mwfiles = os.listdir(mw_dir)
+# data_dir = os.path.join(source_dir, session, experiment)
+#mw_dir = os.path.join(data_dir, 'mw_data')
+#mwfiles = os.listdir(mw_dir)
+paradigm_dir = os.path.join(acquisition_dir, functional_dir, 'paradigm_files')
+raw_paradigm_dir = os.path.join(paradigm_dir, 'raw')
+if not os.path.exists(raw_paradigm_dir):
+    os.mkdir(raw_paradigm_dir)
+print "Moving files to RAW dir:", raw_paradigm_dir
+
+raw_files = [f for f in os.listdir(paradigm_dir) if 'mwk' in f or 'serial' in f]
+for fi in raw_files:
+    shutil.move(os.path.join(paradigm_dir, fi), raw_paradigm_dir)
+
+mwfiles = os.listdir(raw_paradigm_dir)
 mwfiles = [m for m in mwfiles if m.endswith('.mwk')]
 
 # TODO:  adjust path-setting to allow for multiple reps of the same experiment
@@ -99,7 +139,7 @@ all_dfns = []
 for mwfile in mwfiles:
     fn_base = mwfile[:-4]
     mw_fn = fn_base+'.mwk'
-    mw_dfn = os.path.join(mw_dir, mw_fn)
+    mw_dfn = os.path.join(raw_paradigm_dir, mw_fn)
     all_dfns.append(mw_dfn)
     if not no_ard:
         ard_fn = fn_base+'.txt'
@@ -126,7 +166,7 @@ for didx in range(len(mw_dfns)):
     if stimtype=='bar':
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, triggername=trigger_varname)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname)
 
     # In[8]:
 
@@ -134,7 +174,7 @@ for didx in range(len(mw_dfns)):
     print "================================================================"
     print "MW parsing summary:"
     print "================================================================"
-    if len(pixelevents) > 1:
+    if len(pixelevents) > 1 and type(pixelevents[0])==list:
         pixelevents = [item for sublist in pixelevents for item in sublist]
         pixelevents = list(set(pixelevents))
         pixelevents.sort(key=operator.itemgetter(1))
@@ -148,7 +188,7 @@ for didx in range(len(mw_dfns)):
         print "Check pixel clock -- missing bit values..."
 
 
-    if len(stimevents) > 1:
+    if len(stimevents) > 1 and type(stimevents[0])==list:
         stimevents = [item for sublist in stimevents for item in sublist]
         stimevents = list(set(stimevents))
         stimevents.sort(key=operator.itemgetter(1))
@@ -157,7 +197,7 @@ for didx in range(len(mw_dfns)):
     print "Found %i stimulus on events." % len(stimevents)
     
     if not stimtype=='bar':
-	if len(trialevents) > 1:
+	if len(trialevents) > 1 and type(trialevents[0])==list:
 	    trialevents = [item for sublist in trialevents for item in sublist]
 	    trialevents = list(set(trialevents))
 	    trialevents.sort(key=operator.itemgetter(1))
@@ -166,7 +206,7 @@ for didx in range(len(mw_dfns)):
 	print "Found %i trial epoch (stim ON + ITI) events." % len(trialevents)
 
 
-    if len(trigger_times) > 1:
+    if len(trigger_times) > 1 and type(trigger_times[0])==list:
         trigger_times = [item for sublist in trigger_times for item in sublist]
         trigger_times = list(set(trigger_times))
         trigger_times.sort(key=operator.itemgetter(1))
@@ -174,7 +214,7 @@ for didx in range(len(mw_dfns)):
         trigger_times = trigger_times[0]
     print "Found %i runs (i.e., trigger boundary events)." % len(trigger_times)
 
-    if len(session_info) > 1:
+    if len(session_info) > 1 and type(session_info[0])==list:
         session_info = [item for sublist in session_info for item in sublist]
         session_info = list(set(trigger_times))
         session_info.sort(key=operator.itemgetter(1))
@@ -218,20 +258,25 @@ for didx in range(len(mw_dfns)):
     else:
 
         ntrials = len(stimevents)
-        itis = sorted(trialevents[1::2], key=get_timekey) # get_stimulus_events() returns alternating list of [trial1-stimonset, trial2-iti, trial2-stimonset, trial2-iti, etc...]
+        post_itis = sorted(trialevents[2::2], key=get_timekey) # 0=pre-blank period, 1=first-static-stim-ON, 2=first-post-stim-ITI
 
         # Get dynamic-grating bicode events:
         dynamic_stim_bitcodes = []
-        for stim,iti in zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey)):
+        bitcodes_by_trial = dict((i+1, dict()) for i in range(len(stimevents)))
+        #for stim,iti in zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey)):
+        for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
+            trialnum = trialidx + 1
             # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
             # display-update events related to that trial:
-            current_bitcode_evs = [p for p in pixelevents if p.time>=stim.time and p.time<iti.time]
+            current_bitcode_evs = [p for p in sorted(pixelevents, key=get_timekey) if p.time>=stim.time and p.time<=iti.time] # p.time<=iti.time to get bit-code for post-stimulus ITI
+            current_bitcode_values = [p.value[-1]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
             dynamic_stim_bitcodes.append(current_bitcode_evs)
+            bitcodes_by_trial[trialnum] = current_bitcode_values #current_bitcode_evs
 
         # Roughly calculate how many pixel-clock events there should be. For static images, there should be 1 bitcode-event per trial.
         # For drifting gratings, on a 60Hz monitor, there should be 60-61 bitcode-events per trial.
-        nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials
-        nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + len(itis)
+        nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
+        nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
 
         print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-nbitcode_events)
 
@@ -240,7 +285,7 @@ for didx in range(len(mw_dfns)):
         stimevents = sorted(stimevents, key=get_timekey)
         trialevents = sorted(trialevents, key=get_timekey)
         run_start_time = trialevents[0].time
-        for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey))):
+        for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
             trialnum = trialidx + 1
             # blankidx = trialidx*2 + 1
             trial[trialnum]['start_time_ms'] = round(stim.time/1E3)
@@ -258,13 +303,24 @@ for didx in range(len(mw_dfns)):
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimpos, 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialnum]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
+            trial[trialnum]['all_bitcodes'] = bitcodes_by_trial[trialnum]
+            #if stim.value[-1]['name']=='pixel clock':
+            trial[trialnum]['stim_bitcode'] = stim.value[-1]['bit_code']
+            trial[trialnum]['iti_bitcode'] = iti.value[-1]['bit_code']
 
 
     # save trial info as pkl for easyloading: 
     trialinfo_fn = 'trial_info_%s.pkl' % curr_dfn_base 
-    with open(os.path.join(data_dir, 'mw_data', trialinfo_fn), 'wb') as f:
+    #with open(os.path.join(data_dir, 'mw_data', trialinfo_fn), 'wb') as f:
+    with open(os.path.join(paradigm_dir, trialinfo_fn), 'wb') as f:
         pkl.dump(trial, f, protocol=pkl.HIGHEST_PROTOCOL)
         f.close()
+
+    # also save as json for easy reading:
+    trialinfo_json = 'trial_info_%s.json' % curr_dfn_base
+    with open(os.path.join(paradigm_dir, trialinfo_json), 'w') as f:
+        dump(trial, f, indent=4)
+
 
     # In[12]:
 
@@ -446,7 +502,7 @@ for didx in range(len(mw_dfns)):
     #pydict['offsets_by_file'] = offsets_by_file
     #pydict['mw_codes_by_file'] = mw_codes_by_file
     pydict['mw_dfn'] = mw_dfn
-    pydict['source_dir'] = source_dir
+    pydict['source_dir'] = paradigm_dir #source_dir
     pydict['fn_base'] = curr_dfn_base #fn_base
     pydict['stimtype'] = stimtype
     if stimtype=='bar':
@@ -463,6 +519,12 @@ for didx in range(len(mw_dfns)):
     tif_fn = curr_dfn_base+'.mat' #fn_base+'.mat'
     print tif_fn
     # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
-    scipy.io.savemat(os.path.join(data_dir, 'mw_data', tif_fn), mdict=pydict)
-    print os.path.join(data_dir, 'mw_data', tif_fn)
+    #scipy.io.savemat(os.path.join(data_dir, 'mw_data', tif_fn), mdict=pydict)
+    #print os.path.join(data_dir, 'mw_data', tif_fn)
+    scipy.io.savemat(os.path.join(paradigm_dir, tif_fn), mdict=pydict)
+    print os.path.join(paradigm_dir, tif_fn)
 
+    # Save json:
+    pydict_json = curr_dfn_base+'.json'
+    with open(os.path.join(paradigm_dir, pydict_json), 'w') as f:
+        dump(pydict, f, indent=4)

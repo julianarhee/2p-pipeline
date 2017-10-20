@@ -98,7 +98,8 @@ def get_session_bounds(dfn):
     bounds = []
     bounds.append([start_ev.time, end_ev.time])
     for r in run_idxs[1:]: 
-        if modes[r].time < end_ev.time:  # Ignore any extra "run" events if there was no actual "stop" event
+        if modes[r].time < bounds[-1][1]: #end_ev.time:  # Ignore any extra "run" events if there was no actual "stop" event
+            print "skipping extra START ev..."
             continue
         else:                            # Otherwise, find the next "stop" event if any additional/new "run" events found.
             try:
@@ -239,27 +240,47 @@ def get_trigger_times(df, boundary, triggername=''):
 
     trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]
     trigger_times = [[t[0].time, t[1].time] for t in trigger_evs]
+    # Remove trigger periods < 1sec (shorter than a trial): 
+    trigger_times = [t for t in trigger_times if (t[1]-t[0])/1E6>1.0]
+    print "TTT:", len(trigger_times)
     print "........................................................................................"
     print "Found %i chunks from frame-on/-off triggers:" % len(trigger_times)
     print "........................................................................................"
     for tidx,trigger in enumerate(trigger_times):
         print tidx, ": ", (trigger[1]-trigger[0])/1E6
     print "........................................................................................"
-    runs_selected = 0
-    while not runs_selected:
-        print "Choose runs. Formatting hints:"
-        print "To choose RANGE:  <0:20> to include 0th through 20th runs."
-        print "To select specific runs:  <0,1,2,5> to only include runs 0,1,2, and 5."
-        tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
-        # user_run_selection = [int(i) for i in user_run_selection]
-        # if any([i>= len(trigger_times) for i in user_run_selection]):
-        if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
-            user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
-            if any([i>= len(trigger_times) for i in user_run_selection]):
-                print len(user_run_selection)
-                print "Bad index selected, try again."
-                continue
-            else:
+    if len(trigger_times)==1:
+        user_run_selection = [0] #trigger_times[0]
+    else: 
+        runs_selected = 0
+        while not runs_selected:
+            print "Choose runs. Formatting hints:"
+            print "To choose RANGE:  <0:20> to include 0th through 20th runs."
+            print "To select specific runs:  <0,1,2,5> to only include runs 0,1,2, and 5."
+            tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
+            # user_run_selection = [int(i) for i in user_run_selection]
+            # if any([i>= len(trigger_times) for i in user_run_selection]):
+            if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
+                user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
+                if any([i>= len(trigger_times) for i in user_run_selection]):
+                    print len(user_run_selection)
+                    print "Bad index selected, try again."
+                    continue
+                else:
+                    for i in user_run_selection:
+                        print "Run:", i
+                    confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+                    if confirm_selection=='':
+                        runs_selected = 1
+                    else:
+                        continue
+            elif len(tmp_user_run_selection)==0:
+                user_run_selection = np.arange(0, len(trigger_times))
+                print "Selected ALL runs.\n"
+                runs_selected = 1
+            elif ':' in tmp_user_run_selection:
+                firstrun, lastrun = tmp_user_run_selection.split(':')
+                user_run_selection = [i for i in np.arange(int(firstrun), int(lastrun)+1)]
                 for i in user_run_selection:
                     print "Run:", i
                 confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
@@ -267,30 +288,17 @@ def get_trigger_times(df, boundary, triggername=''):
                     runs_selected = 1
                 else:
                     continue
-        elif len(tmp_user_run_selection)==0:
-            user_run_selection = np.arange(0, len(trigger_times))
-            print "Selected ALL runs.\n"
-            runs_selected = 1
-        elif ':' in tmp_user_run_selection:
-            firstrun, lastrun = tmp_user_run_selection.split(':')
-            user_run_selection = [i for i in np.arange(int(firstrun), int(lastrun)+1)]
-            for i in user_run_selection:
-                print "Run:", i
-            confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-            if confirm_selection=='':
-                runs_selected = 1
-            else:
-                continue
-        # else:
-        #     for i in user_run_selection:
-        #         print "Run:", i
-        #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-        #     if confirm_selection=='':
-        #         runs_selected = 1
-        #     else:
-        #         continue
-        
+            # else:
+            #     for i in user_run_selection:
+            #         print "Run:", i
+            #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+            #     if confirm_selection=='':
+            #         runs_selected = 1
+            #     else:
+            #         continue
+            
     print "Selected %i runs." % len(user_run_selection)
+    #if len(user_run_selection)>1:
     trigger_times = [trigger_times[i] for i in user_run_selection]
 
     return trigger_times, user_run_selection
@@ -304,8 +312,11 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
 
     tmp_pixelclock_evs = [i for i in display_evs for v in i.value if 'bit_code' in v.keys()]                      # Filter out any display-update events without a pixel-clock event
     print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
-
-    pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
+    
+    if len(trigger_times)==0:
+        pixelclock_evs = tmp_pixelclock_evs
+    else:
+        pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] # Make sure pixel events are within trigger times...
     print "Got %i pix code events within SI frame-trigger bounds." % len(pixelclock_evs)
     #pixelevents.append(pixelclock_evs)
     
@@ -461,7 +472,7 @@ def get_session_info(df, stimtype='grating'):
     return info
 
      
-def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True):
+def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='frame_trigger', pixelclock=True):
     df, bounds = get_session_bounds(dfn)
     print bounds
 
@@ -476,9 +487,9 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
     for bidx,boundary in enumerate(bounds):
         #bidx = 0
         #boundary = bounds[0]
-        if (boundary[1] - boundary[0]) < 1000000:
+        if (boundary[1] - boundary[0]) < 3000000:
             print "Not a real boundary, only %i seconds found. Skipping." % int(boundary[1] - boundary[0])
-            #continue
+            continue
 
         print "................................................................"
         print "SECTION %i" % bidx
@@ -489,7 +500,8 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
         print "selected runs:", user_run_selection
         if pixelclock:
             num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
-            pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
+            # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ...
+            pixelclock_evs = get_pixelclock_events(df, boundary) #, trigger_times=trigg_times)
         else:
             num_non_stimuli = 2 # background + image
         pixelevents.append(pixelclock_evs)
@@ -503,13 +515,21 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
 
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs] # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
-            find_static = np.where(np.diff(start_times) > 0)[0]
+            find_static = np.where(np.diff(start_times) > 0)[0] + 1
             find_static = np.append(find_static, 0)
             find_static = sorted(find_static)
-            image_evs = [tmp_image_evs[i+1] for i in find_static]
+            if phasemod:
+                find_static = find_static[::2]
+
+            image_evs = [tmp_image_evs[i] for i in find_static]
             print "Found %i total image onset events." % len(image_evs)
-            #stimevents.append(imtrials)
-    
+
+            first_stim_index = pixelclock_evs.index(image_evs[0])
+            if first_stim_index>0:
+                pre_iti_ev = pixelclock_evs[first_stim_index-1]
+                pre_blank = True
+            else:
+                pre_blank = False
 
             # Get blank ITIs:
             print "Getting subsequent ITI for each image event..."
@@ -541,7 +561,11 @@ def get_stimulus_events(dfn, stimtype='grating', triggername='', pixelclock=True
                 print "Removing extra image event that has no offset."
                 image_evs.pop(-1) 
 
-            tmp_trial_evs = image_evs + iti_evs
+            if pre_blank:
+                tmp_trial_evs = image_evs + iti_evs + [pre_iti_ev]
+            else:
+                tmp_trial_evs = image_evs + iti_evs
+
             trial_evs = sorted(tmp_trial_evs, key=get_timekey)
 
             #trialevents.append(tmp_trialevents)

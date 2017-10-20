@@ -1,11 +1,11 @@
-function scanImageMetadata = adjust_si_metadata(scanImageMetadata, mov)
+function scanImageMetadata = adjust_si_metadata(scanImageMetadata, mov_size)
 
 % For pre-processed substacks, adjust meta data to match substack
 % TIFFs that have non-data frames (artefact/bad flyback frames, discarded
 % flyback frames, etc.) removed.
 
 fprintf('Parsing processed SI tiff and getting adjusted meta data...\n');
-fprintf('Size of movie: %s\n', mat2str(size(mov)));
+fprintf('Size of movie: %s\n', mat2str(mov_size)); %mat2str(size(mov)));
 
 nSlicesTmp = scanImageMetadata.SI.hStackManager.numSlices
 nDiscardTmp = scanImageMetadata.SI.hFastZ.numDiscardFlybackFrames
@@ -16,7 +16,7 @@ nChannelsTmp = length(scanImageMetadata.SI.hChannels.channelSave)
 %     nChannelsTmp = length(str2num(scanImageMetadata.SI.hChannels.channelSave));
 % end
 
-desiredSlices = (size(mov, 3) / nChannelsTmp) / nVolumesTmp
+desiredSlices = (mov_size(3) / nChannelsTmp) / nVolumesTmp
 nDiscardedExtra = nSlicesTmp - desiredSlices	
 if desiredSlices ~= nSlicesTmp  % input (processed) tiff does not have discard removed, or has extra flyback frames removed.
    if nDiscardTmp == 0

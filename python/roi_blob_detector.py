@@ -28,6 +28,16 @@ import scipy.io
 import itertools
 
 import optparse
+import re
+import json
+from json_tricks.np import dump, dumps, load, loads
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
 
 def createCircularMask(h, w, center=None, radius=None):
 
@@ -41,6 +51,8 @@ def createCircularMask(h, w, center=None, radius=None):
 
     mask = dist_from_center <= radius
     return mask
+
+
 
 # get_ipython().magic(u'matplotlib inline')
 parser = optparse.OptionParser()
@@ -56,8 +68,8 @@ parser.add_option('-a', '--slicedir', action='store', dest='avgsource', default=
 
 # ACQUISITION-specific options:
 parser.add_option('--nslices', action='store', dest='nslices', default='', help='N slices containing ROIs')
-parser.add_option('-r', '--reference', action='store', dest='reference', default=1, help='File number to use as refernce [default: 1]')
-parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
+#parser.add_option('-r', '--reference', action='store', dest='reference', default=1, help='File number to use as refernce [default: 1]')
+#parser.add_option('-c', '--channel', action='store', dest='channel', default='1', help='channel to use for ROI detection [default: 1]')
 
 # BLOB param options:
 parser.add_option('-M', '--maxsigma', action='store', dest='max_sigma', default=2.0, help='Max val for blob detector [default: 2.0]')
@@ -68,12 +80,22 @@ parser.add_option('-t', '--threshold', action='store', dest='blob_threshold', de
 parser.add_option('-H', '--histkernel', action='store', dest='hist_kernel', default=10., help='Kernel size for histogram equalization step [default: 10]')
 parser.add_option('-G', '--gauss', action='store', dest='gaussian_sigma', default=1, help='Sigma for initial gaussian blur[default: 1]')
 
+# SAVE OPTIONS:
+parser.add_option('-R', '--roiname', action='store', dest='roi_id', default='', help="unique ID name for current ROI set (ex: 'blobsDoG01')")
+#parser.add_option('-C', '--mcname', action='store', dest='mc_id', default='', help="unique ID name of mc-params to use (ex: 'mcparams01')")
+
+
+
+
 (options, args) = parser.parse_args() 
 
 
-nslices = options.nslices
-reference_file_idx = options.reference
-signal_channel_idx = options.channel
+#nslices = options.nslices
+#reference_file_idx = options.reference
+#signal_channel_idx = options.channel
+
+roi_id = options.roi_id
+#mc_id = options.mc_id
 
 max_sigma_val = float(options.max_sigma)
 min_sigma_val = float(options.min_sigma)
@@ -89,6 +111,32 @@ acquisition = options.acquisition
 functional_subdir = options.functional_dir
 avgsource = options.avgsource
 
+acquisition_dir = os.path.join(source, experiment, sess, acquisition)
+data_dir = os.path.join(acquisition_dir, functional_subdir, 'DATA')
+
+# Load mcparams.mat:
+mcparams = scipy.io.loadmat(os.path.join(data_dir, 'mcparams.mat'))
+mc_methods = sorted([m for m in mcparams.keys() if 'mcparams' in m], key=natural_keys)
+if len(mc_methods)>1:
+    for mcidx,mcid in enumerate(sorted(mc_methods, key=natural_keys)):
+        print mcidx, mcid
+    mc_method_idx = raw_input('Select IDX of mc-method to use: ')
+    mc_method = mc_methods[int(mc_method_idx)]
+    print "Using MC-METHOD: ", mc_method
+else:
+    mc_method = mc_methods[0] 
+
+mcparams = mcparams[mc_method] #mcparams['mcparams01']
+reference_file_idx = int(mcparams['ref_file']) 
+signal_channel_idx = int(mcparams['ref_channel'])
+
+signal_channel = 'Channel%02d' % int(signal_channel_idx)
+reference_file = 'File%03d' % int(reference_file_idx)
+
+print "Specified signal channel is:", signal_channel
+print "Selected reference file:", reference_file
+
+
 # Specify and create directories:
 if len(avgsource)==0:
     avgsource = ''
@@ -98,20 +146,67 @@ else:
 subdir_str = '{tiffstr}/DATA/Averaged_Slices{avgsource}'.format(avgsource=avgsource, tiffstr=functional_subdir)
 # subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
 
-signal_channel = 'Channel%02d' % int(signal_channel_idx)
-reference_file = 'File%03d' % int(reference_file_idx)
-
-print "Specified signal channel is:", signal_channel
-print "Selected reference file:", reference_file
-
 slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_channel, reference_file)
 
 # Define output directories:
-log_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_LoG')
+acquisition_dir = os.path.join(source, experiment, sess, acquisition)
+existing_rois = sorted(os.listdir(os.path.join(acquisition_dir, 'ROIs')), key=natural_keys)
+
+existing_blob_rois = sorted([r for r in existing_rois if 'LoG' in r or 'DoG' in r], key=natural_keys)
+
+if len(existing_rois)>0:
+    print "Found existing blob ROIs:"
+    for ridx,rid in enumerate(sorted(existing_rois, key=natural_keys)):
+        print ridx, rid
+else:
+    print "No existing blob ROIs found"
+
+if roi_id in existing_blob_rois or len(roi_id)==0:
+    while True:
+        roi_id = raw_input('Enter unique roi_id name:')
+        if roi_id in existing_blob_rois:
+            print('Exists! Pick a new name.')
+            overwrite = raw_input('To overwrite, press Y/n')
+            if overwrite is 'Y':
+                break
+        else:
+            break
+print "Creating new ROI ID: ", roi_id
+    
+# user_id = raw_input('Enter IDX for LoG/DoG folders: ')
+# if len(user_id)==0:
+#     log_folder = 'blobsLoG'
+#     dog_folder = 'blobsDoG'
+# else:
+#     log_folder = 'blobsLoG%i' % int(user_id)
+#     dog_folder = 'blobsDoG%i' % int(user_id)
+# 
+roi_reference_path = os.path.join(acquisition_dir, 'ROIs', 'roiparams.json')
+
+# Check for MC-params to save:
+# roiparams = loadmat(os.path.join(acquisition_dir, 'ROIs', 'roiparams.mat'))
+# roi_ids = [r for r in roiparams.keys() if '__' not in r]
+# for ridx,roiname in enumerate(roi_ids):
+#     if params_dict==roiparams[roiname]['params']:
+#         new_roiparams = False
+#         roiparams_idx = rid + 1
+#     else:
+#         new_roiparams = True
+# if new_roiparams is True:
+#     roiparams_idx = len(roi_ids) + 1
+#     curr_roi_id = 'roiparams%02d' % int(roiparams_idx) 
+#     roiparams[curr_roi_id] = params_dict
+# 
+
+base_roi_dir = os.path.join(acquisition_dir, 'ROIs', roi_id)
+if not os.path.exists(base_roi_dir):
+    os.mkdir(base_roi_dir)
+
+log_roi_dir = os.path.join(base_roi_dir, 'blobs_LoG')
 if not os.path.exists(log_roi_dir):
     os.makedirs(log_roi_dir)
 
-dog_roi_dir = os.path.join(source, experiment, sess, acquisition, 'ROIs', 'blobs_DoG')
+dog_roi_dir = os.path.join(base_roi_dir, 'blobs_DoG')
 if not os.path.exists(dog_roi_dir):
     os.makedirs(dog_roi_dir)
     
@@ -148,13 +243,14 @@ params_dict['gaussian_sigma'] = gaussian_sigma
 #get averaged slices
 avg_slices = os.listdir(slice_directory)
 avg_slices = [i for i in avg_slices if i.endswith('.tif')]
+nslices = len(avg_slices)
 
 print "N slices: ", len(avg_slices)
-if len(nslices)==0:
-    nslices = len(avg_slices)
-else:
-    nslices = int(nslices)    
-
+# if len(nslices)==0:
+#     nslices = len(avg_slices)
+# else:
+#     nslices = int(nslices)    
+ 
 #initialize empty dictionaries to populate as we go on
 source_paths = np.zeros((nslices,), dtype=np.object)
 log_maskpaths = np.zeros((nslices,), dtype=np.object)
@@ -277,3 +373,21 @@ roiparams['sourcepaths']=source_paths
 roiparams['maskpaths']=dog_maskpaths
 roiparams['maskpath3d']=[]
 scipy.io.savemat(os.path.join(dog_roi_dir,'roiparams'), {'roiparams': roiparams})
+
+
+# Save pertinent roi params for quick views:
+if os.path.exists(roi_reference_path):
+    with open(roi_reference_path, 'r') as f:
+        roiref = json.load(f)
+else:
+    roiref = dict()
+
+if roi_id not in roiref:
+    roiref[roi_id] = dict()
+
+roiref[roi_id]['params'] = params_dict
+roiref[roi_id]['source'] = os.path.split(source_paths[0])[0]
+roiref[roi_id]['nrois'] = dog_nrois
+with open(roi_reference_path, 'w') as f:
+    dump(roiref, f, indent=4)
+

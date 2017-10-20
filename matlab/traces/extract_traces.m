@@ -1,4 +1,4 @@
-function extract_traces(I, A)
+function extract_traces(I, mcparams, A)
 
 % roiparams.params 
 % roiparams.nrois
@@ -7,79 +7,123 @@ function extract_traces(I, A)
 % roiparams.sourcepaths
 % roiparams.roi_info
 
-load(A.mcparams_path);
+%mcparams = load(A.mcparams_path);
+%mcparams = mcparams.(I.mc_id);
+
 roiparams_path = fullfile(A.roi_dir, I.roi_id, 'roiparams.mat');
-%load(A.roiparams_path);
-load(roiparams_path);
+roiparams = load(roiparams_path);
+if ismember('roiparams', fieldnames(roiparams))
+    roiparams = roiparams.roiparams;
+end
+%roiparams = load(roiparams_path)
+%roiparams = roiparams.(I.roi_id)
+
 simeta = load(A.raw_simeta_path);
 
 % Set path for slice time-series tiffs:
-if I.use_bidi_corrected
-    base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
-else
-    if mcparams.corrected
-        base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
-    else
-        base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
-    end
-end
+% if I.use_bidi_corrected
+%     base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+% else
+%     if mcparams.corrected
+%         base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.corrected_dir);
+%     else
+%         base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
+%     end
+% end
+base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
 
-switch I.roi_method
-    
-    case 'pixels'
-        % do sth
+curr_tracestruct_dir = fullfile(A.trace_dir, A.trace_id.(I.analysis_id));
+fprintf('Saving tracestructs to: %s\n', curr_tracestruct_dir);
+
+% Load roistruct created in roi_blob_detector.py:
+for sidx = 1:length(I.slices)
+    sl = I.slices(sidx);
+    load(roiparams.maskpaths{sidx});
+    maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
+    maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
+     
+    % load time-series for current slice:
+    for fidx=1:A.ntiffs
+        curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
+        curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, I.signal_channel, fidx)
         
-    case 'manual2D'
-        % do stuff
+        currtiffpath = fullfile(curr_file_path, curr_file);
+        curr_file_name = sprintf('File%03d', fidx);
+        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+            Y = read_file(currtiffpath);
+        else
+            Y = read_imgdata(currtiffpath);
+        end 
+
+        % TODO: add option to check for MC-evalation for
+        % interpolating frames.
         
-    case 'pyblob2D'
-        % Load roistruct created in roi_blob_detector.py:
-        for sidx = 1:length(I.slices)
-            sl = I.slices(sidx);
-            load(roiparams.maskpaths{sidx});
-            maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
-            maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
-             
-            % load time-series for current slice:
-            for fidx=1:A.ntiffs
-                curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', A.signal_channel), sprintf('File%03d', fidx));
-                % TODO: adjust so that path to slice tiff is not dependent on mcparams.info.acquisition_name
-                % since this is currently specific to mcparams.method=Acquisition2P
-                curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', mcparams.info.acquisition_name, sl, A.signal_channel, fidx)
-                %Y = tiffRead(fullfile(curr_file_path, curr_file));
-                
-                currtiffpath = fullfile(curr_file_path, curr_file);
-                curr_file_name = sprintf('File%03d', fidx);
-                if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-                    Y = read_file(currtiffpath);
-                else
-                    Y = read_imgdata(currtiffpath);
-                end 
- 
-                % TODO: add option to check for MC-evalation for
-                % interpolating frames.
-                
-                % Get raw traces:
-                rawtracemat = get_raw_traces(Y, maskcell);
-                
-                tracestruct.file(fidx).rawtracemat = rawtracemat;
-                tracestruct.file(fidx).maskcell = maskcell;
-                tracestruct.file(fidx).maskpath = roiparams.maskpaths{sidx};
-                tracestruct.file(fidx).nrois = size(masks,3);
-            end
-            tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, A.signal_channel);
-            save(fullfile(A.trace_dir, I.roi_id, tracestruct_name), '-struct', 'tracestruct');
-        end
+        % Get raw traces:
+        rawtracemat = get_raw_traces(Y, maskcell);
         
-        
-    case 'pyblob3D'
-        % do similar stuff
-        
-    case 'manual3D'
-        % do other stuff
-        
-    case 'cnmf3D'
-    
-    
+        tracestruct.file(fidx).rawtracemat = rawtracemat;
+        tracestruct.file(fidx).maskcell = maskcell;
+        tracestruct.file(fidx).maskpath = roiparams.maskpaths{sidx};
+        tracestruct.file(fidx).nrois = size(masks,3);
+    end
+    tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
+    save(fullfile(curr_tracestruct_dir, tracestruct_name), '-struct', 'tracestruct');
+
+% 
+% switch I.roi_method
+%     
+%     case 'pixels'
+%         % do sth
+%         
+%     case 'manual2D'
+%         % Tested on 20171009_CE059 data - runs for gratings_phaseMod using pyblob3D code
+% 
+%         
+%     case 'pyblob2D'
+%         % Load roistruct created in roi_blob_detector.py:
+%         for sidx = 1:length(I.slices)
+%             sl = I.slices(sidx);
+%             load(roiparams.maskpaths{sidx});
+%             maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
+%             maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
+%              
+%             % load time-series for current slice:
+%             for fidx=1:A.ntiffs
+%                 curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
+%                 curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, I.signal_channel, fidx)
+%                 
+%                 currtiffpath = fullfile(curr_file_path, curr_file);
+%                 curr_file_name = sprintf('File%03d', fidx);
+%                 if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
+%                     Y = read_file(currtiffpath);
+%                 else
+%                     Y = read_imgdata(currtiffpath);
+%                 end 
+%  
+%                 % TODO: add option to check for MC-evalation for
+%                 % interpolating frames.
+%                 
+%                 % Get raw traces:
+%                 rawtracemat = get_raw_traces(Y, maskcell);
+%                 
+%                 tracestruct.file(fidx).rawtracemat = rawtracemat;
+%                 tracestruct.file(fidx).maskcell = maskcell;
+%                 tracestruct.file(fidx).maskpath = roiparams.maskpaths{sidx};
+%                 tracestruct.file(fidx).nrois = size(masks,3);
+%             end
+%             tracestruct_name = sprintf('traces_Slice%02d_Channel%02d.mat', sl, I.signal_channel);
+%             save(fullfile(curr_tracestruct_dir, tracestruct_name), '-struct', 'tracestruct');
+%         end
+%         
+%         
+%     case 'pyblob3D'
+%         % do similar stuff
+%         
+%     case 'manual3D'
+%         % do other stuff
+%         
+%     case 'cnmf3D'
+%     
+%     
     
 end

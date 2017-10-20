@@ -1,50 +1,78 @@
-function [A, mcparams] = do_bidi_correction(A, I, mcparams, varargin)
+function mcparams = do_bidi_correction(source, mcparams, A, from_deinterleaved)
 
-% If provided opt arg, do Bi-Di correction from deinterleaved TIFFs.
-% Otherwise, read TIFFs in ./DATA dir (output from first MC + reinterleaving step.
-% Output of BiDi correction on interleaved TIFFs will be written to ./DATA (overwrites).
-% Deinterleaved files saved to ./DATA/Corrected_Bidi. No additional reinterleaving step needed.
+% Reads in TIFFs and does correction for bidirection-scanning.
+% For each TIFF in acquisition, does correction on interleaved tiff, saves to dir:  <source>_Bidi
+% Also saves deinterleaved tiffs to dir:  <source>_Bidi_slices dir
+
+% INPUTs:
+% source - can be 'Corrected' or 'Parsed' (i.e., do correcitonon mc or raw data)
+% varargin - if no interleaved TIFFs exist, can reinterleave from parsed slice tiffs 
 
 simeta = load(A.raw_simeta_path);
 
-if length(varargin)>0
-    path_to_parsed = varargin{1};
-    from_source = true;
-else
-    from_source = false;
+if ~exist('from_deinterleaved')
+    from_deinterleaved = false;
 end
 
-if I.use_bidi_corrected
-mcparams.bidi_corrected_dir = 'Corrected_Bidi';
-if ~exist(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir), 'dir')
-    mkdir(fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir));
-end
+if mcparams.bidi_corrected
+    mcparams.dest_dir = sprintf('%s_Bidi', source); %'Corrected_Bidi';
+    if ~exist(fullfile(mcparams.source_dir, mcparams.dest_dir), 'dir')
+        mkdir(fullfile(mcparams.source_dir, mcparams.dest_dir));
+    end
 end
 
 namingFunction = @defaultNamingFunction;
-write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
 
 nchannels = A.nchannels;
-nslices = length(I.slices);
+nslices = length(A.slices);
 nvolumes = A.nvolumes;
  
 % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
-tiffs = dir(fullfile(mcparams.tiff_dir, '*.tif'));
-fprintf('Doing bidi-correction on TIFFs in dir: %s', mcparams.tiff_dir);
-tiff_dir = mcparams.tiff_dir; %D.dataDir;
+tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
+tiff_dir = mcparams.source_dir; %D.dataDir;
 tiffs = {tiffs(:).name}'
-fprintf('Found %i TIFF files.\n', length(tiffs));
+if length(tiffs)==0
+    tiff_dir = fullfile(mcparams.source_dir, source);
+%     if mcparams.corrected
+%         tiff_dir = fullfile(mcparams.source_dir, 'Corrected');
+%     else
+%         tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+%     end
+    tiffs = dir(fullfile(tiff_dir, '*.tif'));
+    tiffs = {tiffs(:).name}';
+end
+
+fprintf('Found %i TIFF files in source:\n  %s\n', length(tiffs), tiff_dir);
+
+%write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
+write_dir_deinterleaved = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
+if ~exist(write_dir_deinterleaved)
+    mkdir(write_dir_deinterleaved)
+end
+write_dir_interleaved = fullfile(mcparams.source_dir, mcparams.dest_dir);
+if ~exist(write_dir_interleaved)
+    mkdir(write_dir_interleaved)
+end
+
+fprintf('Starting BIDI correction...\n')
+fprintf('Writing deinterleaved files to: %s\n', write_dir_deinterleaved)
+fprintf('Writing interleaved files to: %s\n', write_dir_interleaved)
+
+
 
 for tiff_idx = 1:length(tiffs)
-           
+    currfile = sprintf('File%03d', tiff_idx); 
+    nvolumes = simeta.(currfile).SI.hFastZ.numVolumes;
+    nchannels = mcparams.nchannels;
+ 
     tpath = fullfile(tiff_dir, tiffs{tiff_idx});
     fprintf('Processing tiff %i of %i...\n', tiff_idx, length(tiffs));
     [source, filename, ext] = fileparts(tpath);
 
-    if from_source
-        curr_filedir = sprintf('File%03d', tiff_idx);
+    if from_deinterleaved
         fprintf('Reinterleaving tiffs from source for BiDi correction...\n');
-        tic; Yt = reinterleave_from_source(curr_filedir, path_to_parsed, I, A); toc;
+        slice_dir = fullfile(mcparams.source_dir, preprocessing_source); 
+        tic; Yt = reinterleave_from_source(slice_dir, A); toc;
         fprintf('Got reinterleaved TIFF from source. Size is: %s\n', mat2str(size(Yt)));
     else
         %tic; Yt = read_file(tpath); toc; % is this faster
@@ -65,17 +93,20 @@ for tiff_idx = 1:length(tiffs)
 
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:
-    if mcparams.flyback_corrected && ~mcparams.split_channels
+    %if mcparams.flyback_corrected && ~mcparams.split_channels
+    if ~mcparams.split_channels
+
         newtiff = zeros(d1,d2,nslices*nchannels*nvolumes);
         fprintf('Correcting TIFF: %s\n', filename); 
         fprintf('Grabbing every other channel.\n')
         for cidx=1:mcparams.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
-            fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
+            fprintf('Channel %i, mov size is: %s\n', cidx, mat2str(size(Yt_ch)));
+            nslices = size(Yt_ch, 3)/nvolumes
             Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices, nvolumes]); 
 
             if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-            Y = Y -  min(Y(:));                         % make data non-negative
+            %Y = Y -  min(Y(:));                         % make data non-negative
             fprintf('Reinterleaved TIFF (single ch) size: %s\n', mat2str(size(Y)))
             fprintf('Correcting bidirectional scanning offset.\n');
             [Y, ~] = correct_bidirectional_phasing(Y);
@@ -83,31 +114,32 @@ for tiff_idx = 1:length(tiffs)
             newtiff(:,:,cidx:nchannels:end) = Y;
             clearvars Y Yt_ch
         end
-        tiffWrite(newtiff, strcat(filename, '.tif'), source, 'int16')
+        tiffWrite(newtiff, strcat(filename, '.tif'), write_dir_interleaved, 'int16')
         
         % Also save deinterleaved:
-        deinterleave_tiffs(newtiff, filename, fid, write_dir, A);
+        deinterleave_tiffs(newtiff, filename, fid, write_dir_deinterleaved, A);
                  
-    elseif mcparams.flyback_corrected && mcparams.split_channels
+    elseif mcparams.split_channels
 	    fprintf('Correcting TIFF: %s\n', filename);
         fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
+        nslices = size(Yt, 3)/nchannels/nvolumes
         Y = reshape(Yt, [size(Yt,1), size(Yt,2), nslices, nvolumes]); 
 
         if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-        Y = Y -  min(Y(:));                         % make data non-negative
+        %Y = Y -  min(Y(:));                         % make data non-negative
         fprintf('Correcting bidirectional scanning offset.\n');
         Y = correct_bidirectional_phasing(Y);
-        tiffWrite(Y, strcat(filename, '.tif'), source, 'int16')
+        tiffWrite(Y, strcat(filename, '.tif'), write_dir_interleaved, 'int16')
         
         % Also save deinterleaved:
-        deinterleave_tiffs(Y, filename, fid, write_dir, A);         
+        deinterleave_tiffs(Y, filename, fid, write_dir_deinterleaved, A);         
     end
 
 end
 
 fprintf('Finished bidi-correction.\n');
 
-save(fullfile(mcparams.tiff_dir, 'mcparams.mat'), 'mcparams', '-append');
+save(fullfile(mcparams.source_dir, 'mcparams.mat'), 'mcparams', '-append');
 
   
 
