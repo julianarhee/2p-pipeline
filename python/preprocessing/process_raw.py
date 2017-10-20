@@ -34,9 +34,12 @@ parser.add_option('-f', '--functional', action='store', dest='functional_dir', d
 parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
 parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
 parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
+parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
 
 
 (options, args) = parser.parse_args() 
+
+new_acquisition = options.new_acquisition
 save_tiffs = options.save_tiffs
 
 source = options.source #'/nas/volume1/2photon/projects'
@@ -63,7 +66,10 @@ flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack 
 # ----------------------------------------------------------------------------
 # 1.  Get SI meta data from raw tiffs:
 # ----------------------------------------------------------------------------
-simeta_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, '-f', functional_dir]
+if new_acquisition is True:
+    simeta_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, '-f', functional_dir]
+else:
+    simeta_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, '-f', functional_dir, '--rerun']
 
 import get_scanimage_data
 get_scanimage_data.main(simeta_options)
@@ -114,10 +120,16 @@ if do_flyback_correction:
                        '--native', '--correct-flyback']
 else:
     print "Not doing flyback correction."
-    flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
-                       '-f', functional_dir, \
+    if save_tiffs is False:
+        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
+                       '-f', functional_dir, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
-                       '--native']
+                       '--native', '--notiffs']
+    else: 
+        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
+                           '-f', functional_dir, \
+                           '-z', nslices, '-c', nchannels, '-v', nvolumes, \
+                           '--native']
 
 import correct_flyback
 correct_flyback.main(flyback_options)

@@ -20,7 +20,7 @@ function simeta = get_scan_info(I, A)
             curr_meta = metadata.(base_filename).metaDataSI{fidx}; %.SI;
             %curr_meta
             % Sort Parsed files into separate directories if needed:
-            curr_meta.SI.hChannels
+            %curr_meta.SI.hChannels
             nChannels = length(curr_meta.SI.hChannels.channelSave);             
             nVolumes = curr_meta.SI.hFastZ.numVolumes;
 

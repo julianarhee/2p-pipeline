@@ -121,7 +121,7 @@ for sidx = 1:length(I.slices)
 
         % ----------------------------------------------------
         
-        tracestruct.file(fidx).df_f = dfMat
+        tracestruct.file(fidx).df_f = dfMat;
         tracestruct.file(fidx).active_rois = activeRois;
         tracestruct.file(fidx).active_thresh = df_min;
         tracestruct.file(fidx).average_img = avgY;
