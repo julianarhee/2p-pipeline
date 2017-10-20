@@ -9,7 +9,7 @@
 % Specify what to run:
 useGUI = false; 
 get_rois_and_traces = true; %false;
-do_preprocessing = true; %false; %true; %false %true;
+do_preprocessing = false; %false; %true; %false %true;
 
 % Specify what to run it on:
 slices = [];
@@ -30,8 +30,8 @@ method = 'Acquisition2P';
 algorithm = @withinFile_withinFrame_lucasKanade
 
 % Set ROI params: 
-roi_method = 'pyblob2D';
-roi_id = 'blobs_DoG';
+roi_method = 'manual2D'; %'pyblob2D';
+roi_id = 'manual2D'; %'blobs_DoG';
 
 % Specify paths:
 if ~useGUI 

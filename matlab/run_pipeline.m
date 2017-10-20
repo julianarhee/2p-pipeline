@@ -175,7 +175,6 @@ end
 A.simeta_path.(I.analysis_id) = fullfile(A.data_dir.(I.analysis_id), 'simeta.mat');
 
 
-
 % save updated reference struct:
 save(path_to_reference, '-struct', 'A'); %, '-append');
 savejson('', A, path_to_reference_json);
@@ -412,8 +411,8 @@ if get_rois_and_traces
     % nWinUnits = 3;
 
     % For PSTH:
-    win_unit = 3; 
-    num_units = 3;
+    win_unit = 3;   % size of one window (sec)
+    num_units = 3;  % number of win_units that make up sliding window 
 
     tracestruct_names = get_processed_traces(I, A, win_unit, num_units);
     %A.trace_structs = tracestruct_names;
