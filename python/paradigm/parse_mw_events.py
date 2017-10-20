@@ -240,27 +240,47 @@ def get_trigger_times(df, boundary, triggername=''):
 
     trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]
     trigger_times = [[t[0].time, t[1].time] for t in trigger_evs]
+    # Remove trigger periods < 1sec (shorter than a trial): 
+    trigger_times = [t for t in trigger_times if (t[1]-t[0])/1E6>1.0]
+    print "TTT:", len(trigger_times)
     print "........................................................................................"
     print "Found %i chunks from frame-on/-off triggers:" % len(trigger_times)
     print "........................................................................................"
     for tidx,trigger in enumerate(trigger_times):
         print tidx, ": ", (trigger[1]-trigger[0])/1E6
     print "........................................................................................"
-    runs_selected = 0
-    while not runs_selected:
-        print "Choose runs. Formatting hints:"
-        print "To choose RANGE:  <0:20> to include 0th through 20th runs."
-        print "To select specific runs:  <0,1,2,5> to only include runs 0,1,2, and 5."
-        tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
-        # user_run_selection = [int(i) for i in user_run_selection]
-        # if any([i>= len(trigger_times) for i in user_run_selection]):
-        if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
-            user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
-            if any([i>= len(trigger_times) for i in user_run_selection]):
-                print len(user_run_selection)
-                print "Bad index selected, try again."
-                continue
-            else:
+    if len(trigger_times)==1:
+        user_run_selection = [0] #trigger_times[0]
+    else: 
+        runs_selected = 0
+        while not runs_selected:
+            print "Choose runs. Formatting hints:"
+            print "To choose RANGE:  <0:20> to include 0th through 20th runs."
+            print "To select specific runs:  <0,1,2,5> to only include runs 0,1,2, and 5."
+            tmp_user_run_selection = raw_input("Select indices of runs to include, or press <enter> to accept all:\n")
+            # user_run_selection = [int(i) for i in user_run_selection]
+            # if any([i>= len(trigger_times) for i in user_run_selection]):
+            if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
+                user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
+                if any([i>= len(trigger_times) for i in user_run_selection]):
+                    print len(user_run_selection)
+                    print "Bad index selected, try again."
+                    continue
+                else:
+                    for i in user_run_selection:
+                        print "Run:", i
+                    confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+                    if confirm_selection=='':
+                        runs_selected = 1
+                    else:
+                        continue
+            elif len(tmp_user_run_selection)==0:
+                user_run_selection = np.arange(0, len(trigger_times))
+                print "Selected ALL runs.\n"
+                runs_selected = 1
+            elif ':' in tmp_user_run_selection:
+                firstrun, lastrun = tmp_user_run_selection.split(':')
+                user_run_selection = [i for i in np.arange(int(firstrun), int(lastrun)+1)]
                 for i in user_run_selection:
                     print "Run:", i
                 confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
@@ -268,30 +288,17 @@ def get_trigger_times(df, boundary, triggername=''):
                     runs_selected = 1
                 else:
                     continue
-        elif len(tmp_user_run_selection)==0:
-            user_run_selection = np.arange(0, len(trigger_times))
-            print "Selected ALL runs.\n"
-            runs_selected = 1
-        elif ':' in tmp_user_run_selection:
-            firstrun, lastrun = tmp_user_run_selection.split(':')
-            user_run_selection = [i for i in np.arange(int(firstrun), int(lastrun)+1)]
-            for i in user_run_selection:
-                print "Run:", i
-            confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-            if confirm_selection=='':
-                runs_selected = 1
-            else:
-                continue
-        # else:
-        #     for i in user_run_selection:
-        #         print "Run:", i
-        #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-        #     if confirm_selection=='':
-        #         runs_selected = 1
-        #     else:
-        #         continue
-        
+            # else:
+            #     for i in user_run_selection:
+            #         print "Run:", i
+            #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+            #     if confirm_selection=='':
+            #         runs_selected = 1
+            #     else:
+            #         continue
+            
     print "Selected %i runs." % len(user_run_selection)
+    #if len(user_run_selection)>1:
     trigger_times = [trigger_times[i] for i in user_run_selection]
 
     return trigger_times, user_run_selection

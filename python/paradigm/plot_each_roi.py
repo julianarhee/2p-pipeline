@@ -41,9 +41,9 @@ parser.add_option('-s', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-parser.add_option('-r', '--roi', action="store",
-                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
-
+# parser.add_option('-r', '--roi', action="store",
+#                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+# 
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 parser.add_option('-i', '--iti', action="store",
@@ -55,8 +55,29 @@ parser.add_option('-z', '--slice', action="store",
 parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
 
+parser.add_option('-I', '--id', action="store",
+                  dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
+
+parser.add_option('-R', '--rois', action="store",
+                  dest="rois_to_plot", default='', help="index of ROIs to plot")
+
+parser.add_option('-Y', '--ymax', action="store",
+                  dest="ymax", default=3, help="Limit for y-axis across subplots [default: 3]")
+
+parser.add_option('--alpha', action="store",
+                  dest="avg_alpha", default=1, help="Alpha val for average trace [default: 1]")
+parser.add_option('--width', action="store",
+                  dest="avg_width", default=1.2, help="Line width for average trace [default: 1.2]")
+parser.add_option('--talpha', action="store",
+                  dest="trial_alpha", default=0.3, help="Alpha val for indivdual trials [default: 0.3]")
+parser.add_option('--twidth', action="store",
+                  dest="trial_width", default=0.1, help="Line width for individual trials [default: 0.1]")
+
+
+
 (options, args) = parser.parse_args() 
 
+analysis_id = options.analysis_id
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -70,53 +91,38 @@ iti_pre = float(options.iti_pre)
 custom_mw = options.custom_mw
 
 curr_slice_idx = options.sliceidx
-roi_method = options.roi_method
 
+# ---------------------------------------------------------------------------------
+# PLOTTING parameters:
+# ---------------------------------------------------------------------------------
+# mw = False
+# spacing = 25 #400
+#roi_interval = int(options.roi_interval)
 
-trial_alpha = 0.3 #0.7
-trial_width = 0.1 #0.3
+avg_alpha = float(options.avg_alpha) # 1
+avg_width = float(options.avg_width) #1.2
+trial_alpha = float(options.trial_alpha) #0.8 #0.5 #0.5 #0.7
+trial_width = float(options.trial_width) #0.2 #0.3
 
+stim_offset = -.75 #2.0
+ylim_min = -3
+ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
-avg_alpha = 1 #0.7
-avg_width = 1 #0.3
-
-# In[3]:
-
-
-# source = '/nas/volume1/2photon/projects'
-# experiment = 'gratings_phaseMod'
-# session = '20171009_CE059'
-# acquisition = 'FOV1_zoom3x'
-# functional_dir = 'functional'
-
-# curr_file_idx = 6
-# curr_slice_idx = 0 #1 #20
-# custom_mw = False
-
-# # source = '/nas/volume1/2photon/projects'
-# # experiment = 'scenes'
-# # session = '20171003_JW016'
-# # acquisition = 'FOV1'
-# # functional_dir = 'functional'
-# # 
-# # curr_file_idx = 2
-# # curr_slice_idx = 20
-# roi_method = 'blobs_DoG'
-# plot_traces = True #False
-
-
-# In[4]:
+stim_offset = -.5 #2.0
 
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
-figdir = os.path.join(acquisition_dir, 'example_figures')
 
 # Create ROI dir in figures:
-figbase = 'example_figures'
-figdir = os.path.join(acquisition_dir, figbase, 'rois')
+figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
+if not os.path.exists(figbase):
+    os.makedirs(figbase)
+figdir = os.path.join(figbase, 'rois')
 if not os.path.exists(figdir):
     os.mkdir(figdir)
-    
+print "Saving ROI subplots to dir:", figdir
+ 
+
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
@@ -129,13 +135,30 @@ with open(simeta_json_path, 'r') as fs:
     simeta = json.load(fs)
 
 
-# In[5]:
+# Get stim params:
+if custom_mw is False:
+    currfile='File001'
+    # stim_on_sec = 2.
+    # iti = 1. #4.
+    nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
+    framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
+    volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+    frames_tsecs = np.arange(0, nframes)*(1/volumerate)
+
+    nframes_on = stim_on_sec * volumerate
+    #nframes_off = vols_per_trial - nframes_on
+    nframes_iti_pre = round(iti_pre * volumerate) 
+    print nframes_on
+    print nframes_iti_pre
 
 
 # Get masks for each slice: 
-roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
-maskpaths = roiparams['roiparams']['maskpaths']
+roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
+roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
+if 'roiparams' in roiparams.keys():
+    maskpaths = roiparams['roiparams']['maskpaths']
+else:
+    maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
 
@@ -143,79 +166,77 @@ masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len
 for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
     slice_name = "Slice%02d" % int(slice_idx+1)
     print "Loading masks: %s..." % slice_name 
-    currmasks = loadmat(maskpath); currmasks = currmasks['masks']
-    masks[slice_name]['nrois'] =  currmasks.shape[2]
-    masks[slice_name]['masks'] = currmasks
+    tmp_currmasks = loadmat(maskpath); tmp_currmasks = tmp_currmasks['masks']
+    masks[slice_name]['nrois'] = tmp_currmasks.shape[2]
+    masks[slice_name]['masks'] = tmp_currmasks
 
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = slice_names[curr_slice_idx]
+currmasks = masks[curr_slice_name]['masks']
+print currmasks.shape
 
 nrois = masks[curr_slice_name]['nrois']
 print "NROIS:", nrois
-rois_to_plot = np.arange(0, nrois) #int(nrois/2)
+#rois_to_plot = np.arange(0, nrois)
+
+roi_interval = 1
+tmprois = options.rois_to_plot
+if len(tmprois)==0:
+    rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
+    sort_name = 'all' #% roi_interval
+else:
+    rois_to_plot = options.rois_to_plot.split(',')
+    rois_to_plot = [int(r) for r in rois_to_plot]
+    roi_string = "".join(['r%i' % int(r) for r in rois_to_plot])
+    print roi_string
+    sort_name = 'selected_%s' % roi_string
+
+print "ROIS TO PLOT:", rois_to_plot
 
 
-# In[6]:
+# Create ROI dir in figures:
+figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
+if not os.path.exists(figbase):
+    os.makedirs(figbase)
 
-
-# # Get FILE list:
-# average_source = 'Averaged_Slices_Corrected'
-# signal_channel = 1
-# average_slice_dir = os.path.join(acquisition_dir, functional_dir, 'DATA', average_source, "Channel{:02d}".format(signal_channel))
-# file_names = [f for f in os.listdir(average_slice_dir) if '_vis' not in f]
-# print "File names:", file_names
-# nfiles = len(file_names)
-
-
-# In[7]:
-
+if len(tmprois)==0:
+    figdir = os.path.join(figbase, 'rois')
+else:
+    figdir = os.path.join(figbase, 'roi_subsets', sort_name, 'roi_traces')
+if not os.path.exists(figdir):
+    os.makedirs(figdir)
+print "Saving ROI subplots to dir:", figdir
+ 
 
 # Get PARADIGM INFO:
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
-path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
-
-### LOad trial info dict:
-with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'rb') as f:
-    trialdict = pkl.load(f)
-trialdict.keys()
-
-
-# In[8]:
-
+#path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
+path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', ref['trace_id'][analysis_id], 'Parsed')
 
 # Load stim trace structs:
 print "Loading parsed traces..."
+signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
+
+currchannel = "Channel%02d" % int(signal_channel)
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and f.endswith('.pkl')], key=natural_keys)
+stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
+if len(stimtrace_fns)==0:
+    print "No stim traces found for Channel %i" % int(selected_channel)
 stimtrace_fn = stimtrace_fns[curr_slice_idx]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)
 
 
-# In[9]:
-
 stimlist = sorted(stimtraces.keys(), key=natural_keys)
 nstimuli = len(stimlist)
 
-# In[10]:
-
-
-currfile='File001'
-stim_on_sec = 2.
-iti = 1. #4.
-nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-frames_tsecs = np.arange(0, nframes)*(1/volumerate)
-
-nframes_on = stim_on_sec * volumerate
-#nframes_off = vols_per_trial - nframes_on
-frames_iti = round(iti * volumerate) 
-print nframes_on
-print frames_iti
+### Load trial info dict:
+with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'rb') as f:
+    trialdict = pkl.load(f)
+trialdict.keys()
 
 
 # In[11]:
@@ -236,22 +257,10 @@ colorvals255 = [c[0:-1]*255 for c in colorvals]
 
 #colorvals = np.true_divide(colorvals255, 255.)
 #print len(colorvals255)
-roi_interval = 10
+#roi_interval = 10
 
 
-
-
-# In[12]:
-
-
-stimlist
-stimnames = [stimtraces[stim]['name'] for stim in stimlist]
-stimnames
-
-
-# In[13]:
-
-
+# Get stim names:
 stiminfo = dict()
 print "STIM | ori - sf"
 for stim in stimlist: #sorted(stimtraces.keys(), key=natural_keys):
@@ -280,7 +289,7 @@ stiminfo
 # In[80]:
 
 
-print rois_to_plot
+#print rois_to_plot
 
 
 even_idxs = np.arange(noris, noris*2)
@@ -297,8 +306,7 @@ for ridx, roi in enumerate(rois_to_plot):
     #for sf in range(nsfs):
         ori = stiminfo[stim][0]
         sf = stiminfo[stim][1]
-        
-
+       
         if np.mod(stimidx,2)==0:
             plt.subplot(gs[stimidx/2])
             bottomrow = False
@@ -306,52 +314,77 @@ for ridx, roi in enumerate(rois_to_plot):
             plt.subplot(gs[even_idxs[rowidx]])
             bottomrow = True
             rowidx += 1
-            
-        ntrialstmp = len(stimtraces[stim]['traces'])
-        nframestmp = min([stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))])
-        raw = np.zeros((ntrialstmp, nframestmp))
-        for trialnum in range(ntrialstmp):
-            raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
+
+	ntrialstmp = len(stimtraces[stim]['traces'])
+	nframestmp = [stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))]
+	#print "N frames per trial:", nframestmp
+	nframestmp = nframestmp[0]
+
+	# Get RAW traces for each trial:
+	raw = np.empty((ntrialstmp, nframestmp))
+	for trialnum in range(ntrialstmp):
+	    raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
 
         xvals = np.arange(0, raw.shape[1])
+	
+	ntrials = raw.shape[0]
+	nframes_in_trial = raw.shape[1]
+	#print "ntrials: %i, nframes in trial: %i" % (ntrials, nframes_in_trial)
 
-        ntrials = raw.shape[0]
-        nframes_in_trial = raw.shape[1]
-        curr_dfs = np.empty((ntrials, nframes_in_trial))
-        for trial in range(ntrials):
-            if custom_mw is True:
-                frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
-            else:
-                #frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
-                frame_on = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
 
-            baseline = np.mean(raw[trial, 0:frame_on])
-            df = (raw[trial,:] - baseline) / baseline
-            curr_dfs[trial,:] = df
+	# Calculate DF/F for each trial:
+	curr_dfs = np.empty((ntrials, nframes_in_trial))
+	for trial in range(ntrials):
+	    if custom_mw is True:
+		frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+		#frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+	    else:
+		frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+               #frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+               #frame_on = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
 
-            if color_by_roi:
-                plt.plot(xvals, df, color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
-            else:
-                plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
 
-        # Plot stimulus ON period:
-        if custom_mw is True:
-            stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
-        else:
-            on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
-            nframes_on = (stimtraces[stim]['frames_stim_on'][trial][1] - stimtraces[stim]['frames_stim_on'][trial][0] + 1)
-            off_fr_idx = on_fr_idx + nframes_on - 1
+	    baseline = np.mean(raw[trial, 0:frame_on])
+	    #print "baseline:", baseline
+	    df = (raw[trial,:] - baseline) / baseline
+	    #print stim, trial
+	    curr_dfs[trial,:] = df
+	    if color_by_roi:
+		plt.plot(xvals, df, color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
+	    else:
+		plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
+
+	# Plot stimulus ON period:
+	if custom_mw is True:
+	    stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
+	    # start_fr = int(frames_iti) + 1
+	    # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on]
+	else:
+	    #stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
+	    # start_fr = int(nframes_iti_pre) + 1
+	    # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on-1]
+	    #on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
+	    on_fr_idx =  int(nframes_iti_pre)
+	    nframes_on = (stimtraces[stim]['frames_stim_on'][trial][1] - stimtraces[stim]['frames_stim_on'][trial][0] + 1)
+	    off_fr_idx = on_fr_idx + nframes_on - 1
+	    stim_frames = xvals[0] + [on_fr_idx, off_fr_idx]
+#             on_fr_idx = stimtraces[stim]['frames'][trial].index(stimtraces[stim]['frames_stim_on'][trial][0])
+#             nframes_on = (stimtraces[stim]['frames_stim_on'][trial][1] - stimtraces[stim]['frames_stim_on'][trial][0] + 1)
+#             off_fr_idx = on_fr_idx + nframes_on - 1
             stim_frames = [on_fr_idx, off_fr_idx]
 
-        plt.plot(stim_frames, np.ones((2,))*-0.5, color='k')
-        plt.ylim([-1, 4])
-        
-        # Plot average:
-        avg = np.mean(curr_dfs, axis=0) 
-        if color_by_roi:
-            plt.plot(xvals, avg, color=colorvals[roi], alpha=1, linewidth=avg_width)
-        else:
-            plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=avg_width)
+	plt.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
+
+        plt.ylim([ylim_min, ylim_max])
+       
+	# Plot average:
+	avg = np.mean(curr_dfs, axis=0) 
+	if color_by_roi:
+	    plt.plot(xvals, avg, color=colorvals[roi], alpha=avg_alpha, linewidth=avg_width)
+	    #plt.plot(xvals, avg, color='k', alpha=.5, linewidth=1.2)                
+	else:
+	    plt.plot(xvals, avg, color=colorvals[stimnum], alpha=avg_alpha, linewidth=avg_width)
+ 
 
         # Format subplots:
         if plotidx==0:

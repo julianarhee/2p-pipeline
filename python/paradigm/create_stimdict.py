@@ -94,15 +94,14 @@ if custom_mw is True and (vols_per_trial==0 or first_stim_volume_num==0):
 
 if abort is False:
     acquisition_dir = os.path.join(source, experiment, session, acquisition)
-    figdir = os.path.join(acquisition_dir, 'example_figures')
-
+    
     ### Load reference info:
     ref_json = 'reference_%s.json' % functional_dir 
     with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
         ref = json.load(fr)
 
     if flyback_corrected is True:
-        frame_idxs = ref['frame_idxs']
+        frame_idxs = ref['frame_idxs']            
         print "Found %i frames from flyback correction." % len(frame_idxs)
 
     ### Load SI meta data:

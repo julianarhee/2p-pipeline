@@ -8,6 +8,7 @@ import os
 # output_notebook()
 
 import cPickle as pkl
+import shutil
 
 import time
 import datetime
@@ -77,8 +78,8 @@ parser.add_option('--stim', action="store",
                   dest="stimtype", default="grating", help="stimulus type [options: grating, image, bar].")
 parser.add_option('--phasemod', action="store_true",
                   dest="phasemod", default=False, help="include if stimulus mod (phase-modulation).")
-parser.add_option('--noard', action="store_true",
-                  dest="no_ard", default=False, help="No arduino triggers saved? [default: False]")
+parser.add_option('--ard', action="store_false",
+                  dest="no_ard", default=True, help="Flag to parse arduino serialdata")
 parser.add_option('-t', '--triggervar', action="store",
                   dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
 
@@ -117,7 +118,16 @@ phasemod = options.phasemod
 #mw_dir = os.path.join(data_dir, 'mw_data')
 #mwfiles = os.listdir(mw_dir)
 paradigm_dir = os.path.join(acquisition_dir, functional_dir, 'paradigm_files')
-mwfiles = os.listdir(paradigm_dir)
+raw_paradigm_dir = os.path.join(paradigm_dir, 'raw')
+if not os.path.exists(raw_paradigm_dir):
+    os.mkdir(raw_paradigm_dir)
+print "Moving files to RAW dir:", raw_paradigm_dir
+
+raw_files = [f for f in os.listdir(paradigm_dir) if 'mwk' in f or 'serial' in f]
+for fi in raw_files:
+    shutil.move(os.path.join(paradigm_dir, fi), raw_paradigm_dir)
+
+mwfiles = os.listdir(raw_paradigm_dir)
 mwfiles = [m for m in mwfiles if m.endswith('.mwk')]
 
 # TODO:  adjust path-setting to allow for multiple reps of the same experiment
@@ -129,7 +139,7 @@ all_dfns = []
 for mwfile in mwfiles:
     fn_base = mwfile[:-4]
     mw_fn = fn_base+'.mwk'
-    mw_dfn = os.path.join(paradigm_dir, mw_fn)
+    mw_dfn = os.path.join(raw_paradigm_dir, mw_fn)
     all_dfns.append(mw_dfn)
     if not no_ard:
         ard_fn = fn_base+'.txt'

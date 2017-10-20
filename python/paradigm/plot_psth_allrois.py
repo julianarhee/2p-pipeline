@@ -69,6 +69,17 @@ parser.add_option('--interval', action="store",
 parser.add_option('-I', '--id', action="store",
                   dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
+parser.add_option('-Y', '--ymax', action="store",
+                  dest="ymax", default=3, help="Limit for y-axis across subplots [default: 3]")
+
+parser.add_option('--alpha', action="store",
+                  dest="avg_alpha", default=1, help="Alpha val for average trace [default: 1]")
+parser.add_option('--width', action="store",
+                  dest="avg_width", default=1.2, help="Line width for average trace [default: 1.2]")
+parser.add_option('--talpha', action="store",
+                  dest="trial_alpha", default=0.3, help="Alpha val for indivdual trials [default: 0.3]")
+parser.add_option('--twidth', action="store",
+                  dest="trial_width", default=0.1, help="Line width for individual trials [default: 0.1]")
 
 
 
@@ -86,33 +97,12 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
-#roi_method = options.roi_method
-
 stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 iti_pre = float(options.iti_pre)
 
 custom_mw = options.custom_mw
 spacing = int(options.gap)
 curr_slice_idx = int(options.sliceidx)
-#selected_channel = int(options.selected_channel)
-
-# source = '/nas/volume1/2photon/projects'
-# experiment = 'gratings_phaseMod'
-# session = '20171009_CE059'
-# acquisition = 'FOV1_zoom3x'
-# functional_dir = 'functional'
-
-# curr_file_idx = 6
-# curr_slice_idx = 0 #1 #20
-# stim_on_sec = 2.
-# iti = 1. #4.
-
-
-# source = '/nas/volume1/2photon/projects'
-# experiment = 'scenes'
-# session = '20171003_JW016'
-# acquisition = 'FOV1'
-# functional_dir = 'functional'
 
 # ---------------------------------------------------------------------------------
 # PLOTTING parameters:
@@ -121,13 +111,14 @@ curr_slice_idx = int(options.sliceidx)
 # spacing = 25 #400
 roi_interval = int(options.roi_interval)
 
-avg_alpha = 0
-trial_alpha = 0.8 #0.5 #0.5 #0.7
-trial_width = 0.2 #0.3
+avg_alpha = float(options.avg_alpha) # 1
+avg_width = float(options.avg_width) #1.2
+trial_alpha = float(options.trial_alpha) #0.8 #0.5 #0.5 #0.7
+trial_width = float(options.trial_width) #0.2 #0.3
 
 stim_offset = -.75 #2.0
 ylim_min = -3
-ylim_max = 50 #3 #100 #5.0 # 3.0
+ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
 
@@ -156,7 +147,10 @@ cmaptype = 'rainbow'
 
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
-figdir = os.path.join(acquisition_dir, 'example_figures')
+figdir = os.path.join(acquisition_dir, 'figures', analysis_id)
+if not os.path.exists(figdir):
+    os.makedirs(figdir)
+print "Saving figures to dir:", figdir
 
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
@@ -186,15 +180,13 @@ if custom_mw is False:
     print nframes_iti_pre
 
 
-# Create tmp fig dir:
-figdir = os.path.join(acquisition_dir, 'example_figures')
-if not os.path.exists(figdir):
-    os.mkdir(figdir)
-
 # Get masks for each slice: 
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
 roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
-maskpaths = roiparams['roiparams']['maskpaths']
+if 'roiparams' in roiparams.keys():
+    maskpaths = roiparams['roiparams']['maskpaths']
+else:
+    maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
 
@@ -296,8 +288,6 @@ if plot_traces:
         plt.subplot(gs[ridx])
         #plt.axis('off')
         ax = plt.gca()
-        print colorvals[roi] 
-        currcolor = colorvals[roi]
         for stimnum,stim in enumerate(stimlist):
             #dfs = traces[curr_roi][stim] #[:, roi, :]
             #raw = stimtraces[stim]['traces'][:, :, roi]
@@ -328,18 +318,17 @@ if plot_traces:
                 #print stim, trial
 		curr_dfs[trial,:] = df
                 if color_by_roi:
-                    plt.plot(xvals, df, color=currcolor, alpha=trial_alpha, linewidth=trial_width)
+                    plt.plot(xvals, df, color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
                 else:
                     plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
 
             # Plot average:
             avg = np.mean(curr_dfs, axis=0) 
             if color_by_roi:
-                plt.plot(xvals, avg, color=currcolor, alpha=avg_alpha, linewidth=1.2)
-                #plt.plot(xvals, avg, color='k', alpha=.5, linewidth=1.2)
-                
+                plt.plot(xvals, avg, color=colorvals[roi], alpha=avg_alpha, linewidth=avg_width)
+                #plt.plot(xvals, avg, color='k', alpha=.5, linewidth=1.2)                
             else:
-                plt.plot(xvals, avg, color=colorvals[stimnum], alpha=1, linewidth=1.2)
+                plt.plot(xvals, avg, color=colorvals[stimnum], alpha=avg_alpha, linewidth=avg_width)
 
             if custom_mw is True:
                 stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
@@ -415,6 +404,13 @@ img_masked = color.hsv2rgb(img_hsv)
 
 plt.figure()
 plt.imshow(img_masked, cmap=cmaptype)
+
+for roi in rois_to_plot:
+    [ys, xs] = np.where(currmasks[:,:,roi]==1)
+    plt.text(xs[0], ys[0], str(roi))
+ 
+
+
 plt.axis('off')
 
 figname = '%s_rois_slice%i%s.png' % (analysis_id, curr_slice_idx, sort_name)

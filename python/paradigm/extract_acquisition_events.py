@@ -40,7 +40,6 @@ acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'F
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
-figdir = os.path.join(acquisition_dir, 'example_figures')
 
 # # ================================================================================
 # # frame info:
@@ -71,10 +70,11 @@ nfiles = len(file_names)
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
+path_to_raw = os.path.join(path_to_paradigm_files, 'raw')
 
 # Get SERIAL data:
-serialdata_fns = os.listdir(path_to_paradigm_files)
-serialdata_fns = sorted([f for f in serialdata_fns if 'serial_data' in f])
+serialdata_fns = os.listdir(path_to_raw)
+serialdata_fns = sorted([f for f in serialdata_fns if 'serial_data' in f], key=natural_keys)
 print "Found %02d serial-data files, and %03d TIFFs." % (len(serialdata_fns), nfiles)
 
 # Load MW info:
@@ -99,7 +99,7 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         trials = json.load(f)
         
     ### LOAD SERIAL DATA.
-    ardata = pd.read_csv(os.path.join(path_to_paradigm_files, serialdata_fns[fid]), sep='\t')
+    ardata = pd.read_csv(os.path.join(path_to_raw, serialdata_fns[fid]), sep='\t')
     print ardata.columns
     
     frame_triggers = ardata[' frame_trigger']

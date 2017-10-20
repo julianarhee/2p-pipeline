@@ -43,11 +43,15 @@ parser.add_option('-f', '--functional', action='store', dest='functional_dir', d
 
 parser.add_option('-z', '--slice', action="store",
                   dest="sliceidx", default=0, help="Slice index to look at (0-index) [default: 0]")
-parser.add_option('-r', '--method', action="store",
-                  dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
-
+# parser.add_option('-r', '--method', action="store",
+#                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
+# 
 parser.add_option('-R', '--rois', action="store",
                   dest="rois_to_plot", default='', help="index of ROIs to plot")
+
+parser.add_option('-I', '--id', action="store",
+                  dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
+
 
 parser.add_option('-b', '--background', action="store",
                   dest="background", default=0.3, help="threshold below which to raise intensity [default: 0.3]")
@@ -55,6 +59,7 @@ parser.add_option('-b', '--background', action="store",
 
 (options, args) = parser.parse_args() 
 
+analysis_id = options.analysis_id
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -64,11 +69,8 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 curr_slice_idx = options.sliceidx
 
-roi_method = options.roi_method
+#roi_method = options.roi_method
 
-rois_to_plot = options.rois_to_plot.split(',')
-rois_to_plot = [int(r) for r in rois_to_plot]
-print "ROIS TO PLOT:", rois_to_plot
 color_by_roi = True
 cmaptype = 'rainbow'
 background_offset = float(options.background) #0.3 #0.8
@@ -79,11 +81,15 @@ background_offset = float(options.background) #0.3 #0.8
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
 # Create tmp fig dir
-figdir = os.path.join(acquisition_dir, 'example_figures', 'slices')
+figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
+if not os.path.exists(figbase):
+    os.makedirs(figbase)
+
+figdir = os.path.join(figbase, 'roi_subsets')
 if not os.path.exists(figdir):
     os.mkdir(figdir)
-
-
+print "Saving ROI subplots to dir:", figdir
+ 
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
@@ -96,9 +102,12 @@ with open(simeta_json_path, 'r') as fs:
     simeta = json.load(fs)
     
 # Get masks for each slice: 
-roi_methods_dir = os.path.join(acquisition_dir, 'ROIs')
-roiparams = loadmat(os.path.join(roi_methods_dir, roi_method, 'roiparams.mat'))
-maskpaths = roiparams['roiparams']['maskpaths']
+roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
+roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
+if 'roiparams' in roiparams.keys():
+    maskpaths = roiparams['roiparams']['maskpaths']
+else:
+    maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
 
@@ -117,24 +126,46 @@ nrois = masks[curr_slice_name]['nrois']
 print "NROIS:", nrois
 currmasks = masks[curr_slice_name]['masks']
 
+# roi_string = options.rois_to_plot
+# if len(roi_string)==0:
+#     rois_to_plot = np.arange(0, nrois)
+# else:
+#     rois_to_plot = options.rois_to_plot.split(',')
+#     rois_to_plot = [int(r) for r in rois_to_plot]
+# print "ROIS TO PLOT:", rois_to_plot
+# 
+
+# Select ROIs:
+#rois_to_plot = options.rois_to_plot.split(',')
+#rois_to_plot = [int(r) for r in rois_to_plot]
+
+tmprois = options.rois_to_plot
+
 roi_interval = 1
-if len(rois_to_plot)==0:
+if len(tmprois)==0:
     rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
-    sort_name = '_all' % roi_interval
+    sort_name = '_all' #% roi_interval
 else:
+    rois_to_plot = options.rois_to_plot.split(',')
+    rois_to_plot = [int(r) for r in rois_to_plot]
     roi_string = "".join(['r%i' % int(r) for r in rois_to_plot])
     print roi_string
     sort_name = '_selected_%s' % roi_string
-    
+
+print "ROIS TO PLOT:", rois_to_plot
+   
+
 cmaptype = 'rainbow'
 colormap = plt.get_cmap(cmaptype)
 colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
 colorvals255 = [c[0:-1]*255 for c in colorvals]
 
 
-# Get FILE ("tiff") list:
-average_source = 'Averaged_Slices_Corrected'
-signal_channel = 1
+# Get FILE ("tiff") list
+#avg_dir = options.avg_dir
+avg_dir = ref['average_source'][analysis_id]
+average_source = 'Averaged_Slices_%s' % avg_dir
+signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
 average_slice_dir = os.path.join(acquisition_dir, functional_dir, 'DATA', average_source, "Channel{:02d}".format(signal_channel))
 file_names = [f for f in os.listdir(average_slice_dir) if '_vis' not in f]
 print "File names:", file_names
@@ -152,7 +183,9 @@ curr_slice_fn = slice_fns[curr_slice_idx]
 avg_tiff_path = os.path.join(curr_slice_dir, curr_slice_fn)
 with tf.TiffFile(avg_tiff_path) as tif:
     avgimg = tif.asarray()
-    
+
+
+   
 
 # PLOT ROIs:
 img = np.copy(avgimg)

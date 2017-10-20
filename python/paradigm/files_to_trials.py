@@ -152,7 +152,10 @@ nfiles = len(file_names)
 # Get masks for each slice: 
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
 roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
-maskpaths = roiparams['roiparams']['maskpaths']
+if 'roiparams' in roiparams.keys():
+    maskpaths = roiparams['roiparams']['maskpaths']
+else:
+    maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
 
