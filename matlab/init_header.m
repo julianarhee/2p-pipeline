@@ -12,7 +12,7 @@ get_rois_and_traces = true; %false;
 do_preprocessing = false; %false; %true; %false %true;
 
 % Specify what to run it on:
-slices = [];
+slices = []; %[5, 10, 15, 20, 25, 30, 35, 40];
 signal_channel = 1;                                 % If multi-channel, Ch index for extracting activity traces
 flyback_corrected = false; %false;
 split_channels = false;
@@ -25,19 +25,19 @@ process_raw = true;
 processed_source = '';
 
 reference_channel = 1
-reference_file = 6
+reference_file = 6; %3
 method = 'Acquisition2P'; 
-algorithm = @withinFile_withinFrame_lucasKanade
+algorithm = @withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid; %@withinFile_withinFrame_lucasKanade
 
 % Set ROI params: 
-roi_method = 'manual2D'; %'pyblob2D';
-roi_id = 'manual2D'; %'blobs_DoG';
+roi_method = 'manual2D_poly'; %'pyblob2D';
+roi_id = 'manual2D_poly'; %'blobs_DoG';
 
 % Specify paths:
 if ~useGUI 
     % Set info manually:
     source = '/nas/volume1/2photon/projects';
-    experiment = 'gratings_phaseMod';
+    experiment = 'gratings_phaseMod'; %'retino_bar'; %'scenes'; %'gratings_phaseMod';
     session = '20171009_CE059';
     acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
     tiff_source = 'functional'; %'functional_subset';
@@ -175,7 +175,7 @@ if exist(fullfile(data_dir, 'mcparams.mat'))
                 tmp_curr.(curr_fieldnames{mf}) = curr_mcparams.(curr_fieldnames{mf});
             end
             if isequal(tmp_prev, tmp_curr)
-                new_mc = [new_mc mc_idx]
+                new_mc = [new_mc mc_idx];
            end
         end
         if any(new_mc)

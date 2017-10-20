@@ -11,7 +11,6 @@ end
 % If using (and including) 2 channels for MC, separate them into their
 % own dirs:
 
-fprintf('Moving files...\n');
 
 corrected_tiff_fns = dir(fullfile(path_to_sort, '*.tif'));
 corrected_tiff_fns = {corrected_tiff_fns(:).name};
@@ -26,6 +25,7 @@ if ~exist(corrected_ch1_path, 'dir')
     end
 end
 for tiff_idx=1:length(corrected_tiff_fns)
+    fprintf('Moving files...\n');
     if strfind(corrected_tiff_fns{tiff_idx}, 'Channel01')
         movefile(fullfile(path_to_sort, corrected_tiff_fns{tiff_idx}), fullfile(corrected_ch1_path, corrected_tiff_fns{tiff_idx}));
     else

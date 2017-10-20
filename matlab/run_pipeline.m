@@ -2,8 +2,8 @@
 clc; clear all;
 
 % add repo paths
-add_repo_paths
-fprintf('Added repo paths.\n');
+%add_repo_paths
+%fprintf('Added repo paths.\n');
 
 %% Select TIFF dirs for current analysis
 
@@ -66,7 +66,7 @@ if ~new_record_file
         end
     end
 else
-    existing_analysis_ids = {};
+    existing_analysis_idxs = {};
     curr_analysis_idx = 1;
     new_analysis = true;
 end
@@ -74,31 +74,26 @@ analysis_id = sprintf('analysis%02d', curr_analysis_idx);
 I.analysis_id = analysis_id;
 itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
-if new_record_file
-    writetable(itable, path_to_record, 'Delimiter', '\t', 'WriteRowNames', true);
-else
-    if new_analysis
-        update_analysis_table(itable, path_to_record);
-        
-        % Also store as json:
-        varnames = fieldnames(I);
-        n_analysis_ids = length(existing_analysis_idxs)+1;
-        if exist('updated_records', 'var'), clear updated_records, end
-        for var=1:length(varnames)
-            updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
-        end
-        for id=1:length(existing_analysis_idxs)
-            for var=1:length(varnames)
-                updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
-            end
-        end
-        for id=1:length(updated_records)
-            json_records.(updated_records(id).analysis_id) = updated_records(id);
-        end
-        savejson('', json_records, path_to_record_json);
-    end
-end
+if new_analysis
+    update_analysis_table(itable, path_to_record);
 
+    % Also store as json:
+    varnames = fieldnames(I);
+    n_analysis_ids = length(existing_analysis_idxs)+1;
+    if exist('updated_records', 'var'), clear updated_records, end
+    for var=1:length(varnames)
+        updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
+    end
+    for id=1:length(existing_analysis_idxs)
+        for var=1:length(varnames)
+            updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
+        end
+    end
+    for id=1:length(updated_records)
+        json_records.(updated_records(id).analysis_id) = updated_records(id);
+    end
+    savejson('', json_records, path_to_record_json);
+end
 
 %% PREPROCESSING:  motion-correction.
 
@@ -243,7 +238,7 @@ if do_preprocessing
         found_nfiles = {found_nfiles(:).name}';
         if length(found_nfiles)==A.ntiffs 
             fprintf('Found correct number of interleaved TIFFs in Corrected dir: %s\n', curr_mcparams.dest_dir);
-            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
         end
         if strcmp(user_says_mc, 'Y')
             do_motion_correction = true;

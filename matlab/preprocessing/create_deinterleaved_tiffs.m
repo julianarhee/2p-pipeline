@@ -27,7 +27,7 @@ else
             if length(nslices)==length(A.slices)
                 fprintf('Found correct number of deinterleaved tiffs in dir:\n')
                 fprintf('%s\n', write_dir);
-                user_says_parse = input('Press Y/n to re-deinterleave tiffs from RAW.', 's');
+                user_says_parse = input('Press Y/n to re-deinterleave tiffs from above slice-dir.', 's');
                 if strcmp(user_says_parse, 'Y')
                     parse = true;
                 else

@@ -90,13 +90,14 @@ def main(options):
 
         metadata = ScanImageTiffReader(os.path.join(acquisition_dir, functional_dir, rawtiff)).metadata()
         meta = metadata.splitlines()
+        del metadata
 
         # descs = ScanImageTiffReader(os.path.join(acquisition_dir, rawtiff)).descriptions()
         # vol=ScanImageTiffReader("my.tif").data();
 
-
         # Get ScanImage metadata:
         SI = [l for l in meta if 'SI.' in l]
+        del meta
 
         # Iterate through list of SI. strings and turn into dict:
         SI_struct = {}
@@ -151,7 +152,7 @@ def main(options):
         if new_acquisition is True:
             refinfo = dict()
         elif os.path.exists(os.path.join(acquisition_dir, refinfo_json)):
-            with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
+            with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fp:
 		        refinfo = json.load(fp)
         else:
             refinfo = dict() 
