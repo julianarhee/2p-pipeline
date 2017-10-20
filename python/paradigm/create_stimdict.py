@@ -252,8 +252,8 @@ if abort is False:
                     first_frame_on = first_stimulus_volume_num
                 else:
                     first_frame_on += vols_per_trial
-                    framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
-		    stimname = 'stimulus%02d' % int(stim)
+                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
+		stimname = 'stimulus%02d' % int(stim)
             else:
                 first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
 	        first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
@@ -301,7 +301,7 @@ if abort is False:
     # Save to PKL:
     curr_stimdict_pkl = 'stimdict.pkl' #% currfile # % currslice
     print curr_stimdict_pkl
-    with open(os.path.join(path_to_paradigm_files, curr_stimdict_pkl), 'w') as f:
+    with open(os.path.join(path_to_paradigm_files, curr_stimdict_pkl), 'wb') as f:
         pkl.dump(stimdict, f, protocol=pkl.HIGHEST_PROTOCOL) #, f, indent=4)
 
     # Save to JSON:
