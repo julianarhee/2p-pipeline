@@ -1,4 +1,4 @@
-function [masks, RGBimg]=ROIselect_circle(calcimg)
+function [masks, RGBimg]=ROIselect_polygon(calcimg)
 
 %key codes: x-delete chosen centres
 %          mouse click-draw ROI
@@ -9,6 +9,7 @@ function [masks, RGBimg]=ROIselect_circle(calcimg)
 %          leftarrow-decrease brightness of red channel
 %          q-quit the program
 close all
+
 quitsig=1;
 g=1;    % color value bound for green channel
 r=1;    % color value bound for red channel
@@ -16,10 +17,8 @@ RGBimg = zeros([size(calcimg),3]);
 RGBimg(:,:,1)=0;
 RGBimg(:,:,2)=calcimg;
 RGBimg(:,:,3)=0;
-radius=10;  %in pixels
-max_radius = max(size(calcimg))/4;
 
-figure('KeyPressFcn',@KeyDownListener,'WindowButtonMotionFcn',@Wbmf,'WindowButtonDownFcn',@Wbdf,'WindowScrollWheelFcn',@Wswf);
+figure('KeyPressFcn',@KeyDownListener,'WindowButtonMotionFcn',@Wbmf,'WindowButtonDownFcn',@Wbdf);
 set(gca, 'DataAspectRatio',[1 1 1]); %jyr
 set(gca,'XTick',[]); % hides the ticks on x-axis jyr
 set(gca,'YTick',[]); % hides the ticks on x-axis
@@ -37,10 +36,10 @@ set(gca, 'xlimmode','manual',...
 drawnow;
 masks=[];
 masks_ones={};
-pos=[10,10,2*radius,2*radius];
-h = imellipse(ax, pos);
 
-mode = -1;
+pos = [1 1];
+h = impoly(ax, pos);
+vertlist = [];
 
 RGBimg(RGBimg>1)=1;
 while quitsig
@@ -67,13 +66,23 @@ close all
             RGBimg(:,:,2)=imadjust(calcimg,[0 g]);
             set(im_h,'CData',RGBimg)
             drawnow;
+        elseif event.Character=='r'%reset clicked vertices
+            vertlist  =[];
+       elseif event.Character=='c'%create polygon
+            h = impoly(ax, vertlist);
+            vertlist = [];
         
         elseif event.Character=='x'     %to delete detected centres in the ROI selected
-            if isempty(masks)
+            if isempty(masks)||isempty(vertlist)
                 return
             else
-                del_mask=h.createMask;
+                del_mask=zeros(size(RGBimg,1),size(RGBimg,2));
+                for v = 1:size(vertlist,1)
+                    del_mask(round(vertlist(v,2)),round(vertlist(v,1))) = 1;
+                end
+                vertlist = [];
                 del_ind=find(del_mask==1);  %indices of the delete mask
+                
                 flag=[];
                 k=1;
                 for j=1:size(masks,3)
@@ -92,41 +101,7 @@ close all
                 drawnow;
                 
             end
-        elseif event.Character=='m'%change mode so that user can change ellipse aspect ratio by dragging edge handles
-            if mode == 1%create masks before switching out of mod
-                if isempty(masks)
-                    masks(:,:,1)=h.createMask;
-                    masks_ones{1}=find(squeeze(masks(:,:,1))==1);
-                    RGBimg(:,:,3)=RGBimg(:,:,3)+0.5*masks(:,:,1);
-                    RGBimg(:,:,1)=RGBimg(:,:,1)+0.5*masks(:,:,1);
-                    set(im_h,'CData',RGBimg)
-                    drawnow;
-                else
-                    numcells=size(masks,3);
-                    masks(:,:,numcells+1)=h.createMask;
-                    masks_ones{numcells+1}=find(squeeze(masks(:,:,numcells+1))==1);
-                    RGBimg(:,:,3)=RGBimg(:,:,3)+0.5*masks(:,:,numcells+1);
-                    RGBimg(:,:,1)=RGBimg(:,:,1)+0.5*masks(:,:,numcells+1);
-                    set(im_h,'CData',RGBimg)
-                    drawnow;
-                end
-            end
-            mode=mode*-1;
-        elseif event.Character=='q'
-            quitsig=0;
-        end
-    end
-    function Wbmf(~,~)
-        if mode == -1
-            cp = ax.CurrentPoint;
-            pos=[cp(1,1)-radius,cp(1,2)-radius,2*radius,2*radius];
-            setPosition(h,pos);
-        else
-            return
-        end
-    end
-    function Wbdf(~,~)  % mouse down function creates masks
-        if mode == -1
+         elseif event.Character=='m' %create polygon mask
             if isempty(masks)
                 masks(:,:,1)=h.createMask;
                 masks_ones{1}=find(squeeze(masks(:,:,1))==1);
@@ -143,27 +118,23 @@ close all
                 set(im_h,'CData',RGBimg)
                 drawnow;
             end
-        else
-            return
+            delete(h)
+            h = impoly(ax, [1 1]);
+        elseif event.Character=='q'
+            quitsig=0;
         end
     end
-    function Wswf(~,callbackdata)   %scrolling up and down function
-        if callbackdata.VerticalScrollCount < 0
-            if radius<max_radius
-                radius=radius+1;
-            else
-                radius=max_radius;
-            end
-        elseif callbackdata.VerticalScrollCount > 0
-            if radius>1
-                radius=radius-1;
-            else
-                radius=1;
-            end
-        end
-        title(ax,num2str(callbackdata.VerticalScrollCount));
-        drawnow
+
+    function Wbmf(~,~)
+        return
+
     end
+    function Wbdf(~,~)  % mouse down function adds vertex to list
+        cp = ax.CurrentPoint;
+        pos=[cp(1,1),cp(1,2)];
+        vertlist = [vertlist; pos];
+     end
+
 
 end
 
