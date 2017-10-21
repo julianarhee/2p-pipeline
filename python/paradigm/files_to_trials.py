@@ -196,7 +196,11 @@ if not isinstance(maskpaths, list):
 if 'sourceslices' in roiparams.keys():
     slices = roiparams['sourceslices']
 else:
-    slices = range(len(maskpaths))
+    slices = ref['slices']
+if isinstance(slices, int):
+    slices = [slices]
+#     slices = range(len(maskpaths))
+#     slices = [s+1 for s in slices]
 print "Found masks for slices:", slices
 
 

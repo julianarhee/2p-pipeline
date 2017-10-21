@@ -176,9 +176,11 @@ if 'roiparams' in roiparams.keys():
     roiparams = roiparams['roiparams']
 maskpaths = roiparams['maskpaths']
 print maskpaths
-if not isinstance(maskpaths, list) and len(maskpaths)==1::
+if not isinstance(maskpaths, list) and len(maskpaths)==1:
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
-
+if isinstance(maskpaths, unicode):
+   maskpaths = [maskpaths]
+print type(maskpaths)
 
 # Check slices to see if maskpaths exist for all slices, or just a subset:
 if 'sourceslices' in roiparams.keys():
@@ -205,7 +207,7 @@ for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
 # Get masks for current slice:
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
-curr_slice_name = "Slice%02d" % curr_slice_idx
+curr_slice_name = "Slice%02d" % slices[curr_slice_idx]
 currmasks = masks[curr_slice_name]['masks']
 print currmasks.shape
 
@@ -260,7 +262,8 @@ stimtrace_fns = os.listdir(path_to_trace_structs)
 stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
 if len(stimtrace_fns)==0:
     print "No stim traces found for Channel %i" % int(selected_channel)
-currslice = "Slice%02d" % curr_slice_idx
+currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
+print currslice
 stimtrace_fn = [f for f in stimtrace_fns if currchannel in f and currslice in f][0]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)

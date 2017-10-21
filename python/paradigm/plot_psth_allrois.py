@@ -193,7 +193,7 @@ if 'roiparams' in roiparams.keys():
     roiparams = roiparams['roiparams']
 maskpaths = roiparams['maskpaths']
 print maskpaths
-if not isinstance(maskpaths, list):
+if not isinstance(maskpaths, list) and len(maskpaths)==1:
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
 
 
