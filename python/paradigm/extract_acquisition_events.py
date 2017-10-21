@@ -200,6 +200,8 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
     
 with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'wb') as f:
     pkl.dump(trialdict_by_file, f, protocol=pkl.HIGHEST_PROTOCOL)
+print "PARSED TRIALS saved to:", os.path.join(path_to_paradigm_files, 'parsed_trials.pkl')
+print trialdict_by_file.keys()
 # pkl.dump(stimdict, f, protocol=pkl.HIGHEST_PROTOCOL) #, f, indent=4)
 
 

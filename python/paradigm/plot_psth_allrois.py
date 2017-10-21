@@ -54,13 +54,14 @@ parser.add_option('-z', '--slice', action="store",
 
 parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
+
 parser.add_option('-g', '--gap', action="store",
                   dest="gap", default=400, help="num frames to separate subplots [default: 400]")
 # parser.add_option('-c', '--channel', action="store",
 #                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 # 
-parser.add_option('--flyback', action="store_true",
-                  dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
+# parser.add_option('--flyback', action="store_true",
+#                   dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
 parser.add_option('--interval', action="store",
                   dest="roi_interval", default=10, help="Plot every Nth interval [default: 10]")
 # parser.add_option('-a', action="store",
@@ -70,7 +71,12 @@ parser.add_option('-I', '--id', action="store",
                   dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
 parser.add_option('-Y', '--ymax', action="store",
-                  dest="ymax", default=3, help="Limit for y-axis across subplots [default: 3]")
+                  dest="ymax", default=3, help="Limit for max y-axis across subplots [default: 3]")
+parser.add_option('-y', '--ymin', action="store",
+                  dest="ymin", default=-1, help="Limit for min y-axis across subplots [default: -1]")
+parser.add_option('-o', '--offset', action="store",
+                  dest="stimbar_offset", default=-0.5, help="Y-value at which to draw stim-on bar [default: -0.5]")
+
 
 parser.add_option('--alpha', action="store",
                   dest="avg_alpha", default=1, help="Alpha val for average trace [default: 1]")
@@ -89,7 +95,7 @@ parser.add_option('--twidth', action="store",
 analysis_id = options.analysis_id
 
 #avg_dir = options.avg_dir
-flyback_corrected = options.flyback_corrected
+# flyback_corrected = options.flyback_corrected
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -116,8 +122,8 @@ avg_width = float(options.avg_width) #1.2
 trial_alpha = float(options.trial_alpha) #0.8 #0.5 #0.5 #0.7
 trial_width = float(options.trial_width) #0.2 #0.3
 
-stim_offset = -.75 #2.0
-ylim_min = -3
+stim_offset = float(options.stimbar_offset) #-.75 #2.0
+ylim_min = float(options.ymin) #-3
 ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
@@ -180,24 +186,42 @@ if custom_mw is False:
     print nframes_iti_pre
 
 
-# Get masks for each slice: 
+# Get ROIPARAMS:
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
 roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 if 'roiparams' in roiparams.keys():
-    maskpaths = roiparams['roiparams']['maskpaths']
-else:
-    maskpaths = roiparams['maskpaths']
+    roiparams = roiparams['roiparams']
+maskpaths = roiparams['maskpaths']
+print maskpaths
 if not isinstance(maskpaths, list):
-    maskpaths = [maskpaths]
+    maskpaths = [maskpaths] #[str(i) for i in maskpaths]
 
-masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len(maskpaths)))
-for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
-    slice_name = "Slice%02d" % int(slice_idx+1)
+
+# Check slices to see if maskpaths exist for all slices, or just a subset:
+if 'sourceslices' in roiparams.keys():
+    slices = roiparams['sourceslices']
+else:
+    slices = np.arange(1, len(maskpaths)+1) #range(len(maskpaths))
+print "Found masks for slices:", slices
+if isinstance(slices, int):
+    slices = [slices]
+if not isinstance(slices, list): # i.e., only 1 slice
+    slices = [int(i) for i in slices]
+
+
+# Load masks:
+#print maskpaths
+masks = dict(("Slice%02d" % int(slice_idx), dict()) for slice_idx in slices)
+for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
+    slice_name = "Slice%02d" % int(sidx) #+1)
     print "Loading masks: %s..." % slice_name 
-    tmp_currmasks = loadmat(maskpath); tmp_currmasks = tmp_currmasks['masks']
-    masks[slice_name]['nrois'] = tmp_currmasks.shape[2]
-    masks[slice_name]['masks'] = tmp_currmasks
+    tmpmasks = loadmat(maskpath)
+    if 'masks' in tmpmasks.keys():
+        tmpmasks = tmpmasks['masks']
+    masks[slice_name]['nrois'] =  tmpmasks.shape[2]
+    masks[slice_name]['masks'] = tmpmasks
 
+# Get specified slice masks:
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = slice_names[curr_slice_idx]
@@ -278,7 +302,7 @@ colorvals255 = [c[0:-1]*255 for c in colorvals]
 
 
 if plot_traces:
-    fig = plt.figure(figsize=(nstimuli,int(len(rois_to_plot))))
+    fig = plt.figure(figsize=(nstimuli,int(len(rois_to_plot)*2)))
     gs = gridspec.GridSpec(len(rois_to_plot), 1) #, height_ratios=[1,1,1,1]) 
     gs.update(wspace=0.01, hspace=0.01)
     
@@ -292,8 +316,15 @@ if plot_traces:
             #dfs = traces[curr_roi][stim] #[:, roi, :]
             #raw = stimtraces[stim]['traces'][:, :, roi]
             ntrialstmp = len(stimtraces[stim]['traces'])
-            nframestmp = min([stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))])
-            raw = np.empty((ntrialstmp, nframestmp))
+            #nframestmp = min([stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))])
+            nframestmp = [stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))]
+	    diffs = np.diff(nframestmp)
+	    if sum(diffs)>0:
+		print "Incorrect frame nums per trial:", stimnum, stim
+		print nframestmp
+	    else:
+		nframestmp = nframestmp[0]
+	    raw = np.empty((ntrialstmp, nframestmp))
             for trialnum in range(ntrialstmp):
                 raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
                 #print raw.shape
@@ -302,17 +333,25 @@ if plot_traces:
             #xvals = np.tile(np.arange(0, raw.shape[1]), (raw.shape[0], 1))
             ntrials = raw.shape[0]
             nframes_in_trial = raw.shape[1]
-            #print "ntrials: %i, nframes in trial: %i" % (ntrials, nframes_in_trial)
+            # print "ntrials: %i, nframes in trial: %i" % (ntrials, nframes_in_trial)
             
             curr_dfs = np.empty((ntrials, nframes_in_trial))
             for trial in range(ntrials):
                 if custom_mw is True:
+		    #print stimtraces[stim]['frames_stim_on'][trial]
                     frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+		    frame_off = stimtraces[stim]['frames_stim_on'][trial][-1]
+		 
+                    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
+		    # print frame_off - frame_on
                     #frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
                 else:
-                    frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+                    # frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+                    frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+		    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
 
-                baseline = np.mean(raw[trial, 0:frame_on])
+                baseline = np.mean(raw[trial, 0:frame_on_idx])
+		# print baseline
                 #print "baseline:", baseline
 		df = (raw[trial,:] - baseline) / baseline
                 #print stim, trial
@@ -331,7 +370,9 @@ if plot_traces:
                 plt.plot(xvals, avg, color=colorvals[stimnum], alpha=avg_alpha, linewidth=avg_width)
 
             if custom_mw is True:
-                stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
+		#frame_off_idx = 
+	        stim_frames = xvals[0] + [frame_on_idx, frame_on_idx + (frame_off - frame_on)] 	
+                #stim_frames = xvals[0] + stimtraces[stim]['frames_stim_on'][trial] #frames_stim_on[stim][trial]
                 # start_fr = int(frames_iti) + 1
                 # stim_frames = xvals[0] + [start_fr, start_fr+nframes_on]
             else:
@@ -355,7 +396,7 @@ if plot_traces:
             ax.axes.get_xaxis().set_ticks([])
             plt.yticks([0, 1])
 
-        plt.ylim([ylim_min, ylim_max])
+        #plt.ylim([ylim_min, ylim_max])
 
     #fig.tight_layout()
     sns.despine(bottom=True, offset=.5, trim=True)

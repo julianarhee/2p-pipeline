@@ -14,9 +14,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 import skimage.color
 from json_tricks.np import dump, dumps, load, loads
-from mat2py import loadmat
+import mat2py
+#from mat2py import loadmat
 from skimage import color
 import cPickle as pkl
+from skimage import exposure
+import scipy.io
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -100,24 +103,42 @@ si_basepath = ref['raw_simeta_path'][0:-4]
 simeta_json_path = '%s.json' % si_basepath
 with open(simeta_json_path, 'r') as fs:
     simeta = json.load(fs)
-    
-# Get masks for each slice: 
+
+
+# Get ROIPARAMS:
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
-roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
+roiparams = mat2py.loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 if 'roiparams' in roiparams.keys():
-    maskpaths = roiparams['roiparams']['maskpaths']
-else:
-    maskpaths = roiparams['maskpaths']
+    roiparams = roiparams['roiparams']
+maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
+print maskpaths
 
-masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len(maskpaths)))
-for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
-    slice_name = "Slice%02d" % int(slice_idx+1)
+# Check slices to see if maskpaths exist for all slices, or just a subset:
+if 'sourceslices' in roiparams.keys():
+    slices = roiparams['sourceslices']
+else:
+    slices = np.arange(1, len(maskpaths)+1) #range(len(maskpaths))
+print "Found masks for slices:", slices
+if isinstance(slices, int):
+    slices = [slices]
+if not isinstance(slices, list): # i.e., only 1 slice
+    slices = [int(i) for i in slices]
+if not isinstance(slices[0], int):
+    slices = [s for s in sublist for sublist in slices]
+print "Found masks for slices:", slices
+
+
+# Load masks:
+masks = dict(("Slice%02d" % int(slice_idx), dict()) for slice_idx in slices)
+for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
+    slice_name = "Slice%02d" % int(sidx) #+1)
     print "Loading masks: %s..." % slice_name 
-    tmpmasks = loadmat(maskpath); tmpmasks = tmpmasks['masks']
+    tmpmasks = mat2py.loadmat(maskpath); tmpmasks = tmpmasks['masks']
     masks[slice_name]['nrois'] =  tmpmasks.shape[2]
     masks[slice_name]['masks'] = tmpmasks
+
 
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
@@ -172,16 +193,20 @@ print "File names:", file_names
 nfiles = len(file_names)
 
 # Get AVERAGE slices (for current file):
-curr_file_idx = 1
-curr_file_name = file_names[curr_file_idx]
-#curr_file_name = file_names[ref['refidx']]
-curr_slice_dir = os.path.join(average_slice_dir, curr_file_name)
-slice_fns = sorted([f for f in os.listdir(curr_slice_dir) if f.endswith('.tif')], key=natural_keys)
-
-# Get average slice image for current-file, current-slice:
+mcparams = scipy.io.loadmat(ref['mcparams_path'])
+if 'mcparams' in mcparams.keys():
+    mcparams = mcparams['mcparams']
+ref_file_idx = mcparams[ref['mc_id'][analysis_id]]['ref_file'][0][0][0]
+if not isinstance(ref_file_idx, int):
+    ref_file_idx = ref_file_idx[0]
+   
+print "REF FILE:", ref_file_idx
+avg_slice_fn = "File%03d_visible" % int(ref_file_idx)
+ref_slice_path = os.path.join(average_slice_dir, avg_slice_fn)
+slice_fns = sorted([f for f in os.listdir(ref_slice_path) if f.endswith('.tif')], key=natural_keys)
 curr_slice_fn = slice_fns[curr_slice_idx]
-avg_tiff_path = os.path.join(curr_slice_dir, curr_slice_fn)
-with tf.TiffFile(avg_tiff_path) as tif:
+
+with tf.TiffFile(os.path.join(ref_slice_path, curr_slice_fn)) as tif:
     avgimg = tif.asarray()
 
 
@@ -192,11 +217,21 @@ img = np.copy(avgimg)
 
 plt.figure()
 # plt.imshow(img)
-#img = exposure.rescale_intensity(avgimg, in_range=(avgimg.min(), avgimg.max()))
-img = np.copy(avgimg)
+# plt.subplot(1,2,1)
+# imgscale = exposure.rescale_intensity(img, in_range=(avgimg.min()+(avgimg.max()*0.1), avgimg.max()-(avgimg.max()*0.1)))
+# print imgscale.min(), imgscale.max()
+# plt.imshow(imgscale, cmap='gray')
+# plt.subplot(1,2,2)
+# plt.imshow(img, cmap='gray')
+# plt.show()
+# 
+
+#img = np.copy(avgimg)
 factor = 1
 imgnorm = np.true_divide((img - img.min()), factor*(img.max()-img.min()))
-imgnorm[imgnorm<background_offset] += 0.15
+# imgnorm = np.true_divide((imgscale - imgscale.min()), factor*(imgscale.max()-imgscale.min()))
+
+#imgnorm[imgnorm<background_offset] += 0.15
 
 alpha = 0.9 #0.8 #1 #0.8 #0.5 #0.99 #0.8
 nr,nc = imgnorm.shape
