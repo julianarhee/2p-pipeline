@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+##!/usr/bin/env python2
 import os
 import json
 import re
@@ -7,6 +7,7 @@ import numpy as np
 from json_tricks.np import dump, dumps, load, loads
 from mat2py import loadmat
 import cPickle as pkl
+import operator 
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -141,10 +142,14 @@ if abort is False:
 
     if custom_mw is True:
         volumerate = float(simeta['File001']['SI']['hRoiManager']['scanVolumeRate'])
-        first_stimulus_volume_num = float(options.first_stim_volume_num) #50
-        vols_per_trial = float(options.vols_per_trial) # 15
-        iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
+        first_stimulus_volume_num = int(options.first_stim_volume_num) #50
+        vols_per_trial = int(options.vols_per_trial) # 15
+        #iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
+	iti_full = (vols_per_trial/volumerate) - stim_on_sec
         iti_post = iti_full - iti_pre
+	print "First stim on:", first_stimulus_volume_num
+	print "Volumes per trial:", vols_per_trial
+	print "ITI POST:", iti_post
     else:
         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
         iti_full = float(options.iti_full)# 4.
@@ -211,12 +216,15 @@ if abort is False:
 #             frames_tsecs = np.arange(0, nvolumes*nslices)*(1/framerate)
 # 	print "N frame tstamps:", len(frames_tsecs)
 # 
-        nframes_on = stim_on_sec * volumerate
-        nframes_iti_pre = round(iti_pre * volumerate) 
-        nframes_iti_post = round(iti_post * volumerate) 
-        nframes_iti_full = round(iti_full * volumerate)
-        if custom_mw is True:
-            vols_per_trial = nframes_on + nframes_iti_full
+        nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
+        nframes_iti_pre = int(round(iti_pre * volumerate))
+        nframes_iti_post = iti_post*volumerate # int(round(iti_post * volumerate))
+        nframes_iti_full = iti_full * volumerate #int(round(iti_full * volumerate))
+#         if custom_mw is False:
+#             vols_per_trial = (stim_on_sec + iti_full) * volumerate #nframes_on + nframes_iti_full #int(round(nframes_on + nframes_iti_full))
+# 	
+	#nframes_post_onset = (stim_on_sec + iti_full - iti_pre) * volumerate
+	nframes_post_onset = (stim_on_sec + iti_post) * volumerate
 
         # Load stim-order:
         stim_fn = stimorder_fns[fi] #'stim_order.txt'
@@ -225,22 +233,6 @@ if abort is False:
         curr_stimorder = [l.strip() for l in stimorder]
         unique_stims = sorted(set(curr_stimorder), key=natural_keys)
 
-        # if mw is False:
-        #     first_frame_on = 50 
-        #     for trialnum,stim in enumerate(curr_stimorder):
-        #         currtrial = str(trialnum+1)
-        #         if not stim in stimdict.keys():
-        #             stimdict[stim] = dict()
-        #         if not currfile in stimdict[stim].keys():
-        #             stimdict[stim][currfile] = StimInfo()  #StimInfo()
-        #         framenums = list(np.arange(int(first_frame_on-frames_iti), int(first_frame_on+(vols_per_trial))))
-        #         frametimes = [frames_tsecs[f] for f in framenums]
-        #         stimdict[stim][currfile].trials.append(trialnum)      
-        #         stimdict[stim][currfile].frames.append(framenums)
-        #         stimdict[stim][currfile].frames_sec.append(frametimes)
-        #         stimdict[stim][currfile].stim_on_idx.append(framenums.index(first_frame_on))
-        #         first_frame_on = first_frame_on + vols_per_trial
-        # else:
         for trialnum,stim in enumerate(curr_stimorder):
             currtrial = str(trialnum+1)
             if not stim in stimdict.keys():
@@ -252,42 +244,99 @@ if abort is False:
                     first_frame_on = first_stimulus_volume_num
                 else:
                     first_frame_on += vols_per_trial
-                framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
-		stimname = 'stimulus%02d' % int(stim)
             else:
-                first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx']/nslices)
-	        first_frame_iti = int(trialdict[currfile][currtrial]['stim_off_idx']/nslices)
-                #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_iti+nframes_iti_post)))
-		framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+		#first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
+                first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx'])
 
-                #print "sec to plot:", len(framenums)/volumerate
-		stimname = trialdict[currfile][currtrial]['name']
-
-        #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
-            if flyback_corrected is True:
-                for f in framenums:
-                    if f in frame_idxs:
-                        match = frame_idxs.index(f)
-                    else:
-                        if f-1 in frame_idxs:
-                            match = frame_idxs.index(f-1)
-                        elif f+1 in frame_idxs:
-                            match = frame_idxs.index(f+1)
-                        else:
-                            print "NO MATCH FOUND for frame:", f
-                            #framenums = [frame_idxs.index(f) for f in framenums]
-
+		if flyback_corrected is True:
                     if first_frame_on in frame_idxs: 
                         first_frame_on = frame_idxs.index(first_frame_on)
                     else:
-                        if first_frame_on-1 in frame_idxs:
-                            first_frame_on = frame_idxs.index(first_frame_on-1)
-                        elif first_frame_on+1 in frame_idxs:
-                                    first_frame_on = frame_idxs.index(first_frame_on+1)
+                        if first_frame_on+1 in frame_idxs:
+                            first_frame_on = frame_idxs.index(first_frame_on+1)
+                        elif first_frame_on-1 in frame_idxs:
+                                    first_frame_on = frame_idxs.index(first_frame_on-1)
                         else:
                             print "NO match found for FIRST frame ON:", first_frame_on
+#
+                #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
+		# print first_frame_on
+	    
+	    preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
+	    postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+	    
+	    framenums = [preframes, [first_frame_on], postframes]
+	    framenums = reduce(operator.add, framenums)
+	    print "POST FRAMES:", len(framenums)
+	    diffs = np.diff(framenums)
+	    consec = [i for i in np.diff(diffs) if not i==0]
+	    if len(consec)>0: 
+		print "BAD FRAMES:", trialnum, stim, framenums
 
-            print "sec to plot:", len(framenums)/volumerate
+	    if custom_mw is True:
+		stimname = 'stimulus%02d' % int(stim)
+	    else:
+		stimname = trialdict[currfile][currtrial]['name']
+
+# 	    if custom_mw is True:
+# 		preframes = list(np.arange(int(first_frame_on-nframes_iti_pre), first_frame_on, 1))
+#                 postframes = list(np.arange(first_frame_on+1, int(round(first_frame_on+vols_per_trial-nframes_iti_pre)), 1))
+# 		framenums = [preframes, [first_frame_on], postframes]
+# 		framenums = reduce(operator.add, framenums)
+# 		#print "POST FRAMES:", postframes
+# 		diffs = np.diff(framenums)
+# 		consec = [i for i in np.diff(diffs) if not i==0]
+# 		if len(consec)>0: 
+# 		    print "BAD FRAMES:", trialnum, stim, framenums
+#                 #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
+# 		stimname = 'stimulus%02d' % int(stim)
+#             else:
+#                 first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
+# 		print first_frame_on
+# 	        first_frame_iti = int(round(trialdict[currfile][currtrial]['stim_off_idx']/nslices))	
+# 		#framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+# 		preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
+# 		postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+# 		#postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + vols_per_trial - nframes_iti_pre)), 1))
+# 		#postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on+nframes_on+nframes_iti_post)), 1))
+# 		# print "vols per:", vols_per_trial-nframes_iti_pre, "sum:", nframes_on+nframes_iti_post, "post:", nframes_post_onset
+# 		framenums = [preframes, [first_frame_on], postframes]
+#        		framenums = reduce(operator.add, framenums)
+# 		#print "POST FRAMES:", len(postframes)
+# 		diffs = np.diff(framenums)
+# 		consec = [i for i in np.diff(diffs) if not i==0]
+# 		if len(consec)>0: 
+# 		    print "BAD FRAMES:", trialnum, stim, framenums
+# 
+# 	        #print "sec to plot:", len(framenums)/volumerate
+# 		stimname = trialdict[currfile][currtrial]['name']
+ 
+        	#framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
+            
+# 	    if flyback_corrected is True:
+#                 for f in framenums:
+#                     if f in frame_idxs:
+#                         match = frame_idxs.index(f)
+#                     else:
+#                         if f-1 in frame_idxs:
+#                             match = frame_idxs.index(f-1)
+#                         elif f+1 in frame_idxs:
+#                             match = frame_idxs.index(f+1)
+#                         else:
+#                             print "NO MATCH FOUND for frame:", f
+#                             #framenums = [frame_idxs.index(f) for f in framenums]
+# 
+#                     if first_frame_on in frame_idxs: 
+#                         first_frame_on = frame_idxs.index(first_frame_on)
+#                     else:
+#                         if first_frame_on-1 in frame_idxs:
+#                             first_frame_on = frame_idxs.index(first_frame_on-1)
+#                         elif first_frame_on+1 in frame_idxs:
+#                                     first_frame_on = frame_idxs.index(first_frame_on+1)
+#                         else:
+#                             print "NO match found for FIRST frame ON:", first_frame_on
+# 
+            #print "sec to plot:", len(framenums)/volumerate
 
             #frametimes = [frames_tsecs[f] for f in framenums]
 

@@ -150,9 +150,11 @@ slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str
 
 # Define output directories:
 acquisition_dir = os.path.join(source, experiment, sess, acquisition)
-existing_rois = sorted(os.listdir(os.path.join(acquisition_dir, 'ROIs')), key=natural_keys)
+roi_dir = os.path.join(acquisition_dir, 'ROIs')
+existing_rois = sorted(os.listdir(roi_dir), key=natural_keys)
 
-existing_blob_rois = sorted([r for r in existing_rois if 'LoG' in r or 'DoG' in r], key=natural_keys)
+#existing_blob_rois = sorted([r for r in existing_rois if 'LoG' in r or 'DoG' in r], key=natural_keys)
+existing_blob_rois = sorted([r for r in existing_rois if os.path.isdir(os.path.join(roi_dir, r))], key=natural_keys)
 
 if len(existing_rois)>0:
     print "Found existing blob ROIs:"
@@ -198,34 +200,42 @@ roi_reference_path = os.path.join(acquisition_dir, 'ROIs', 'roiparams.json')
 #     roiparams[curr_roi_id] = params_dict
 # 
 
-base_roi_dir = os.path.join(acquisition_dir, 'ROIs', roi_id)
-if not os.path.exists(base_roi_dir):
-    os.mkdir(base_roi_dir)
+curr_roi_dir = os.path.join(acquisition_dir, 'ROIs', roi_id)
+if not os.path.exists(curr_roi_dir):
+    os.mkdir(curr_roi_dir)
 
-log_roi_dir = os.path.join(base_roi_dir, 'blobs_LoG')
-if not os.path.exists(log_roi_dir):
-    os.makedirs(log_roi_dir)
+fig_dir = os.path.join(curr_roi_dir, 'figures')
+if not os.path.exists(fig_dir):
+    os.makedirs(fig_dir)
 
-dog_roi_dir = os.path.join(base_roi_dir, 'blobs_DoG')
-if not os.path.exists(dog_roi_dir):
-    os.makedirs(dog_roi_dir)
-    
-log_fig_dir = os.path.join(log_roi_dir,'figures')
-if not os.path.exists(log_fig_dir):
-    os.mkdir(log_fig_dir)
+mask_dir = os.path.join(curr_roi_dir, 'masks')
+if not os.path.exists(mask_dir):
+    os.makedirs(mask_dir)
 
-dog_fig_dir = os.path.join(dog_roi_dir,'figures')
-if not os.path.exists(dog_fig_dir):
-    os.mkdir(dog_fig_dir)
-
-log_mask_dir = os.path.join(log_roi_dir,'masks')
-if not os.path.exists(log_mask_dir):
-    os.mkdir(log_mask_dir)
-
-dog_mask_dir = os.path.join(dog_roi_dir,'masks')
-if not os.path.exists(dog_mask_dir):
-    os.mkdir(dog_mask_dir)
-
+# log_roi_dir = os.path.join(base_roi_dir, 'blobs_LoG')
+# if not os.path.exists(log_roi_dir):
+#     os.makedirs(log_roi_dir)
+# 
+# dog_roi_dir = os.path.join(base_roi_dir, 'blobs_DoG')
+# if not os.path.exists(dog_roi_dir):
+#     os.makedirs(dog_roi_dir)
+#     
+# log_fig_dir = os.path.join(log_roi_dir,'figures')
+# if not os.path.exists(log_fig_dir):
+#     os.mkdir(log_fig_dir)
+# 
+# dog_fig_dir = os.path.join(dog_roi_dir,'figures')
+# if not os.path.exists(dog_fig_dir):
+#     os.mkdir(dog_fig_dir)
+# 
+# log_mask_dir = os.path.join(log_roi_dir,'masks')
+# if not os.path.exists(log_mask_dir):
+#     os.mkdir(log_mask_dir)
+# 
+# dog_mask_dir = os.path.join(dog_roi_dir,'masks')
+# if not os.path.exists(dog_mask_dir):
+#     os.mkdir(dog_mask_dir)
+# 
 
 # Save parameter names and values used for ROI creation to a record structure 
 # to be saved as a MATLAB structure
@@ -253,18 +263,21 @@ print "N slices: ", len(avg_slices)
  
 #initialize empty dictionaries to populate as we go on
 source_paths = np.zeros((nslices,), dtype=np.object)
-log_maskpaths = np.zeros((nslices,), dtype=np.object)
-dog_maskpaths = np.zeros((nslices,), dtype=np.object)
-log_rois = np.zeros((nslices,), dtype=np.object)
-dog_rois = np.zeros((nslices,), dtype=np.object)
-log_nrois = np.zeros((nslices,))
-dog_nrois = np.zeros((nslices,))
+maskpaths = np.zeros((nslices,), dtype=np.object)
+curr_rois = np.zeros((nslices,), dtype=np.object)
+nrois = np.zeros((nslices,))
 
+#log_maskpaths = np.zeros((nslices,), dtype=np.object)
+#dog_maskpaths = np.zeros((nslices,), dtype=np.object)
+#log_rois = np.zeros((nslices,), dtype=np.object)
+#dog_rois = np.zeros((nslices,), dtype=np.object)
+#log_nrois = np.zeros((nslices,))
+#dog_nrois = np.zeros((nslices,))
+#
 for currslice in range(nslices):
     rois = dict()
     currslice_name = 'slice%i' % int(currslice+1)
     print currslice_name
-
 
     #get tif file name
     tiff_path = os.path.join(slice_directory, avg_slices[currslice])
@@ -284,9 +297,8 @@ for currslice in range(nslices):
 
     # Laplacian of Gaussians
     # blobs_log = blob_log(image_processed, max_sigma=6, min_sigma=3, threshold=.01)
-    blobs_log = blob_log(image_processed, max_sigma=max_sigma_val, min_sigma=min_sigma_val, threshold=blob_threshold)
-
-    blobs_log[:, 2] = blobs_log[:, 2] * sqrt(2) # Compute radii in the 3rd column.
+    # blobs_log = blob_log(image_processed, max_sigma=max_sigma_val, min_sigma=min_sigma_val, threshold=blob_threshold)
+    # blobs_log[:, 2] = blobs_log[:, 2] * sqrt(2) # Compute radii in the 3rd column.
 
     # Difference of Gaussians
     blobs_dog = blob_dog(image_processed, max_sigma=max_sigma_val, min_sigma=min_sigma_val, threshold=blob_threshold)
@@ -294,52 +306,65 @@ for currslice in range(nslices):
 
 
     # Plot and save figures
-    blobs_list = [blobs_log, blobs_dog]
-    colors = ['yellow', 'red']
-    titles = ['Laplacian of Gaussian', 'Difference of Gaussian']
+    blobs_list = [blobs_dog]
+    colors = ['red']
+    titles = ['Difference of Gaussian'] 
+    # blobs_list = [blobs_log, blobs_dog]
+    # colors = ['yellow', 'red']
+    # titles = ['Laplacian of Gaussian', 'Difference of Gaussian']
     sequence = zip(blobs_list, colors, titles)
 
-    fig, axes = plt.subplots(1, 2, figsize=(20, 10), sharex=True, sharey=True,
-                             subplot_kw={'adjustable': 'box-forced'})
-    ax = axes.ravel()
+#     fig, axes = plt.subplots(1, 2, figsize=(20, 10), sharex=True, sharey=True,
+#                              subplot_kw={'adjustable': 'box-forced'})
+#     ax = axes.ravel()
 
+    fig = plt.figure(figsize=(20, 10))
+    ax = plt.gca()
     for idx, (blobs, color, title) in enumerate(sequence):
-        ax[idx].set_title(title)
-        ax[idx].imshow(image, interpolation='nearest', cmap='gray')
+        plt.title(title)
+        plt.imshow(image, interpolation='nearest', cmap='gray')
+#         ax[idx].set_title(title)
+#         ax[idx].imshow(image, interpolation='nearest', cmap='gray')
         for blob in blobs:
             y, x, r = blob
-            c = plt.Circle((x, y), r, color=color, linewidth=1, fill=False)
-            ax[idx].add_patch(c)
-        ax[idx].set_axis_off()
+            c = plt.Circle((x, y), r, color=color, linewidth=1, fill=False) 
+            ax.add_patch(c)
+            # ax[idx].add_patch(c)
+        ax.set_axis_off()  
+        # ax[idx].set_axis_off()
 
     plt.tight_layout()
 
     #write image to file
     imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (sess,acquisition,currslice+1,signal_channel,reference_file)
-    plt.savefig(os.path.join(log_fig_dir, imname))
-    plt.savefig(os.path.join(dog_fig_dir, imname))
+    #plt.savefig(os.path.join(log_fig_dir, imname))
+    #plt.savefig(os.path.join(dog_fig_dir, imname))
+    plt.savefig(os.path.join(fig_dir, imname))
+
 
     # plt.show()
 
     #record roi info in structure
-    log_rois[currslice] = blobs_log
-    dog_rois[currslice] = blobs_dog
-    log_nrois[currslice] = blobs_log.shape[0]
-    dog_nrois[currslice] = blobs_dog.shape[0]
-
+    curr_rois[currslice] = blobs_dog
+    nrois[currslice] = blobs_dog.shape[0]
+#     log_rois[currslice] = blobs_log
+#     dog_rois[currslice] = blobs_dog
+#     log_nrois[currslice] = blobs_log.shape[0]
+#     dog_nrois[currslice] = blobs_dog.shape[0]
+# 
     #aggregate LoG masks
-    masks = np.zeros((image.shape[0],image.shape[1],blobs_log.shape[0]))
-    for blob_idx in range(0,blobs_log.shape[0]):
-        masks[:,:,blob_idx] = createCircularMask(image.shape[0],image.shape[1],(blobs_log[blob_idx,1],blobs_log[blob_idx,0]),blobs_log[blob_idx,2])
-
-    #save to structure
-    rois['masks']=masks
-    #save structure to file, record path in structure
-    mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_channel)
-    mat_filepath = os.path.join(log_roi_dir,'masks', mat_filename)
-    log_maskpaths[currslice] = mat_filepath
-    scipy.io.savemat(mat_filepath, mdict=rois)
-
+#     masks = np.zeros((image.shape[0],image.shape[1],blobs_log.shape[0]))
+#     for blob_idx in range(0,blobs_log.shape[0]):
+#         masks[:,:,blob_idx] = createCircularMask(image.shape[0],image.shape[1],(blobs_log[blob_idx,1],blobs_log[blob_idx,0]),blobs_log[blob_idx,2])
+# 
+#     #save to structure
+#     rois['masks']=masks
+#     #save structure to file, record path in structure
+#     mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_channel)
+#     mat_filepath = os.path.join(log_roi_dir,'masks', mat_filename)
+#     log_maskpaths[currslice] = mat_filepath
+#     scipy.io.savemat(mat_filepath, mdict=rois)
+# 
     #aggregate DoG masks
     masks = np.zeros((image.shape[0],image.shape[1],blobs_dog.shape[0]))
     for blob_idx in range(0,blobs_dog.shape[0]):
@@ -349,31 +374,42 @@ for currslice in range(nslices):
     rois['masks']=masks
     #save structure to file, record path in structure
     mat_filename = '%s_%s_Slice%02d_%s_masks.mat' % (sess,acquisition,currslice+1,signal_channel)
-    mat_filepath = os.path.join(dog_roi_dir,'masks', mat_filename)
-    dog_maskpaths[currslice] = mat_filepath
+    mat_filepath = os.path.join(curr_roi_dir,'masks', mat_filename)
+    maskpaths[currslice] = mat_filepath
+#     mat_filepath = os.path.join(dog_roi_dir,'masks', mat_filename)
+#     dog_maskpaths[currslice] = mat_filepath
     scipy.io.savemat(mat_filepath, mdict=rois)
 
-print(log_maskpaths)
-#populate fields of params strucutre
-roiparams['params']=params_dict
-roiparams['nrois']=log_nrois
-roiparams['roi_info']=log_rois
-roiparams['sourcepaths']=source_paths
-roiparams['maskpaths']=log_maskpaths
-roiparams['maskpath3d']=[]
-
-#save roiparams structure to file
-scipy.io.savemat(os.path.join(log_roi_dir,'roiparams'), {'roiparams': roiparams})
-
+# print(log_maskpaths)
+# #populate fields of params strucutre
+# roiparams['params']=params_dict
+# roiparams['nrois']=log_nrois
+# roiparams['roi_info']=log_rois
+# roiparams['sourcepaths']=source_paths
+# roiparams['maskpaths']=log_maskpaths
+# roiparams['maskpath3d']=[]
+# 
+# #save roiparams structure to file
+# scipy.io.savemat(os.path.join(log_roi_dir,'roiparams'), {'roiparams': roiparams})
+# 
 #do it again for DoG methods
+print maskpaths
 roiparams['params']=params_dict
-roiparams['nrois']=dog_nrois
-roiparams['roi_info']=dog_rois
+roiparams['nrois']=nrois
+roiparams['roi_info']=curr_rois
 roiparams['sourcepaths']=source_paths
-roiparams['maskpaths']=dog_maskpaths
+roiparams['maskpaths']=maskpaths
 roiparams['maskpath3d']=[]
-scipy.io.savemat(os.path.join(dog_roi_dir,'roiparams'), {'roiparams': roiparams})
-
+scipy.io.savemat(os.path.join(curr_roi_dir,'roiparams'), {'roiparams': roiparams})
+# print maskpaths
+# roiparams['params']=params_dict
+# roiparams['nrois']=dog_nrois
+# roiparams['roi_info']=dog_rois
+# roiparams['sourcepaths']=source_paths
+# roiparams['maskpaths']=dog_maskpaths
+# roiparams['maskpath3d']=[]
+# scipy.io.savemat(os.path.join(dog_roi_dir,'roiparams'), {'roiparams': roiparams})
+# 
 
 # Save pertinent roi params for quick views:
 if os.path.exists(roi_reference_path):
@@ -387,7 +423,7 @@ if roi_id not in roiref:
 
 roiref[roi_id]['params'] = params_dict
 roiref[roi_id]['source'] = os.path.split(source_paths[0])[0]
-roiref[roi_id]['nrois'] = dog_nrois
+roiref[roi_id]['nrois'] = nrois
 with open(roi_reference_path, 'w') as f:
     dump(roiref, f, indent=4)
 

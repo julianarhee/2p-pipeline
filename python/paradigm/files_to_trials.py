@@ -1,4 +1,30 @@
 #!/usr/bin/env python2
+'''
+python files_to_trials.py -h for opts.
+
+Requires stimdict containing relevant frame indices for each trial:
+    - output of create_stimdict.py
+    - <path_to_paradigm_files>/stimdict.pkl (.json)
+
+Requires stimorder file (1 for all files, or 1 for each file):
+    - order of stimuli (by IDX) in a given TIFF file
+    - output of extract_acquisition_events.py
+    - <path_to_paradigm_files>/stimorder_FileXXX.txt (or: stim_order.txt)
+
+
+Requires tracestruct containing traces (frames_in_files x nrois matrix) for each file:
+    - output of get_rois_and_traces step of run_pipeline.m (MATLAB)
+    - <path_to_analysis_specific_trace_structs>/traces_SliceXX_ChannelXX.mat
+
+OUTPUTS:
+    - stimtraces dicts :  traces-by-roi for each trial (list of arrays) for each stimulus 
+    - <path_to_analysis_specific_trace_structs>/Parsed/stimtraces_ChannelXX_SliceXX.mat (.json, .pkl)
+
+
+
+
+'''
+
 import os
 import json
 import re
@@ -79,11 +105,17 @@ parser.add_option('-I', '--id', action="store",
 
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
+
+parser.add_option('--raw', action="store_true",
+                  dest="raw", default=False, help="Use raw traces instead of HP-filtered traces")
+
 # parser.add_option('-c', '--channel', action="store",
 #                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 # 
 
 (options, args) = parser.parse_args() 
+
+raw = options.raw
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -149,23 +181,34 @@ file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
 nfiles = len(file_names)
 
 
-# Get masks for each slice: 
+# Get ROIPARAMS: 
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
 roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 if 'roiparams' in roiparams.keys():
-    maskpaths = roiparams['roiparams']['maskpaths']
-else:
-    maskpaths = roiparams['maskpaths']
+    roiparams = roiparams['roiparams']
+    # maskpaths = roiparams['roiparams']['maskpaths']
+maskpaths = roiparams['maskpaths']
 if not isinstance(maskpaths, list):
     maskpaths = [maskpaths]
 
-masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in range(len(maskpaths)))
-for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
-    slice_name = "Slice%02d" % int(slice_idx+1)
-    print "Loading masks: %s..." % slice_name 
-    currmasks = loadmat(maskpath); currmasks = currmasks['masks']
-    masks[slice_name]['nrois'] =  currmasks.shape[2]
-    masks[slice_name]['masks'] = currmasks
+
+# Check slices to see if maskpaths exist for all slices, or just a subset:
+if 'sourceslices' in roiparams.keys():
+    slices = roiparams['sourceslices']
+else:
+    slices = range(len(maskpaths))
+print "Found masks for slices:", slices
+
+
+# # Load masks:
+# masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in slices)
+# for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
+#     slice_name = "Slice%02d" % int(slice_idx+1)
+#     print "Loading masks: %s..." % slice_name 
+#     tmpmasks = loadmat(maskpath); tmpmasks = tmpmasks['masks']
+#     masks[slice_name]['nrois'] =  tmpmasks.shape[2]
+#     masks[slice_name]['masks'] = tmpmasks
+# 
 
 # Load trace structs:
 selected_channel = int(ref['signal_channel'][analysis_id])
@@ -194,8 +237,7 @@ if not os.path.exists(parsed_traces_dir):
     os.mkdir(parsed_traces_dir)
 
 
-# Split all traces by stimulus-ID:
-# ----------------------------------------------------------------------------
+# Get num trials for each stimulus (combine across files):
 stim_ntrials = dict()
 for stim in stimdict.keys():
     stim_ntrials[stim] = 0
@@ -204,12 +246,14 @@ for stim in stimdict.keys():
 
 
 
+# Split all traces by stimulus-ID:
+# ----------------------------------------------------------------------------
 
 stimtraces_all_slices = dict()
 
 for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)):
 
-    currslice = "Slice%02d" % int(slice_idx+1)
+    currslice = "Slice%02d" % int(slices[slice_idx]) # int(slice_idx+1)
     stimtraces = dict((stim, dict()) for stim in stimdict.keys())
 
     tracestruct = loadmat(os.path.join(trace_dir, trace_fn))
@@ -228,14 +272,20 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
 #            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
 
-#            nframes_on = stim_on_sec * volumerate
+            nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
 #            nframes_off = vols_per_trial - nframes_on
 #            frames_iti = round(iti * volumerate) 
             curr_ntrials = len(stimdict[stim][currfile].frames)
-            currtraces = tracestruct['file'][fi].tracematDC
+            if raw is True:
+		currtraces = tracestruct['file'][fi].rawtracemat
+	    else:
+		currtraces = tracestruct['file'][fi].tracematDC
+
+	    print currtraces.shape
             for currtrial_idx in range(curr_ntrials):
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
-                #print len(currtrial_frames)
+                #print currtrial_frames
+		#print len(currtrial_frames)
    
                 # .T to make rows = rois, cols = frames 
                 nframes = currtraces.shape[0]
@@ -244,9 +294,9 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
                 repidx += 1
-                
+                #print stimdict[stim][currfile].stim_on_idx 
                 curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
-                stim_on_frames.append([curr_frame_onset, curr_frame_onset + (stim_on_sec*volumerate)-1])
+                stim_on_frames.append([curr_frame_onset, curr_frame_onset + nframes_on])
                 
         check_stimname = list(set(stimdict[stim][currfile].stimid))
         if len(check_stimname)>1:
@@ -265,6 +315,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         stimtraces[stim]['name'] = stimname
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
     	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+	# print stimtraces[stim]['frames_stim_on']
         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois
