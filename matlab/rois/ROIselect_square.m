@@ -1,4 +1,4 @@
-function [masks, RGBimg]=ROIselect_circle(calcimg)
+function [masks, RGBimg]=ROIselect_square(calcimg)
 
 %key codes: x-delete chosen centres
 %          mouse click-draw ROI
@@ -38,7 +38,7 @@ drawnow;
 masks=[];
 masks_ones={};
 pos=[10,10,2*radius,2*radius];
-h = imellipse(ax, pos);
+h = imrect(ax, pos);
 
 mode = -1;
 
