@@ -34,21 +34,13 @@ from json_tricks.np import dump, dumps, load, loads
 from mat2py import loadmat
 import cPickle as pkl
 import scipy.io
+import optparse
 
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
-# 
-# class StimInfo:
-#     def _init_(self, stimid=None, trials=None, frames=None, frames_sec=None, stim_on_idx=None):
-#         self.stimid = stimid #''
-#         self.trials = trials # []
-#         self.frames = frames # []
-#         self.frames_sec = frames_sec # []
-#         self.stim_on_idx = stim_on_idx #[]
-# 
 
 class StimInfo:
     def _init_(self):
@@ -62,37 +54,7 @@ def serialize_json(instance=None, path=None):
     dt = {}
     dt.update(vars(instance))
 
-#     with open(path, "w") as file:
-#         json.dump(dt, file)
-# 
-
-# def deserialize_json(cls=None, data=None):
-#     print cls
-#     instance = object.__new__(cls)
-# 
-#     for key, value in data.items():
-#         setattr(instance, key, value)
-# 
-#     return instance
-# 
-# 
-# def deserialize_json(cls=None, path=None):
-# 
-#     def read_json(_path):
-#         with open(_path, "r") as file:
-#             return json.load(file)
-# 
-#     data = read_json(path)
-# 
-#     instance = object.__new__(cls)
-# 
-#     for key, value in data.items():
-#         setattr(instance, key, value)
-# 
-#     return instance
  
-import optparse
-
 parser = optparse.OptionParser()
 parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
 parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
@@ -106,16 +68,12 @@ parser.add_option('-I', '--id', action="store",
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 
-parser.add_option('--raw', action="store_true",
-                  dest="raw", default=False, help="Use raw traces instead of HP-filtered traces")
-
 # parser.add_option('-c', '--channel', action="store",
 #                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 # 
 
 (options, args) = parser.parse_args() 
 
-raw = options.raw
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -161,15 +119,6 @@ ref_json = 'reference_%s.json' % functional_dir
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
     ref = json.load(fr)
 
-# =====================================================
-# Set ROI method and Trace method:
-# =====================================================
-#curr_roi_method = 'blobs_DoG' #ref['roi_id'] #'blobs_DoG'
-#curr_trace_method = ref['trace_id'] #'blobs_DoG'
-#trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
-#trace_dir = ref['trace_dir']
-# =====================================================
-
 
 # Load SI meta data:
 si_basepath = ref['raw_simeta_path'][0:-4]
@@ -205,16 +154,6 @@ if isinstance(slices, int):
 print "Found masks for slices:", slices
 
 
-# # Load masks:
-# masks = dict(("Slice%02d" % int(slice_idx+1), dict()) for slice_idx in slices)
-# for slice_idx,maskpath in enumerate(sorted(maskpaths, key=natural_keys)):
-#     slice_name = "Slice%02d" % int(slice_idx+1)
-#     print "Loading masks: %s..." % slice_name 
-#     tmpmasks = loadmat(maskpath); tmpmasks = tmpmasks['masks']
-#     masks[slice_name]['nrois'] =  tmpmasks.shape[2]
-#     masks[slice_name]['masks'] = tmpmasks
-# 
-
 # Load trace structs:
 selected_channel = int(ref['signal_channel'][analysis_id])
 trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
@@ -225,16 +164,19 @@ if len(trace_fns_by_slice)==0:
     print "No trace structs found for Channel %i." % int(selected_channel)
 print trace_fns_by_slice
 
+
 # Get PARADIGM INFO:
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
 paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
+
 
 # Load stimulus dict:
 stimdict_fn = 'stimdict.pkl'
 with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
      stimdict = pkl.load(f) #json.load(f)
 #print "STIMDICT: ", sorted(stimdict.keys(), key=natural_keys)
+
 
 # Create parsed-trials dir with default format:
 parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
@@ -282,10 +224,8 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 #            nframes_off = vols_per_trial - nframes_on
 #            frames_iti = round(iti * volumerate) 
             curr_ntrials = len(stimdict[stim][currfile].frames)
-            if raw is True:
-		currtraces = tracestruct['file'][fi].rawtracemat
-	    else:
-		currtraces = tracestruct['file'][fi].tracematDC
+	    rawtraces = tracestruct['file'][fi].rawtracemat
+	    currtraces = tracestruct['file'][fi].tracematDC
 
 	    #print currtraces.shape
             for currtrial_idx in range(curr_ntrials):
@@ -300,7 +240,8 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 nrois = currtraces.shape[1] 
 		#print nframes, nrois, currtrial_frames.shape
                 #print currtraces.shape
-                curr_traces_allrois.append(currtraces[currtrial_frames, :])
+                raw_traces_allrois.append(rawtraces[currtrial_frames, :]) 
+	        curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
                 repidx += 1
                 #print stimdict[stim][currfile].stim_on_idx 
@@ -323,6 +264,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         
         stimtraces[stim]['name'] = stimname
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
+        stimtraces[stim]['raw_traces'] = np.asarray(raw_traces_allrois)
     	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
 	# print stimtraces[stim]['frames_stim_on']
         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
@@ -330,20 +272,20 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         stimtraces[stim]['nrois'] = nrois
 
 
-    curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currchannel, currslice)
+    curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currslice, currchannel)
     print curr_stimtraces_json
     with open(os.path.join(parsed_traces_dir, curr_stimtraces_json), 'w') as f:
         dump(stimtraces, f, indent=4)
 
 
-    curr_stimtraces_pkl = 'stimtraces_%s_%s.pkl' % (currchannel, currslice)
+    curr_stimtraces_pkl = 'stimtraces_%s_%s.pkl' % (currslice, currchannel)
     print curr_stimtraces_pkl
     with open(os.path.join(parsed_traces_dir, curr_stimtraces_pkl), 'wb') as f:
         pkl.dump(stimtraces, f, protocol=pkl.HIGHEST_PROTOCOL)
 
 
     # save as .mat:
-    curr_stimtraces_mat = 'stimtraces_%s_%s.mat' % (currchannel, currslice)
+    curr_stimtraces_mat = 'stimtraces_%s_%s.mat' % (currslice, currchannel)
     # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
     stimtraces_mat = dict()
     for stim in sorted(stimdict.keys(), key=natural_keys):
@@ -356,56 +298,8 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
   
      
     stimtraces_all_slices[currslice] = stimtraces
+    stimtraces_all_fn = 'all_stimtraces_%s.pkl' % currchannel
+    with open(os.path.join(parsed_traces_dir, stimtraces_all_fn), 'wb') as f:
+        pkl.dump(stimtraces_all_slices, f, protocol=pkl.HIGHEST_PROTOCOL)
  
-        #traces_by_stim[stim][currslice] = np.asarray(curr_traces_allrois)
-        #frames_stim_on[stim][currslice] = stim_on_frames
 
-# 
-# def default(obj):
-#     if isinstance(obj, np.ndarray):
-#         return obj.tolist()
-#     raise TypeError('Not serializable')
-# 
-# stimtraces_json = 'stimtraces.json'
-# with open(os.path.join(path_to_paradigm_files, stimtraces_json), 'w') as f:
-#     dump(stimtraces, f, indent=4)
-#  
-	
-# nframes = traces.df_f.T.shape[1]
-# nrois = traces.df_f.T.shape[0]
-# print "N files:", nfiles
-# print "N frames:", nframes
-# print "N rois:", nrois
-# 
-#    
-
-#raw = traces_by_stim[stim][:, roi, :]
-#avg = np.mean(raw, axis=0)
-# for slice_idx,currslice in enumerate(sorted(stimtraces_all_slices.keys(), key=natural_keys)):
-#     traces_by_stim = stimtraces_all_slices[currslice] #[currstim]['traces']
-#     nrois = traces_by_stim['1']['nrois']
-#     traces_by_roi = dict((str(roi), dict()) for roi in range(nrois))
-# 
-#     for stim in sorted(traces_by_stim.keys(), key=natural_keys):
-#         print "STIM:", stim
-#         for roi in range(nrois):
-#             print "ROI:", roi
-#             roiname = str(roi)
-#             print traces_by_stim[stim]['traces'].shape
-#             raw = traces_by_stim[stim]['traces'][:,:,roi]
-#             ntrials = raw.shape[0]
-#             nframes_in_trial = raw.shape[1]
-#             curr_dfs = np.empty((ntrials, nframes_in_trial))
-#             for trial in range(ntrials):
-# 		frame_on = traces_by_stim[stim]['frames_stim_on'][trial][0]
-#                 baseline = np.mean(raw[trial, 0:frame_on])
-#                 df = (raw[trial, :] - baseline) / baseline
-# 		curr_dfs[trial, :] = df
-#               
-#             traces_by_roi[roiname][stim] = curr_dfs
-# 
-#     curr_roitraces_json = 'roitraces_%s.json' % currslice
-#     print curr_roitraces_json
-#     with open(os.path.join(parsed_traces_dir, curr_roitraces_json), 'w') as f:
-#         dump(traces_by_roi, f, indent=4)
-# 
