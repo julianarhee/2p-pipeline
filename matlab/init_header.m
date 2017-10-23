@@ -22,7 +22,7 @@ tiff_source = 'functional'; %'functional_subset';
 % Set the following if NOT loading a previous analysis:
 % ----------------------------------------------------------------------------
 
-analysis_id = '';
+analysis_id = 'analysis05';
 
 % Set ROI params: 
 roi_id = 'circle_test'; %manual2D_poly_aligned'; %'pyblob2D';
@@ -35,9 +35,9 @@ flyback_corrected = false; %false;
 split_channels = false;
 
 % Set Motion-Correction params:
-correct_motion = true %false;
+correct_motion = true; %false;
 correct_bidi_scan = false; %true; %true; %false;
-reference_channel = 1
+reference_channel = 1;
 reference_file = 6; %3; %6; %3
 method = 'Acquisition2P'; 
 algorithm = @withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid; %@withinFile_withinFrame_lucasKanade

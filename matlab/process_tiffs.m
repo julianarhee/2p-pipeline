@@ -1,5 +1,8 @@
-function [I, A] = process_tiffs(I, A)
+function [I, A] = process_tiffs(I, A, new_mc_id)
 
+% =========================================================================
+% PREPROCESSING STEPS:
+% =========================================================================
 % 1. Set parameters for motion-correction.
 % 2. If correcting, make standard directories and run correction.
 % 3. Re-interleave parsed TIFFs and save in tiff base dir (child of
@@ -8,22 +11,22 @@ function [I, A] = process_tiffs(I, A)
 % post-mc-cleanup). [optional]
 % 5. Create averaged time-series for all slices using selected correction
 % method. Save in standard Channel-File-Slice format.
+% =========================================================================
 
-%if do_preprocessing
+%% Set paths to reference:
+path_to_reference = fullfile(A.acquisition_base_dir, sprintf('reference_%s.mat', I.functional));
+path_to_reference_json = fullfile(A.acquisition_base_dir, sprintf('reference_%s.json', I.functional));
 
-% TODO (?):  Run meta-data parsing after
-% flyback-correction (py), including SI-meta correction if
-% flyback-correction changes the TIFF volumes.
-
-% Load current analysis mcparams:
-%curr_mcparams = 
+%% Load current mcparams:
+mcparams = load(A.mcparams_path);
+curr_mcparams = mcparams.(I.mc_id);
 
 % -------------------------------------------------------------------------
 %% 1.  Do Motion-Correction (and/or) Get time-series for each slice:
 % -------------------------------------------------------------------------
-if I.corrected && new_mc_id && process_raw
+if I.corrected && new_mc_id %new_mc_id && process_raw
     do_motion_correction = true;
-elseif I.corrected && (~new_mc_id || ~process_raw)
+elseif I.corrected && ~new_mc_id %(~new_mc_id || ~process_raw)
     found_nchannels = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*Channel*'));
     found_nchannels = {found_nchannels(:).name}';
     if length(found_nchannels)>0 && isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
@@ -31,7 +34,7 @@ elseif I.corrected && (~new_mc_id || ~process_raw)
         found_nslices = {found_nslices(:).name}';
         if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices)
             fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
-            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
         end
         if strcmp(user_says_mc, 'Y')
             do_motion_correction = true;
@@ -47,7 +50,7 @@ elseif I.corrected && (~new_mc_id || ~process_raw)
         found_tiffs = {found_tiffs(:).name}';
         fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
         found_tiffs
-        user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's')
+        user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
         if strcmp(user_says_mc, 'Y')
             do_motion_correction = true;
         elseif strcmp(user_says_mc, 'n')
@@ -107,7 +110,7 @@ fprintf('Finished motion-correcting TIFF data.\n');
 
 % PYTHON equivalent faster?: 
 deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
-if I.corrected && process_raw
+if I.corrected %&& process_raw
     if ~isdir(deinterleaved_tiff_dir)
         movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
     end
@@ -196,7 +199,7 @@ if ~exist(fullfile(curr_mcparams.source_dir, sprintf('%s.mat', A.base_filename))
     fprintf('%s\n', fullfile(curr_mcparams.source_dir, mfilename));
 end
 
-mcparams.(mc_id) = curr_mcparams;
+mcparams.(I.mc_id) = curr_mcparams;
 save(A.mcparams_path, '-struct', 'mcparams');
 
 end

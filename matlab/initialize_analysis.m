@@ -25,13 +25,13 @@ if new_rolodex_entry
 
     if ~new_rolodex
         existing_records = readtable(path_to_rolodex_table, 'Delimiter', '\t', 'ReadRowNames', true);
-        existing_analyses = existing_records.Properties.RowNames;
+        existing_analysis_names = existing_records.Properties.RowNames;
         existing_records = table2struct(existing_records);
         existing_analysis_idxs = [1:length(existing_records)]; %fieldnames(existing_records);
         
         % Check if current analysis exists:
         tmpI = struct();
-        curr_fields = fieldnames(I)
+        curr_fields = fieldnames(I);
         for field=1:length(fieldnames(I))
             curr_subfield = curr_fields{field};
             if any(size(I.(curr_subfield))>1) && ~ischar(I.(curr_subfield))
@@ -60,21 +60,32 @@ if new_rolodex_entry
     if isempty(analysis_id)
         analysis_id = sprintf('analysis%02d', curr_analysis_idx);
     else
+        overwrite = false;
         while (1)
-            if ismember(analysis_id, existing_analysis_names)
+            if ismember(analysis_id, existing_analysis_names) && ~overwrite
                 fprintf('User provided analysis name that already exists.\n');
                 eidx = find(arrayfun(@(i) strcmp(analysis_id, existing_analysis_names{i}), 1:length(existing_analysis_names)));
                 display(existing_records(eidx))
                 user_says_create = input('Create new analysis ID? Press Y/n: ', 's');
                 if strcmp(user_says_create, 'Y')
                     fprintf('Existing names:\n')
-                    display(existing_analysis_names');
-                    user_analysis_id = input('Enter new IDX, or enter new analysis name:\n', 's');
-                    if all(ismember(user_analysis_id, '0123456789+-.eEdD'))
-                        analysis_id = user_analysis_id;
-                    else
+                    display(existing_analysis_names);
+                    user_analysis_id = input('Enter new IDX, or enter new analysis name (add F to force overwrite):\n', 's')
+                    if strfind(user_analysis_id, 'F')
+                        confirm_overwrite_id = input('Enforcing ovewrite... Re-enter analysis idx to continue: \n', 's');
+                        if all(ismember(confirm_overwrite_id, '0123456789+-.eEdD'))
+                            analysis_id = sprintf('analysis%02d', str2num(confirm_overwrite_id));
+                            overwrite = true
+                            new_analysis = true;
+                            break;
+                        end
+                    elseif all(ismember(user_analysis_id, '0123456789+-.eEdD'))
                         analysis_id = sprintf('analysis%02d', str2num(user_analysis_id));
+                    else
+                        analysis_id = user_analysis_id;
                     end
+                    %end
+                    new_analysis = true;
                 else
                     user_says_reuse = input(sprintf('Use old analysis ID: %s? Press Y/n: ', analysis_id), 's');
                     if user_says_reuse
@@ -173,10 +184,9 @@ if new_rolodex_entry
 
 else
 
-    fprintf('Loaded previous anlalysis entry, with ID: %i\n', I.analysis_id);
+    fprintf('Loaded previous analysis entry, with ID: %s\n', I.analysis_id);
     display(I);
     display(curr_mcparams);
-
 
 end
 

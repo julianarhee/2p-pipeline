@@ -22,16 +22,18 @@ roi_ch = I.signal_channel; %1;%channel to use for ROI creation
 %----------USER INPUT STOPS HERE-----------
 data_dir = A.data_dir.(I.analysis_id); %fullfile(acquisition_base_dir, tiff_source, 'DATA');
 
+
 %load mcparams
 mcparams = load(fullfile(data_dir,'mcparams.mat'));
 
 %retrieve relevant mcparams sub-structure
-mcparams = mcparams.(mcparams_id);
+curr_mcparams = mcparams.(mcparams_id);
+
 
 %use mcparams data to get paths to image
-roi_file = mcparams.ref_file;%use ref file for motion correction to create ROIs
+roi_file = curr_mcparams.ref_file;%use ref file for motion correction to create ROIs
 
-ch_path = fullfile(mcparams.source_dir, sprintf('Averaged_Slices_%s', mcparams.dest_dir), sprintf('Channel%02d', roi_ch), sprintf('File%03d', roi_file));
+ch_path = fullfile(curr_mcparams.source_dir, sprintf('Averaged_Slices_%s', curr_mcparams.dest_dir), sprintf('Channel%02d', roi_ch), sprintf('File%03d', roi_file));
 
 %create empty structure and cells to save roi info
 roiparams = struct;
@@ -74,7 +76,7 @@ for slidx = length(roi_slices);
     %% Save masks
 
     %defining target directories and filepaths
-    roi_base_dir = fullfile(acquisition_base_dir,'ROIs',roi_folder);
+    roi_base_dir = fullfile(A.acquisition_base_dir,'ROIs',roi_folder);
 
     mask_dir = fullfile(roi_base_dir,'masks');
     if ~isdir(mask_dir)
@@ -87,7 +89,7 @@ for slidx = length(roi_slices);
     end
 
     %save masks
-    mask_filename = sprintf('%s_%s_Slice%02d_Channel%02d_masks.mat', session, acquisition, sl, roi_ch);
+    mask_filename = sprintf('%s_%s_Slice%02d_Channel%02d_masks.mat', A.session, A.acquisition, sl, roi_ch);
     
     %* if file exists, ask user to confirm before overwriting
     if exist(fullfile(mask_dir,mask_filename),'file')==2
@@ -99,7 +101,7 @@ for slidx = length(roi_slices);
 
         if strcmpi(answer,'Y')%replace file
             save(fullfile(mask_dir,mask_filename),'masks');
-        elseif strcmpi(answer,'N')%write file with extra id appended
+        elseif stparcmpi(answer,'N')%write file with extra id appended
             mask_filename = make_duplicate(mask_filename,mask_dir);
             save(fullfile(mask_dir,mask_filename),'masks');
         end
@@ -135,5 +137,5 @@ roiparams.sourceslices = roi_slices;
 roiparams.sourcepaths = sourcepaths;
 roiparams.maskpaths = maskpaths;
 
-roiparams_path = fullfile(acquisition_base_dir,'ROIs', roi_folder, 'roiparams.mat');
+roiparams_path = fullfile(A.acquisition_base_dir,'ROIs', roi_folder, 'roiparams.mat');
 save(roiparams_path,'-struct','roiparams');

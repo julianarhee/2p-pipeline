@@ -3,7 +3,9 @@ function get_traces_from_rois(I, A)
 %% Specify ROI param struct path:
 % if get_rois_and_traces
 
-%% GET ROIS.
+% Load curr_mcparams:
+mcparams = load(A.mcparams_path);
+curr_mcparams = mcparams.(I.mc_id);
 
 
 %% Specify Traces param struct path:

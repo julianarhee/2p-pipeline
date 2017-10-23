@@ -10,32 +10,39 @@ if ~exist(average_slices_basepath, 'dir')
     mkdir(average_slices_basepath)
 end
 
-fprintf('Creating average slices and saving to:\n%s\n', average_slices_basepath);
+% FIrst check to see if average slices already exist:
+saved_ch = simeta.File001.SI.hChannels.channelSave(1);
+ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', saved_ch), sprintf('File%03d', 1));
 
-average = true;
-for tiff_idx=1:nfiles %length(data_files)
-      
-    for ch=1:nchannels
-        ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
-        ch_path_vis = fullfile(average_slices_basepath, sprintf('Channel%02d', ch), sprintf('File%03d_visible', tiff_idx));
-        if ~exist(ch_path, 'dir')
-            mkdir(ch_path)
-            mkdir(ch_path_vis)
+if exist(ch_path, 'dir')
+    nslices = dir(fullfile(ch_path, '*.tif'));
+    if length(nslices)==length(A.slices)
+        fprintf('Found correct number of averaged tiffs in dir:\n')
+        fprintf('%s\n', ch_path);
+        user_says_parse = input('Press Y/n to re-average TIFFs: ', 's');
+        if strcmp(user_says_parse, 'Y')
+            average = true;
         else
-            nslices = dir(fullfile(ch_path, '*.tif'));
-            if length(nslices)==length(A.slices)
-                fprintf('Found correct number of averaged tiffs in dir:\n')
-                fprintf('%s\n', ch_path);
-                user_says_parse = input('Press Y/n to re-average TIFFs: ', 's');
-                if strcmp(user_says_parse, 'Y')
-                    average = true;
-                else
-                    fprintf('Averaged tiffs look good. Not redoing averaging step.\n');
-                    average = false;
-                end       
-            end
-        end 
-        if average
+            fprintf('Averaged tiffs look good. Not redoing averaging step.\n');
+            average = false;
+        end       
+    end
+else
+    average = true;
+end
+
+if average
+    fprintf('Creating average slices and saving to:\n%s\n', average_slices_basepath);
+    for tiff_idx=1:nfiles %length(data_files)
+
+        for ch=1:nchannels
+            ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
+            ch_path_vis = fullfile(average_slices_basepath, sprintf('Channel%02d', ch), sprintf('File%03d_visible', tiff_idx));
+            if ~exist(ch_path, 'dir')
+                mkdir(ch_path)
+                mkdir(ch_path_vis)
+            end 
+
             fprintf('Averaging Channel %i, File %i...\n', ch, tiff_idx);
 
             slice_dir = fullfile(deinterleaved_tiff_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
@@ -54,14 +61,14 @@ for tiff_idx=1:nfiles %length(data_files)
                 else
                     tiffdata = read_imgdata(currtiffpath);
                 end
-        
+
                 fprintf('TIFF %i (slice %i) of %i: size is %s.\n', tiff_idx, sl, length(tiffs), mat2str(size(tiffdata)));
                 avgs(:,:,sl) = mean(tiffdata, 3);
                 slicename = sprintf('average_Slice%02d_Channel%02d_File%03d.tif', sl, ch, tiff_idx);
                 tiffWrite(avgs(:,:,sl), slicename, ch_path, 'int16');	
                 fprintf('Saved slice %s to path %s.\n', slicename, ch_path)
             end
-            
+
             % make visible
             tmp = (avgs-min(avgs(:)))./(max(avgs(:))-min(avgs(:)));
             for sl=1:d3       
@@ -69,6 +76,7 @@ for tiff_idx=1:nfiles %length(data_files)
                 slicename_vis = sprintf('average_Slice%02d_Channel%02d_File%03d_vis.tif', sl, ch, tiff_idx);
                 tiffWrite(avgs_visible*((2^16)-1), slicename_vis, ch_path_vis); % default dtype=uint16
             end
+
         end
     end
 end

@@ -1,4 +1,3 @@
-% function check_init()
 
 % This script checks workspace for user-specified params for analysis.
 % Either loads existing analysis-id (from <acquistion_dir>/analysis_record.json), which loads:
@@ -42,7 +41,9 @@ if ~new_rolodex && load_analysis
                 fprintf('RETRY.\n')
             end
         end
-        new_analysis = false
+        new_analysis = false;
+        new_mc_id = false;
+        new_rolodex_entry = false; 
 
         % Build acq path and get reference struct:
         % ----------------------------------------
@@ -51,13 +52,18 @@ if ~new_rolodex && load_analysis
         path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
 
         A = load(path_to_reference);
+        
+        % Load MCPARAMS:
+        mcparams = load(A.mcparams_path);
+        curr_mcparams = mcparams.(I.mc_id);
 
     else
         fprintf('Rolodex has no fields. Creating new.\n');
         new_rolodex = true;
+        new_rolodex_entry = true;
+        
     end
     
-    new_rolodex_entry = false;
 
 else
     
@@ -220,7 +226,7 @@ else
             mcparams.(prev_mcparams_ids{user_selected_mc})
             confirm_selection = input('Use these params? Press Y/n.\n', 's');
             if strcmp(confirm_selection, 'Y')
-                mc_id = prev_mcparams_ids{user_selected_mc};
+                mc_id = prev_mcparams_ids{user_selected_mc}
                 curr_mcparams = mcparams.(mc_id);
                 
                 break;
@@ -231,7 +237,7 @@ else
     %% 5. Fix base mc dir to allow for multiple mcparams 'CorrectedXX' dirs
 
     if process_raw
-        if correct_motion && ~any(strfind(mc_id, curr_mcparams.dest_dir))
+        if correct_motion && ~any(strfind(curr_mcparams.dest_dir, mc_id))
             curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id);
         end
     else
