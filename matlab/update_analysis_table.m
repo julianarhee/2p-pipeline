@@ -30,7 +30,7 @@ if exist(path_to_record, 'file')
         T = struct();
         for new = new_vars
             new_varname = curr_vars{new};
-            new_col = zeros(nruns, 1);
+            new_col = ''; %zeros(nruns, 1);
             T.(new_varname) = new_col;
         end
         columns_to_add = struct2table(T);

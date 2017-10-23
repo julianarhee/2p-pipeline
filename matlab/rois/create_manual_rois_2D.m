@@ -1,26 +1,26 @@
 
-clc; clear all;
-
-%% Get Path to image
-
- % Set info manually:
-source = '/nas/volume1/2photon/projects';
-experiment = 'gratings_phaseMod';
-session = '20171009_CE059';
-acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
-tiff_source = 'functional'; %'functional_subset';
-acquisition_base_dir = fullfile(source, experiment, session, acquisition);
-curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
-
+% clc; clear all;
+% 
+% %% Get Path to image
+% 
+%  % Set info manually:
+% source = '/nas/volume1/2photon/projects';
+% experiment = 'gratings_phaseMod';
+% session = '20171009_CE059';
+% acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
+% tiff_source = 'functional'; %'functional_subset';
+% acquisition_base_dir = fullfile(source, experiment, session, acquisition);
+% curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
+% 
 %this info is probably specific to this script
-mcparams_id = sprintf('mcparams%02d',1);
-roi_folder = 'manual2D_poly';%name folder into which to save masks
-roi_type = 'polygon';%type of ROI to create ('circle','square',or 'polygon')
-roi_slices = [1];%list of slices to create ROIs for
-roi_ch = 1;%channel to use for ROI creation 
+mcparams_id = I.mc_id; %sprintf('mcparams%02d',1);
+roi_folder = I.roi_id; %'manual2D_poly';%name folder into which to save masks
+roi_type = I.roi_method; %'polygon';%type of ROI to create ('circle','square',or 'polygon')
+roi_slices = I.slices; %[1];%list of slices to create ROIs for
+roi_ch = I.signal_channel; %1;%channel to use for ROI creation 
 
 %----------USER INPUT STOPS HERE-----------
-data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
+data_dir = A.data_dir.(I.analysis_id); %fullfile(acquisition_base_dir, tiff_source, 'DATA');
 
 %load mcparams
 mcparams = load(fullfile(data_dir,'mcparams.mat'));
@@ -53,14 +53,24 @@ for slidx = length(roi_slices);
     calcimg_norm = (calcimg-min(calcimg(:)))./(max(calcimg(:))-min(calcimg(:)));
 
     %% Get masks
-    if strcmpi(roi_type,'circle')
-        [masks, RGBimg]=ROIselect_circle(calcimg_norm);
-    elseif strcmpi(roi_type,'square')
-        [masks, RGBimg]=ROIselect_square(calcimg_norm);
-    elseif strcmpi(roi_type,'polygon')
-        [masks, RGBimg]=ROIselect_polygon(calcimg_norm);
+    switch roi_type
+        case 'manual2D_circle'
+            [masks, RGBimg]=ROIselect_circle(calcimg_norm);
+        case 'manual2D_square'
+            [masks, RGBimg]=ROIselect_square(calcimg_norm);
+        case 'manual2D_polygon'
+            [masks, RGBimg]=ROIselect_polygon(calcimg_norm);
+        otherwise
+            % some default thing
     end
-
+%     if strcmpi(roi_type,'circle')
+%         [masks, RGBimg]=ROIselect_circle(calcimg_norm);
+%     elseif strcmpi(roi_type,'square')
+%         [masks, RGBimg]=ROIselect_square(calcimg_norm);
+%     elseif strcmpi(roi_type,'polygon')
+%         [masks, RGBimg]=ROIselect_polygon(calcimg_norm);
+%     end
+% 
     %% Save masks
 
     %defining target directories and filepaths
