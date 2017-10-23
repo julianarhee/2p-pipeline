@@ -195,6 +195,7 @@ if not isinstance(maskpaths, list):
 # Check slices to see if maskpaths exist for all slices, or just a subset:
 if 'sourceslices' in roiparams.keys():
     slices = roiparams['sourceslices']
+    print "USING SPECIFIED SOURCE SLICES."
 else:
     slices = ref['slices']
 if isinstance(slices, int):
@@ -222,7 +223,7 @@ curr_tracestruct_fns = os.listdir(trace_dir)
 trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
 if len(trace_fns_by_slice)==0:
     print "No trace structs found for Channel %i." % int(selected_channel)
-
+print trace_fns_by_slice
 
 # Get PARADIGM INFO:
 path_to_functional = os.path.join(acquisition_dir, functional_dir)
@@ -233,7 +234,7 @@ path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 stimdict_fn = 'stimdict.pkl'
 with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
      stimdict = pkl.load(f) #json.load(f)
-print "STIMDICT: ", sorted(stimdict.keys(), key=natural_keys)
+#print "STIMDICT: ", sorted(stimdict.keys(), key=natural_keys)
 
 # Create parsed-trials dir with default format:
 parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
@@ -257,6 +258,7 @@ stimtraces_all_slices = dict()
 
 for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)):
 
+    print "EXTRACING FROM:", trace_fn
     currslice = "Slice%02d" % int(slices[slice_idx]) # int(slice_idx+1)
     stimtraces = dict((stim, dict()) for stim in stimdict.keys())
 
@@ -285,16 +287,19 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 	    else:
 		currtraces = tracestruct['file'][fi].tracematDC
 
-	    print currtraces.shape
+	    #print currtraces.shape
             for currtrial_idx in range(curr_ntrials):
+                #print stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
-                #print currtrial_frames
+                currtrial_frames = [int(i) for i in currtrial_frames] 
+		#print "CURRTRIAL FRAMES:", currtrial_frames
 		#print len(currtrial_frames)
    
                 # .T to make rows = rois, cols = frames 
                 nframes = currtraces.shape[0]
                 nrois = currtraces.shape[1] 
-                #print currtraces[currtrial_frames, :].shape
+		#print nframes, nrois, currtrial_frames.shape
+                #print currtraces.shape
                 curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
                 repidx += 1
@@ -313,7 +318,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             print "Check extract_acquisition_events.py and create_stimdict.py"
             print "******************************"
         else:
-	    print check_stimname
+	    #print check_stimname
             stimname = check_stimname[0]
         
         stimtraces[stim]['name'] = stimname
@@ -343,7 +348,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     stimtraces_mat = dict()
     for stim in sorted(stimdict.keys(), key=natural_keys):
         currstim = "stim%02d" % int(stim)
-        print currstim
+        #print currstim
         stimtraces_mat[currstim] = stimtraces[stim]
 
     scipy.io.savemat(os.path.join(parsed_traces_dir, curr_stimtraces_mat), mdict=stimtraces_mat)

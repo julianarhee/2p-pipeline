@@ -129,6 +129,12 @@ parser.add_option('--talpha', action="store",
 parser.add_option('--twidth', action="store",
                   dest="trial_width", default=0.1, help="Line width for individual trials [default: 0.1]")
 
+parser.add_option('--no-color', action="store_true",
+                  dest="no_color", default=False, help="Don't plot by color (just grayscale)")
+
+parser.add_option('--stim-color', action="store_false",
+                  dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
+
 
 (options, args) = parser.parse_args() 
 
@@ -168,7 +174,10 @@ ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
 
-color_by_roi = True
+no_color = options.no_color
+color_by_roi = options.color_by_roi
+
+#color_by_roi = True
 
 cmaptype = 'rainbow'
 
@@ -271,7 +280,7 @@ for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
 # Get masks for current slice:
 slice_names = sorted(masks.keys(), key=natural_keys)
 print "SLICE NAMES:", slice_names
-curr_slice_name = "Slice%02d" % curr_slice_idx
+curr_slice_name = "Slice%02d" % slices[curr_slice_idx]
 currmasks = masks[curr_slice_name]['masks']
 print currmasks.shape
 
@@ -287,13 +296,13 @@ roi_interval = 1
 tmprois = options.rois_to_plot
 if len(tmprois)==0:
     rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
-    sort_name = 'all' #% roi_interval
+    sort_name = '%s_all' % curr_slice_name #% roi_interval
 else:
     rois_to_plot = tmprois.split(',')
     rois_to_plot = [int(r) for r in rois_to_plot]
     roi_string = "".join(['r%i' % int(r) for r in rois_to_plot])
     print roi_string
-    sort_name = 'selected_%s' % roi_string
+    sort_name = '%s_selected_%s' % (curr_slice_name, roi_string)
 
 print "ROIS TO PLOT:", rois_to_plot
 
@@ -338,7 +347,8 @@ stimtrace_fns = os.listdir(path_to_trace_structs)
 stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
 if len(stimtrace_fns)==0:
     print "No stim traces found for Channel %i" % int(selected_channel)
-currslice = "Slice%02d" % curr_slice_idx
+print stimtrace_fns
+currslice = "Slice%02d" % slices[curr_slice_idx]
 stimtrace_fn = [f for f in stimtrace_fns if currchannel in f and currslice in f][0]
 with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
     stimtraces = pkl.load(f)
@@ -355,14 +365,15 @@ nstimuli = len(stimlist)
 # PLOTTING:
 # ----------------------------------------------------------------------------
 
-colormap = plt.get_cmap(cmaptype)
-
-if color_by_roi:
-    colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
+if no_color is True:
+    colorvals = np.zeros((nrois, 3));
+    #colorvals[:,1] = 1
 else:
-    colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
-
-colorvals255 = [c[0:-1]*255 for c in colorvals]
+    colormap = plt.get_cmap(cmaptype)
+    if color_by_roi:
+	colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
+    else:
+	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
 
 #colorvals = np.true_divide(colorvals255, 255.)
 #print len(colorvals255)
@@ -399,7 +410,9 @@ for roi in rois_to_plot:
     for stimnum,stim in enumerate(stimlist):
 
         ntrialstmp = len(stimtraces[stim]['traces'])
+        print stim,ntrialstmp
         nframestmp = [stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))]
+        print nframestmp
         diffs = np.diff(nframestmp)
         if sum(diffs)>0:
             print "Incorrect frame nums per trial:", stimnum, stim
@@ -487,8 +500,8 @@ if experiment=='gratings_phaseMod':
     nrows = nsfs
     ncols = noris
 else:
-    nrows = int(np.ceil(np.sqrt(len(stimlist))))
-    ncols = int(np.ceil(len(stimlist)/float(nrows)))
+    nrows = 6 #int(np.ceil(np.sqrt(len(stimlist))))
+    ncols = 10 #int(np.ceil(len(stimlist)/float(nrows)))
 
 print nrows, ncols
 
@@ -585,8 +598,16 @@ for roi in rois_to_plot:
 	frame_on_idx = dfstruct[roi][stim]['frame_on'][0]
 	#print frame_on_idx
 	stim_frames = [frame_on_idx, frame_on_idx+dfstruct[roi][stim]['stim_on_dur']]
-	ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
-	    
+	#ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
+
+	if no_color is True:
+            ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='r')
+	else:
+	    ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
+
+
+
+    
     #     tvals = dfstruct[roi][stim]['tsec'][0,:]
     #     labels = [item.get_text() for item in ax_curr.get_xticklabels()]
     #     for l in range(len(labels)):

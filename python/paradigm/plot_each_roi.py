@@ -84,6 +84,12 @@ parser.add_option('--talpha', action="store",
 parser.add_option('--twidth', action="store",
                   dest="trial_width", default=0.1, help="Line width for individual trials [default: 0.1]")
 
+parser.add_option('--no-color', action="store_true",
+                  dest="no_color", default=False, help="Don't plot by color (just grayscale)")
+
+parser.add_option('--stim-color', action="store_false",
+                  dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
+
 
 (options, args) = parser.parse_args() 
 analysis_id = options.analysis_id
@@ -122,7 +128,9 @@ ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
 backgroundoffset =  0.3 #0.8
 
-color_by_roi = True
+no_color = options.no_color
+color_by_roi = options.color_by_roi
+#color_by_roi = True
 
 cmaptype = 'rainbow'
 
@@ -283,15 +291,17 @@ nstimuli = len(stimlist)
 # ---------------------------------------------------------------------------
 # PLOTTING:
 # ----------------------------------------------------------------------------
-
-colormap = plt.get_cmap(cmaptype)
-
-if color_by_roi:
-    colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
+if no_color is True:
+    colorvals = np.zeros((nrois, 3));
+    #colorvals[:,1] = 1
 else:
-    colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
+    colormap = plt.get_cmap(cmaptype)
+    if color_by_roi:
+	colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
+    else:
+	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
 
-colorvals255 = [c[0:-1]*255 for c in colorvals]
+    #colorvals255 = [c[0:-1]*255 for c in colorvals]
 
 #colorvals = np.true_divide(colorvals255, 255.)
 #print len(colorvals255)
@@ -335,7 +345,7 @@ for ridx, roi in enumerate(rois_to_plot):
 
     fig = plt.figure(figsize=(noris, noris))
     gs = gridspec.GridSpec(nsfs, noris)
-    gs.update(wspace=.05, hspace=.05)
+    gs.update(wspace=.01, hspace=.01)
     
     rowidx= 0
     plotidx = 0
@@ -420,8 +430,11 @@ for ridx, roi in enumerate(rois_to_plot):
 	    off_fr_idx = on_fr_idx + nframes_on - 1
 	    stim_frames = xvals[0] + [on_fr_idx, off_fr_idx]
 
+	if no_color is True:
+            plt.plot(stim_frames, np.ones((2,))*stim_offset, color='r')
+	else:
+	    plt.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
 
-	plt.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
 
         plt.ylim([ylim_min, ylim_max])
        

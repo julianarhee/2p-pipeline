@@ -58,6 +58,12 @@ parser.add_option('-I', '--id', action="store",
 
 parser.add_option('-b', '--background', action="store",
                   dest="background", default=0.3, help="threshold below which to raise intensity [default: 0.3]")
+parser.add_option('--no-color', action="store_true",
+                  dest="no_color", default=False, help="Don't plot by color (just grayscale)")
+
+parser.add_option('--stim-color', action="store_false",
+                  dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
+
 
 
 (options, args) = parser.parse_args() 
@@ -70,13 +76,18 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
-curr_slice_idx = options.sliceidx
+curr_slice_idx = int(options.sliceidx)
 
 #roi_method = options.roi_method
+no_color = options.no_color
+color_by_roi = options.color_by_roi
 
-color_by_roi = True
+#color_by_roi = True
 cmaptype = 'rainbow'
 background_offset = float(options.background) #0.3 #0.8
+
+
+tmprois = options.rois_to_plot
 
 # ---------------------------------------------------------------------------------
 
@@ -88,10 +99,13 @@ figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figure
 if not os.path.exists(figbase):
     os.makedirs(figbase)
 
-figdir = os.path.join(figbase, 'roi_subsets')
+if len(tmprois)==0:
+    figdir = figbase
+else:
+    figdir = os.path.join(figbase, 'roi_subsets')
 if not os.path.exists(figdir):
     os.mkdir(figdir)
-print "Saving ROI subplots to dir:", figdir
+print "Saving ROI slice images to dir:", figdir
  
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
@@ -111,9 +125,9 @@ roiparams = mat2py.loadmat(os.path.join(roi_dir, 'roiparams.mat'))
 if 'roiparams' in roiparams.keys():
     roiparams = roiparams['roiparams']
 maskpaths = roiparams['maskpaths']
-if not isinstance(maskpaths, list):
-    maskpaths = [maskpaths]
 print maskpaths
+if not isinstance(maskpaths, list) and len(maskpaths)==1:
+    maskpaths = [maskpaths] #[str(i) for i in maskpaths]
 
 # Check slices to see if maskpaths exist for all slices, or just a subset:
 if 'sourceslices' in roiparams.keys():
@@ -160,7 +174,6 @@ currmasks = masks[curr_slice_name]['masks']
 #rois_to_plot = options.rois_to_plot.split(',')
 #rois_to_plot = [int(r) for r in rois_to_plot]
 
-tmprois = options.rois_to_plot
 
 roi_interval = 1
 if len(tmprois)==0:
@@ -175,11 +188,14 @@ else:
 
 print "ROIS TO PLOT:", rois_to_plot
    
-
-cmaptype = 'rainbow'
-colormap = plt.get_cmap(cmaptype)
-colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
-colorvals255 = [c[0:-1]*255 for c in colorvals]
+if no_color is True:
+    colorvals = np.zeros((nrois, 3));
+    colorvals[:,1] = 1
+else:
+    cmaptype = 'rainbow'
+    colormap = plt.get_cmap(cmaptype)
+    colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
+    colorvals255 = [c[0:-1]*255 for c in colorvals]
 
 
 # Get FILE ("tiff") list
@@ -216,15 +232,15 @@ with tf.TiffFile(os.path.join(ref_slice_path, curr_slice_fn)) as tif:
 img = np.copy(avgimg)
 
 plt.figure()
-# plt.imshow(img)
-# plt.subplot(1,2,1)
-# imgscale = exposure.rescale_intensity(img, in_range=(avgimg.min()+(avgimg.max()*0.1), avgimg.max()-(avgimg.max()*0.1)))
-# print imgscale.min(), imgscale.max()
-# plt.imshow(imgscale, cmap='gray')
-# plt.subplot(1,2,2)
-# plt.imshow(img, cmap='gray')
-# plt.show()
-# 
+plt.imshow(img)
+plt.subplot(1,2,1)
+imgscale = exposure.rescale_intensity(img, in_range=(avgimg.min()+(avgimg.max()*0.1), avgimg.max()-(avgimg.max()*0.1)))
+print imgscale.min(), imgscale.max()
+plt.imshow(imgscale, cmap='gray')
+plt.subplot(1,2,2)
+plt.imshow(img, cmap='gray')
+plt.show()
+
 
 #img = np.copy(avgimg)
 factor = 1
@@ -262,8 +278,9 @@ plt.imshow(img_masked, cmap=cmaptype)
 
 for roi in rois_to_plot:
     [ys, xs] = np.where(currmasks[:,:,roi]==1)
-    plt.text(xs[0], ys[0], str(roi))
-    
+    #plt.text(xs[0], ys[0], str(roi))
+    plt.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), weight='bold') 
+
 plt.axis('off')
 plt.tight_layout()
 

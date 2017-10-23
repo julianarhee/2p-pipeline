@@ -64,7 +64,7 @@ parser.add_option('-i', '--iti', action="store",
 parser.add_option('-t', '--vol', action="store",
                   dest="vols_per_trial", default=0, help="Num volumes per trial. Specifiy if custom_mw=True")
 parser.add_option('-v', '--first', action="store",
-                  dest="first_stim_volume_num", default=0, help="First volume stimulus occurs. Specifiy if custom_mw=True")
+                  dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
 
 # parser.add_option('-R', '--roi', action="store",
 #                   dest="roi_method", default='blobs_DoG', help="ROI method to use.")
@@ -143,13 +143,16 @@ if abort is False:
     if custom_mw is True:
         volumerate = float(simeta['File001']['SI']['hRoiManager']['scanVolumeRate'])
         first_stimulus_volume_num = int(options.first_stim_volume_num) #50
-        vols_per_trial = int(options.vols_per_trial) # 15
+        vols_per_trial = float(options.vols_per_trial) # 15
         #iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
 	iti_full = (vols_per_trial/volumerate) - stim_on_sec
         iti_post = iti_full - iti_pre
 	print "First stim on:", first_stimulus_volume_num
 	print "Volumes per trial:", vols_per_trial
-	print "ITI POST:", iti_post
+	print "ITI POST (s):", iti_post
+	print "ITT full (s):", iti_full
+	print "TRIAL dur (s):", stim_on_sec + iti_full
+	print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * volumerate
     else:
         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
         iti_full = float(options.iti_full)# 4.
@@ -225,6 +228,7 @@ if abort is False:
 # 	
 	#nframes_post_onset = (stim_on_sec + iti_full - iti_pre) * volumerate
 	nframes_post_onset = (stim_on_sec + iti_post) * volumerate
+	print "nframes per trial:", nframes_iti_pre+nframes_on+nframes_iti_post
 
         # Load stim-order:
         stim_fn = stimorder_fns[fi] #'stim_order.txt'
@@ -267,7 +271,7 @@ if abort is False:
 	    
 	    framenums = [preframes, [first_frame_on], postframes]
 	    framenums = reduce(operator.add, framenums)
-	    print "POST FRAMES:", len(framenums)
+	    #print "POST FRAMES:", len(framenums)
 	    diffs = np.diff(framenums)
 	    consec = [i for i in np.diff(diffs) if not i==0]
 	    if len(consec)>0: 
