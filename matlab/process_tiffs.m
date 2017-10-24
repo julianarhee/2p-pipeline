@@ -92,7 +92,9 @@ if do_motion_correction
 else
     % Just parse "raw" tiffs in ./DATA to ./DATA/Raw_slices, then move original tiffs to ./DATA/Raw
     fprintf('Not doing motion-correction...\n');
-    curr_mcparams = create_deinterleaved_tiffs(A, curr_mcparams);
+    if ~curr_mcparams.corrected
+        curr_mcparams = create_deinterleaved_tiffs(A, curr_mcparams);
+    end
 end
 
 fprintf('Finished motion-correcting TIFF data.\n');
@@ -109,7 +111,7 @@ fprintf('Finished motion-correcting TIFF data.\n');
 % Don't need to reinterleave and sort TIFFs if just parsing raw, since that is done in create_deinterleaved_tiffs()
 
 % PYTHON equivalent faster?: 
-deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
+deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir))
 if I.corrected %&& process_raw
     if ~isdir(deinterleaved_tiff_dir)
         movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);

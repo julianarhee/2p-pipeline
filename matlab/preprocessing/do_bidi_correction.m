@@ -98,7 +98,11 @@ for tiff_idx = 1:length(tiffs)
 
         newtiff = zeros(d1,d2,nslices*nchannels*nvolumes);
         fprintf('Correcting TIFF: %s\n', filename); 
-        fprintf('Grabbing every other channel.\n')
+        if mcparams.nchannels>1
+            fprintf('Grabbing every other channel.\n')
+        else
+            fprintf('Not splitting channels.\n');
+        end
         for cidx=1:mcparams.nchannels
             Yt_ch = Yt(:,:,cidx:nchannels:end);
             fprintf('Channel %i, mov size is: %s\n', cidx, mat2str(size(Yt_ch)));
