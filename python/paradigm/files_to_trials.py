@@ -211,6 +211,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     for stim in sorted(stimdict.keys(), key=natural_keys):
         #stimtraces[stim] = dict()
         repidx = 0
+        raw_traces_allrois = []
         curr_traces_allrois = []
         curr_frames_allrois = []
         stim_on_frames = []
