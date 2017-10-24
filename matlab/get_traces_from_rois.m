@@ -35,8 +35,8 @@ fprintf('Doing rolling mean subtraction.\n')
 % nWinUnits = 3;
 
 % For PSTH:
-win_unit = 3;   % size of one window (sec)
-num_units = 3;  % number of win_units that make up sliding window 
+win_unit = 6; %3;   % size of one window (sec)
+num_units = 8; %3;  % number of win_units that make up sliding window 
 
 tracestruct_names = get_processed_traces(I, A, win_unit, num_units);
 
