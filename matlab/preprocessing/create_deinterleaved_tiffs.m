@@ -94,7 +94,7 @@ if parse
         if A.nchannels==1 && length(A.slices)==1
             % Just move single-plane tiffs to standard file tree:
             channelnum = simeta.(currfile).SI.hChannels.channelSave;
-            mov_filename = feval(namingFunction, A.base_filename, A.slices, channelnum, fid);
+            mov_filename = feval(namingFunction, A.base_filename, 1, channelnum, fid);
 
             currchannel = sprintf('Channel%02d', channelnum);
             slicedir = fullfile(write_dir, currchannel, currfile);
