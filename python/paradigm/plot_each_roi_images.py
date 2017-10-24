@@ -135,6 +135,10 @@ parser.add_option('--no-color', action="store_true",
 parser.add_option('--stim-color', action="store_false",
                   dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
 
+parser.add_option('--processed', action="store_true",
+                  dest="dont_use_raw", default=False, help="Flag to use processed traces instead of raw.")
+
+
 
 (options, args) = parser.parse_args() 
 
@@ -159,6 +163,8 @@ curr_slice_idx = int(options.sliceidx)
 # ---------------------------------------------------------------------------------
 # PLOTTING parameters:
 # ---------------------------------------------------------------------------------
+dont_use_raw = options.dont_use_raw
+
 # mw = False
 # spacing = 25 #400
 roi_interval = int(options.roi_interval)
@@ -194,11 +200,15 @@ acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
 if not os.path.exists(figbase):
     os.makedirs(figbase)
-figdir = os.path.join(figbase, 'rois')
+
+if dont_use_raw is True:
+    figdir = os.path.join(figbase, 'rois_processed')
+else:
+    figdir = os.path.join(figbase, 'rois')
 if not os.path.exists(figdir):
     os.mkdir(figdir)
 print "Saving ROI subplots to dir:", figdir
- 
+
 
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
@@ -409,9 +419,14 @@ dfstruct = dict((roi, dict((stim, dict()) for stim in stimlist)) for roi in rois
 for roi in rois_to_plot:
     for stimnum,stim in enumerate(stimlist):
 
-        ntrialstmp = len(stimtraces[stim]['traces'])
+        if dont_use_raw is True:
+            currtraces = stimtraces[stim]['traces']
+        else:
+            currtraces = stimtraces[stim]['raw_traces']
+
+        ntrialstmp = len(currtraces)
         print stim,ntrialstmp
-        nframestmp = [stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))]
+        nframestmp = [currtraces[i].shape[0] for i in range(len(currtraces))]
         print nframestmp
         diffs = np.diff(nframestmp)
         if sum(diffs)>0:
@@ -422,7 +437,7 @@ for roi in rois_to_plot:
 
         raw = np.empty((ntrialstmp, nframestmp))
         for trialnum in range(ntrialstmp):
-            raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
+            raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
 
         ntrials = raw.shape[0]
         nframes_in_trial = raw.shape[1]

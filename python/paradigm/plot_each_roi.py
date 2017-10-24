@@ -63,6 +63,7 @@ parser.add_option('-I', '--id', action="store",
 
 parser.add_option('-R', '--rois', action="store",
                   dest="rois_to_plot", default='', help="index of ROIs to plot")
+
 parser.add_option('--interval', action="store",
                   dest="roi_interval", default=10, help="Plot every Nth interval [default: 10]")
 
@@ -90,12 +91,13 @@ parser.add_option('--no-color', action="store_true",
 parser.add_option('--stim-color', action="store_false",
                   dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
 
+parser.add_option('--processed', action="store_true",
+                  dest="dont_use_raw", default=False, help="Flag to use processed traces instead of raw.")
+
 
 (options, args) = parser.parse_args() 
-analysis_id = options.analysis_id
 
-#avg_dir = options.avg_dir
-#flyback_corrected = options.flyback_corrected
+analysis_id = options.analysis_id
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -113,6 +115,7 @@ curr_slice_idx = int(options.sliceidx)
 # ---------------------------------------------------------------------------------
 # PLOTTING parameters:
 # ---------------------------------------------------------------------------------
+dont_use_raw = options.dont_use_raw
 # mw = False
 # spacing = 25 #400
 roi_interval = int(options.roi_interval)
@@ -143,7 +146,11 @@ acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
 if not os.path.exists(figbase):
     os.makedirs(figbase)
-figdir = os.path.join(figbase, 'rois')
+
+if dont_use_raw is True:
+    figdir = os.path.join(figbase, 'rois_processed')
+else:
+    figdir = os.path.join(figbase, 'rois')
 if not os.path.exists(figdir):
     os.mkdir(figdir)
 print "Saving ROI subplots to dir:", figdir
@@ -266,17 +273,20 @@ print "Loading parsed traces..."
 signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
 
 currchannel = "Channel%02d" % int(signal_channel)
-stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
-if len(stimtrace_fns)==0:
-    print "No stim traces found for Channel %i" % int(selected_channel)
 currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
-print currslice
-stimtrace_fn = [f for f in stimtrace_fns if currchannel in f and currslice in f][0]
-with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
-    stimtraces = pkl.load(f)
-
-
+stimtrace_fns = os.listdir(path_to_trace_structs)
+stimtrace_fn = "stimtraces_%s_%s.pkl" % (currslice, currchannel)
+if not stimtrace_fn in stimtrace_fns:
+    print "No stimtraces found for %s: %s, %s. Did you run files_to_trials.py?" % (analysis_id, currslice, currchannel)
+else: 
+    print "Selected Channel, Slice:", currchannel, currslice
+    with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
+	stimtraces = pkl.load(f)
+# stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
+# if len(stimtrace_fns)==0:
+#     print "No stim traces found for Channel %i" % int(selected_channel)
+# 
+# stimtrace_fn = [f for f in stimtrace_fns if currchannel in f and currslice in f][0]
 stimlist = sorted(stimtraces.keys(), key=natural_keys)
 nstimuli = len(stimlist)
 
@@ -301,12 +311,6 @@ else:
     else:
 	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
 
-    #colorvals255 = [c[0:-1]*255 for c in colorvals]
-
-#colorvals = np.true_divide(colorvals255, 255.)
-#print len(colorvals255)
-#roi_interval = 10
-
 
 # Get stim names:
 stiminfo = dict()
@@ -330,7 +334,7 @@ else:
 # In[15]:
 
 
-stiminfo
+#stiminfo
 
 
 # In[80]:
@@ -361,16 +365,22 @@ for ridx, roi in enumerate(rois_to_plot):
             plt.subplot(gs[even_idxs[rowidx]])
             bottomrow = True
             rowidx += 1
+	
+	# Get traces for curent stimulus from 'stimtraces' struct:
+        if dont_use_raw is True:
+            currtraces = stimtraces[stim]['traces']
+        else:
+            currtraces = stimtraces[stim]['raw_traces']
 
-	ntrialstmp = len(stimtraces[stim]['traces'])
-	nframestmp = [stimtraces[stim]['traces'][i].shape[0] for i in range(len(stimtraces[stim]['traces']))]
+	ntrialstmp = len(currtraces)
+	nframestmp = [currtraces[i].shape[0] for i in range(len(currtraces))]
 	#print "N frames per trial:", nframestmp
 	nframestmp = nframestmp[0]
 
 	# Get RAW traces for each trial:
 	raw = np.empty((ntrialstmp, nframestmp))
 	for trialnum in range(ntrialstmp):
-	    raw[trialnum, :] = stimtraces[stim]['traces'][trialnum][0:nframestmp, roi].T
+	    raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
 
         xvals = np.arange(0, raw.shape[1])
 	
@@ -465,7 +475,7 @@ for ridx, roi in enumerate(rois_to_plot):
     plt.subplots_adjust(top=1)
     plt.suptitle('ROI: %i' % int(roi))
     
-    figname = 'stimgrid_roi%i.png' % int(roi)
+    figname = '%s_stimgrid_roi%i.png' % (currslice, int(roi))
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
    # plt.show()
