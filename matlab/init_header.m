@@ -9,24 +9,24 @@ clear all; clc;
 
 % Specify what to run:
 useGUI = false;                                     % Must specify acquisition-path info if false
-load_analysis = false;                              % True if want to reload existing analysis to complete ROI/Trace extraction
+load_analysis = false; %true;                              % True if want to reload existing analysis to complete ROI/Trace extraction
 
 % Set info manually:
 source = '/nas/volume1/2photon/projects';
 experiment = 'gratings_phaseMod'; %'scenes'; %'gratings_phaseMod';
-session = '20171009_CE059';
-acquisition = 'FOV1_zoom3x'; %'FOV1_zoom3x';
+session = '20171023_CE062';
+acquisition = 'FOV1'; %'FOV1_zoom3x';
 tiff_source = 'functional'; %'functional_subset';
 
 % ----------------------------------------------------------------------------
 % Set the following if NOT loading a previous analysis:
 % ----------------------------------------------------------------------------
 
-analysis_id = 'analysis05';
+analysis_id = '';
 
 % Set ROI params: 
-roi_id = 'circle_test'; %manual2D_poly_aligned'; %'pyblob2D';
-roi_method = 'manual2D_circle'; %'manual2D_poly_aligned'; %'blobs_DoG';
+roi_id = 'blobDoG01'; %manual2D_poly_aligned'; %'pyblob2D';
+roi_method = 'pyblob2D'; %'manual2D_poly_aligned'; %'blobs_DoG';
 
 % Specify what to run it on:
 slices = []; %[5, 10, 15, 20, 25, 30, 35, 40];
