@@ -13,10 +13,11 @@ end
 % FIrst check to see if average slices already exist:
 saved_ch = simeta.File001.SI.hChannels.channelSave(1);
 ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', saved_ch), sprintf('File%03d', 1));
-
+lastfile_ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', saved_ch), sprintf('File%03d', A.ntiffs));
 if exist(ch_path, 'dir')
     nslices = dir(fullfile(ch_path, '*.tif'));
-    if length(nslices)==length(A.slices)
+    lastfile_nslices = dir(fullfile(lastfile_ch_path, '*.tif'));
+    if length(nslices)==length(A.slices) && length(lastfile_nslics)==length(A.slices)
         fprintf('Found correct number of averaged tiffs in dir:\n')
         fprintf('%s\n', ch_path);
         user_says_parse = input('Press Y/n to re-average TIFFs: ', 's');

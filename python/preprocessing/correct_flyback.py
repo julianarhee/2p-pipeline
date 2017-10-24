@@ -110,9 +110,9 @@ def main(options):
 
     # Set and create default output-directory:
     #savepath = options.savepath
-    savepath = os.path.join(raw_tiff_dir, 'DATA')
+    savepath = os.path.join(raw_tiff_dir, 'DATA', 'Raw')
     if not os.path.exists(savepath):
-	    os.mkdir(savepath)
+	    os.makedirs(savepath)
 
 
     tiffs = os.listdir(raw_tiff_dir)
