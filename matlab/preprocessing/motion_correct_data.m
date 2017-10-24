@@ -10,6 +10,7 @@ function mcparams = motion_correct_data(mcparams)
 if ~exist(fullfile(mcparams.source_dir, mcparams.dest_dir, 'dir'))
     mkdir(fullfile(mcparams.source_dir, mcparams.dest_dir));
 end
+fprintf('Write dir: %s\n', fullfile(mcparams.source_dir, mcparams.dest_dir))
 
 % Run specified MC and store method-specific info:
 mcparams.info = do_motion_correction(mcparams)

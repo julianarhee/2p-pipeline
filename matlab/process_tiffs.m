@@ -70,15 +70,15 @@ if do_motion_correction
     if length(found_nfiles)==A.ntiffs
         fprintf('Found correct number of interleaved TIFFs in Corrected dir: %s\n', curr_mcparams.dest_dir);
         user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
-    end
-    if strcmp(user_says_mc, 'Y')
-        do_motion_correction = true;
-        user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
-        if strcmp(user_says_delete, 'Y')
-            rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
+        if strcmp(user_says_mc, 'Y')
+            do_motion_correction = true;
+            user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
+            if strcmp(user_says_delete, 'Y')
+                rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
+            end
+        elseif strcmp(user_says_mc, 'n')
+            do_motion_correction = false;
         end
-    elseif strcmp(user_says_mc, 'n')
-        do_motion_correction = false;
     end
 end
 
@@ -199,6 +199,7 @@ if ~exist(fullfile(curr_mcparams.source_dir, sprintf('%s.mat', A.base_filename))
     fprintf('%s\n', fullfile(curr_mcparams.source_dir, mfilename));
 end
 
+% Update MCPARAMS:
 mcparams.(I.mc_id) = curr_mcparams;
 save(A.mcparams_path, '-struct', 'mcparams');
 

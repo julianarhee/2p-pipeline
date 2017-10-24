@@ -238,7 +238,7 @@ else
 
     if process_raw
         if correct_motion && ~any(strfind(curr_mcparams.dest_dir, mc_id))
-            curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id);
+            curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id)
         end
     else
         if ~exist('processed_source', 'var')
@@ -262,5 +262,17 @@ else
     if correct_bidi_scan && ~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
         average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
     end
-end
+%end
 
+    % Resave mcparams:
+    if exist(A.mcparams_path, 'file')
+        fprintf('Loading and writing to MCPARAMS path.\n');
+        mcparams = load(A.mcparams_path);
+    else
+        fprintf('Creating new MCPARAMS.\n');
+        mcparams = struct();
+    end
+    mcparams.(mc_id) = curr_mcparams;
+    save(A.mcparams_path, '-struct', 'mcparams');
+
+end

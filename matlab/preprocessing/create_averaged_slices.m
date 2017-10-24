@@ -25,7 +25,9 @@ if exist(ch_path, 'dir')
         else
             fprintf('Averaged tiffs look good. Not redoing averaging step.\n');
             average = false;
-        end       
+        end
+    else
+        average = true;
     end
 else
     average = true;
@@ -45,7 +47,7 @@ if average
 
             fprintf('Averaging Channel %i, File %i...\n', ch, tiff_idx);
 
-            slice_dir = fullfile(deinterleaved_tiff_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx));
+            slice_dir = fullfile(deinterleaved_tiff_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx))
 
             tiffs = dir(fullfile(slice_dir, '*.tif'));
             tiffs = {tiffs(:).name}';

@@ -48,13 +48,14 @@ elseif mcparams.flyback_corrected
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
     myObj.motionCorrectProcessed(write_dir);
+    %motionCorrectProcessed(myObj, write_dir);
     myObj.save;
 else
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
-    %myObj.motionCorrect;
+    % myObj.motionCorrect;
     myObj.motionCorrectProcessed(write_dir);
     myObj.save;
 end
