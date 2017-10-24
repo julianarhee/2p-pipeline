@@ -3,6 +3,7 @@ function mcparams = create_deinterleaved_tiffs(A, mcparams)
 % Takes "raw" (flyback-corrected) TIFFs from ./DATA and deinterleaves them into ./DATA/Parsed
 % Assumes that mcparams.dest_dir = 'Parsed'
 
+namingFunction = @defaultNamingFunction;
 
 simeta = load(A.raw_simeta_path);
 
@@ -24,10 +25,10 @@ else
         nfile_dirs = dir(fullfile(write_dir, nchannel_dirs(1).name, 'File*'));
         if length(nfile_dirs)>0
             nslices = dir(fullfile(write_dir, nchannel_dirs(1).name, nfile_dirs(1).name, '*.tif'));
-            if length(nslices)==length(A.slices)
+            if length(nslices)==length(A.slices) && length(nfile_dirs)==A.ntiffs
                 fprintf('Found correct number of deinterleaved tiffs in dir:\n')
                 fprintf('%s\n', write_dir);
-                user_says_parse = input('Press Y/n to re-deinterleave tiffs from above slice-dir.', 's');
+                user_says_parse = input('Press Y/n to re-deinterleave tiffs from above slice-dir: ', 's');
                 if strcmp(user_says_parse, 'Y')
                     parse = true;
                 else
@@ -42,7 +43,7 @@ else
         if length(nslices)==A.ntiffs*A.nchannels*A.nvolumes
             fprintf('Found correct number of deinterleaved tiffs in dir:\n')
             fprintf('%s\n', write_dir);
-            user_says_parse = input('Press Y/n to re-deinterleave tiffs from specified input.', 's');
+            user_says_parse = input('Press Y/n to re-deinterleave tiffs from specified input: ', 's');
             if strcmp(user_says_parse, 'Y')
                 parse = true;
             else
@@ -67,11 +68,13 @@ if parse
     if length(tiffs_to_parse)==0
         while (1)
             fprintf('No raw tiffs found in specified source: %s\n', sourcedir);
-            alt_source = input('Checking child dir: %s [ENTER to confirm], or enter child dir for alt source: \n', 's');
+            alt_source = input(sprintf('Checking child dir: %s\n. Press [ENTER to confirm], or enter child dir for alt source: \n', mcparams.dest_dir), 's');
             if length(alt_source)==0
-                sourcedir = mcparams.dest_dir;
+                sourcedir = fullfile(mcparams.source_dir, mcparams.dest_dir);
+                %mcparams.source_dir = sourcedir;
             else
                 sourcedir = alt_source;
+                %mcparams.source_dir = sourcedir;
             end
             tiffs_to_parse = dir(fullfile(sourcedir, '*.tif'));
             tiffs_to_parse = {tiffs_to_parse(:).name}';
@@ -80,20 +83,34 @@ if parse
             end
         end
     end
-    fprintf('Creating deinterleaved slice tiffs from source: %s', sourcedir);
+    fprintf('Creating deinterleaved slice tiffs from source: %s\n', sourcedir);
     fprintf('Found %i original TIFFs to splice.\n', length(tiffs_to_parse));
            
     deinterleaved_folder = sprintf('%s_slices', mcparams.dest_dir);
     deinterleaved_dir = fullfile(mcparams.source_dir, deinterleaved_folder); 
     for fid=1:length(tiffs_to_parse)
-        currtiffpath = fullfile(mcparams.source_dir, tiffs_to_parse{fid});
-        curr_file_name = sprintf('File%03d', fid);
-        if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 
-            Y = read_file(currtiffpath);
+        currtiffpath = fullfile(sourcedir, tiffs_to_parse{fid});
+        currfile = sprintf('File%03d', fid);
+        if A.nchannels==1 && length(A.slices)==1
+            % Just move single-plane tiffs to standard file tree:
+            channelnum = simeta.(currfile).SI.hChannels.channelSave;
+            mov_filename = feval(namingFunction, A.base_filename, A.slices, channelnum, fid);
+
+            currchannel = sprintf('Channel%02d', channelnum);
+            slicedir = fullfile(write_dir, currchannel, currfile);
+            if ~exist(slicedir, 'dir')
+                mkdir(slicedir);
+            end
+            copyfile(currtiffpath, fullfile(slicedir, mov_filename)); 
         else
-            Y = read_imgdata(currtiffpath);
+            if strfind(simeta.(currfile).SI.VERSION_MAJOR, '2016') 
+                Y = read_file(currtiffpath);
+            else
+                Y = read_imgdata(currtiffpath);
+            end
+            deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
         end
-        deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
+        fprintf('Finished deinterleaving %s of %s.\n', currfile, length(tiffs_to_parse));
     end
 
     fprintf('Finished parsing tiffs!\n');
@@ -109,6 +126,14 @@ for fid=1:length(tiffs_to_parse)
     movefile(fullfile(mcparams.source_dir, tiffs_to_parse{fid}), fullfile(mcparams.source_dir, 'Raw', tiffs_to_parse{fid}));
 end
 fprintf('Moved %i raw tiff files into ./Data/Raw.\n', length(tiffs_to_parse));
+
+end
+
+function mov_filename = defaultNamingFunction(acqName, nSlice, nChannel, movNum)
+
+mov_filename = sprintf('%s_Slice%02.0f_Channel%02.0f_File%03.0f.tif',...
+    acqName, nSlice, nChannel, movNum);
+end
 
 
 % 
