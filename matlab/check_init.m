@@ -11,7 +11,8 @@
 %   4. Creates new mcparmas file, new mcparams entry ('mc_id'), or, if user-specified params match existing entry, asks if matching entry should be reused.
 %   5. Checks fields of curr_mcparams to make sure they are consistent with user-provided params in init_header.m
 
-    
+% Initialize rolodex entry:
+  
 path_to_rolodex = fullfile(source, experiment, session, acquisition, 'analysis_record.json');
 path_to_rolodex_table = fullfile(source, experiment, session, acquisition, 'analysis_record.txt');
 if ~exist(path_to_rolodex, 'file')
@@ -35,8 +36,9 @@ if ~new_rolodex && load_analysis
             display(rolodex.(existing_analyses{selected_analysis_idx}));
             user_confirm = input('Press <A> to accept, otherwise hit <enter> to re-select: \n', 's');
             if strcmp(user_confirm, 'A')
-                I = rolodex.(existing_analyses{selected_analysis_idx});
-                break;
+                tmpI = rolodex.(existing_analyses{selected_analysis_idx});
+                analysis_id = existing_analyses{selected_analysis_idx};
+               break;
             else
                 fprintf('RETRY.\n')
             end
@@ -47,15 +49,35 @@ if ~new_rolodex && load_analysis
 
         % Build acq path and get reference struct:
         % ----------------------------------------
+%         acquisition_base_dir = fullfile(source, experiment, session, acquisition)
+%         path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
+%         path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
+%
+        curr_tiff_dir = fullfile(source, experiment, session, acquisition, tiff_source);
+
+        acquisition_base_dir = fullfile(source, experiment, session, acquisition);
+         
+        [tiff_parent, tiff_source, ~] = fileparts(curr_tiff_dir);
+        [acq_parent, acquisition, ~] = fileparts(tiff_parent);
+        [sess_parent, session, ~] = fileparts(acq_parent);
+        [source, experiment, ~] = fileparts(sess_parent);
+
         acquisition_base_dir = fullfile(source, experiment, session, acquisition)
+        data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
+
+
         path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
         path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
+
+        %% 2. Load reference struct (initially generated when extracting raw TIFF metadata in python/preprocessing/process_raw.py):
+        % ----------------------------------------     
 
         A = load(path_to_reference);
         
         % Load MCPARAMS:
         mcparams = load(A.mcparams_path);
-        curr_mcparams = mcparams.(I.mc_id);
+        curr_mcparams = mcparams.(tmpI.mc_id);
+        mc_id = tmpI.mc_id;
 
     else
         fprintf('Rolodex has no fields. Creating new.\n');
@@ -95,6 +117,9 @@ else
     [source, experiment, ~] = fileparts(sess_parent);
 
     acquisition_base_dir = fullfile(source, experiment, session, acquisition)
+    data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
+
+
     path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
     path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
 
@@ -103,8 +128,7 @@ else
  
     A = load(path_to_reference);
 
-    data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
-
+    
     % Update REFERENCE struct with current analysis-info:
     if ~isfield(A, 'acquisition_base_dir')
         A.acquisition_base_dir = acquisition_base_dir;
@@ -254,13 +278,22 @@ else
             end
         end
         curr_mcparams.dest_dir = sprintf('%s', processed_source);
+
+        % Append "Corrected" if non-raw source is not previously corrected:
+        if correct_motion && ~any(strfind(curr_mcparams.dest_dir, 'Corrected'))
+            curr_mcparams.dest_dir = sprintf('%s_Corrected_%s', curr_mcparams.dest_dir, mc_id);
+        end
     end
 
     if correct_motion && ~(strcmp(average_source, curr_mcparams.dest_dir))
         average_source = curr_mcparams.dest_dir;
     end
-    if correct_bidi_scan && ~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
-        average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
+    if correct_bidi_scan && ~any(strfind(average_source, '_Bidi')) %~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
+        if ~any(strfind(curr_mcparams.dest_dir, 'Bidi'))
+            average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
+        else
+            average_source = sprintf('%s', curr_mcparams.dest_dir);
+        end
     end
 %end
 

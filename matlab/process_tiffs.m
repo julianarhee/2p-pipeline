@@ -93,7 +93,11 @@ else
     % Just parse "raw" tiffs in ./DATA to ./DATA/Raw_slices, then move original tiffs to ./DATA/Raw
     fprintf('Not doing motion-correction...\n');
     if ~curr_mcparams.corrected
-        curr_mcparams = create_deinterleaved_tiffs(A, curr_mcparams);
+        if length(A.slices)>1 || A.nchannels>1
+            curr_mcparams = create_deinterleaved_tiffs(A, curr_mcparams);
+        else
+            fprintf('Single channel, single slice. No need to deinterleave tiffs.');
+        end
     end
 end
 
@@ -111,22 +115,37 @@ fprintf('Finished motion-correcting TIFF data.\n');
 % Don't need to reinterleave and sort TIFFs if just parsing raw, since that is done in create_deinterleaved_tiffs()
 
 % PYTHON equivalent faster?: 
-deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir))
-if I.corrected %&& process_raw
-    if ~isdir(deinterleaved_tiff_dir)
-        movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
+if length(A.slices)>1 || A.nchannels>1
+    deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir))
+    if I.corrected %&& process_raw
+        if ~isdir(deinterleaved_tiff_dir)
+            movefile(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir), deinterleaved_tiff_dir);
+        end
+        reinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
+        reinterleave_tiffs(A, deinterleaved_tiff_dir, reinterleaved_tiff_dir, curr_mcparams.split_channels);
     end
-    reinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
-    reinterleave_tiffs(A, deinterleaved_tiff_dir, reinterleaved_tiff_dir, curr_mcparams.split_channels);
+
+    % Sort parsed slices by Channel-File:
+    post_mc_cleanup(deinterleaved_tiff_dir, A);
+
+    fprintf('Got corrected, interleaved tiffs. Done with post-MC cleanup.\n');
+else
+    % Check name of tiffs in last-processed DIR to make sure it is standard naming schem:
+    % DO STUFFF.
+    if I.corrected
+        last_processed_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
+        processed_files = dir(fullfil(last_processed_dir, '*.tif'));
+        processed_files = {processed_files(:).name}';
+        for pf=1:length(processed_files)
+            curr_processed_fn = fullfile(last_processed_dir, processed_files{pf});
+            standard_fullfile_name = sprintf('%s_File%03d.tif', A.base_filename, pf);
+            if ~strcmp(curr_processed_fn, standard_fullfile_name)
+                movefile(curr_processed_fn, fullfile(last_processed_dir, standard_fullfile_name));
+            end
+        end
+    end
 end
 
-% Sort parsed slices by Channel-File:
-post_mc_cleanup(deinterleaved_tiff_dir, A);
-
-fprintf('Got corrected, interleaved tiffs. Done with post-MC cleanup.\n');
-
-% -------------------------------------------------------------------------
-%% 4.  Do additional bidi correction (optional)
 % -------------------------------------------------------------------------
 % mcparams.bidi_corrected = true;
 
@@ -144,19 +163,24 @@ if curr_mcparams.bidi_corrected
     curr_mcparams = do_bidi_correction(bidi_source, curr_mcparams, A);
 end
 
-% NOTE: bidi function updates mcparams.dest_dir 
-deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
+if length(A.slices>1) || A.nchannels>1
+    % NOTE: bidi function updates mcparams.dest_dir 
+    deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
 
-% Sort parsed slices by Channel-File:
-post_mc_cleanup(deinterleaved_tiff_dir, A);
+    % Sort parsed slices by Channel-File:
+    post_mc_cleanup(deinterleaved_tiff_dir, A);
+end
 
 fprintf('Finished BIDI correction step.\n')
 
 % -------------------------------------------------------------------------
 %% 5.  Create averaged slices from desired source:
 % -------------------------------------------------------------------------
-
-source_tiff_basepath = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', I.average_source));
+if length(A.slices)>1 || A.nchannels>1
+    source_tiff_basepath = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', I.average_source));
+else
+    source_tiff_basepath = fullfile(curr_mcparams.source_dir, sprintf('%s', I.average_source));
+end
 dest_tiff_basepath = fullfile(curr_mcparams.source_dir, sprintf('Averaged_Slices_%s', I.average_source));
 
 create_averaged_slices(source_tiff_basepath, dest_tiff_basepath, A);

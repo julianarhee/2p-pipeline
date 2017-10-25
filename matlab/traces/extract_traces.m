@@ -30,7 +30,8 @@ simeta = load(A.raw_simeta_path);
 %         base_slice_dir = fullfile(mcparams.tiff_dir, mcparams.parsed_dir);
 %     end
 % end
-base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
+
+% base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir));
 
 curr_tracestruct_dir = fullfile(A.trace_dir, A.trace_id.(I.analysis_id));
 fprintf('Saving tracestructs to: %s\n', curr_tracestruct_dir);
@@ -44,9 +45,17 @@ for sidx = 1:length(I.slices)
      
     % load time-series for current slice:
     for fidx=1:A.ntiffs
-        curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
-        curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, I.signal_channel, fidx)
-        
+        if length(A.slices)>1 || A.nchannels>1
+            base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s_slices', mcparams.dest_dir)); 
+            curr_file_path = fullfile(base_slice_dir, sprintf('Channel%02d', I.signal_channel), sprintf('File%03d', fidx));
+            curr_file = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', A.base_filename, sl, I.signal_channel, fidx)
+        else
+            base_slice_dir = fullfile(mcparams.source_dir, sprintf('%s', mcparams.dest_dir));
+            curr_file_path = base_slice_dir;
+            tmpfiles = dir(fullfile(curr_file_path, '*.tif'));
+            tmpfiles = {tmpfiles(:).name}'
+            curr_file = tmpfiles{fidx};
+        end 
         currtiffpath = fullfile(curr_file_path, curr_file);
         curr_file_name = sprintf('File%03d', fidx);
         if strfind(simeta.(curr_file_name).SI.VERSION_MAJOR, '2016') 

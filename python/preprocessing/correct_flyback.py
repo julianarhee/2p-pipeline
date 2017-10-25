@@ -129,7 +129,7 @@ def main(options):
         origname = tiffname.split('.')[0]
     	prefix = '_'.join(origname.split('_')[0:-1])
         prefix = prefix.replace('-', '_')
-	newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
+        newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) #'File%03d.tif' % int(tiffidx+1)
         print "Creating file in DATA dir:", newtiff_fn
        
         if correct_flyback:
@@ -207,11 +207,11 @@ def main(options):
                 dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
     	        if save_tiffs is True: 
                     tf.imsave(os.path.join(savepath, dtype_fn), final)
-            else:
-                if tiffidx==0:
-                    stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]));
-                    print "SAMPLE stack shape:", stack.shape 
-    	    
+#             else:
+#                 if tiffidx==0:
+#                     stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]));
+#                     print "SAMPLE stack shape:", stack.shape 
+#     	    
             frame_idxs_final = [] #np.arange(0, stack.shape[0]);
     
           

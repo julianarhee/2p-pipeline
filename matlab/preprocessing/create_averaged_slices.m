@@ -47,14 +47,23 @@ if average
             end 
 
             fprintf('Averaging Channel %i, File %i...\n', ch, tiff_idx);
+            
+            if length(A.slices)>1 || A.nchannels>1
+                slice_dir = fullfile(deinterleaved_tiff_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx))
 
-            slice_dir = fullfile(deinterleaved_tiff_basepath, sprintf('Channel%02d', ch), sprintf('File%03d', tiff_idx))
+                tiffs = dir(fullfile(slice_dir, '*.tif'));
+                tiffs = {tiffs(:).name}';
+                d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
 
-            tiffs = dir(fullfile(slice_dir, '*.tif'));
-            tiffs = {tiffs(:).name}';
-            d3 = length(tiffs);  % This assumes that parsed files have been sorted into standard Channel-File-Slice format.
-
+                %avgs = zeros([d1,d2,d3]);
+            else
+                slice_dir = deinterleaved_tiff_basepath;
+                tiffs = dir(fullfile(slice_dir, '*.tif'));
+                tiffs = {tiffs(:).name}';
+                d3 = 1;
+            end
             avgs = zeros([d1,d2,d3]);
+
             fprintf('AVG size: %s\n', mat2str(size(avgs)));
             for sl=1:d3
                 currtiffpath = fullfile(slice_dir, tiffs{sl});

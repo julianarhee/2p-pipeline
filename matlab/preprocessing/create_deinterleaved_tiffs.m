@@ -91,28 +91,36 @@ if parse
     for fid=1:length(tiffs_to_parse)
         currtiffpath = fullfile(sourcedir, tiffs_to_parse{fid});
         currfile = sprintf('File%03d', fid);
-        if A.nchannels==1 && length(A.slices)==1
-            % Just move single-plane tiffs to standard file tree:
-            channelnum = simeta.(currfile).SI.hChannels.channelSave;
-            mov_filename = feval(namingFunction, A.base_filename, 1, channelnum, fid);
-
-            currchannel = sprintf('Channel%02d', channelnum);
-            slicedir = fullfile(write_dir, currchannel, currfile);
-            if ~exist(slicedir, 'dir')
-                mkdir(slicedir);
-            end
-            copyfile(currtiffpath, fullfile(slicedir, mov_filename)); 
+%         if A.nchannels==1 && length(A.slices)==1
+%             % Just move single-plane tiffs to standard file tree:
+%             fprintf('Single channel, single slice. No need for deinterleaving.\n')
+%             channelnum = simeta.(currfile).SI.hChannels.channelSave;
+%             mov_filename = feval(namingFunction, A.base_filename, 1, channelnum, fid);
+% 
+%             currchannel = sprintf('Channel%02d', channelnum);
+%             slicedir = fullfile(write_dir, currchannel, currfile);
+%             if ~exist(slicedir, 'dir')
+%                 mkdir(slicedir);
+%             end
+%             copyfile(currtiffpath, fullfile(slicedir, mov_filename)); 
+%         else
+%             if strfind(simeta.(currfile).SI.VERSION_MAJOR, '2016') 
+%                 Y = read_file(currtiffpath);
+%             else
+%                 Y = read_imgdata(currtiffpath);
+%             end
+%             deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
+%         end
+%         
+        if strfind(simeta.(currfile).SI.VERSION_MAJOR, '2016') 
+            Y = read_file(currtiffpath);
         else
-            if strfind(simeta.(currfile).SI.VERSION_MAJOR, '2016') 
-                Y = read_file(currtiffpath);
-            else
-                Y = read_imgdata(currtiffpath);
-            end
-            deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
+            Y = read_imgdata(currtiffpath);
         end
+        deinterleave_tiffs(Y, tiffs_to_parse{fid}, fid, write_dir, A);
+
         fprintf('Finished deinterleaving %s of %s.\n', currfile, length(tiffs_to_parse));
     end
-
     fprintf('Finished parsing tiffs!\n');
 end
 

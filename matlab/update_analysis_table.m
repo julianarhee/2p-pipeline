@@ -9,11 +9,24 @@ for v=1:length(curr_vars)
     if any(size(itable.(curr_vars{v}))>1) && ~ischar(itable.(curr_vars{v}))
         itable.(curr_vars{v}) = mat2str(itable.(curr_vars{v}));
     end
+%    if iscell(itable.(curr_vars{v}))
+%        itable.(curr_vars{v}) = itable.(curr_vars{v}){1};
+%    end
 end
 
 if exist(path_to_record, 'file')
     existing = readtable(path_to_record, 'Delimiter', '\t', 'ReadRowNames', true);
     existing_vars = existing.Properties.VariableNames;
+
+    for v=1:length(existing_vars)
+        if any(size(existing.(existing_vars{v}))>1) && ~ischar(existing.(existing_vars{v}))
+            existing.(existing_vars{v}) = mat2str(existing.(existing_vars{v}));
+        end
+%        if iscell(existing.(existing_vars{v}))
+%            existing.(existing_vars{v}) = existing.(existing_vars{v}){1};
+%        end
+    end
+
 
 %     for v=1:length(existing_vars)
 %         if any(size(existing.(existing_vars{v}))>1) && ~iscell(existing.(existing_vars{v}))
@@ -37,8 +50,11 @@ if exist(path_to_record, 'file')
         existing = [existing columns_to_add];
     end
 
-
-    if any(ismember(existing.Properties.RowNames, itable.Properties.RowNames))
+    prev_ids = existing.Properties.RowNames;
+    curr_id = itable.Properties.RowNames;
+    if any(ismember(prev_ids, curr_id))
+        row_idx = find(arrayfun(@(i) strcmp(prev_ids{i}, curr_id), 1:length(prev_ids)))
+        existing(row_idx, :) = itable; 
         %existing(itable.Properties.RowNames,:) = itable; 
         updatedI = existing;
     else
