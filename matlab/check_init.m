@@ -241,7 +241,7 @@ else
             curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id)
         end
     else
-        if ~exist('processed_source', 'var')
+        if isempty(processed_source)
             fprintf('Specified non-raw source for processing, but did not specify folder name.\n');
             processed_source = input('Type FOLDER name of source (ex: Corrrected_mcparams03): \n', 's');
         end

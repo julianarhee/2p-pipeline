@@ -132,11 +132,12 @@ fprintf('Got corrected, interleaved tiffs. Done with post-MC cleanup.\n');
 
 if curr_mcparams.bidi_corrected
     if curr_mcparams.corrected
-        if process_raw
-            bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
-        else
-            bidi_source = curr_mcparams.dest_dir;
-        end
+        bidi_source = curr_mcparams.dest_dir;
+%         if process_raw
+%             bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
+%         else
+%             bidi_source = curr_mcparams.dest_dir;
+%         end
     else
         bidi_source = 'Raw';
     end

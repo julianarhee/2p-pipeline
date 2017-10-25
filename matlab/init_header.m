@@ -36,7 +36,7 @@ split_channels = false;
 
 % Set Motion-Correction params:
 correct_motion = true; %false;
-correct_bidi_scan = false; %true; %true; %false;
+correct_bidi_scan = true; %true; %true; %false;
 reference_channel = 1;
 reference_file = 6; %3; %6; %3
 method = 'Acquisition2P'; 
@@ -44,8 +44,8 @@ algorithm = @withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid; %@
 
 % These vars are checked/corrected once mcparam set is identified, not as critical:
 average_source = 'Raw';                             % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
-process_raw = true;                                 % True if not re-using previous corrected dirs
-processed_source = '';
+process_raw = false;                                % True if not re-using previous corrected dirs
+processed_source = '';                              % Folder name contaning CORRECTED tiffs, if want to do processing on non-raw source
 
 % ----------------------------------------------------------------------------
 % ============================================================================
