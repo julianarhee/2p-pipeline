@@ -26,7 +26,12 @@ function myObj = motion_correction_Acquisition2P(mcparams)
 
 check_tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
 if length(check_tiffs)==0
-    tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+    if strfind(mcparams.dest_dir, 'Bidi')
+        bidx = strfind(mcparams.dest_dir, 'Bidi');
+        tiff_dir = fullfile(mcparams.source_dir, mcparams.dest_dir(1:bidx+3))
+    else
+        tiff_dir = fullfile(mcparams.source_dir, 'Raw');
+    end
     check_tiffs = dir(fullfile(tiff_dir, '*.tif'));
 else
     tiff_dir = mcparams.source_dir;

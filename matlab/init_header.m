@@ -9,7 +9,7 @@ clear all; clc;
 
 % Specify what to run:
 useGUI = false;                 % Must specify acquisition-path info if false
-load_analysis = true;          % true, to reload existing analysis (e.g., to do ROI/Trace extraction)
+load_analysis = false;          % true, to reload existing analysis (e.g., to do ROI/Trace extraction)
 
 % Set info manually:
 source = '/nas/volume1/2photon/projects';
@@ -21,13 +21,13 @@ tiff_source = 'functional';
 % ----------------------------------------------------------------------------
 % Set the following if NOT loading a previous analysis:
 % ----------------------------------------------------------------------------
-process_raw = true;             % false, if source for processing is anything but RAW 
+process_raw = false;             % false, if source for processing is anything but RAW 
 processed_source = '';          % Folder name contaning CORRECTED tiffs, if processing on non-raw source
 
 
 % Set ROI params: 
-roi_id = 'blobsDoG01'; %'blobDoG01'; 
-roi_method = 'pyblob2D'; %'pyblob2D'; %'manual2D_circles'
+roi_id = ''; %'blobDoG01'; 
+roi_method = ''; %'pyblob2D'; %'manual2D_circles'
 ;
 % Specify what to run it on:
 slices = [];                    % List of slice indices (e.g., [5, 10, 15, 20, 25, 30, 35, 40])
@@ -36,7 +36,7 @@ flyback_corrected = false;      % true, if python process_raw.py --correct-flyba
 split_channels = false;
 
 % Set Motion-Correction params:
-correct_motion = false; 
+correct_motion = true; 
 correct_bidi_scan = true;       % true, if want to fix artifacts from idirectional scanning
 reference_channel = 1;
 reference_file = 9;             % File00X to use as reference for motion-correction %6; %3; %6; %3
@@ -47,7 +47,7 @@ algorithm = @withinFile_withinFrame_lucasKanade; % [opts: @lucasKanade_plus_nonr
 % These vars are checked/corrected once mcparam set is identified, not as critical:
 average_source = 'Raw';         % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
 
-analysis_id = 'analysis01';
+analysis_id = 'analysis02';
 % ----------------------------------------------------------------------------
 % ============================================================================
     
