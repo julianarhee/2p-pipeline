@@ -54,7 +54,28 @@ if load_analysis
 
     % Update rolodex table:
     itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    update_analysis_table(itable, path_to_rolodex_table);
+    updated_records = update_analysis_table(itable, path_to_rolodex_table);
+
+    % Also store as json:
+    existing_analyses = updated_records.Properties.RowNames;
+    existing_records = table2struct(updated_records);
+
+    varnames = fieldnames(I);
+    n_analysis_ids = length(existing_analyses)+1;
+    if exist('updated_records', 'var'), clear updated_records, end
+    for var=1:length(varnames)
+        updated_records(selected_analysis_idx).(varnames{var}) = I.(varnames{var});
+    end
+    for id=1:length(existing_analyses)
+        for var=1:length(varnames)
+            updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
+        end
+    end
+    for id=1:length(updated_records)
+        json_records.(updated_records(id).analysis_id) = updated_records(id);
+    end
+    savejson('', json_records, path_to_rolodex);
+
 % 
 %     fprintf('Loaded previous analysis entry, with ID: %s\n', I.analysis_id);
 %     display(I);
