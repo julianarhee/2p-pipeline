@@ -310,7 +310,10 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
     display_evs = [e for e in tmp_display_evs if e.value and not e.value[0]==None]                         # Filter out empty display-update events
     display_evs = [d for d in display_evs if d.time <= boundary[1] and d.time >= boundary[0]]              # Only include display-update events within time boundary of the session
 
-    tmp_pixelclock_evs = [i for i in display_evs for v in i.value if 'bit_code' in v.keys()]                      # Filter out any display-update events without a pixel-clock event
+    # tmp_pixelclock_evs = [i for i in display_evs for v in i.value if 'bit_code' in v.keys()]                      # Filter out any display-update events without a pixel-clock event
+    tmp_pixelclock_evs = [i for i in display_evs if 'bit_code' in i.value[-1].keys()]                      # Filter out any display-update events without a pixel-clock event
+
+    print [p for p in tmp_pixelclock_evs if not 'bit_code' in p.value[-1].keys()] 
     print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
     
     if len(trigger_times)==0:

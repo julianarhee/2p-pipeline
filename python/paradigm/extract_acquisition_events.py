@@ -142,6 +142,14 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         trialdict[trial]['name'] = trials[trial]['stimuli']['stimulus']
         trialdict[trial]['duration'] = trials[trial]['stim_off_times'] - trials[trial]['stim_on_times']
 
+	if int(trial)>1:
+	    # Skip a good number of frames from the last "found" index of previous trial.
+	    # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
+	    # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
+	    nframes_to_skip = int(((trials[trial]['iti_duration']/1E3) * framerate) - 5)
+	    print 'skipping iti...', nframes_to_skip
+	    curr_frames = allframes[first_frame+nframes_to_skip:]
+
         first_found_frame = []
         minframes = 5
         for bitcode in trials[trial]['all_bitcodes']:
