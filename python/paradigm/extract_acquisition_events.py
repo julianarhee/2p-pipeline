@@ -140,7 +140,8 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         #print trial
         trialdict[trial] = dict()
         trialdict[trial]['name'] = trials[trial]['stimuli']['stimulus']
-        trialdict[trial]['duration'] = trials[trial]['stim_off_times'] - trials[trial]['stim_on_times']
+        trialdict[trial]['stim_dur_ms'] = trials[trial]['stim_off_times'] - trials[trial]['stim_on_times']
+        trialdict[trial]['iti_dur_ms'] = trials[trial]['iti_duration']
 
 	if int(trial)>1:
 	    # Skip a good number of frames from the last "found" index of previous trial.
