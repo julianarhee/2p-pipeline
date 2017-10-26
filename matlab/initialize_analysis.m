@@ -113,6 +113,7 @@ else
             end
         end
     else
+        existing_analysis_names = {};
         existing_analysis_idxs = {};
         curr_analysis_idx = 1;
         new_analysis = true;

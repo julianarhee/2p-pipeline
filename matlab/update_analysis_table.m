@@ -6,7 +6,7 @@ curr_vars = itable.Properties.VariableNames;
  
 % turn mats into strings:
 for v=1:length(curr_vars)
-    if any(size(itable.(curr_vars{v}))>1) && ~ischar(itable.(curr_vars{v}))
+    if any(size(itable.(curr_vars{v}))>1) && ~ischar(itable.(curr_vars{v})) && isnumeric(itable.(curr_vars{v}))
         itable.(curr_vars{v}) = mat2str(itable.(curr_vars{v}));
     end
 %    if iscell(itable.(curr_vars{v}))
@@ -17,15 +17,16 @@ end
 if exist(path_to_record, 'file')
     existing = readtable(path_to_record, 'Delimiter', '\t', 'ReadRowNames', true);
     existing_vars = existing.Properties.VariableNames;
-
-    for v=1:length(existing_vars)
-        if any(size(existing.(existing_vars{v}))>1) && ~ischar(existing.(existing_vars{v}))
-            existing.(existing_vars{v}) = mat2str(existing.(existing_vars{v}));
-        end
-%        if iscell(existing.(existing_vars{v}))
-%            existing.(existing_vars{v}) = existing.(existing_vars{v}){1};
-%        end
-    end
+% 
+%     for v=1:length(existing_vars)
+%         if any(size(existing.(existing_vars{v}))>1) && ~ischar(existing.(existing_vars{v})) && isnumeric(existing.(existing_vars{v}))
+%             existing.(existing_vars{v})
+%             existing.(existing_vars{v}) = mat2str(existing.(existing_vars{v}));
+%         end
+% %        if iscell(existing.(existing_vars{v}))
+% %            existing.(existing_vars{v}) = existing.(existing_vars{v}){1};
+% %        end
+%     end
 
 
 %     for v=1:length(existing_vars)

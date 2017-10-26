@@ -54,7 +54,7 @@ for sidx = 1:length(I.slices)
             curr_file_path = base_slice_dir;
             tmpfiles = dir(fullfile(curr_file_path, '*.tif'));
             tmpfiles = {tmpfiles(:).name}'
-            curr_file = tmpfiles{fidx};
+            curr_file = tmpfiles{fidx}
         end 
         currtiffpath = fullfile(curr_file_path, curr_file);
         curr_file_name = sprintf('File%03d', fidx);

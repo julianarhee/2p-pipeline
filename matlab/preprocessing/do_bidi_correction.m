@@ -20,6 +20,7 @@ if mcparams.bidi_corrected
     end
     if ~exist(fullfile(mcparams.source_dir, mcparams.dest_dir), 'dir')
         mkdir(fullfile(mcparams.source_dir, mcparams.dest_dir)); 
+        do_bidi = true;
     else 
         % Check if BIDI already done:
         if length(A.slices)>1 || A.nchannels>1
@@ -39,7 +40,7 @@ if mcparams.bidi_corrected
             end
         else
             % SINGLE channel, SINGLE file (no parsed folders)
-            tiffs = dir(fullfile(mcparams.source_dir, mcparams.dest_dir, '*.tif'));
+            tiffs = dir(fullfile(mcparams.source_dir, mcparams.dest_dir, '*.tif'))
             if length(tiffs)==A.ntiffs
                 found_correct_ntiffs = true;
             else
