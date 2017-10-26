@@ -153,6 +153,7 @@ subdir_str = '{tiffstr}/DATA/Averaged_Slices{avgsource}'.format(avgsource=avgsou
 # subdir_str = '{tiffstr}/DATA/Averaged_Slices'.format(tiffstr=functional_subdir)
 
 slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str, signal_channel, reference_file)
+print "Specified slice dir:", slice_directory
 
 # Define output directories:
 acquisition_dir = os.path.join(source, experiment, sess, acquisition)
