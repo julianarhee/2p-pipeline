@@ -126,7 +126,7 @@ if 'roiparams' in roiparams.keys():
     roiparams = roiparams['roiparams']
 maskpaths = roiparams['maskpaths']
 print maskpaths
-if not isinstance(maskpaths, list) and len(maskpaths)==1:
+if not isinstance(maskpaths, list) and (len(maskpaths)==1 or isinstance(maskpaths, unicode)):
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
 
 # Check slices to see if maskpaths exist for all slices, or just a subset:
@@ -187,6 +187,18 @@ else:
     sort_name = '_selected_%s' % roi_string
 
 print "ROIS TO PLOT:", rois_to_plot
+
+# Create ROI dir in figures: 
+# if len(tmprois)==0:
+#     figdir = os.path.join(figbase, 'rois') #'rois')
+# else:
+#     figdir = os.path.join(figbase, 'rois')
+figdir = os.path.join(figbase, 'rois')
+if not os.path.exists(figdir):
+    os.makedirs(figdir)
+print "Saving ROI slice images to dir:", figdir
+ 
+
    
 if no_color is True:
     colorvals = np.zeros((nrois, 3));

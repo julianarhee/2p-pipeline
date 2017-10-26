@@ -89,17 +89,17 @@ parser.add_option('-f', '--functional', action='store', dest='functional_dir', d
 # parser.add_option('-r', '--roi', action="store",
 #                   dest="roi_method", default='blobs_DoG', help="roi method [default: 'blobsDoG]")
 # 
-parser.add_option('-O', '--stimon', action="store",
-                  dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
+# parser.add_option('-O', '--stimon', action="store",
+#                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 parser.add_option('-i', '--iti', action="store",
                   dest="iti_pre", default=1., help="Time (s) before stim onset to use as basline [default=1].")
 
 parser.add_option('-z', '--slice', action="store",
                   dest="sliceidx", default=0, help="Slice index to look at (0-index) [default: 0]")
 
-parser.add_option('--custom', action="store_true",
-                  dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
-
+# parser.add_option('--custom', action="store_true",
+#                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
+# 
 parser.add_option('-g', '--gap', action="store",
                   dest="gap", default=400, help="num frames to separate subplots [default: 400]")
 
@@ -153,10 +153,10 @@ session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' 
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
 functional_dir = options.functional_dir #'functional' #'functional_subset'
 
-stim_on_sec = float(options.stim_on_sec) #2. # 0.5
+#stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 iti_pre = float(options.iti_pre)
 
-custom_mw = options.custom_mw
+#custom_mw = options.custom_mw
 spacing = int(options.gap)
 curr_slice_idx = int(options.sliceidx)
 
@@ -201,59 +201,11 @@ figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figure
 if not os.path.exists(figbase):
     os.makedirs(figbase)
 
-if dont_use_raw is True:
-    figdir = os.path.join(figbase, 'rois_processed')
-else:
-    figdir = os.path.join(figbase, 'rois')
-if not os.path.exists(figdir):
-    os.mkdir(figdir)
-print "Saving ROI subplots to dir:", figdir
-
-
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
     ref = json.load(fr)
     
-# Load SI meta data:
-si_basepath = ref['raw_simeta_path'][0:-4]
-simeta_json_path = '%s.json' % si_basepath
-with open(simeta_json_path, 'r') as fs:
-    simeta = json.load(fs)
-
-# Get stim params:
-# if custom_mw is False:
-currfile='File001'
-# stim_on_sec = 2.
-# iti = 1. #4.
-nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-frames_tsecs = np.arange(0, nframes)*(1/volumerate)
-
-nframes_on = stim_on_sec * volumerate
-#nframes_off = vols_per_trial - nframes_on
-nframes_iti_pre = round(iti_pre * volumerate) 
-print nframes_on
-print nframes_iti_pre
-
-
-# In[5]:
-
-
-# Get ROIPARAMS:
-roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
-roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
-if 'roiparams' in roiparams.keys():
-    roiparams = roiparams['roiparams']
-maskpaths = roiparams['maskpaths']
-
-print maskpaths
-
-
-# In[6]:
-
-
 # Get ROIPARAMS:
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
 roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
@@ -263,8 +215,11 @@ maskpaths = roiparams['maskpaths']
 print maskpaths
 if not isinstance(maskpaths, list) and len(maskpaths)==1:
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
+if isinstance(maskpaths, unicode):
+    maskpaths = [maskpaths]
+nrois = roiparams['nrois'][curr_slice_idx]
 
-
+    
 # Check slices to see if maskpaths exist for all slices, or just a subset:
 if 'sourceslices' in roiparams.keys():
     slices = roiparams['sourceslices']
@@ -277,26 +232,18 @@ if not isinstance(slices, list): # i.e., only 1 slice
     slices = [int(i) for i in slices]
 print "SLICES:", slices
 
-# Load masks:
-masks = dict(("Slice%02d" % int(slice_idx), dict()) for slice_idx in slices)
-for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
-    slice_name = "Slice%02d" % int(sidx) #+1)
-    print "Loading masks: %s..." % slice_name 
-    tmpmasks = loadmat(maskpath); tmpmasks = tmpmasks['masks']
-    masks[slice_name]['nrois'] =  tmpmasks.shape[2]
-    masks[slice_name]['masks'] = tmpmasks
 
+# Get selected slice for current slice:
+if isinstance(ref['slices'], int):
+    all_slices = ['Slice%02d' % int(i+1) for i in range(ref['slices'])]
+else:
+    all_slices = ['Slice%02d' % int(i+1) for i in range(len(ref['slices']))]
 
-# Get masks for current slice:
-slice_names = sorted(masks.keys(), key=natural_keys)
+curr_slice_idx = [i for i in sorted(slices)].index(curr_slice_idx)
+
+slice_names = sorted(['Slice%02d' % int(i) for i in sorted(slices)], key=natural_keys)
 print "SLICE NAMES:", slice_names
 curr_slice_name = "Slice%02d" % slices[curr_slice_idx]
-currmasks = masks[curr_slice_name]['masks']
-print currmasks.shape
-
-nrois = masks[curr_slice_name]['nrois']
-print "NROIS:", nrois, curr_slice_name
-#rois_to_plot = np.arange(0, nrois)
 
 
 # In[7]:
@@ -320,21 +267,19 @@ print "ROIS TO PLOT:", rois_to_plot
 
 # In[8]:
 
-
-# Create ROI dir in figures:
-figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
-if not os.path.exists(figbase):
-    os.makedirs(figbase)
+# Create ROI dir in figures: 
+if dont_use_raw is True:
+    roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+else:
+    roi_trace_type = 'raw'
 
 if len(tmprois)==0:
-    figdir = os.path.join(figbase, 'rois')
-
+    figdir = os.path.join(figbase, 'rois', 'all') #'rois')
 else:
-    figdir = os.path.join(figbase, 'roi_subsets', sort_name, 'roi_traces')
+    figdir = os.path.join(figbase, 'rois', 'selected', sort_name)
 if not os.path.exists(figdir):
     os.makedirs(figdir)
 print "Saving ROI subplots to dir:", figdir
- 
 
 
 # In[9]:
@@ -346,22 +291,23 @@ paradigm_dir = 'paradigm_files'
 path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 #path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
 path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', ref['trace_id'][analysis_id], 'Parsed')
-    
+   
 
+ 
 # Load stim trace structs:
 print "Loading parsed traces..."
 signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
 
 currchannel = "Channel%02d" % int(signal_channel)
+currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fns = sorted([f for f in stimtrace_fns if 'stimtraces' in f and currchannel in f and f.endswith('.pkl')], key=natural_keys)
-if len(stimtrace_fns)==0:
-    print "No stim traces found for Channel %i" % int(selected_channel)
-print stimtrace_fns
-currslice = "Slice%02d" % slices[curr_slice_idx]
-stimtrace_fn = [f for f in stimtrace_fns if currchannel in f and currslice in f][0]
-with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
-    stimtraces = pkl.load(f)
+stimtrace_fn = "stimtraces_%s_%s.pkl" % (currslice, currchannel)
+if not stimtrace_fn in stimtrace_fns:
+    print "No stimtraces found for %s: %s, %s. Did you run files_to_trials.py?" % (analysis_id, currslice, currchannel)
+else: 
+    print "Selected Channel, Slice:", currchannel, currslice
+    with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
+	stimtraces = pkl.load(f)
 
 
 stimlist = sorted(stimtraces.keys(), key=natural_keys)
@@ -385,14 +331,10 @@ else:
     else:
 	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
 
-#colorvals = np.true_divide(colorvals255, 255.)
-#print len(colorvals255)
-#roi_interval = 10
-
-
+    
 # Get stim names:
 stiminfo = dict()
-if experiment=='gratings_phaseMod':
+if experiment=='gratings_phaseMod' or experiment=='gratings_static':
     print "STIM | ori - sf"
     for stim in stimlist: #sorted(stimtraces.keys(), key=natural_keys):
 	
@@ -410,7 +352,6 @@ else:
         stiminfo[stim] = int(stim)
 
 
-# In[12]:
 
 
 calcs = dict((roi, dict((stim, dict()) for stim in stimlist)) for roi in rois_to_plot)
@@ -419,27 +360,44 @@ dfstruct = dict((roi, dict((stim, dict()) for stim in stimlist)) for roi in rois
 for roi in rois_to_plot:
     for stimnum,stim in enumerate(stimlist):
 
+# 	# Output of files_to_trials.py
+#         stimtraces[stim]['name'] = stimname
+#         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
+#         stimtraces[stim]['raw_traces'] = np.asarray(raw_traces_allrois)
+#     	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+#         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
+#         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
+#         stimtraces[stim]['nrois'] = nrois
+# 	stimtraces[stim]['volumerate'] = volumerate
+# 	stimtraces[stim]['stim_dur'] = stim_on_sec
+# 
+
         if dont_use_raw is True:
             currtraces = stimtraces[stim]['traces']
         else:
             currtraces = stimtraces[stim]['raw_traces']
 
+	#print currtraces.shape
+	if len(currtraces.shape)==1:
+	    print "Incorrect number of frames provided across trials... Check files_to_trials.py"
         ntrialstmp = len(currtraces)
-        print stim,ntrialstmp
         nframestmp = [currtraces[i].shape[0] for i in range(len(currtraces))]
-        print nframestmp
         diffs = np.diff(nframestmp)
         if sum(diffs)>0:
             print "Incorrect frame nums per trial:", stimnum, stim
             print nframestmp
+	    	
         else:
             nframestmp = nframestmp[0]
+ 
+#         raw = np.empty((ntrialstmp, nframestmp))
+#         for trialnum in range(ntrialstmp):
+# 	    print currtraces[trialnum].shape
+#             raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
 
-        raw = np.empty((ntrialstmp, nframestmp))
-        for trialnum in range(ntrialstmp):
-            raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
-
-        ntrials = raw.shape[0]
+	raw = currtraces[:,:,roi]
+        #print raw.shape 
+	ntrials = raw.shape[0]
         nframes_in_trial = raw.shape[1]
 
         xvals = np.empty((ntrials, nframes_in_trial))
@@ -449,29 +407,36 @@ for roi in rois_to_plot:
         calcs[roi][stim]['zscores'] = []
         calcs[roi][stim]['mean_stim_on'] = []
         for trial in range(ntrials):
-            if custom_mw is True:
-                frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
-                frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
-            else:
-                frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
-                frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
+	    frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+	    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
 
+# 	    if custom_mw is True:
+#                 frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+#                 frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
+#             else:
+#                 frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+#                 frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
+ 
             xvals[trial, :] = (stimtraces[stim]['frames'][trial] - frame_on) #+ stimnum*spacing
             baseline = np.mean(raw[trial, 0:frame_on_idx])
-
-
-            df = (raw[trial,:] - baseline) / baseline
+	    if baseline==0:
+                df = np.ones((1, nframes_in_trial))*np.nan
+	    else:
+                df = (raw[trial,:] - baseline) / baseline
                     #print stim, trial
             curr_dfs[trial,:] = df
 
-            stim_dur = stimtraces[stim]['frames_stim_on'][trial][1]-stimtraces[stim]['frames_stim_on'][trial][0]
-            stim_interval = int(round(stim_dur))
-            
+            #stim_dur = stimtraces[stim]['frames_stim_on'] 
+	    #stimtraces[stim]['frames_stim_on'][trial][1]-stimtraces[stim]['frames_stim_on'][trial][0]
+	    volumerate = float(stimtraces[stim]['volumerate'])
+	    nframes_on = int(round(stimtraces[stim]['stim_dur'] * volumerate))
+            #print stimtraces[stim]['stim_dur'], nframes_on+frame_on_idx 
             baseline_frames = curr_dfs[trial, 0:frame_on_idx]
-            stim_frames = curr_dfs[trial, frame_on_idx:frame_on_idx+stim_interval]
-
-            std_baseline = np.std(baseline_frames)
-            mean_stim_on = np.mean(stim_frames)
+            stim_frames = curr_dfs[trial, frame_on_idx:frame_on_idx+nframes_on]
+	    #print stim, len(stim_frames)
+            std_baseline = np.nanstd(baseline_frames)
+	    #print np.mean(stim_frames) 
+            mean_stim_on = np.nanmean(stim_frames)
             zval_trace = mean_stim_on / std_baseline
 
             calcs[roi][stim]['zscores'].append(zval_trace)
@@ -479,44 +444,22 @@ for roi in rois_to_plot:
             calcs[roi][stim]['name'] = stimtraces[stim]['name']
 
             dfstruct[roi][stim]['name'] = stimtraces[stim]['name']
-            dfstruct[roi][stim]['tsec'] = xvals/volumerate
+            dfstruct[roi][stim]['tsec'] = np.true_divide(xvals[trial,:], volumerate)
+	    dfstruct[roi][stim]['raw'] = raw
             dfstruct[roi][stim]['df'] = curr_dfs
             dfstruct[roi][stim]['frame_on'] = (frame_on_idx, frame_on)
             dfstruct[roi][stim]['baseline_vals'] = baseline_frames
             dfstruct[roi][stim]['stim_on_vals'] = stim_frames
-            dfstruct[roi][stim]['stim_on_dur'] = stim_dur 
+            dfstruct[roi][stim]['stim_on_nframes'] = nframes_on 
 
-# 
-# # In[13]:
-# 
-# 
-# dfstruct[roi][stim]['df'].shape
-# 
-# 
-# # In[14]:
-# 
-# 
-# print stim
-# dfstruct[roi][stim]['df'][0,:]
-# 
-# 
-# # In[15]:
-# 
-# 
-# plt.figure()
-# plt.plot(dfstruct[roi][stim]['tsec'][0,:],  dfstruct[roi][stim]['df'][0,:], color=colorvals[0], alpha=trial_alpha, linewidth=trial_width)
-# plt.show()
-# 
-# 
-# # In[16]:
-# 
 
-if experiment=='gratings_phaseMod':
+# Set up subplots:
+if experiment=='gratings_phaseMod' or experiment=='gratings_static':
     nrows = nsfs
     ncols = noris
 else:
-    nrows = 6 #int(np.ceil(np.sqrt(len(stimlist))))
-    ncols = 10 #int(np.ceil(len(stimlist)/float(nrows)))
+    nrows = 5 #int(np.ceil(np.sqrt(len(stimlist))))
+    ncols = int(len(stimlist))/nrows #int(np.ceil(len(stimlist)/float(nrows)))
 
 print nrows, ncols
 
@@ -577,17 +520,20 @@ for roi in rois_to_plot:
 
     row=0
     col=0
-    print nrows, ncols
+    #print nrows, ncols
     plotidx = 0
     for stim in sorted(stimlist, key=natural_keys): #ROIs:
 
-	if col==(ncols):
+	if col==(ncols) and nrows>1:
 	    row += 1
 	    col = 0
 	    
 	#print stim, row, col
-	
-	ax_curr = axs[row, col] #, col]
+	#print axs.shape	
+	if len(axs.shape)>1:
+	    ax_curr = axs[row, col] #, col]
+	else:
+	    ax_curr = axs[col]
 	
 	
 	curr_dfs = dfstruct[roi][stim]['df']
@@ -603,7 +549,7 @@ for roi in rois_to_plot:
 		ax_curr.plot(tsec, curr_dfs[trial,:], color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
 
 	# Plot average:
-	avg = np.mean(curr_dfs, axis=0) 
+	avg = np.nanmean(curr_dfs, axis=0) 
 	if color_by_roi:
 	    ax_curr.plot(tsec, avg, color=colorvals[roi], alpha=avg_alpha, linewidth=avg_width)
 	else:
@@ -612,7 +558,7 @@ for roi in rois_to_plot:
 	# Plot stimulus ON period:
 	frame_on_idx = dfstruct[roi][stim]['frame_on'][0]
 	#print frame_on_idx
-	stim_frames = [frame_on_idx, frame_on_idx+dfstruct[roi][stim]['stim_on_dur']]
+	stim_frames = [frame_on_idx, frame_on_idx+dfstruct[roi][stim]['stim_on_nframes']]
 	#ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
 
 	if no_color is True:
@@ -675,7 +621,7 @@ for roi in rois_to_plot:
     #plt.subplots_adjust(top=1)
     plt.title('ROI: %i' % int(roi))
 
-    figname = '%s_stimgrid_roi%i.png' % (currslice, int(roi))
+    figname = '%s_stimgrid_roi%i_%s.png' % (currslice, int(roi), roi_trace_type)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
     # plt.show()

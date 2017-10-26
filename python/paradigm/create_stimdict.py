@@ -1,4 +1,4 @@
-##!/usr/bin/env python2
+###!/usr/bin/env python2
 import os
 import json
 import re
@@ -22,8 +22,9 @@ class StimInfo:
         self.frames = []
         self.frames_sec = []
         self.stim_on_idx = []
-	self.stim_dur = []
-	self.iti_dur = []
+	self.stim_dur = None #[]
+	self.iti_dur = None #[]
+	self.volumerate = None
 
 def serialize_json(instance=None, path=None):
     dt = {}
@@ -39,7 +40,7 @@ def serialize_json(instance=None, path=None):
 # mw = False
 
 # stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-# iti_pre = float(options.iti_pre)
+## iti_pre = float(options.iti_pre)
 # same_order = False #True
 
 import optparse
@@ -200,8 +201,8 @@ if abort is False:
             currtrial = str(trialnum+1)
 
 	    if custom_mw is False:
-		stim_on_sec = trialdict[currfile][currtrial]['stim_dur_ms']/1E3
-		iti_full = trialdict[currfile][currtrial]['iti_dur_ms']/1E3
+		stim_on_sec = round(trialdict[currfile][currtrial]['stim_dur_ms']/1E3)
+		iti_full = round(trialdict[currfile][currtrial]['iti_dur_ms']/1E3)
 		iti_post = iti_full - iti_pre
 
 	    nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
@@ -214,7 +215,8 @@ if abort is False:
                 stimdict[stim] = dict()
             if not currfile in stimdict[stim].keys():
                 stimdict[stim][currfile] = StimInfo()
-            if custom_mw is True:
+            
+	    if custom_mw is True:
                 if trialnum==0:
                     first_frame_on = first_stimulus_volume_num
                 else:
@@ -283,8 +285,11 @@ if abort is False:
             stimdict[stim][currfile].frames.append(framenums)
             #stimdict[stim][currfile].frames_sec.append(frametimes)
             stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
-	    stimdict[stim][currfile].stim_dur.append(stim_on_sec)
-	    stimdict[stim][currfile].iti_dur.append(iti_full)
+	    stimdict[stim][currfile].stim_dur = round(stim_on_sec) #.append(stim_on_sec)
+	    stimdict[stim][currfile].iti_dur = round(iti_full) #.append(iti_full)
+	    stimdict[stim][currfile].volumerate = volumerate
+	
+	#print [len(stimdict[stim][currfile].frames[i]) for i in range(len(stimdict[stim][currfile].frames))]
 
     # Save to PKL:
     curr_stimdict_pkl = 'stimdict.pkl' #% currfile # % currslice

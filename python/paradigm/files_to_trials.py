@@ -88,28 +88,6 @@ analysis_id = options.analysis_id
 #selected_channel = int(options.selected_channel)
 
 
-# source = '/nas/volume1/2photon/projects'
-# # experiment = 'scenes'
-# # session = '20171003_JW016'
-# # acquisition = 'FOV1'
-# # functional_dir = 'functional'
-
-# experiment = 'gratings_phaseMod'
-# session = '20171009_CE059'
-# acquisition = 'FOV1_zoom3x'
-# functional_dir = 'functional'
- 
-# ================================================================================
-# frame info:
-# ================================================================================
-#first_frame_on = 50
-#stim_on_sec = 2. #0.5
-#iti = 1.
-#vols_per_trial = 15
-#same_order = True
-# =================================================================================
-
-
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figdir = os.path.join(acquisition_dir, 'example_figures')
 
@@ -121,12 +99,17 @@ with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
 
 
 # Load SI meta data:
-si_basepath = ref['raw_simeta_path'][0:-4]
-simeta_json_path = '%s.json' % si_basepath
-with open(simeta_json_path, 'r') as fs:
-    simeta = json.load(fs)
+# si_basepath = ref['raw_simeta_path'][0:-4]
+# simeta_json_path = '%s.json' % si_basepath
+# with open(simeta_json_path, 'r') as fs:
+#     simeta = json.load(fs)
+# 
+# volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+# 
 
-file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
+nfiles = ref['ntiffs']
+file_names = ['File%03d' % int(f+1) for f in range(nfiles)]
+#file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
 nfiles = len(file_names)
 
 
@@ -149,12 +132,11 @@ else:
     slices = ref['slices']
 if isinstance(slices, int):
     slices = [slices]
-#     slices = range(len(maskpaths))
-#     slices = [s+1 for s in slices]
 print "Found masks for slices:", slices
 
 
 # Load trace structs:
+print "Loading traces..."
 selected_channel = int(ref['signal_channel'][analysis_id])
 trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
 currchannel = "Channel%02d" % int(selected_channel)
@@ -162,7 +144,7 @@ curr_tracestruct_fns = os.listdir(trace_dir)
 trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
 if len(trace_fns_by_slice)==0:
     print "No trace structs found for Channel %i." % int(selected_channel)
-print trace_fns_by_slice
+#print trace_fns_by_slice
 
 
 # Get PARADIGM INFO:
@@ -172,6 +154,7 @@ path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
 
 
 # Load stimulus dict:
+print "Loading stim-frame key (stimdict)..."
 stimdict_fn = 'stimdict.pkl'
 with open(os.path.join(path_to_paradigm_files, stimdict_fn), 'r') as f:
      stimdict = pkl.load(f) #json.load(f)
@@ -196,7 +179,7 @@ for stim in stimdict.keys():
 # Split all traces by stimulus-ID:
 # ----------------------------------------------------------------------------
 
-stimtraces_all_slices = dict()
+#stimtraces_all_slices = dict()
 
 for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)):
 
@@ -209,8 +192,6 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     # To look at all traces for ROI 3 for stimulus 1:
     # traces_by_stim['1']['Slice01'][:,roi,:]
     for stim in sorted(stimdict.keys(), key=natural_keys):
-        #stimtraces[stim] = dict()
-        repidx = 0
         raw_traces_allrois = []
         curr_traces_allrois = []
         curr_frames_allrois = []
@@ -218,18 +199,17 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
 #            nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
 #            framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-            volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
+#            volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
 #            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
 
-#            nframes_off = vols_per_trial - nframes_on
-#            frames_iti = round(iti * volumerate) 
             curr_ntrials = len(stimdict[stim][currfile].frames)
 	    rawtraces = tracestruct['file'][fi].rawtracemat
 	    currtraces = tracestruct['file'][fi].tracematDC
 
 	    #print currtraces.shape
             for currtrial_idx in range(curr_ntrials):
-		stim_on_sec = stimdict[stim][currfile].stim_dur[currtrial_idx]
+		volumerate = stimdict[stim][currfile].volumerate
+		stim_on_sec = stimdict[stim][currfile].stim_dur #[currtrial_idx]
 		nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
 
                 #print stimdict[stim][currfile].frames[currtrial_idx]
@@ -246,7 +226,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 raw_traces_allrois.append(rawtraces[currtrial_frames, :]) 
 	        curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
-                repidx += 1
+
                 #print stimdict[stim][currfile].stim_on_idx 
                 curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
                 stim_on_frames.append([curr_frame_onset, curr_frame_onset + nframes_on])
@@ -273,6 +253,8 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois
+	stimtraces[stim]['volumerate'] = volumerate
+	stimtraces[stim]['stim_dur'] = stim_on_sec
 
 
     curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currslice, currchannel)
@@ -300,9 +282,9 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     print os.path.join(parsed_traces_dir, curr_stimtraces_mat)
   
      
-    stimtraces_all_slices[currslice] = stimtraces
-    stimtraces_all_fn = 'all_stimtraces_%s.pkl' % currchannel
-    with open(os.path.join(parsed_traces_dir, stimtraces_all_fn), 'wb') as f:
-        pkl.dump(stimtraces_all_slices, f, protocol=pkl.HIGHEST_PROTOCOL)
- 
-
+#     stimtraces_all_slices[currslice] = stimtraces
+#     stimtraces_all_fn = 'all_stimtraces_%s.pkl' % currchannel
+#     with open(os.path.join(parsed_traces_dir, stimtraces_all_fn), 'wb') as f:
+#         pkl.dump(stimtraces_all_slices, f, protocol=pkl.HIGHEST_PROTOCOL)
+#  
+# 

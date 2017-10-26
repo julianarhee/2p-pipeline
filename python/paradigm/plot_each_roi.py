@@ -147,15 +147,6 @@ figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figure
 if not os.path.exists(figbase):
     os.makedirs(figbase)
 
-if dont_use_raw is True:
-    figdir = os.path.join(figbase, 'rois_processed')
-else:
-    figdir = os.path.join(figbase, 'rois')
-if not os.path.exists(figdir):
-    os.mkdir(figdir)
-print "Saving ROI subplots to dir:", figdir
- 
-
 # Load reference info:
 ref_json = 'reference_%s.json' % functional_dir 
 with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
@@ -246,15 +237,16 @@ else:
 print "ROIS TO PLOT:", rois_to_plot
 
 
-# Create ROI dir in figures:
-figbase = os.path.join(acquisition_dir, 'figures', analysis_id) #'example_figures'
-if not os.path.exists(figbase):
-    os.makedirs(figbase)
+# Create ROI dir in figures: 
+if dont_use_raw is True:
+    roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+else:
+    roi_trace_type = 'raw'
 
 if len(tmprois)==0:
-    figdir = os.path.join(figbase, 'rois')
+    figdir = os.path.join(figbase, 'rois', 'all') #'rois')
 else:
-    figdir = os.path.join(figbase, 'roi_subsets', sort_name, 'roi_traces')
+    figdir = os.path.join(figbase, 'rois', 'selected', sort_name)
 if not os.path.exists(figdir):
     os.makedirs(figdir)
 print "Saving ROI subplots to dir:", figdir
@@ -314,7 +306,7 @@ else:
 
 # Get stim names:
 stiminfo = dict()
-if experiment=='gratings_phaseMod':
+if experiment=='gratings_phaseMod' or experiment=='gratings_static':
     print "STIM | ori - sf"
     for stim in stimlist: #sorted(stimtraces.keys(), key=natural_keys):
 	
@@ -343,7 +335,7 @@ else:
 #print rois_to_plot
 
 
-even_idxs = np.arange(noris, noris*2)
+even_idxs = np.arange(noris, noris*nsfs, nsfs)
 print even_idxs
 for ridx, roi in enumerate(rois_to_plot):
 
@@ -368,20 +360,39 @@ for ridx, roi in enumerate(rois_to_plot):
 	
 	# Get traces for curent stimulus from 'stimtraces' struct:
         if dont_use_raw is True:
-            currtraces = stimtraces[stim]['traces']
+            tmp_currtraces = stimtraces[stim]['traces']
         else:
-            currtraces = stimtraces[stim]['raw_traces']
+            tmp_currtraces = stimtraces[stim]['raw_traces']
 
-	ntrialstmp = len(currtraces)
-	nframestmp = [currtraces[i].shape[0] for i in range(len(currtraces))]
-	#print "N frames per trial:", nframestmp
-	nframestmp = nframestmp[0]
+	if isinstance(tmp_currtraces, list):
+	    # print "N TRIALS:", len(tmp_currtraces)
+	    ntrialstmp = len(tmp_currtraces)
+	    nframestmp = [tmp_currtraces[i].shape[0] for i in range(len(tmp_currtraces))]
+	    #print "N frames per trial:", nframestmp
+	    nframestmp = nframestmp[0]
+	    nroistmp = [tmp_currtraces[i].shape[1] for i in range(len(tmp_currtraces))]
+	    nroistmp = nroistmp[0]
+	    
+	    # Get RAW traces for each trial:
+	    currtraces = np.empty((ntrialstmp, nframestmp, nroistmp))
+	    for trialnum in range(ntrialstmp):
+		currtraces[trialnum, :, :] = tmp_currtraces[trialnum]
+	else:
+	    #print "NOT A LIST!", tmp_currtraces.shape
+	    currtraces = tmp_currtraces
+	    ntrialstmp = tmp_currtraces.shape[0]
+	    nframestmp = tmp_currtraces.shape[1]
+	    nroistmp = tmp_currtraces.shape[2]
 
-	# Get RAW traces for each trial:
-	raw = np.empty((ntrialstmp, nframestmp))
-	for trialnum in range(ntrialstmp):
-	    raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
-
+        #print "N trials:", ntrialstmp
+        #print "N frames/trial:", nframestmp
+        #print "N rois:", nroistmp
+	
+	#raw = np.empty((ntrialstmp, nroistmp))
+	#for trialnum in range(ntrialstmp):
+	#    raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
+	raw = currtraces[:, :, roi] #.T
+        #print raw.shape
         xvals = np.arange(0, raw.shape[1])
 	
 	ntrials = raw.shape[0]
@@ -400,23 +411,37 @@ for ridx, roi in enumerate(rois_to_plot):
 		# print frame_off - frame_on
 		#frame_on = int(frames_iti)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
 	    else:
-		# frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
 		frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
 		frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
 
+# 		# frame_on = int(nframes_iti_pre)+1 #stimtraces[stim]['frames_stim_on'][trial][0]
+# 		if isinstance(stimtraces[stim]['frames_stim_on'], list):
+# 		    print trial, "list again"
+# 		    #print stimtraces[stim]['frames_stim_on']
+# 		    #print stim, trial, stimtraces[stim]['frames_stim_on'][trial]
+# 		    frame_on = stimtraces[stim]['frames_stim_on'][trial][0]
+# 		    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
+# 		else:
+# 		    print stimtraces[stim]['frames_stim_on']
+# 		    #frame_on = stimtraces[stim]['frames_stim_on'][trial,0]
+# 
 	    baseline = np.mean(raw[trial, 0:frame_on])
-	    #print "baseline:", baseline
-	    df = (raw[trial,:] - baseline) / baseline
+            if baseline==0:
+	        print roi, stim, "TRIAL", trial, "baseline:", baseline
+		df = np.ones((1, nframes_in_trial))*np.nan
+	    else:
+	        df = (raw[trial,:] - baseline) / baseline
 	    #print stim, trial
+	    
+		if color_by_roi:
+		    plt.plot(xvals, df, color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
+		else:
+		    plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
+		
 	    curr_dfs[trial,:] = df
 
-	    if color_by_roi:
-		plt.plot(xvals, df, color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
-	    else:
-		plt.plot(xvals, df, color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
-
 	# Plot average:
-	avg = np.mean(curr_dfs, axis=0) 
+	avg = np.nanmean(curr_dfs, axis=0) 
 	if color_by_roi:
 	    plt.plot(xvals, avg, color=colorvals[roi], alpha=avg_alpha, linewidth=avg_width)
 	    #plt.plot(xvals, avg, color='k', alpha=.5, linewidth=1.2)                
@@ -475,7 +500,7 @@ for ridx, roi in enumerate(rois_to_plot):
     plt.subplots_adjust(top=1)
     plt.suptitle('ROI: %i' % int(roi))
     
-    figname = '%s_stimgrid_roi%i.png' % (currslice, int(roi))
+    figname = '%s_stimgrid_roi%i_%s.png' % (currslice, int(roi), roi_trace_type)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
 
    # plt.show()
