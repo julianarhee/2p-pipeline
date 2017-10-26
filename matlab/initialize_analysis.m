@@ -6,8 +6,7 @@
 %add_repo_paths
 %fprintf('Added repo paths.\n');
 
-%if new_rolodex_entry
-
+% Create analysis struct from user-specified info (init_header.m):
 I = struct();
 I.mc_id = mc_id;
 I.corrected = curr_mcparams.corrected;
@@ -34,13 +33,14 @@ I.average_source = average_source;
 %itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
 if load_analysis
+    % Check current user-spec'ed analysis-struct to loaded analysis-struct (from check_init.m):
     I.analysis_id = analysis_id;
     entries = fieldnames(tmpI);
     if ~isequal(tmpI, I)
         fprintf('Found mismatch in current rolodex entry specifications (init_header) and loaded entry selected...\n');
         for e=1:length(entries)
             if isstr(tmpI.(entries{e})) && ~strcmp(tmpI.(entries{e}), I.(entries{e}))
-                fprintf('%s:\nPrev: %s, Curr: %s\n', entries{e}, tmpI.(entries{e}), I.(entries{e}));
+                fprintf('%s:\n\nPrev: %s, Curr: %s\n', entries{e}, tmpI.(entries{e}), I.(entries{e}));
                 choice = input('Select <0> to keep old, <1> to overwrite with curr: ');
                 if choice==1
                     tmpI.(entries{e}) = I.(entries{e});
@@ -48,41 +48,9 @@ if load_analysis
             end
         end
     end
+
     I = tmpI;
-    rolodex.(existing_analyses{selected_analysis_idx}) = I;
-    savejson('', rolodex, path_to_rolodex);
-
-    % Update rolodex table:
-    itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-    updated_records = update_analysis_table(itable, path_to_rolodex_table);
-
-    % Also store as json:
-    existing_analyses = updated_records.Properties.RowNames;
-    existing_records = table2struct(updated_records);
-
-    varnames = fieldnames(I);
-    n_analysis_ids = length(existing_analyses)+1;
-    if exist('updated_records', 'var'), clear updated_records, end
-    for var=1:length(varnames)
-        updated_records(selected_analysis_idx).(varnames{var}) = I.(varnames{var});
-    end
-    for id=1:length(existing_analyses)
-        for var=1:length(varnames)
-            updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
-        end
-    end
-    for id=1:length(updated_records)
-        json_records.(updated_records(id).analysis_id) = updated_records(id);
-    end
-    savejson('', json_records, path_to_rolodex);
-
-% 
-%     fprintf('Loaded previous analysis entry, with ID: %s\n', I.analysis_id);
-%     display(I);
-%     display(curr_mcparams);
-% 
-
-
+    
 else
     if ~new_rolodex && ~exist('rolodex', 'var') % i.e., not using previous analysis
         
@@ -106,22 +74,22 @@ else
             tmp_record = rmfield(existing_records(aid), 'analysis_id'); 
             if isequal(tmp_record, tmpI)
                 new_analysis = false;
-                curr_analysis_idx = aid;
+                selected_analysis_idx = aid;
             else
                 new_analysis = true;
-                curr_analysis_idx = length(existing_analysis_idxs) + 1;
+                selected_analysis_idx = length(existing_analysis_idxs) + 1;
             end
         end
     else
         existing_analysis_names = {};
         existing_analysis_idxs = {};
-        curr_analysis_idx = 1;
+        selected_analysis_idx = 1;
         new_analysis = true;
     end
 
     % Check if user-provided analysis ID already exists:
     if isempty(analysis_id)
-        analysis_id = sprintf('analysis%02d', curr_analysis_idx);
+        analysis_id = sprintf('analysis%02d', selected_analysis_idx);
     else
         overwrite = false;
         while (1)
@@ -163,29 +131,84 @@ else
         end
     end
     I.analysis_id = analysis_id;
-    itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+end
 
-    if new_analysis
-        update_analysis_table(itable, path_to_rolodex_table);
 
-        % Also store as json:
-        varnames = fieldnames(I);
-        n_analysis_ids = length(existing_analysis_idxs)+1;
-        if exist('updated_records', 'var'), clear updated_records, end
+
+% Update rolodex table:
+itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+updated_records = update_analysis_table(itable, path_to_rolodex_table);
+existing_analyses = updated_records.Properties.RowNames;
+
+% Also store as json:
+    % Update existing rolodex entry to match selected fields:
+if ~exist('rolodex', 'var') && ~new_rolodex
+    rolodex = loadjson(path_to_rolodex);
+    rolodex.(existing_analyses{selected_analysis_idx}) = I;
+else
+    existing_records = table2struct(updated_records);
+
+    varnames = fieldnames(I);
+    n_analysis_ids = length(existing_analyses);
+    %if exist('updated_records', 'var'), clear updated_records, end
+    for var=1:length(varnames)
+        rolodex_entries(selected_analysis_idx).(varnames{var}) = I.(varnames{var});
+    end
+    for id=1:length(existing_analyses)
         for var=1:length(varnames)
-            updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
+            rolodex_entries(id).(varnames{var}) = existing_records(id).(varnames{var});
         end
-        for id=1:length(existing_analysis_idxs)
-            for var=1:length(varnames)
-                updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
-            end
-        end
-        for id=1:length(updated_records)
-            json_records.(updated_records(id).analysis_id) = updated_records(id);
-        end
-        savejson('', json_records, path_to_rolodex);
+    end
+    for id=1:length(rolodex_entries)
+        rolodex.(rolodex_entries(id).analysis_id) = rolodex_entries(id);
     end
 end
+
+savejson('', rolodex, path_to_rolodex);
+
+% existing_analyses = updated_records.Properties.RowNames;
+% existing_records = table2struct(updated_records);
+% 
+% varnames = fieldnames(I);
+% n_analysis_ids = length(existing_analyses)+1;
+% if exist('updated_records', 'var'), clear updated_records, end
+% for var=1:length(varnames)
+%     updated_records(selected_analysis_idx).(varnames{var}) = I.(varnames{var});
+% end
+% for id=1:length(existing_analyses)
+%     for var=1:length(varnames)
+%         updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
+%     end
+% end
+% for id=1:length(updated_records)
+%     json_records.(updated_records(id).analysis_id) = updated_records(id);
+% end
+% savejson('', json_records, path_to_rolodex);
+% 
+
+% itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
+
+% if new_analysis
+%     update_analysis_table(itable, path_to_rolodex_table);
+% 
+%     % Also store as json:
+%     varnames = fieldnames(I);
+%     n_analysis_ids = length(existing_analysis_idxs)+1;
+%     if exist('updated_records', 'var'), clear updated_records, end
+%     for var=1:length(varnames)
+%         updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
+%     end
+%     for id=1:length(existing_analysis_idxs)
+%         for var=1:length(varnames)
+%             updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
+%         end
+%     end
+%     for id=1:length(updated_records)
+%         json_records.(updated_records(id).analysis_id) = updated_records(id);
+%     end
+%     savejson('', json_records, path_to_rolodex);
+% end
+% 
 
 % Note:  This step also adds fields to mcparams struct that are immutable,
 % i.e., standard across all analyses.

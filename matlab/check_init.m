@@ -11,10 +11,43 @@
 %   4. Creates new mcparmas file, new mcparams entry ('mc_id'), or, if user-specified params match existing entry, asks if matching entry should be reused.
 %   5. Checks fields of curr_mcparams to make sure they are consistent with user-provided params in init_header.m
 
-% Initialize rolodex entry:
-  
+%% 1. Specify paths:
+if ~useGUI 
+    acquisition_base_dir = fullfile(source, experiment, session, acquisition);
+    curr_tiff_dir = fullfile(acquisition_base_dir, tiff_source);
+    
+else
+    % TODO:  do similar selection step for PYTHON (Step1 preprocessing)
+
+    default_root = '/nas/volume1/2photon/projects';             % DIR containing all experimental data
+    tiff_dirs = uipickfiles('FilterSpec', default_root);        % Returns cell-array of full paths to selected TIFF folders
+    
+    % For now, just do 1 dir, but later can iterate over each TIFF dir:
+    curr_tiff_dir = tiff_dirs{1};
+    [acquisition_base_dir, tiff_source, ~] = fileparts(curr_tiff_dir);
+    [acq_parent, acquisition, ~] = fileparts(acquisition_base_dir);
+    [sess_parent, session, ~] = fileparts(acq_parent);
+    [source, experiment, ~] = fileparts(sess_parent);
+end
+
+data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
+
+% Set paths to acquisition meta struct (reference_<funcdir>.mat / .json):
+path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
+path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
+
+if ~exist(path_to_reference)
+    fprintf('No acquisition metastruct found. Did you run python process_raw.py?\n');
+else
+    fprintf('Loading acquisition metastruct.\n');
+    A = load(path_to_reference); 
+end
+
+% Set paths to ROLODEX (summary of info about each analysis run on current acquisition:
 path_to_rolodex = fullfile(source, experiment, session, acquisition, 'analysis_record.json');
 path_to_rolodex_table = fullfile(source, experiment, session, acquisition, 'analysis_record.txt');
+
+% Check if rolodex for current acquisition exists:
 if ~exist(path_to_rolodex, 'file')
     fprintf('No existing analysis record found... Creating new.\n');
     new_rolodex = true;
@@ -22,114 +55,55 @@ else
     new_rolodex = false;
 end
 
-if ~new_rolodex && load_analysis
+if ~new_rolodex
+    % Load existing rolodex and metastruct to check fields:
     rolodex = loadjson(path_to_rolodex);
-    existing_analyses = fieldnames(rolodex);
-    fprintf('Found existing analyses:\n');
-    if length(existing_analyses)>0
-        while (1)
-            for a=1:length(existing_analyses)
-                fprintf('%i: %s\n', a, existing_analyses{a});
+
+    if load_analysis
+        % Confirm which analysis-entry to use:
+        existing_analyses = fieldnames(rolodex);
+        fprintf('Found existing analyses:\n');
+        if length(existing_analyses)>0
+            while (1)
+                for a=1:length(existing_analyses)
+                    fprintf('%i: %s\n', a, existing_analyses{a});
+                end
+                selected_analysis_idx = input('Enter IDX of analysis_id to use: \n');
+                fprintf('Selected the following analysis method:\n');
+                display(rolodex.(existing_analyses{selected_analysis_idx}));
+                user_confirm = input('Press <A> to accept, otherwise hit <enter> to re-select: \n', 's');
+                if strcmp(user_confirm, 'A')
+                    tmpI = rolodex.(existing_analyses{selected_analysis_idx});
+                    analysis_id = existing_analyses{selected_analysis_idx};
+                   break;
+                else
+                    fprintf('RETRY.\n')
+                end
             end
-            selected_analysis_idx = input('Enter IDX of analysis_id to use: \n');
-            fprintf('Selected the following analysis method:\n');
-            display(rolodex.(existing_analyses{selected_analysis_idx}));
-            user_confirm = input('Press <A> to accept, otherwise hit <enter> to re-select: \n', 's');
-            if strcmp(user_confirm, 'A')
-                tmpI = rolodex.(existing_analyses{selected_analysis_idx});
-                analysis_id = existing_analyses{selected_analysis_idx};
-               break;
-            else
-                fprintf('RETRY.\n')
-            end
+            new_analysis = false;
+            new_mc_id = false;
+            new_rolodex_entry = false; 
+           
+            % Load MCPARAMS associated with selected analysis-entry:
+            mcparams = load(A.mcparams_path);
+            curr_mcparams = mcparams.(tmpI.mc_id);
+            mc_id = tmpI.mc_id;
+
+        else
+            % Bad settings by user, no analysis to load, so create new:
+            fprintf('Rolodex has no fields. Creating new.\n');
+            new_rolodex = true;
+            new_rolodex_entry = true;
+            
         end
-        new_analysis = false;
-        new_mc_id = false;
-        new_rolodex_entry = false; 
-
-        % Build acq path and get reference struct:
-        % ----------------------------------------
-%         acquisition_base_dir = fullfile(source, experiment, session, acquisition)
-%         path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
-%         path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
-%
-        curr_tiff_dir = fullfile(source, experiment, session, acquisition, tiff_source);
-
-        acquisition_base_dir = fullfile(source, experiment, session, acquisition);
-         
-        [tiff_parent, tiff_source, ~] = fileparts(curr_tiff_dir);
-        [acq_parent, acquisition, ~] = fileparts(tiff_parent);
-        [sess_parent, session, ~] = fileparts(acq_parent);
-        [source, experiment, ~] = fileparts(sess_parent);
-
-        acquisition_base_dir = fullfile(source, experiment, session, acquisition)
-        data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
-
-
-        path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
-        path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
-
-        %% 2. Load reference struct (initially generated when extracting raw TIFF metadata in python/preprocessing/process_raw.py):
-        % ----------------------------------------     
-
-        A = load(path_to_reference);
-        
-        % Load MCPARAMS:
-        mcparams = load(A.mcparams_path);
-        curr_mcparams = mcparams.(tmpI.mc_id);
-        mc_id = tmpI.mc_id;
-
     else
-        fprintf('Rolodex has no fields. Creating new.\n');
-        new_rolodex = true;
+        % Assume new analysis entry to be created (if load_anlaysis==false): 
         new_rolodex_entry = true;
-        
     end
-    
-
 else
-    
     new_rolodex_entry = true;
 
-    % Go through the steps to check MCparams & check if new analysis entry should be created:
-
-    %% 1. Specify paths:
-    if ~useGUI 
-        curr_tiff_dir = fullfile(source, experiment, session, acquisition, tiff_source);
-    else
-        default_root = '/nas/volume1/2photon/projects';             % DIR containing all experimental data
-        tiff_dirs = uipickfiles('FilterSpec', default_root);        % Returns cell-array of full paths to selected folders containing TIFFs to be processed
-        
-        % For now, just do 1 dir, but later can iterate over each TIFF dir
-        % selected:
-        curr_tiff_dir = tiff_dirs{1};
-
-    end
-    
-    % Iterate through selected tiff-folders to build paths:
-    % TODO:  do similar selection step for PYTHON (Step1 preprocessing)
-
-    acquisition_base_dir = fullfile(source, experiment, session, acquisition);
-     
-    [tiff_parent, tiff_source, ~] = fileparts(curr_tiff_dir);
-    [acq_parent, acquisition, ~] = fileparts(tiff_parent);
-    [sess_parent, session, ~] = fileparts(acq_parent);
-    [source, experiment, ~] = fileparts(sess_parent);
-
-    acquisition_base_dir = fullfile(source, experiment, session, acquisition)
-    data_dir = fullfile(acquisition_base_dir, tiff_source, 'DATA');
-
-
-    path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source))
-    path_to_reference_json = fullfile(acquisition_base_dir, sprintf('reference_%s.json', tiff_source))
-
-    %% 2. Load reference struct (initially generated when extracting raw TIFF metadata in python/preprocessing/process_raw.py):
-    % ----------------------------------------
- 
-    A = load(path_to_reference);
-
-    
-    % Update REFERENCE struct with current analysis-info:
+    % Update acquisition-metastruct with analysis-related info (not specific to current analysis-run):
     if ~isfield(A, 'acquisition_base_dir')
         A.acquisition_base_dir = acquisition_base_dir;
     end
@@ -143,6 +117,10 @@ else
         A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
     end
 
+end
+
+if new_rolodex_entry
+       
 
     % -------------------------------------------------------------------------
     %% 3.  Set MC params
@@ -173,20 +151,15 @@ else
         'algorithm', algorithm,...
         'split_channels', split_channels,...
         'source_dir', data_dir,...
-        'nchannels', A.nchannels);
+        'dest_dir', '',...
+        'nchannels', A.nchannels,...
+        'bidi_corrected', correct_bidi_scan);
 
     % Correct mcaram fields based on user-input:
-    if correct_bidi_scan
-        curr_mcparams.bidi_corrected = true;
-    else
-        curr_mcparams.bidi_corrected = false;
-    end
     if correct_motion
-        curr_mcparams.corrected = true
         curr_mcparams.dest_dir = 'Corrected';
     else
         curr_mcparams.dest_dir = 'Raw';
-        curr_mcparams.corrected = false;
         curr_mcparams.method = 'None';
         curr_mcparams.algorithm = 'None';
         curr_mcparams.ref_channel = 0;
@@ -194,7 +167,15 @@ else
     end
 
     %% 4. Check if new mcparams or not:
-    fields_to_check = {'corrected', 'method', 'source_dir', 'flyback_corrected', 'ref_channel', 'ref_file', 'algorithm', 'bidi_corrected', 'split_channels', 'crossref'};
+    fields_to_check = {'corrected',...
+                       'method',...
+                       'source_dir',...
+                       'flyback_corrected',...
+                       'ref_channel',...
+                       'ref_file',...
+                       'algorithm',...
+                       'bidi_corrected',...
+                       'split_channels'};
 
     new_mc_id = false;
     if exist(fullfile(data_dir, 'mcparams.mat'))
@@ -236,8 +217,8 @@ else
 
     % Create NEW mcparams entry, or load previous one, if reusing:
     if new_mc_id
-        fprintf('Creating NEW mc struct.\n');
         mc_id = sprintf('mcparams%02d', num_mc_ids+1);
+        fprintf('Creating NEW mc struct:s %s\n', mc_id);
         mcparams.(mc_id) = curr_mcparams;
         save(A.mcparams_path, '-struct', 'mcparams');
     else
@@ -251,15 +232,13 @@ else
             confirm_selection = input('Use these params? Press Y/n.\n', 's');
             if strcmp(confirm_selection, 'Y')
                 mc_id = prev_mcparams_ids{user_selected_mc}
-                curr_mcparams = mcparams.(mc_id);
-                
+                curr_mcparams = mcparams.(mc_id); 
                 break;
             end
         end
     end
 
     %% 5. Fix base mc dir to allow for multiple mcparams 'CorrectedXX' dirs
-
     if process_raw
         if correct_motion && ~any(strfind(curr_mcparams.dest_dir, mc_id))
             curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id)
