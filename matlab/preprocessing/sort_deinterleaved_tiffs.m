@@ -11,7 +11,6 @@ end
 % If using (and including) 2 channels for MC, separate them into their
 % own dirs:
 
-
 corrected_tiff_fns = dir(fullfile(path_to_sort, '*.tif'));
 corrected_tiff_fns = {corrected_tiff_fns(:).name};
 corrected_ch1_path = fullfile(path_to_sort, 'Channel01');

@@ -26,16 +26,40 @@ curr_mcparams = mcparams.(I.mc_id);
 % -------------------------------------------------------------------------
 if I.corrected && new_mc_id %new_mc_id && process_raw
     do_motion_correction = true;
-elseif I.corrected && ~new_mc_id %(~new_mc_id || ~process_raw)
-    found_nchannels = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*Channel*'));
+elseif I.corrected && ~new_mc_id 
+    % Double check that current mc_id has correct number of expected MC output files:
+    mc_output_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
+    found_nchannels = dir(fullfile(mc_output_dir, '*Channel*'));
     found_nchannels = {found_nchannels(:).name}';
-    if length(found_nchannels)>0 && isdir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}))
-        found_nslices = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, found_nchannels{1}, '*.tif'));
-        found_nslices = {found_nslices(:).name}';
-        if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices)
-            fprintf('Found corrected number of deinterleaved TIFFs in Corrected dir.\n');
-            user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
+    if length(found_nchannels)>0 
+        if isdir(fullfile(mc_output_dir, found_nchannels{1}))
+            found_nfiles = dir(fullfile(mc_output_dir, found_nchannels{1}, '*File*'));
+            found_nfiles = {found_nfiles(:).name}';
+            
+            found_nslices = dir(fullfile(mc_output_dir, found_nchannels{1}, found_nfiles{1}, '*.tif'));
+            found_nslices = {found_nslices(:).name}';
+            if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices) && length(found_nfiles)==A.ntiffs
+                found_correct_nfiles = true;
+            else
+                found_correct_nfiles = false;
+            end
+        else
+            found_correct_nfiles = false;
         end
+    else
+        found_ntiffs = dir(fullfile(mc_output_dir, '*.tif'));
+        found_tiffs = {found_tiffs(:).name}';
+        fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
+        found_tiffs
+        if length(found_tiffs)==(A.nchannels*A.ntiffs*length(A.slices))
+            found_correct_nfiles = true;
+        else
+            found_correct_nfiles = false;
+        end
+    end
+    if found_correct_nfiles 
+        fprintf('Correct number of post-MC TIFFs found in output dir: %s\n', mc_output_dir);
+        user_says_mc = input('REDO motion correction step? Press Y/n: ', 's');
         if strcmp(user_says_mc, 'Y')
             do_motion_correction = true;
             user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
@@ -46,42 +70,35 @@ elseif I.corrected && ~new_mc_id %(~new_mc_id || ~process_raw)
             do_motion_correction = false;
         end
     else
-        found_tiffs = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*.tif'));
-        found_tiffs = {found_tiffs(:).name}';
-        fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
-        found_tiffs
-        user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
-        if strcmp(user_says_mc, 'Y')
-            do_motion_correction = true;
-        elseif strcmp(user_says_mc, 'n')
-            do_motion_correction = false;
-        end
+        fprintf('Found specified MC output dir %s, but incorrect n tiffs found.\n');
+        do_motion_correction = true;
     end
 else
     % Just parse raw tiffs:
     do_motion_correction = false;
 end
 
-% CHECK anyway:
-if do_motion_correction
-    % This is redundant to above, but double-check temporarily: 
-    found_nfiles = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*.tif'));
-    found_nfiles = {found_nfiles(:).name}';
-    if length(found_nfiles)==A.ntiffs
-        fprintf('Found correct number of interleaved TIFFs in Corrected dir: %s\n', curr_mcparams.dest_dir);
-        user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
-        if strcmp(user_says_mc, 'Y')
-            do_motion_correction = true;
-            user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
-            if strcmp(user_says_delete, 'Y')
-                rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
-            end
-        elseif strcmp(user_says_mc, 'n')
-            do_motion_correction = false;
-        end
-    end
-end
 
+% % CHECK anyway:
+% if do_motion_correction
+%     % This is redundant to above, but double-check temporarily: 
+%     found_nfiles = dir(fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir, '*.tif'));
+%     found_nfiles = {found_nfiles(:).name}';
+%     if length(found_nfiles)==A.ntiffs
+%         fprintf('Found correct number of interleaved TIFFs in Corrected dir: %s\n', curr_mcparams.dest_dir);
+%         user_says_mc = input('Do Motion-Correction again? Press Y/n.\n', 's');
+%         if strcmp(user_says_mc, 'Y')
+%             do_motion_correction = true;
+%             user_says_delete = input('Deleting old MC folder tree. Press Y to confirm:\n', 's');
+%             if strcmp(user_says_delete, 'Y')
+%                 rmdir fullfile(mcparams.source_dir, curr_mcparams.dest_dir) s
+%             end
+%         elseif strcmp(user_says_mc, 'n')
+%             do_motion_correction = false;
+%         end
+%     end
+% end
+% 
 
 if do_motion_correction
     % Do motion-correction on "raw" tiffs in ./DATA, save slice tiffs to curr_mcparams.dest_dir
@@ -129,6 +146,7 @@ if length(A.slices)>1 || A.nchannels>1
     post_mc_cleanup(deinterleaved_tiff_dir, A);
 
     fprintf('Got corrected, interleaved tiffs. Done with post-MC cleanup.\n');
+
 else
     % Check name of tiffs in last-processed DIR to make sure it is standard naming schem:
     % DO STUFFF.
@@ -147,23 +165,16 @@ else
 end
 
 % -------------------------------------------------------------------------
-% mcparams.bidi_corrected = true;
+%% 4. Do BIDI correction: 
+% -------------------------------------------------------------------------
+
+% TODO: adjust to allow bidi-step to be done before motion-correction...
 
 if curr_mcparams.bidi_corrected
-    if curr_mcparams.corrected
-        bidi_source = curr_mcparams.dest_dir;
-%         if process_raw
-%             bidi_source = sprintf('%s_%s', 'Corrected', I.mc_id);
-%         else
-%             bidi_source = curr_mcparams.dest_dir;
-%         end
-    else
-        bidi_source = 'Raw';
-    end
-    curr_mcparams = do_bidi_correction(bidi_source, curr_mcparams, A);
+   curr_mcparams = do_bidi_correction(curr_mcparams, A);
 end
 
-if length(A.slices>1) || A.nchannels>1
+if length(A.slices)>1 || A.nchannels>1
     % NOTE: bidi function updates mcparams.dest_dir 
     deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
 
@@ -172,6 +183,7 @@ if length(A.slices>1) || A.nchannels>1
 end
 
 fprintf('Finished BIDI correction step.\n')
+
 
 % -------------------------------------------------------------------------
 %% 5.  Create averaged slices from desired source:
@@ -190,17 +202,11 @@ fprintf('Finished creating AVERAGED slices from dir %s\n', I.average_source);
 curr_mcparams.averaged_slices_dir = dest_tiff_basepath;
 
 % Also save MCPARAMS as json:
-[ddir, fname, ext] = fileparts(A.mcparams_path);
-mcparams_json = fullfile(ddir, strcat(fname, '.json'));
+%[ddir, fname, ext] = fileparts(A.mcparams_path);
+%mcparams_json = fullfile(ddir, strcat(fname, '.json'));
 %savejson('', mcparams, mcparams_json);    
 % TODO:  this does not save properly of n-fields (mcparam ids) > 2...
 
-save(path_to_reference, '-struct', 'A', '-append')
-
-% Also save json:
-savejson('', A, path_to_reference_json);
-
-fprintf('Finished preprocessing data.\n');
 
 % -------------------------------------------------------------------------
 %% 6.  Create updated simeta struct, if doesn't exist
@@ -229,5 +235,12 @@ end
 % Update MCPARAMS:
 mcparams.(I.mc_id) = curr_mcparams;
 save(A.mcparams_path, '-struct', 'mcparams');
+
+% Update acquisition meta stuct:
+%save(path_to_reference, '-struct', 'A', '-append')
+%savejson('', A, path_to_reference_json);
+%
+fprintf('Finished preprocessing data.\n');
+
 
 end
