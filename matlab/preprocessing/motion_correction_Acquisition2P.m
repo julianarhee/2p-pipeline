@@ -27,9 +27,11 @@ function myObj = motion_correction_Acquisition2P(mcparams)
 check_tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
 if length(check_tiffs)==0
     if strfind(mcparams.dest_dir, 'Bidi')
+        % motion-correcting bidi-corrected TIFFs:
         bidx = strfind(mcparams.dest_dir, 'Bidi');
         tiff_dir = fullfile(mcparams.source_dir, mcparams.dest_dir(1:bidx+3))
     else
+        % motion-correcting RAW tiffs:
         tiff_dir = fullfile(mcparams.source_dir, 'Raw');
     end
     check_tiffs = dir(fullfile(tiff_dir, '*.tif'));
@@ -49,6 +51,7 @@ if mcparams.crossref
     myObj.save;
 elseif mcparams.flyback_corrected
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
+    myObj.defaultDir = mcparams.source_dir;
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
@@ -57,6 +60,7 @@ elseif mcparams.flyback_corrected
     myObj.save;
 else
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
+    myObj.defaultDir = mcparams.source_dir;
     myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
