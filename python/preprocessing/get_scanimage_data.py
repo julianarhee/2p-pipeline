@@ -103,7 +103,7 @@ def main(options):
         SI_struct = {}
         for item in SI:
             t = SI_struct
-            fieldname = item.split(' = ')[0]; print fieldname
+            fieldname = item.split(' = ')[0] #print fieldname
             value = item.split(' = ')[1]
             num_format = re.compile(r'\-?[0-9]+\.?[0-9]*|\.?[0-9]')
             sci_format = re.compile('-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?')
