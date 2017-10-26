@@ -120,7 +120,7 @@ phasemod = options.phasemod
 paradigm_dir = os.path.join(acquisition_dir, functional_dir, 'paradigm_files')
 raw_paradigm_dir = os.path.join(paradigm_dir, 'raw')
 if not os.path.exists(raw_paradigm_dir):
-    os.mkdir(raw_paradigm_dir)
+    os.makedirs(raw_paradigm_dir)
 print "Moving files to RAW dir:", raw_paradigm_dir
 
 raw_files = [f for f in os.listdir(paradigm_dir) if 'mwk' in f or 'serial' in f]
@@ -183,6 +183,7 @@ for didx in range(len(mw_dfns)):
     print "Found %i pixel clock events." % len(pixelevents)
 
     # Check that all possible pixel vals are used (otherwise, pix-clock may be missing input):
+    print [p for p in pixelevents if 'bit_code' not in p.value[-1].keys()]
     n_codes = set([i.value[-1]['bit_code'] for i in pixelevents])
     if len(n_codes)<16:
         print "Check pixel clock -- missing bit values..."
@@ -289,7 +290,7 @@ for didx in range(len(mw_dfns)):
             trialnum = trialidx + 1
             # blankidx = trialidx*2 + 1
             trial[trialnum]['start_time_ms'] = round(stim.time/1E3)
-            trial[trialnum]['end_time_ms'] = round((iti.time + session_info['ITI']))
+            trial[trialnum]['end_time_ms'] = round((iti.time/1E3 + session_info['ITI']))
             if stimtype=='grating':
                 ori = stim.value[1]['rotation']
                 sf = round(stim.value[1]['frequency'], 2)
@@ -307,6 +308,7 @@ for didx in range(len(mw_dfns)):
             #if stim.value[-1]['name']=='pixel clock':
             trial[trialnum]['stim_bitcode'] = stim.value[-1]['bit_code']
             trial[trialnum]['iti_bitcode'] = iti.value[-1]['bit_code']
+	    trial[trialnum]['iti_duration'] = session_info['ITI']
 
 
     # save trial info as pkl for easyloading: 
