@@ -17,7 +17,7 @@ lastfile_ch_path = fullfile(average_slices_basepath, sprintf('Channel%02d', save
 if exist(ch_path, 'dir')
     nslices = dir(fullfile(ch_path, '*.tif'));
     lastfile_nslices = dir(fullfile(lastfile_ch_path, '*.tif'));
-    if length(nslices)==length(A.slices) && length(lastfile_nslics)==length(A.slices)
+    if length(nslices)==length(A.slices) && length(lastfile_nslices)==length(A.slices)
         fprintf('Found correct number of averaged tiffs in dir:\n')
         fprintf('%s\n', ch_path);
         user_says_parse = input('Press Y/n to re-average TIFFs: ', 's');

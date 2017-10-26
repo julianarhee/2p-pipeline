@@ -133,14 +133,14 @@ else
     % Check name of tiffs in last-processed DIR to make sure it is standard naming schem:
     % DO STUFFF.
     if I.corrected
-        last_processed_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
-        processed_files = dir(fullfil(last_processed_dir, '*.tif'));
-        processed_files = {processed_files(:).name}';
+        last_processed_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir)
+        processed_files = dir(fullfile(last_processed_dir, '*.tif'));
+        processed_files = {processed_files(:).name}'
         for pf=1:length(processed_files)
             curr_processed_fn = fullfile(last_processed_dir, processed_files{pf});
-            standard_fullfile_name = sprintf('%s_File%03d.tif', A.base_filename, pf);
+            standard_fullfile_name = fullfile(last_processed_dir, sprintf('%s_File%03d.tif', A.base_filename, pf));
             if ~strcmp(curr_processed_fn, standard_fullfile_name)
-                movefile(curr_processed_fn, fullfile(last_processed_dir, standard_fullfile_name));
+                movefile(curr_processed_fn, standard_fullfile_name);
             end
         end
     end
