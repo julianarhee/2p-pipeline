@@ -22,6 +22,8 @@ class StimInfo:
         self.frames = []
         self.frames_sec = []
         self.stim_on_idx = []
+	self.stim_dur = []
+	self.iti_dur = []
 
 def serialize_json(instance=None, path=None):
     dt = {}
@@ -54,21 +56,24 @@ parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
 parser.add_option('--order', action="store_true",
                   dest="same_order", default=False, help="Set if same stimulus order across all files (1 stimorder.txt)")
-parser.add_option('-O', '--stimon', action="store",
-                  dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
+
 parser.add_option('-p', '--pre', action="store",
                   dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
-parser.add_option('-i', '--iti', action="store",
-                  dest="iti_full", default='', help="Time (s) between stimuli (inter-trial interval).")
+
+# parser.add_option('-i', '--iti', action="store",
+#                   dest="iti_full", default='', help="Time (s) between stimuli (inter-trial interval).")
+
+ 
+# Only need to set these if using custom-paradigm file:
+parser.add_option('-O', '--stimon', action="store",
+                  dest="stim_on_sec", default=0, help="Time (s) stimulus ON.")
 
 parser.add_option('-t', '--vol', action="store",
                   dest="vols_per_trial", default=0, help="Num volumes per trial. Specifiy if custom_mw=True")
 parser.add_option('-v', '--first', action="store",
                   dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
 
-# parser.add_option('-R', '--roi', action="store",
-#                   dest="roi_method", default='blobs_DoG', help="ROI method to use.")
-# 
+ 
 parser.add_option('--flyback', action="store_true",
                   dest="flyback_corrected", default=False, help="Set if corrected extra flyback frames (in process_raw.py->correct_flyback.py")
 
@@ -113,30 +118,10 @@ if abort is False:
     file_names = sorted([k for k in simeta.keys() if 'File' in k], key=natural_keys)
     nfiles = len(file_names)
 
-    # ================================================================================
-    # frame info:
-    # ================================================================================
-    # if mw is True:
-    #     #first_frame_on = 50
-    #     #vols_per_trial = 15
-    #     stim_on_sec = 2.
-    #     iti_pre = 1. #4..
-    #     iti_full = 4.
-    #     iti_post = iti_full - iti_pre
-    #     same_order = False
-    # else:
-    #     volumerate = simeta['File001']['SI']['hRoiManager']['scanVolumeRate']
-    #     first_stimulus_volume_num = 50
-    #     vols_per_trial = 15
-    #     stim_on_sec = 0.5
-    #     iti_pre = 1.
-    #     iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
-    #     iti_post = iti_full - iti_pre
-
-    #     same_order = True
-    
+   
     stim_on_sec = float(options.stim_on_sec) #2. # 0.5
     iti_pre = float(options.iti_pre)
+    
     #vols_per_trial = float(options.vols_per_trial)
     #first_stim_volume_num = int(options.first_stim_volume_num)
 
@@ -153,23 +138,15 @@ if abort is False:
 	print "ITT full (s):", iti_full
 	print "TRIAL dur (s):", stim_on_sec + iti_full
 	print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * volumerate
-    else:
-        stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-        iti_full = float(options.iti_full)# 4.
-        iti_post = iti_full - iti_pre
-        print "ITI POST:", iti_post
+#     else:
+#         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
+#         iti_full = float(options.iti_full)# 4.
+#         iti_post = iti_full - iti_pre
+#         print "ITI POST:", iti_post
+
     # =================================================================================
 
-
-#     ### Set ROI method and Trace method:
-#     curr_roi_method = options.roi_method #ref['roi_id'] #'blobs_DoG'
-#     trace_dir = os.path.join(ref['trace_dir'], curr_roi_method)
-# 
-#     ### Create parsed-trials dir with default format:
-#     parsed_traces_dir = os.path.join(trace_dir, 'Parsed')
-#     if not os.path.exists(parsed_traces_dir):
-#         os.mkdir(parsed_traces_dir)
-# 
+ 
     ### Get PARADIGM INFO:
     path_to_functional = os.path.join(acquisition_dir, functional_dir)
     paradigm_dir = 'paradigm_files'
@@ -178,7 +155,7 @@ if abort is False:
     if custom_mw is False:
 	with open(os.path.join(path_to_paradigm_files, 'parsed_trials.pkl'), 'rb') as f:
 	    trialdict = pkl.load(f)
-	trialdict.keys()
+	print "Trial Info dicts found for %i files:" % len(trialdict.keys())
 
     ### Get stim-order files:
     stimorder_fns = os.listdir(path_to_paradigm_files)
@@ -206,30 +183,12 @@ if abort is False:
         nvolumes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
         #nslices = len(ref['slices']) #int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
 	nslices = int(simeta[currfile]['SI']['hFastZ']['numFramesPerVolume'])
-
 	framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
         volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-	print "framerate:", framerate
-	print "volumerate:", volumerate
+	#print "framerate:", framerate
+	#print "volumerate:", volumerate
         frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
-# 
-# 	if custom_mw is True:
-# 	    frame_tsecs = np.arange(0, nvolumes)*(1/volumerate)
-# 	else:
-#             frames_tsecs = np.arange(0, nvolumes*nslices)*(1/framerate)
-# 	print "N frame tstamps:", len(frames_tsecs)
-# 
-        nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
-        nframes_iti_pre = int(round(iti_pre * volumerate))
-        nframes_iti_post = iti_post*volumerate # int(round(iti_post * volumerate))
-        nframes_iti_full = iti_full * volumerate #int(round(iti_full * volumerate))
-#         if custom_mw is False:
-#             vols_per_trial = (stim_on_sec + iti_full) * volumerate #nframes_on + nframes_iti_full #int(round(nframes_on + nframes_iti_full))
-# 	
-	#nframes_post_onset = (stim_on_sec + iti_full - iti_pre) * volumerate
-	nframes_post_onset = (stim_on_sec + iti_post) * volumerate
-	print "nframes per trial:", nframes_iti_pre+nframes_on+nframes_iti_post
-
+ 
         # Load stim-order:
         stim_fn = stimorder_fns[fi] #'stim_order.txt'
         with open(os.path.join(path_to_paradigm_files, stim_fn)) as f:
@@ -239,6 +198,18 @@ if abort is False:
 
         for trialnum,stim in enumerate(curr_stimorder):
             currtrial = str(trialnum+1)
+
+	    if custom_mw is False:
+		stim_on_sec = trialdict[currfile][currtrial]['stim_dur_ms']/1E3
+		iti_full = trialdict[currfile][currtrial]['iti_dur_ms']/1E3
+		iti_post = iti_full - iti_pre
+
+	    nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
+	    nframes_iti_pre = iti_pre * volumerate
+	    nframes_iti_post = iti_post*volumerate # int(round(iti_post * volumerate))
+	    nframes_iti_full = iti_full * volumerate #int(round(iti_full * volumerate))
+	    nframes_post_onset = (stim_on_sec + iti_post) * volumerate
+
             if not stim in stimdict.keys():
                 stimdict[stim] = dict()
             if not currfile in stimdict[stim].keys():
@@ -262,10 +233,7 @@ if abort is False:
                                     first_frame_on = frame_idxs.index(first_frame_on-1)
                         else:
                             print "NO match found for FIRST frame ON:", first_frame_on
-#
-                #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
-		# print first_frame_on
-	    
+    
 	    preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
 	    postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
 	    
@@ -282,41 +250,7 @@ if abort is False:
 	    else:
 		stimname = trialdict[currfile][currtrial]['name']
 
-# 	    if custom_mw is True:
-# 		preframes = list(np.arange(int(first_frame_on-nframes_iti_pre), first_frame_on, 1))
-#                 postframes = list(np.arange(first_frame_on+1, int(round(first_frame_on+vols_per_trial-nframes_iti_pre)), 1))
-# 		framenums = [preframes, [first_frame_on], postframes]
-# 		framenums = reduce(operator.add, framenums)
-# 		#print "POST FRAMES:", postframes
-# 		diffs = np.diff(framenums)
-# 		consec = [i for i in np.diff(diffs) if not i==0]
-# 		if len(consec)>0: 
-# 		    print "BAD FRAMES:", trialnum, stim, framenums
-#                 #framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+vols_per_trial)))
-# 		stimname = 'stimulus%02d' % int(stim)
-#             else:
-#                 first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
-# 		print first_frame_on
-# 	        first_frame_iti = int(round(trialdict[currfile][currtrial]['stim_off_idx']/nslices))	
-# 		#framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
-# 		preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
-# 		postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
-# 		#postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + vols_per_trial - nframes_iti_pre)), 1))
-# 		#postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on+nframes_on+nframes_iti_post)), 1))
-# 		# print "vols per:", vols_per_trial-nframes_iti_pre, "sum:", nframes_on+nframes_iti_post, "post:", nframes_post_onset
-# 		framenums = [preframes, [first_frame_on], postframes]
-#        		framenums = reduce(operator.add, framenums)
-# 		#print "POST FRAMES:", len(postframes)
-# 		diffs = np.diff(framenums)
-# 		consec = [i for i in np.diff(diffs) if not i==0]
-# 		if len(consec)>0: 
-# 		    print "BAD FRAMES:", trialnum, stim, framenums
-# 
-# 	        #print "sec to plot:", len(framenums)/volumerate
-# 		stimname = trialdict[currfile][currtrial]['name']
- 
-        	#framenums = list(np.arange(int(first_frame_on-nframes_iti_pre), int(first_frame_on+nframes_on+nframes_iti_post)))
-            
+           
 # 	    if flyback_corrected is True:
 #                 for f in framenums:
 #                     if f in frame_idxs:
@@ -349,7 +283,8 @@ if abort is False:
             stimdict[stim][currfile].frames.append(framenums)
             #stimdict[stim][currfile].frames_sec.append(frametimes)
             stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
-
+	    stimdict[stim][currfile].stim_dur.append(stim_on_sec)
+	    stimdict[stim][currfile].iti_dur.append(iti_full)
 
     # Save to PKL:
     curr_stimdict_pkl = 'stimdict.pkl' #% currfile # % currslice

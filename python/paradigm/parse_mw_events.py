@@ -147,9 +147,23 @@ def get_trigger_times(df, boundary, triggername=''):
     getout=0
     while getout==0:
         # Find all trigger LOW events after the first onset trigger (frame_trigger=0 when SI frame-trigger is high, =1 otherwise)
-        tmp_first_trigger_idx = [i for i,e in enumerate(trigg_evs) if e.value==0][0]        # Find 1st SI frame trigger received by MW (should be "0")
-        first_off_ev = next(i for i in trigg_evs[tmp_first_trigger_idx:] if i['value']==1)  # Find the next "frame-off" event from SI (i.e., when MW is waiting for the next DI trigger)
-        first_off_idx = [i.time for i in trigg_evs].index(first_off_ev.time)                # Get corresponding timestamp for first SI frame-off event
+	# Find 1st SI frame trigger received by MW (should be "0")
+        tmp_first_trigger_idx = [i for i,e in enumerate(trigg_evs) if e.value==0][0]        
+	try:
+	    # Find the next "frame-off" event from SI (i.e., when MW is waiting for the next DI trigger)
+            first_off_ev = next(i for i in trigg_evs[tmp_first_trigger_idx:] if i['value']==1)  
+
+	    # Get corresponding timestamp for first SI frame-off event
+            first_off_idx = [i.time for i in trigg_evs].index(first_off_ev.time)
+
+	except StopIteration:
+	    print "No trigger OFF event found."
+	    early_abort = True
+	    for i,t in enumerate(trigg_evs):
+		print i, t
+	    first_off_idx = len(trigg_evs)-1
+	    first_off_ev = trigg_evs[-1]
+	    print "DUR:", (first_off_ev.time - trigg_evs[tmp_first_trigger_idx].time) / 1E6
 
         # NOTE:  In previous versions of MW protocols, frame-trigger incorrectly reassigned on/off values...
         # Make sure only 1 OFF event for each ON event, and vice versa.
@@ -198,44 +212,45 @@ def get_trigger_times(df, boundary, triggername=''):
     found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
     start_idx = copy.copy(first_off_idx)
     #print trigg_evs
-    while start_idx < len(trigg_evs)-1: 
-        #print start_idx
-        try:
-            found_new_start = False
-            early_abort = False
-            curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
+    if start_idx<len(trigg_evs)-1:
+	while True: #start_idx < len(trigg_evs)-1: 
+	    #print start_idx
+	    try:
+		found_new_start = False
+		early_abort = False
+		curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
 
-            # try:
-            curr_off_ev = next(i for i in curr_chunk if i['value']==1)
-            curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
-            curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
-            curr_start_ev = trigg_evs[curr_start_idx]
-            # if trigg_evs[curr_start_idx]['value']!=0:
-            # # i.e., if prev-found ev with value=1 is not a true frame-on trigger (just a repeated event with same value), just ignore it.
-            #     continue
-            # else:
-            found_new_start = True
-            # except IndexError:
-            #     break
+		# try:
+		curr_off_ev = next(i for i in curr_chunk if i['value']==1)
+		curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+		curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
+		curr_start_ev = trigg_evs[curr_start_idx]
+		# if trigg_evs[curr_start_idx]['value']!=0:
+		# # i.e., if prev-found ev with value=1 is not a true frame-on trigger (just a repeated event with same value), just ignore it.
+		#     continue
+		# else:
+		found_new_start = True
+		# except IndexError:
+		#     break
 
-            last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
-            found_trigger_evs.append([curr_start_ev, curr_off_ev])
-            start_idx = last_found_idx #start_idx + found_idx
-            #print start_idx
-        except StopIteration:
-            print "Got to STOP."
-            if found_new_start is True:
-                early_abort = True
-            break
+		last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+		found_trigger_evs.append([curr_start_ev, curr_off_ev])
+		start_idx = last_found_idx #start_idx + found_idx
+		#print start_idx
+	    except StopIteration:
+		print "Got to STOP."
+		if found_new_start is True:
+		    early_abort = True
+		break
 
-    # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
-    # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
-    # This likely means that there is another frame-ON event, but not corresponding OFF event.
-    if early_abort is True: 
-        if found_new_start is True:
-            found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
-        else:
-            found_trigger_evs[-1][1] = end_ev
+	# If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
+	# Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
+	# This likely means that there is another frame-ON event, but not corresponding OFF event.
+	if early_abort is True: 
+	    if found_new_start is True:
+		found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
+	    else:
+		found_trigger_evs[-1][1] = end_ev
 
 
     trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]

@@ -65,9 +65,9 @@ parser.add_option('-f', '--functional', action='store', dest='functional_dir', d
 parser.add_option('-I', '--id', action="store",
                   dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
-parser.add_option('-O', '--stimon', action="store",
-                  dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
-
+# parser.add_option('-O', '--stimon', action="store",
+#                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
+# 
 # parser.add_option('-c', '--channel', action="store",
 #                   dest="selected_channel", default=1, help="Channel idx of signal channel. [default: 1]")
 # 
@@ -84,7 +84,7 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 #roi_method = options.roi_method
 analysis_id = options.analysis_id
 
-stim_on_sec = float(options.stim_on_sec) #2. # 0.5
+# stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 #selected_channel = int(options.selected_channel)
 
 
@@ -221,7 +221,6 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
 #            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
 
-            nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
 #            nframes_off = vols_per_trial - nframes_on
 #            frames_iti = round(iti * volumerate) 
             curr_ntrials = len(stimdict[stim][currfile].frames)
@@ -230,6 +229,9 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 
 	    #print currtraces.shape
             for currtrial_idx in range(curr_ntrials):
+		stim_on_sec = stimdict[stim][currfile].stim_dur[currtrial_idx]
+		nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
+
                 #print stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = [int(i) for i in currtrial_frames] 
