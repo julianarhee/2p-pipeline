@@ -47,7 +47,7 @@ elseif I.corrected && ~new_mc_id
             found_correct_nfiles = false;
         end
     else
-        found_ntiffs = dir(fullfile(mc_output_dir, '*.tif'));
+        found_tiffs = dir(fullfile(mc_output_dir, '*.tif'));
         found_tiffs = {found_tiffs(:).name}';
         fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
         found_tiffs
