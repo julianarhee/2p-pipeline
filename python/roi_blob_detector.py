@@ -132,7 +132,13 @@ signal_channel_idx = int(mcparams['ref_channel'])
 
 signal_channel = 'Channel%02d' % int(signal_channel_idx)
 reference_file = 'File%03d' % int(reference_file_idx)
-
+if signal_channel_idx==0:
+    signal_channel_idx = input('No ref channel found. Enter signal channel idx (1-indexing): ')
+if reference_file_idx==0:
+    reference_file_idx = input('No ref file found. Enter file idx (1-indexing): ')
+    
+signal_channel = 'Channel%02d' % int(signal_channel_idx)
+reference_file = 'File%03d' % int(reference_file_idx)
 print "Specified signal channel is:", signal_channel
 print "Selected reference file:", reference_file
 
@@ -151,6 +157,9 @@ slice_directory = os.path.join(source, experiment, sess, acquisition, subdir_str
 # Define output directories:
 acquisition_dir = os.path.join(source, experiment, sess, acquisition)
 roi_dir = os.path.join(acquisition_dir, 'ROIs')
+if not os.path.exists(roi_dir):
+    os.mkdir(roi_dir)
+
 existing_rois = sorted(os.listdir(roi_dir), key=natural_keys)
 
 #existing_blob_rois = sorted([r for r in existing_rois if 'LoG' in r or 'DoG' in r], key=natural_keys)
