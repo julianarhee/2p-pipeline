@@ -15,8 +15,7 @@ Basic workflow currently uses both Python and Matlab, until we choose a smaller 
 ```
 # 1. Pre-processing
 
-python ./preprocessing/process_raw.py # Get metadata from raw TIFFs, remove extra flyback frames, if needed. 
-
+python ./preprocessing/process_raw.py               # Get metadata from raw TIFFs. Setup acquisition file tree.
 matlab scripts:
 
 init_header;                                        # Must be edited. User inputs to parameters for preprocessing
