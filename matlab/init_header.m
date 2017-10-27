@@ -21,13 +21,13 @@ tiff_source = 'functional';
 % ----------------------------------------------------------------------------
 % Set the following if NOT loading a previous analysis:
 % ----------------------------------------------------------------------------
-process_raw = true;             % false, if source for processing is anything but RAW 
-processed_source = '';          % Folder name contaning CORRECTED tiffs, if processing on non-raw source
+process_raw = false;             % false, if source for processing is anything but RAW 
+processed_source = 'Raw_Bidi';          % Folder name contaning CORRECTED tiffs, if processing on non-raw source
 
 
 % Set ROI params: 
-roi_id = ''; %'blobDoG01'; 
-roi_method = ''; %'pyblob2D'; %'manual2D_circles'
+roi_id = 'blobsDoG02'; %'blobDoG01'; 
+roi_method = 'pyblob2D'; %'pyblob2D'; %'manual2D_circles'
 
 % Specify what to run it on:
 slices = [];                    % List of slice indices (e.g., [5, 10, 15, 20, 25, 30, 35, 40])
@@ -36,18 +36,18 @@ flyback_corrected = false;      % true, if python process_raw.py --correct-flyba
 split_channels = false;
 
 % Set Motion-Correction params:
-correct_motion = false; 
+correct_motion = true; 
 correct_bidi_scan = true;       % true, if want to fix artifacts from idirectional scanning
 reference_channel = 1;
 reference_file = 5;             % File00X to use as reference for motion-correction %6; %3; %6; %3
 method = 'Acquisition2P';       % [opts: 'Acquisition2P', 'NoRMCorre'] 
-algorithm = @withinFile_withinFrame_lucasKanade; % [opts: @lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade || 'rigid', 'nonrigid'
+algorithm = @lucasKanade_plus_nonrigid; %@withinFile_withinFrame_lucasKanade; % [opts: @lucasKanade_plus_nonrigid, @withinFile_withinFrame_lucasKanade || 'rigid', 'nonrigid'
 
  
 % These vars are checked/corrected once mcparam set is identified, not as critical:
 average_source = 'Raw';         % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
 
-analysis_id = 'analysis01';
+analysis_id = ''; %analysis03';
 % ----------------------------------------------------------------------------
 % ============================================================================
     

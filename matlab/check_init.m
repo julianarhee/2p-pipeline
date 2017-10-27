@@ -141,7 +141,6 @@ if new_rolodex_entry
     %     ];
 
 
-
     curr_mcparams = set_mc_params(...
         'corrected', correct_motion,...
         'method', method,...
@@ -177,36 +176,63 @@ if new_rolodex_entry
                        'bidi_corrected',...
                        'split_channels'};
 
-    new_mc_id = false;
+    % new_mc_id = false;
     if exist(fullfile(data_dir, 'mcparams.mat'))
         mcparams = load(fullfile(data_dir, 'mcparams.mat'))
         new_mc_file = false;
 
-        curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
         prev_mcparams_ids = fieldnames(mcparams);
-        if length(prev_mcparams_ids)>0
-            num_mc_ids = length(prev_mcparams_ids);
-            new_mc = [];
-            for mc_idx = 1:length(prev_mcparams_ids)
-                curr_mcparams_id = prev_mcparams_ids{mc_idx};
-                for mf=1:length(curr_fieldnames)
-                    tmp_prev.(curr_fieldnames{mf}) = mcparams.(curr_mcparams_id).(curr_fieldnames{mf});
-                    tmp_curr.(curr_fieldnames{mf}) = curr_mcparams.(curr_fieldnames{mf});
-                end
-                if isequal(tmp_prev, tmp_curr)
-                    new_mc = [new_mc mc_idx];
-               end
-            end
-            if any(new_mc)
-                new_mc_id = false;
-            else
-                new_mc_id = true;
-            end
-        else
+        if length(prev_mcparams_ids)==0
+            fprintf('MCPARAMS file found, but contans no fields. Creating first mc_id.\n');
             mcparams = struct();
             new_mc_file = true;
             new_mc_id = true;
             num_mc_ids = 0;
+        else 
+            % Allow inspection of existing MCPARAMS to check for re-use:
+            while (1)
+                fprintf('Existing MCPARAMS:\n');
+                for m=1:length(prev_mcparams_ids)
+                    fprintf('%i: %s\n', m, prev_mcparams_ids{m});
+                end        
+                selected_mc_idx = input('Enter IDX of specific mcparams to view: ');
+                fprintf('Viewing: %s\n', prev_mcparams_ids{selected_mc_idx});
+                display(mcparams.(prev_mcparams_ids{selected_mc_idx}))
+                mc_choice = input('\nPress <Y>/<n> to use displayed params, or <C> to create new: ', 's');
+                if strcmp(mc_choice, 'Y')
+                    fprintf('Re-using selected mcparams: %s\n', prev_mcparams_ids{selected_mc_idx});
+                    new_mc_id = false;
+                    mc_id = prev_mcparams_ids{selected_mc_idx};
+                    break;
+                elseif strcmp(mc_choice, 'C')
+                    fprintf('Creating NEW mcparams.\n');
+                    new_mc_id = true;
+                    break;
+                end
+            end
+        end
+        if new_mc_id
+            curr_fieldnames = fields_to_check; %fieldnames(curr_mcparams);
+            if length(prev_mcparams_ids)>0
+                num_mc_ids = length(prev_mcparams_ids);
+                % Cycle through all existing MCPARAMS and double-check that all relevant fields are new:
+                new_mc = [];
+                for mc_idx = 1:length(prev_mcparams_ids)
+                    curr_mcparams_id = prev_mcparams_ids{mc_idx};
+                    for mf=1:length(fields_to_check)
+                        tmp_prev.(fields_to_check{mf}) = mcparams.(curr_mcparams_id).(fields_to_check{mf});
+                        tmp_curr.(fields_to_check{mf}) = curr_mcparams.(fields_to_check{mf});
+                    end
+                    if isequal(tmp_prev, tmp_curr)
+                        new_mc = [new_mc mc_idx];
+                   end
+                end
+                if any(new_mc)
+                    new_mc_id = false;
+                else
+                    new_mc_id = true;
+                end
+            end
         end
     else
         mcparams = struct();
@@ -217,23 +243,28 @@ if new_rolodex_entry
 
     % Create NEW mcparams entry, or load previous one, if reusing:
     if new_mc_id
+        % Append +1 to mcparams IDs:
         mc_id = sprintf('mcparams%02d', num_mc_ids+1);
         fprintf('Creating NEW mc struct:s %s\n', mc_id);
         mcparams.(mc_id) = curr_mcparams;
         save(A.mcparams_path, '-struct', 'mcparams');
     else
-        while (1)
-            fprintf('Found previous mcstruct with specified params:\n')
-            for midx=1:length(prev_mcparams_ids)
-                fprintf('%i, %s\n', midx, prev_mcparams_ids{midx});
-            end
-            user_selected_mc = input('Enter IDX of mcparams struct to view:\n');
-            mcparams.(prev_mcparams_ids{user_selected_mc})
-            confirm_selection = input('Use these params? Press Y/n.\n', 's');
-            if strcmp(confirm_selection, 'Y')
-                mc_id = prev_mcparams_ids{user_selected_mc}
-                curr_mcparams = mcparams.(mc_id); 
-                break;
+        if (exist('mc_choice', 'var') && strcmp(mc_choice, 'Y'))
+            curr_mcparams = mcparams.(mc_id);
+        else
+            while (1)
+                fprintf('Found previous mcstruct with specified params:\n')
+                for midx=1:length(prev_mcparams_ids)
+                    fprintf('%i, %s\n', midx, prev_mcparams_ids{midx});
+                end
+                user_selected_mc = input('Enter IDX of mcparams struct to view:\n');
+                mcparams.(prev_mcparams_ids{user_selected_mc})
+                confirm_selection = input('Use these params? Press Y/n.\n', 's');
+                if strcmp(confirm_selection, 'Y')
+                    mc_id = prev_mcparams_ids{user_selected_mc}
+                    curr_mcparams = mcparams.(mc_id); 
+                    break;
+                end
             end
         end
     end
