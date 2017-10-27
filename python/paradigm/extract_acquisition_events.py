@@ -129,7 +129,8 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         bitcode_counts = Counter(frame_bitcodes[frame])
         modes_by_frame[frame] = bitcode_counts.most_common(1)[0][0]
 
-    first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][0]
+    # Take the 2nd frame that has the first-stim value (in case bitcode of Image on Trial1 is 0):
+    first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][1] #[0]
 
     ### Get all bitcodes and corresonding frame-numbers for each trial:
     trialdict = dict()
@@ -152,7 +153,7 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = []
-        minframes = 5
+        minframes = 4
         for bitcode in trials[trial]['all_bitcodes']:
                 looking = True
                 while looking is True:
@@ -163,19 +164,26 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
                         if frame>1:
                             tmp_frames_pre = [i for i in frame_bitcodes[int(frame)-1] if i==bitcode]
                             consecutives_pre = [i for i in np.diff(tmp_frames_pre) if i==0]
+			
+			if len(trials[trial]['all_bitcodes'])<3:
+			    # Since single-image (static images) will only have a single bitcode, plus ITI bitcode,
+			    # Don't look before/after found-frame idx. 
+			    if len(consecutives)>=minframes:
+				first_frame = frame
+				looking = False
+			else:
+			    if frame>1 and len(consecutives_pre)>=minframes:
+				if len(consecutives_pre) > len(consecutives):
+				    first_frame = int(frame) - 1
+				elif len(consecutives)>=minframes:
+				    first_frame = int(frame)
+				#print "found2...", bitcode, first_frame #len(curr_frames)
+				looking = False
 
-                        if frame>1 and len(consecutives_pre)>=minframes:
-                            if len(consecutives_pre) > len(consecutives):
-                                first_frame = int(frame) - 1
-                            elif len(consecutives)>=minframes:
-                                first_frame = int(frame)
-                            #print "found2...", bitcode, first_frame #len(curr_frames)
-                            looking = False
-
-                        elif len(consecutives)>=minframes:
-                            first_frame = frame 
-                            #print "found...", bitcode, first_frame #len(curr_frames)
-                            looking = False
+			    elif len(consecutives)>=minframes:
+				first_frame = frame 
+				#print "found...", bitcode, first_frame #len(curr_frames)
+				looking = False
 
                         if looking is False:
                             break

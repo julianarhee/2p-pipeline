@@ -95,7 +95,7 @@ parser.add_option('-i', '--iti', action="store",
                   dest="iti_pre", default=1., help="Time (s) before stim onset to use as basline [default=1].")
 
 parser.add_option('-z', '--slice', action="store",
-                  dest="sliceidx", default=0, help="Slice index to look at (0-index) [default: 0]")
+                  dest="sliceidx", default=1, help="Slice index to look at (1-index) [default: 1]")
 
 # parser.add_option('--custom', action="store_true",
 #                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
@@ -217,7 +217,15 @@ if not isinstance(maskpaths, list) and len(maskpaths)==1:
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
 if isinstance(maskpaths, unicode):
     maskpaths = [maskpaths]
-nrois = roiparams['nrois'][curr_slice_idx]
+
+nrois = roiparams['nrois']
+if isinstance(nrois, float) or isinstance(nrois, int):
+    nrois = int(nrois)
+else:
+    nrois = int(roiparams['nrois'][curr_slice_idx])
+
+
+#nrois = roiparams['nrois'][curr_slice_idx]
 
     
 # Check slices to see if maskpaths exist for all slices, or just a subset:

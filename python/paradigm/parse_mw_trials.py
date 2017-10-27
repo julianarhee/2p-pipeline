@@ -165,8 +165,11 @@ for didx in range(len(mw_dfns)):
     print "Current file: ", curr_dfn
     if stimtype=='bar':
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
+    elif stimtype=='grating':
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname, image=False)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype='grating', phasemod=phasemod, triggername=trigger_varname, image=True)
+
 
     # In[8]:
 
@@ -296,11 +299,12 @@ for didx in range(len(mw_dfns)):
                 sf = round(stim.value[1]['frequency'], 2)
                 stimname = 'grating-ori-%i-sf-%f' % (ori, sf)
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
+                stimsize = stim.value[1]['height']
             else:
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
-                stimname = ''
-                stimpos = ''
-            stimsize = stim.value[1]['height']
+                stimname = stim.value[1]['name'] #''
+                stimpos = [stim.value[1]['pos_x'], stim.value[1]['pos_y']] #''
+                stimsize = stim.value[1]['size_x']
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimpos, 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialnum]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
@@ -344,25 +348,28 @@ for didx in range(len(mw_dfns)):
 
     elif stimtype == 'image':
         # TODO:  need to test this, only debugged with GRATINGS.
-        all_ims = [i.value[1]['name'] for i in ievs]
+        all_ims = [i.value[1]['name'] for i in stimevents]
         image_ids = sorted(list(set(all_ims)))
 
-        mw_times = np.array([i.time for i in tevs]) #np.array([i[0] for i in pevs])
-        mw_codes = []
-        if mask is True:
-            nexpected_imvalues = 4
-        else:
-            nexpected_imvalues = 3
+#         mw_times = np.array([i.time for i in tevs]) #np.array([i[0] for i in pevs])
+#         mw_codes = []
+#         if mask is True:
+#             nexpected_imvalues = 4
+#         else:
+#             nexpected_imvalues = 3
+# 
+#         for i in tevs:
+#             if len(i.value)==nexpected_imvalues:
+#                 stim_name = i.value[1]['name']
+#                 stim_idx = [iidx for iidx,image in enumerate(image_ids) if image==stim_name][0]+1
+#             else:
+#                 stim_idx = 0
+#             mw_codes.append(stim_idx)
+#         mw_codes = np.array(mw_codes)
 
-        for i in tevs:
-            if len(i.value)==nexpected_imvalues:
-                stim_name = i.value[1]['name']
-                stim_idx = [iidx for iidx,image in enumerate(image_ids) if image==stim_name][0]+1
-            else:
-                stim_idx = 0
-            mw_codes.append(stim_idx)
-        mw_codes = np.array(mw_codes)
-
+        stimevents = sorted(stimevents, key=lambda e: e.time)
+        trialevents = sorted(trialevents, key=lambda e: e.time)
+ 
     elif stimtype == 'grating':
 
         stimevents = sorted(stimevents, key=lambda e: e.time)
@@ -433,7 +440,8 @@ for didx in range(len(mw_dfns)):
                     else: # static image
                         #TODO:
                         # get appropriate stim_idx that is the equivalent of unique stim identity for images
-                        pass
+                        stim_idx = [idx for idx,im in enumerate(sorted(image_ids)) if im==i.value[1]['name']][0]+1
+                        #pass
                 else:
                     stim_idx = 0
                 mw_codes.append(stim_idx)

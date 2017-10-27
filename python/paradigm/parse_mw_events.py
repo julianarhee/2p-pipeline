@@ -492,7 +492,7 @@ def get_session_info(df, stimtype='grating'):
     return info
 
      
-def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='frame_trigger', pixelclock=True):
+def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='frame_trigger', pixelclock=True, image=True):
 
     df, bounds = get_session_bounds(dfn)
     #print bounds
@@ -531,18 +531,22 @@ def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='fra
             # do stuff
             pass
         elif stimtype=='grating':
-            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+	    if image is True:
+                image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='image']
+            else:
+	        tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
 
-	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
-            start_times = [i.value[1]['start_time'] for i in tmp_image_evs] 
-            find_static = np.where(np.diff(start_times) > 0)[0] + 1
-            find_static = np.append(find_static, 0)
-            find_static = sorted(find_static)
-            if phasemod:
-		# Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
-                find_static = find_static[::2]
+		# Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+		start_times = [i.value[1]['start_time'] for i in tmp_image_evs] 
+		find_static = np.where(np.diff(start_times) > 0)[0] + 1
+		find_static = np.append(find_static, 0)
+		find_static = sorted(find_static)
+		if phasemod:
+		    # Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
+		    find_static = find_static[::2]
 
-            image_evs = [tmp_image_evs[i] for i in find_static]
+                image_evs = [tmp_image_evs[i] for i in find_static]
+
             print "Found %i total image onset events." % len(image_evs)
 
             first_stim_index = pixelclock_evs.index(image_evs[0])
