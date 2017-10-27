@@ -1,10 +1,4 @@
 % function initialize_analysis()
-%% Clear all and make sure paths set
-%clc; clear all;
-
-% add repo paths
-%add_repo_paths
-%fprintf('Added repo paths.\n');
 
 % Create analysis struct from user-specified info (init_header.m):
 I = struct();
@@ -30,7 +24,6 @@ I.functional = tiff_source;
 I.signal_channel = signal_channel;
 I.average_source = average_source;
 
-%itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
 
 if load_analysis
     % Check current user-spec'ed analysis-struct to loaded analysis-struct (from check_init.m):
@@ -40,7 +33,7 @@ if load_analysis
         fprintf('Found mismatch in current rolodex entry specifications (init_header) and loaded entry selected...\n');
         for e=1:length(entries)
             if isstr(tmpI.(entries{e})) && ~strcmp(tmpI.(entries{e}), I.(entries{e}))
-                fprintf('%s:\n\nPrev: %s, Curr: %s\n', entries{e}, tmpI.(entries{e}), I.(entries{e}));
+                fprintf('\n%s:\n\n\nPrev: %s, Curr: %s\n', entries{e}, tmpI.(entries{e}), I.(entries{e}));
                 choice = input('Select <0> to keep old, <1> to overwrite with curr: ');
                 if choice==1
                     tmpI.(entries{e}) = I.(entries{e});
@@ -52,17 +45,18 @@ if load_analysis
     I = tmpI;
     
 else
-    if ~new_rolodex && ~exist('rolodex', 'var') % i.e., not using previous analysis
-        
-        existing_records = readtable(path_to_rolodex_table, 'Delimiter', '\t', 'ReadRowNames', true);
-        existing_analysis_names = existing_records.Properties.RowNames;
-        existing_records = table2struct(existing_records);
-        existing_analysis_idxs = [1:length(existing_records)]; %fieldnames(existing_records);
+    if ~new_rolodex %&& ~exist('rolodex', 'var') % i.e., not using previous analysis
+       
+        % Check entries of existing analysis rolodex to make sure no over-writing: 
+        existing_rolodex_table = readtable(path_to_rolodex_table, 'Delimiter', '\t', 'ReadRowNames', true);
+        existing_rolodex_entries = existing_rolodex_table.Properties.RowNames;
+        existing_rolodex_struct = table2struct(existing_rolodex_table);
+        existing_rolodex_idxs = [1:length(existing_rolodex_entries)]; 
         
         % Check if current analysis exists:
         tmpI = struct();
         curr_fields = fieldnames(I);
-        for field=1:length(fieldnames(I))
+        for field=1:length(curr_fields)
             curr_subfield = curr_fields{field};
             if any(size(I.(curr_subfield))>1) && ~ischar(I.(curr_subfield))
                 tmpI.(curr_subfield) = mat2str(I.(curr_subfield));
@@ -70,19 +64,19 @@ else
                 tmpI.(curr_subfield) = I.(curr_subfield);
             end
         end
-        for aid = 1:length(existing_analysis_idxs)
-            tmp_record = rmfield(existing_records(aid), 'analysis_id'); 
+        for aid = 1:length(existing_rolodex_idxs)
+            tmp_record = rmfield(existing_rolodex_struct(aid), 'analysis_id'); 
             if isequal(tmp_record, tmpI)
                 new_analysis = false;
                 selected_analysis_idx = aid;
             else
                 new_analysis = true;
-                selected_analysis_idx = length(existing_analysis_idxs) + 1;
+                selected_analysis_idx = length(existing_rolodex_idxs) + 1;
             end
         end
     else
-        existing_analysis_names = {};
-        existing_analysis_idxs = {};
+        existing_rolodex_entries = {};
+        existing_rolodex_idxs = {};
         selected_analysis_idx = 1;
         new_analysis = true;
     end
@@ -90,46 +84,49 @@ else
     % Check if user-provided analysis ID already exists:
     if isempty(analysis_id)
         analysis_id = sprintf('analysis%02d', selected_analysis_idx);
-    else
-        overwrite = false;
-        while (1)
-            if ismember(analysis_id, existing_analysis_names) && ~overwrite
-                fprintf('User provided analysis name that already exists.\n');
-                eidx = find(arrayfun(@(i) strcmp(analysis_id, existing_analysis_names{i}), 1:length(existing_analysis_names)));
-                display(existing_records(eidx))
-                user_says_create = input('Create new analysis ID? Press Y/n: ', 's');
-                if strcmp(user_says_create, 'Y')
-                    fprintf('Existing names:\n')
-                    display(existing_analysis_names);
-                    user_analysis_id = input('Enter new IDX, or enter new analysis name (add F to force overwrite):\n', 's')
-                    if strfind(user_analysis_id, 'F')
-                        confirm_overwrite_id = input('Enforcing ovewrite... Re-enter analysis idx to continue: \n', 's');
-                        if all(ismember(confirm_overwrite_id, '0123456789+-.eEdD'))
-                            analysis_id = sprintf('analysis%02d', str2num(confirm_overwrite_id));
-                            overwrite = true
-                            new_analysis = true;
-                            break;
-                        end
-                    elseif all(ismember(user_analysis_id, '0123456789+-.eEdD'))
-                        analysis_id = sprintf('analysis%02d', str2num(user_analysis_id));
-                    else
-                        analysis_id = user_analysis_id;
-                    end
-                    %end
-                    new_analysis = true;
-                else
-                    user_says_reuse = input(sprintf('Use old analysis ID: %s? Press Y/n: ', analysis_id), 's');
-                    if user_says_reuse
-                        new_analysis = false;
+    end
+    %else
+    overwrite = false;
+    while (1)
+        if ismember(analysis_id, existing_rolodex_entries)
+            fprintf('***WARNING***\n');
+            fprintf('User provided analysis name that already exists.\n\n%s\n', analysis_id);
+            eidx = find(arrayfun(@(i) strcmp(analysis_id, existing_rolodex_entries{i}), 1:length(existing_rolodex_entries)));
+            display(existing_rolodex_struct(eidx))
+            user_says_create = input('Create new analysis ID? Press Y/n: ', 's');
+            if strcmp(user_says_create, 'Y')
+                fprintf('Existing names:\n')
+                display(existing_rolodex_entries);
+                user_analysis_id = input('\nEnter new IDX, or enter new analysis name (add F to force overwrite):\n', 's')
+                if strfind(user_analysis_id, 'F')
+                    fprintf('***WARNING***\n');
+                    confirm_overwrite_id = input('Enforcing ovewrite... Re-enter analysis idx to continue: \n', 's');
+                    if all(ismember(confirm_overwrite_id, '0123456789+-.eEdD'))
+                        analysis_id = sprintf('analysis%02d', str2num(confirm_overwrite_id));
+                        overwrite = true
+                        new_analysis = true;
                         break;
-                    end 
+                    end
+                elseif all(ismember(user_analysis_id, '0123456789+-.eEdD'))
+                    analysis_id = sprintf('analysis%02d', str2num(user_analysis_id));
+                else
+                    analysis_id = user_analysis_id;
                 end
+                %end
+                new_analysis = true;
             else
-                fprintf('Creating NEW analysis with id: %s\n', analysis_id);
-                break;
+                user_says_reuse = input(sprintf('Use old analysis ID: %s? Press Y/n: ', analysis_id), 's');
+                if strcmp(user_says_reuse, 'Y')
+                    new_analysis = false;
+                    break;
+                end 
             end
+        else
+            fprintf('Creating NEW analysis with id: %s\n', analysis_id);
+            break;
         end
     end
+%end
     I.analysis_id = analysis_id;
 end
 
@@ -166,49 +163,7 @@ end
 
 savejson('', rolodex, path_to_rolodex);
 
-% existing_analyses = updated_records.Properties.RowNames;
-% existing_records = table2struct(updated_records);
-% 
-% varnames = fieldnames(I);
-% n_analysis_ids = length(existing_analyses)+1;
-% if exist('updated_records', 'var'), clear updated_records, end
-% for var=1:length(varnames)
-%     updated_records(selected_analysis_idx).(varnames{var}) = I.(varnames{var});
-% end
-% for id=1:length(existing_analyses)
-%     for var=1:length(varnames)
-%         updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
-%     end
-% end
-% for id=1:length(updated_records)
-%     json_records.(updated_records(id).analysis_id) = updated_records(id);
-% end
-% savejson('', json_records, path_to_rolodex);
-% 
-
-% itable = struct2table(I, 'AsArray', true, 'RowNames', {analysis_id});
-
-% if new_analysis
-%     update_analysis_table(itable, path_to_rolodex_table);
-% 
-%     % Also store as json:
-%     varnames = fieldnames(I);
-%     n_analysis_ids = length(existing_analysis_idxs)+1;
-%     if exist('updated_records', 'var'), clear updated_records, end
-%     for var=1:length(varnames)
-%         updated_records(n_analysis_ids).(varnames{var}) = I.(varnames{var});
-%     end
-%     for id=1:length(existing_analysis_idxs)
-%         for var=1:length(varnames)
-%             updated_records(id).(varnames{var}) = existing_records(id).(varnames{var});
-%         end
-%     end
-%     for id=1:length(updated_records)
-%         json_records.(updated_records(id).analysis_id) = updated_records(id);
-%     end
-%     savejson('', json_records, path_to_rolodex);
-% end
-% 
+ 
 
 % Note:  This step also adds fields to mcparams struct that are immutable,
 % i.e., standard across all analyses.

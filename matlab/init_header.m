@@ -9,7 +9,7 @@ clear all; clc;
 
 % Specify what to run:
 useGUI = false;                 % Must specify acquisition-path info if false
-load_analysis = true;          % true, to reload existing analysis (e.g., to do ROI/Trace extraction)
+load_analysis = false;          % true, to reload existing analysis (e.g., to do ROI/Trace extraction)
 
 % Set info manually:
 source = '/nas/volume1/2photon/projects';
@@ -26,8 +26,8 @@ processed_source = 'Raw_Bidi';          % Folder name contaning CORRECTED tiffs,
 
 
 % Set ROI params: 
-roi_id = ''; %'blobDoG01'; 
-roi_method = ''; %'pyblob2D'; %'manual2D_circles'
+roi_id = 'blobsDoG02'; %'blobDoG01'; 
+roi_method = 'pyblob2D'; %'pyblob2D'; %'manual2D_circles'
 
 % Specify what to run it on:
 slices = [];                    % List of slice indices (e.g., [5, 10, 15, 20, 25, 30, 35, 40])
@@ -47,7 +47,7 @@ algorithm = @lucasKanade_plus_nonrigid; %@withinFile_withinFrame_lucasKanade; % 
 % These vars are checked/corrected once mcparam set is identified, not as critical:
 average_source = 'Raw';         % FINAL output type ['Corrected', 'Parsed', 'Corrected_Bidi']
 
-analysis_id = 'analysis03';
+analysis_id = ''; %analysis03';
 % ----------------------------------------------------------------------------
 % ============================================================================
     
