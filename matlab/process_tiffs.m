@@ -24,31 +24,29 @@ curr_mcparams = mcparams.(I.mc_id);
 % -------------------------------------------------------------------------
 %% 1.  Do Motion-Correction (and/or) Get time-series for each slice:
 % -------------------------------------------------------------------------
-if I.corrected && new_mc_id %new_mc_id && process_raw
-    do_motion_correction = true;
-elseif I.corrected && ~new_mc_id 
+%if I.corrected && new_mc_id %new_mc_id && process_raw
+%    do_motion_correction = true;
+%elseif I.corrected && ~new_mc_id 
+if I.corrected
     % Double check that current mc_id has correct number of expected MC output files:
-    mc_output_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir);
+    mc_output_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir)
     found_nchannels = dir(fullfile(mc_output_dir, '*Channel*'));
     found_nchannels = {found_nchannels(:).name}';
-    if length(found_nchannels)>0 
-        if isdir(fullfile(mc_output_dir, found_nchannels{1}))
-            found_nfiles = dir(fullfile(mc_output_dir, found_nchannels{1}, '*File*'));
-            found_nfiles = {found_nfiles(:).name}';
-            
-            found_nslices = dir(fullfile(mc_output_dir, found_nchannels{1}, found_nfiles{1}, '*.tif'));
-            found_nslices = {found_nslices(:).name}';
-            if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices) && length(found_nfiles)==A.ntiffs
-                found_correct_nfiles = true;
-            else
-                found_correct_nfiles = false;
-            end
+    if length(found_nchannels)>0 && isdir(fullfile(mc_output_dir, found_nchannels{1}))
+        %if isdir(fullfile(mc_output_dir, found_nchannels{1}))
+        found_nfiles = dir(fullfile(mc_output_dir, found_nchannels{1}, '*File*'))
+        found_nfiles = {found_nfiles(:).name}';
+        
+        found_nslices = dir(fullfile(mc_output_dir, found_nchannels{1}, found_nfiles{1}, '*.tif'));
+        found_nslices = {found_nslices(:).name}';
+        if length(found_nchannels)==A.nchannels && length(found_nslices)==length(A.nslices) && length(found_nfiles)==A.ntiffs
+            found_correct_nfiles = true;
         else
             found_correct_nfiles = false;
         end
     else
         found_tiffs = dir(fullfile(mc_output_dir, '*.tif'));
-        found_tiffs = {found_tiffs(:).name}';
+        found_tiffs = {found_tiffs(:).name}'
         fprintf('Found these TIFFs in Corrected dir - %s:\n', curr_mcparams.dest_dir);
         found_tiffs
         if length(found_tiffs)==(A.nchannels*A.ntiffs*length(A.slices))
