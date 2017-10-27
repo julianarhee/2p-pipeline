@@ -14,21 +14,51 @@ Acquisition2P_class (Harvey Lab, Harvard), helperFunctions (Harvey Lab, Harvard)
 Basic workflow currently uses both Python and Matlab, until we choose a smaller subset of methods to use.
 ```
 # 1. Pre-processing
-python create_substacks.py 
-matlab -r 'preprocess';
 
-# 2. Extract traces and align to trials
-python parse_mw_trials.py 
-matlab -r 'create_acquisition_struct';
+python ./python/process_raw.py # Get metadata from raw TIFFs, remove extra flyback frames, if needed. 
 
-# 3. Quick visualization (should just run this in Matlab GUI)
-matlab -r 'roigui'; 
+matlab scripts:
+
+init_header;                     # Must be edited. User-specified inputs to parameters for preprocessing
+check_init;                      # Check specified inputs from init_header.m 
+initialize_analysis;             # Create data structures for running analysis with specified params 
+process_tiffs(I, A, new_mc_id);  # Process tiffs with params specified in struct I, acquisition info in struct A
+
+# 2. ROI extraction
+
+python roi_blob_detector.py      # Segment blobs using projected times series of a given slice (currently, average)
+
+
+# 3. Trace extraction
+
+matlab scripts:
+
+init_header;                    # Must be edited. Same as above.
+check_init;                     # Same as above. 
+initialize_analysis;            # Same as above.
+get_traces_from_rois(I, A);     # Must have ROI masks and info stored in '<acquisition_dir>/ROIs'. 
+
+
+# 4. Trial alignment
+
+python /paradigm/parse_mw_trials.py                 # Extract trial info from behavioral paradigm (.mwk)
+python /paradigm/extract_acquisition_events.py      # Format trial structure in a standardized way
+python /paradigm/create_stimdict.py                 # Parse trial info by stimulus, assign frames and frame times
+python /paradigm/files_to_trials.py                 # Combine stimulus and trial info from acquistiion across TIFFs
+python /paradigm/save_roi_dicts.py                  # Calculate df/f (and other things) for each ROI
+
+
+# 5. Visualization
+
+python /paradigm/roi_subplots_by_stim.py            # For each ROI, create PSTH-style plots of each stimulus 
+python /paradigm/plot_slice_rois.py                 # Plot each ROI on average slice image.
+
 ```
-Notes: Python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). Edit the above matlab scripts to input experiment-specific parameters before running.
+Notes: Python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). See demo_pipeline.py (.mat) for more info. 
 
 ## Motivation
 
-Potential resource to start a semi-automated pipeline for quick viewing of datasets. 
+Potential resource to start a semi-automated pipeline for quick viewing of datasets. Make modular enough for added features from other users.
 
 ## Installation
 
