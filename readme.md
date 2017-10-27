@@ -15,37 +15,37 @@ Basic workflow currently uses both Python and Matlab, until we choose a smaller 
 ```
 # 1. Pre-processing
 
-python ./python/process_raw.py # Get metadata from raw TIFFs, remove extra flyback frames, if needed. 
+python ./preprocessing/process_raw.py # Get metadata from raw TIFFs, remove extra flyback frames, if needed. 
 
 matlab scripts:
 
-init_header;                     # Must be edited. User-specified inputs to parameters for preprocessing
-check_init;                      # Check specified inputs from init_header.m 
-initialize_analysis;             # Create data structures for running analysis with specified params 
-process_tiffs(I, A, new_mc_id);  # Process tiffs with params specified in struct I, acquisition info in struct A
+init_header;                                        # Must be edited. User inputs to parameters for preprocessing
+check_init;                                         # Check specified inputs from init_header.m 
+initialize_analysis;                                # Create data structures for running with specified params 
+process_tiffs(I, A, new_mc_id);                     # I: current analysis-specific info, A: acquisition meta info
 
 # 2. ROI extraction
 
-python roi_blob_detector.py      # Segment blobs using projected times series of a given slice (currently, average)
+python roi_blob_detector.py                         # Segment blobs from average (or other projection) image
 
 
 # 3. Trace extraction
 
 matlab scripts:
 
-init_header;                    # Must be edited. Same as above.
-check_init;                     # Same as above. 
-initialize_analysis;            # Same as above.
-get_traces_from_rois(I, A);     # Must have ROI masks and info stored in '<acquisition_dir>/ROIs'. 
+init_header;                                        # Must be edited. Same as above.
+check_init;                                         # Same as above. 
+initialize_analysis;                                # Same as above.
+get_traces_from_rois(I, A);                         # ROI masks/info should be stored in '<acquisition_dir>/ROIs'. 
 
 
 # 4. Trial alignment
 
-python /paradigm/parse_mw_trials.py                 # Extract trial info from behavioral paradigm (.mwk)
-python /paradigm/extract_acquisition_events.py      # Format trial structure in a standardized way
-python /paradigm/create_stimdict.py                 # Parse trial info by stimulus, assign frames and frame times
-python /paradigm/files_to_trials.py                 # Combine stimulus and trial info from acquistiion across TIFFs
-python /paradigm/save_roi_dicts.py                  # Calculate df/f (and other things) for each ROI
+python ./paradigm/parse_mw_trials.py                 # Extract trial info from behavioral paradigm (.mwk)
+python ./paradigm/extract_acquisition_events.py      # Format trial structure in a standardized way
+python ./paradigm/create_stimdict.py                 # Parse trial info by stimulus, assign frames and frame times
+python ./paradigm/files_to_trials.py                 # Combine trial info from acquistiion across TIFFs
+python ./paradigm/save_roi_dicts.py                  # Calculate df/f (and other things) for each ROI
 
 
 # 5. Visualization
