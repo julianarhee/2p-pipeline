@@ -320,6 +320,8 @@ for roi in rois_to_plot:
             dfstruct[roi][stim]['stim_on_vals'] = stim_frames
             dfstruct[roi][stim]['stim_on_nframes'] = nframes_on 
 	    dfstruct[roi][stim]['stim_dur'] = stimtraces[stim]['stim_dur']
+	    dfstruct[roi][stim]['iti_dur'] = stimtraces[stim]['iti_dur']
+
 	    #print dfstruct[roi][stim]['tsec']
 
 dfstruct_fn = '%s_roi_dfstructs_%s.pkl' % (currslice, roi_trace_type)

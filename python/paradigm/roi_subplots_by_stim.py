@@ -432,12 +432,21 @@ for roi in rois_to_plot:
 	    ax_curr = axs[col]
 	
 	
-	curr_dfs = dfstruct[roi][stim]['df']
+	tmp_curr_dfs = np.copy(dfstruct[roi][stim]['df'])
+	tmp_ntrials = tmp_curr_dfs.shape[0]
+	ntrialframes = tmp_curr_dfs.shape[1]
+        bad_trials = [tr for tr in range(tmp_ntrials) if any(dv > 3 for dv in dfstruct[roi][stim]['df'][tr,:])]
+        good_trials = [tr for tr in range(tmp_ntrials) if tr not in bad_trials]
+        curr_dfs = np.empty((len(good_trials), ntrialframes))
+        for ti,tr in enumerate(sorted(good_trials)):
+            curr_dfs[ti,:] = tmp_curr_dfs[tr,:]
+
 	ntrials = curr_dfs.shape[0]
-	ntrialframes = curr_dfs.shape[1]
 	xvals = np.arange(0, ntrialframes)
 	tsecs = [i for i in dfstruct[roi][stim]['tsec']]
-	tpoints = [int(i) for i in np.arange(-1, 10)]
+	stim_dur = dfstruct[roi][stim]['stim_dur']
+ 	iti_dur = dfstruct[roi][stim]['iti_dur']	
+	tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
 	for trial in range(ntrials):
 	    if color_by_roi:

@@ -211,6 +211,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 		volumerate = stimdict[stim][currfile].volumerate
 		stim_on_sec = stimdict[stim][currfile].stim_dur #[currtrial_idx]
 		nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
+		iti_sec = stimdict[stim][currfile].iti_dur
 
                 #print stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
@@ -255,6 +256,8 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
         stimtraces[stim]['nrois'] = nrois
 	stimtraces[stim]['volumerate'] = volumerate
 	stimtraces[stim]['stim_dur'] = stim_on_sec
+	stimtraces[stim]['iti_dur'] = iti_sec
+
 
 
     curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currslice, currchannel)

@@ -130,7 +130,10 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         modes_by_frame[frame] = bitcode_counts.most_common(1)[0][0]
 
     # Take the 2nd frame that has the first-stim value (in case bitcode of Image on Trial1 is 0):
-    first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][1] #[0]
+    if 'grating' in experiment:
+        first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][0]
+    else:
+        first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][1] #[0]
 
     ### Get all bitcodes and corresonding frame-numbers for each trial:
     trialdict = dict()
@@ -153,7 +156,7 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = []
-        minframes = 4
+        minframes = 5
         for bitcode in trials[trial]['all_bitcodes']:
                 looking = True
                 while looking is True:
