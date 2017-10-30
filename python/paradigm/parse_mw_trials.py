@@ -78,8 +78,6 @@ parser.add_option('--stim', action="store",
                   dest="stimtype", default="grating", help="stimulus type [options: grating, image, bar].")
 parser.add_option('--phasemod', action="store_true",
                   dest="phasemod", default=False, help="include if stimulus mod (phase-modulation).")
-parser.add_option('--ard', action="store_false",
-                  dest="no_ard", default=True, help="Flag to parse arduino serialdata")
 parser.add_option('-t', '--triggervar', action="store",
                   dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
 
@@ -98,25 +96,12 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
-
-# fn_base = options.fn_base #'20160118_AG33_gratings_fov1_run1'
-# source_dir = options.source_dir #'/nas/volume1/2photon/RESDATA/TEFO/20160118_AG33/fov1_gratings1'
-# session = options.session
-# experiment_list = options.experiment_list
-# experiment = experiment_list[0]
-# if len(experiment_list)==1:
-#     data_dir = os.path.join(source_dir, session, experiment)
-#     
 stimtype = options.stimtype #'grating'
-no_ard = options.no_ard
 phasemod = options.phasemod
 
 # In[5]:
 
 # Look in child dir (of source_dir) to find mw_data paths:
-# data_dir = os.path.join(source_dir, session, experiment)
-#mw_dir = os.path.join(data_dir, 'mw_data')
-#mwfiles = os.listdir(mw_dir)
 paradigm_dir = os.path.join(acquisition_dir, functional_dir, 'paradigm_files')
 raw_paradigm_dir = os.path.join(paradigm_dir, 'raw')
 if not os.path.exists(raw_paradigm_dir):
@@ -141,13 +126,13 @@ for mwfile in mwfiles:
     mw_fn = fn_base+'.mwk'
     mw_dfn = os.path.join(raw_paradigm_dir, mw_fn)
     all_dfns.append(mw_dfn)
-    if not no_ard:
-        ard_fn = fn_base+'.txt'
-        ard_dfn = os.path.join(mw_dir, ard_fn)
-        all_dfns.append(ard_dfn)
-        
+#     if not no_ard:
+#         ard_fn = fn_base+'.txt'
+#         ard_dfn = os.path.join(mw_dir, ard_fn)
+#         all_dfns.append(ard_dfn)
+#         
 mw_dfns = [f for f in all_dfns if f.endswith('.mwk')]
-ar_dfns = [f for f in all_dfns if f.endswith('.txt')]
+# ar_dfns = [f for f in all_dfns if f.endswith('.txt')]
 
 print "MW files: ", mw_dfns
 
@@ -157,7 +142,7 @@ print "MW files: ", mw_dfns
 # Get MW events
 # didx = 0
 mw_dfns = sorted(mw_dfns, key=natural_keys)
-ar_dfns = sorted(ar_dfns, key=natural_keys)
+# ar_dfns = sorted(ar_dfns, key=natural_keys)
 
 for didx in range(len(mw_dfns)):
     curr_dfn = mw_dfns[didx]
@@ -165,10 +150,8 @@ for didx in range(len(mw_dfns)):
     print "Current file: ", curr_dfn
     if stimtype=='bar':
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
-    elif stimtype=='grating':
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname, image=False)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype='grating', phasemod=phasemod, triggername=trigger_varname, image=True)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname)
 
 
     # In[8]:
@@ -186,7 +169,7 @@ for didx in range(len(mw_dfns)):
     print "Found %i pixel clock events." % len(pixelevents)
 
     # Check that all possible pixel vals are used (otherwise, pix-clock may be missing input):
-    print [p for p in pixelevents if 'bit_code' not in p.value[-1].keys()]
+    # print [p for p in pixelevents if 'bit_code' not in p.value[-1].keys()]
     n_codes = set([i.value[-1]['bit_code'] for i in pixelevents])
     if len(n_codes)<16:
         print "Check pixel clock -- missing bit values..."
@@ -305,6 +288,7 @@ for didx in range(len(mw_dfns)):
                 stimname = stim.value[1]['name'] #''
                 stimpos = [stim.value[1]['pos_x'], stim.value[1]['pos_y']] #''
                 stimsize = stim.value[1]['size_x']
+
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimpos, 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialnum]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
@@ -351,22 +335,6 @@ for didx in range(len(mw_dfns)):
         all_ims = [i.value[1]['name'] for i in stimevents]
         image_ids = sorted(list(set(all_ims)))
 
-#         mw_times = np.array([i.time for i in tevs]) #np.array([i[0] for i in pevs])
-#         mw_codes = []
-#         if mask is True:
-#             nexpected_imvalues = 4
-#         else:
-#             nexpected_imvalues = 3
-# 
-#         for i in tevs:
-#             if len(i.value)==nexpected_imvalues:
-#                 stim_name = i.value[1]['name']
-#                 stim_idx = [iidx for iidx,image in enumerate(image_ids) if image==stim_name][0]+1
-#             else:
-#                 stim_idx = 0
-#             mw_codes.append(stim_idx)
-#         mw_codes = np.array(mw_codes)
-
         stimevents = sorted(stimevents, key=lambda e: e.time)
         trialevents = sorted(trialevents, key=lambda e: e.time)
  
@@ -391,7 +359,7 @@ for didx in range(len(mw_dfns)):
 
 	# Check stimulus durations:
 	print len(stimevents)
-	iti_events = trialevents[1::2]
+	iti_events = trialevents[2::2]
 	print len(iti_events)
 
 	stim_durs = []
@@ -399,13 +367,13 @@ for didx in range(len(mw_dfns)):
 	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
 	    stim_durs.append(iti.time - stim.time)
 	    if (iti.time - stim.time)<0:
-		off_syncs.append(idx)
+	        off_syncs.append(idx)
 	print "%i bad sync-ing between stim-onsets and ITIs." % len(off_syncs)
 
 	# PLOT stim durations:
 	print "N stim ONs:", len(stim_durs)
-	print "min:", min(stim_durs)
-	print "max:", max(stim_durs)
+	print "min (s):", min(stim_durs)/1E6
+	print "max (s):", max(stim_durs)/1E6
 	# print len([i for i,v in enumerate(stim_durs) if v>1100000])
 	# p1 = figure(title="Stim ON durations (ms)",tools="save, zoom_in, zoom_out, pan",
 	#             background_fill_color="white")

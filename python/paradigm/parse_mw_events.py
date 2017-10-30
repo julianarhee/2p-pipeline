@@ -62,23 +62,6 @@ def get_timekey(item):
 # long_trials = False #options.long_trials #True
 # no_ard = False #options.no_ard
 
-# # Look in child dir (of source_dir) to find mw_data paths:
-# mw_files = os.listdir(os.path.join(source_dir, 'mw_data'))
-# mw_files = [m for m in mw_files if m.endswith('.mwk')]
-
-
-# # In[6]:
-
-
-# mwfile = mw_files[0]
-
-# fn_base = mwfile[:-4]
-# mw_data_dir = os.path.join(source_dir, 'mw_data')
-# mw_fn = fn_base+'.mwk'
-# dfn = os.path.join(mw_data_dir, mw_fn)
-# dfns = [dfn]
-
-# print "MW file: ", dfns
 
 
 def get_session_bounds(dfn):
@@ -128,42 +111,41 @@ def get_trigger_times(df, boundary, triggername=''):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
     if len(triggername)==0:
-	trigger_names = [i for i in codec_list.values() if ('trigger' in i or 'Trigger' in i) and 'flag' not in i]
+        trigger_names = [i for i in codec_list.values() if ('trigger' in i or 'Trigger' in i) and 'flag' not in i]
         if len(trigger_names) > 1:
-	    print "Found > 1 name for frame-trigger:"
-	    print "Choose: ", trigger_names
+            print "Found > 1 name for frame-trigger:"
+            print "Choose: ", trigger_names
             print "Hint: RSVP could be FrameTrigger, otherwise frame_trigger."
-	    trigg_var_name = raw_input("Type var name to use: ")
-	    trigg_evs = df.get_events(trigg_var_name)
-	else:
-	    trigg_evs = df.get_events(trigger_names[0])
+            trigg_var_name = raw_input("Type var name to use: ")
+            trigg_evs = df.get_events(trigg_var_name)
+        else:
+            trigg_evs = df.get_events(trigger_names[0])
     else:
-	trigg_evs = df.get_events(triggername)
+        trigg_evs = df.get_events(triggername)
 
     # Only include SI trigger events if they were acquired while MW was actually "running" (i.e., start/stop time boundaries):
     trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
-    #print trigg_evs
 
     getout=0
+    # Find all trigger LOW events after the first onset trigger (frame_trigger=0 when SI frame-trigger is high, =1 otherwise)
     while getout==0:
-        # Find all trigger LOW events after the first onset trigger (frame_trigger=0 when SI frame-trigger is high, =1 otherwise)
-	# Find 1st SI frame trigger received by MW (should be "0")
+        # Find 1st SI frame trigger received by MW (should be "0")
         tmp_first_trigger_idx = [i for i,e in enumerate(trigg_evs) if e.value==0][0]        
-	try:
-	    # Find the next "frame-off" event from SI (i.e., when MW is waiting for the next DI trigger)
+        try:
+            # Find the next "frame-off" event from SI (i.e., when MW is waiting for the next DI trigger)
             first_off_ev = next(i for i in trigg_evs[tmp_first_trigger_idx:] if i['value']==1)  
 
-	    # Get corresponding timestamp for first SI frame-off event
+            # Get corresponding timestamp for first SI frame-off event
             first_off_idx = [i.time for i in trigg_evs].index(first_off_ev.time)
 
-	except StopIteration:
-	    print "No trigger OFF event found."
-	    early_abort = True
-	    for i,t in enumerate(trigg_evs):
-		print i, t
-	    first_off_idx = len(trigg_evs)-1
-	    first_off_ev = trigg_evs[-1]
-	    print "DUR:", (first_off_ev.time - trigg_evs[tmp_first_trigger_idx].time) / 1E6
+        except StopIteration:
+            print "No trigger OFF event found."
+            early_abort = True
+            for i,t in enumerate(trigg_evs):
+                print i, t
+                first_off_idx = len(trigg_evs)-1
+                first_off_ev = trigg_evs[-1]
+            #print "DUR:", (first_off_ev.time - trigg_evs[tmp_first_trigger_idx].time) / 1E6
 
         # NOTE:  In previous versions of MW protocols, frame-trigger incorrectly reassigned on/off values...
         # Make sure only 1 OFF event for each ON event, and vice versa.
@@ -213,12 +195,12 @@ def get_trigger_times(df, boundary, triggername=''):
     start_idx = copy.copy(first_off_idx)
     #print trigg_evs
     if start_idx<len(trigg_evs)-1:
-	while True: #start_idx < len(trigg_evs)-1: 
-	    #print start_idx
-	    try:
-		found_new_start = False
-		early_abort = False
-		curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
+        while start_idx < len(trigg_evs)-1: 
+            #print start_idx
+            try:
+                found_new_start = False
+                early_abort = False
+                curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event 
 
 		# try:
 		curr_off_ev = next(i for i in curr_chunk if i['value']==1)
@@ -239,25 +221,26 @@ def get_trigger_times(df, boundary, triggername=''):
 		#print start_idx
 	    except StopIteration:
 		print "Got to STOP."
+            
 		if found_new_start is True:
 		    early_abort = True
-		break
+		    break
 
-	# If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
-	# Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
-	# This likely means that there is another frame-ON event, but not corresponding OFF event.
-	if early_abort is True: 
-	    if found_new_start is True:
-		found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
-	    else:
-		found_trigger_evs[-1][1] = end_ev
+        # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
+        # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
+        # This likely means that there is another frame-ON event, but not corresponding OFF event.
+        if early_abort is True: 
+            if found_new_start is True:
+                found_trigger_evs.append([curr_chunk[curr_idx], end_ev])
+            else:
+                found_trigger_evs[-1][1] = end_ev
 
 
     trigger_evs = [t for t in found_trigger_evs if (t[1].time - t[0].time) > 1]
     trigger_times = [[t[0].time, t[1].time] for t in trigger_evs]
+
     # Remove trigger periods < 1sec (shorter than a trial): 
     trigger_times = [t for t in trigger_times if (t[1]-t[0])/1E6>1.0]
-    print "TTT:", len(trigger_times)
     print "........................................................................................"
     print "Found %i chunks from frame-on/-off triggers:" % len(trigger_times)
     print "........................................................................................"
@@ -303,14 +286,6 @@ def get_trigger_times(df, boundary, triggername=''):
                     runs_selected = 1
                 else:
                     continue
-            # else:
-            #     for i in user_run_selection:
-            #         print "Run:", i
-            #     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-            #     if confirm_selection=='':
-            #         runs_selected = 1
-            #     else:
-            #         continue
             
     print "Selected %i runs." % len(user_run_selection)
     #if len(user_run_selection)>1:
@@ -336,12 +311,146 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
     if len(trigger_times)==0:
         pixelclock_evs = tmp_pixelclock_evs
     else:
-	# Make sure pixel events are within trigger times...
+        # Make sure pixel events are within trigger times...
         pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] 
+    
     print "Got %i pix code events within SI frame-trigger bounds." % len(pixelclock_evs)
     
     return pixelclock_evs
 
+
+def get_session_info(df, stimtype='grating'):
+    info = dict()
+    if stimtype=='bar':
+        ncycles = df.get_events('ncycles')[-1].value
+        info['ncycles'] = ncycles
+        info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        info['barwidth'] = df.get_events('bar_size_deg')[-1].value
+    else:
+        stimdurs = df.get_events('distractor_presentation_time')
+        info['stimduration'] = stimdurs[-1].value
+        itis = df.get_events('ITI_time')
+        info['ITI'] = itis[-1].value
+        sizes = df.get_events('stim_size')
+        info['stimsize'] = sizes[-1].value
+        info['ITI'] = itis[-1].value
+        # stimulus types?
+        # ntrials?
+    return info
+
+     
+def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='frame_trigger', pixelclock=True):
+
+    df, bounds = get_session_bounds(dfn)
+    #print bounds
+    codec = df.get_codec()
+
+    # Use chunks of MW "run"-states to get all associated events:
+    pixelevents = []
+    stimulusevents = [] #dict()
+    trialevents = []
+    triggertimes = []
+    info = []
+    for bidx,boundary in enumerate(bounds):
+        if (boundary[1] - boundary[0]) < 3000000:
+            print "Not a real boundary, only %i seconds found. Skipping." % int(boundary[1] - boundary[0])
+            continue
+
+        print "................................................................"
+        print "SECTION %i" % bidx
+        print "................................................................"
+
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+     
+        ### Get all pixel-clock events in current run: 
+        print "selected runs:", user_run_selection
+        if pixelclock:
+            num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
+            # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
+            pixelclock_evs = get_pixelclock_events(df, boundary) #, trigger_times=trigg_times)
+        else:
+            num_non_stimuli = 2 # background + image
+
+        pixelevents.append(pixelclock_evs)
+
+        ### Get Image events:
+        if stimtype=='image':
+            image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='image']
+        elif stimtype=='grating':
+            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+
+	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+	    start_times = [i.value[1]['start_time'] for i in tmp_image_evs] 
+	    find_static = np.where(np.diff(start_times) > 0)[0] + 1
+	    find_static = np.append(find_static, 0)
+	    find_static = sorted(find_static)
+	    if phasemod:
+		# Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
+		find_static = find_static[::2]
+
+	    image_evs = [tmp_image_evs[i] for i in find_static]
+
+	print "Found %i total image onset events." % len(image_evs)
+
+	first_stim_index = pixelclock_evs.index(image_evs[0])
+	if first_stim_index>0:
+	    pre_iti_ev = pixelclock_evs[first_stim_index-1]
+	    pre_blank = True
+	else:
+	    pre_blank = False
+
+	# Get blank ITIs:
+	print "Getting subsequent ITI for each image event..."
+	im_idx = [[t.time for t in pixelclock_evs].index(i.time) for i in image_evs]
+	iti_evs = []
+	for im in im_idx:
+	    try:
+		next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
+		iti_evs.append(next_iti)
+	    except StopIteration:
+		print "No ITI found after last image onset event.\n"
+	    #print display_evs[im]
+	print "Found %i iti events after a stimulus onset." % len(iti_evs)
+
+            
+	# Double-check that stim onsets are happening BEFORE iti onsets (should be very close to stim ON duration):
+	stim_durs = []
+	off_sync = []
+	for idx,(stim,iti) in enumerate(zip(image_evs, iti_evs)):
+	    stim_durs.append(iti.time - stim.time)
+	    if (iti.time - stim.time) < 0:
+		off_sync.append(idx)
+	if len(off_sync)>0:
+	    print "WARNING: found %i off-sync events." % len(off_sync)
+	
+        print "Confirming {nonsets} stimulus onsets, with min-max durations of {0:.6f}-{0:.6f} sec.".format(min(stim_durs)/1E6, max(stim_durs)/1E6, nonsets=len(stim_durs))
+
+	# Remove extra image-event if it does not have offset/ITI:
+	if image_evs[-1].time > iti_evs[-1].time: # early-abort
+	    print "Removing extra image event that has no offset."
+	    image_evs.pop(-1) 
+
+	if pre_blank:
+	    tmp_trial_evs = image_evs + iti_evs + [pre_iti_ev]
+	else:
+	    tmp_trial_evs = image_evs + iti_evs
+
+	trial_evs = sorted(tmp_trial_evs, key=get_timekey)
+
+	#trialevents.append(tmp_trialevents)
+	print "Length of trial epochs: ", len(trial_evs)
+	print "Number of trials found: ", len(image_evs)
+	
+        stimulusevents.append(image_evs)
+        trialevents.append(trial_evs)
+        triggertimes.append(trigg_times)
+        
+        session_info = get_session_info(df, stimtype=stimtype)
+        session_info['tboundary'] = boundary
+        info.append(session_info)
+
+    return pixelevents, stimulusevents, trialevents, triggertimes, info
+    
 
 
 def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
@@ -470,252 +579,3 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
     # pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
     #return pixelevents, stimevents, triggtimes, session_info
     return pixelevents, stimulusevents, triggertimes, info
-
-
-def get_session_info(df, stimtype='grating'):
-    info = dict()
-    if stimtype=='bar':
-        ncycles = df.get_events('ncycles')[-1].value
-        info['ncycles'] = ncycles
-        info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
-        info['barwidth'] = df.get_events('bar_size_deg')[-1].value
-    else:
-        stimdurs = df.get_events('distractor_presentation_time')
-        info['stimduration'] = stimdurs[-1].value
-        itis = df.get_events('ITI_time')
-        info['ITI'] = itis[-1].value
-        sizes = df.get_events('stim_size')
-        info['stimsize'] = sizes[-1].value
-        info['ITI'] = itis[-1].value
-        # stimulus types?
-        # ntrials?
-    return info
-
-     
-def get_stimulus_events(dfn, stimtype='grating', phasemod=True, triggername='frame_trigger', pixelclock=True, image=True):
-
-    df, bounds = get_session_bounds(dfn)
-    #print bounds
-    codec = df.get_codec()
-
-    # Use chunks of MW "run"-states to get all associated events:
-    pixelevents = []
-    stimulusevents = [] #dict()
-    trialevents = []
-    triggertimes = []
-    info = []
-    for bidx,boundary in enumerate(bounds):
-        if (boundary[1] - boundary[0]) < 3000000:
-            print "Not a real boundary, only %i seconds found. Skipping." % int(boundary[1] - boundary[0])
-            continue
-
-        print "................................................................"
-        print "SECTION %i" % bidx
-        print "................................................................"
-
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
-     
-	### Get all pixel-clock events in current run: 
-        print "selected runs:", user_run_selection
-        if pixelclock:
-            num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
-            # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
-            pixelclock_evs = get_pixelclock_events(df, boundary) #, trigger_times=trigg_times)
-        else:
-            num_non_stimuli = 2 # background + image
-
-        pixelevents.append(pixelclock_evs)
-
-        ### Get Image events:
-        if stimtype=='image':
-            # do stuff
-            pass
-        elif stimtype=='grating':
-	    if image is True:
-                image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='image']
-            else:
-	        tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
-
-		# Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
-		start_times = [i.value[1]['start_time'] for i in tmp_image_evs] 
-		find_static = np.where(np.diff(start_times) > 0)[0] + 1
-		find_static = np.append(find_static, 0)
-		find_static = sorted(find_static)
-		if phasemod:
-		    # Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
-		    find_static = find_static[::2]
-
-                image_evs = [tmp_image_evs[i] for i in find_static]
-
-            print "Found %i total image onset events." % len(image_evs)
-
-            first_stim_index = pixelclock_evs.index(image_evs[0])
-            if first_stim_index>0:
-                pre_iti_ev = pixelclock_evs[first_stim_index-1]
-                pre_blank = True
-            else:
-                pre_blank = False
-
-            # Get blank ITIs:
-            print "Getting subsequent ITI for each image event..."
-            im_idx = [[t.time for t in pixelclock_evs].index(i.time) for i in image_evs]
-            iti_evs = []
-            for im in im_idx:
-                try:
-                    next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
-                    iti_evs.append(next_iti)
-                except StopIteration:
-                    print "No ITI found after last image onset event.\n"
-                #print display_evs[im]
-            print "Found %i iti events after a stimulus onset." % len(iti_evs)
-
-            
-            # Double-check that stim onsets are happening BEFORE iti onsets (should be very close to stim ON duration):
-            stim_durs = []
-            off_sync = []
-            for idx,(stim,iti) in enumerate(zip(image_evs, iti_evs)):
-                stim_durs.append(iti.time - stim.time)
-                if (iti.time - stim.time) < 0:
-                    off_sync.append(idx)
-            if len(off_sync)>0:
-                print "WARNING: found %i off-sync events." % len(off_sync)
-            print "Confirming {nonsets} stimulus onsets, with min-max durations of {0:.6f}-{0:.6f} sec.".format(min(stim_durs)/1E6, max(stim_durs)/1E6, nonsets=len(stim_durs))
-
-            # Remove extra image-event if it does not have offset/ITI:
-            if image_evs[-1].time > iti_evs[-1].time: # early-abort
-                print "Removing extra image event that has no offset."
-                image_evs.pop(-1) 
-
-            if pre_blank:
-                tmp_trial_evs = image_evs + iti_evs + [pre_iti_ev]
-            else:
-                tmp_trial_evs = image_evs + iti_evs
-
-            trial_evs = sorted(tmp_trial_evs, key=get_timekey)
-
-            #trialevents.append(tmp_trialevents)
-            print "Length of trial epochs: ", len(trial_evs)
-            print "Number of trials found: ", len(image_evs)
-            
-        stimulusevents.append(image_evs)
-        trialevents.append(trial_evs)
-        triggertimes.append(trigg_times)
-        
-        session_info = get_session_info(df, stimtype=stimtype)
-        session_info['tboundary'] = boundary
-        info.append(session_info)
-
-    return pixelevents, stimulusevents, trialevents, triggertimes, info
-    
-    
-
-
-def get_image_events(df, boundary, pixelclock_evs=[], stimtype='grating', mask=False):
-    
-    # Get all stimulus-udpate events within bounds:
-    tmp_display_evs = df.get_events('#stimDisplayUpdate')                                                  # Get all stimulus-display-update events
-    display_evs = [e for e in tmp_display_evs if e.value and not e.value[0]==None]                         # Filter out empty display-update events
-    display_evs = [d for d in display_evs if d.time <= boundary[1] and d.time >= boundary[0]]              # Only include display-update events within time boundary of the session
-
-    if len(pixelclock_evs)>0:
-        pixelclock_evs = [i for i in display_evs for v in i.value if 'bit_code' in v.keys()]
-        num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
-    if len(pixelclock_evs)==0:
-        print "No pixel clock."
-        pixelclock_evs = display_evs
-        num_non_stimuli = 2 # N stimuli on screen: background, image
-       
-    # Get stimulus-onset info parsed into trials:
-    if stimtype=='image':
-        tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'filename' in i.keys() and '.png' in i['filename']]
-        #stimevents.append(imdevs)
-
-        # Find blank ITIs:
-        if mask is True:
-            iti_evs = [i for i in pixelclock_evs for v in i.value if v['name']=='blue_mask' and i not in tmp_image_evs]
-        else:
-            iti_evs = [i for i in pixelclock_evs if i.time>image_evs[0].time and i not in tmp_image_evs]
-
-        tmp_trial_evs = tmp_image_evs + iti_evs
-        trial_evs = sorted(tmp_trial_evs, key=get_timekey)
-        
-        image_evs = tmp_image_evs
-
-    elif stimtype=='grating':
-        #tmp_image_evs = [d for d in display_evs for i in d.value if i['name']=='gabor']
-        tmp_image_evs = [d for d in display_evs for i in d.value if i['type']=='drifting_grating']
-        
-        start_times = [i.value[1]['start_time'] for i in tmp_image_evs] # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
-        find_static = np.where(np.diff(start_times) > 0)[0]
-        find_static = np.append(find_static, 0)
-        find_static = sorted(find_static)
-        image_evs = [tmp_image_evs[i+1] for i in find_static]
-        print "got image events"
-        #stimevents.append(imtrials)
-        
-        # Make sure only the 1st stimulus after a new-stim flag is counted (for guarantee-reward) experiments:
-        newstim_evs = df.get_events('new_stimulus')
-        new_stim_evs = [i for i in newstim_evs if i.value==1]
-        print "N new-stimulus events:", len(new_stim_evs)
-        first_image_idxs = []
-        for idx,newev in enumerate(new_stim_evs[0:-1]):
-            possible_image_evs = [i for i,ev in enumerate(image_evs) if ev.time>newev.time and ev.time<new_stim_evs[idx+1].time]
-            first_image_idxs.append(possible_image_evs)
-        first_image_idxs = [i[0] for i in first_image_idxs if len(i)>0]
-        image_evs = [image_evs[i] for i,ev in enumerate(image_evs) if i in first_image_idxs]
-        print "N image evs after taking only first image: ", len(image_evs)
-        
-        # Filter out image-events that were aborted:
-        aborted_evs = df.get_events('trial_aborted')
-        aborted_idxs = []
-        aborted_evs = []
-        for idx,imev in enumerate(image_evs[0:-1]):
-            check_abort = [i.value for i in aborted_evs if i.time>imev.time and i.time<image_evs[idx+1].time]
-            if sum(check_abort)>0:
-                aborted_idxs.append(idx)
-                aborted_evs.append(imev)
-        print "N aborted images: ", len(aborted_idxs)
-        image_evs = [image_evs[i] for i,ev in enumerate(image_evs) if i not in aborted_idxs]
-        print "N image evs after removing aborted: ", len(image_evs)
-        
-        # Find blank ITIs:
-        if mask is True:
-            iti_evs = [i for i in pixelclock_evs if i.time>tmp_image_evs[0].time and i not in tmp_image_evs]
-        else:
-#             prevdev = [[i for i,d in enumerate(display_evs) if d.time < t.time][-1] for t in image_evs[1:]]
-#             lastdev = [i for i,d in enumerate(display_evs) if d.time > image_evs[-1].time and len(d.value)<num_non_stimuli] # ignore the last "extra" ev (has diff time-stamp) - just wnt 1st non-grating blank
-#             iti_evs = [display_evs[i] for i in prevdev]
-#             if len(lastdev)>0:
-#                 iti_evs.append(display_evs[lastdev[0]])
-            #nonstim_evs = [i for i in display_evs if i not in tmp_image_evs]
-            
-            im_idx = [[t.time for t in display_evs].index(i.time) for i in image_evs]
-            iti_evs = []
-            for im in im_idx:
-                try:
-                    next_iti = next(i for i in display_evs[im:] if len(i.value)==(num_non_stimuli-1))
-                    iti_evs.append(next_iti)
-                except StopIteration:
-                    print "No ITI found after this (should be last image_ev).\n"
-                    #print display_evs[im]
-            print "got iti events"
-        
-        # Check that we got all the blanks:
-#         blanks = [i for i,p in enumerate(pixelclock_evs) if len(p.value)==(num_non_stimuli-1)]
-#         mismatches = [i for i,(p,t) in enumerate(zip([pixelclock_evs[x] for x in blanks], iti_evs)) if not p==t]   
-#         if len(mismatches)>0:
-#             print "Mismatches found in parsing trials...."
-#             print mismatches
-
-        # Append a "trial off" at end, if needed:
-        if image_evs[-1].time > iti_evs[-1].time: # early-abort
-            print "Removing extra image event that has no offset."
-            image_evs.pop(-1)                
-        tmp_trial_evs = image_evs + iti_evs
-        trial_evs = sorted(tmp_trial_evs, key=get_timekey)
-
-    #trialevents.append(tmp_trialevents)
-    print "Length of trial epochs: ", len(trial_evs)
-    print "Number of trials found: ", len(image_evs)
-    
-    return image_evs, trial_evs, aborted_evs

@@ -246,6 +246,7 @@ tmprois = '' #options.rois_to_plot
 if len(tmprois)==0:
     rois_to_plot = np.arange(0, nrois, roi_interval) #int(nrois/2)
     sort_name = '%s_all' % curr_slice_name #% roi_interval
+    no_color = True # by default, if plotting all ROIs, don't color by ROI    
 else:
     rois_to_plot = tmprois.split(',')
     rois_to_plot = [int(r) for r in rois_to_plot]
