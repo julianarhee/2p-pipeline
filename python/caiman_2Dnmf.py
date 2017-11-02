@@ -520,7 +520,7 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
     np.savez(os.path.join(nmf_output_dir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'), Cn=Cn,
              A=A, Cdf = Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, d1=d1, d2=d2, idx_components=idx_components,
              idx_components_bad=idx_components_bad,
-             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values)
+             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av)
 
 
     # %%
