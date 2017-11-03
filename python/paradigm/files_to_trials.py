@@ -65,6 +65,10 @@ parser.add_option('-f', '--functional', action='store', dest='functional_dir', d
 parser.add_option('-I', '--id', action="store",
                   dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
+parser.add_option('--mat',action="store_false",
+                  dest="pickled_traces", default=True, help="Set flag if loading .MAT instead of .PKL for tracestruct, i.e., traces_SliceXX_ChannelXX.mat [default looks for .pkl]")
+
+
 # parser.add_option('-O', '--stimon', action="store",
 #                   dest="stim_on_sec", default='', help="Time (s) stimulus ON.")
 # 
@@ -83,10 +87,13 @@ functional_dir = options.functional_dir #'functional' #'functional_subset'
 
 #roi_method = options.roi_method
 analysis_id = options.analysis_id
-
+pickled_traces = options.pickled_traces
 # stim_on_sec = float(options.stim_on_sec) #2. # 0.5
 #selected_channel = int(options.selected_channel)
-
+if pickled_traces is False:
+    fext = 'mat'
+else:
+    fext = 'pkl'
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 figdir = os.path.join(acquisition_dir, 'example_figures')
@@ -134,6 +141,7 @@ if isinstance(slices, int):
     slices = [slices]
 print "Found masks for slices:", slices
 
+nslices = len(slices)
 
 # Load trace structs:
 print "Loading traces..."
@@ -141,9 +149,21 @@ selected_channel = int(ref['signal_channel'][analysis_id])
 trace_dir = os.path.join(ref['trace_dir'], ref['trace_id'][analysis_id]) #, roi_method)
 currchannel = "Channel%02d" % int(selected_channel)
 curr_tracestruct_fns = os.listdir(trace_dir)
-trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t], key=natural_keys)
+trace_fns_by_slice = sorted([t for t in curr_tracestruct_fns if 'traces_Slice' in t and currchannel in t and t.endswith(fext)], key=natural_keys)
 if len(trace_fns_by_slice)==0:
     print "No trace structs found for Channel %i." % int(selected_channel)
+if not len(trace_fns_by_slice)==nslices:
+    print("More than expected n of tracestruct files found.")
+    found_analysis_fns = []
+    for t in trace_fns_by_slice:
+        print(t)
+        if analysis_id in t:
+            found_analysis_fns.append(t)
+    if len(found_analysis_fns)>0:
+        analysis_choice = raw_input("Found analysis-id tracestructs. Use these? Press Y/n: ")
+        if analysis_choice=='Y':
+            trace_fns_by_slice = sorted([t for t in trace_fns_by_slice if analysis_id in t], key=natural_keys)
+        
 #print trace_fns_by_slice
 
 
@@ -187,7 +207,11 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     currslice = "Slice%02d" % int(slices[slice_idx]) # int(slice_idx+1)
     stimtraces = dict((stim, dict()) for stim in stimdict.keys())
 
-    tracestruct = loadmat(os.path.join(trace_dir, trace_fn))
+    if pickled_traces is False:
+        tracestruct = loadmat(os.path.join(trace_dir, trace_fn))
+    else:
+        with open(os.path.join(trace_dir, trace_fn), 'rb') as f:
+            tracestruct = pkl.load(f)
     
     # To look at all traces for ROI 3 for stimulus 1:
     # traces_by_stim['1']['Slice01'][:,roi,:]
@@ -203,60 +227,72 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 #            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
 
             curr_ntrials = len(stimdict[stim][currfile].frames)
-	    rawtraces = tracestruct['file'][fi].rawtracemat
-	    currtraces = tracestruct['file'][fi].tracematDC
+	   
+            if isinstance(tracestruct['file'][fi], dict):
+                rawtraces = tracestruct['file'][fi]['rawtracemat']
+                currtraces = tracestruct['file'][fi]['tracematDC']
+            else: 
+                rawtraces = tracestruct['file'][fi].rawtracemat
+                currtraces = tracestruct['file'][fi].tracematDC
+            if not rawtraces.shape[0]==ref['nvolumes']:
+                rawtraces = rawtraces.T
+            if not currtraces.shape[0]==ref['nvolumes']:
+                currtraces = currtraces.T
+            NR = currtraces.shape[1]
+#            if not NR==52:
+#                continue
 
-	    #print currtraces.shape
+            print currfile, rawtraces.shape, currtraces.shape
             for currtrial_idx in range(curr_ntrials):
-		volumerate = stimdict[stim][currfile].volumerate
-		stim_on_sec = stimdict[stim][currfile].stim_dur #[currtrial_idx]
-		nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
-		iti_sec = stimdict[stim][currfile].iti_dur
+                volumerate = stimdict[stim][currfile].volumerate
+                stim_on_sec = stimdict[stim][currfile].stim_dur #[currtrial_idx]
+                nframes_on = stim_on_sec * volumerate #nt(round(stim_on_sec * volumerate))
+                iti_sec = stimdict[stim][currfile].iti_dur
 
                 #print stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = stimdict[stim][currfile].frames[currtrial_idx]
                 currtrial_frames = [int(i) for i in currtrial_frames] 
-		#print "CURRTRIAL FRAMES:", currtrial_frames
-		#print len(currtrial_frames)
-   
+                #print "CURRTRIAL FRAMES:", currtrial_frames
+                #print len(currtrial_frames)
+           
                 # .T to make rows = rois, cols = frames 
                 nframes = currtraces.shape[0]
                 nrois = currtraces.shape[1] 
-		#print nframes, nrois, currtrial_frames.shape
+                #print nframes, nrois, currtrial_frames.shape
                 #print currtraces.shape
                 raw_traces_allrois.append(rawtraces[currtrial_frames, :]) 
-	        curr_traces_allrois.append(currtraces[currtrial_frames, :])
+                curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
 
                 #print stimdict[stim][currfile].stim_on_idx 
                 curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
                 stim_on_frames.append([curr_frame_onset, curr_frame_onset + nframes_on])
                 
-        check_stimname = list(set(stimdict[stim][currfile].stimid))
-        if len(check_stimname)>1:
-            print "******************************"
-            print "Bad Stim to Trial parsing!."
-            print "------------------------------"
-            print check_stimname
-            print "STIM:", stim, "File:", currfile
-            print "------------------------------"
-            print "Check extract_acquisition_events.py and create_stimdict.py"
-            print "******************************"
-        else:
-	    #print check_stimname
-            stimname = check_stimname[0]
-        
+            check_stimname = list(set(stimdict[stim][currfile].stimid))
+            if len(check_stimname)>1:
+                print "******************************"
+                print "Bad Stim to Trial parsing!."
+                print "------------------------------"
+                print check_stimname
+                print "STIM:", stim, "File:", currfile
+                print "------------------------------"
+                print "Check extract_acquisition_events.py and create_stimdict.py"
+                print "******************************"
+            else:
+                #print check_stimname
+                stimname = check_stimname[0]
+            
         stimtraces[stim]['name'] = stimname
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
         stimtraces[stim]['raw_traces'] = np.asarray(raw_traces_allrois)
-    	stimtraces[stim]['frames_stim_on'] = stim_on_frames 
-	# print stimtraces[stim]['frames_stim_on']
+        stimtraces[stim]['frames_stim_on'] = stim_on_frames 
+        # print stimtraces[stim]['frames_stim_on']
         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois
-	stimtraces[stim]['volumerate'] = volumerate
-	stimtraces[stim]['stim_dur'] = stim_on_sec
-	stimtraces[stim]['iti_dur'] = iti_sec
+        stimtraces[stim]['volumerate'] = volumerate
+        stimtraces[stim]['stim_dur'] = stim_on_sec
+        stimtraces[stim]['iti_dur'] = iti_sec
 
 
 

@@ -93,7 +93,12 @@ print("Specified signal channel is:", signal_channel)
 print("Selected reference file:", reference_file)
 del mcparams
 
-    
+if isinstance(acqmeta['slices'], int):
+    nslices = acqmeta['slices']
+else:
+    nslices = len(acqmeta['slices'])
+print("Processing %i slices." % nslices)
+
    #%% 
 roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
 
@@ -116,11 +121,6 @@ if not os.path.exists(roi_fig_dir):
 if not os.path.exists(roi_mask_dir):
     os.mkdir(roi_mask_dir)
 
-
-if isinstance(acqmeta['slices'], int):
-    nslices = acqmeta['slices']
-else:
-    nslices = len(acqmeta['slices'])
     
 sourcepaths = [] #np.zeros((nslices,), dtype=np.object)
 maskpaths = [] #np.zeros((nslices,), dtype=np.object)

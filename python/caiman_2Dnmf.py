@@ -171,7 +171,7 @@ tiffpaths
 #%% 
 
 params_movie = {'fname': tiffpaths,                         # List of .tif files in current NMF extraction (acquisition)
-               'p': 1,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
+               'p': 2,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
                'merge_thresh': 0.8,                         # merging threshold, max correlation allowed
                'rf': 50,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
                'stride_cnmf': 20,                           # amount of overlap between the patches in pixels
@@ -189,7 +189,7 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                'fitness_min_full': - 40,
                'fitness_delta_min_full': - 40,
                'only_init_patch': True,
-               'gnb': 2,
+               'gnb': 1,
                'memory_fact': 1,
                'n_chunks': 10,
                'update_background_components': True,        # whether to update the background components in the spatial phase
@@ -197,7 +197,11 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                                                             # (to be used with one background per patch)
                 'num_of_channels': 1,
                 'channel_of_neurons': 1
-               }
+                }
+#,
+#                
+#                'deconv_flag': True
+#               }
 
 params_display = {
     'downsample_ratio': .2,
@@ -295,6 +299,13 @@ if len(nmf_results_ref)==0:
     get_reference = True
 else:
     print("NMF ouput for reference file %s found. Processing rest of the files now..." % reference_file)
+    reuse_input = raw_input("Do you want to re-do the reference file NMF? Press Y/n: ")
+    if reuse_input=='Y':
+        reuse_reference = False
+        print("Re-doing reference.")
+    else:
+        reuse_reference = True
+        print("Skipping reference file.")
     if reuse_reference is True:
         get_reference = False
     else:
@@ -328,10 +339,23 @@ if len(nmf_results_ref)>0 and get_reference is False:
 #    
 #    ref = np.load(os.path.join(nmf_output_dir, nmf_results_ref[0]))
 #    refA = ref['A'].all().astype('bool')
+#%% Use subset of files:
+files_todo = [] #['File006'] #['File002', 'File003', 'File005', 'File009']
+mmaps_todo = [] #i for i in mmap_list if any(f in i for f in files_todo)]
+#print(mmaps_todo)
 
+if len(files_todo)==0:
+    files_todo = np.copy(file_list)
+    mmaps_todo = np.copy(mmap_list)
+
+print("FILES:", files_todo)
+
+print("MMAP:", mmaps_todo)
 #%% Process all files:
 
-for curr_file,curr_mmap in zip(file_list,mmap_list):
+#for curr_file,curr_mmap in zip(file_list,mmap_list):
+for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
+
     #curr_file = corr_filenames[0]
     #curr_mmap = mmaps_to_process[0]
     if get_reference is False and curr_file==reference_file:
@@ -402,18 +426,23 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
     
     border_pix = 0 # if motion correction introduces problems at the border remove pixels from border
     if get_reference is True:
-        cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'], p=params_movie['p'],
+        cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                        p=params_movie['p'],
                         dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
-                        method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'], only_init_patch=params_movie['only_init_patch'],
-                        gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix = border_pix, low_rank_background = params_movie['low_rank_background']) 
+                        method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
+                        only_init_patch=params_movie['only_init_patch'],
+                        gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
+                        low_rank_background=params_movie['low_rank_background']) 
     else:
-        cnm = cnmf.CNMF(n_processes=1, rf=None, Ain=refA,
-                        gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'], p=params_movie['p'],
+        cnm = cnmf.CNMF(n_processes=1, rf=None, Ain=refA, skip_refinement=False, only_init_patch=False,
+                        gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                        p=params_movie['p'],
                         dview=dview, memory_fact=1,
-                        method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'], only_init_patch=False,
-                        gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix = border_pix, low_rank_background = params_movie['low_rank_background']) 
+                        method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
+                        gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
+                        low_rank_background = params_movie['low_rank_background']) 
     
-    
+#%%    
     cnm = cnm.fit(images)
     
     A_tot = cnm.A
@@ -434,7 +463,7 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
         crd = plot_contours(A_tot, Cn, thr=params_display['thr_plot'])
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter1_%s.png' % (curr_file, roi_id)))
-    pl.close()
+    #pl.close()
 
     # %% DISCARD LOW QUALITY COMPONENT
     final_frate = params_movie['final_frate']
@@ -454,32 +483,39 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
 
     # %%
     # TODO: show screenshot 13
-    pl.figure()
-    if display_average is True:
-        crd = plot_contours(A_tot.tocsc()[:, idx_components], Av, thr=params_display['thr_plot'])
-    else:
-        crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=params_display['thr_plot'])
-        
-    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_kept_%s.png' % (curr_file, roi_id)))
-    pl.close()
+#    pl.figure()
+#    if display_average is True:
+#        crd = plot_contours(A_tot.tocsc()[:, idx_components], Av, thr=params_display['thr_plot'])
+#    else:
+#        crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=params_display['thr_plot'])
+#        
+#    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_kept_%s.png' % (curr_file, roi_id)))
+#    pl.close()
 
     # %% Don't overwrite bad components, just store separately:
-    
-    #A_tot = A_tot.tocsc()[:, idx_components]
-    #C_tot = C_tot[idx_components]
-    
-    A_tot_kept = A_tot.tocsc()[:, idx_components]
-    C_tot_kept = C_tot[idx_components]
-    pl.close()
+    if get_reference is True:
+        A_tot = A_tot.tocsc()[:, idx_components]
+        C_tot = C_tot[idx_components]
+    else:
+        A_tot_kept = A_tot.tocsc()[:, idx_components]
+        C_tot_kept = C_tot[idx_components]
 
     # %% rerun updating the components to refine
     t1 = time.time()
-    cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
-                    p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
-                    f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb = params_movie['gnb'],
-                    low_rank_background = params_movie['low_rank_background'], update_background_components = params_movie['update_background_components'], check_nan = True)
-    
-    cnm = cnm.fit(images)
+    if get_reference is True:
+        cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                        p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
+                        f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
+                        low_rank_background=params_movie['low_rank_background'],
+                        update_background_components=params_movie['update_background_components'], check_nan = True)
+#    else:
+#        cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+#                        p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot, skip_refinement=True, only_init_patch=False,
+#                        f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb = params_movie['gnb'],
+#                        low_rank_background=params_movie['low_rank_background'],
+#                        update_background_components = params_movie['update_background_components'], check_nan = True)
+#        
+        cnm = cnm.fit(images)
     
     #cnm_kept = cnmf.CNMF(n_processes=1, k=A_tot_kept.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
     #                p=params_movie['p'], dview=dview, Ain=A_tot_kept, Cin=C_tot_kept, b_in = b_tot,
@@ -522,6 +558,7 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
              idx_components_bad=idx_components_bad,
              fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av)
 
+    print("FINAL N COMPONENTS:", A.shape[1])
 
     # %%
     # TODO: show screenshot 14
@@ -540,7 +577,7 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
         crd = plot_contours(A.tocsc()[:, idx_components_bad], Cn, thr=params_display['thr_plot'])
         pl.title('bad')
     
-    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_final_%s.png' % (curr_file, roi_id)))
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_kept_%s.png' % (curr_file, roi_id)))
     pl.close()
 
 #%%
@@ -600,11 +637,16 @@ for curr_file,curr_mmap in zip(file_list,mmap_list):
 
     #%% Save params:
     
-    params_fn_base = 'params_%s' % roi_id
-    save_object(params_movie, os.path.join(roi_dir, '%s.pkl' % params_fn_base))
+    # Create paramsdir:
+    nmf_params_dir = os.path.join(roi_dir, 'nmf_params')
+    if not os.path.exists(nmf_params_dir):
+        os.mkdir(nmf_params_dir)
+    
+    params_fn_base = 'nmfopts_%s' % roi_id
+    save_object(cnm.options, os.path.join(nmf_params_dir, '%s.pkl' % params_fn_base))
     
     with open(os.path.join(roi_dir, '%s.json' % params_fn_base), 'w') as f:
-        json.dump(params_movie, f, indent=4)
+        json.dump(cnm.options, f, indent=4, sort_keys=True)
 
 
 # %% STOP CLUSTER and clean up log files
