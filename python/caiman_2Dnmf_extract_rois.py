@@ -171,6 +171,9 @@ for currslice in range(nslices):
             msk = masktmp.copy() 
             msk[msk==0] = np.nan
             pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+            [ys, xs] = np.where(masktmp>0)
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), weight='bold')
+
             pl.axis('off')
         pl.tight_layout()
  

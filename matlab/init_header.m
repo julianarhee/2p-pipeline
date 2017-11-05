@@ -26,7 +26,7 @@ processed_source = 'Raw_Bidi';          % Folder name contaning CORRECTED tiffs,
 
 
 % Set ROI params: 
-roi_id = 'blobsDoG02'; %'blobDoG01'; 
+roi_id = 'blobsDoG01'; %'blobDoG01'; 
 roi_method = 'pyblob2D'; %'pyblob2D'; %'manual2D_circles'
 
 % Specify what to run it on:
@@ -38,6 +38,7 @@ split_channels = false;
 % Set Motion-Correction params:
 correct_motion = true; 
 correct_bidi_scan = true;       % true, if want to fix artifacts from idirectional scanning
+
 reference_channel = 1;
 reference_file = 5;             % File00X to use as reference for motion-correction %6; %3; %6; %3
 method = 'Acquisition2P';       % [opts: 'Acquisition2P', 'NoRMCorre'] 

@@ -156,6 +156,7 @@ def main(I, acquisition_dir, functional='functional'):
     
     update_records(I, rolodex, rolodex_table, new_analysis_id, acquisition_dir, functional=functional)
     
+    return I
 
 #%%
 if __name__=='__main__':
@@ -165,5 +166,5 @@ if __name__=='__main__':
     import pandas as pd
     import scipy.io
 
-    main(**infodict)
+    I = main(**infodict)
 

@@ -93,10 +93,12 @@ session = '20171009_CE059'
 acquisition = 'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf001'
+roi_id = 'caiman2Dnmf002'
 inspect_components = False
 display_average = True
-reuse_reference = True
+reuse_reference = False
+
+use_reference = False
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
@@ -213,9 +215,10 @@ params_display = {
 #ref_file = 6
 #ref_filename = 'File%03d' % ref_file
 
-refname = [str(f) for f in tiffpaths if reference_file in f]
-ref_file_idx = [t for t in tiffpaths].index(os.path.join(tiff_dir, refname[0]))
-print(ref_file_idx, refname)
+if use_reference is True:
+    refname = [str(f) for f in tiffpaths if reference_file in f]
+    ref_file_idx = [t for t in tiffpaths].index(os.path.join(tiff_dir, refname[0]))
+    print(ref_file_idx, refname)
 
 
 #%% Check for memmapped files:
@@ -289,46 +292,53 @@ mmap_fnames = sorted(mmap_fnames, key=natural_keys)
 print(mmap_fnames)
 
 #%% CHECK nmf_output_dir to see if REFERENCE file already processed:
-nmf_results_ref = [n for n in os.listdir(nmf_output_dir) if n.endswith('.npz') and reference_file in n]
+
 nmf_results = [n for n in os.listdir(nmf_output_dir) if n.endswith('.npz')]
 
-
-if len(nmf_results_ref)==0:
-    # No output for reference file found
-    print("NO output found for reference file %s. Getting NMF blobs for ref." % reference_file)
-    get_reference = True
-else:
-    print("NMF ouput for reference file %s found. Processing rest of the files now..." % reference_file)
-    reuse_input = raw_input("Do you want to re-do the reference file NMF? Press Y/n: ")
-    if reuse_input=='Y':
-        reuse_reference = False
-        print("Re-doing reference.")
-    else:
-        reuse_reference = True
-        print("Skipping reference file.")
-    if reuse_reference is True:
-        get_reference = False
-    else:
-        print("REUSE_REFERENCE set to False.")
+if use_reference is True:
+    nmf_results_ref = [n for n in os.listdir(nmf_output_dir) if n.endswith('.npz') and reference_file in n]
+    
+    if len(nmf_results_ref)==0:
+        # No output for reference file found
+        print("NO output found for reference file %s. Getting NMF blobs for ref." % reference_file)
         get_reference = True
+    else:
+        print("NMF ouput for reference file %s found. Processing rest of the files now..." % reference_file)
+        reuse_input = raw_input("Do you want to re-do the reference file NMF? Press Y/n: ")
+        if reuse_input=='Y':
+            reuse_reference = False
+            print("Re-doing reference.")
+        else:
+            reuse_reference = True
+            print("Skipping reference file.")
+        if reuse_reference is True:
+            get_reference = False
+        else:
+            print("REUSE_REFERENCE set to False.")
+            get_reference = True
 
 # %% LOAD MEMMAP FILE
 # fname_new='Yr_d1_501_d2_398_d3_1_order_F_frames_369_.mmap'
 
-ref_mmap = [m for m in mmap_fnames if reference_file in m][0]
-mmap_list = [ref_mmap]
-file_list = [reference_file]
-other_mmaps = sorted([m for m,f in zip(mmap_fnames, expected_filenames) if f in m and reference_file not in m], key=natural_keys)
-other_files = sorted([f for m,f in zip(mmap_fnames, expected_filenames) if f in m and reference_file not in m], key=natural_keys)
-
-for mm,ff in zip(other_mmaps, other_files):
-    mmap_list.append(mm)
-    file_list.append(ff)
-
-# Load REF results, if they exist:
-if len(nmf_results_ref)>0 and get_reference is False:
-    ref = np.load(os.path.join(nmf_output_dir, nmf_results_ref[0]))
-    refA = ref['A'].all().astype('bool').toarray()
+if use_reference is True:
+    ref_mmap = [m for m in mmap_fnames if reference_file in m][0]
+    mmap_list = [ref_mmap]
+    file_list = [reference_file]
+    other_mmaps = sorted([m for m,f in zip(mmap_fnames, expected_filenames) if f in m and reference_file not in m], key=natural_keys)
+    other_files = sorted([f for m,f in zip(mmap_fnames, expected_filenames) if f in m and reference_file not in m], key=natural_keys)
+    
+    for mm,ff in zip(other_mmaps, other_files):
+        mmap_list.append(mm)
+        file_list.append(ff)
+    
+    # Load REF results, if they exist:
+    if len(nmf_results_ref)>0 and get_reference is False:
+        ref = np.load(os.path.join(nmf_output_dir, nmf_results_ref[0]))
+        refA = ref['A'].all().astype('bool').toarray()
+        
+else:
+    mmap_list = sorted([m for m,f in zip(mmap_fnames, expected_filenames) if f in m], key=natural_keys)
+    file_list = sorted([f for m,f in zip(mmap_fnames, expected_filenames) if f in m], key=natural_keys)
     
 #if get_reference is True:
 #    mmaps_to_process = [m for m in mmap_fnames if ref_filename in m]
@@ -358,7 +368,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #curr_file = corr_filenames[0]
     #curr_mmap = mmaps_to_process[0]
-    if get_reference is False and curr_file==reference_file:
+    if use_reference is True and get_reference is False and curr_file==reference_file:
         continue
     
     print("Loading: %s" % curr_file)
@@ -425,7 +435,24 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     t1 = time.time()
     
     border_pix = 0 # if motion correction introduces problems at the border remove pixels from border
-    if get_reference is True:
+    if use_reference is True:
+        if (get_reference is True):
+            cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                            p=params_movie['p'],
+                            dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
+                            method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
+                            only_init_patch=params_movie['only_init_patch'],
+                            gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
+                            low_rank_background=params_movie['low_rank_background']) 
+        else:
+            cnm = cnmf.CNMF(n_processes=1, rf=None, Ain=refA, skip_refinement=False, only_init_patch=False,
+                            gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                            p=params_movie['p'],
+                            dview=dview, memory_fact=1,
+                            method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
+                            gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
+                            low_rank_background = params_movie['low_rank_background']) 
+    else:
         cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'],
                         dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
@@ -433,15 +460,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
                         only_init_patch=params_movie['only_init_patch'],
                         gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
                         low_rank_background=params_movie['low_rank_background']) 
-    else:
-        cnm = cnmf.CNMF(n_processes=1, rf=None, Ain=refA, skip_refinement=False, only_init_patch=False,
-                        gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
-                        p=params_movie['p'],
-                        dview=dview, memory_fact=1,
-                        method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
-                        gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
-                        low_rank_background = params_movie['low_rank_background']) 
-    
+
 #%%    
     cnm = cnm.fit(images)
     
@@ -493,21 +512,31 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 #    pl.close()
 
     # %% Don't overwrite bad components, just store separately:
-    if get_reference is True:
+
+    if (get_reference is True) or (use_reference is False):
         A_tot = A_tot.tocsc()[:, idx_components]
         C_tot = C_tot[idx_components]
     else:
         A_tot_kept = A_tot.tocsc()[:, idx_components]
         C_tot_kept = C_tot[idx_components]
 
+
     # %% rerun updating the components to refine
     t1 = time.time()
-    if get_reference is True:
+    if use_reference is True:
+        if (get_reference is True):
+            cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+                            p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
+                            f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
+                            low_rank_background=params_movie['low_rank_background'],
+                            update_background_components=params_movie['update_background_components'], check_nan = True)
+    else:
         cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
                         f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
                         low_rank_background=params_movie['low_rank_background'],
                         update_background_components=params_movie['update_background_components'], check_nan = True)
+            
 #    else:
 #        cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
 #                        p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot, skip_refinement=True, only_init_patch=False,
@@ -535,6 +564,9 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #%%
     A, C, b, f, YrA, sn = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn
+    
+    # To save deconvolved:
+    S = cnm.S
 
     # %% again recheck quality of components, stricter criteria
     final_frate = params_movie['final_frate']
@@ -556,7 +588,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     np.savez(os.path.join(nmf_output_dir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'), Cn=Cn,
              A=A, Cdf = Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, d1=d1, d2=d2, idx_components=idx_components,
              idx_components_bad=idx_components_bad,
-             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av)
+             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av, S=S)
+            
 
     print("FINAL N COMPONENTS:", A.shape[1])
 
@@ -636,18 +669,31 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.savefig(os.path.join(nmf_mov_dir, '%s_background_project.png' % curr_file))
 
     #%% Save params:
+    #import pprint
+    #pp = pprint.PrettyPrinter(indent=4)
     
     # Create paramsdir:
     nmf_params_dir = os.path.join(roi_dir, 'nmf_params')
     if not os.path.exists(nmf_params_dir):
         os.mkdir(nmf_params_dir)
     
-    params_fn_base = 'nmfopts_%s' % roi_id
+    params_fn_base = 'nmfopts_%s_%s' % (roi_id, curr_file)
     save_object(cnm.options, os.path.join(nmf_params_dir, '%s.pkl' % params_fn_base))
     
-    with open(os.path.join(roi_dir, '%s.json' % params_fn_base), 'w') as f:
-        json.dump(cnm.options, f, indent=4, sort_keys=True)
+    # Reformat 2D arrays into list for json viewing:
+    for k in cnm.options.keys():
+        for i in cnm.options[k].keys():
+            if type(cnm.options[k][i])==np.ndarray:
+                cnm.options[k][i] = cnm.options[k][i].tolist()
+                
+    with open(os.path.join(nmf_params_dir, '%s.json' % params_fn_base), 'w') as f:
+        #pprint.pprint(cnm.options, stream=f)
+        #fwriteKeyVals(cnm.options, f, indent=4)
+        json.dump(cnm.options, f, indent=4, sort_keys=True) #, separators=(',','\n'))
 
+    if curr_file == reference_file:
+        with open(os.path.join(roi_dir, '%s.json' % params_fn_base), 'w') as f:
+            json.dump(cnm.options, f, indent=4, sort_keys=True)
 
 # %% STOP CLUSTER and clean up log files
 # TODO: todocument

@@ -34,6 +34,10 @@ import h5py
 import cPickle as pkl
 import scipy.io
 import pandas as pd
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import pprint
+
+pp = pprint.PrettyPrinter(indent=4)
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -56,6 +60,7 @@ roi_id = 'caiman2Dnmf001'
 roi_method = 'caiman2D'
     
 use_kept_only = True
+save_movies = True
 
 inspect_components = False
 display_average = True
@@ -137,6 +142,12 @@ trace_dir = os.path.join(acqmeta['trace_dir'], roi_id, mc_id)
 if not os.path.exists(trace_dir):
     os.makedirs(trace_dir)
 
+trace_dir_movs = os.path.join(trace_dir, 'movs')
+trace_dir_figs = os.path.join(trace_dir, 'figs')
+if not os.path.exists(trace_dir_movs):
+    os.mkdir(trace_dir_movs)
+if not os.path.exists(trace_dir_figs):
+    os.mkdir(trace_dir_figs)
     
 #%% Check ACQMETA fields (rolodex updating...)
 
@@ -156,7 +167,8 @@ import initialize_analysis
 
 infodict = {'I': I, 'acquisition_dir': acquisition_dir, 'functional': functional}
 
-initialize_analysis.main(**infodict)
+I = initialize_analysis.main(**infodict)
+pp.pprint(I)
 
 #%% #currslice = 0
 
@@ -175,10 +187,8 @@ for currslice in range(nslices):
         nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
         curr_kept = [i for i in ref_nmf['idx_components']]
         kept = list(set(kept) & set(curr_kept))
-        print(kept)
+        #print(kept)
     
-    
-
 
     for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)): #['File001']): #roiparams.keys():
         tracestruct['file'][fid] = dict()
@@ -211,7 +221,13 @@ for currslice in range(nslices):
         
         curr_mmap = [m for m in memmapped_fns if curr_file in m][0]
         Yr, dims, T = cm.load_memmap(os.path.join(tiff_dir, curr_mmap))
+
+        #%%
+        #Av = nmf['Av']
+        #view_patches_bar(Yr, scipy.sparse.coo_matrix(A), C, b, f, dims[0], dims[1], YrA=YrA, img=Av)
         
+        #%%
+
         nr = np.shape(A)[-1]
         nb = b.shape[1]
         
@@ -221,29 +237,117 @@ for currslice in range(nslices):
 
         # Apply spatial components to raw tiff:
         #raw = (A.T.dot(Yr).T)
-        raw = (Ab.T.dot(Yr).T)
+        raw = Ab.T.dot(Yr)
         
         # Apply binarized mask to raw tiff:
         #binaryA = A.toarray().astype('bool')
         #rawbinary = (binaryA.T.dot(Yr).T)
-        binaryAb = Ab.toarray().astype('bool')
-        rawbinary = (binaryAb.T.dot(Yr).T)
+        #binaryAb = Ab.toarray().astype('bool')
+        #rawbinary = (binaryAb.T.dot(Yr).T)
         
-
+        #%%
         # Apply spatial components to denoised tiff:
         #extracted = A.dot(C) + b.dot(f)
         #applied = A.T.dot(extracted)
-        extracted = Ab.dot(Cf)
-        applied = Ab.T.dot(extracted)
+        reconstructed = Ab.dot(Cf)
+        recon_traces = Ab.T.dot(reconstructed)
         
+        extracted = A.dot(C)
+        extr_traces = Ab.T.dot(extracted)
+
+
+#%%
+#nA = np.ravel(Ab.power(2).sum(axis=0))
+#
+#diags = spdiags(old_div(1., nA), 0, nr+nb, nr+nb)
+#AA = ((Ab.T.dot(Ab)) * diags).tocsr()
+#
+#test = AA.T.dot(Cf)
+#print(test.shape)
+
+#???
+#test = (Ab.T * b * f) + (Ab.T.dot(Ab))*np.matrix(Cf)
+
+        #%%
+#        r = 8
+#        pl.figure()
+#        pl.subplot(3,1,1); pl.title('Ab.Yr'); pl.plot(range(T), raw[r,:]); 
+#        pl.subplot(3,1,2); pl.title('Ab.[Ab.Cf]'); pl.plot(range(T), recon_traces[r,:]); 
+#        pl.subplot(3,1,3); pl.title('Ab.[A.C]'); pl.plot(range(T), extr_traces[r,:])
+#        
+#        pl.figure(); 
+#        pl.subplot(3,1,1); pl.title('Ab.Yr'); pl.plot(range(T), (raw[r,:]-np.mean(raw[r,:]))/np.mean(raw[r,:])); 
+#        pl.subplot(3,1,2); pl.title('Ab.[Ab.Cf]'); pl.plot(range(T), (recon_traces[r,:]-np.mean(recon_traces[r,:]))/np.mean(recon_traces[r,:])); 
+#        pl.subplot(3,1,3); pl.title('Ab.[A.C]'); pl.plot(range(T), (extr_traces[r,:]-np.mean(extr_traces[r,:]))/np.mean(extr_traces[r,:]))
+#        
+#        #%%
+#        r = -1
+#        pl.figure(); 
+#        pl.subplot(3,1,1); pl.title('Ab.Yr'); pl.plot(range(T), (raw[r,:]-np.mean(raw[r,:]))/np.mean(raw[r,:])); 
+#        pl.subplot(3,1,2); pl.title('Ab.[Ab.Cf]'); pl.plot(range(T), (recon_traces[r,:]-np.mean(recon_traces[r,:]))/np.mean(recon_traces[r,:])); 
+#        pl.subplot(3,1,3); pl.title('Ab.[A.C]'); pl.plot(range(T), (extr_traces[r,:]-np.mean(extr_traces[r,:]))/np.mean(extr_traces[r,:]))
+
+        #%%
+        dfmat_extracted = np.empty((nr+nb, T))
+        dfmat_raw = np.empty((nr+nb, T))
+        for roi in range(nr+nb):
+            dfmat_extracted[roi,:] = (extr_traces[roi,:] - np.mean(extr_traces[roi,:])) / np.mean(extr_traces[roi,:])
+            dfmat_raw[roi,:] = (raw[roi,:] - np.mean(raw[roi,:])) / np.mean(raw[roi,:])
+        #%
+
+        fig = pl.figure()
+        ax = fig.add_subplot(111)
+        im = ax.imshow(dfmat_extracted)
+        ax.set_aspect('auto')
+        pl.title(curr_file)
+        pl.xlabel('frames')
+        pl.ylabel('roi')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        pl.colorbar(im, cax=cax)
+        pl.tight_layout()
+        pl.savefig(os.path.join(trace_dir_figs, '%s_%s_dfmat_extracted.png' % (I['analysis_id'], curr_file)))
+        pl.close()
+
+        fig = pl.figure()
+        ax = fig.add_subplot(111)
+        im = ax.imshow(dfmat_raw)
+        ax.set_aspect('auto')
+        pl.title(curr_file)
+        pl.xlabel('frames')
+        pl.ylabel('roi')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        pl.colorbar(im, cax=cax)
+        pl.tight_layout()
+        pl.savefig(os.path.join(trace_dir_figs, '%s_%s_dfmat_raw.png' % (I['analysis_id'], curr_file)))
+        pl.close()
+        
+        if save_movies is True:
+            # %% reconstruct denoised movie
+            dfmovie = cm.movie(A.dot(dfmat_extracted[0:nr,:])).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+            dfmovie.save(os.path.join(trace_dir_movs, '%s_%s_DFF_mov_extracted.tif' % (I['analysis_id'], curr_file)))
+            
+            #%%
+            dfmovie = cm.movie(Ab.dot(dfmat_extracted)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+            dfmovie.save(os.path.join(trace_dir_movs, '%s_%s_DFF_mov_reconstructed.tif' % (I['analysis_id'], curr_file)))
+
+        #%%
         # Extracted df/f:
         #Cdf = Cdf #.toarray()
         
-        tracestruct['file'][fid]['tracematDC'] = applied
+        tracestruct['file'][fid]['tracematDC'] = extr_traces
+        tracestruct['file'][fid]['reconstructed'] = recon_traces
         tracestruct['file'][fid]['rawtracemat'] = raw
+        tracestruct['file'][fid]['nrois'] = nr
+        tracestruct['file'][fid]['masks'] = np.reshape(np.array(Ab), (d1, d2, nr+nb), order='F')
+        
+        if 'S' in nmf.keys():
+            tracestruct['file'][fid]['deconvolved'] = nmf['S']
+            
    
     
-    base_trace_fn = 'traces_Slice%02d_%s_%s' % (currslice+1, signal_channel, analysis_id)
+    base_trace_fn = '%s_traces_Slice%02d_%s_%s' % (I['analysis_id'], currslice+1, signal_channel)
     
     # Save as .mat:
     scipy.io.savemat(os.path.join(trace_dir, '%s.mat' % base_trace_fn), mdict=tracestruct)
@@ -273,10 +377,10 @@ for currslice in range(nslices):
 #
 #rawbinary = (binaryA.T.dot(Yr).T)
 #
-#nAb = np.ravel(Ab.power(2).sum(axis=0))
-#
-#diagsb = spdiags(old_div(1., nAb), 0, nr+nb, nr+nb)
-#AAb = ((Ab.T.dot(Ab)) * diagsb).tocsr()
+nAb = np.ravel(Ab.power(2).sum(axis=0))
+
+diagsb = spdiags(old_div(1., nAb), 0, nr+nb, nr+nb)
+AAb = ((Ab.T.dot(Ab)) * diagsb).tocsr()
 #AAb_unweighted = (Ab.T.dot(Ab))
 #
 #pl.figure(); pl.subplot(1,2,1); pl.title('AAb = [Ab]T.dot([Ab])'); pl.imshow(AAb_unweighted.toarray()); pl.colorbar()
