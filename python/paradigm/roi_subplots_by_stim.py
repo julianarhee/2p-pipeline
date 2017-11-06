@@ -117,9 +117,15 @@ parser.add_option('--no-color', action="store_true",
 
 parser.add_option('--stim-color', action="store_false",
                   dest="color_by_roi", default=True, help="Color by STIM instead of ROI (default: color by ROI id).")
+parser.add_option('--file-color', action="store_true",
+                  dest="color_by_file", default=False, help="Color by FILE SOURCE.")
+
 
 parser.add_option('--processed', action="store_true",
                   dest="dont_use_raw", default=False, help="Flag to use processed traces instead of raw.")
+parser.add_option('--df', action="store_true",
+                  dest="use_df", default=False, help="Flag to use NMF-extracted df traces.")
+
 
 
 
@@ -151,6 +157,7 @@ curr_slice_idx = int(options.sliceidx) #int(1) #int(options.sliceidx)
 # PLOTTING parameters:
 # ---------------------------------------------------------------------------------
 dont_use_raw = options.dont_use_raw #True #options.dont_use_raw
+use_df = options.use_df
 
 #roi_interval = int(options.roi_interval)
 
@@ -165,7 +172,7 @@ ylim_max = float(options.ymax) #50 #3 #100 #5.0 # 3.0
 
 no_color = options.no_color
 color_by_roi = options.color_by_roi
-
+color_by_file = options.color_by_file
 cmaptype = 'rainbow'
 
 
@@ -259,16 +266,18 @@ print "ROIS TO PLOT:", rois_to_plot
 
 # In[101]:
 
-
-if dont_use_raw is True:
-    roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+if use_df is True:
+    roi_trace_type = 'df'
 else:
-    roi_trace_type = 'raw'
+    if dont_use_raw is True:
+        roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+    else:
+        roi_trace_type = 'raw'
 
 if len(tmprois)==0:
-    figdir = os.path.join(figbase, 'rois', 'all') #'rois')
+    figdir = os.path.join(figbase, 'rois', 'all', roi_trace_type) #'rois')
 else:
-    figdir = os.path.join(figbase, 'rois', 'selected', sort_name)
+    figdir = os.path.join(figbase, 'rois', 'selected',  sort_name, roi_trace_type)
 if not os.path.exists(figdir):
     os.makedirs(figdir)
 print "Saving ROI subplots to dir:", figdir
@@ -311,7 +320,7 @@ roi_struct_dir = os.path.join(path_to_trace_structs, 'rois')
 dfstruct_fn = '%s_roi_dfstructs_%s.pkl' % (currslice, roi_trace_type)
 with open(os.path.join(roi_struct_dir, dfstruct_fn), 'rb') as f:
     dfstruct = pkl.load(f)
-
+print dfstruct_fn
 
 
 # In[103]:
@@ -363,6 +372,13 @@ else:
     else:
 	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
 
+
+if color_by_file is True:
+    colormap = plt.get_cmap(cmaptype)
+
+    nfiles = ref['ntiffs']
+    file_names = ['File%03d' % int(i+1) for i in range(nfiles)]
+    filecolors = colormap(np.linspace(0,1, nfiles))
 
 # In[106]:
 
@@ -450,8 +466,18 @@ for roi in rois_to_plot:
 	tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
 	for trial in range(ntrials):
+            #print dfstruct[roi][stim]['files'][trial]
+            which_file = dfstruct[roi][stim]['files'][trial]
+            file_idx = file_names.index(which_file)
+
 	    if color_by_roi:
-		ax_curr.plot(tsecs, curr_dfs[trial,:], color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
+                if color_by_file:
+                    ax_curr.plot(tsecs, curr_dfs[trial,:], color=filecolors[file_idx], alpha=1, linewidth=trial_width*2, label=which_file)
+                       
+   
+                else:
+		    ax_curr.plot(tsecs, curr_dfs[trial,:], color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
+            
 	    else:
 		ax_curr.plot(tsecs, curr_dfs[trial,:], color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
 
@@ -479,8 +505,13 @@ for roi in rois_to_plot:
 	ax_curr.set_ylim([ylim_min, ylim_max])
 
 	if col==0:
-	    ax_curr.set_xlabel('time (s)')
-	    ax_curr.tick_params(axis='x', which='both',length=0)
+            if row>0:
+	        ax_curr.set_xlabel('time (s)')
+	        ax_curr.tick_params(axis='x', which='both',length=0)
+            else:
+                ax_curr.set_xlabel('')
+                ax_curr.tick_params(axis='x', which='both',length=0)
+ 
 	    ax_curr.yaxis.set_major_locator(MaxNLocator(5, integer=True))
 	    # ax_curr.xaxis.set_major_locator(MaxNLocator(noris, integer=True))
 	    sns.despine(bottom=True, right=True, offset=5, trim=True, ax=ax_curr)
@@ -505,7 +536,9 @@ for roi in rois_to_plot:
 
 
     #plt.subplots_adjust(top=1)
-    plt.title('ROI: %i' % int(roi))
+    plt.suptitle('ROI: %i' % int(roi))
+    if color_by_file is True:
+        ax_curr.legend().set_visible(True) #, label=file_names) 
 
     figname = '%s_stimgrid_roi%i_%s.png' % (currslice, int(roi), roi_trace_type)
     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)

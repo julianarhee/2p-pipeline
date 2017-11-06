@@ -83,6 +83,9 @@ parser.add_option('-z', '--slice', action="store",
 parser.add_option('--processed', action="store_true",
                   dest="dont_use_raw", default=False, help="Flag to use processed traces instead of raw.")
 
+parser.add_option('--df', action="store_true",
+                  dest="use_df", default=False, help="Flag to use NMF-extracted df traces.")
+
 
 
 (options, args) = parser.parse_args() 
@@ -112,6 +115,7 @@ curr_slice_idx = int(options.sliceidx) #int(1) #int(options.sliceidx)
 # PLOTTING parameters:
 # ---------------------------------------------------------------------------------
 dont_use_raw = options.dont_use_raw #True #options.dont_use_raw
+use_df = options.use_df
 
 
 # ---------------------------------------------------------------------
@@ -171,11 +175,13 @@ curr_slice_name = "Slice%02d" % slices[curr_slice_idx]
 
 # In[101]:
 
-
-if dont_use_raw is True:
-    roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+if use_df is True:
+    roi_trace_type = 'df'
 else:
-    roi_trace_type = 'raw'
+    if dont_use_raw is True:
+        roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
+    else:
+        roi_trace_type = 'raw'
 
 # In[102]:
 
@@ -199,7 +205,8 @@ signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channe
 currchannel = "Channel%02d" % int(signal_channel)
 currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fn = "stimtraces_%s_%s.pkl" % (currslice, currchannel)
+stimtrace_fn = "%s_stimtraces_%s_%s.pkl" % (analysis_id, currslice, currchannel)
+
 if not stimtrace_fn in stimtrace_fns:
     print "No stimtraces found for %s: %s, %s. Did you run files_to_trials.py?" % (analysis_id, currslice, currchannel)
 else: 
@@ -207,10 +214,10 @@ else:
     with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
 	stimtraces = pkl.load(f)
 
-
 stimlist = sorted(stimtraces.keys(), key=natural_keys)
 nstimuli = len(stimlist)
 
+print stimtraces[stimlist[0]].keys()
 
 # In[103]:
 
@@ -247,10 +254,14 @@ dfstruct = dict((roi, dict((stim, dict()) for stim in stimlist)) for roi in rois
 for roi in rois_to_plot:
     for stimnum,stim in enumerate(stimlist):
 
-        if dont_use_raw is True:
-            currtraces = stimtraces[stim]['traces']
+        if use_df is True:
+            currtraces = stimtraces[stim]['df']
+            #print currtraces.shape
         else:
-            currtraces = stimtraces[stim]['raw_traces']
+            if dont_use_raw is True:
+                currtraces = stimtraces[stim]['traces']
+            else:
+                currtraces = stimtraces[stim]['raw_traces']
 
 	#print currtraces.shape
 	if len(currtraces.shape)==1:
@@ -286,13 +297,18 @@ for roi in rois_to_plot:
 	    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
 
             xvals[trial, :] = (stimtraces[stim]['frames'][trial] - frame_on) #+ stimnum*spacing
-            baseline = np.mean(raw[trial, 0:frame_on_idx])
-	    if baseline==0:
-                df = np.ones((1, nframes_in_trial))*np.nan
-	    else:
-                df = (raw[trial,:] - baseline) / baseline
-                    #print stim, trial
-            curr_dfs[trial,:] = df
+            
+            if use_df is True:
+                curr_dfs[trial,:] = raw[trial,:]
+            else: 
+                baseline = np.mean(raw[trial, 0:frame_on_idx])
+                if baseline==0: # or (abs(baseline)>max(raw[trial,:])):
+                    print stim, trial, baseline
+                    df = np.ones((1, nframes_in_trial))*np.nan
+                else:
+                    df = (raw[trial,:] - baseline) / baseline
+                        #print stim, trial
+                curr_dfs[trial,:] = df
 
             #stim_dur = stimtraces[stim]['frames_stim_on'] 
 	    #stimtraces[stim]['frames_stim_on'][trial][1]-stimtraces[stim]['frames_stim_on'][trial][0]
@@ -321,174 +337,13 @@ for roi in rois_to_plot:
             dfstruct[roi][stim]['stim_on_nframes'] = nframes_on 
 	    dfstruct[roi][stim]['stim_dur'] = stimtraces[stim]['stim_dur']
 	    dfstruct[roi][stim]['iti_dur'] = stimtraces[stim]['iti_dur']
-
+            #print stimtraces[stim]['filesource']
+            dfstruct[roi][stim]['files'] = stimtraces[stim]['filesource'] #[trial]
+            #print dfstruct[roi][stim]['files']
 	    #print dfstruct[roi][stim]['tsec']
 
 dfstruct_fn = '%s_roi_dfstructs_%s.pkl' % (currslice, roi_trace_type)
 with open(os.path.join(roi_struct_dir, dfstruct_fn), 'wb') as f:
     pkl.dump(dfstruct, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-# ### PLOTTING
-
-# In[105]:
-
-
-# ---------------------------------------------------------------------------
-# PLOTTING:
-# ----------------------------------------------------------------------------
-# 
-# if no_color is True:
-#     colorvals = np.zeros((nrois, 3));
-#     #colorvals[:,1] = 1
-# else:
-#     colormap = plt.get_cmap(cmaptype)
-#     if color_by_roi:
-# 	colorvals = colormap(np.linspace(0, 1, nrois)) #get_spaced_colors(nrois)
-#     else:
-# 	colorvals = colormap(np.linspace(0, 1, nstimuli)) #get_spaced_colors(nstimuli)
-# 
-# 
-# # In[106]:
-# 
-# 
-# # Set up subplots:
-# if experiment=='gratings_phaseMod' or experiment=='gratings_static':
-#     nrows = nsfs
-#     ncols = noris
-# else:
-#     nrows = int(options.nrows) #5 #int(np.ceil(np.sqrt(len(stimlist))))
-#     ncols = int(len(stimlist))/nrows #int(np.ceil(len(stimlist)/float(nrows)))
-# 
-# print nrows, ncols
-# 
-# 
-# # In[107]:
-# 
-# 
-# stimnames = [str(int(i)) for i in stimlist]
-# stimnums = [int(i) for i in stimlist]
-# 
-# # get the tick label font size
-# fontsize_pt = 20 #float(plt.rcParams['ytick.labelsize'])
-# dpi = 72.27
-# spacer = 20
-# 
-# # comput the matrix height in points and inches
-# matrix_height_pt = fontsize_pt * nrows * spacer
-# matrix_height_in = matrix_height_pt / dpi
-# 
-# # compute the required figure height 
-# top_margin = 0.01  # in percentage of the figure height
-# bottom_margin = 0.05 # in percentage of the figure height
-# figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
-# 
-# 
-# # In[109]:
-# 
-# 
-# for roi in rois_to_plot:
-# #for roi in [0]:
-#     # build the figure instance with the desired height
-#     fig, axs = plt.subplots(
-# 	    nrows=nrows, 
-# 	    ncols=ncols, 
-# 	    sharex=True,
-# 	    sharey=True,
-# 	    figsize=(figure_height*ncols,figure_height), 
-# 	    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
-# 
-#     row=0
-#     col=0
-#     #print nrows, ncols
-#     plotidx = 0
-#     for stim in sorted(stimlist, key=natural_keys): #ROIs:
-# 
-# 	if col==(ncols) and nrows>1:
-# 	    row += 1
-# 	    col = 0
-# 
-# 	if len(axs.shape)>1:
-# 	    ax_curr = axs[row, col] #, col]
-# 	else:
-# 	    ax_curr = axs[col]
-# 	
-# 	
-# 	curr_dfs = dfstruct[roi][stim]['df']
-# 	ntrials = curr_dfs.shape[0]
-# 	ntrialframes = curr_dfs.shape[1]
-# 	xvals = np.arange(0, ntrialframes)
-# 	tsecs = [int(round(i)) for i in dfstruct[roi][stim]['tsec']]
-# 
-# 	for trial in range(ntrials):
-# 	    if color_by_roi:
-# 		ax_curr.plot(xvals, curr_dfs[trial,:], color=colorvals[roi], alpha=trial_alpha, linewidth=trial_width)
-# 	    else:
-# 		ax_curr.plot(xvals, curr_dfs[trial,:], color=colorvals[stimnum], alpha=trial_alpha, linewidth=trial_width)
-# 
-# 	# Plot average:
-# 	avg = np.nanmean(curr_dfs, axis=0) 
-# 	if color_by_roi:
-# 	    ax_curr.plot(xvals, avg, color=colorvals[roi], alpha=avg_alpha, linewidth=avg_width)
-# 	else:
-# 	    ax_curr.plot(xvals, avg, color=colorvals[stimnum], alpha=avg_alpha, linewidth=avg_width)
-# 
-# 	# Plot stimulus ON period:
-# 	frame_on_idx = dfstruct[roi][stim]['frame_on'][0]
-# 	#print frame_on_idx
-# 	stim_frames = [frame_on_idx, frame_on_idx+dfstruct[roi][stim]['stim_on_nframes']]
-# 
-# 	if no_color is True:
-#             ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='r')
-# 	else:
-# 	    ax_curr.plot(stim_frames, np.ones((2,))*stim_offset, color='k')
-# 
-# 
-# 	# Deal with axes:  
-# 	ax_curr.set_ylim([ylim_min, ylim_max])
-# 
-# 	if col==0:
-# 	    ax_curr.set_xlabel(tsecs)
-# 	    ax_curr.tick_params(axis='x', which='both',length=0)
-# 	    ax_curr.yaxis.set_major_locator(MaxNLocator(5, integer=True))
-# 	    #ax_curr.xaxis.set_major_locator(MaxNLocator(noris, integer=True))
-# 	    sns.despine(bottom=True, right=True, offset=5, trim=True, ax=ax_curr)
-# 	else:
-# 	    ax_curr.axis('off')
-# 
-# 	ax_curr.annotate(str(stim), xy=get_axis_limits(ax_curr))
-# 	#ax_curr.legend().set_visible(False)
-# 
-# 	col = col + 1
-# 	    
-# 	#ptitle = "%2.0f., %0.2f" % (float(stiminfo[stim][0]), float(stiminfo[stim][1]))
-# 	
-# 	plotidx += 1
-# 
-#     nleftover = (nrows*ncols)-plotidx
-#     for p in range(nleftover):
-# 	ax_curr = axs[row, col+p]
-# 	ax_curr.axis('off')
-# 
-# 
-#     #plt.subplots_adjust(top=1)
-#     plt.title('ROI: %i' % int(roi))
-# 
-#     figname = '%s_stimgrid_roi%i_%s.png' % (currslice, int(roi), roi_trace_type)
-#     plt.savefig(os.path.join(figdir, figname), bbox_inches='tight', pad=0)
-# 
-#     plt.show()
-# 
-#     plt.close(fig)
-# 
-# 
-# # In[ ]:
-# 
-# 
-# 
-# 
-# 
-# In[ ]:
-
-
 
 

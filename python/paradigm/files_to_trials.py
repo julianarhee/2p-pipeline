@@ -78,6 +78,8 @@ parser.add_option('--mat',action="store_false",
 
 (options, args) = parser.parse_args() 
 
+deconvolved = False #True
+df = True
 
 source = options.source #'/nas/volume1/2photon/projects'
 experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
@@ -216,10 +218,12 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     # To look at all traces for ROI 3 for stimulus 1:
     # traces_by_stim['1']['Slice01'][:,roi,:]
     for stim in sorted(stimdict.keys(), key=natural_keys):
+        df_allrois = []
         raw_traces_allrois = []
         curr_traces_allrois = []
         curr_frames_allrois = []
         stim_on_frames = []
+        filesource = []
         for fi,currfile in enumerate(sorted(file_names, key=natural_keys)):
 #            nframes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
 #            framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
@@ -230,8 +234,14 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 	  
             if deconvolved is True and 'deconvolved' in tracestruct['file'][fi].keys():
                 deconvtraces = tracestruct['file'][fi]['deconvolved'] 
-            else:
-                print "Specified deconv traces, but none found."
+            if df is True:
+                if 'df' in tracestruct['file'][fi].keys():
+                    dftraces = tracestruct['file'][fi]['df']
+                    #print df.shape
+                else:
+                    dftraces = None
+            #else:
+            #    print "Specified deconv traces, but none found."
 
             if isinstance(tracestruct['file'][fi], dict):
                 rawtraces = tracestruct['file'][fi]['rawtracemat']
@@ -239,6 +249,11 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
             else: 
                 rawtraces = tracestruct['file'][fi].rawtracemat
                 currtraces = tracestruct['file'][fi].tracematDC
+            
+            if df is True and dftraces is not None:
+                if not dftraces.shape[0]==ref['nvolumes']:
+                    dftraces = dftraces.T
+                #print dftraces.shape
             if not rawtraces.shape[0]==ref['nvolumes']:
                 rawtraces = rawtraces.T
             if not currtraces.shape[0]==ref['nvolumes']:
@@ -268,11 +283,16 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 raw_traces_allrois.append(rawtraces[currtrial_frames, :]) 
                 curr_traces_allrois.append(currtraces[currtrial_frames, :])
                 curr_frames_allrois.append(currtrial_frames)
-
-                #print stimdict[stim][currfile].stim_on_idx 
+               
+                if df is True and dftraces is not None:
+                    df_allrois.append(dftraces[currtrial_frames,:]) 
+               
+                 #print stimdict[stim][currfile].stim_on_idx 
                 curr_frame_onset = stimdict[stim][currfile].stim_on_idx[currtrial_idx]
                 stim_on_frames.append([curr_frame_onset, curr_frame_onset + nframes_on])
-                
+           
+                filesource.append(currfile)
+     
             check_stimname = list(set(stimdict[stim][currfile].stimid))
             if len(check_stimname)>1:
                 print "******************************"
@@ -287,11 +307,16 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
                 #print check_stimname
                 stimname = check_stimname[0]
             
+            
+            
         stimtraces[stim]['name'] = stimname
         stimtraces[stim]['traces'] = np.asarray(curr_traces_allrois)
         stimtraces[stim]['raw_traces'] = np.asarray(raw_traces_allrois)
+        stimtraces[stim]['df'] = np.asarray(df_allrois)
         stimtraces[stim]['frames_stim_on'] = stim_on_frames 
-        # print stimtraces[stim]['frames_stim_on']
+        stimtraces[stim]['filesource'] = filesource
+ 
+       # print stimtraces[stim]['frames_stim_on']
         stimtraces[stim]['frames'] = np.asarray(curr_frames_allrois)
         stimtraces[stim]['ntrials'] = stim_ntrials[stim]
         stimtraces[stim]['nrois'] = nrois

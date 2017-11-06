@@ -224,22 +224,20 @@ for currslice in range(nslices):
 
         d1 = int(nmf['d1'])
         d2 = int(nmf['d2'])
-        
-        Cdf = nmf['Cdf']
-        
+              
         if use_kept_only:
             print("Keeping %i ROIs." % len(kept))
             A = nmf['A'].all().tocsc()[:, kept]
             C = nmf['C'][kept, :]
             YrA = nmf['YrA'][kept, :]
+            Cdf = nmf['Cdf'][kept,:]
         else:
             A = nmf['A'].all()
             C = nmf['C']
-            if nmf['YrA'].dtype=='float64':
-                YrA = nmf['YrA']
-            elif nmf['YrA']=='O':
-                YrA = nmf['YrA'].all()
-                
+            nmf['YrA'] = nmf['YrA']
+            Cdf = nmf['Cdf']
+        
+        print(Cdf.shape)       
         f = nmf['f']
         b = nmf['b']
         
@@ -312,11 +310,14 @@ for currslice in range(nslices):
 #        pl.subplot(3,1,3); pl.title('Ab.[A.C]'); pl.plot(range(T), (extr_traces[r,:]-np.mean(extr_traces[r,:]))/np.mean(extr_traces[r,:]))
 
         #%%
+        dfmat = np.empty((nr, T))
         dfmat_extracted = np.empty((nr+nb, T))
         dfmat_raw = np.empty((nr+nb, T))
         for roi in range(nr+nb):
             dfmat_extracted[roi,:] = (extr_traces[roi,:] - np.mean(extr_traces[roi,:])) / np.mean(extr_traces[roi,:])
             dfmat_raw[roi,:] = (raw[roi,:] - np.mean(raw[roi,:])) / np.mean(raw[roi,:])
+            if roi<nr:
+                dfmat[roi,:] = Cdf[roi,:]
         #%
 
         fig = pl.figure()
@@ -346,6 +347,20 @@ for currslice in range(nslices):
         pl.tight_layout()
         pl.savefig(os.path.join(trace_dir_figs, '%s_%s_dfmat_raw.png' % (I['analysis_id'], curr_file)))
         pl.close()
+
+        fig = pl.figure()
+        ax = fig.add_subplot(111)
+        im = ax.imshow(dfmat)
+        ax.set_aspect('auto')
+        pl.title(curr_file)
+        pl.xlabel('frames')
+        pl.ylabel('roi')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        pl.colorbar(im, cax=cax)
+        pl.tight_layout()
+        pl.savefig(os.path.join(trace_dir_figs, '%s_%s_dfmat.png' % (I['analysis_id'], curr_file)))
+        pl.close()
         
         if save_movies is True:
             # %% reconstruct denoised movie
@@ -359,7 +374,7 @@ for currslice in range(nslices):
         #%%
         # Extracted df/f:
         #Cdf = Cdf #.toarray()
-        
+        tracestruct['file'][fid]['df'] = Cdf 
         tracestruct['file'][fid]['tracematDC'] = recon_traces #extr_traces
         #tracestruct['file'][fid]['reconstructed'] = extr_traces #recon_traces
         tracestruct['file'][fid]['rawtracemat'] = raw
