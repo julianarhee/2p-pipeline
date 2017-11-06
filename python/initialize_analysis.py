@@ -80,10 +80,32 @@ def check_init(rolodex, I):
                     break
                 else:
                     print("ID EXISTS! Try again...")
+    else:
+        # Check re-used analysis fields and make sure they all match:
+        for field in rolodex[analysis_id].keys():
+            if field=='analysis_id':
+                continue
+            if not rolodex[analysis_id][field]==I[field]:
+                print("Mismatch found in field: %s" % field) 
+                print("[0] OLD: %s || [1] NEW: %s" % (rolodex[analysis_id][field], I[field]))
+                overwrite_choice = input('Press 0 to keep old, or 1 to overwrite with new value: ')
+                if int(overwrite_choice)==0:
+                    print("Selected to keep OLD key-value pair:", field, rolodex[analysis_id][field])
+                    confirm_choice = input('Press Y to confirm: ')
+                elif int(overwrite_choice)==1:
+                    print("Selected to overwrite with NEW key-value pair:", field, I[field])
+                    confirm_choice = input('Press Y to confirm: ')
+                
+                if confirm_choice=='Y' and int(overwrite_choice)==0: 
+                    I[field] = rolodex[analysis_id][field]
+                    break
+                elif confirm_choice=='Y' and int(overwrite_choice)==1: 
+                    rolodex[analysis_id][field] = I[field]
+                 
     
     I['analysis_id'] = analysis_id
     
-    return I, new_analysis_id
+    return I, new_analysis_id, rolodex
                 
 #%% Check which ACQMETA fields are anlaysis-ID-specific:
 
@@ -152,7 +174,7 @@ def main(I, acquisition_dir, functional='functional'):
 
     rolodex, rolodex_table = load_rolodex(acquisition_dir)
     
-    I, new_analysis_id = check_init(rolodex, I)
+    I, new_analysis_id, rolodex = check_init(rolodex, I)
     
     update_records(I, rolodex, rolodex_table, new_analysis_id, acquisition_dir, functional=functional)
     
