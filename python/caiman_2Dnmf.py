@@ -96,9 +96,9 @@ functional = 'functional'
 roi_id = 'caiman2Dnmf002'
 inspect_components = False
 display_average = True
-reuse_reference = False
+reuse_reference = True #False
 
-use_reference = False
+use_reference = True #False
 if use_reference is False:
     get_reference = False
 
@@ -147,7 +147,7 @@ if not os.path.exists(roi_dir):
    
 
 # Save ROI info to file:
-roiparams = dict((roi_id, dict())
+roiparams = {roi_id: dict()}
 roiparams['roi_id'] = roi_id
 roiparams['params'] = dict()
 roiparams['params']['use_reference'] = use_reference
@@ -155,7 +155,7 @@ roiparams['params']['reference_file'] = reference_file
 roiparams['params']['signal_channel'] = signal_channel
 roiparams_path = os.path.join(roi_dir, 'roiparams.json')
 with open(roiparams_path, 'w') as f:
-    json.dump(roiparams, f, indent='4', sorted_keys=True)
+    json.dump(roiparams, f, indent=4) #, sort_keys=True)
     print("Initialize ROIPARAMS struct")
  
 # Also create an NMF-output dir:
@@ -188,7 +188,7 @@ tiffpaths
 #%% 
 
 params_movie = {'fname': tiffpaths,                         # List of .tif files in current NMF extraction (acquisition)
-               'p': 2,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
+               'p': 1,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
                'merge_thresh': 0.8,                         # merging threshold, max correlation allowed
                'rf': 50,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
                'stride_cnmf': 20,                           # amount of overlap between the patches in pixels
@@ -213,7 +213,9 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                'low_rank_background': True,                 # whether to update the using a low rank approximation. If FalseFalse, all nonzero elements of the background components updated using hals
                                                             # (to be used with one background per patch)
                 'num_of_channels': 1,
-                'channel_of_neurons': 1
+                'channel_of_neurons': 1,
+                'normalize_init': False,
+                'noise_method': 'logmexp'
                 }
 #,
 #                
@@ -514,8 +516,9 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     
     print(('Keeping ' + str(len(idx_components)) +
            ' and discarding  ' + str(len(idx_components_bad))))
-
-    # %%
+    print(A_tot.shape)
+    
+# %%
     # TODO: show screenshot 13
 #    pl.figure()
 #    if display_average is True:
@@ -539,12 +542,13 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     # %% rerun updating the components to refine
     t1 = time.time()
     if use_reference is True:
-        if (get_reference is True):
+        if get_reference is True:
             cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                             p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
                             f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
                             low_rank_background=params_movie['low_rank_background'],
                             update_background_components=params_movie['update_background_components'], check_nan = True)
+            cnm = cnm.fit(images)
     else:
         cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
@@ -571,6 +575,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     #%% Replot:
     pl.figure()
     if display_average is True:
+        print(cnm.A.shape)
         crd = plot_contours(cnm.A, Av, thr=params_display['thr_plot'])
     else:
         crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
@@ -580,9 +585,9 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     #%%
     A, C, b, f, YrA, sn = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn
     
-    # To save deconvolved:
+    # Save all other outputs...:
     S = cnm.S
-
+    
     # %% again recheck quality of components, stricter criteria
     final_frate = params_movie['final_frate']
     r_values_min = params_movie['r_values_min_full']  # threshold on space consistency
@@ -603,7 +608,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     np.savez(os.path.join(nmf_output_dir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'), Cn=Cn,
              A=A, Cdf = Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, d1=d1, d2=d2, idx_components=idx_components,
              idx_components_bad=idx_components_bad,
-             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av, S=S)
+             fitness_raw=fitness_raw, fitness_delta=fitness_delta, r_values=r_values, Av=Av, S=S,
+             bl=cnm.bl, g=cnm.g, c1 = cnm.c1, neurons_sn=cnm.neurons_sn, lam=cnm.lam, dims=cnm.dims)
             
 
     print("FINAL N COMPONENTS:", A.shape[1])
