@@ -244,7 +244,7 @@ Yr, dims, T = cm.load_memmap(os.path.join(tiff_dir, curr_mmap))
 # In[13]:
 
 
-bl = np.copy(b)
+bl = nmf['bl']
 
 
 # In[14]:
@@ -277,9 +277,9 @@ c, dview, n_processes = cm.cluster.setup_cluster(
 # In[24]:
 
 
-AY = parallel_dot_product(Yr, A, dview=dview, block_size=400,
-                                  transpose=True).T
-# AY = A.T.dot(Yr)
+#AY = parallel_dot_product(Yr, A, dview=dview, block_size=400,
+#                                  transpose=True).T
+AY = A.T.dot(Yr)
 print("AY:", AY.shape)
 
 
