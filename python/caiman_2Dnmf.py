@@ -99,6 +99,8 @@ display_average = True
 reuse_reference = False
 
 use_reference = False
+if use_reference is False:
+    get_reference = False
 
 acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
