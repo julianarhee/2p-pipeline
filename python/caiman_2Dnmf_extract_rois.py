@@ -32,6 +32,10 @@ import json
 import h5py
 import cPickle as pkl
 import scipy.io
+import pprint
+
+pp = pprint.PrettyPrinter(indent=4)
+
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -44,6 +48,17 @@ def serialize_json(instance=None, path=None):
     dt.update(vars(instance))
 
 
+def byteify(input):
+    if isinstance(input, dict):
+        return {byteify(key): byteify(value)
+                for key, value in input.iteritems()}
+    elif isinstance(input, list):
+        return [byteify(element) for element in input]
+    elif isinstance(input, unicode):
+        return input.encode('utf-8')
+    else:
+        return input
+
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
 session = '20171009_CE059'
@@ -53,6 +68,9 @@ functional = 'functional'
 roi_id = 'caiman2Dnmf001'
 inspect_components = False
 display_average = True
+use_kept_only = True
+
+
 #reuse_reference = True
 #ref_file = 6
 #ref_filename = 'File%03d' % ref_file
@@ -62,6 +80,9 @@ acquisition_dir = os.path.join(source, experiment, session, acquisition)
 acquisition_meta_fn = os.path.join(acquisition_dir, 'reference_%s.json' % functional)
 with open(acquisition_meta_fn, 'r') as f:
     acqmeta = json.load(f)
+
+roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
+
     
 #%%
 # Load mcparams.mat:
@@ -100,7 +121,6 @@ else:
 print("Processing %i slices." % nslices)
 
    #%% 
-roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
 
 # source of NMF output run:
 nmf_output_dir = os.path.join(roi_dir, 'nmf_output')
@@ -121,24 +141,66 @@ if not os.path.exists(roi_fig_dir):
 if not os.path.exists(roi_mask_dir):
     os.mkdir(roi_mask_dir)
 
-    
 sourcepaths = [] #np.zeros((nslices,), dtype=np.object)
 maskpaths = [] #np.zeros((nslices,), dtype=np.object)
 maskpaths_mat = [] #np.zeros((nslices,), dtype=np.object)
 roi_info = [] #np.zeros((nslices,), dtype=np.object)  # For blobs, this is center/radii; for NMF...?
-nrois = [] #np.zeros((nslices,))
+nrois_by_slice = [] #np.zeros((nslices,))
 
-# with open(os.path.join(roi_dir, 'params_%s.pkl' % roi_id), 'rb') as f:
-#     params_dict = pkl.load(f)
-# 
-roiparams = dict()
+roiparams_path = os.path.join(roi_dir, 'roiparams.json')
+if os.path.exists(os.path.join(roi_dir, 'roiparams.json')):
+    try:
+        with open(os.path.join(roi_dir, 'roiparams.json'), 'r') as f:
+            roiparams = json.load(f)
+    except:
+        roiparams = dict()
+else:
+    roiparams = dict()
 
+if 'params' not in roiparams.keys() or 'use_reference' not in roiparams['params'].keys():
+    print("No ROIPARAMS found. Creating new with ROI_ID: ", roi_id)
+    roiparams['roi_id'] = roi_id
+    roiparams['params'] = dict()
+    roiparams['params']['reference_file'] = reference_file
+    roiparams['params']['signal_channel'] = signal_channel
+    while True: 
+        print("Was a reference file used to constrain cNMF ROI extraction?")
+        used_ref = raw_input('Press Y/n: ')
+        if used_ref=='Y':
+            roiparams['params']['use_reference'] = True
+            break
+        elif used_ref=='n':
+            roiparams['params']['use_reference'] = False 
+            break
+
+roiparams['params']['use_kept_only'] = use_kept_only
+use_reference = roiparams['params']['use_reference']
+
+        
 #%%
 #currslice = 0
 
 for currslice in range(nslices):
     maskstruct = dict((f, dict()) for f in file_names)
-    
+
+    if use_reference is True and use_kept_only is True:
+        if 'kept' in roiparams['params'].keys():
+            kept = roiparams['params']['kept_rois']
+        else:
+            ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
+            ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
+            kept = [i for i in ref_nmf['idx_components']]
+            for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)): 
+                curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
+                nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
+                curr_kept = [i for i in ref_nmf['idx_components']]
+                kept = list(set(kept) & set(curr_kept))
+            roiparams['params']['kept_rois'] = kept
+        nrois = len(kept)
+    else:
+        nrois = np.copy(nr)
+
+   
     for curr_file in file_names: #['File001']: #roiparams.keys():
         print("Extracting ROI STRUCT from %s" % curr_file)
         curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
@@ -156,6 +218,10 @@ for currslice in range(nslices):
         rA = A * spdiags(old_div(1, nA), 0, nr, nr)
         rA = rA.todense()
         masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
+        if use_reference is True and use_kept_only is True:
+            masks = masks[:,:,kept]
+            print("Keeping %i out of %i ROIs." % (len(kept), nr))
+    
         print('Mask array:', masks.shape)
         
         if not 'Av' in nmf.keys():
@@ -166,7 +232,7 @@ for currslice in range(nslices):
         vmax = np.percentile(img, 98)
         pl.figure()
         pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-        for roi in range(nr):
+        for roi in range(nrois):
             masktmp = masks[:,:,roi]
             msk = masktmp.copy() 
             msk[msk==0] = np.nan
@@ -177,22 +243,13 @@ for currslice in range(nslices):
             pl.axis('off')
         pl.tight_layout()
  
-        imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (session,acquisition,currslice+1,signal_channel,curr_file)
-       
+        imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (session,acquisition,currslice+1,signal_channel, curr_file)
+        print(imname) 
         pl.savefig(os.path.join(roi_fig_dir, imname))
         pl.close()
         
         maskstruct[curr_file] = masks
-#        del masks
-#        del nmf
-#        del A2
-#        del rA
-#
-#        print(A.shape)
-#        cm = com(A, d1, d2)
-#        print(cm)
-#        
-    
+   
     
     base_mask_fn = '%s_%s_Slice%02d_%s_masks' % (session, acquisition, currslice+1, signal_channel)
     
@@ -206,7 +263,7 @@ for currslice in range(nslices):
     
     maskpaths_mat.append(str(os.path.join(roi_mask_dir, '%s.mat' % base_mask_fn)))
     maskpaths.append(str(os.path.join(roi_mask_dir, '%s.pkl' % base_mask_fn)))
-    nrois.append(nr)
+    nrois_by_slice.append(nrois)
     #roi_info[currslice] = cm
     sourcepaths.append(str(os.path.join(nmf_output_dir, ref_nmf_fn)))
     
@@ -215,29 +272,21 @@ for currslice in range(nslices):
 
 #print maskpaths
 #dkeys = [k for k in params_dict.keys() if not k=='fname']
-#roiparams['params']=[params_dict[k] for k in dkeys] #params_dict
-roiparams['nrois']=nrois
+roiparams['nrois']=nrois_by_slice
 roiparams['roi_info']=[] #roi_info
 roiparams['sourcepaths']=sourcepaths
 roiparams['maskpaths_mat']=maskpaths_mat
 roiparams['maskpaths']=maskpaths
 roiparams['maskpath3d']=[]
 
+
 # Save main ROIPARAMS as mat:
-print(roiparams)
-scipy.io.savemat(os.path.join(roi_dir,'roiparams.mat'), mdict=roiparams) #, mdict={'roiparams': roiparams})
+tmpr = byteify(roiparams)
+scipy.io.savemat(os.path.join(roi_dir,'roiparams.mat'), {'roiparams': tmpr}, oned_as='row') #, mdict={'roiparams': roiparams})
 
 # Save as .PKL:
 with open(os.path.join(roi_dir, 'roiparams.pkl'), 'wb') as f:
     pkl.dump(roiparams, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-# and .JSON:
-with open(os.path.join(roi_dir, 'roiparams.json'), 'w') as f:
-    json.dump(roiparams, f, indent=4)
-    
-    
-    
-    
-
-
-    
+with open(roiparams_path, 'w') as f:
+    json.dump(roiparams, f, indent=True, sort_keys=True)

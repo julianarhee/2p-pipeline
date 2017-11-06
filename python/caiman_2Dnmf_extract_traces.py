@@ -58,9 +58,8 @@ functional = 'functional'
 
 roi_id = 'caiman2Dnmf001'
 roi_method = 'caiman2D'
-    
-use_kept_only = True
-save_movies = True
+
+save_movies = False #True
 
 inspect_components = False
 display_average = True
@@ -73,7 +72,25 @@ acquisition_dir = os.path.join(source, experiment, session, acquisition)
 acquisition_meta_fn = os.path.join(acquisition_dir, 'reference_%s.json' % functional)
 with open(acquisition_meta_fn, 'r') as f:
     acqmeta = json.load(f)
-    
+
+roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
+roiparams_path = os.path.join(roi_dir, 'roiparams.json')
+with open(roiparams_path, 'r') as f:
+    roiparams = json.load(f)
+
+if not roi_id==roiparams['roi_id']:
+    print("***WARNING***")
+    print("Loaded ROIPARAMS id doesn't match user-specified roi_id.")
+    pp.pprint(roiparams)
+    use_loaded = raw_input('Use loaded ROIPARAMS? Press Y/n: ')
+    if use_loaded=='Y':
+        roi_id = roiparams['roi_id']
+        roiparams['params']['use_kept_ony'] = use_kept_only
+    else:
+        print("Not a valid entry. Re-start with correct ROI_ID.")        
+else:
+    use_kept_only = roiparams['params']['use_kept_only'] 
+   
 
 #%%
 # Load mcparams.mat:
@@ -114,7 +131,6 @@ else:
 print(nslices)
 
 #%% 
-roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
 
 # source of NMF output run:
 nmf_output_dir = os.path.join(roi_dir, 'nmf_output')
@@ -130,7 +146,7 @@ if not len(file_names)==len(nmf_fns):
 # Get source tiffs (mmap):
 tiff_source = str(mcparams['dest_dir'][0][0][0])
 tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
-tiff_dir
+#tiff_dir
 
 # Get mmap tiffs:
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
@@ -177,18 +193,26 @@ for currslice in range(nslices):
     tracestruct['file'] = dict() #np.array((int(acqmeta['ntiffs']),))
     
     if use_kept_only is True:
-        ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
-        ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
-        kept = [i for i in ref_nmf['idx_components']]
-        
-    for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)): #['File001']): #roiparams.keys():
-        #print("Extracting ROI STRUCT from %s" % curr_file)
-        curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
-        nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
-        curr_kept = [i for i in ref_nmf['idx_components']]
-        kept = list(set(kept) & set(curr_kept))
-        #print(kept)
-    
+        if 'kept_rois' in roiparams['params'].keys():
+            kept = roiparams['params']['kept_rois']
+        else:
+            ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
+            ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
+            kept = [i for i in ref_nmf['idx_components']]
+            
+            for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)):
+                #print("Extracting ROI STRUCT from %s" % curr_file)
+                curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
+                nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
+                curr_kept = [i for i in ref_nmf['idx_components']]
+                kept = list(set(kept) & set(curr_kept))
+                #print(kept)
+            roiparams['params']['kept_rois'] = kept
+        if not roiparams['nrois'][currslice]==len(kept):
+            roiparams['nrois'][currslice] = len(kept)
+    pp.pprint(roiparams)
+            
+            
 
     for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)): #['File001']): #roiparams.keys():
         tracestruct['file'][fid] = dict()
@@ -336,18 +360,18 @@ for currslice in range(nslices):
         # Extracted df/f:
         #Cdf = Cdf #.toarray()
         
-        tracestruct['file'][fid]['tracematDC'] = extr_traces
-        tracestruct['file'][fid]['reconstructed'] = recon_traces
+        tracestruct['file'][fid]['tracematDC'] = recon_traces #extr_traces
+        #tracestruct['file'][fid]['reconstructed'] = extr_traces #recon_traces
         tracestruct['file'][fid]['rawtracemat'] = raw
         tracestruct['file'][fid]['nrois'] = nr
-        tracestruct['file'][fid]['masks'] = np.reshape(np.array(Ab), (d1, d2, nr+nb), order='F')
+        tracestruct['file'][fid]['masks'] = np.reshape(Ab.toarray(), (d1, d2, nr+nb), order='F')
         
         if 'S' in nmf.keys():
             tracestruct['file'][fid]['deconvolved'] = nmf['S']
             
    
     
-    base_trace_fn = '%s_traces_Slice%02d_%s_%s' % (I['analysis_id'], currslice+1, signal_channel)
+    base_trace_fn = '%s_traces_Slice%02d_%s' % (I['analysis_id'], currslice+1, signal_channel)
     
     # Save as .mat:
     scipy.io.savemat(os.path.join(trace_dir, '%s.mat' % base_trace_fn), mdict=tracestruct)

@@ -144,7 +144,20 @@ print("Selected reference file:", reference_file)
 roi_dir = os.path.join(acqmeta['roi_dir'], roi_id)
 if not os.path.exists(roi_dir):
     os.mkdir(roi_dir)
-    
+   
+
+# Save ROI info to file:
+roiparams = dict((roi_id, dict())
+roiparams['roi_id'] = roi_id
+roiparams['params'] = dict()
+roiparams['params']['use_reference'] = use_reference
+roiparams['params']['reference_file'] = reference_file
+roiparams['params']['signal_channel'] = signal_channel
+roiparams_path = os.path.join(roi_dir, 'roiparams.json')
+with open(roiparams_path, 'w') as f:
+    json.dump(roiparams, f, indent='4', sorted_keys=True)
+    print("Initialize ROIPARAMS struct")
+ 
 # Also create an NMF-output dir:
 nmf_output_dir = os.path.join(roi_dir, 'nmf_output')
 if not os.path.exists(nmf_output_dir):
