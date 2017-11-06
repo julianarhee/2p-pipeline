@@ -227,7 +227,12 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 #            frames_tsecs = np.arange(0, nframes)*(1/volumerate)
 
             curr_ntrials = len(stimdict[stim][currfile].frames)
-	   
+	  
+            if deconvolved is True and 'deconvolved' in tracestruct['file'][fi].keys():
+                deconvtraces = tracestruct['file'][fi]['deconvolved'] 
+            else:
+                print "Specified deconv traces, but none found."
+
             if isinstance(tracestruct['file'][fi], dict):
                 rawtraces = tracestruct['file'][fi]['rawtracemat']
                 currtraces = tracestruct['file'][fi]['tracematDC']
@@ -242,7 +247,7 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 #            if not NR==52:
 #                continue
 
-            print currfile, rawtraces.shape, currtraces.shape
+            #print currfile, rawtraces.shape, currtraces.shape
             for currtrial_idx in range(curr_ntrials):
                 volumerate = stimdict[stim][currfile].volumerate
                 stim_on_sec = stimdict[stim][currfile].stim_dur #[currtrial_idx]
@@ -296,34 +301,20 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
 
 
 
-    curr_stimtraces_json = 'stimtraces_%s_%s.json' % (currslice, currchannel)
-    print curr_stimtraces_json
-    with open(os.path.join(parsed_traces_dir, curr_stimtraces_json), 'w') as f:
+    curr_stimtraces_basename = '%s_stimtraces_%s_%s' % (analysis_id, currslice, currchannel)
+    with open(os.path.join(parsed_traces_dir, '%s.json' % curr_stimtraces_basename), 'w') as f:
         dump(stimtraces, f, indent=4)
 
-
-    curr_stimtraces_pkl = 'stimtraces_%s_%s.pkl' % (currslice, currchannel)
-    print curr_stimtraces_pkl
-    with open(os.path.join(parsed_traces_dir, curr_stimtraces_pkl), 'wb') as f:
+    with open(os.path.join(parsed_traces_dir, '%s.pkl' % curr_stimtraces_basename), 'wb') as f:
         pkl.dump(stimtraces, f, protocol=pkl.HIGHEST_PROTOCOL)
 
 
     # save as .mat:
-    curr_stimtraces_mat = 'stimtraces_%s_%s.mat' % (currslice, currchannel)
-    # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
     stimtraces_mat = dict()
     for stim in sorted(stimdict.keys(), key=natural_keys):
         currstim = "stim%02d" % int(stim)
         #print currstim
         stimtraces_mat[currstim] = stimtraces[stim]
 
-    scipy.io.savemat(os.path.join(parsed_traces_dir, curr_stimtraces_mat), mdict=stimtraces_mat)
-    print os.path.join(parsed_traces_dir, curr_stimtraces_mat)
-  
-     
-#     stimtraces_all_slices[currslice] = stimtraces
-#     stimtraces_all_fn = 'all_stimtraces_%s.pkl' % currchannel
-#     with open(os.path.join(parsed_traces_dir, stimtraces_all_fn), 'wb') as f:
-#         pkl.dump(stimtraces_all_slices, f, protocol=pkl.HIGHEST_PROTOCOL)
-#  
-# 
+    scipy.io.savemat(os.path.join(parsed_traces_dir, '%s.mat' % curr_stimtraces_basename), mdict=stimtraces_mat)
+ 
