@@ -53,7 +53,7 @@ functional = 'functional'
 roi_id = 'caiman2Dnmf001'
 inspect_components = False
 display_average = True
-reuse_reference = True
+#reuse_reference = True
 #ref_file = 6
 #ref_filename = 'File%03d' % ref_file
 
@@ -128,9 +128,9 @@ maskpaths_mat = [] #np.zeros((nslices,), dtype=np.object)
 roi_info = [] #np.zeros((nslices,), dtype=np.object)  # For blobs, this is center/radii; for NMF...?
 nrois = [] #np.zeros((nslices,))
 
-with open(os.path.join(roi_dir, 'params_%s.pkl' % roi_id), 'rb') as f:
-    params_dict = pkl.load(f)
-
+# with open(os.path.join(roi_dir, 'params_%s.pkl' % roi_id), 'rb') as f:
+#     params_dict = pkl.load(f)
+# 
 roiparams = dict()
 
 #%%
@@ -139,7 +139,7 @@ roiparams = dict()
 for currslice in range(nslices):
     maskstruct = dict((f, dict()) for f in file_names)
     
-    for curr_file in ['File001']: #roiparams.keys():
+    for curr_file in file_names: #['File001']: #roiparams.keys():
         print("Extracting ROI STRUCT from %s" % curr_file)
         curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
         nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
@@ -180,8 +180,8 @@ for currslice in range(nslices):
         imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (session,acquisition,currslice+1,signal_channel,curr_file)
        
         pl.savefig(os.path.join(roi_fig_dir, imname))
-
-
+        pl.close()
+        
         maskstruct[curr_file] = masks
 #        del masks
 #        del nmf
