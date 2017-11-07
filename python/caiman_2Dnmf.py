@@ -93,10 +93,10 @@ session = '20171009_CE059'
 acquisition = 'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf002'
+roi_id = 'caiman2Dnmf004'
 inspect_components = False
 display_average = True
-reuse_reference = True #False
+reuse_reference = False
 
 use_reference = True #False
 if use_reference is False:
@@ -453,7 +453,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     
     border_pix = 0 # if motion correction introduces problems at the border remove pixels from border
     if use_reference is True:
-        if (get_reference is True):
+        if get_reference is True:
             cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                             p=params_movie['p'],
                             dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
@@ -531,12 +531,16 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     # %% Don't overwrite bad components, just store separately:
 
-    if (get_reference is True) or (use_reference is False):
+    if use_reference is True:
+        if get_reference is True:
+            A_tot = A_tot.tocsc()[:, idx_components]
+            C_tot = C_tot[idx_components]
+        else:
+            A_tot_kept = A_tot.tocsc()[:, idx_components]
+            C_tot_kept = C_tot[idx_components]
+    else:
         A_tot = A_tot.tocsc()[:, idx_components]
         C_tot = C_tot[idx_components]
-    else:
-        A_tot_kept = A_tot.tocsc()[:, idx_components]
-        C_tot_kept = C_tot[idx_components]
 
 
     # %% rerun updating the components to refine
@@ -583,10 +587,11 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter2_%s.png' % (curr_file, roi_id)))
 
     #%%
-    A, C, b, f, YrA, sn = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn
+    A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
     
     # Save all other outputs...:
-    S = cnm.S
+    #S = cnm.S
+    print(S.max())
     
     # %% again recheck quality of components, stricter criteria
     final_frate = params_movie['final_frate']

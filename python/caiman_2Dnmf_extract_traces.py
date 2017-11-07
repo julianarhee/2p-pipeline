@@ -49,7 +49,18 @@ def serialize_json(instance=None, path=None):
     dt = {}
     dt.update(vars(instance))
 
+def byteify(input):
+    if isinstance(input, dict):
+        return {byteify(key): byteify(value)
+                for key, value in input.iteritems()}
+    elif isinstance(input, list):
+        return [byteify(element) for element in input]
+    elif isinstance(input, unicode):
+        return input.encode('utf-8')
+    else:
+        return input
 
+#%%
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
 session = '20171009_CE059'
@@ -78,6 +89,7 @@ roiparams_path = os.path.join(roi_dir, 'roiparams.json')
 with open(roiparams_path, 'r') as f:
     roiparams = json.load(f)
 
+roiparams = byteify(roiparams)
 if not roi_id==roiparams['roi_id']:
     print("***WARNING***")
     print("Loaded ROIPARAMS id doesn't match user-specified roi_id.")

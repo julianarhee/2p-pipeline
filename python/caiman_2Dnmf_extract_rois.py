@@ -65,7 +65,7 @@ session = '20171009_CE059'
 acquisition = 'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf001'
+roi_id = 'caiman2Dnmf002'
 inspect_components = False
 display_average = True
 use_kept_only = True
@@ -176,32 +176,43 @@ if 'params' not in roiparams.keys() or 'use_reference' not in roiparams['params'
 roiparams['params']['use_kept_only'] = use_kept_only
 use_reference = roiparams['params']['use_reference']
 
+pp.pprint(roiparams)
         
+#%%
+ignore = ['File009', 'File010']
 #%%
 #currslice = 0
 
 for currslice in range(nslices):
     maskstruct = dict((f, dict()) for f in file_names)
+    ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
+    ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
+    kept = [i for i in ref_nmf['idx_components']]
 
     if use_reference is True and use_kept_only is True:
-        if 'kept' in roiparams['params'].keys():
-            kept = roiparams['params']['kept_rois']
-        else:
-            ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
-            ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
-            kept = [i for i in ref_nmf['idx_components']]
-            for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)): 
-                curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
-                nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
-                curr_kept = [i for i in ref_nmf['idx_components']]
-                kept = list(set(kept) & set(curr_kept))
-            roiparams['params']['kept_rois'] = kept
-        nrois = len(kept)
-    else:
-        nrois = np.copy(nr)
+        print("Taking KEPT subset")
+        #if 'kept' in roiparams['params'].keys():
+        ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
+        ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
+        kept = [i for i in ref_nmf['idx_components']]
+        for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)):
+            if curr_file in ignore:
+                continue
+            curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
+            print(curr_nmf_fn)
+            nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
+            curr_kept = [i for i in nmf['idx_components']]
+            kept = list(set(kept) & set(curr_kept))
+            print(kept)
+        roiparams['params']['kept_rois'] = kept
+    
+    nrois = len(kept)
 
-   
+    print("KEPT:", kept)
+ 
     for curr_file in file_names: #['File001']: #roiparams.keys():
+        if curr_file in ignore:
+            continue
         print("Extracting ROI STRUCT from %s" % curr_file)
         curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
         nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
@@ -218,12 +229,13 @@ for currslice in range(nslices):
         rA = A * spdiags(old_div(1, nA), 0, nr, nr)
         rA = rA.todense()
         masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
+        print('Mask array:', masks.shape)
+
         if use_reference is True and use_kept_only is True:
             masks = masks[:,:,kept]
             print("Keeping %i out of %i ROIs." % (len(kept), nr))
     
-        print('Mask array:', masks.shape)
-        
+                
         if not 'Av' in nmf.keys():
             img = np.mean(masks[:,:,:-1], axis=-1)
         else: 
