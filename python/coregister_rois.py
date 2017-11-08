@@ -1,10 +1,11 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Nov  7 16:31:56 2017
 
-# coding: utf-8
+@author: julianarhee
+"""
 
-# In[1]:
-
-
-get_ipython().magic(u'matplotlib notebook')
 
 from __future__ import division
 #from __future__ import print_function
@@ -36,6 +37,7 @@ import scipy.io
 import pandas as pd
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pprint
+from scipy import ndimage
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -61,9 +63,6 @@ def byteify(input):
         return input
 
 
-# In[2]:
-
-
 #%%
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
@@ -71,7 +70,7 @@ session = '20171009_CE059'
 acquisition = 'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf002'
+roi_id = 'caiman2Dnmf003'
 roi_method = 'caiman2D'
 
 
@@ -98,11 +97,6 @@ if not roi_id==roiparams['roi_id']:
     if use_loaded=='Y':
         roi_id = roiparams['roi_id']
    
-
-
-# In[4]:
-
-
 #%%
 # Load mcparams.mat:
 mcparams = scipy.io.loadmat(acqmeta['mcparams_path'])
@@ -140,11 +134,6 @@ else:
     nslices = len(acqmeta['slices'])
     
 print(nslices)
-
-
-# In[5]:
-
-
 #%% 
 
 # source of NMF output run:
@@ -183,20 +172,13 @@ d1 = int(refnmf['d1'])
 d2 = int(refnmf['d2'])
 
 A1 = refnmf['A'].all()
-# A2 = A.copy()
-# A2.data **= 2
-# nA = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
-
-# rA = A * spdiags(old_div(1, nA), 0, nr, nr)
-# rA = rA.todense()
+nA1 = np.array(np.sqrt(A1.power(2).sum(0)).T)
+A1 = scipy.sparse.coo_matrix(A1 / nA1.T)
 masks = np.reshape(np.array(A1.todense()), (d1, d2, nr), order='F')
 print masks.shape
 
 
-# In[22]:
-
-
-# Get average image
+#%% Get average image
 
 if not 'Av' in refnmf.keys():
     img = np.mean(masks[:,:,:-1], axis=-1)
@@ -206,47 +188,55 @@ else:
 pl.figure()
 pl.imshow(img)
 
+#%% Look at kept vs bad ROIs:
 
-# In[11]:
-
-
-vmax = np.percentile(img, 98)
-pl.figure()
-
-pl.subplot(1,2,1)
-pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-for roi in range(nr):
-    masktmp = masks[:,:,roi]
-    msk = masktmp.copy() 
-    msk[msk==0] = np.nan
-    pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
-    [ys, xs] = np.where(masktmp>0)
-    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), weight='bold')
-
-    pl.axis('off')
-
-pl.subplot(1,2,2)
-pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-kept_rois = refnmf['idx_components']
-masks_kept = masks[:,:,kept_rois]
-print masks_kept.shape
-nr_kept = masks_kept.shape[-1]
-for roi in range(nr_kept):
-    masktmp = masks_kept[:,:,roi]
-    msk = masktmp.copy() 
-    msk[msk==0] = np.nan
-    pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
-    [ys, xs] = np.where(masktmp>0)
-    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(kept_rois[roi]), weight='bold')
-
-    pl.axis('off')
+#vmax = np.percentile(img, 98)
+#pl.figure()
+#
+#pl.subplot(1,2,1)
+#pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
+#for roi in range(nr):
+#    masktmp = masks[:,:,roi]
+#    msk = masktmp.copy() 
+#    msk[msk==0] = np.nan
+#    pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+#    [ys, xs] = np.where(masktmp>0)
+#    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), weight='bold')
+#
+#    pl.axis('off')
+#
+#pl.subplot(1,2,2)
+#pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
+#kept_rois = refnmf['idx_components']
+#masks_kept = masks[:,:,kept_rois]
+#print masks_kept.shape
+#nr_kept = masks_kept.shape[-1]
+#for roi in range(nr_kept):
+#    masktmp = masks_kept[:,:,roi]
+#    msk = masktmp.copy() 
+#    msk[msk==0] = np.nan
+#    pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+#    [ys, xs] = np.where(masktmp>0)
+#    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(kept_rois[roi]), weight='bold')
+#
+#    pl.axis('off')
 
 
-# ### Load another file to coregister:
+#%% ca-source-extraction options:
+    
+options = dict()
+# dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
+# dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+# dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
+# dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+    
+options['dist_maxthr'] = 0.1
+options['dist_exp'] = 1
+options['dist_thr'] = 0.5
+options['dist_overlap_thr'] = 0.8
 
-# In[15]:
-
-
+#%% Loop thru all Files and match pairwise:
+    
 curr_file = 'File001'
 
 
@@ -266,30 +256,18 @@ d1 = int(nmf['d1'])
 d2 = int(nmf['d2'])
 
 A2 = nmf['A'].all()
-# A2 = A.copy()
-# A2.data **= 2
-# nA = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
-
-# rA = A * spdiags(old_div(1, nA), 0, nr, nr)
-# rA = rA.todense()
-# masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
-
+nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
+A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
 masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
 print masks2.shape
 
 
-# ### Transform refnmf masks into binary masks:
-
-# In[31]:
+#%% first transform A1 and A2 into binary masks
 
 
-M1 = A1.astype('bool').toarray()
+M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()
 
-
-# In[32]:
-
-
-M2 = A2.astype('bool').toarray()
+M2 = np.zeros(A2.shape).astype('bool') #A2.astype('bool').toarray()
 
 
 # In[33]:
@@ -300,121 +278,19 @@ K2 = A2.shape[-1]
 print "K1", K1, "K2", K2
 
 
-# In[34]:
+#pl.figure();
+#pl.imshow(np.reshape(M1, (d1, d2, M1.shape[1]), order='F')[:,:,0])
 
-
-max(K1,K2)
-
-
-# In[105]:
-
-
-options = dict()
-# dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
-# dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
-# dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
-# dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
-    
-options['dist_maxthr'] = 0.1
-options['dist_exp'] = 1
-options['dist_thr'] = 0.5
-options['dist_overlap_thr'] = 0.8
-
-
-# In[40]:
-
-
-i = 0
-A_temp = A1.toarray()[:,i]
-M1[A_temp>options['dist_maxthr']*max(A_temp),i] = True
-
-
-# In[44]:
-
-
-M1.shape
-
-
-# In[46]:
-
-
-pl.figure();
-pl.imshow(np.reshape(M1, (d1, d2, M1.shape[1]), order='F')[:,:,0])
-
-
-# In[74]:
-
-
-s = ndimage.generate_binary_structure(2,1)
-print s
-
-
-# In[75]:
-
-
-from scipy import ndimage
-
-labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)
-
-
-# In[76]:
-
-
-print labeled.shape
-print nr_objects
-
-
-# In[86]:
-
-
-sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'),labeled,range(1,nr_objects+1)) 
-print sizes
-maxp = np.where(sizes==sizes.max())[0] + 1 
-print maxp
-
-minp = np.where(sizes==sizes.min())[0] + 1
-print minp
-
-
-# In[90]:
-
-
-# inside the largest, respecitively the smallest labeled patches with values
-max_index = np.zeros(nr_objects + 1, np.uint8)
-max_index[maxp] = 1
-max_feature = max_index[labeled]
-
-min_index = np.zeros(nr_objects + 1, np.uint8)
-min_index[minp] = 1
-min_feature = min_index[labeled]
-
-
-# In[93]:
-
-
-np.where(min_feature>0)
-
-
-# In[94]:
-
-
-pl.figure()
-#pl.subplot(1,2,1)
-#pl.imshow(max_feature)
-#pl.subplot(1,2,2)
-pl.imshow(min_feature)
-
-
-# In[110]:
-
-
-s = ndimage.generate_binary_structure(2,1)
+#%%
+s = ndimage.generate_binary_structure(2,2)
+s# = np.ones((8,8)).astype('bool')
 
 for i in np.arange(0, max(K1,K2)):
     if i < K1:
         A_temp = A1.toarray()[:,i]
         M1[A_temp>options['dist_maxthr']*max(A_temp),i] = True
-        labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
+        #labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
+        labeled, nr_objects = ndimage.measurements.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
         sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
         maxp = np.where(sizes==sizes.max())[0] + 1 
         max_index = np.zeros(nr_objects + 1, np.uint8)
@@ -432,11 +308,13 @@ for i in np.arange(0, max(K1,K2)):
         BW = max_index[labeled]
         M2[:,i] = np.reshape(BW, M2[:,i].shape, order='F')
 
+#%%
 
-# In[117]:
+# dist = 1 - (and(m1,m2)/or(m1,m2))^n 
 
+pp.pprint(options)
 
-## now determine distance matrix between M1 and M2
+#%% now determine distance matrix between M1 and M2
 D = np.zeros((K1,K2));
 for i in np.arange(0, K1):
     for j in np.arange(0, K2):
@@ -447,52 +325,133 @@ for i in np.arange(0, K1):
         #print totalarea
         smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
         #print smallestROI
+        
         D[i,j] = 1 - (overlap/totalarea)**options['dist_exp']
 
         if overlap >= options['dist_overlap_thr']*smallestROI:
-            print('Too small!')
+            #print('Too small!')
             D[i,j] = 0   
-
-
-# In[120]:
-
-
+            
+#%%
 print D.shape
 pl.figure()
 pl.imshow(D)
 pl.colorbar()
 
+#Dtmp = np.copy(D)
+#Dtmp[Dtmp>options['dist_thr']] = np.inf
 
 # In[123]:
 
 
-D[D>options['dist_thr']] = np.inf
+D[D>options['dist_thr']] = np.inf #1E100 #np.nan #1E9
 
 
 # In[125]:
-
 
 pl.figure()
 pl.imshow(D)
 pl.colorbar()
 
-
-# In[ ]:
-
-
-get_ipython().magic(u'timeit match_1, match_2 = scipy.optimize.linear_sum_assignment(D)')
+#%%
+#match_1, match_2 = scipy.optimize.linear_sum_assignment(D)
 
 
-# In[ ]:
+#%%
+def minimumWeightMatching(costSet):
+    '''
+    Computes a minimum-weight matching in a bipartite graph
+    (A union B, E).
 
+    costSet:
+    An (m x n)-matrix of real values, where costSet[i, j]
+    is the cost of matching the i:th vertex in A to the j:th 
+    vertex of B. A value of numpy.inf is allowed, and is 
+    interpreted as missing the (i, j)-edge.
 
-from scikit-learn
+    returns:
+    A minimum-weight matching given as a list of pairs (i, j), 
+    denoting that the i:th vertex of A be paired with the j:th 
+    vertex of B.
+    '''
 
+    m, n = costSet.shape
+    nMax = max(m, n)
 
-# In[ ]:
+    # Since the choice of infinity blocks later choices for that index, 
+    # it is important that the cost matrix is square, so there
+    # is enough space to shift the choices for infinity to the unused 
+    # part of the cost-matrix.
+    costSet_ = np.full((nMax, nMax), np.inf)
+    costSet_[0 : m, 0 : n] = costSet
+    assert costSet_.shape[0] == costSet_.shape[1]
 
+    # We allow a cost to be infinity. Since scipy does not
+    # support this, we use a workaround. We represent infinity 
+    # by M = 2 * maximum cost + 1. The point is to choose a distinct 
+    # value, greater than any other cost, so that choosing an 
+    # infinity-pair is the last resort. The 2 times is for large
+    # values for which x + 1 == x in floating point. The plus 1
+    # is for zero, for which 2 x == x.
+    try:
+        practicalInfinity = 2 * costSet[costSet < np.inf].max() + 1
+    except ValueError:
+        # This is thrown when the indexing set is empty;
+        # then all elements are infinities.
+        practicalInfinity = 1
 
-matched_ROIs = [match_1, match_2]
-nonmatched_1 = np.setdiff1d(np.arange(0, K1), match_1)
-nonmatched_2 = np.setdiff1d(np.arange(0, K2), match_2)
+    # Replace infinitites with our representation.
+    costSet_[costSet_ == np.inf] = practicalInfinity
 
+    # Find a pairing of minimum total cost between matching second-level contours.
+    iSet, jSet = scipy.optimize.linear_sum_assignment(costSet_)
+    assert len(iSet) == len(jSet)
+
+    # Return only pairs with finite cost.
+    return [(iSet[k], jSet[k]) 
+        for k in range(len(iSet)) 
+        if costSet_[iSet[k], jSet[k]] != practicalInfinity]
+    
+#%%
+
+matches = minimumWeightMatching(D)
+
+print len(matches)
+#%%
+#matched_ROIs = [match_1, match_2]
+#nonmatched_1 = np.setdiff1d(np.arange(0, K1), match_1)
+#nonmatched_2 = np.setdiff1d(np.arange(0, K2), match_2)
+#
+#print len(match_1)
+
+#%% 
+
+pl.figure()
+pl.imshow(img, cmap='gray')
+#pl.subplot(1,2,1); pl.imshow(img, cmap='gray')
+#pl.subplot(1,2,2); pl.imshow(img, cmap='gray')
+#for ridx,(roi1,roi2) in enumerate(zip(match_1, match_2)):
+for ridx,match in enumerate(matches):
+    roi1=match[0]; roi2=match[1]
+    masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
+    msk1 = masktmp1.copy(); msk2 = masktmp2.copy()  
+    msk1[msk1==0] = np.nan; msk2[msk2==0] = np.nan
+    
+    #pl.subplot(1,2,1); pl.title('match1')
+    #cs1a = pl.contour(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+    #cs1b = pl.contour(cs1a, levels=cs1a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+    pl.imshow(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+    pl.clim(masktmp1.max()*0.7, masktmp1.max())
+    [ys, xs] = np.where(masktmp1>0)
+    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), weight='bold')
+    pl.axis('off')
+    
+    #pl.subplot(1,2,2); pl.title('match2')
+    #pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds)
+    #cs2a = pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+    #cs2b = pl.contour(cs2a, levels=cs2a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+    pl.imshow(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+    pl.clim(masktmp2.max()*0.7, masktmp2.max())
+    [ys, xs] = np.where(masktmp2>0)
+    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
+    pl.axis('off')
