@@ -98,7 +98,7 @@ inspect_components = False
 display_average = True
 reuse_reference = False
 
-use_reference = True #False
+use_reference = False #False
 if use_reference is False:
     get_reference = False
 
@@ -217,10 +217,6 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                 'normalize_init': False,
                 'noise_method': 'logmexp'
                 }
-#,
-#                
-#                'deconv_flag': True
-#               }
 
 params_display = {
     'downsample_ratio': .2,
@@ -446,7 +442,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
 
     #%% GET CNMF BLOBS:
-    
+    params_movie['init_method'] = 'corr_pnr' #'greedy_roi'
         
     # %% Extract spatial and temporal components on patches
     t1 = time.time()
@@ -454,7 +450,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     border_pix = 0 # if motion correction introduces problems at the border remove pixels from border
     if use_reference is True:
         if get_reference is True:
-            cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+            cnm = cnmf.CNMF(n_processes=n_processes, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                             p=params_movie['p'],
                             dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
                             method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
@@ -462,7 +458,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
                             gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
                             low_rank_background=params_movie['low_rank_background']) 
         else:
-            cnm = cnmf.CNMF(n_processes=1, rf=None, Ain=refA, skip_refinement=False, only_init_patch=False,
+            cnm = cnmf.CNMF(n_processes=n_processes, rf=None, Ain=refA, skip_refinement=False, only_init_patch=False,
                             gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                             p=params_movie['p'],
                             dview=dview, memory_fact=1,
@@ -470,15 +466,33 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
                             gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
                             low_rank_background = params_movie['low_rank_background']) 
     else:
-        cnm = cnmf.CNMF(n_processes=1, k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+        cnm = cnmf.CNMF(k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'],
-                        dview=dview, rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
+                        dview=dview, n_processes=n_processes,
+                        rf=params_movie['rf'], stride=params_movie['stride_cnmf'], memory_fact=1,
                         method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
                         only_init_patch=params_movie['only_init_patch'],
                         gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
-                        low_rank_background=params_movie['low_rank_background']) 
+                        low_rank_background=params_movie['low_rank_background'],
+                        deconv_flag = True) 
 
-#%%    
+#%% adjust opts:
+    
+    cnm.options['temporal_params']['bas_nonneg'] = False
+    cnm.options['temporal_params']['noise_method'] = 'logmexp'
+    
+    cnm.options['init_params']['rolling_sum'] = False
+    cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
+    
+    cnm.options['init_params']['min_corr']
+    cnm.options['init_params']['min_pnr'] = 3
+    
+#%%
+    c, dview, n_processes = cm.cluster.setup_cluster(
+        backend='local', n_processes=None, single_thread=False)
+
+    #%% ITER 1 -- run patches
+
     cnm = cnm.fit(images)
     
     A_tot = cnm.A
@@ -489,7 +503,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     sn_tot = cnm.sn
     print(('Number of components:' + str(A_tot.shape[-1])))
     
-    # %%
+    #%% ITER 1 -- view initial spatial footprints
     pl.figure()
     # TODO: show screenshot 12`
     # TODO : change the way it is used
@@ -498,38 +512,49 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     else:
         crd = plot_contours(A_tot, Cn, thr=params_display['thr_plot'])
     
-    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter1_%s.png' % (curr_file, roi_id)))
-    #pl.close()
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter1_%s.png' % (roi_id, curr_file)))
+    pl.close()
 
-    # %% DISCARD LOW QUALITY COMPONENT
-    final_frate = params_movie['final_frate']
-    r_values_min = params_movie['r_values_min_patch']  # threshold on space consistency
-    fitness_min = params_movie['fitness_delta_min_patch']  # threshold on time variability
+    #%% ITER 1 --DISCARD LOW QUALITY COMPONENTS
+    
+    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
+    r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
+    fitness_min = -15 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
     fitness_delta_min = params_movie['fitness_delta_min_patch']
     Npeaks = params_movie['Npeaks']
     traces = C_tot + YrA_tot
     # TODO: todocument
-    idx_components, idx_components_bad = estimate_components_quality(
+    idx_components, idx_components_bad, fitness_raw, fitness_delta, r_values = estimate_components_quality(
         traces, Y, A_tot, C_tot, b_tot, f_tot, final_frate=final_frate, Npeaks=Npeaks, r_values_min=r_values_min,
-        fitness_min=fitness_min, fitness_delta_min=fitness_delta_min)
+        fitness_min=fitness_min, fitness_delta_min=fitness_delta_min, return_all=True)
     
     print(('Keeping ' + str(len(idx_components)) +
            ' and discarding  ' + str(len(idx_components_bad))))
     print(A_tot.shape)
     
-# %%
-    # TODO: show screenshot 13
-#    pl.figure()
-#    if display_average is True:
-#        crd = plot_contours(A_tot.tocsc()[:, idx_components], Av, thr=params_display['thr_plot'])
-#    else:
-#        crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=params_display['thr_plot'])
-#        
-#    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_kept_%s.png' % (curr_file, roi_id)))
-#    pl.close()
+    #%%  ITER 1 -- view evaluation output:
+        
+    pl.figure(figsize=(5,15))
+    pl.subplot(3,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*r_values_min, 'r')
+    pl.subplot(3,1,2); pl.title('fitness_raw (temporal)'); pl.plot(fitness_raw); pl.plot(range(len(r_values)), np.ones(r_values.shape)*fitness_min, 'r')
+    pl.subplot(3,1,3); pl.title('fitness_delta (temporal, diff)'); pl.plot(fitness_delta); pl.plot(range(len(r_values)), np.ones(r_values.shape)*fitness_delta_min, 'r')
+    pl.xlabel('roi')
+    pl.suptitle(curr_file)
+    
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_%s_evaluate1.png' % (roi_id, curr_file)))
+    
+    #%% ITER 1 -- compare good vs. bad components:
+        
+    pl.figure();
+    pl.subplot(1,2,1); pl.title('kept'); plot_contours(A_tot.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
+    pl.subplot(1,2,2); pl.title('bad'); plot_contours(A_tot.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+    
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_kept_iter1_%s.png' % (roi_id, curr_file)))
+    pl.close()
+    
 
-    # %% Don't overwrite bad components, just store separately:
+    #%% Don't overwrite bad components, just store separately:
 
     if use_reference is True:
         if get_reference is True:
@@ -538,35 +563,30 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         else:
             A_tot_kept = A_tot.tocsc()[:, idx_components]
             C_tot_kept = C_tot[idx_components]
-    else:
-        A_tot = A_tot.tocsc()[:, idx_components]
-        C_tot = C_tot[idx_components]
+#    else:
+#        A_tot = A_tot.tocsc()[:, idx_components]
+#        C_tot = C_tot[idx_components]
 
 
-    # %% rerun updating the components to refine
+    #%% ITER 2 -- rerun updating the components to refine
     t1 = time.time()
     if use_reference is True:
         if get_reference is True:
-            cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+            cnm = cnmf.CNMF(n_processes=n_processes, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                             p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
                             f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
                             low_rank_background=params_movie['low_rank_background'],
                             update_background_components=params_movie['update_background_components'], check_nan = True)
             cnm = cnm.fit(images)
     else:
-        cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+        cnm = cnmf.CNMF(n_processes=n_processes, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
-                        f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb=params_movie['gnb'],
+                        f_in=f_tot, rf=None, stride=None, only_init_patch=False,
+                        method_deconvolution='oasis', gnb=params_movie['gnb'],
                         low_rank_background=params_movie['low_rank_background'],
                         update_background_components=params_movie['update_background_components'], check_nan = True)
             
-#    else:
-#        cnm = cnmf.CNMF(n_processes=1, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
-#                        p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot, skip_refinement=True, only_init_patch=False,
-#                        f_in=f_tot, rf=None, stride=None, method_deconvolution='oasis', gnb = params_movie['gnb'],
-#                        low_rank_background=params_movie['low_rank_background'],
-#                        update_background_components = params_movie['update_background_components'], check_nan = True)
-#        
+        
         cnm = cnm.fit(images)
     
     #cnm_kept = cnmf.CNMF(n_processes=1, k=A_tot_kept.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
@@ -593,20 +613,45 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     #S = cnm.S
     print(S.max())
     
+    #%%
     # %% again recheck quality of components, stricter criteria
-    final_frate = params_movie['final_frate']
-    r_values_min = params_movie['r_values_min_full']  # threshold on space consistency
-    fitness_min = params_movie['fitness_min_full']  # threshold on time variability
+    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
+    r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
+    fitness_min = -15 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
-    fitness_delta_min = params_movie['fitness_delta_min_full']
+    fitness_delta_min = params_movie['fitness_delta_min_patch']
     Npeaks = params_movie['Npeaks']
-    traces = C + YrA
+    traces = C_tot + YrA_tot
+    # TODO: todocument
     idx_components, idx_components_bad, fitness_raw, fitness_delta, r_values = estimate_components_quality(
-        traces, Y, A, C, b, f, final_frate=final_frate, Npeaks=Npeaks, r_values_min=r_values_min, fitness_min=fitness_min,
-        fitness_delta_min=fitness_delta_min, return_all=True)
+        traces, Y, A_tot, C_tot, b_tot, f_tot, final_frate=final_frate, Npeaks=Npeaks, r_values_min=r_values_min,
+        fitness_min=fitness_min, fitness_delta_min=fitness_delta_min, return_all=True)
+    
+    print(('Keeping ' + str(len(idx_components)) +
+           ' and discarding  ' + str(len(idx_components_bad))))
+    print(A_tot.shape)
+    
     print(' ***** ')
     print((len(traces)))
     print((len(idx_components)))
+    
+    #%%
+    pl.figure(figsize=(5,15))
+    pl.subplot(3,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*r_values_min, 'r')
+    pl.subplot(3,1,2); pl.title('fitness_raw (temporal)'); pl.plot(fitness_raw); pl.plot(range(len(r_values)), np.ones(r_values.shape)*fitness_min, 'r')
+    pl.subplot(3,1,3); pl.title('fitness_delta (temporal, diff)'); pl.plot(fitness_delta); pl.plot(range(len(r_values)), np.ones(r_values.shape)*fitness_delta_min, 'r')
+    pl.xlabel('roi')
+    pl.suptitle(curr_file)
+    
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_%s_evaluate2.png' % (roi_id, curr_file)))
+    
+    #%%
+    pl.figure();
+    pl.subplot(1,2,1); pl.title('kept'); plot_contours(A_tot.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
+    pl.subplot(1,2,2); pl.title('bad'); plot_contours(A_tot.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+    
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_kept_iter2_%s.png' % (roi_id, curr_file)))
+    pl.close()
     
     # %% save results
     Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
