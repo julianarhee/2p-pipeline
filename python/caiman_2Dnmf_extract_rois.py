@@ -22,7 +22,8 @@ import os
 from scipy.sparse import spdiags, issparse
 
 # import caiman
-from caiman.base.rois import com
+#from caiman.base.rois import com
+from caiman.utils.visualization import get_contours
 
 import time
 import pylab as pl
@@ -220,6 +221,7 @@ for currslice in range(nslices):
         nr = nmf['A'].all().shape[1]
         d1 = int(nmf['d1'])
         d2 = int(nmf['d2'])
+        dims = (d1, d2)
         
         A = nmf['A'].all()
         A2 = A.copy()
@@ -240,6 +242,12 @@ for currslice in range(nslices):
             img = np.mean(masks[:,:,:-1], axis=-1)
         else: 
             img = nmf['Av']
+
+        coors = get_contours(A, dims, thr=0.9)
+        cc1 = [[l[0] for l in n['coordinates']] for n in coors]
+        cc2 = [[l[1] for l in n['coordinates']] for n in coors]_
+        coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))] 
+        com = [n['CoM'] for n in coors]
 
         vmax = np.percentile(img, 98)
         pl.figure()
@@ -276,7 +284,7 @@ for currslice in range(nslices):
     maskpaths_mat.append(str(os.path.join(roi_mask_dir, '%s.mat' % base_mask_fn)))
     maskpaths.append(str(os.path.join(roi_mask_dir, '%s.pkl' % base_mask_fn)))
     nrois_by_slice.append(nrois)
-    #roi_info[currslice] = cm
+    roi_info[currslice] = {'com': com, 'coords': coords}
     sourcepaths.append(str(os.path.join(nmf_output_dir, ref_nmf_fn)))
     
 
@@ -285,7 +293,7 @@ for currslice in range(nslices):
 #print maskpaths
 #dkeys = [k for k in params_dict.keys() if not k=='fname']
 roiparams['nrois']=nrois_by_slice
-roiparams['roi_info']=[] #roi_info
+roiparams['roi_info']= roi_info
 roiparams['sourcepaths']=sourcepaths
 roiparams['maskpaths_mat']=maskpaths_mat
 roiparams['maskpaths']=maskpaths
