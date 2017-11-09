@@ -443,6 +443,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #%% GET CNMF BLOBS:
     params_movie['init_method'] = 'corr_pnr' #'greedy_roi'
+    params_movie['p'] = 2
         
     # %% Extract spatial and temporal components on patches
     t1 = time.time()
@@ -478,6 +479,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
 #%% adjust opts:
     
+    cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
     cnm.options['temporal_params']['bas_nonneg'] = False
     cnm.options['temporal_params']['noise_method'] = 'logmexp'
     
@@ -486,7 +488,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     #cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
     #cnm.options['init_params']['deconvolve_options_init']['approach'] = 'constrained foopsi'
     
-    cnm.options['init_params']['min_corr']
+    cnm.options['init_params']['min_corr'] = 0.8
     cnm.options['init_params']['min_pnr'] = 3
     
 #%%
