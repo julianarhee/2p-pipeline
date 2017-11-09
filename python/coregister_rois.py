@@ -38,6 +38,7 @@ import pandas as pd
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pprint
 from scipy import ndimage
+import optparse
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -117,27 +118,44 @@ def minimumWeightMatching(costSet):
         if costSet_[iSet[k], jSet[k]] != practicalInfinity]
     
 #%%
-source = '/nas/volume1/2photon/projects'
-experiment = 'gratings_phaseMod'
-session = '20171009_CE059'
-acquisition = 'FOV1_zoom3x'
-functional = 'functional'
 
-roi_id = 'caiman2Dnmf003'
+parser = optparse.OptionParser()
+
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
+parser.add_option('-s', '--sess', action='store', dest='session', default='', help='session name')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help='acquisition folder')
+parser.add_option('-f', '--func', action='store', dest='functional', default='functional', help="folder containing functional tiffs [default: 'functional']")
+parser.add_option('-R', '--roi', action='store', dest='roi_id', default='', help="unique ROI ID (child of <acquisition_dir>/ROIs/")
+
+parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="threshold for turning spatial components into binary masks [default: 0.1]")
+parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
+parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
+parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
+
+(options, args) = parser.parse_args() 
+
+source = options.source #'/nas/volume1/2photon/projects'
+experiment = options.experiment #'gratings_phaseMod'
+session = options.session #'20171009_CE059'
+acquisition = options.acquisition #'FOV1_zoom3x'
+functional = options.functional # 'functional'
+
+roi_id = options.roi_id #'caiman2Dnmf003'
 
 #%% ca-source-extraction options:
     
-options = dict()
+params = dict()
 
 # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
 # dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
 # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
 # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
     
-options['dist_maxthr'] = 0.1
-options['dist_exp'] = 1
-options['dist_thr'] = 0.5
-options['dist_overlap_thr'] = 0.8
+params['dist_maxthr'] = options.dist_maxthr #0.1
+params['dist_exp'] = options.dist_exp # 1
+params['dist_thr'] = options.dist_thr #0.5
+params['dist_overlap_thr'] = options.dist_overlap_thr #0.8
 
 # In[3]:
 
@@ -309,7 +327,7 @@ for curr_file in file_names:
     for i in np.arange(0, max(K1,K2)):
         if i < K1:
             A_temp = A1.toarray()[:,i]
-            M1[A_temp>options['dist_maxthr']*max(A_temp),i] = True
+            M1[A_temp>params['dist_maxthr']*max(A_temp),i] = True
             labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
             sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
             maxp = np.where(sizes==sizes.max())[0] + 1 
@@ -319,7 +337,7 @@ for curr_file in file_names:
             M1[:,i] = np.reshape(BW, M1[:,i].shape, order='F')
         if i < K2:
             A_temp = A2.toarray()[:,i];
-            M2[A_temp>options['dist_maxthr']*max(A_temp),i] = True
+            M2[A_temp>params['dist_maxthr']*max(A_temp),i] = True
             labeled, nr_objects = ndimage.label(np.reshape(M2[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
             sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
             maxp = np.where(sizes==sizes.max())[0] + 1 
@@ -341,16 +359,16 @@ for curr_file in file_names:
             smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
             #print smallestROI
                 
-            D[i,j] = 1 - (overlap/totalarea)**options['dist_exp']
+            D[i,j] = 1 - (overlap/totalarea)**params['dist_exp']
     
-            if overlap >= options['dist_overlap_thr']*smallestROI:
+            if overlap >= params['dist_overlap_thr']*smallestROI:
                 #print('Too small!')
                 D[i,j] = 0   
             
 
     #%% Set illegal matches (distance vals greater than dist_thr):
 
-    D[D>options['dist_thr']] = np.inf #1E100 #np.nan #1E9
+    D[D>params['dist_thr']] = np.inf #1E100 #np.nan #1E9
 
     # In[125]:
     
