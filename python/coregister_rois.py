@@ -25,6 +25,7 @@ from scipy.sparse import spdiags, issparse
 # import caiman
 from caiman.base.rois import com
 import caiman as cm
+from caiman.utils.visualization import plot_contours #get_contours
 
 import time
 import pylab as pl
@@ -133,6 +134,11 @@ parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1,
 parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
 parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
 
+
+parser.add_option('-x', '--exclude', action="store",
+                  dest="exclude_file_ids", default='', help="comma-separated list of files to exclude")
+
+
 (options, args) = parser.parse_args() 
 
 source = options.source #'/nas/volume1/2photon/projects'
@@ -142,6 +148,15 @@ acquisition = options.acquisition #'FOV1_zoom3x'
 functional = options.functional # 'functional'
 
 roi_id = options.roi_id #'caiman2Dnmf003'
+
+tmp_exclude = options.exclude_file_ids
+if len(tmp_exclude)==0:
+    exclude = []
+else:
+    exclude_files = tmp_exclude.split(',')
+    exclude_files = [int(f) for f in exclude_files]
+    exclude = ['File%03d' % f for f in exclude_files]
+print("Excluding files: ", exclude)
 
 #%% ca-source-extraction options:
     
@@ -277,176 +292,177 @@ else:
 #%% Loop thru all Files and match pairwise:
     
 #curr_file = 'File001'
-all_matches = dict()
-
-for curr_file in file_names:
-    
-    if curr_file==reference_file:
-        continue
-    
-    print("Finding matches between reference %s and %s." % (reference_file, curr_file))
-
-    # In[16]:
-    
-    
-    nmf_fn = [f for f in nmf_fns if curr_file in f][0]
-    nmf = np.load(os.path.join(nmf_output_dir, nmf_fn))
-    #print nmf.keys()
-
-
-    # In[23]:
-    
-    nr = nmf['A'].all().shape[1]
-    d1 = int(nmf['d1'])
-    d2 = int(nmf['d2'])
-    
-    A2 = nmf['A'].all()
-    nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
-    A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
-    masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
-    #print masks2.shape
-
-    
-    #%% first transform A1 and A2 into binary masks
-    
-    
-    M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()
-    
-    M2 = np.zeros(A2.shape).astype('bool') #A2.astype('bool').toarray()
-
-
-    # In[33]:
-    
-    K1 = A1.shape[-1]
-    K2 = A2.shape[-1]
-    print "K1", K1, "K2", K2
-
-    #%%
-    s = ndimage.generate_binary_structure(2,2)
-    
-    for i in np.arange(0, max(K1,K2)):
-        if i < K1:
-            A_temp = A1.toarray()[:,i]
-            M1[A_temp>params['dist_maxthr']*max(A_temp),i] = True
-            labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
-            sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
-            maxp = np.where(sizes==sizes.max())[0] + 1 
-            max_index = np.zeros(nr_objects + 1, np.uint8)
-            max_index[maxp] = 1
-            BW = max_index[labeled]
-            M1[:,i] = np.reshape(BW, M1[:,i].shape, order='F')
-        if i < K2:
-            A_temp = A2.toarray()[:,i];
-            M2[A_temp>params['dist_maxthr']*max(A_temp),i] = True
-            labeled, nr_objects = ndimage.label(np.reshape(M2[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
-            sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
-            maxp = np.where(sizes==sizes.max())[0] + 1 
-            max_index = np.zeros(nr_objects + 1, np.uint8)
-            max_index[maxp] = 1
-            BW = max_index[labeled]
-            M2[:,i] = np.reshape(BW, M2[:,i].shape, order='F')
-
-
-    #%% determine distance matrix between M1 and M2
-    D = np.zeros((K1,K2));
-    for i in np.arange(0, K1):
-        for j in np.arange(0, K2):
-            
-            overlap = float(np.count_nonzero(M1[:,i] & M2[:,j]))
-            #print overlap
-            totalarea = float(np.count_nonzero(M1[:,i] | M2[:,j]))
-            #print totalarea
-            smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
-            #print smallestROI
-                
-            D[i,j] = 1 - (overlap/totalarea)**params['dist_exp']
-    
-            if overlap >= params['dist_overlap_thr']*smallestROI:
-                #print('Too small!')
-                D[i,j] = 0   
-            
-
-    #%% Set illegal matches (distance vals greater than dist_thr):
-
-    D[D>params['dist_thr']] = np.inf #1E100 #np.nan #1E9
-
-    # In[125]:
-    
-    pl.figure()
-    pl.imshow(D)
-    pl.colorbar()
-    pl.savefig(os.path.join(metrics_dir_figs, 'distancematrix_%s.png' % curr_file))
-    pl.close()
-
-    #%%
-    #match_1, match_2 = scipy.optimize.linear_sum_assignment(D)
-
-    matches = minimumWeightMatching(D)  # Use modified linear_sum_assignment to allow np.inf
-
-    print("Found %i ROI matches in %s" % (len(matches), curr_file))
-
-    #matched_ROIs = [match_1, match_2]
-    #nonmatched_1 = np.setdiff1d(np.arange(0, K1), match_1)
-    #nonmatched_2 = np.setdiff1d(np.arange(0, K2), match_2)
-    #
-    #print len(match_1)
-
-    #%% Save overlap of REF with curr-file matches:
-    
-    pl.figure()
-    pl.imshow(img, cmap='gray')
-    #pl.subplot(1,2,1); pl.imshow(img, cmap='gray')
-    #pl.subplot(1,2,2); pl.imshow(img, cmap='gray')
-    #for ridx,(roi1,roi2) in enumerate(zip(match_1, match_2)):
-    for ridx,match in enumerate(matches):
-        roi1=match[0]; roi2=match[1]
-        masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
-        msk1 = masktmp1.copy(); msk2 = masktmp2.copy()  
-        msk1[msk1==0] = np.nan; msk2[msk2==0] = np.nan
-        
-        #pl.subplot(1,2,1); pl.title('match1')
-        #cs1a = pl.contour(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-        #cs1b = pl.contour(cs1a, levels=cs1a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-        pl.imshow(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-        pl.clim(masktmp1.max()*0.7, masktmp1.max())
-        [ys, xs] = np.where(masktmp1>0)
-        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), weight='bold')
-        pl.axis('off')
-        
-        #pl.subplot(1,2,2); pl.title('match2')
-        #pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds)
-        #cs2a = pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-        #cs2b = pl.contour(cs2a, levels=cs2a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-        pl.imshow(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-        pl.clim(masktmp2.max()*0.7, masktmp2.max())
-        [ys, xs] = np.where(masktmp2>0)
-        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
-        pl.axis('off')
-    
-    pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (reference_file, curr_file)))
-    pl.close()
-    
-    #%% Store matches for file:
-    all_matches[curr_file] = matches
-    
-#%% Save matches:
-    
-match_fn_base = 'matches_byfile_ref%s' % reference_file
-with open(os.path.join(metrics_dir, '%s.pkl' % match_fn_base), 'wb') as f:
-    pkl.dump(all_matches, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-with open(os.path.join(metrics_dir, '%s.json' % match_fn_base), 'w') as f:
-    json.dump(all_matches, f, indent=4, sort_keys=True)
-    
-#%% Find intersection of all matches with reference:
-exclude = ['File009', 'File010']
+#exclude = ['File009', 'File010']
 
 match_fn_base = 'matches_byfile_ref%s' % reference_file
-
-for curr_file in file_names:
+if os.path.exists(os.path.join(metrics_dir, '%s.pkl' % match_fn_base)):
     with open(os.path.join(metrics_dir, '%s.pkl' % match_fn_base), 'rb') as f:
         all_matches = pkl.load(f)
+
+else:
+    all_matches = dict()
+
+    for curr_file in file_names:
         
+        if curr_file==reference_file:
+            continue
+        
+        print("Finding matches between reference %s and %s." % (reference_file, curr_file))
+
+        # In[16]:
+        
+        
+        nmf_fn = [f for f in nmf_fns if curr_file in f][0]
+        nmf = np.load(os.path.join(nmf_output_dir, nmf_fn))
+        #print nmf.keys()
+
+
+        # In[23]:
+        
+        nr = nmf['A'].all().shape[1]
+        d1 = int(nmf['d1'])
+        d2 = int(nmf['d2'])
+        
+        A2 = nmf['A'].all()
+        nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
+        A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
+        masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
+        #print masks2.shape
+
+        
+        #%% first transform A1 and A2 into binary masks
+        
+        
+        M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()
+        
+        M2 = np.zeros(A2.shape).astype('bool') #A2.astype('bool').toarray()
+
+
+        # In[33]:
+        
+        K1 = A1.shape[-1]
+        K2 = A2.shape[-1]
+        print "K1", K1, "K2", K2
+
+        #%%
+        s = ndimage.generate_binary_structure(2,2)
+        
+        for i in np.arange(0, max(K1,K2)):
+            if i < K1:
+                A_temp = A1.toarray()[:,i]
+                M1[A_temp>params['dist_maxthr']*max(A_temp),i] = True
+                labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
+                sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
+                maxp = np.where(sizes==sizes.max())[0] + 1 
+                max_index = np.zeros(nr_objects + 1, np.uint8)
+                max_index[maxp] = 1
+                BW = max_index[labeled]
+                M1[:,i] = np.reshape(BW, M1[:,i].shape, order='F')
+            if i < K2:
+                A_temp = A2.toarray()[:,i];
+                M2[A_temp>params['dist_maxthr']*max(A_temp),i] = True
+                labeled, nr_objects = ndimage.label(np.reshape(M2[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
+                sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
+                maxp = np.where(sizes==sizes.max())[0] + 1 
+                max_index = np.zeros(nr_objects + 1, np.uint8)
+                max_index[maxp] = 1
+                BW = max_index[labeled]
+                M2[:,i] = np.reshape(BW, M2[:,i].shape, order='F')
+
+
+        #%% determine distance matrix between M1 and M2
+        D = np.zeros((K1,K2));
+        for i in np.arange(0, K1):
+            for j in np.arange(0, K2):
+                
+                overlap = float(np.count_nonzero(M1[:,i] & M2[:,j]))
+                #print overlap
+                totalarea = float(np.count_nonzero(M1[:,i] | M2[:,j]))
+                #print totalarea
+                smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
+                #print smallestROI
+                    
+                D[i,j] = 1 - (overlap/totalarea)**params['dist_exp']
+        
+                if overlap >= params['dist_overlap_thr']*smallestROI:
+                    #print('Too small!')
+                    D[i,j] = 0   
+                
+
+        #%% Set illegal matches (distance vals greater than dist_thr):
+
+        D[D>params['dist_thr']] = np.inf #1E100 #np.nan #1E9
+
+        # In[125]:
+        
+        pl.figure()
+        pl.imshow(D)
+        pl.colorbar()
+        pl.savefig(os.path.join(metrics_dir_figs, 'distancematrix_%s.png' % curr_file))
+        pl.close()
+
+        #%%
+        #match_1, match_2 = scipy.optimize.linear_sum_assignment(D)
+
+        matches = minimumWeightMatching(D)  # Use modified linear_sum_assignment to allow np.inf
+
+        print("Found %i ROI matches in %s" % (len(matches), curr_file))
+
+        #matched_ROIs = [match_1, match_2]
+        #nonmatched_1 = np.setdiff1d(np.arange(0, K1), match_1)
+        #nonmatched_2 = np.setdiff1d(np.arange(0, K2), match_2)
+        #
+        #print len(match_1)
+
+        #%% Save overlap of REF with curr-file matches:
+        
+        pl.figure()
+        pl.imshow(img, cmap='gray')
+        #pl.subplot(1,2,1); pl.imshow(img, cmap='gray')
+        #pl.subplot(1,2,2); pl.imshow(img, cmap='gray')
+        #for ridx,(roi1,roi2) in enumerate(zip(match_1, match_2)):
+        for ridx,match in enumerate(matches):
+            roi1=match[0]; roi2=match[1]
+            masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
+            msk1 = masktmp1.copy(); msk2 = masktmp2.copy()  
+            msk1[msk1==0] = np.nan; msk2[msk2==0] = np.nan
+            
+            #pl.subplot(1,2,1); pl.title('match1')
+            #cs1a = pl.contour(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+            #cs1b = pl.contour(cs1a, levels=cs1a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+            pl.imshow(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+            pl.clim(masktmp1.max()*0.7, masktmp1.max())
+            [ys, xs] = np.where(masktmp1>0)
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), weight='bold')
+            pl.axis('off')
+            
+            #pl.subplot(1,2,2); pl.title('match2')
+            #pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds)
+            #cs2a = pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+            #cs2b = pl.contour(cs2a, levels=cs2a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+            pl.imshow(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+            pl.clim(masktmp2.max()*0.7, masktmp2.max())
+            [ys, xs] = np.where(masktmp2>0)
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
+            pl.axis('off')
+        
+        pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (reference_file, curr_file)))
+        pl.close()
+        
+        #%% Store matches for file:
+        all_matches[curr_file] = matches
+        
+    #%% Save matches:
+        
+    match_fn_base = 'matches_byfile_ref%s' % reference_file
+    with open(os.path.join(metrics_dir, '%s.pkl' % match_fn_base), 'wb') as f:
+        pkl.dump(all_matches, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    with open(os.path.join(metrics_dir, '%s.json' % match_fn_base), 'w') as f:
+        json.dump(all_matches, f, indent=4, sort_keys=True)
+        
+#%% Find intersection of all matches with reference:
+       
 #rois_to_keep = [r for r in range(nr)]
 rois_to_keep = []
 for curr_file in all_matches.keys():
@@ -509,37 +525,36 @@ for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
     nr = nmf['A'].all().shape[1]
     d1 = int(nmf['d1'])
     d2 = int(nmf['d2'])
+    dims = (d1, d2)
+
+    x, y = np.mgrid[0:d1:1, 0:d2:1]
     
     A = nmf['A'].all()
+#     coors = get_contours(A, dims, thr=0.9)
+#     cc1 = [[l[0] for l in n['coordinates']] for n in coors]
+#     cc2 = [[l[1] for l in n['coordinates']] for n in coors]
+#     coords = [[(cx,cy) for cx,cy in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
+#  
     masks = np.reshape(np.array(A.todense()), (d1, d2, nr), order='F')
     curr_rois = matchedROIs[curr_file]
+    A = np.array(A.todense()) 
+    
     for roi in curr_rois:
         #print roi
-        #coords = np.nonzero(masks[:,:,roi])
-        #pts = [(x,y) for x,y in zip(coords[0], coords[1])]
-        #im1 = masks[:,:,roi].astype('bool')
-        #edges = cv2.Canny(im1, 75, 200)
-        tmpmask = masks[:,:,roi]
-        
-        tmpmask[masks[:,:,roi]>0] = 255
-        tmpmask = tmpmask.astype(np.uint8).copy()
-        #tmp2 = np.array(tmpmask.copy())
-        contours, hier = cv2.findContours(tmpmask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        #msk = np.array(tmpmask)
-        #pl.imshow(tmpmask)
-        #msk1 = tmpmask.astype(np.float).copy()
-        #msk1[tmpmask==0] = np.nan
-        #av = img.astype(np.uint8).copy()
-        #blank = np.ones(tmpmask.shape)*np.nan
-        cv2.drawContours(blank, contours, -1, colorvals[fidx], 2) # draw contours on blacnk background
-        
+        indx = np.argsort(A[:,roi], axis=None)[::-1]
+        cumEn = np.cumsum(A[:,roi].flatten()[indx]**2)
+        cumEn /= cumEn[-1]
+        Bvec = np.zeros(d1*d2)
+        Bvec[indx] = cumEn
+        Bmat = np.reshape(Bvec, (d1,d2), order='F')
+        currcolor = (colorvals[fidx][0], colorvals[fidx][1], colorvals[fidx][2], 0.5)
+        cs = pl.contour(y, x, Bmat, [0.9], colors=[colorvals[fidx]]) #, cmap=colormap)
+#pl.axis('equal')
+#pl.axis('off')
 
-        ax1.imshow(blank)
-pl.axis('equal')
-pl.axis('off')
 pl.suptitle(roi_id)
 
-#pl.savefig(os.path.join(metrics_dir_figs, 'matchedROIs_reference_%s.png' % reference_file))
+pl.savefig(os.path.join(metrics_dir, 'matchedROIs_reference_%s_rois.png' % reference_file))
         
 
 nfiles = len(matchedROIs.keys())
