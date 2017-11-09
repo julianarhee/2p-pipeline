@@ -47,6 +47,17 @@ def natural_keys(text):
 def serialize_json(instance=None, path=None):
     dt = {}
     dt.update(vars(instance))
+    
+def byteify(input):
+    if isinstance(input, dict):
+        return {byteify(key): byteify(value)
+                for key, value in input.iteritems()}
+    elif isinstance(input, list):
+        return [byteify(element) for element in input]
+    elif isinstance(input, unicode):
+        return input.encode('utf-8')
+    else:
+        return input
 
 
 # In[19]:
@@ -58,7 +69,7 @@ session = '20171009_CE059'
 acquisition = 'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf001'
+roi_id = 'caiman2Dnmf003'
 roi_method = 'caiman2D'
 
 save_movies = False #True
@@ -86,6 +97,8 @@ roiparams_path = os.path.join(roi_dir, 'roiparams.json')
 with open(roiparams_path, 'r') as f:
     roiparams = json.load(f)
 
+roiparams = byteify(roiparams)
+#%%
 if not roi_id==roiparams['roi_id']:
     print("***WARNING***")
     print("Loaded ROIPARAMS id doesn't match user-specified roi_id.")
@@ -93,11 +106,19 @@ if not roi_id==roiparams['roi_id']:
     use_loaded = raw_input('Use loaded ROIPARAMS? Press Y/n: ')
     if use_loaded=='Y':
         roi_id = roiparams['roi_id']
-        roiparams['params']['use_kept_ony'] = use_kept_only
     else:
-        print("Not a valid entry. Re-start with correct ROI_ID.")        
-else:
-    use_kept_only = roiparams['params']['use_kept_only'] 
+        print("Not a valid entry. Re-start with correct ROI_ID.")  
+        
+if 'roi_subset' not in roiparams['params'].keys():
+    roiparams['params']['roi_subset'] = None
+    roi_selector = raw_input("Use KEPT rois only [K] or MATCHED rois only [M]? Press K/M: ")
+    if roi_selector=='K':
+        roiparams['params']['roi_subset'] = 'kept'
+    elif roi_selector=='M':
+        roiparams['params']['roi_subset'] = 'matched'
+
+
+roi_subset = roiparams['params']['roi_subset'] 
    
 
 
@@ -115,10 +136,6 @@ if len(mc_ids)>1:
     print("Using MC-METHOD: ", mc_id)
 else:
     mc_id = mc_ids[0]
-    
-
-
-# In[6]:
 
 
 mcparams = mcparams[mc_id] #mcparams['mcparams01']
@@ -138,15 +155,12 @@ print("Specified signal channel is:", signal_channel)
 print("Selected reference file:", reference_file)
 
 
-# In[7]:
-
-
 if isinstance(acqmeta['slices'], int):
     nslices = acqmeta['slices']
 else:
     nslices = len(acqmeta['slices'])
     
-print(nslices)
+print('N slices:', nslices)
 
 
 # In[8]:
@@ -172,41 +186,51 @@ tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
 
 
-# In[9]:
-
-
-currslice = 0
-
 
 # In[10]:
+currslice = 0
 
+#%%
+if roi_subset=='kept': # is True:
+#    if 'kept_rois' in roiparams['params'].keys():
+#        kept = roiparams['params']['kept_rois']
+#    else:
+    ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
+    ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
+    rois = [i for i in ref_nmf['idx_components']]
+    
+    for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)):
+        print("Extracting ROI STRUCT from %s" % curr_file)
+        curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
+        nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
+        curr_kept = [i for i in nmf['idx_components']]
+        print(curr_kept)
+        rois = list(set(rois) & set(curr_kept))
 
-
-if use_kept_only is True:
-    if 'kept_rois' in roiparams['params'].keys():
-        kept = roiparams['params']['kept_rois']
-    else:
-        ref_nmf_fn = [n for n in nmf_fns if reference_file in n][0]
-        ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
-        kept = [i for i in ref_nmf['idx_components']]
+    roiparams['params']['rois'] = rois
+    if not roiparams['nrois'][currslice]==len(rois):
+        roiparams['nrois'][currslice] = len(rois)
         
-        for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)):
-            #print("Extracting ROI STRUCT from %s" % curr_file)
-            curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
-            nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
-            curr_kept = [i for i in ref_nmf['idx_components']]
-            kept = list(set(kept) & set(curr_kept))
-            #print(kept)
-        roiparams['params']['kept_rois'] = kept
-    if not roiparams['nrois'][currslice]==len(kept):
-        roiparams['nrois'][currslice] = len(kept)
-pp.pprint(roiparams)
-
+elif roi_subset=='matched':
+    metrics_dir = os.path.join(roi_dir, 'metrics')
+    if not os.path.exists(metrics_dir):
+        print("No metrics dir found. Did you run coregister.py?")
+    else:
+        matched_fn = 'matchedROIs_ref%s.pkl' % reference_file
+        with open(os.path.join(metrics_dir, matched_fn), 'rb') as f:
+            matchedrois = pkl.load(f)
+        
+        rois = matchedrois[reference_file]
+        roiparams['params']['rois'] = rois
+else:
+    print("ROI_SUBSET in params is unidentified...")
+    pp.pprint(roiparams['params'])
+    rois = []
 
 # In[11]:
 
 
-fid = 0
+fid = 6
 curr_file = file_names[fid]
 
 
@@ -217,61 +241,49 @@ print("Extracting ROI STRUCT from %s" % curr_file)
 curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
 nmf = np.load(os.path.join(nmf_output_dir, curr_nmf_fn))
 
-
+if roi_subset=='matched':
+    curr_rois = matchedrois[curr_file]
+elif roi_subset=='kept':
+    curr_rois = np.copy(rois)
+    
+#%%
 d1 = int(nmf['d1'])
 d2 = int(nmf['d2'])
       
-if use_kept_only:
-    print("Keeping %i ROIs." % len(kept))
-    A = nmf['A'].all().tocsc()[:, kept]
-    C = nmf['C'][kept, :]
-    YrA = nmf['YrA'][kept, :]
-    Cdf = nmf['Cdf'][kept,:]
-else:
-    A = nmf['A'].all()
-    C = nmf['C']
-    nmf['YrA'] = nmf['YrA']
-    Cdf = nmf['Cdf']
+nr_orig = nmf['C'].shape[0]
+print("Keeping %i out of %i ROIs." % (len(curr_rois), nr_orig))
 
-print(Cdf.shape)       
-f = nmf['f']
-b = nmf['b']
+A = nmf['A'].all().tocsc()[:, curr_rois]    # A: (d x nr)
+C = nmf['C'][curr_rois, :]                  # C: (nr x T)
+YrA = nmf['YrA'][curr_rois, :]              # YrA: (nr x T)
+Cdf = nmf['Cdf'][curr_rois,:]               # Cdf: (nr x T)
+bl = nmf['bl'][curr_rois]                   # bl: (nr,)
+S = nmf['S'][curr_rois,:]                   # S: (nr x T) - TODO: this is empty...
+f = nmf['f']                                # f: (1 x T)
+b = nmf['b']                                # b: (d x 1)
 
 curr_mmap = [m for m in memmapped_fns if curr_file in m][0]
 Yr, dims, T = cm.load_memmap(os.path.join(tiff_dir, curr_mmap))
-
-
-# In[13]:
-
-
-bl = nmf['bl']
-
 
 # In[14]:
 
 
 nA = np.array(np.sqrt(A.power(2).sum(0)).T)
+print nA.shape
 A = scipy.sparse.coo_matrix(A / nA.T)
 C = C * nA
 bl = (bl * nA.T).squeeze()
-nA = np.array(np.sqrt(A.power(2).sum(0)).T)
+#nA = np.array(np.sqrt(A.power(2).sum(0)).T)
 T = C.shape[-1]
 
 
 # In[15]:
-
+#nA = np.array(np.sqrt(A.power(2).sum(0)).T)
 
 print("nA:", nA.shape)
 print("A:", A.shape)
 print("C:", C.shape)
 print("bl:", bl.shape)
-
-
-# In[21]:
-
-
-c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=None, single_thread=False)
 
 
 # In[24]:
@@ -299,9 +311,63 @@ print(Bas.shape)
 
 # In[ ]:
 
-
 AA = A.T.dot(A)
+
+fig=pl.figure(); 
+ax=fig.add_subplot(221); im=ax.imshow(AA.toarray()); ax.set_aspect('auto')
+pl.title('AA')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+pl.colorbar(im, cax=cax)
+
 AA.setdiag(0)
+
+ax=fig.add_subplot(222); im=ax.imshow(AA.toarray()); ax.set_aspect('auto')
+pl.title('AA, diag 0')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+pl.colorbar(im, cax=cax)
+
 Cf = (C - Bas) * (nA**2)
+
+ax=fig.add_subplot(223); im=ax.imshow(C); ax.set_aspect('auto')
+pl.title('C')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+pl.colorbar(im, cax=cax)
+ax=fig.add_subplot(224); im=ax.imshow(Cf.astype(float)); ax.set_aspect('auto')
+pl.title('Cf')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+pl.colorbar(im, cax=cax)
+
 C2 = AY - AA.dot(C)
 
+#%%
+
+#%%
+quantileMin = 8
+Df = np.percentile(C2, quantileMin, axis=1)
+
+C_df = C2/Df[:,None]
+
+fig = pl.figure(); 
+ax = fig.add_subplot(111); im=ax.imshow(C_df); ax.set_aspect('auto')
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="5%", pad=0.05)
+pl.colorbar(im, cax=cax)
+
+#%%
+ro = 15
+fig=pl.figure();
+ax = fig.add_subplot(411); pl.plot(range(T), AY[ro,:])
+ax = fig.add_subplot(412); pl.plot(range(T), C2[ro,:])
+ax = fig.add_subplot(413); pl.plot(range(T), Cf[ro,:])
+ax = fig.add_subplot(414); pl.plot(range(T), C_df[ro,:])
+
+#%%
+nr = A.shape[-1]
+pl.figure()
+for ro in range(nr):
+    pl.plot(range(T), Cdf[ro,:])
+    

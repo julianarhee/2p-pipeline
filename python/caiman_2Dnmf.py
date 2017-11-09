@@ -509,13 +509,14 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     cnm.options['spatial_params']['method'] = 'dilate'
     
 #%%
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=None, single_thread=False)
-
+#     c, dview, n_processes = cm.cluster.setup_cluster(
+#         backend='local', n_processes=None, single_thread=False)
+# 
     #%% ITER 1 -- run patches
 
     cnm = cnm.fit(images)
-    
+    print("DONE with ITER 1!")
+ 
     A_tot = cnm.A
     C_tot = cnm.C
     YrA_tot = cnm.YrA
@@ -534,7 +535,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         crd = plot_contours(A_tot, Cn, thr=params_display['thr_plot'])
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter1_%s.png' % (roi_id, curr_file)))
-    #pl.close()
+    pl.close()
 
     #%% ITER 1 --DISCARD LOW QUALITY COMPONENTS
     
@@ -626,6 +627,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter2_%s.png' % (curr_file, roi_id)))
+    pl.close()
 
     # %% again recheck quality of components, stricter criteria
     final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
@@ -657,6 +659,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.suptitle(curr_file)
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_%s_evaluate2.png' % (roi_id, curr_file)))
+    pl.close()
     
     #%%
     pl.figure();
@@ -664,7 +667,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.subplot(1,2,2); pl.title('bad'); plot_contours(A_tot.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_kept_iter2_%s.png' % (roi_id, curr_file)))
-    #pl.close()
+    pl.close()
     
     #%%
     A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
@@ -767,6 +770,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.figure()
     BB.zproject()
     pl.savefig(os.path.join(nmf_mov_dir, '%s_background_project.png' % curr_file))
+    pl.close()
 
     #%% Save params:
     #import pprint
