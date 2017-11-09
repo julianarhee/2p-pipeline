@@ -190,12 +190,12 @@ tiffpaths
 params_movie = {'fname': tiffpaths,                         # List of .tif files in current NMF extraction (acquisition)
                'p': 1,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
                'merge_thresh': 0.8,                         # merging threshold, max correlation allowed
-               'rf': 50,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
-               'stride_cnmf': 20,                           # amount of overlap between the patches in pixels
+               'rf': 30,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
+               'stride_cnmf': 10,                           # amount of overlap between the patches in pixels
                'K': 4,                                      # number of components per patch
                'is_dendrites': False,                       # if dendritic. In this case you need to set init_method to sparse_nmf
                'init_method': 'greedy_roi',                 # init method can be greedy_roi for round shapes or sparse_nmf for denritic data
-               'gSig': [20, 20],                            # expected half size of neurons
+               'gSig': [15, 15],                            # expected half size of neurons
                'alpha_snmf': None,                          # this controls sparsity
                'final_frate': 30,                           # frame rate of movie (even considering eventual downsampling)
                'r_values_min_patch': .7,                    # threshold on space consistency
@@ -442,7 +442,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
 
     #%% GET CNMF BLOBS:
-    params_movie['init_method'] = 'corr_pnr' #'greedy_roi'
+    params_movie['init_method'] = 'greedy_roi'
     params_movie['p'] = 2
         
     # %% Extract spatial and temporal components on patches
@@ -474,22 +474,36 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
                         method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
                         only_init_patch=params_movie['only_init_patch'],
                         gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
-                        low_rank_background=params_movie['low_rank_background'],
-                        deconv_flag = True) 
+                        low_rank_background=params_movie['low_rank_background'])
+                        #deconv_flag = True) 
+        #%%
+#            cnm = cnmf.CNMF(k=params_movie['K'], gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
+#                    p=params_movie['p'],
+#                    dview=dview, n_processes=n_processes,
+#                    rf=None, stride=params_movie['stride_cnmf'], memory_fact=1,
+#                    method_init=params_movie['init_method'], alpha_snmf=params_movie['alpha_snmf'],
+#                    only_init_patch=params_movie['only_init_patch'],
+#                    gnb=params_movie['gnb'], method_deconvolution='oasis', border_pix=border_pix,
+#                    low_rank_background=params_movie['low_rank_background'])
 
 #%% adjust opts:
     
     cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
+    cnm.options['preprocess_params']['include_noise'] = True
+    
     cnm.options['temporal_params']['bas_nonneg'] = False
     cnm.options['temporal_params']['noise_method'] = 'logmexp'
     
-    cnm.options['init_params']['method'] = 'corr_pnr'
-    cnm.options['init_params']['rolling_sum'] = False
+    #cnm.options['init_params']['method'] = 'greedy_ROI'
+    cnm.options['init_params']['rolling_sum'] = True
+    cnm.options['init_params']['normalize_init'] = False
     #cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
     #cnm.options['init_params']['deconvolve_options_init']['approach'] = 'constrained foopsi'
     
     cnm.options['init_params']['min_corr'] = 0.8
     cnm.options['init_params']['min_pnr'] = 3
+    
+    cnm.options['spatial_params']['method'] = 'dilate'
     
 #%%
     c, dview, n_processes = cm.cluster.setup_cluster(
