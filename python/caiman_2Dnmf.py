@@ -483,8 +483,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     
     cnm.options['init_params']['method'] = 'corr_pnr'
     cnm.options['init_params']['rolling_sum'] = False
-    cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
-    cnm.options['init_params']['deconvolve_options_init']['approach'] = 'constrained foopsi'
+    #cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
+    #cnm.options['init_params']['deconvolve_options_init']['approach'] = 'constrained foopsi'
     
     cnm.options['init_params']['min_corr']
     cnm.options['init_params']['min_pnr'] = 3
