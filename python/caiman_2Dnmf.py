@@ -90,11 +90,11 @@ def natural_keys(text):
 #%%
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
-session = '20171024_CE062' #'20171009_CE059'
-acquisition = 'FOV1' #'FOV1_zoom3x'
+session = '20171009_CE059' #'20171009_CE059'
+acquisition = 'FOV1_zoom3x' #'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf001'
+roi_id = 'caiman2Dnmf004'
 inspect_components = False
 save_movies = True
 
@@ -393,7 +393,7 @@ print("MMAP:", mmaps_todo)
 #%% Process all files:
 
 #for curr_file,curr_mmap in zip(file_list,mmap_list):
-for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
+for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #curr_file = corr_filenames[0]
     #curr_mmap = mmaps_to_process[0]
@@ -630,9 +630,9 @@ for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
     #%%
     
     cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
-    cnm.options['preprocess_params']['include_noise'] = False
+    cnm.options['preprocess_params']['include_noise'] = True
     
-    cnm.options['temporal_params']['bas_nonneg'] = True
+    cnm.options['temporal_params']['bas_nonneg'] = False
     cnm.options['temporal_params']['noise_method'] = 'logmexp'
     cnm.options['temporal_params']['memory_efficient'] = True
     cnm.options['temporal_params']['method'] = 'cvxpy'
@@ -644,8 +644,8 @@ for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
 
     cnm.options['spatial_params']['method'] = 'dilate'
     
-        #%%
-        cnm = cnm.fit(images)
+    #%%
+    cnm = cnm.fit(images)
     
     #cnm_kept = cnmf.CNMF(n_processes=1, k=A_tot_kept.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
     #                p=params_movie['p'], dview=dview, Ain=A_tot_kept, Cin=C_tot_kept, b_in = b_tot,
