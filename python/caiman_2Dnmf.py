@@ -90,11 +90,11 @@ def natural_keys(text):
 #%%
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
-session = '20171009_CE059'
-acquisition = 'FOV1_zoom3x'
+session = '20171024_CE062' #'20171009_CE059'
+acquisition = 'FOV1' #'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf004'
+roi_id = 'caiman2Dnmf001'
 inspect_components = False
 save_movies = True
 
@@ -181,7 +181,7 @@ if not (os.path.exists(nmf_fig_dir) and os.path.exists(nmf_mov_dir)):
 
 tiff_source = str(mcparams['dest_dir'][0][0][0])
 tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
-tiff_dir
+#tiff_dir
 
 
 tiffpaths = sorted([str(os.path.join(tiff_dir, fn)) for fn in os.listdir(tiff_dir) if fn.endswith('.tif')], key=natural_keys)
@@ -198,16 +198,16 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                'K': 4,                                      # number of components per patch
                'is_dendrites': False,                       # if dendritic. In this case you need to set init_method to sparse_nmf
                'init_method': 'greedy_roi',                 # init method can be greedy_roi for round shapes or sparse_nmf for denritic data
-               'gSig': [15, 15],                            # expected half size of neurons
+               'gSig': [5, 5],                            # expected half size of neurons
                'alpha_snmf': None,                          # this controls sparsity
                'final_frate': 30,                           # frame rate of movie (even considering eventual downsampling)
                'r_values_min_patch': .7,                    # threshold on space consistency
-               'fitness_min_patch': -20,                    # threshold on time variability
+               'fitness_min_patch': -15,                    # threshold on time variability
                'fitness_delta_min_patch': -20,              # threshold on time variability (if nonsparse activity)
                'Npeaks': 10,
                'r_values_min_full': .8,
-               'fitness_min_full': - 40,
-               'fitness_delta_min_full': - 40,
+               'fitness_min_full': -15,
+               'fitness_delta_min_full': -40,
                'only_init_patch': True,
                'gnb': 1,
                'memory_fact': 1,
@@ -231,11 +231,14 @@ params_display = {
 #ref_file = 6
 #ref_filename = 'File%03d' % ref_file
 
-if use_reference is True:
-    refname = [str(f) for f in tiffpaths if reference_file in f]
-    ref_file_idx = [t for t in tiffpaths].index(os.path.join(tiff_dir, refname[0]))
-    print(ref_file_idx, refname)
+#if use_reference is True:
+refname = [str(f) for f in tiffpaths if reference_file in f]
+ref_file_idx = [t for t in tiffpaths].index(os.path.join(tiff_dir, refname[0]))
+print(ref_file_idx, refname)
 
+#%%
+# do_memmapping = True
+curr_fns = params_movie['fname']
 
 #%% Check for memmapped files:
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
@@ -250,10 +253,13 @@ if len(memmapped_fns)==len(expected_filenames):
         do_memmapping = True
 else:
     do_memmapping = True
-    
-#%%
-# do_memmapping = True
-curr_fns = params_movie['fname']
+    tiffs_to_mmap = []
+    for cf in expected_filenames:
+        match_mmap = [f for f in memmapped_fns if cf in f]
+        if len(match_mmap)==0:
+            match_tiff = [f for f in curr_fns if cf in f][0]
+            tiffs_to_mmap.append(match_tiff)
+    print("TIFFs to MMAP: ", tiffs_to_mmap)
 
 
 #%% Start cluster:
@@ -298,12 +304,19 @@ def memmap_tiffs(fnames, ref_idx=0):
 #%% Do memmapping if needed:
 if do_memmapping is True:
     # estimate offset:
-    mmap_fnames = memmap_tiffs(curr_fns, ref_idx=ref_file_idx)
+        contains_ref = [f for f in tiffs_to_mmap if reference_file in f]
+        if len(contains_ref)==0:
+            mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=0)
+        else:
+            mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=ref_file_idx)
 
 else:
     mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 
-#
+#%%
+memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
+
+mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 mmap_fnames = sorted(mmap_fnames, key=natural_keys)
 print(mmap_fnames)
 
@@ -507,9 +520,9 @@ for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
     cnm.options['spatial_params']['method'] = 'dilate'
     
 #%%
-#     c, dview, n_processes = cm.cluster.setup_cluster(
-#         backend='local', n_processes=None, single_thread=False)
-### 
+#    c, dview, n_processes = cm.cluster.setup_cluster(
+#        backend='local', n_processes=None, single_thread=False)
+
     #%% ITER 1 -- run patches
 
     cnm = cnm.fit(images)
@@ -539,8 +552,8 @@ for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
     #%% ITER 1 --DISCARD LOW QUALITY COMPONENTS
     
     final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
-    r_values_min = 0.6 #params_movie['r_values_min_patch']  # threshold on space consistency
-    fitness_min = -10 #params_movie['fitness_delta_min_patch']  # threshold on time variability
+    r_values_min = 0.7 #params_movie['r_values_min_patch']  # threshold on space consistency
+    fitness_min = -15 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
     fitness_delta_min = params_movie['fitness_delta_min_patch']
     Npeaks = params_movie['Npeaks']
