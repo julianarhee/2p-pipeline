@@ -96,7 +96,7 @@ functional = 'functional'
 
 roi_id = 'caiman2Dnmf004'
 inspect_components = False
-save_movies = False
+save_movies = True
 
 display_average = True
 reuse_reference = False
@@ -191,10 +191,10 @@ tiffpaths
 #%% 
 
 params_movie = {'fname': tiffpaths,                         # List of .tif files in current NMF extraction (acquisition)
-               'p': 1,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
+               'p': 2,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
                'merge_thresh': 0.8,                         # merging threshold, max correlation allowed
-               'rf': 50,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
-               'stride_cnmf': 20,                           # amount of overlap between the patches in pixels
+               'rf': 30,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
+               'stride_cnmf': 15,                           # amount of overlap between the patches in pixels
                'K': 4,                                      # number of components per patch
                'is_dendrites': False,                       # if dendritic. In this case you need to set init_method to sparse_nmf
                'init_method': 'greedy_roi',                 # init method can be greedy_roi for round shapes or sparse_nmf for denritic data
@@ -380,7 +380,7 @@ print("MMAP:", mmaps_todo)
 #%% Process all files:
 
 #for curr_file,curr_mmap in zip(file_list,mmap_list):
-for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
+for curr_file,curr_mmap in zip(files_todo[4:],mmaps_todo[4:]):
 
     #curr_file = corr_filenames[0]
     #curr_mmap = mmaps_to_process[0]
@@ -445,8 +445,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
 
     #%% GET CNMF BLOBS:
-    params_movie['init_method'] = 'greedy_roi'
-    params_movie['p'] = 2
+    #params_movie['init_method'] = 'greedy_roi'
+    #params_movie['p'] = 2
         
     # %% Extract spatial and temporal components on patches
     t1 = time.time()
@@ -492,31 +492,30 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 #%% adjust opts:
     
     cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
-    cnm.options['preprocess_params']['include_noise'] = True
+    cnm.options['preprocess_params']['include_noise'] = False
     
     cnm.options['temporal_params']['bas_nonneg'] = False
     cnm.options['temporal_params']['noise_method'] = 'logmexp'
+    cnm.options['temporal_params']['memory_efficient'] = True
+    cnm.options['temporal_params']['method'] = 'cvxpy'
+    cnm.options['temporal_params']['verbosity'] = True
     
-    #cnm.options['init_params']['method'] = 'greedy_ROI'
     cnm.options['init_params']['rolling_sum'] = True
     cnm.options['init_params']['normalize_init'] = False
-    #cnm.options['init_params']['deconvolve_options_init'] = cnm.options['temporal_params']
-    #cnm.options['init_params']['deconvolve_options_init']['approach'] = 'constrained foopsi'
-    
-    #cnm.options['init_params']['min_corr'] = 0.8
-    #cnm.options['init_params']['min_pnr'] = 3
-    
+    cnm.options['init_params']['center_psf'] = True
+
     cnm.options['spatial_params']['method'] = 'dilate'
     
 #%%
 #     c, dview, n_processes = cm.cluster.setup_cluster(
 #         backend='local', n_processes=None, single_thread=False)
-# 
+### 
     #%% ITER 1 -- run patches
 
     cnm = cnm.fit(images)
     print("DONE with ITER 1!")
  
+    #%%
     A_tot = cnm.A
     C_tot = cnm.C
     YrA_tot = cnm.YrA
@@ -565,7 +564,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.suptitle(curr_file)
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_%s_evaluate1.png' % (roi_id, curr_file)))
-    
+    pl.close()
+ 
     #%% ITER 1 -- compare good vs. bad components:
         
     pl.figure();
@@ -573,7 +573,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.subplot(1,2,2); pl.title('bad'); plot_contours(A_tot.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_kept_iter1_%s.png' % (roi_id, curr_file)))
-    #pl.close()
+    pl.close()
     
 
     #%% Don't overwrite bad components, just store separately:
@@ -589,6 +589,10 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 #        A_tot = A_tot.tocsc()[:, idx_components]
 #        C_tot = C_tot[idx_components]
 
+#%%
+
+#       A_tot = A_tot.tocsc()[:, idx_components]
+#       C_tot = C_tot[idx_components]
 
     #%% ITER 2 -- rerun updating the components to refine
     t1 = time.time()
@@ -604,11 +608,30 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         cnm = cnmf.CNMF(n_processes=n_processes, k=A_tot.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
                         p=params_movie['p'], dview=dview, Ain=A_tot, Cin=C_tot, b_in = b_tot,
                         f_in=f_tot, rf=None, stride=None, only_init_patch=False,
-                        method_deconvolution='oasis', gnb=params_movie['gnb'],
+                        gnb=params_movie['gnb'],
                         low_rank_background=params_movie['low_rank_background'],
+                        method_deconvolution='cvxpy',
                         update_background_components=params_movie['update_background_components'], check_nan = True)
             
-        
+    
+    #%%
+    
+    cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
+    cnm.options['preprocess_params']['include_noise'] = False
+    
+    cnm.options['temporal_params']['bas_nonneg'] = True
+    cnm.options['temporal_params']['noise_method'] = 'logmexp'
+    cnm.options['temporal_params']['memory_efficient'] = True
+    cnm.options['temporal_params']['method'] = 'cvxpy'
+    cnm.options['temporal_params']['verbosity'] = True
+    
+    cnm.options['init_params']['rolling_sum'] = True
+    cnm.options['init_params']['normalize_init'] = False
+    cnm.options['init_params']['center_psf'] = True
+
+    cnm.options['spatial_params']['method'] = 'dilate'
+    
+        #%%
         cnm = cnm.fit(images)
     
     #cnm_kept = cnmf.CNMF(n_processes=1, k=A_tot_kept.shape, gSig=params_movie['gSig'], merge_thresh=params_movie['merge_thresh'],
@@ -629,10 +652,19 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_iter2_%s.png' % (curr_file, roi_id)))
     pl.close()
 
+#%%    
+    A_tot = cnm.A
+    C_tot = cnm.C
+    YrA_tot = cnm.YrA
+    b_tot = cnm.b
+    f_tot = cnm.f
+    sn_tot = cnm.sn
+    print(('Number of components:' + str(A_tot.shape[-1])))
+
     # %% again recheck quality of components, stricter criteria
     final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
     r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
-    fitness_min = -15 #params_movie['fitness_delta_min_patch']  # threshold on time variability
+    fitness_min = -20 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
     fitness_delta_min = params_movie['fitness_delta_min_patch']
     Npeaks = params_movie['Npeaks']
@@ -683,9 +715,11 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     pl.colorbar(im, cax=cax); 
+    pl.close()
 
     # %% save results
     Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
+    #%%
     np.savez(os.path.join(nmf_output_dir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'), Cn=Cn,
              A=A, Cdf = Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, d1=d1, d2=d2, idx_components=idx_components,
              idx_components_bad=idx_components_bad,
@@ -739,30 +773,31 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         
     # %% reconstruct denoised movie
     if save_movies is True:
-        denoised = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-        
-        #%% save denoised movie:
+        if curr_file==reference_file or curr_file=='File001' or curr_file=='File010':
+            denoised = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
             
-        denoised.save(os.path.join(nmf_mov_dir, '%s_denoisedmov.tif' % curr_file))
-    
-        #%% background only 
-        background = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-        #denoised.play(gain=2, offset=0, fr=50, magnification=4)
-        #%% save denoised movie:
-            
-        background.save(os.path.join(nmf_mov_dir, '%s_backgroundmov.tif' % curr_file))
-    
-    
-        # %% reconstruct denoised movie without background
-        denoised = cm.movie(A.dot(C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+            #%% save denoised movie:
+                
+            denoised.save(os.path.join(nmf_mov_dir, '%s_denoisedmov.tif' % curr_file))
         
-        # %%
-        # TODO: show screenshot 16
-        #denoised.play(gain=10, offset=0, fr=100, magnification=2)
+            #%% background only 
+            background = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+            #denoised.play(gain=2, offset=0, fr=50, magnification=4)
+            #%% save denoised movie:
+                
+            background.save(os.path.join(nmf_mov_dir, '%s_backgroundmov.tif' % curr_file))
         
-        #%% save denoised movie:
+        
+            # %% reconstruct denoised movie without background
+            denoised = cm.movie(A.dot(C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
             
-        denoised.save(os.path.join(nmf_mov_dir, '%s_denoised_nobackground_mov.tif' % curr_file))
+            # %%
+            # TODO: show screenshot 16
+            #denoised.play(gain=10, offset=0, fr=100, magnification=2)
+            
+            #%% save denoised movie:
+                
+            denoised.save(os.path.join(nmf_mov_dir, '%s_denoised_nobackground_mov.tif' % curr_file))
 
     #%% show background(s)
     BB  = cm.movie(b.reshape(dims+(-1,), order = 'F').transpose(2,0,1))
