@@ -174,6 +174,16 @@ def main(options):
         refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
         refinfo['raw_simeta_path'] = os.path.join(acquisition_dir, raw_simeta_mat)
 
+        if 'acquisition_base_dir' not in refinfo.keys():
+            refinfo['acquisition_base_dir'] = acquisition_dir
+        if 'mcparams_path' not in refinfo.keys():
+            # TODO:  Don't make this specifically tied to MAT
+            refinfo['mcparams_path'] = os.path.join(acquisition_dir, functional_dir, 'DATA', 'mcparams.mat')
+        if 'roi_dir' not in refinfo.keys():
+            refinfo['roi_dir'] = os.path.join(acquisition_dir, 'ROIs')
+        if 'trace_dir' not in refinfo.keys():
+            refinfo['trace_dir'] = os.path.join(acquisition_dir, 'Traces')
+
         with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fp:
             json.dump(refinfo, fp, indent=4)
         
