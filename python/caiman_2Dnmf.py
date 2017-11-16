@@ -193,7 +193,24 @@ tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
 
 tiffpaths = sorted([str(os.path.join(tiff_dir, fn)) for fn in os.listdir(tiff_dir) if fn.endswith('.tif')], key=natural_keys)
 tiffpaths
+all_filenames = ['File%03d' % int(i+1) for i in range(len(tiffpaths))]
 
+#%% only run on good MC files:
+
+metrics_path = os.path.join(acqmeta['acquisition_base_dir'], functional, 'DATA', 'mcmetrics.json')
+print(metrics_path)
+with open(metrics_path, 'r') as f:
+    metrics_info = json.load(f)
+
+mcmetrics = metrics_info[mc_method]
+print(mcmetrics)
+if len(mcmetrics['bad_files'])>0:
+    bad_fids = [int(i)-1 for i in mcmetrics['bad_files']]
+    bad_files = ['File%03d' % int(i) for i in mcmetrics['bad_files']]
+    print("Bad MC files excluded:", bad_files)
+    tiffpaths = [t for i,t in enumerate(sorted(tiffpaths, key=natural_keys)) if i not in bad_fids]
+else:
+    bad_files = []
 
 #%% 
 
@@ -249,7 +266,8 @@ curr_fns = params_movie['fname']
 
 #%% Check for memmapped files:
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
-expected_filenames = sorted(['File%03d' % int(f+1) for f in range(len(tiffpaths))], key=natural_keys)
+expected_filenames = sorted([i for i in all_filenames if i not in bad_files], key=natural_keys)
+# expected_filenames = sorted(['File%03d' % int(f+1) for f in range(len(tiffpaths))], key=natural_keys)
 ntiffs = len(expected_filenames)
 
 if len(memmapped_fns)==len(expected_filenames):
@@ -259,7 +277,6 @@ if len(memmapped_fns)==len(expected_filenames):
     else:
         do_memmapping = True
 else:
-    do_memmapping = True
     tiffs_to_mmap = []
     for cf in expected_filenames:
         match_mmap = [f for f in memmapped_fns if cf in f]
@@ -268,6 +285,10 @@ else:
             tiffs_to_mmap.append(match_tiff)
     tiffs_to_mmap = sorted(tiffs_to_mmap, key=natural_keys)
     print("TIFFs to MMAP: ", tiffs_to_mmap)
+    if len(tiffs_to_mmap)>0:
+        do_memmapping = True
+    else:
+        do_memmapping = False
 
 
 #%% Start cluster:
@@ -326,7 +347,13 @@ else:
     mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 
 #%%
-memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
+all_memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
+
+memmapped_fns = []
+for cf in expected_filenames:
+    match_mmap = [f for f in all_memmapped_fns if cf in f][0]
+    memmapped_fns.append(match_mmap)
+
 
 mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 mmap_fnames = sorted(mmap_fnames, key=natural_keys)
@@ -402,6 +429,15 @@ if len(files_todo)==0:
 print("FILES:", files_todo)
 
 print("MMAP:", mmaps_todo)
+
+#%% Save file list in roiparams:
+roiparams['files'] = list(files_todo)
+roiparams['mmaps'] = list(mmaps_todo)
+with open(roiparams_path, 'w') as f:
+    json.dump(roiparams, f, indent=4) #, sort_keys=True)
+    print("Updated ROIPARAMS struct")
+ 
+
 #%% Process all files:
 
 #for curr_file,curr_mmap in zip(file_list,mmap_list):
