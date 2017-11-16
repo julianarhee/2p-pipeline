@@ -168,18 +168,41 @@ print("Thresholding:", thresholded)
 print("Reference file:", reference_file)
 
 
-   #%% 
+#%% 
+all_file_names = sorted(['File%03d' % int(f+1) for f in range(acqmeta['ntiffs'])], key=natural_keys)
+
+#%% only run on good MC files:
+
+metrics_path = os.path.join(acqmeta['acquisition_base_dir'], functional, 'DATA', 'mcmetrics.json')
+print(metrics_path)
+bad_files = []
+bad_fids = []
+if os.path.exists(metrics_path):
+    with open(metrics_path, 'r') as f:
+        metrics_info = json.load(f)
+        
+    mcmetrics = metrics_info[mc_method]
+    print(mcmetrics)
+    if len(mcmetrics['bad_files'])>0:
+        bad_fids = [int(i)-1 for i in mcmetrics['bad_files']]
+        bad_files = ['File%03d' % int(i) for i in mcmetrics['bad_files']]
+        print("Bad MC files excluded:", bad_files)
+
+file_names = [t for i,t in enumerate(sorted(all_file_names, key=natural_keys)) if i not in bad_fids]
+
+print("Files that passed MC:", file_names)
+
+#%% 
 
 # source of NMF output run:
 nmf_output_dir = os.path.join(roi_dir, 'nmf_output')
-nmf_fns = sorted([n for n in os.listdir(nmf_output_dir) if n.endswith('npz')], key=natural_keys)
-
+all_nmf_fns = sorted([n for n in os.listdir(nmf_output_dir) if n.endswith('npz')], key=natural_keys)
+nmf_fns = []
+for f in file_names:
+    match_nmf = [m for m in all_nmf_fns if f in m][0]
+    nmf_fns.append(match_nmf)
+    
 ref_nmf_fn = [f for f in nmf_fns if roi_ref in f][0]
-
-file_names = sorted(['File%03d' % int(f+1) for f in range(acqmeta['ntiffs'])], key=natural_keys)
-if not len(file_names)==len(nmf_fns):
-    print('***ALERT***')
-    print('Found NMF results does not match num tiff files.')
 
 # Create dirs for ROIs:
 if len(roi_subdir)==0:
@@ -203,45 +226,16 @@ maskpaths_mat = [] #np.zeros((nslices,), dtype=np.object)
 roi_info = [] #np.zeros((nslices,), dtype=np.object)  # For blobs, this is center/radii; for NMF...?
 nrois_by_slice = [] #np.zeros((nslices,))
 
-#roiparams_path = os.path.join(roi_dir, 'roiparams.json')
-#if os.path.exists(os.path.join(roi_dir, 'roiparams.json')):
-#    try:
-#        with open(os.path.join(roi_dir, 'roiparams.json'), 'r') as f:
-#            roiparams = json.load(f)
-#    except:
-#        roiparams = dict()
-#else:
-#    roiparams = dict()
-#
-#if 'params' not in roiparams.keys() or 'use_reference' not in roiparams['params'].keys():
-#    print("No ROIPARAMS found. Creating new with ROI_ID: ", roi_id)
-#    roiparams['roi_id'] = roi_id
-#    roiparams['params'] = dict()
-#    roiparams['params']['reference_file'] = reference_file
-#    roiparams['params']['signal_channel'] = signal_channel
-#    while True: 
-#        print("Was a reference file used to constrain cNMF ROI extraction?")
-#        used_ref = raw_input('Press Y/n: ')
-#        if used_ref=='Y':
-#            roiparams['params']['use_reference'] = True
-#            break
-#        elif used_ref=='n':
-#            roiparams['params']['use_reference'] = False 
-#            break
-#
-#roiparams['params']['use_kept_only'] = use_kept_only
-#use_reference = roiparams['params']['use_reference']
-#
-#pp.pprint(roiparams)
         
-#%%
+#%% Exclude really bad runs:
+    
 if 'excluded' in thr_params.keys():
-    ignore = [str(i) for i in thr_params['excluded']]
+    exclude = [str(i) for i in thr_params['excluded']]
 else:
-    ignore = []
+    exclude = []
 
-print("Excluding files:", ignore)
-file_names = sorted([f for f in file_names if f not in ignore], key=natural_keys)
+print("Excluding files:", exclude)
+file_names = sorted([f for f in file_names if f not in exclude], key=natural_keys)
 print ("Extracting ROIs for Files:")
 print(file_names)
 
@@ -275,7 +269,7 @@ for currslice in range(nslices):
             ref_nmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
             kept = [i for i in ref_nmf['idx_components']]
             for fid,curr_file in enumerate(sorted(file_names, key=natural_keys)):
-                if curr_file in ignore:
+                if curr_file in exclude:
                     continue
                 curr_nmf_fn = [n for n in nmf_fns if curr_file in n][0]
                 print(curr_nmf_fn)
@@ -297,10 +291,10 @@ for currslice in range(nslices):
         continue
     
     
-    #
+    #%%
     for curr_file in file_names: #['File001']: #roiparams.keys():
 
-        if curr_file in ignore:
+        if curr_file in exclude:
             continue
         
         #
@@ -369,7 +363,9 @@ for currslice in range(nslices):
             [ys, xs] = np.where(masktmp>0)
             pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(kept[roi]), weight='bold')
             pl.axis('off')
+        pl.colorbar()
         pl.tight_layout()
+    
  
         imname = '%s_%s_Slice%02d_%s_%s_ROI.png' % (session,acquisition,currslice+1,signal_channel, curr_file)
         print(imname) 

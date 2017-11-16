@@ -246,18 +246,47 @@ else:
     nslices = len(acqmeta['slices'])
     
 print(nslices)
+
+
 #%% 
+all_file_names = sorted(['File%03d' % int(f+1) for f in range(acqmeta['ntiffs'])], key=natural_keys)
+
+#%% only run on good MC files:
+
+metrics_path = os.path.join(acqmeta['acquisition_base_dir'], functional, 'DATA', 'mcmetrics.json')
+print(metrics_path)
+bad_files = []
+bad_fids = []
+if os.path.exists(metrics_path):
+    with open(metrics_path, 'r') as f:
+        metrics_info = json.load(f)
+        
+    mcmetrics = metrics_info[mc_id]
+    print(mcmetrics)
+    if len(mcmetrics['bad_files'])>0:
+        bad_fids = [int(i)-1 for i in mcmetrics['bad_files']]
+        bad_files = ['File%03d' % int(i) for i in mcmetrics['bad_files']]
+        print("Bad MC files excluded:", bad_files)
+
+file_names = [t for i,t in enumerate(sorted(all_file_names, key=natural_keys)) if i not in bad_fids]
+
+print("Files that passed MC:", file_names)
+
+#%% Get NMF output files:
 
 # source of NMF output run:
 nmf_output_dir = os.path.join(roi_dir, 'nmf_output')
-nmf_fns = sorted([n for n in os.listdir(nmf_output_dir) if n.endswith('npz')], key=natural_keys)
+all_nmf_fns = sorted([n for n in os.listdir(nmf_output_dir) if n.endswith('npz')], key=natural_keys)
+nmf_fns = []
+for f in file_names:
+    match_nmf = [m for m in all_nmf_fns if f in m][0]
+    nmf_fns.append(match_nmf)
+    
+ref_nmf_fn = [f for f in nmf_fns if reference_file in f][0]
 
-file_names = sorted(['File%03d' % int(f+1) for f in range(acqmeta['ntiffs'])], key=natural_keys)
-if not len(file_names)==len(nmf_fns):
-    print('***ALERT***')
-    print('Found NMF results does not match num tiff files.')
 
-# Get source tiffs (mmap):
+
+#%% Get source tiffs (mmap):
 tiff_source = str(mcparams['dest_dir'][0][0][0])
 tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
 #tiff_dir
