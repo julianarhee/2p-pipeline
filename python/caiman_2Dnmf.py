@@ -157,7 +157,7 @@ if not os.path.exists(roi_dir):
    
 
 # Save ROI info to file:
-roiparams = {roi_id: dict()}
+roiparams = dict() #{roi_id: dict()}
 roiparams['roi_id'] = roi_id
 roiparams['params'] = dict()
 roiparams['params']['use_reference'] = use_reference
