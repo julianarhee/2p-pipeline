@@ -275,6 +275,7 @@ if new_rolodex_entry
             curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id)
         elseif correct_motion && correct_bidi_scan && ~any(strfind(curr_mcparams.dest_dir, mc_id))
             curr_mcparams.dest_dir = sprintf('Bidi'); 
+            average_source = sprintf('Bidi_Corrected_%s', mc_id);
         end
         
     else

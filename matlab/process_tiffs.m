@@ -239,11 +239,16 @@ end
 mcparams.(I.mc_id) = curr_mcparams;
 save(A.mcparams_path, '-struct', 'mcparams');
 
-% Update acquisition meta stuct:
+
 %save(path_to_reference, '-struct', 'A', '-append')
 %savejson('', A, path_to_reference_json);
 %
 fprintf('Finished preprocessing data.\n');
+
+
+% Do quick MC check:
+mcmetrics = evaluate_correction(I, A);
+fprintf('Found %i bad files...\n', length(mcmetrics.(I.mc_id).bad_files));
 
 
 end

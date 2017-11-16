@@ -14,14 +14,14 @@ load_analysis = true;          % true, to reload existing analysis (e.g., to do 
 % Set info manually:
 source = '/nas/volume1/2photon/projects';
 experiment = 'gratings_phaseMod'; 
-session = '20171009_CE059';
-acquisition = 'FOV1_zoom3x'; 
-tiff_source = 'functional_subset'; 
+session = '20171024_CE062';
+acquisition = 'FOV1'; 
+tiff_source = 'functional'; 
 
 % ----------------------------------------------------------------------------
 % Set the following if NOT loading a previous analysis:
 % ----------------------------------------------------------------------------
-process_raw = true;             % false, if source for processing is anything but RAW 
+process_raw = false;             % false, if source for processing is anything but RAW 
 processed_source = '';          % Folder name contaning CORRECTED tiffs, if processing on non-raw source
 
 
