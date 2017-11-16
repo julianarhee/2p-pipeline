@@ -22,12 +22,38 @@ mcparams = load(A.mcparams_path);
 curr_mcparams = mcparams.(I.mc_id);
 
 % -------------------------------------------------------------------------
+%% 4. Do BIDI correction: 
+% -------------------------------------------------------------------------
+
+% TODO: adjust to allow bidi-step to be done before motion-correction...
+
+if curr_mcparams.bidi_corrected
+    display(curr_mcparams)
+   curr_mcparams = do_bidi_correction(curr_mcparams, A);
+end
+
+if length(A.slices)>1 || A.nchannels>1
+    % NOTE: bidi function updates mcparams.dest_dir 
+    deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
+
+    % Sort parsed slices by Channel-File:
+    post_mc_cleanup(deinterleaved_tiff_dir, A);
+end
+
+fprintf('Finished BIDI correction step.\n')
+
+
+
+% -------------------------------------------------------------------------
 %% 1.  Do Motion-Correction (and/or) Get time-series for each slice:
 % -------------------------------------------------------------------------
 %if I.corrected && new_mc_id %new_mc_id && process_raw
 %    do_motion_correction = true;
 %elseif I.corrected && ~new_mc_id 
 if I.corrected
+    if ~any(strfind(curr_mcparams.dest_dir, I.mc_id)) && curr_mcparams.bidi_corrected
+        curr_mcparams.dest_dir = sprintf('%s_Corrected_%s', curr_mcparams.dest_dir, I.mc_id)
+    end
     % Double check that current mc_id has correct number of expected MC output files:
     mc_output_dir = fullfile(curr_mcparams.source_dir, curr_mcparams.dest_dir)
     found_nchannels = dir(fullfile(mc_output_dir, '*Channel*'));
@@ -161,27 +187,6 @@ else
         end
     end
 end
-
-% -------------------------------------------------------------------------
-%% 4. Do BIDI correction: 
-% -------------------------------------------------------------------------
-
-% TODO: adjust to allow bidi-step to be done before motion-correction...
-
-if curr_mcparams.bidi_corrected
-   curr_mcparams = do_bidi_correction(curr_mcparams, A);
-end
-
-if length(A.slices)>1 || A.nchannels>1
-    % NOTE: bidi function updates mcparams.dest_dir 
-    deinterleaved_tiff_dir = fullfile(curr_mcparams.source_dir, sprintf('%s_slices', curr_mcparams.dest_dir));
-
-    % Sort parsed slices by Channel-File:
-    post_mc_cleanup(deinterleaved_tiff_dir, A);
-end
-
-fprintf('Finished BIDI correction step.\n')
-
 
 % -------------------------------------------------------------------------
 %% 5.  Create averaged slices from desired source:

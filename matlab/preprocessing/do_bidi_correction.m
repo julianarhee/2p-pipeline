@@ -81,7 +81,7 @@ else
      
     % Grab (corrected) TIFFs from DATA (or acquisition) dir for correction:
     while (1)
-        tiff_source = dir(fullfile(mcparams.source_dir, source));
+        tiff_source = fullfile(mcparams.source_dir, source)
         tiffs = dir(fullfile(tiff_source, '*.tif'));
         tiffs = {tiffs(:).name}'
         if length(tiffs)==0
@@ -92,7 +92,7 @@ else
         end
     end
 
-    fprintf('Found %i TIFF files in source:\n  %s\n', length(tiffs), tiff_dir);
+    fprintf('Found %i TIFF files in source:\n  %s\n', length(tiffs), tiff_source);
 
     %write_dir = fullfile(mcparams.tiff_dir, mcparams.bidi_corrected_dir);
     if length(A.slices)>1 || A.nchannels>1
@@ -117,7 +117,7 @@ else
         nvolumes = simeta.(currfile).SI.hFastZ.numVolumes;
         nchannels = mcparams.nchannels;
      
-        tpath = fullfile(tiff_dir, tiffs{tiff_idx});
+        tpath = fullfile(tiff_source, tiffs{tiff_idx});
         fprintf('Processing tiff %i of %i...\n', tiff_idx, length(tiffs));
         [source, filename, ext] = fileparts(tpath);
 

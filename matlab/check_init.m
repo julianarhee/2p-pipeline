@@ -44,8 +44,8 @@ else
 end
 
 % Set paths to ROLODEX (summary of info about each analysis run on current acquisition:
-path_to_rolodex = fullfile(source, experiment, session, acquisition, 'analysis_record.json');
-path_to_rolodex_table = fullfile(source, experiment, session, acquisition, 'analysis_record.txt');
+path_to_rolodex = fullfile(source, experiment, session, acquisition, sprintf('analysis_record_%s.json', tiff_source));
+path_to_rolodex_table = fullfile(source, experiment, session, acquisition, sprintf('analysis_record_%s.txt', tiff_source));
 
 % Check if rolodex for current acquisition exists:
 if ~exist(path_to_rolodex, 'file')
@@ -103,20 +103,20 @@ if ~new_rolodex
 else
     new_rolodex_entry = true;
 
-    % Update acquisition-metastruct with analysis-related info (not specific to current analysis-run):
-    if ~isfield(A, 'acquisition_base_dir')
-        A.acquisition_base_dir = acquisition_base_dir;
-    end
-    if ~isfield(A, 'mcparams_path')
-        A.mcparams_path = fullfile(data_dir, 'mcparams.mat');
-    end
-    if ~isfield(A, 'roi_dir')
-        A.roi_dir = fullfile(A.acquisition_base_dir, 'ROIs'); %, A.roi_id, 'roiparams.mat');
-    end
-    if ~isfield(A, 'trace_dir')
-        A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
-    end
-
+%     % Update acquisition-metastruct with analysis-related info (not specific to current analysis-run):
+%     if ~isfield(A, 'acquisition_base_dir')
+%         A.acquisition_base_dir = acquisition_base_dir;
+%     end
+%     if ~isfield(A, 'mcparams_path')
+%         A.mcparams_path = fullfile(data_dir, 'mcparams.mat');
+%     end
+%     if ~isfield(A, 'roi_dir')
+%         A.roi_dir = fullfile(A.acquisition_base_dir, 'ROIs'); %, A.roi_id, 'roiparams.mat');
+%     end
+%     if ~isfield(A, 'trace_dir')
+%         A.trace_dir = fullfile(A.acquisition_base_dir, 'Traces'); %, A.trace_id);
+%     end
+% 
 end
 
 if new_rolodex_entry
@@ -271,9 +271,12 @@ if new_rolodex_entry
 
     %% 5. Fix base mc dir to allow for multiple mcparams 'CorrectedXX' dirs
     if process_raw
-        if correct_motion && ~any(strfind(curr_mcparams.dest_dir, mc_id))
+        if correct_motion && ~any(strfind(curr_mcparams.dest_dir, mc_id)) && ~correct_bidi_scan
             curr_mcparams.dest_dir = sprintf('%s_%s', curr_mcparams.dest_dir, mc_id)
+        elseif correct_motion && correct_bidi_scan && ~any(strfind(curr_mcparams.dest_dir, mc_id))
+            curr_mcparams.dest_dir = sprintf('Bidi'); 
         end
+        
     else
         if isempty(processed_source)
             fprintf('Specified non-raw source for processing, but did not specify folder name.\n');
@@ -298,13 +301,19 @@ if new_rolodex_entry
     if correct_motion && ~(strcmp(average_source, curr_mcparams.dest_dir))
         average_source = curr_mcparams.dest_dir;
     end
-    if correct_bidi_scan && ~any(strfind(average_source, '_Bidi')) %~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
+    if correct_bidi_scan && ~any(strfind(average_source, 'Bidi')) %~(strcmp(average_source, sprintf('%s_Bidi', curr_mcparams.dest_dir)))
         if ~any(strfind(curr_mcparams.dest_dir, 'Bidi'))
             average_source = sprintf('%s_Bidi', curr_mcparams.dest_dir);
         else
             average_source = sprintf('%s', curr_mcparams.dest_dir);
         end
     end
+    fprintf('AVG SOURCE: %s\n', average_source);
+
+    if curr_mcparams.ref_file > A.ntiffs
+        curr_mcparams.ref_file = 1;
+    end
+
 %end
 
     % Resave mcparams:
