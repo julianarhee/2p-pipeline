@@ -137,6 +137,10 @@ parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', de
 
 parser.add_option('-x', '--exclude', action="store",
                   dest="exclude_file_ids", default='', help="comma-separated list of files to exclude")
+parser.add_option('--threshold', action="store_true",
+                  dest="threshold", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+parser.add_option('--max', action="store_true",
+                  dest="use_max_filter", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
 
 
 (options, args) = parser.parse_args() 
@@ -158,19 +162,29 @@ else:
     exclude = ['File%03d' % f for f in exclude_files]
 print("Excluding files: ", exclude)
 
+threshold = options.threshold
+use_max_filter = options.use_max_filter
+
 #%% ca-source-extraction options:
     
-params = dict()
+params_thr = dict()
 
 # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
 # dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
 # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
 # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
     
-params['dist_maxthr'] = options.dist_maxthr #0.1
-params['dist_exp'] = options.dist_exp # 1
-params['dist_thr'] = options.dist_thr #0.5
-params['dist_overlap_thr'] = options.dist_overlap_thr #0.8
+params_thr['dist_maxthr'] = options.dist_maxthr #0.1
+params_thr['dist_exp'] = options.dist_exp # 1
+params_thr['dist_thr'] = options.dist_thr #0.5
+params_thr['dist_overlap_thr'] = options.dist_overlap_thr #0.8
+
+params_thr['excluded'] = exclude
+params_thr['threshold'] = threshold
+if use_max_filter is True:
+    params_thr['filter_type'] = 'max'
+else:
+    params_thr['filter_type'] = 'ref'
 
 # In[3]:
 
@@ -193,7 +207,8 @@ if not roi_id==roiparams['roi_id']:
     use_loaded = raw_input('Use loaded ROIPARAMS? Press Y/n: ')
     if use_loaded=='Y':
         roi_id = roiparams['roi_id']
-   
+
+
 #%%
 # Load mcparams.mat:
 mcparams = scipy.io.loadmat(acqmeta['mcparams_path'])
@@ -251,8 +266,12 @@ tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
 
 #%% Create output dir for matches:
-    
-metrics_dir = os.path.join(roi_dir, 'metrics')
+if params_thr['threshold'] is True:
+    metrics_subdir = 'metrics_%s_thr' % params_thr['filter_type']
+else:
+    metrics_subdir = 'metrics_%s_all' % params_thr['filter_type']
+
+metrics_dir = os.path.join(roi_dir, metrics_subdir)
 metrics_dir_figs = os.path.join(metrics_dir, 'figures')
 if not os.path.exists(metrics_dir):
     os.mkdir(metrics_dir)
@@ -260,33 +279,89 @@ if not os.path.exists(metrics_dir_figs):
     os.mkdir(metrics_dir_figs)
 print("Saving output figures to: %s" % metrics_dir_figs)
 
+
+if use_max_filter is True:
+    # Get file that has max N components:
+    tmp_nrs = []
+    for fn,f in zip(file_names, nmf_fns):
+        nmf = np.load(os.path.join(nmf_output_dir, f))
+        if threshold is True:
+            tmp_nr = len(nmf['idx_components'])
+        else:
+            tmp_nr = nmf['A'].all().shape[-1]
+            
+        tmp_nrs.append(tmp_nr)
+    
+    max_idx = tmp_nrs.index(max(tmp_nrs))
+    roi_reference_file = file_names[max_idx]
+else:
+    roi_reference_file = reference_file
+
+params_thr['roi_ref'] = roi_reference_file
+  
 #%% Load REF-NMF to get first set of ROIs:
 
-ref_nmf_fn = [f for f in nmf_fns if reference_file in f][0]
+ref_nmf_fn = [f for f in nmf_fns if roi_reference_file in f][0]
 refnmf = np.load(os.path.join(nmf_output_dir, ref_nmf_fn))
-print refnmf.keys()
+print(refnmf.keys())
 
+#%% Get average image
+img = refnmf['Av']
 
+#pl.figure()
+#pl.imshow(img)
+
+#%% Get components from REFERENCE file:
+    
 nr = refnmf['A'].all().shape[1]
 d1 = int(refnmf['d1'])
 d2 = int(refnmf['d2'])
 
 A1 = refnmf['A'].all()
-nA1 = np.array(np.sqrt(A1.power(2).sum(0)).T)
-A1 = scipy.sparse.coo_matrix(A1 / nA1.T)
+#nA1 = np.array(np.sqrt(A1.power(2).sum(0)).T)
+#A1 = scipy.sparse.coo_matrix(A1 / nA1.T)
+
+threshold = True
+
+#%%
+from caiman.components_evaluation import estimate_components_quality
+
+#%%
+if threshold is True:
+#    ref_mmap = [m for m in memmapped_fns if reference_file in m][0]
+#    Yr, dims, T = cm.load_memmap(os.path.join(tiff_dir, ref_mmap))
+#    d1, d2 = dims
+#    Y = np.reshape(Yr, dims + (T,), order='F')
+#    
+#    #%%
+#    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
+#    r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
+#    fitness_min = -20 #params_movie['fitness_delta_min_patch']  # threshold on time variability
+#    # threshold on time variability (if nonsparse activity)
+#    fitness_delta_min = -10 #params_movie['fitness_delta_min_patch']
+#    Npeaks = 10 #params_movie['Npeaks']
+#    traces = refnmf['C'] + refnmf['YrA'] #C_tot + YrA_tot
+#    # TODO: todocument
+#    idx_components, idx_components_bad, fitness_raw, fitness_delta, r_values =          estimate_components_quality(
+#        traces, Y, refnmf['A'].all(), refnmf['C'], refnmf['b'], refnmf['f'], final_frate=final_frate, Npeaks=Npeaks, r_values_min=r_values_min,
+#        fitness_min=fitness_min, fitness_delta_min=fitness_delta_min, return_all=True)
+#    
+#    print(('Keeping ' + str(len(idx_components)) +
+#           ' and discarding  ' + str(len(idx_components_bad))))
+#    
+#    #%% Check out thresholded components:
+#    pl.figure();
+#    pl.subplot(1,2,1); pl.title('kept'); plot_contours(refnmf['A'].all().tocsc()[:, idx_components], img, thr=0.9); pl.axis('off')
+#    pl.subplot(1,2,2); pl.title('bad'); plot_contours(refnmf['A'].all().tocsc()[:, idx_components_bad], img, thr=0.9); pl.axis('off')
+    
+    A1 = A1[:,  refnmf['idx_components']]
+    nr = A1.shape[-1]
+    
+    #%%
+    
 masks = np.reshape(np.array(A1.todense()), (d1, d2, nr), order='F')
-print masks.shape
+print(masks.shape)
 
-
-#%% Get average image
-
-if not 'Av' in refnmf.keys():
-    img = np.mean(masks[:,:,:-1], axis=-1)
-else: 
-    img = refnmf['Av']
-
-#pl.figure()
-#pl.imshow(img)
 
 
 #%% Loop thru all Files and match pairwise:
@@ -304,10 +379,10 @@ else:
 
     for curr_file in file_names:
         
-        if curr_file==reference_file:
+        if curr_file==roi_reference_file:
             continue
         
-        print("Finding matches between reference %s and %s." % (reference_file, curr_file))
+        print("Finding matches between reference %s and %s." % (roi_reference_file, curr_file))
 
         # In[16]:
         
@@ -324,8 +399,13 @@ else:
         d2 = int(nmf['d2'])
         
         A2 = nmf['A'].all()
-        nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
-        A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
+        
+        if threshold is True:
+            print("Keeping %i out of %i components." % (len(nmf['idx_components']), nr))
+            A2 = A2[:,  nmf['idx_components']]
+            nr = A2.shape[-1]
+        #nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
+        #A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
         masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
         #print masks2.shape
 
@@ -342,7 +422,7 @@ else:
         
         K1 = A1.shape[-1]
         K2 = A2.shape[-1]
-        print "K1", K1, "K2", K2
+        print("K1", K1, "K2", K2)
 
         #%%
         s = ndimage.generate_binary_structure(2,2)
@@ -350,7 +430,7 @@ else:
         for i in np.arange(0, max(K1,K2)):
             if i < K1:
                 A_temp = A1.toarray()[:,i]
-                M1[A_temp>params['dist_maxthr']*max(A_temp),i] = True
+                M1[A_temp>params_thr['dist_maxthr']*max(A_temp),i] = True
                 labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
                 sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
                 maxp = np.where(sizes==sizes.max())[0] + 1 
@@ -360,7 +440,7 @@ else:
                 M1[:,i] = np.reshape(BW, M1[:,i].shape, order='F')
             if i < K2:
                 A_temp = A2.toarray()[:,i];
-                M2[A_temp>params['dist_maxthr']*max(A_temp),i] = True
+                M2[A_temp>params_thr['dist_maxthr']*max(A_temp),i] = True
                 labeled, nr_objects = ndimage.label(np.reshape(M2[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
                 sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
                 maxp = np.where(sizes==sizes.max())[0] + 1 
@@ -382,16 +462,16 @@ else:
                 smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
                 #print smallestROI
                     
-                D[i,j] = 1 - (overlap/totalarea)**params['dist_exp']
+                D[i,j] = 1 - (overlap/totalarea)**params_thr['dist_exp']
         
-                if overlap >= params['dist_overlap_thr']*smallestROI:
+                if overlap >= params_thr['dist_overlap_thr']*smallestROI:
                     #print('Too small!')
                     D[i,j] = 0   
                 
 
         #%% Set illegal matches (distance vals greater than dist_thr):
 
-        D[D>params['dist_thr']] = np.inf #1E100 #np.nan #1E9
+        D[D>params_thr['dist_thr']] = np.inf #1E100 #np.nan #1E9
 
         # In[125]:
         
@@ -446,15 +526,15 @@ else:
             pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
             pl.axis('off')
         
-        pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (reference_file, curr_file)))
-        pl.close()
+        pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (roi_reference_file, curr_file)))
+        #pl.close()
         
         #%% Store matches for file:
         all_matches[curr_file] = matches
         
     #%% Save matches:
         
-    match_fn_base = 'matches_byfile_ref%s' % reference_file
+    match_fn_base = 'matches_byfile_ref%s' % roi_reference_file
     with open(os.path.join(metrics_dir, '%s.pkl' % match_fn_base), 'wb') as f:
         pkl.dump(all_matches, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -485,12 +565,12 @@ for curr_file in file_names: #all_matches.keys():
     if curr_file in exclude:
         continue
     
-    if curr_file==reference_file:
+    if curr_file==roi_reference_file:
         matchedROIs[curr_file] = rois_to_keep
     else:
         matchedROIs[curr_file] = [all_matches[curr_file][[i[0] for i in all_matches[curr_file]].index(r)][1] for r in rois_to_keep]
 
-matchedrois_fn_base = 'matchedROIs_ref%s' % reference_file
+matchedrois_fn_base = 'matchedROIs_ref%s' % roi_reference_file
 print("Saving matches to: %s" % os.path.join(metrics_dir, matchedrois_fn_base))
 with open(os.path.join(metrics_dir, '%s.pkl' % matchedrois_fn_base), 'wb') as f:
     pkl.dump(matchedROIs, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -530,6 +610,11 @@ for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
     x, y = np.mgrid[0:d1:1, 0:d2:1]
     
     A = nmf['A'].all()
+    if threshold is True:
+        #print("Keeping %i out of %i components." % (len(nmf['idx_components']), nr))
+        A = A[:,  nmf['idx_components']]
+        nr = A.shape[-1]
+            
 #     coors = get_contours(A, dims, thr=0.9)
 #     cc1 = [[l[0] for l in n['coordinates']] for n in coors]
 #     cc2 = [[l[1] for l in n['coordinates']] for n in coors]
@@ -541,9 +626,11 @@ for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
     
     for roi in curr_rois:
         #print roi
+        # compute the cumulative sum of the energy of the Ath component that 
+        # has been ordered from least to highest:
         indx = np.argsort(A[:,roi], axis=None)[::-1]
         cumEn = np.cumsum(A[:,roi].flatten()[indx]**2)
-        cumEn /= cumEn[-1]
+        cumEn /= cumEn[-1] # normalize
         Bvec = np.zeros(d1*d2)
         Bvec[indx] = cumEn
         Bmat = np.reshape(Bvec, (d1,d2), order='F')
@@ -554,7 +641,7 @@ for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
 
 pl.suptitle(roi_id)
 
-pl.savefig(os.path.join(metrics_dir, 'matchedROIs_reference_%s_rois.png' % reference_file))
+pl.savefig(os.path.join(metrics_dir, 'matchedROIs_reference_%s_rois.png' % roi_reference_file))
         
 
 nfiles = len(matchedROIs.keys())
@@ -574,3 +661,17 @@ pl.axis('off')
 #%%
 pl.suptitle(roi_id)
 pl.savefig(os.path.join(metrics_dir, '%s.png' % matchedrois_fn_base))
+
+#%%
+if 'subsets' not in roiparams.keys():
+    roiparams['subsets'] = [metrics_dir]
+elif metrics_dir not in roiparams['subsets']:
+    roiparams['subsets'].append(metrics_dir)
+
+with open(os.path.join(roiparams_path), 'w') as f:
+    json.dump(roiparams, f, indent=4)
+
+#%% Save threshold params:
+    
+with open(os.path.join(metrics_dir, 'threshold_params.json'), 'w') as f:
+    json.dump(params_thr, f, indent=4)

@@ -11,15 +11,15 @@ import json
 import pandas as pd
 import scipy.io
 
-def load_rolodex(acquisition_dir):
+def load_rolodex(acquisition_dir, functional='functional'):
     
     import os
     
     rolodex = None
     rolodex_table = None
     
-    rolodex_filepath = os.path.join(acquisition_dir, 'analysis_record.json')
-    rolodex_tablepath = os.path.join(acquisition_dir, 'analysis_record.txt')
+    rolodex_filepath = os.path.join(acquisition_dir, 'analysis_record_%s.json' % functional)
+    rolodex_tablepath = os.path.join(acquisition_dir, 'analysis_record_%s.txt' % functional)
     
     # Load analysis "rolodex" file:
     if os.path.exists(rolodex_filepath):
@@ -34,33 +34,48 @@ def load_rolodex(acquisition_dir):
 
 def check_init(rolodex, I):
     # First check current params against existing analyses:
-    existing_analysis_ids = [str(k) for k in rolodex.keys()]
-    print(existing_analysis_ids)
-    
+    if rolodex is None:
+        rolodex = dict()
+        existing_analysis_ids = []
+        new_analysis_id = True
+        analysis_id = "analysis%02d" % int(1)
+        rolodex[analysis_id] = I
+    else:
+        existing_analysis_ids = [str(k) for k in rolodex.keys()]
+        print(existing_analysis_ids)
 
-    matching_analysis = [existing_id for existing_id in existing_analysis_ids if len([i for i in I.keys() if I[i]==rolodex[existing_id][i]])==len(I.keys())]
-    if len(matching_analysis)>0:    
-        for m,mi in enumerate(matching_analysis):
-            print(m, mi)
-            
-        while True:
-            user_choice = raw_input("Found matching analysis ID. Press N to create new, or IDX of analysis_id to reuse: ")
-            
-            if user_choice=='N':
-                new_analysis_id = True
-                analysis_id = "analysis%02d" % int(len(existing_analysis_ids)+1)
-            elif user_choice.isdigit():
-                new_analysis_id = False
-                analysis_id = matching_analysis[int(user_choice)]
-            
-            confirm = raw_input('Using analysis ID: %s. Press Y/n to confirm: ' % analysis_id)
-            if confirm=='Y':
-                break
+        matching_analysis = [existing_id for existing_id in existing_analysis_ids if len([i for i in I.keys() if I[i]==rolodex[existing_id][i]])==len(I.keys())]
+        if len(matching_analysis)>0:    
+            for m,mi in enumerate(matching_analysis):
+                print(m, mi)
                 
-#        else:
-#            print("RE-USING old analysis ID match: %s", matching_analysis[0])
-#            new_analysis_id = False
-#            analysis_id = matching_analysis[0]
+            while True:
+                user_choice = raw_input("Found matching analysis ID. Press N to create new, or IDX of analysis_id to reuse: ")
+                
+                if user_choice=='N':
+                    new_analysis_id = True
+                    analysis_id = "analysis%02d" % int(len(existing_analysis_ids)+1)
+                elif user_choice.isdigit():
+                    new_analysis_id = False
+                    analysis_id = matching_analysis[int(user_choice)]
+                
+                confirm = raw_input('Using analysis ID: %s. Press Y/n to confirm: ' % analysis_id)
+                if confirm=='Y':
+                    break
+                
+        else:
+            print("NEW!")
+            new_analysis_id = True
+            analysis_id = 'analysis%02d' % int(len(existing_analysis_ids) + 1)
+            if analysis_id in existing_analysis_ids:
+                for idx,idn in enumerate(existing_analysis_ids):
+                    print(idx, idn)
+                analysis_id = raw_input('ENTER NEW analysis id (e.g., analysis00X): ')
+                    
+    #        else:
+    #            print("RE-USING old analysis ID match: %s", matching_analysis[0])
+    #            new_analysis_id = False
+    #            analysis_id = matching_analysis[0]
 
     if new_analysis_id is True:
         print("Creating NEW analysis ID...")
@@ -111,8 +126,8 @@ def check_init(rolodex, I):
 
 def update_records(I, rolodex, rolodex_table, new_analysis_id, acquisition_dir, functional='functional'):
 
-    rolodex_filepath = os.path.join(acquisition_dir, 'analysis_record.json')
-    rolodex_tablepath = os.path.join(acquisition_dir, 'analysis_record.txt')
+    rolodex_filepath = os.path.join(acquisition_dir, 'analysis_record_%s.json' % functional)
+    rolodex_tablepath = os.path.join(acquisition_dir, 'analysis_record_%s.txt' % functional)
     
     acquisition_meta_fn = os.path.join(acquisition_dir, 'reference_%s.json' % functional)
     acquisition_meta_mat = os.path.join(acquisition_dir, 'reference_%s.mat' % functional)
@@ -153,7 +168,10 @@ def update_records(I, rolodex, rolodex_table, new_analysis_id, acquisition_dir, 
         rolodex[analysis_id] = I
         
         new_table_entry = pd.DataFrame.from_dict({analysis_id: I}, orient='index')
-        rolodex_table.append(new_table_entry)
+        if rolodex_table is None:
+            rolodex_table = new_table_entry
+        else:
+            rolodex_table.append(new_table_entry)
         
     #% Update ACQMETA, ROLODEX (.json, .txt):
     with open(rolodex_filepath, 'w') as f:
@@ -172,7 +190,7 @@ def update_records(I, rolodex, rolodex_table, new_analysis_id, acquisition_dir, 
 def main(I, acquisition_dir, functional='functional'):
 
 
-    rolodex, rolodex_table = load_rolodex(acquisition_dir)
+    rolodex, rolodex_table = load_rolodex(acquisition_dir, functional)
     
     I, new_analysis_id, rolodex = check_init(rolodex, I)
     
