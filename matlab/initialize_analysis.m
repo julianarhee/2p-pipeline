@@ -231,6 +231,14 @@ display(I)
 display(curr_mcparams)
 
 
+%% Save I, A, new_mc_id as tmp variables:
+tmpvars_fn = 'tmp_init_variables.mat';
+tmpvars = struct()
+tmpvars.I = I;
+tmpvars.new_mc = new_mc_id;
+
+save(fullfile(A.acquisition_base_dir, tmpvars_fn), 'tmpvars')
+
 %% PREPROCESSING:  motion-correction.
 
 % 1. Set parameters for motion-correction.

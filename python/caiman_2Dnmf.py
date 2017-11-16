@@ -90,13 +90,14 @@ def natural_keys(text):
 #%%
 source = '/nas/volume1/2photon/projects'
 experiment = 'gratings_phaseMod'
-session = '20171009_CE059' #'20171009_CE059'
-acquisition = 'FOV1_zoom3x' #'FOV1_zoom3x'
+session = '20171024_CE062' #'20171009_CE059'
+acquisition = 'FOV1' #'FOV1_zoom3x'
 functional = 'functional'
 
-roi_id = 'caiman2Dnmf004'
+roi_id = 'caiman2Dnmf001'
 inspect_components = False
 save_movies = True
+remove_bad = True
 
 display_average = True
 reuse_reference = False
@@ -140,6 +141,12 @@ reference_file = 'File%03d' % int(reference_file_idx)
 print("Specified signal channel is:", signal_channel)
 print("Selected reference file:", reference_file)
 
+# Get volumerate:
+with open(acqmeta['raw_simeta_path'][:-3]+'json', 'r') as f:
+    si = json.load(f)
+volumerate = float(si[reference_file]['SI']['hRoiManager']['scanVolumeRate'])
+del si
+print("Volumetric rate (Hz):", volumerate)
 
 #%% Create ROI output dir:
 
@@ -150,7 +157,7 @@ if not os.path.exists(roi_dir):
    
 
 # Save ROI info to file:
-roiparams = {roi_id: dict()}
+roiparams = dict() #{roi_id: dict()}
 roiparams['roi_id'] = roi_id
 roiparams['params'] = dict()
 roiparams['params']['use_reference'] = use_reference
@@ -186,7 +193,24 @@ tiff_dir = os.path.join(acquisition_dir, functional, 'DATA', tiff_source)
 
 tiffpaths = sorted([str(os.path.join(tiff_dir, fn)) for fn in os.listdir(tiff_dir) if fn.endswith('.tif')], key=natural_keys)
 tiffpaths
+all_filenames = ['File%03d' % int(i+1) for i in range(len(tiffpaths))]
 
+#%% only run on good MC files:
+
+metrics_path = os.path.join(acqmeta['acquisition_base_dir'], functional, 'DATA', 'mcmetrics.json')
+print(metrics_path)
+with open(metrics_path, 'r') as f:
+    metrics_info = json.load(f)
+
+mcmetrics = metrics_info[mc_method]
+print(mcmetrics)
+if len(mcmetrics['bad_files'])>0:
+    bad_fids = [int(i)-1 for i in mcmetrics['bad_files']]
+    bad_files = ['File%03d' % int(i) for i in mcmetrics['bad_files']]
+    print("Bad MC files excluded:", bad_files)
+    tiffpaths = [t for i,t in enumerate(sorted(tiffpaths, key=natural_keys)) if i not in bad_fids]
+else:
+    bad_files = []
 
 #%% 
 
@@ -194,8 +218,8 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                'p': 2,                                      # order of the autoregressive fit to calcium imaging in general one (slow gcamps) or two (fast gcamps fast scanning)
                'merge_thresh': 0.8,                         # merging threshold, max correlation allowed
                'rf': 30,                                    # half-size of the patches in pixels. rf=25, patches are 50x50
-               'stride_cnmf': 15,                           # amount of overlap between the patches in pixels
-               'K': 4,                                      # number of components per patch
+               'stride_cnmf': 10,                           # amount of overlap between the patches in pixels
+               'K': 20,                                      # number of components per patch
                'is_dendrites': False,                       # if dendritic. In this case you need to set init_method to sparse_nmf
                'init_method': 'greedy_roi',                 # init method can be greedy_roi for round shapes or sparse_nmf for denritic data
                'gSig': [5, 5],                            # expected half size of neurons
@@ -206,7 +230,7 @@ params_movie = {'fname': tiffpaths,                         # List of .tif files
                'fitness_delta_min_patch': -20,              # threshold on time variability (if nonsparse activity)
                'Npeaks': 10,
                'r_values_min_full': .8,
-               'fitness_min_full': -15,
+               'fitness_min_full': -20,
                'fitness_delta_min_full': -40,
                'only_init_patch': True,
                'gnb': 1,
@@ -242,7 +266,8 @@ curr_fns = params_movie['fname']
 
 #%% Check for memmapped files:
 memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
-expected_filenames = sorted(['File%03d' % int(f+1) for f in range(len(tiffpaths))], key=natural_keys)
+expected_filenames = sorted([i for i in all_filenames if i not in bad_files], key=natural_keys)
+# expected_filenames = sorted(['File%03d' % int(f+1) for f in range(len(tiffpaths))], key=natural_keys)
 ntiffs = len(expected_filenames)
 
 if len(memmapped_fns)==len(expected_filenames):
@@ -252,14 +277,18 @@ if len(memmapped_fns)==len(expected_filenames):
     else:
         do_memmapping = True
 else:
-    do_memmapping = True
     tiffs_to_mmap = []
     for cf in expected_filenames:
         match_mmap = [f for f in memmapped_fns if cf in f]
         if len(match_mmap)==0:
             match_tiff = [f for f in curr_fns if cf in f][0]
             tiffs_to_mmap.append(match_tiff)
+    tiffs_to_mmap = sorted(tiffs_to_mmap, key=natural_keys)
     print("TIFFs to MMAP: ", tiffs_to_mmap)
+    if len(tiffs_to_mmap)>0:
+        do_memmapping = True
+    else:
+        do_memmapping = False
 
 
 #%% Start cluster:
@@ -304,17 +333,27 @@ def memmap_tiffs(fnames, ref_idx=0):
 #%% Do memmapping if needed:
 if do_memmapping is True:
     # estimate offset:
-        contains_ref = [f for f in tiffs_to_mmap if reference_file in f]
-        if len(contains_ref)==0:
-            mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=0)
-        else:
-            mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=ref_file_idx)
+        #contains_ref = [f for f in tiffs_to_mmap if reference_file in f]
+    for ti,t in enumerate(tiffs_to_mmap):
+        tmp_mmap = memmap_tiffs([t], ref_idx=0)
+#        if len(contains_ref)==0:
+#            for ti,t in enumerate(tiffs_to_mmap):
+#                tmp_mmap = memmap_tiffs([t], ref_idx=ti)
+#            #mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=0)
+#        else:
+#            mmap_fnames = memmap_tiffs(tiffs_to_mmap, ref_idx=ref_file_idx)
 
 else:
     mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 
 #%%
-memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
+all_memmapped_fns = sorted([m for m in os.listdir(tiff_dir) if m.endswith('mmap')], key=natural_keys)
+
+memmapped_fns = []
+for cf in expected_filenames:
+    match_mmap = [f for f in all_memmapped_fns if cf in f][0]
+    memmapped_fns.append(match_mmap)
+
 
 mmap_fnames = [os.path.join(tiff_dir, m) for m in memmapped_fns]
 mmap_fnames = sorted(mmap_fnames, key=natural_keys)
@@ -390,6 +429,15 @@ if len(files_todo)==0:
 print("FILES:", files_todo)
 
 print("MMAP:", mmaps_todo)
+
+#%% Save file list in roiparams:
+roiparams['files'] = list(files_todo)
+roiparams['mmaps'] = list(mmaps_todo)
+with open(roiparams_path, 'w') as f:
+    json.dump(roiparams, f, indent=4) #, sort_keys=True)
+    print("Updated ROIPARAMS struct")
+ 
+
 #%% Process all files:
 
 #for curr_file,curr_mmap in zip(file_list,mmap_list):
@@ -428,7 +476,6 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #%% reload
     if reload_memmap is True:
-        
         Yr, dims, T = cm.load_memmap(curr_mmap)
         d1, d2 = dims
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -447,6 +494,8 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     Cn[np.isnan(Cn)] = 0
     
     Av = np.mean(m_images, axis=0)
+    #%%
+    pl.figure()
     pl.subplot(1,2,1)
     pl.imshow(Av, cmap='gray')
     pl.subplot(1,2,2)
@@ -454,7 +503,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     
     # TODO: show screenshot 11
     pl.savefig(os.path.join(nmf_fig_dir, '%s_localcorrs.png' % curr_file))
-    pl.close()
+    #pl.close()
 
 
     #%% GET CNMF BLOBS:
@@ -505,7 +554,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 #%% adjust opts:
     
     cnm.options['preprocess_params']['noise_method'] = params_movie['noise_method']
-    cnm.options['preprocess_params']['include_noise'] = False
+    cnm.options['preprocess_params']['include_noise'] = True
     
     cnm.options['temporal_params']['bas_nonneg'] = False
     cnm.options['temporal_params']['noise_method'] = 'logmexp'
@@ -513,7 +562,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     cnm.options['temporal_params']['method'] = 'cvxpy'
     cnm.options['temporal_params']['verbosity'] = True
     
-    cnm.options['init_params']['rolling_sum'] = True
+    #cnm.options['init_params']['rolling_sum'] = False #True
     cnm.options['init_params']['normalize_init'] = False
     cnm.options['init_params']['center_psf'] = True
 
@@ -524,8 +573,11 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 #        backend='local', n_processes=None, single_thread=False)
 
     #%% ITER 1 -- run patches
+    try:
+        cnm = cnm.fit(images)
+    except:
+        print(curr_file)
 
-    cnm = cnm.fit(images)
     print("DONE with ITER 1!")
  
     #%%
@@ -551,11 +603,11 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
 
     #%% ITER 1 --DISCARD LOW QUALITY COMPONENTS
     
-    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
-    r_values_min = 0.7 #params_movie['r_values_min_patch']  # threshold on space consistency
+    final_frate = volumerate #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
+    r_values_min = 0.6 #params_movie['r_values_min_patch']  # threshold on space consistency
     fitness_min = -15 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
-    fitness_delta_min = params_movie['fitness_delta_min_patch']
+    fitness_delta_min = -15 #params_movie['fitness_delta_min_patch']
     Npeaks = params_movie['Npeaks']
     traces = C_tot + YrA_tot
     # TODO: todocument
@@ -567,6 +619,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
            ' and discarding  ' + str(len(idx_components_bad))))
     print(A_tot.shape)
     
+
     #%%  ITER 1 -- view evaluation output:
         
     pl.figure(figsize=(5,15))
@@ -598,15 +651,24 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         else:
             A_tot_kept = A_tot.tocsc()[:, idx_components]
             C_tot_kept = C_tot[idx_components]
-#    else:
-#        A_tot = A_tot.tocsc()[:, idx_components]
-#        C_tot = C_tot[idx_components]
+    else:
+        if remove_bad is True:
 
-#%%
+            A_tot = A_tot.tocsc()[:, idx_components]
+            C_tot = C_tot[idx_components]
 
-#       A_tot = A_tot.tocsc()[:, idx_components]
-#       C_tot = C_tot[idx_components]
-
+    #%% if remove really bad components, save threhsolding params:
+    params_threshold = dict()
+    params_threshold['patch'] = dict()
+    params_threshold['patch']['final_frate'] = final_frate
+    params_threshold['patch']['r_values_min'] = r_values_min
+    params_threshold['patch']['fitness_min'] = fitness_min
+    params_threshold['patch']['fitness_delta_min'] = fitness_delta_min
+    params_threshold['patch']['Npeaks'] = Npeaks
+            
+#    with open(os.path.join(nmf_output_dir, 'params_threshold.json'), 'w') as f:
+#        json.dump(params_threshold, f, indent=4)
+                
     #%% ITER 2 -- rerun updating the components to refine
     t1 = time.time()
     if use_reference is True:
@@ -638,7 +700,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     cnm.options['temporal_params']['method'] = 'cvxpy'
     cnm.options['temporal_params']['verbosity'] = True
     
-    cnm.options['init_params']['rolling_sum'] = True
+    #cnm.options['init_params']['rolling_sum'] = True
     cnm.options['init_params']['normalize_init'] = False
     cnm.options['init_params']['center_psf'] = True
 
@@ -675,7 +737,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     print(('Number of components:' + str(A_tot.shape[-1])))
 
     # %% again recheck quality of components, stricter criteria
-    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
+    final_frate = volumerate #44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
     r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
     fitness_min = -20 #params_movie['fitness_delta_min_patch']  # threshold on time variability
     # threshold on time variability (if nonsparse activity)
@@ -713,7 +775,20 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
     
     pl.savefig(os.path.join(nmf_fig_dir, '%s_kept_iter2_%s.png' % (roi_id, curr_file)))
     pl.close()
-    
+
+    #%% Save thresh values for final:
+        
+    params_threshold['full'] = dict()
+    params_threshold['full']['final_frate'] = final_frate
+    params_threshold['full']['r_values_min'] = r_values_min
+    params_threshold['full']['fitness_min'] = fitness_min
+    params_threshold['full']['fitness_delta_min'] = fitness_delta_min
+    params_threshold['full']['Npeaks'] = Npeaks
+            
+    with open(os.path.join(nmf_output_dir, 'params_threshold.json'), 'w') as f:
+        json.dump(params_threshold, f, indent=4)
+                
+        
     #%%
     A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
     
@@ -759,7 +834,7 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         crd = plot_contours(A.tocsc()[:, idx_components_bad], Cn, thr=params_display['thr_plot'])
         pl.title('bad')
     
-    pl.savefig(os.path.join(nmf_fig_dir, '%s_contours_kept_%s.png' % (curr_file, roi_id)))
+    pl.savefig(os.path.join(nmf_fig_dir, '%s_%s_contours_final.png' % (roi_id, curr_file)))
     pl.close()
 
 #%%
@@ -786,19 +861,19 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
         
     # %% reconstruct denoised movie
     if save_movies is True:
-        if curr_file==reference_file or curr_file=='File001' or curr_file=='File010':
+        if curr_file==reference_file or curr_file=='File001' or curr_file=='File%03d' % len(curr_fns):
             denoised = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
             
             #%% save denoised movie:
                 
-            denoised.save(os.path.join(nmf_mov_dir, '%s_denoisedmov.tif' % curr_file))
+            denoised.save(os.path.join(nmf_mov_dir, '%s_%s_denoisedmov.tif' % (roi_id, curr_file)))
         
             #%% background only 
             background = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
             #denoised.play(gain=2, offset=0, fr=50, magnification=4)
             #%% save denoised movie:
                 
-            background.save(os.path.join(nmf_mov_dir, '%s_backgroundmov.tif' % curr_file))
+            background.save(os.path.join(nmf_mov_dir, '%s_%s_backgroundmov.tif' % (roi_id, curr_file)))
         
         
             # %% reconstruct denoised movie without background
@@ -810,14 +885,14 @@ for curr_file,curr_mmap in zip(files_todo,mmaps_todo):
             
             #%% save denoised movie:
                 
-            denoised.save(os.path.join(nmf_mov_dir, '%s_denoised_nobackground_mov.tif' % curr_file))
+            denoised.save(os.path.join(nmf_mov_dir, '%s_%s_denoised_nobackground_mov.tif' % (roi_id, curr_file)))
 
     #%% show background(s)
     BB  = cm.movie(b.reshape(dims+(-1,), order = 'F').transpose(2,0,1))
     #BB.play(gain=2, offset=0, fr=2, magnification=4)
     pl.figure()
     BB.zproject()
-    pl.savefig(os.path.join(nmf_mov_dir, '%s_background_project.png' % curr_file))
+    pl.savefig(os.path.join(nmf_mov_dir, '%s_%s_background_project.png' % (roi_id, curr_file)))
     pl.close()
 
     #%% Save params:
