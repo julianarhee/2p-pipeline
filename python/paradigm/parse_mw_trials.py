@@ -80,10 +80,14 @@ parser.add_option('--phasemod', action="store_true",
                   dest="phasemod", default=False, help="include if stimulus mod (phase-modulation).")
 parser.add_option('-t', '--triggervar', action="store",
                   dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
+parser.add_option('-A', '--arduinosync', action="store_true",
+                  dest='arduino_sync', default=False, help="include if using py-arduino v2 with all frame-triggers[default: False]")
+
 
 
 
 (options, args) = parser.parse_args()
+arduino_sync = options.arduino_sync
 trigger_varname = options.frametrigger_varname
 
 (options, args) = parser.parse_args() 
@@ -152,8 +156,6 @@ for didx in range(len(mw_dfns)):
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
     else:
         pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, stimtype=stimtype, phasemod=phasemod, triggername=trigger_varname)
-
-
     # In[8]:
 
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -364,7 +366,7 @@ for didx in range(len(mw_dfns)):
 
 	stim_durs = []
 	off_syncs = []
-	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
+	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events[1:])):
 	    stim_durs.append(iti.time - stim.time)
 	    if (iti.time - stim.time)<0:
 	        off_syncs.append(idx)
@@ -397,7 +399,7 @@ for didx in range(len(mw_dfns)):
 
             # Get TIME for each stimulus trial start:
             mw_times = np.array([i.time for i in curr_trialevents])
-
+            print "first 10 mw t-intervals:", (mw_times[0:11]-mw_times[0])/1E6
             # Get ID of each stimulus:
             mw_codes = []
             for i in curr_trialevents:
@@ -414,6 +416,7 @@ for didx in range(len(mw_dfns)):
                     stim_idx = 0
                 mw_codes.append(stim_idx)
             mw_codes = np.array(mw_codes)
+            print "First 10 mw_codes:", mw_codes[0:11]
 
             # Append list of stimulus times and IDs for each SI file:
             mw_times_by_file.append(mw_times)

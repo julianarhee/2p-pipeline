@@ -107,7 +107,7 @@ def get_session_bounds(dfn):
     return df, bounds
 
 
-def get_trigger_times(df, boundary, triggername=''):
+def get_trigger_times(df, boundary, triggername='', arduino_sync=True):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
     if len(triggername)==0:
@@ -186,8 +186,6 @@ def get_trigger_times(df, boundary, triggername=''):
     print "first SI-trigger ON event received: ", first_on_ev
     #print "first_off_idx: ", first_off_idx
     print "first SI-trigger OFF event received: ", first_off_ev
-    print "Duration of first run: {0:.4f} sec.".format((first_off_ev.time - first_on_ev.time)/1E6)
-
     
     # Now, get all "trigger" boundaries that demarcate each "run" after first run:
     print "Incrementally searching to find each pair of ON/OFF trigger events..."
@@ -225,7 +223,6 @@ def get_trigger_times(df, boundary, triggername=''):
 		if found_new_start is True:
 		    early_abort = True
 		    break
-
         # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
         # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
         # This likely means that there is another frame-ON event, but not corresponding OFF event.
@@ -313,7 +310,7 @@ def get_pixelclock_events(df, boundary, trigger_times=[]):
     else:
         # Make sure pixel events are within trigger times...
         pixelclock_evs = [p for p in tmp_pixelclock_evs if p.time <= trigger_times[-1][1] and p.time >= trigger_times[0][0]] 
-    
+
     print "Got %i pix code events within SI frame-trigger bounds." % len(pixelclock_evs)
     
     return pixelclock_evs
@@ -579,3 +576,4 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
     # pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
     #return pixelevents, stimevents, triggtimes, session_info
     return pixelevents, stimulusevents, triggertimes, info
+
