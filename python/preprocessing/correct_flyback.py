@@ -121,8 +121,8 @@ def main(options):
     #savepath = os.path.join(raw_tiff_dir, 'DATA', 'Raw')
     save_basepath = os.path.join(acquisition_dir, run, 'processed') #, 'DATA', 'Raw')
     
-    if not os.path.exists(savepath):
-        os.makedirs(savepath)
+    if not os.path.exists(save_basepath):
+        os.makedirs(save_basepath)
     processed_dirs = [p for p in os.listdir(save_basepath) if os.path.isdir(os.path.join(save_basepath, p))] 
     increment_processed = int(len(processed_dirs) + 1)
     savepath = os.path.join(save_basepath, 'processed%03d' % increment_processed)
