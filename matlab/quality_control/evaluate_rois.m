@@ -40,6 +40,7 @@ function evaluate_rois(options)
     if isfield(roiparams,'roiparams')
         roiparams = roiparams.roiparams;
     end
+    %roiparams.maskpaths
 
     %load simeta
     simeta = load(A.raw_simeta_path);
@@ -55,7 +56,12 @@ function evaluate_rois(options)
         sl = options.sourceslices(sidx);
 
         %load masks
-        load(roiparams.maskpaths{sl}); 
+        if length(roiparams.maskpaths)==length(options.sourceslices)
+            load(roiparams.maskpaths{sidx}); 
+        else
+            load(roiparams.maskpaths{sl}); 
+        end
+        %load(roiparams.maskpaths{sidx}); 
         maskcell = arrayfun(@(roi) make_sparse_masks(masks(:,:,roi)), 1:size(masks,3), 'UniformOutput', false);
         maskcell = cellfun(@logical, maskcell, 'UniformOutput', false);
 
@@ -64,17 +70,32 @@ function evaluate_rois(options)
         if get_pixel_corr
             pixcorrstruct = struct;
             pixcorrstruct.options = options;
-            pixcorrstruct.maskpath = roiparams.maskpaths{sl};
+            if length(roiparams.maskpaths)==length(options.sourceslices)
+            	 pixcorrstruct.maskpath = roiparams.maskpaths{sidx};
+            else
+            	pixcorrstruct.maskpath = roiparams.maskpaths{sl};
+            end
         end
         if get_file_corr
             filecorrstruct = struct;
             filecorrstruct.options = options;
-            filecorrstruct.maskpath = roiparams.maskpaths{sl};
+            if length(roiparams.maskpaths)==length(options.sourceslices)
+            	 filecorrstruct.maskpath = roiparams.maskpaths{sidx};
+            else
+            	filecorrstruct.maskpath = roiparams.maskpaths{sl};
+            end   
+            %filecorrstruct.maskpath = roiparams.maskpaths{sl};
+            %filecorrstruct.maskpath = roiparams.maskpaths{sidx};
         end
         if get_trial_corr
             trialcorrstruct = struct;
             trialorrstruct.options = options;
-            trialcorrstruct.maskpath = roiparams.maskpaths{sl};
+            if length(roiparams.maskpaths)==length(options.sourceslices)
+            	 trialcorrstruct.maskpath = roiparams.maskpaths{sidx};
+            else
+            	trialcorrstruct.maskpath = roiparams.maskpaths{sl};
+            end  
+            %trialcorrstruct.maskpath = roiparams.maskpaths{sl};
         end
 
         % load time-series for current slice:

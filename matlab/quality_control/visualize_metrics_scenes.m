@@ -12,6 +12,7 @@ acquisition_base_dir = fullfile(source, experiment, session, acquisition);
 
 
 analysis_id = sprintf('analysis%02d',1);
+% analysis_id = sprintf('analysis%02d',2);
 
 
 %load reference file
@@ -20,9 +21,8 @@ A = load(path_to_reference);
 if ~isfield(A,'roi_dir')
     A.roi_dir = fullfile(acquisition_base_dir,'ROIs');
 end
-
-
 roi_folder = 'blobs_DoG';%name of ROI subfolder
+% roi_folder = 'blobs_DoG1';%name of ROI subfolder
 
 %load roiparams
 roiparams_path = fullfile(A.roi_dir, roi_folder, 'roiparams.mat');
@@ -78,8 +78,17 @@ slice_src1 = slice_src;
 roi_src1 = roi_src;
 
 
-
+%% Load ROI2:
 roi_folder = 'manual2D';%name of ROI subfolder
+analysis_id1 = sprintf('analysis%02d',4);
+
+
+% %load reference file
+% path_to_reference = fullfile(acquisition_base_dir, sprintf('reference_%s.mat', tiff_source));
+% A = load(path_to_reference);
+% if ~isfield(A,'roi_dir')
+%     A.roi_dir = fullfile(acquisition_base_dir,'ROIs');
+% end
 
 %load roiparams
 roiparams_path = fullfile(A.roi_dir, roi_folder, 'roiparams.mat');
@@ -145,8 +154,10 @@ centers2 = (edges(1:end-1) + edges(2:end))/2;
 %absolute counts
 figure;
 hold all
-bar(centers1,counts1,'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
-bar(centers2, counts2,'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers1,counts1,'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers2, counts2,'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+bar(centers1,counts1,'FaceColor',[0 0 1],'EdgeColor','none')
+bar(centers2, counts2,'FaceColor',[0 1 0],'EdgeColor','none')
 xlabel('correlation')
 ylabel('count')
 legend('blobs','manual-circles')
@@ -155,8 +166,10 @@ title('pixel-to-pixel R')
 %distribution
 figure;
 hold all
-bar(centers1,counts1/size(pixel_corr_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
-bar(centers2, counts2/size(pixel_corr_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers1,counts1/size(pixel_corr_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers2, counts2/size(pixel_corr_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+bar(centers1,counts1/size(pixel_corr_roi1,2),'FaceColor',[0 0 1],'EdgeColor','none')
+bar(centers2, counts2/size(pixel_corr_roi2,2),'FaceColor',[0 1 0],'EdgeColor','none')
 xlabel('correlation')
 ylabel('p')
 legend('blobs','manual-circles')
@@ -182,8 +195,10 @@ centers2 = (edges(1:end-1) + edges(2:end))/2;
 %distribution
 figure;
 hold all
-bar(centers1,counts1/size(trial_corr_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
-bar(centers2, counts2/size(trial_corr_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers1,counts1/size(trial_corr_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers2, counts2/size(trial_corr_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+bar(centers1,counts1/size(trial_corr_roi1,2),'FaceColor',[0 0 1],'EdgeColor','none')
+bar(centers2, counts2/size(trial_corr_roi2,2),'FaceColor',[0 1 0],'EdgeColor','none')
 xlabel('correlation')
 ylabel('p')
 legend('blobs','manual-circles')
@@ -191,7 +206,7 @@ title('trial-to-trial R')
 
 
 
-%plot both variables, for each roi
+%% plot both variables, for each roi
 figure;
 hold all
 plot(trial_corr_roi1,pixel_corr_roi1,'ok')%blob-detector
@@ -234,8 +249,10 @@ centers2 = (edges(1:end-1) + edges(2:end))/2;
 %distribution
 figure;
 hold all
-bar(centers1,counts1/size(metric_combo_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
-bar(centers2, counts2/size(metric_combo_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers1,counts1/size(metric_combo_roi1,2),'FaceColor',[0 0 1],'FaceAlpha',.5,'EdgeColor','none')
+% bar(centers2, counts2/size(metric_combo_roi2,2),'FaceColor',[0 1 0],'FaceAlpha',.5,'EdgeColor','none')
+bar(centers1,counts1/size(metric_combo_roi1,2),'FaceColor',[0 0 1],'EdgeColor','none')
+bar(centers2, counts2/size(metric_combo_roi2,2),'FaceColor',[0 1 0],'EdgeColor','none')
 xlabel('correlation')
 ylabel('p')
 legend('blobs','manual-circles')
@@ -253,7 +270,25 @@ thresh_pass_ind  = find(((trial_corr_roi2>=trial_corr_thresh) | (pixel_corr_roi2
 
 selected_roi_info = [slice_src2(thresh_pass_ind)' roi_src2(thresh_pass_ind)' pixel_corr_roi2(thresh_pass_ind)' trial_corr_roi2(thresh_pass_ind)' ...
     metric_combo_roi2(thresh_pass_ind)'];
-[~, sorted_ind] = sort(selected_roi_info(:,4),1,'descend');
+
+selected_roi_info = [slice_src1(thresh_pass_ind)' roi_src1(thresh_pass_ind)' pixel_corr_roi1(thresh_pass_ind)' trial_corr_roi1(thresh_pass_ind)' ...
+    metric_combo_roi1(thresh_pass_ind)'];
+
+% [~, sorted_ind] = sort(selected_roi_info(:,4),1,'descend');
+[~, sorted_ind] = sort(selected_roi_info(:,5),1,'descend');
 selected_roi_info_sorted = selected_roi_info(sorted_ind,:);
 
 % save(fullfile(A.roi_dir,I.roi_id, 'metrics',filename),'-struct', 'selected_rois');
+
+%%
+combo_thresh_val = 0.14
+
+combo_thresh1 = find(metric_combo_roi1>combo_thresh_val)
+combo_thresh2 = find(metric_combo_roi2>combo_thresh_val)
+
+roilist = zeros(length(combo_thresh2), 2);
+for r=1:length(combo_thresh2)
+    roilist(r, :) = [slice_src2(combo_thresh2(r)), roi_src2(combo_thresh2(r))];
+end
+
+roilist
