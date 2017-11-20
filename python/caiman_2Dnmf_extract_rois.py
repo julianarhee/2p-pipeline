@@ -34,6 +34,7 @@ import h5py
 import cPickle as pkl
 import scipy.io
 import pprint
+import optparse
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -60,15 +61,35 @@ def byteify(input):
     else:
         return input
 
-source = '/nas/volume1/2photon/projects'
-experiment = 'gratings_phaseMod'
-session = '20171009_CE059'
-acquisition = 'FOV1_zoom3x'
-functional = 'functional'
-
-roi_id = 'caiman2Dnmf004'
-
+#source = '/nas/volume1/2photon/projects'
+#experiment = 'gratings_phaseMod'
+#session = '20171009_CE059'
+#acquisition = 'FOV1_zoom3x'
+#functional = 'functional'
+#
+#roi_id = 'caiman2Dnmf004'
+#
 use_kept_only = True # Value matters if not using thresholded/matched subset (coregister_rois.py)
+
+parser = optparse.OptionParser()
+
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
+parser.add_option('-s', '--sess', action='store', dest='session', default='', help='session name')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help='acquisition folder')
+parser.add_option('-f', '--func', action='store', dest='functional', default='functional', help="folder containing functional tiffs [default: 'functional']")
+parser.add_option('-R', '--roi', action='store', dest='roi_id', default='', help="unique ROI ID (child of <acquisition_dir>/ROIs/")
+
+
+(options, args) = parser.parse_args() 
+
+source = options.source #'/nas/volume1/2photon/projects'
+experiment = options.experiment #'gratings_phaseMod'
+session = options.session #'20171009_CE059'
+acquisition = options.acquisition #'FOV1_zoom3x'
+functional = options.functional # 'functional'
+
+roi_id = options.roi_id #'caiman2Dnmf003'
 
 
 #reuse_reference = True
