@@ -22,6 +22,7 @@ If used, mcparams.correct_flyback = True.
 import os
 import json
 import optparse
+from stat import S_IREAD, S_IRGRP, S_IROTH
 
 parser = optparse.OptionParser()
 

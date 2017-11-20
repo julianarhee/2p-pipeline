@@ -14,6 +14,7 @@ import json
 import re
 import scipy.io
 import numpy as np
+from stat import S_IREAD, S_IRGRP, S_IROTH
 from os.path import expanduser
 home = expanduser("~")
 
@@ -92,10 +93,15 @@ def main(options):
 	
         curr_file = 'File{:03d}'.format(fidx+1)
         print "Processing:", curr_file
-
+        
+        currtiffpath = os.path.join(acquisition_dir, run, 'raw', rawtiff)
+            
+        # Make sure TIFF is READ ONLY:
+        os.chmod(currtiffpath, S_IREAD|S_IRGRP|S_IROTH)  
+        
         scanimage_metadata[curr_file] = {'SI': None}
 
-        metadata = ScanImageTiffReader(os.path.join(acquisition_dir, run, 'raw', rawtiff)).metadata()
+        metadata = ScanImageTiffReader(currtiffpath).metadata()
         meta = metadata.splitlines()
         del metadata
 

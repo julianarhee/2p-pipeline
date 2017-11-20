@@ -290,6 +290,9 @@ def main(options):
         #refinfo_mat = "%s.mat" % refinfo_basename
         #scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
     
+        # Make sure newly created TIFFs are READ-ONLY:
+        os.chmod(os.path.join(savepath, newtiff_fn), S_IREAD|S_IRGRP|S_IROTH)  
+
 
 if __name__ == '__main__':
     main(sys.argv[1:]) 
