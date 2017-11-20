@@ -202,6 +202,9 @@ def main(options):
         
         #refinfo_mat = '%s.mat' % reference_info_basename
         #scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
+    
+    # Make sure SI META data is now read-only:
+    os.chmod(os.path.join(acquisition_dir, run, 'raw', raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
 
 
 if __name__ == '__main__':
