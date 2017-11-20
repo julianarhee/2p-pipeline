@@ -568,7 +568,7 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
         stimulusevents.append(stimevents)
         triggertimes.append(trigg_times)
     
-        session_info = get_session_info(df, stimtype='bar')
+        session_info = get_session_info(df, boundary, stimtype='bar')
         session_info['tboundary'] = boundary
         
         info.append(session_info)
@@ -576,4 +576,5 @@ def get_bar_events(dfn, stimtype='bar', triggername='', remove_orphans=True):
     # pdev_info = [(v['bit_code'], p.time) for p in pdevs for v in p.value if 'bit_code' in v.keys()]
     #return pixelevents, stimevents, triggtimes, session_info
     return pixelevents, stimulusevents, triggertimes, info
+
 

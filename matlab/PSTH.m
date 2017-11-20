@@ -107,7 +107,8 @@ nTiffs = meta.nTiffs;
 
 slicesToUse = D.slices;
 
-skipFirst = true;
+skipFirst = false;
+first_iti = true;
 ITI = 2;
 
 trialstruct = struct();
@@ -154,37 +155,69 @@ for sidx = 1:length(slicesToUse)
         
         currTiff = sprintf('tiff%i', fidx);
         trialNum = 1;
-        for trialIdx=1:2:length(currMWcodes)
-            if skipFirst && trialIdx==1
-                continue;
-            end
-            if trialIdx < currTrialIdxs(end)
-                currEnd = trialIdx + 2;
-            else
-                currEnd = length(meta.file(fidx).mw.mwSec);
-            end
-            currStim = sprintf('stim%i', currMWcodes(trialIdx));
-            if ~isfield(mwTrials, currStim)
-                mwTrials.(currStim).(currTiff){1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
-            else
-                if ~isfield(mwTrials.(currStim), currTiff)
+        if first_iti
+            for trialIdx=2:2:length(currMWcodes)
+                if trialIdx < currTrialIdxs(end)
+                    currEnd = trialIdx + 2;
+                else
+                    currEnd = length(meta.file(fidx).mw.mwSec);
+                end
+                currStim = sprintf('stim%i', currMWcodes(trialIdx));
+                if ~isfield(mwTrials, currStim)
                     mwTrials.(currStim).(currTiff){1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
                 else
-                    mwTrials.(currStim).(currTiff){end+1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                    if ~isfield(mwTrials.(currStim), currTiff)
+                        mwTrials.(currStim).(currTiff){1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                    else
+                        mwTrials.(currStim).(currTiff){end+1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                    end
                 end
-            end
-            mwEpochIdxs.(currStim){end+1} = trialIdx-1:currEnd;
-            if ~isfield(trialIdxs, currStim)
-                trialIdxs.(currStim).(currTiff){1} = trialNum;
-            else
-                if ~isfield(trialIdxs.(currStim), currTiff)
+                mwEpochIdxs.(currStim){end+1} = trialIdx-1:currEnd;
+                if ~isfield(trialIdxs, currStim)
                     trialIdxs.(currStim).(currTiff){1} = trialNum;
                 else
-                    trialIdxs.(currStim).(currTiff){end+1} = trialNum;
-            
+                    if ~isfield(trialIdxs.(currStim), currTiff)
+                        trialIdxs.(currStim).(currTiff){1} = trialNum;
+                    else
+                        trialIdxs.(currStim).(currTiff){end+1} = trialNum;
+
+                    end
                 end
+                trialNum = trialNum + 1;
+            end   
+        else
+            for trialIdx=1:2:length(currMWcodes)
+                if skipFirst && trialIdx==1
+                    continue;
+                end
+                if trialIdx < currTrialIdxs(end)
+                    currEnd = trialIdx + 2;
+                else
+                    currEnd = length(meta.file(fidx).mw.mwSec);
+                end
+                currStim = sprintf('stim%i', currMWcodes(trialIdx));
+                if ~isfield(mwTrials, currStim)
+                    mwTrials.(currStim).(currTiff){1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                else
+                    if ~isfield(mwTrials.(currStim), currTiff)
+                        mwTrials.(currStim).(currTiff){1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                    else
+                        mwTrials.(currStim).(currTiff){end+1} = meta.file(fidx).mw.mwSec(trialIdx-1:currEnd);
+                    end
+                end
+                mwEpochIdxs.(currStim){end+1} = trialIdx-1:currEnd;
+                if ~isfield(trialIdxs, currStim)
+                    trialIdxs.(currStim).(currTiff){1} = trialNum;
+                else
+                    if ~isfield(trialIdxs.(currStim), currTiff)
+                        trialIdxs.(currStim).(currTiff){1} = trialNum;
+                    else
+                        trialIdxs.(currStim).(currTiff){end+1} = trialNum;
+
+                    end
+                end
+                trialNum = trialNum + 1;
             end
-            trialNum = trialNum + 1;
         end
     end 
     
@@ -195,7 +228,7 @@ for sidx = 1:length(slicesToUse)
     nTrials = struct();
     for stimIdx=1:length(condTypes) 
 
-        currStim = condTypes{stimIdx};
+        currStim = condTypes{stimIdx}
         nTrials.(currStim) = 0;
 
         if ~isfield(mwTrials, currStim)
@@ -253,7 +286,7 @@ for sidx = 1:length(slicesToUse)
 %                 end
                 tOff = currSecs(3);
                 if length(currSecs) < 4
-                    continue;
+                    %continue;
                     fprintf('Not enough tstamps found in stim %s, file %i, trial %i.\n', currStim, tiffIdx, trialIdx);
                     tPost = tOff + ITI;
                 else
@@ -273,7 +306,7 @@ for sidx = 1:length(slicesToUse)
                     frameOff = find(abs(sliceSecs-tOff) == min(abs(sliceSecs-tOff)));
                     framePost = find(abs(sliceSecs-tPost) == min(abs(sliceSecs-tPost)));
                     frameEpochIdxs = [framePre frameOn frameOff framePost];
-                    siTrials.(currStim).(currTiff){trialIdx} = sliceSecs(frameEpochIdxs);
+                    siTrials.(currStim).(currTiff){trialIdx} = sliceSecs(frameEpochIdxs)
 
                     nTrials.(currStim) = nTrials.(currStim) + 1;
                     frameidxs = frameEpochIdxs(1):frameEpochIdxs(end);
@@ -494,7 +527,6 @@ for sliceIdx=1:length(D.slices)
             currnpoints = [currnpoints length(siTimes.(currStim){tsi})];
         end
         nFrames = min(currnpoints); %nFrames = size(mwinterpMat,2);
-        
         %tSI = cat(1,siTimes.(currStim){1:end});
 
         interpfunc = @(x) linspace(x(1), x(end), nFrames);

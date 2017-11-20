@@ -1,7 +1,7 @@
 % Run this to grab relevant experiment info after acquisition struct has
 % been created.
 
-function [D] = load_analysis_info(session,experiment, varargin)
+function [D] = load_analysis_info(source,session,experiment, varargin)
 % -------------------------------------------------------------------------
 % USER-INUPT:
 % -------------------------------------------------------------------------
@@ -20,8 +20,6 @@ end
 % -------------------------------------------------------------------------
 % Auto-generate:
 % -------------------------------------------------------------------------
-
-source = '/nas/volume1/2photon/RESDATA';
 
 if tefo
     source = [source '/TEFO'];

@@ -37,6 +37,7 @@ axes(handles.ax4);
 tstamps = meta.file(selectedFile).mw.siSec(volumeIdxs);
 stimStarts = meta.file(selectedFile).mw.stimStarts;
 mwTimes = meta.file(selectedFile).mw.mwSec;
+mwTimes(end+1) = mwTimes(end)+2;
 
 tcourseTypes = handles.timecourseMenu.String;
 if handles.timecourseMenu.Value > length(tcourseTypes)
@@ -215,8 +216,13 @@ else
     sy = [ylims(1) ylims(1) ylims(2) ylims(2)];
     trialidx = 1;
     currStimTrialIdx = [];
-    for trial=1:2:length(mwTimes)
-        sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
+    %for trial=1:2:length(mwTimes)
+    for trial=2:2:length(mwTimes)-1 
+        if trial<length(mwTimes)-1
+            sx = [mwTimes(trial) mwTimes(trial+1) mwTimes(trial+1) mwTimes(trial)];
+        else
+            sx = [mwTimes(trial) mwTimes(trial)+2 mwTimes(trial)+2 mwTimes(trial)];
+        end
         currStim = mwCodes(trial);
         if handles.stimShowAvg.Value
             handles.mwepochs(trial) = patch(sx, sy, colors(currStim,:,:), 'FaceAlpha', 0.3, 'EdgeAlpha', 0);
@@ -233,7 +239,7 @@ else
         trialidx = trialidx + 1;
         %handles.ax4.UserData.trialEpochs = trialidx;
     end
-    nEpochs = length(mwTimes);
+    nEpochs = length(mwTimes)+1;
     
 %     % Darken selected trial if multiple reps of selected stim in current
 %     % run:
