@@ -56,8 +56,8 @@ parser.add_option('-I', '--id', action="store",
                   dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
 
 
-parser.add_option('-b', '--background', action="store",
-                  dest="background", default=0.3, help="threshold below which to raise intensity [default: 0.3]")
+#parser.add_option('-b', '--background', action="store",
+#                  dest="background", default=0.0, help="threshold below which to raise intensity [default: 0.0]")
 parser.add_option('--no-color', action="store_true",
                   dest="no_color", default=False, help="Don't plot by color (just grayscale)")
 
@@ -84,7 +84,7 @@ color_by_roi = options.color_by_roi
 
 #color_by_roi = True
 cmaptype = 'rainbow'
-background_offset = float(options.background) #0.3 #0.8
+#background_offset = float(options.background) #0.3 #0.8
 
 
 tmprois = options.rois_to_plot
@@ -121,10 +121,19 @@ with open(simeta_json_path, 'r') as fs:
 
 # Get ROIPARAMS:
 roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
-roiparams = mat2py.loadmat(os.path.join(roi_dir, 'roiparams.mat'))
-if 'roiparams' in roiparams.keys():
-    roiparams = roiparams['roiparams']
-maskpaths = roiparams['maskpaths']
+if os.path.exists(os.path.join(roi_dir, 'roiparams.pkl')):
+    with open(os.path.join(roi_dir, 'roiparams.pkl'), 'rb') as f:
+        roiparams = pkl.load(f)
+else:
+    roiparams = mat2py.loadmat(os.path.join(roi_dir, 'roiparams.mat'))
+    if 'roiparams' in roiparams.keys():
+        roiparams = roiparams['roiparams']
+if 'maskpaths_mat' in roiparams.keys():
+    maskpaths = roiparams['maskpaths']
+    pklformat = True
+else:
+    pklformat = False
+
 print maskpaths
 if not isinstance(maskpaths, list) and (len(maskpaths)==1 or isinstance(maskpaths, unicode)):
     maskpaths = [maskpaths] #[str(i) for i in maskpaths]
@@ -149,7 +158,17 @@ masks = dict(("Slice%02d" % int(slice_idx), dict()) for slice_idx in slices)
 for sidx,maskpath in zip(sorted(slices), sorted(maskpaths, key=natural_keys)):
     slice_name = "Slice%02d" % int(sidx) #+1)
     print "Loading masks: %s..." % slice_name 
-    tmpmasks = mat2py.loadmat(maskpath); tmpmasks = tmpmasks['masks']
+    if pklformat is True:
+        with open(maskpath, 'rb') as f:
+            tmpmasks_dict = pkl.load(f)
+            if 'File' in tmpmasks_dict.keys()[0]:
+                filenames = [k for k in tmpmasks_dict.keys() if 'File' in k]
+                print len(tmpmasks_dict), tmpmasks_dict['File001'].shape #keys() #[filenames[0]].keys()
+                tmpmasks = tmpmasks_dict[filenames[0]]#['masks']
+            else:
+                tmpmasks = tmpmasks_dict['masks']; 
+    else:
+        tmpmasks = mat2py.loadmat(maskpath); tmpmasks = tmpmasks['masks']
     masks[slice_name]['nrois'] =  tmpmasks.shape[2]
     masks[slice_name]['masks'] = tmpmasks
 
@@ -266,7 +285,7 @@ nr,nc = imgnorm.shape
 color_mask = np.zeros((nr, nc, 3))
 #color_mask = np.dstack((imgnorm, imgnorm, imgnorm)) 
 for roi in rois_to_plot:
-    color_mask[currmasks[:,:,roi]==1] = colorvals[roi][0:3]
+    color_mask[currmasks[:,:,roi]>0] = colorvals[roi][0:3]
 
 # Construct RGB version of grey-level image
 img_color = np.dstack((imgnorm, imgnorm, imgnorm))
@@ -289,7 +308,7 @@ plt.figure()
 plt.imshow(img_masked, cmap=cmaptype)
 
 for roi in rois_to_plot:
-    [ys, xs] = np.where(currmasks[:,:,roi]==1)
+    [ys, xs] = np.where(currmasks[:,:,roi]>0)
     #plt.text(xs[0], ys[0], str(roi))
     plt.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), weight='bold') 
 

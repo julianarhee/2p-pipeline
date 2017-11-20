@@ -302,7 +302,8 @@ signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channe
 currchannel = "Channel%02d" % int(signal_channel)
 currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
 stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fn = "stimtraces_%s_%s.pkl" % (currslice, currchannel)
+stimtrace_fn = "%s_stimtraces_%s_%s.pkl" % (analysis_id, currslice, currchannel)
+#stimtrace_fn = "stimtraces_%s_%s.pkl" % (currslice, currchannel)
 if not stimtrace_fn in stimtrace_fns:
     print "No stimtraces found for %s: %s, %s. Did you run files_to_trials.py?" % (analysis_id, currslice, currchannel)
 else: 
@@ -467,8 +468,9 @@ for roi in rois_to_plot:
 
 	for trial in range(ntrials):
             #print dfstruct[roi][stim]['files'][trial]
-            which_file = dfstruct[roi][stim]['files'][trial]
-            file_idx = file_names.index(which_file)
+            if color_by_file:
+                which_file = dfstruct[roi][stim]['files'][trial]
+                file_idx = file_names.index(which_file)
 
 	    if color_by_roi:
                 if color_by_file:

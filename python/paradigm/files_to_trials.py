@@ -214,6 +214,9 @@ for slice_idx,trace_fn in enumerate(sorted(trace_fns_by_slice, key=natural_keys)
     else:
         with open(os.path.join(trace_dir, trace_fn), 'rb') as f:
             tracestruct = pkl.load(f)
+     
+    file_names = [tracestruct['file'][fi]['filename'] for fi in range(len(tracestruct['file']))]
+    print "Files included:", file_names
     
     # To look at all traces for ROI 3 for stimulus 1:
     # traces_by_stim['1']['Slice01'][:,roi,:]
