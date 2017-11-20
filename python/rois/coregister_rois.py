@@ -356,38 +356,10 @@ threshold = True
 from caiman.components_evaluation import estimate_components_quality
 
 #%%
-if threshold is True:
-#    ref_mmap = [m for m in memmapped_fns if reference_file in m][0]
-#    Yr, dims, T = cm.load_memmap(os.path.join(tiff_dir, ref_mmap))
-#    d1, d2 = dims
-#    Y = np.reshape(Yr, dims + (T,), order='F')
-#    
-#    #%%
-#    final_frate = 44.7027 #params_movie['final_frate'] #44.7027 #params_movie['final_frate']
-#    r_values_min = 0.8 #params_movie['r_values_min_patch']  # threshold on space consistency
-#    fitness_min = -20 #params_movie['fitness_delta_min_patch']  # threshold on time variability
-#    # threshold on time variability (if nonsparse activity)
-#    fitness_delta_min = -10 #params_movie['fitness_delta_min_patch']
-#    Npeaks = 10 #params_movie['Npeaks']
-#    traces = refnmf['C'] + refnmf['YrA'] #C_tot + YrA_tot
-#    # TODO: todocument
-#    idx_components, idx_components_bad, fitness_raw, fitness_delta, r_values =          estimate_components_quality(
-#        traces, Y, refnmf['A'].all(), refnmf['C'], refnmf['b'], refnmf['f'], final_frate=final_frate, Npeaks=Npeaks, r_values_min=r_values_min,
-#        fitness_min=fitness_min, fitness_delta_min=fitness_delta_min, return_all=True)
-#    
-#    print(('Keeping ' + str(len(idx_components)) +
-#           ' and discarding  ' + str(len(idx_components_bad))))
-#    
-#    #%% Check out thresholded components:
-#    pl.figure();
-#    pl.subplot(1,2,1); pl.title('kept'); plot_contours(refnmf['A'].all().tocsc()[:, idx_components], img, thr=0.9); pl.axis('off')
-#    pl.subplot(1,2,2); pl.title('bad'); plot_contours(refnmf['A'].all().tocsc()[:, idx_components_bad], img, thr=0.9); pl.axis('off')
-    
+if threshold is True:   
     A1 = A1[:,  refnmf['idx_components']]
     nr = A1.shape[-1]
-    
-    #%%
-    
+   
 masks = np.reshape(np.array(A1.todense()), (d1, d2, nr), order='F')
 print(masks.shape)
 
@@ -433,22 +405,13 @@ else:
             print("Keeping %i out of %i components." % (len(nmf['idx_components']), nr))
             A2 = A2[:,  nmf['idx_components']]
             nr = A2.shape[-1]
-        #nA2 = np.array(np.sqrt(A2.power(2).sum(0)).T)
-        #A2 = scipy.sparse.coo_matrix(A2 / nA2.T)
-        masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
-        #print masks2.shape
 
-        
+        masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
+       
         #%% first transform A1 and A2 into binary masks
-        
-        
-        M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()
-        
+        M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()        
         M2 = np.zeros(A2.shape).astype('bool') #A2.astype('bool').toarray()
 
-
-        # In[33]:
-        
         K1 = A1.shape[-1]
         K2 = A2.shape[-1]
         print("K1", K1, "K2", K2)
@@ -511,53 +474,10 @@ else:
         pl.close()
 
         #%%
-        #match_1, match_2 = scipy.optimize.linear_sum_assignment(D)
-
         matches = minimumWeightMatching(D)  # Use modified linear_sum_assignment to allow np.inf
 
         print("Found %i ROI matches in %s" % (len(matches), curr_file))
 
-        #matched_ROIs = [match_1, match_2]
-        #nonmatched_1 = np.setdiff1d(np.arange(0, K1), match_1)
-        #nonmatched_2 = np.setdiff1d(np.arange(0, K2), match_2)
-        #
-        #print len(match_1)
-
-        #%% Save overlap of REF with curr-file matches:
-        
-        pl.figure()
-        pl.imshow(img, cmap='gray')
-        #pl.subplot(1,2,1); pl.imshow(img, cmap='gray')
-        #pl.subplot(1,2,2); pl.imshow(img, cmap='gray')
-        #for ridx,(roi1,roi2) in enumerate(zip(match_1, match_2)):
-        for ridx,match in enumerate(matches):
-            roi1=match[0]; roi2=match[1]
-            masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
-            msk1 = masktmp1.copy(); msk2 = masktmp2.copy()  
-            msk1[msk1==0] = np.nan; msk2[msk2==0] = np.nan
-            
-            #pl.subplot(1,2,1); pl.title('match1')
-            #cs1a = pl.contour(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-            #cs1b = pl.contour(cs1a, levels=cs1a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-            pl.imshow(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
-            pl.clim(masktmp1.max()*0.7, masktmp1.max())
-            [ys, xs] = np.where(masktmp1>0)
-            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), weight='bold')
-            pl.axis('off')
-            
-            #pl.subplot(1,2,2); pl.title('match2')
-            #pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds)
-            #cs2a = pl.contour(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-            #cs2b = pl.contour(cs2a, levels=cs2a.levels[::4], interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-            pl.imshow(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
-            pl.clim(masktmp2.max()*0.7, masktmp2.max())
-            [ys, xs] = np.where(masktmp2>0)
-            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
-            pl.axis('off')
-        
-        pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (roi_reference_file, curr_file)))
-        #pl.close()
-        
         #%% Store matches for file:
         all_matches[curr_file] = matches
         
@@ -569,7 +489,85 @@ else:
 
     with open(os.path.join(metrics_dir, '%s.json' % match_fn_base), 'w') as f:
         json.dump(all_matches, f, indent=4, sort_keys=True)
+ 
+
+for curr_file in all_matches.keys():
+
+        if curr_file==roi_reference_file:
+            continue
+ 
+        nmf_fn = [f for f in nmf_fns if curr_file in f][0]
+        nmf = np.load(os.path.join(nmf_output_dir, nmf_fn))
+        A2 = nmf['A'].all()
+        nr = A2.shape[-1]
+ 
+        #%% Save overlap of REF with curr-file matches:
+        if threshold is True:
+            print("Keeping %i out of %i components." % (len(nmf['idx_components']), nr))
+            A2 = A2[:,  nmf['idx_components']]
+            nr = A2.shape[-1]
         
+        masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
+ 
+
+        pl.figure()
+        pl.imshow(img, cmap='gray')
+        
+        if issparse(A1): 
+            A1 = np.array(A1.todense()) 
+        A2 = np.array(A2.todense())
+
+        matches = all_matches[curr_file]
+ 
+        for ridx,match in enumerate(matches):
+            roi1=match[0]; roi2=match[1]
+            
+            x, y = np.mgrid[0:d1:1, 0:d2:1]
+    
+            # Draw contours for REFERENCE:
+            indx = np.argsort(A1[:,roi1], axis=None)[::-1]
+            cumEn = np.cumsum(A1[:,roi1].flatten()[indx]**2)
+            cumEn /= cumEn[-1] # normalize
+            Bvec = np.zeros(d1*d2)
+            Bvec[indx] = cumEn
+            Bmat = np.reshape(Bvec, (d1,d2), order='F')
+            cs = pl.contour(y, x, Bmat, [0.9], colors='b') #[colorvals[fidx]]) #, cmap=colormap)
+
+            # Draw contours for CURRFILE matches:
+            indx = np.argsort(A2[:,roi2], axis=None)[::-1]
+            cumEn = np.cumsum(A2[:,roi2].flatten()[indx]**2)
+            cumEn /= cumEn[-1] # normalize
+            Bvec = np.zeros(d1*d2)
+            Bvec[indx] = cumEn
+            Bmat = np.reshape(Bvec, (d1,d2), order='F')
+            cs = pl.contour(y, x, Bmat, [0.9], colors='r') #[colorvals[fidx]]) #, cmap=colormap)
+
+            # Label ROIs with original roi nums:
+            masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
+            [ys, xs] = np.where(masktmp1>0)
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), color='b', weight='bold')
+            [ys, xs] = np.where(masktmp2>0)
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), color='r', weight='bold')
+            
+#            masktmp1 = masks[:,:,roi1]; masktmp2 = masks2[:,:,roi2]
+#            msk1 = masktmp1.copy(); msk2 = masktmp2.copy()  
+#            msk1[msk1==0] = np.nan; msk2[msk2==0] = np.nan
+#            pl.imshow(msk1, interpolation='None', alpha=0.3, cmap=pl.cm.Blues_r)
+#            pl.clim(masktmp1.max()*0.7, masktmp1.max())
+#            [ys, xs] = np.where(masktmp1>0)
+#            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), weight='bold')
+#            pl.axis('off')
+#            
+#            pl.imshow(msk2, interpolation='None', alpha=0.3, cmap=pl.cm.Reds_r)
+#            pl.clim(masktmp2.max()*0.7, masktmp2.max())
+#            [ys, xs] = np.where(masktmp2>0)
+#            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), weight='bold')
+#            pl.axis('off')
+        
+        pl.savefig(os.path.join(metrics_dir_figs, 'matches_%s_%s.png' % (roi_reference_file, curr_file)))
+        pl.close()
+        
+       
 #%% Find intersection of all matches with reference:
        
 #rois_to_keep = [r for r in range(nr)]
@@ -639,17 +637,13 @@ for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
     x, y = np.mgrid[0:d1:1, 0:d2:1]
     
     A = nmf['A'].all()
+    nr = A.shape[-1]
+
     if threshold is True:
         #print("Keeping %i out of %i components." % (len(nmf['idx_components']), nr))
         A = A[:,  nmf['idx_components']]
         nr = A.shape[-1]
-            
-#     coors = get_contours(A, dims, thr=0.9)
-#     cc1 = [[l[0] for l in n['coordinates']] for n in coors]
-#     cc2 = [[l[1] for l in n['coordinates']] for n in coors]
-#     coords = [[(cx,cy) for cx,cy in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
-#  
-    masks = np.reshape(np.array(A.todense()), (d1, d2, nr), order='F')
+  
     curr_rois = matchedROIs[curr_file]
     A = np.array(A.todense()) 
     
