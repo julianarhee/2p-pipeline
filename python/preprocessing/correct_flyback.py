@@ -32,10 +32,13 @@ def main(options):
 
     # PATH opts:
     parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
-    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+    #parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID') 
+
     parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
-    parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+    #parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+    parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
 
     # TIFF saving opts:
     parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
@@ -88,15 +91,17 @@ def main(options):
     print "n expected after substack:", nslices - nflyback
 
     source = options.source 
-    experiment = options.experiment
+    animalid = options.animalid
+    #experiment = options.experiment
     session = options.session 
     acquisition = options.acquisition
-    functional_dir = options.functional_dir
+    #functional_dir = options.functional_dir
+    run = options.run
     
     # ----------------------------------------------------------------------------------   
     # Set reference-struct basename. Should match that created in get_scanimage_data.py:
     # ---------------------------------------------------------------------------------- 
-    refinfo_basename = 'reference_%s' % functional_dir
+    refinfo_basename = 'reference_%s' % run #functional_dir
     # ---------------------------------------------------------------------------------- 
 
 
@@ -105,15 +110,23 @@ def main(options):
 	    displaymin = options.displaymin
 	    displaymax = options.displaymax
 
-    acquisition_dir = os.path.join(source, experiment, session, acquisition)
-    raw_tiff_dir = os.path.join(source, experiment, session, acquisition, functional_dir)
+    acquisition_dir = os.path.join(source, animalid, session, acquisition)
+    raw_tiff_dir = os.path.join(acquisition_dir, run, 'raw')
+    #acquisition_dir = os.path.join(source, experiment, session, acquisition)
+    #raw_tiff_dir = os.path.join(source, experiment, session, acquisition, functional_dir)
 
     # Set and create default output-directory:
     #savepath = options.savepath
-    savepath = os.path.join(raw_tiff_dir, 'DATA', 'Raw')
+    #savepath = os.path.join(raw_tiff_dir, 'DATA', 'Raw')
+    save_basepath = os.path.join(acquisition_dir, run, 'processed') #, 'DATA', 'Raw')
+    
+    #if not os.path.exists(savepath):
+    #    os.makedirs(savepath)
+    processed_dirs = [p for p in os.listdir(save_basepath) if os.path.isdir(os.path.join(save_basepath, p))] 
+    increment_processed = int(len(processed_dirs) + 1)
+    savepath = os.path.join(save_basepath, 'processed%03d' % increment_processed)
     if not os.path.exists(savepath):
-	    os.makedirs(savepath)
-
+        os.makedirs(savepath)
 
     tiffs = os.listdir(raw_tiff_dir)
     tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
@@ -250,7 +263,7 @@ def main(options):
           
         # Rewrite reference info, if need to: 
         refinfo_json = "%s.json" % refinfo_basename
-        with open(os.path.join(acquisition_dir, refinfo_json), 'r') as fr:
+        with open(os.path.join(acquisition_dir, run, refinfo_json), 'r') as fr:
     	    refinfo = json.load(fr)
         refinfo['base_filename'] = prefix
         refinfo['frame_idxs'] = frame_idxs_final
@@ -269,13 +282,13 @@ def main(options):
         
         # Save updated JSON:
         refinfo_json = "%s.json" % refinfo_basename
-        with open(os.path.join(acquisition_dir, refinfo_json), 'w') as fw:
+        with open(os.path.join(acquisition_dir, run, refinfo_json), 'w') as fw:
     	    #json.dump(refinfo, fw)
             dump(refinfo, fw, indent=4)
     
         # Also save updated MAT:
-        refinfo_mat = "%s.mat" % refinfo_basename
-        scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
+        #refinfo_mat = "%s.mat" % refinfo_basename
+        #scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
     
 
 if __name__ == '__main__':

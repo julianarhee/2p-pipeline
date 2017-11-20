@@ -26,16 +26,21 @@ import optparse
 parser = optparse.OptionParser()
 
 # PATH opts:
-parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
-parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
+parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
-parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
+
+#parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
+#parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+
 parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
 parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
 parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
 parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
 
+tiffsource = 'raw'
 
 (options, args) = parser.parse_args() 
 
@@ -43,19 +48,21 @@ new_acquisition = options.new_acquisition
 save_tiffs = options.save_tiffs
 
 source = options.source #'/nas/volume1/2photon/projects'
-experiment = options.experiment #'scenes' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
-session = options.session #'20171003_JW016' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
-acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = options.functional_dir #'functional' #'functional_subset'
+animalid = options.animalid
+session = options.session #'20171003_JW016' #'20170927_CE059'
+acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
+run = options.run
 
-acquisition_dir = os.path.join(source, experiment, session, acquisition)
+acquisition_dir = os.path.join(source, animalid, session, acquisition)
+
+#acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
 
 # -------------------------------------------------------------
 # Set basename for files created containing meta/reference info:
 # -------------------------------------------------------------
-raw_simeta_basename = 'SI_raw_%s' % functional_dir
-reference_info_basename = 'reference_%s' % functional_dir
+raw_simeta_basename = 'SI_%s' % run #functional_dir
+reference_info_basename = 'reference_%s' % run #functional_dir
 # -------------------------------------------------------------
 # -------------------------------------------------------------
 
@@ -66,10 +73,12 @@ flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack 
 # ----------------------------------------------------------------------------
 # 1.  Get SI meta data from raw tiffs:
 # ----------------------------------------------------------------------------
+print "Getting SI meta data"
+
 if new_acquisition is True:
-    simeta_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, '-f', functional_dir]
+    simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run]
 else:
-    simeta_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, '-f', functional_dir, '--rerun']
+    simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run, '--rerun']
 
 import get_scanimage_data
 get_scanimage_data.main(simeta_options)
@@ -89,7 +98,7 @@ get_scanimage_data.main(simeta_options)
 
 # Load raw SI meta info for relevant params (so don't need to specify):
 simeta_fn = "%s.json" % raw_simeta_basename
-with open(os.path.join(acquisition_dir, simeta_fn), 'r') as fr:
+with open(os.path.join(acquisition_dir, run, 'raw',  simeta_fn), 'r') as fr:
     simeta = json.load(fr)
  
 discard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
@@ -109,25 +118,25 @@ print "Num discarded frames for flyback:", discard
 if do_flyback_correction:
     print "Correcting incorrect flyback frames in volumes."
     if save_tiffs is False:
-        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
-                       '-f', functional_dir, '--flyback=%i' % flyback, '--discard=%i' % discard, \
+        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback', '--notiffs']
     else:
-        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
-                       '-f', functional_dir, '--flyback=%i' % flyback, '--discard=%i' % discard, \
+        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback']
 else:
     print "Not doing flyback correction."
     if save_tiffs is False:
-        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
-                       '-f', functional_dir, '--flyback=%i' % flyback, '--discard=%i' % discard, \
+        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--notiffs']
     else: 
-        flyback_options = ['-S', source, '-E', experiment, '-s', session, '-A', acquisition, \
-                           '-f', functional_dir, \
+        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+                           '-r', run, \
                            '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                            '--native']
 
