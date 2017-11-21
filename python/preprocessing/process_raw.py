@@ -40,6 +40,8 @@ parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_corr
 parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
 parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
 parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
 
 tiffsource = 'raw'
 
@@ -53,6 +55,8 @@ animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
 run = options.run
+
+slurm = options.slurm
 
 acquisition_dir = os.path.join(source, animalid, session, acquisition)
 
@@ -80,6 +84,11 @@ if new_acquisition is True:
     simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run]
 else:
     simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run, '--rerun']
+
+
+if slurm is True:
+    sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+    simeta_options.extend(['-p', sireader_path])
 
 import get_scanimage_data
 get_scanimage_data.main(simeta_options)
