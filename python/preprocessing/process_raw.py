@@ -94,7 +94,7 @@ print simeta_options
 
 import get_scanimage_data
 get_scanimage_data.main(simeta_options)
-
+print "Finished getting SI metadata!"
 
 # ----------------------------------------------------------------------------
 # 2.  Optional:  Correct flyback, if needed:
@@ -154,4 +154,5 @@ else:
 
 import correct_flyback
 correct_flyback.main(flyback_options)
+print "DONE PROCESSING RAW."
 
