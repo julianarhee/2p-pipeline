@@ -88,7 +88,9 @@ else:
 
 if slurm is True:
     sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-    simeta_options.extend(['-p', sireader_path])
+    simeta_options.extend(['-P', sireader_path])
+
+print simeta_options
 
 import get_scanimage_data
 get_scanimage_data.main(simeta_options)
