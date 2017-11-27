@@ -13,8 +13,31 @@ import re
 import pkg_resources
 import pandas as pd
 import optparse
+import sys
 
 pp = pprint.PrettyPrinter(indent=4)
+
+#parser = optparse.OptionParser()
+#
+## PATH opts:
+#parser.add_option('-P', '--sipath', action='store', dest='path_to_si_reader', default='~/Downloads/ScanImageTiffReader-1.1-Linux/share/python', help='path to dir containing ScanImageTiffReader.py')
+#parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+#parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+#
+## Set specific session/run for current animal:
+#parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+#parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+#parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+#
+#(options, args) = parser.parse_args() 
+#
+#rootdir = options.rootdir
+#animalid = options.animalid
+#session = options.session
+#acquisition = options.acquisition
+#run = options.run
+#
+
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -87,8 +110,9 @@ def get_process_id(processdict):
     return process_id, is_new_pid, create_pid_file
 
 
-def get_basic_pid(rootdir=rootdir, animalid=animalid, session=session,
-                         acquisition=acquisition, run=run):
+def get_basic_pid(rootdir='', animalid='', session='', acquisition='', run='',
+                    correct_flyback=None, nflyback_frames=0,
+                    correct_motion=None, correct_bidir=None):
     tiffsource = 'raw'
     correct_motion = False
     correct_bidir = False
@@ -109,10 +133,13 @@ def initialize_pid(PARAMS, process_dict, acquisition_dir, run, tiffsource):
     pid = dict()
     version = pkg_resources.get_distribution('pipeline').version
     pid['version'] = version 
-    
+  
+    if not os.path.exists(os.path.join(acquisition_dir, run, 'processed')): 
+        os.makedirs(os.path.join(acquisition_dir, run, 'processed'))
+
     processed_dirs = sorted([p for p in os.listdir(os.path.join(acquisition_dir, run, 'processed'))
                               if 'processed' in p], key=natural_keys)
-    
+ 
     if tiffsource is None:
         while True:
             print "TIFF SOURCE was not specified."
@@ -201,8 +228,8 @@ def update_records(pid, processdict, acquisition_dir, run):
     print "Process Info UPDATED."
 
 
-def set_processing_params(rootdir=rootdir, animalid=animalid, session=session,
-                         acquisition=acquisition, run=run, tiffsource=None,
+def set_processing_params(rootdir='', animalid='', session='',
+                         acquisition='', run='', tiffsource=None,
                          correct_bidir=False, correct_flyback=False, nflyback_frames=None,
                          correct_motion=False, ref_file=1, ref_channel=1,
                          mc_method=None, mc_algorithm=None):
@@ -303,8 +330,8 @@ def main(options):
 
     # Preprocessing params:
     parser.add_option('--bidi', action='store_true', dest='bidi', default=False, help='Set flag if correct bidirectional scanning phase offset.')
-    parser.add_option('--flyback', action='store_true', dest='flyback', default=False, help='Set flag if need to correct extra flyback frames during')
-    parser.add_option('-F', '--nflyback' action='store', dest='nflyback_frames', default=0, help='Number of flyback frames to remove from top of each volume [default: 0]')
+    parser.add_option('--flyback', action='store_true', dest='flyback', default=False, help='Set flag if need to correct extra flyback frames')
+    parser.add_option('-F', '--nflyback', action='store', dest='nflyback_frames', default=0, help='Number of flyback frames to remove from top of each volume [default: 0]')
 
     # MOTION params:
     parser.add_option('--motion', action='store_true', dest='mc', default=False, help='Set flag if should run motion-correction.')
@@ -313,11 +340,11 @@ def main(options):
     parser.add_option('-M', '--method', action='store', dest='mc_method', default=None, help='Method for motion-correction. OPTS: Acquisition2P, NoRMCorre [default: Acquisition2P]')
     parser.add_option('-a', '--algo', action='store', dest='algorithm', default=None, help='Algorithm to use for motion-correction, e.g., @withinFile_withinFrame_lucasKanade if method=Acquisition2P, or nonrigid if method=NoRMCorre')
 
-    (options, args) = parser.parse_args() 
+    (options, args) = parser.parse_args(options) 
 
     mc_methods = ['Acquisition2P', 'NoRMCorre']
     mc_algos = dict((mc, []) for mc in mc_methods)
-    mc_algos = {'Acquisition2P': [@withinFile_withinFrame_lucasKanade, @lucasKanade_plus_nonrigid],
+    mc_algos = {'Acquisition2P': ['@withinFile_withinFrame_lucasKanade', '@lucasKanade_plus_nonrigid'],
                 'NoRMCorre': ['rigid', 'nonrigid']}
 
     rootdir = options.rootdir
@@ -349,6 +376,7 @@ def main(options):
 
 
 #%%
+
 if __name__ == '__main__':
     main(sys.argv[1:])
     

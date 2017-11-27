@@ -6,6 +6,7 @@ Home-page: https://github.com/coxlab/2p-pipeline
 Author: Juliana Rhee
 Author-email: rhee@g.harvard.edu
 License: UNKNOWN
+Description-Content-Type: UNKNOWN
 Description: ## Description
         
         Temporary set of scripts for imaging pipeline that combines visual stimulation and imaging datasets, extracts calcium traces (and ROIs), and parses data into trials. GUI option is for quick and simple visualization of 2D FOVs. 

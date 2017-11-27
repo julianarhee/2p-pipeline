@@ -32,7 +32,7 @@ def main(options):
     # PATH opts:
     parser.add_option('-P', '--sipath', action='store', dest='path_to_si_base', default='~/Downloads/ScanImageTiffReader-1.1-Linux', help='path to dir containing ScanImageTiffReader.py')
 
-    parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
     #parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
@@ -53,7 +53,7 @@ def main(options):
 
     path_to_si_base = options.path_to_si_base
 
-    source = options.source
+    rootdir = options.rootdir
     animalid = options.animalid
     #experiment = options.experiment
     session = options.session
@@ -77,7 +77,7 @@ def main(options):
     from ScanImageTiffReader import ScanImageTiffReader
 
     #acquisition_dir = os.path.join(source, experiment, session, acquisition)
-    acquisition_dir = os.path.join(source, animalid, session, acquisition)
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     rawtiffs = os.listdir(os.path.join(acquisition_dir, run, 'raw'))
     rawtiffs = [t for t in rawtiffs if t.endswith('.tif')]
@@ -171,7 +171,7 @@ def main(options):
         else:
             refinfo = dict() 
 
-        refinfo['source'] = source
+        refinfo['rootdir'] = rootdir 
         refinfo['animal_id'] = animalid #experiment
         refinfo['session'] = session
         refinfo['acquisition'] = acquisition

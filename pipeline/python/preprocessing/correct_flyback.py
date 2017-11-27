@@ -146,7 +146,7 @@ def main(options):
             PID = json.load(f)
     else:
         # No preprocessing params specified, so use basic:
-        PID = get_basic_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,run=run, correct_flybacl=correct_flyback, nflyback_frames=nflyback)
+        PID = get_basic_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,run=run, correct_flyback=correct_flyback, nflyback_frames=nflyback)
     
     # Add current PID to dict:
     processdict[process_id] = PID

@@ -27,9 +27,9 @@ from stat import S_IREAD, S_IRGRP, S_IROTH
 parser = optparse.OptionParser()
 
 # PATH opts:
-parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
+parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
 parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
+parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
 
@@ -50,7 +50,7 @@ tiffsource = 'raw'
 new_acquisition = options.new_acquisition
 save_tiffs = options.save_tiffs
 
-source = options.source #'/nas/volume1/2photon/projects'
+rootdir = options.rootdir #'/nas/volume1/2photon/projects'
 animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
@@ -58,7 +58,7 @@ run = options.run
 
 slurm = options.slurm
 
-acquisition_dir = os.path.join(source, animalid, session, acquisition)
+acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
 #acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
@@ -81,9 +81,9 @@ flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack 
 print "Getting SI meta data"
 
 if new_acquisition is True:
-    simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run]
+    simeta_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, '-r', run]
 else:
-    simeta_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, '-r', run, '--rerun']
+    simeta_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, '-r', run, '--rerun']
 
 
 if slurm is True:
@@ -130,24 +130,24 @@ print "Num discarded frames for flyback:", discard
 if do_flyback_correction:
     print "Correcting incorrect flyback frames in volumes."
     if save_tiffs is False:
-        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback', '--notiffs']
     else:
-        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback']
 else:
     print "Not doing flyback correction."
     if save_tiffs is False:
-        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--notiffs']
     else: 
-        flyback_options = ['-S', source, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
                            '-r', run, \
                            '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                            '--native']
