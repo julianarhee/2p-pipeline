@@ -140,7 +140,7 @@ def initialize_pid(PARAMS, process_dict, acquisition_dir, run, tiffsource):
     processed_dirs = sorted([p for p in os.listdir(os.path.join(acquisition_dir, run, 'processed'))
                               if 'processed' in p], key=natural_keys)
  
-    if tiffsource is None:
+    if tiffsource is None or len(tiffsource) == 0:
         while True:
             print "TIFF SOURCE was not specified."
             tiffsource_type = raw_input('Enter <P> if source is processed, <R> if raw: ')
@@ -178,7 +178,20 @@ def initialize_pid(PARAMS, process_dict, acquisition_dir, run, tiffsource):
     pid['process_id'] = process_id
 
     pid['PARAMS'] = PARAMS
- 
+
+    # Set source/dest dirs for each step:
+    pid['PARAMS']['preprocessing']['sourcedir'] = os.path.join(pid['DST'], 'raw')
+    if pid['PARAMS']['preprocessing']['correct_bidir'] is True:
+        pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'bidi')
+    else:
+        pid['PARAMS']['preprocessing']['destdir'] = pid['PARAMS']['preprocessing']['sourcedir']
+
+    pid['PARAMS']['motion']['sourcedir'] = pid['PARAMS']['preprocessing']['destdir'] 
+    if pid['PARAMS']['motion']['correct_motion'] is True:
+        pid['PARAMS']['motion']['destdir'] = os.path.join(pid['DST'], 'mcorrected')
+    else:
+        pid['PARAMS']['motion']['destdir'] = pid['PARAMS']['motion']['sourcedir']
+
     return pid
      
     
@@ -230,7 +243,7 @@ def update_records(pid, processdict, acquisition_dir, run):
 
 def set_processing_params(rootdir='', animalid='', session='',
                          acquisition='', run='', tiffsource=None,
-                         correct_bidir=False, correct_flyback=False, nflyback_frames=None,
+                         correct_bidir=False, correct_flyback=False, nflyback_frames=None, split_channels=False,
                          correct_motion=False, ref_file=1, ref_channel=1,
                          mc_method=None, mc_algorithm=None):
     
@@ -255,10 +268,11 @@ def set_processing_params(rootdir='', animalid='', session='',
     PARAMS['source']['acquisition'] = acquisition
     PARAMS['source']['run'] = run
 
-    PARAMS['preprocessing']['flyback_corrected'] = correct_flyback
+    PARAMS['preprocessing']['correct_flyback'] = correct_flyback
     PARAMS['preprocessing']['nflyback_frames'] = nflyback_frames
-    PARAMS['preprocessing']['bidir_corrected'] = correct_bidir
-
+    PARAMS['preprocessing']['correct_bidir'] = correct_bidir
+    PARAMS['preprocessing']['split_channels'] = split_channels
+   
     # ------------------------------------------
     # Check user-provided MC params:
     # ------------------------------------------
