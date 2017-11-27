@@ -30,7 +30,7 @@ def main(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_reader', default='~/Downloads/ScanImageTiffReader-1.1-Linux/share/python', help='path to dir containing ScanImageTiffReader.py')
+    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_base', default='~/Downloads/ScanImageTiffReader-1.1-Linux', help='path to dir containing ScanImageTiffReader.py')
 
     parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
     #parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
@@ -51,7 +51,7 @@ def main(options):
     if new_acquisition is False:
         print "This is a RE-RUN."
 
-    path_to_si_reader = options.path_to_si_reader
+    path_to_si_base = options.path_to_si_base
 
     source = options.source
     animalid = options.animalid
@@ -69,8 +69,9 @@ def main(options):
     # -------------------------------------------------------------
     # -------------------------------------------------------------
 
-    if '~' in path_to_si_reader:
-	    path_to_si_reader = path_to_si_reader.replace('~', home)
+    if '~' in path_to_si_base:
+	path_to_si_base = path_to_si_base.replace('~', home)
+    path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
     print path_to_si_reader
     sys.path.append(path_to_si_reader)
     from ScanImageTiffReader import ScanImageTiffReader

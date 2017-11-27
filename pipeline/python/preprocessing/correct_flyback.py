@@ -20,6 +20,7 @@ import shutil
 from json_tricks.np import dump, dumps, load, loads
 import re
 from stat import S_IREAD, S_IRGRP, S_IROTH
+from pipeline.python.set_pid_params import get_basic_pid
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -32,7 +33,7 @@ def main(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
     #parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID') 
 
@@ -91,7 +92,7 @@ def main(options):
     print "nslices specified:", nslices
     print "n expected after substack:", nslices - nflyback
 
-    source = options.source 
+    rootdir = options.rootdir 
     animalid = options.animalid
     #experiment = options.experiment
     session = options.session 
@@ -103,15 +104,15 @@ def main(options):
     # Set reference-struct basename. Should match that created in get_scanimage_data.py:
     # ---------------------------------------------------------------------------------- 
     refinfo_basename = 'reference_%s' % run #functional_dir
-    # ---------------------------------------------------------------------------------- 
-
+    pidinfo_basename = 'pid_info_%s' % run
+    # ----------------------------------------------------------------------------------
 
     visible = options.visible
     if visible:
 	    displaymin = options.displaymin
 	    displaymax = options.displaymax
 
-    acquisition_dir = os.path.join(source, animalid, session, acquisition)
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     raw_tiff_dir = os.path.join(acquisition_dir, run, 'raw')
     #acquisition_dir = os.path.join(source, experiment, session, acquisition)
     #raw_tiff_dir = os.path.join(source, experiment, session, acquisition, functional_dir)
@@ -123,11 +124,35 @@ def main(options):
     
     if not os.path.exists(save_basepath):
         os.makedirs(save_basepath)
+
+    # Set write-dir: increment process_id so can't overwrite, even though source is always "raw"
+    # Write flyback-corrected TIFFs to 'raw' subdir (do this since may want to play with n flyback corrected)
     processed_dirs = [p for p in os.listdir(save_basepath) if os.path.isdir(os.path.join(save_basepath, p))] 
     increment_processed = int(len(processed_dirs) + 1)
-    savepath = os.path.join(save_basepath, 'processed%03d' % increment_processed)
+    process_id = 'processed%03d' % increment_processed
+    savepath = os.path.join(save_basepath, process_id, 'raw')
     if not os.path.exists(savepath):
         os.makedirs(savepath)
+
+    if os.path.exists(os.path.join(save_basepath, '%s.json' % pidinfo_basename)):
+        with open(os.path.join(save_basepath, '%s.json' % pidinfo_basename), 'r') as f:
+            processdict = json.load(f)
+    else:
+        processdict = dict()
+    
+    # Load user-created params dict:
+    if os.path.exists(os.path.join(save_basepath, 'tmp_processparams.json')):
+        with open(os.path.join(save_basepath, 'tmp_processparams.json'), 'r') as f:
+            PID = json.load(f)
+    else:
+        # No preprocessing params specified, so use basic:
+        PID = get_basic_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,run=run, correct_flybacl=correct_flyback, nflyback_frames=nflyback)
+    
+    # Add current PID to dict:
+    processdict[process_id] = PID
+    with open(os.path.join(save_basepath, '%s.json' % pidinfo_basename), 'w') as f:
+        json.dump(processdict, f, indent=4, sort_keys=True)
+
 
     tiffs = os.listdir(raw_tiff_dir)
     tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
