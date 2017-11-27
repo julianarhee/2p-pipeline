@@ -1,0 +1,13 @@
+setup.py
+pipeline/__init__.py
+pipeline.egg-info/PKG-INFO
+pipeline.egg-info/SOURCES.txt
+pipeline.egg-info/dependency_links.txt
+pipeline.egg-info/top_level.txt
+pipeline/matlab/__init__.py
+pipeline/python/__init__.py
+pipeline/python/initialize_analysis.py
+pipeline/python/run_pipeline.py
+pipeline/python/transform_stack.py
+pipeline/python/submodules/__init__.py
+pipeline/python/submodules/mat2py.py
