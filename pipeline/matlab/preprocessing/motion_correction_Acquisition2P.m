@@ -24,50 +24,44 @@ function myObj = motion_correction_Acquisition2P(mcparams)
 
 %fprintf('Processing acquisition %s...\n', mcparams.source_dir);
 
-check_tiffs = dir(fullfile(mcparams.source_dir, '*.tif'));
-if length(check_tiffs)==0
-    if strfind(mcparams.dest_dir, 'Bidi')
-        % motion-correcting bidi-corrected TIFFs:
-        bidx = strfind(mcparams.dest_dir, 'Bidi');
-        tiff_dir = fullfile(mcparams.source_dir, mcparams.dest_dir(1:bidx+3))
-    else
-        % motion-correcting RAW tiffs:
-        tiff_dir = fullfile(mcparams.source_dir, 'Raw');
-    end
-    check_tiffs = dir(fullfile(tiff_dir, '*.tif'));
-else
-    tiff_dir = mcparams.source_dir;
-end
-write_dir = fullfile(mcparams.source_dir, mcparams.dest_dir);
+tiff_dir = mcparams.sourcedir;
+[process_dir, child_dir, ~] = fileparts(tiff_dir);
+write_dir = mcparams.destdir;
 
-fprintf('Processing acquisition %s...\n', tiff_dir);
+check_tiffs = dir(fullfile(mcparams.sourcedir, '*.tif'));
+check_tiffs = {check_tiffs(:).name}';
+
+fprintf('**************************************************\n')
+fprintf('Running MOTION CORRECTION on souce: %s...\n', tiff_dir);
 fprintf('Found %i TIFFs.\n', length(check_tiffs));
-  
-if mcparams.crossref
-    myObj = Acquisition2P([],{@SC2Pinit_noUI_crossref,[],tiff_dir,mcparams.crossref});
-    myObj.motionRefChannel = mcparams.ref_channel; %2;
-    myObj.motionRefMovNum = mcparams.ref_file;
-    myObj.motionCorrectCrossref;
-    myObj.save;
-elseif mcparams.flyback_corrected
+fprintf('Writing to dir: %s\n', write_dir);
+fprintf('**************************************************\n')
+ 
+%if mcparams.crossref
+%    myObj = Acquisition2P([],{@SC2Pinit_noUI_crossref,[],tiff_dir,mcparams.crossref});
+%    myObj.motionRefChannel = mcparams.ref_channel; %2;
+%    myObj.motionRefMovNum = mcparams.ref_file;
+%    myObj.motionCorrectCrossref;
+%    myObj.save;
+%elseif mcparams.flyback_corrected
+%    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
+%    myObj.defaultDir = mcparams.source_dir;
+%    myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
+%    myObj.motionRefChannel = mcparams.ref_channel; %2;
+%    myObj.motionRefMovNum = mcparams.ref_file;
+%    myObj.motionCorrectProcessed(write_dir);
+%    %motionCorrectProcessed(myObj, write_dir);
+%    myObj.save;
+%else
     myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
-    myObj.defaultDir = mcparams.source_dir;
-    myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid; %withinFile_withinFrame_lucasKanade; %@lucasKanade_plus_nonrigid;
-    myObj.motionRefChannel = mcparams.ref_channel; %2;
-    myObj.motionRefMovNum = mcparams.ref_file;
-    myObj.motionCorrectProcessed(write_dir);
-    %motionCorrectProcessed(myObj, write_dir);
-    myObj.save;
-else
-    myObj = Acquisition2P([],{@SC2Pinit_noUI,[],tiff_dir});
-    myObj.defaultDir = mcparams.source_dir;
-    myObj.motionCorrectionFunction = mcparams.algorithm; %@lucasKanade_plus_nonrigid;
+    myObj.defaultDir = process_dir; % mcparams.source_dir;
+    myObj.motionCorrectionFunction = str2func(mcparams.algorithm); %@lucasKanade_plus_nonrigid;
     myObj.motionRefChannel = mcparams.ref_channel; %2;
     myObj.motionRefMovNum = mcparams.ref_file;
     % myObj.motionCorrect;
     myObj.motionCorrectProcessed(write_dir);
     myObj.save;
-end
+%end
     
 %end
 

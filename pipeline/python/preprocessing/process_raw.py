@@ -81,9 +81,9 @@ flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack 
 print "Getting SI meta data"
 
 if new_acquisition is True:
-    simeta_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, '-r', run]
+    simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
 else:
-    simeta_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, '-r', run, '--rerun']
+    simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--rerun']
 
 
 if slurm is True:
@@ -92,9 +92,10 @@ if slurm is True:
 
 print simeta_options
 
-import get_scanimage_data
-get_scanimage_data.main(simeta_options)
+import get_scanimage_data as sim
+raw_hashid = sim.get_meta(simeta_options)
 print "Finished getting SI metadata!"
+print "Raw hash: %s" % raw_hashid
 
 # ----------------------------------------------------------------------------
 # 2.  Optional:  Correct flyback, if needed:
@@ -112,7 +113,7 @@ print "Finished getting SI metadata!"
 simeta_fn = "%s.json" % raw_simeta_basename
 with open(os.path.join(acquisition_dir, run, 'raw',  simeta_fn), 'r') as fr:
     simeta = json.load(fr)
- 
+    
 discard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
 nvolumes = int(simeta['File001']['SI']['hFastZ']['numVolumes'])
 # nslices = int(simeta['File001']['SI']['hFastZ']['numFramesPerVolume'])
@@ -130,29 +131,29 @@ print "Num discarded frames for flyback:", discard
 if do_flyback_correction:
     print "Correcting incorrect flyback frames in volumes."
     if save_tiffs is False:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback', '--notiffs']
     else:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--correct-flyback']
 else:
     print "Not doing flyback correction."
     if save_tiffs is False:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
                        '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
                        '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                        '--native', '--notiffs']
     else: 
-        flyback_options = ['-R', rootdir, '-i', animalid, '-s', session, '-A', acquisition, \
+        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
                            '-r', run, \
                            '-z', nslices, '-c', nchannels, '-v', nvolumes, \
                            '--native']
 
 import correct_flyback
-correct_flyback.main(flyback_options)
+processed_hashid = correct_flyback.main(flyback_options)
 print "DONE PROCESSING RAW."
 

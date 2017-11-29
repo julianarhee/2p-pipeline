@@ -14,7 +14,9 @@ import json
 import re
 import scipy.io
 import numpy as np
+from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH
+from caiman.utils import utils
 from os.path import expanduser
 home = expanduser("~")
 
@@ -24,22 +26,65 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+def set_default(obj):
+    if isinstance(obj, set):
+        return list(obj)
+    raise TypeError
 
-def main(options):
+
+def format_si_value(value):
+    num_format = re.compile(r'\-?[0-9]+\.?[0-9]*|\.?[0-9]')
+    sci_format = re.compile('-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?')
+   
+    try:
+        return eval(value)
+    except:
+        if value == 'true':
+            return True
+        elif value == 'false':
+            return False
+#        elif value == 'NaN':
+#            return np.nan
+#        elif value == 'inf' or value == 'Inf':
+#            return np.inf
+        elif len(re.findall(num_format, value))>0:  # has numbers
+            if '[' in value:
+                ends = [value.index('[')+1,  value.index(']')]
+                tmpvalue = value[ends[0]:ends[1]]
+                if ';' in value:
+                    rows = tmpvalue.split(';'); 
+                    value = [[float(i) for i in re.findall(num_format, row)] for row in rows]
+                else:
+                    value = [float(i) for i in re.findall(num_format, tmpvalue)]
+        else:
+            return value
+ 
+#    if "'" in item:
+#        value = str(value) 
+#    elif len(re.findall(num_format, value))>0:  # has numbers 
+#        if value.isdigit():
+#            value = int(value)
+#        elif '[' in value:
+#            ends = [value.index('[')+1,  value.index(']')]
+#            tmpvalue = value[ends[0]:ends[1]]
+#            if ';' in value:
+#                rows = tmpvalue.split(';'); 
+#                value = [[float(i) for i in re.findall(num_format, row)] for row in rows]
+#            else:
+#                value = [float(i) for i in re.findall(num_format, tmpvalue)]                    
+#
+
+
+def get_meta(options):
  
     parser = optparse.OptionParser()
 
     # PATH opts:
     parser.add_option('-P', '--sipath', action='store', dest='path_to_si_base', default='~/Downloads/ScanImageTiffReader-1.1-Linux', help='path to dir containing ScanImageTiffReader.py')
-
     parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
-    #parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-
- 
-    parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    #parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
 
     parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
@@ -55,11 +100,9 @@ def main(options):
 
     rootdir = options.rootdir
     animalid = options.animalid
-    #experiment = options.experiment
     session = options.session
     acquisition = options.acquisition
     run = options.run
-    #functional_dir = options.functional_dir
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -70,24 +113,33 @@ def main(options):
     # -------------------------------------------------------------
 
     if '~' in path_to_si_base:
-	path_to_si_base = path_to_si_base.replace('~', home)
+        path_to_si_base = path_to_si_base.replace('~', home)
     path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
     print path_to_si_reader
     sys.path.append(path_to_si_reader)
     from ScanImageTiffReader import ScanImageTiffReader
 
-    #acquisition_dir = os.path.join(source, experiment, session, acquisition)
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
-    rawtiffs = os.listdir(os.path.join(acquisition_dir, run, 'raw'))
-    rawtiffs = [t for t in rawtiffs if t.endswith('.tif')]
+    # Get RAW tiffs from acquisition:
+    rawtiff_dir = os.path.join(acquisition_dir, run, 'raw')
+    rawtiffs = sorted([t for t in os.listdir(rawtiff_dir) if t.endswith('.tif')], key=natural_keys)
+    nontiffs = sorted([t for t in os.listdir(rawtiff_dir) if t not in rawtiffs], key=natural_keys)
     print rawtiffs
+    
+    # Generate SHA1-hash for tiffs in 'raw' dir:
+    rawtiff_hash = dirhash(rawtiff_dir, 'sha1', excluded_files=nontiffs)
+    hashid = rawtiff_hash[0:6]
+    rawdir = 'raw_%s' % hashid
+    
+    # Rename RAW dir to include len 8 hash:
+    os.rename(rawtiff_dir, os.path.join(acquisition_dir, run, rawdir))
 
+    # Extract and parse SI metadata:
     scanimage_metadata = dict()
     scanimage_metadata['filenames'] = []
     scanimage_metadata['session'] = session
     scanimage_metadata['acquisition'] = acquisition
-    #scanimage_metadata['experiment'] = experiment 
     scanimage_metadata['run'] = run
 
     for fidx,rawtiff in enumerate(sorted(rawtiffs, key=natural_keys)):
@@ -95,7 +147,7 @@ def main(options):
         curr_file = 'File{:03d}'.format(fidx+1)
         print "Processing:", curr_file
         
-        currtiffpath = os.path.join(acquisition_dir, run, 'raw', rawtiff)
+        currtiffpath = os.path.join(acquisition_dir, run, rawdir, rawtiff)
             
         # Make sure TIFF is READ ONLY:
         os.chmod(currtiffpath, S_IREAD|S_IRGRP|S_IROTH)  
@@ -118,41 +170,31 @@ def main(options):
         for item in SI:
             t = SI_struct
             fieldname = item.split(' = ')[0] #print fieldname
-            value = item.split(' = ')[1]
-            num_format = re.compile(r'\-?[0-9]+\.?[0-9]*|\.?[0-9]')
-            sci_format = re.compile('-?\ *[0-9]+\.?[0-9]*(?:[Ee]\ *-?\ *[0-9]+)?')
-            if "'" in item:
-                value = str(value) 
-            #elif len(re.findall(sci_format, value))>0:
-            #    value = float(value)
-            #elif any(c.isalpha() for c in value):
-            #    value = str(value)   
-            elif len(re.findall(num_format, value))>0:  # has numbers 
-                if value.isdigit():
-                    value = int(value)
-                elif '[' in value:
-                    ends = [value.index('[')+1,  value.index(']')]
-                    tmpvalue = value[ends[0]:ends[1]]
-                    if ';' in value:
-                        rows = tmpvalue.split(';'); 
-                        value = [[float(i) for i in re.findall(num_format, row)] for row in rows]
-                    else:
-                        value = [float(i) for i in re.findall(num_format, tmpvalue)]                    
+            fvalue = item.split(' = ')[1]
+            value = format_si_value(fvalue)
+
             for ix,part in enumerate(fieldname.split('.')):
                 nsubfields = len(fieldname.split('.'))
                 if ix==nsubfields-1:
                     t.setdefault(part, value)
                 else:
                     t = t.setdefault(part, {})
+
+        # Get img descriptions for each frame:
+        imgdescr = utils.get_image_description_SI(currtiffpath)
+ 
         
         # print SI_struct.keys()
         scanimage_metadata['filenames'].append(rawtiff)
         scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
+        scanimage_metadata[curr_file]['imgdescr'] = imgdescr
 
         # Save dict:
         raw_simeta_json = '%s.json' % raw_simeta_basename
         with open(os.path.join(acquisition_dir, run, 'raw', raw_simeta_json), 'w') as fp:
-            json.dump(scanimage_metadata, fp, sort_keys=True, indent=4)
+            json.dump(scanimage_metadata, fp, sort_keys=True, indent=4, default=set_default)
+            #json.dumps(scanimage_metadata, fp, default=set_default, sort_keys=True, indent=4)
+
 
 
         # Also save as .mat for now:
@@ -176,6 +218,7 @@ def main(options):
         refinfo['session'] = session
         refinfo['acquisition'] = acquisition
         refinfo['run'] = run #functional_dir
+        refinfo['rawtiff_dir'] = rawdir
         specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
         refinfo['slices'] = range(1, specified_nslices+1) 
         refinfo['ntiffs'] = len(rawtiffs)
@@ -186,7 +229,7 @@ def main(options):
         refinfo['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
         refinfo['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
         refinfo['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
-        refinfo['raw_simeta_path'] = os.path.join(acquisition_dir, run, 'raw', raw_simeta_json) #raw_simeta_mat)
+        refinfo['raw_simeta_path'] = os.path.join(acquisition_dir, run, rawdir, raw_simeta_json) #raw_simeta_mat)
 
         if 'acquisition_base_dir' not in refinfo.keys():
             refinfo['acquisition_base_dir'] = acquisition_dir
@@ -205,8 +248,17 @@ def main(options):
         #scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
     
     # Make sure SI META data is now read-only:
-    os.chmod(os.path.join(acquisition_dir, run, 'raw', raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
+    if new_acquisition is True:
+        os.chmod(os.path.join(acquisition_dir, run, 'raw_%s' % hashid, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
 
+    return hashid
+
+def main(options):
+    
+    hashid = get_meta(options)
+    
+    print "Extracted meta data. Raw tiff hash: raw_%s" % hashid
+    
 
 if __name__ == '__main__':
     main(sys.argv[1:]) 

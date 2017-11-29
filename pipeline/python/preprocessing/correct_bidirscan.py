@@ -12,7 +12,6 @@ import os
 import json
 import optparse
 from stat import S_IREAD, S_IRGRP, S_IROTH
-
 import matlab.engine
 
 parser = optparse.OptionParser()
@@ -33,14 +32,12 @@ acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
 run = options.run
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-
 paramspath = os.path.join(acquisition_dir, run, 'processed', 'tmp_processparams.json')
 refpath = os.path.join(acquisition_dir, run, 'reference_%s.json' % run)
 
-eng = matlab.engine.start_matlab()
-
-eng.add_repo_paths()
-eng.do_bidi_correction(paramspath, refpath)
-
-
+eng = matlab.engine.start_matlab('-nojvm')
+eng.cd(repo_path_matlab, nargout=0)
+eng.add_repo_paths(nargout=0)
+eng.do_bidi_correction(paramspath, refpath, nargout=0)
+eng.quit()
 
