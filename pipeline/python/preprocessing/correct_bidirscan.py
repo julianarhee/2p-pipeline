@@ -47,7 +47,7 @@ def do_bidir_correction(options):
 
     repo_path = options.repo_path
     slurm = options.slurm
-    do_bidi = option.do_bidi
+    do_bidi = options.do_bidi
     
     if slurm is True and 'coxfs01' not in repo_path:
         repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'

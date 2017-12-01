@@ -136,7 +136,7 @@ def do_motion(options):
     # if write_hash is None:
     #     write_hash = source_hash
 
-return write_hash, pid_hash
+    return write_hash, pid_hash
 
 
 def main(options):
