@@ -4,25 +4,21 @@ STEP 1 of analysis pipeline:  process raw ScanImage TIFFs.
 
 1.  get_scanimage_data.py
 
-Saves SI struct (in TIFF metdata) to json for easy access. 
-Saves hdf5 containing SI parameters relevant for rest of pipeline.
+Saves SI struct and TIFF image descriptions in .json to: <acquisition_dir>/<run>/raw/
+RAW tiff info is read-only.
     
 2.  correct_flyback.py
 
 If FastZ params are badly set during acquisition, this creates new TIFFs that corrects by removing bad frames.
-Saves a new TIFF for each raw tiff in ./acquistion_dir/DATA/ 
+Meta info is also updated for relevant params.
 
-If used, mcparams.correct_flyback = True.
-
+If --correct-flyback is flagged, flyback-corrected TIFFs are saved to: <acquisition_dir>/<run>/processed/<process_id>/raw/
 '''
-
-# TODO:  do SI metadata adjustment here?? (instead of parseSIdata.m, etc. in MATLAB)
-# TODO:  if NOT creating substacks, i.e., the raw acquisition files are ready to go for motion-correction, etc., substitute flyback-correction step with proper saving of structs and file-paths to match standard.
 
 import os
 import json
 import optparse
-from stat import S_IREAD, S_IRGRP, S_IROTH
+from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 
 parser = optparse.OptionParser()
 
@@ -32,9 +28,9 @@ parser.add_option('-i', '--animalid', action='store', dest='animalid', default='
 parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
+parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
-#parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
-#parser.add_option('-f', '--functional', action='store', dest='functional_dir', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
+parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
 
 parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
 parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
@@ -42,11 +38,13 @@ parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=
 parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
 parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
-
 tiffsource = 'raw'
 
 (options, args) = parser.parse_args() 
 
+# -------------------------------------------------------------
+# INPUT PARAMS:
+# -------------------------------------------------------------
 new_acquisition = options.new_acquisition
 save_tiffs = options.save_tiffs
 
@@ -55,37 +53,45 @@ animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
 run = options.run
+pid_hash = options.pid_hash
+source_hash = options.source_hash
+
+execute_flyback = options.do_fyback_correction 
+nflyback = int(options.flyback)
 
 slurm = options.slurm
-
-acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-
-#acquisition_dir = os.path.join(source, experiment, session, acquisition)
 
 
 # -------------------------------------------------------------
 # Set basename for files created containing meta/reference info:
 # -------------------------------------------------------------
 raw_simeta_basename = 'SI_%s' % run #functional_dir
-reference_info_basename = 'reference_%s' % run #functional_dir
+run_info_basename = '%s' % run #functional_dir
+pid_info_basename = 'pids_%s' % run
 # -------------------------------------------------------------
-# -------------------------------------------------------------
 
-do_flyback_correction = options.do_fyback_correction #True #True #True
-flyback = int(options.flyback) #0 #1       # Num flyback frames at top of stack [default: 8]
+acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+
+# ===========================================================================
+# If PID specified, that takes priority:
+# ===========================================================================
+if len(pid_hash) > 0:
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+    with open(os.path.join(acquisition_dir, run, 'processed', 'tmp_pids', tmp_pid_fn), 'r') as f:
+        PID = json.load(f)
+    execute_flyback = PID['PARAMS']['preprocessing']['correct_flyback']
+    nflyback = int(PID['PARAMS']['preprocessing']['nflyback_frames'])
+    execute_bidi = PID['PARAMS']['preprocessing']['correct_bidir']
+    execute_motion = PID['PARAMS']['motion']['correct_motion']
 
 
-# ----------------------------------------------------------------------------
+# ===========================================================================
 # 1.  Get SI meta data from raw tiffs:
-# ----------------------------------------------------------------------------
+# ===========================================================================
 print "Getting SI meta data"
-
-if new_acquisition is True:
-    simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
-else:
-    simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--rerun']
-
-
+simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
+if new_acquisition is False:
+    simeta_options.extend(['--rerun'])
 if slurm is True:
     sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
     simeta_options.extend(['-P', sireader_path])
@@ -97,63 +103,91 @@ raw_hashid = sim.get_meta(simeta_options)
 print "Finished getting SI metadata!"
 print "Raw hash: %s" % raw_hashid
 
-# ----------------------------------------------------------------------------
-# 2.  Optional:  Correct flyback, if needed:
-# ----------------------------------------------------------------------------
-# Only need to do this if creating substacks due to incorret flyback frames in volumes:
 
-# flyback = 2      # Num flyback frames at top of stack [default: 8]
+# ===========================================================================
+# 2.  Correct flyback, if needed:
+# ===========================================================================
+# Only need to do this if creating substacks due to incorret flyback frames in volumes.
 
-# discard = 1      # Num discard frames at end of stack [default: 8]
-# nchannels = 2    # Num interleaved channels in raw tiffs to be processed [default: 2]
-# nvolumes = 1080  # Num volumes acquired [default: 340]
-# nslices = 15     # Num slices specified in FastZ control, not including discard [default: 30]
-
-# Load raw SI meta info for relevant params (so don't need to specify):
+# NOTE:  This assumes all tiffs in current run have the same acquisition params.
+rawdir = 'raw_%s' % raw_hashid
 simeta_fn = "%s.json" % raw_simeta_basename
-with open(os.path.join(acquisition_dir, run, 'raw',  simeta_fn), 'r') as fr:
+with open(os.path.join(acquisition_dir, run, rawdir,  simeta_fn), 'r') as fr:
     simeta = json.load(fr)
     
-discard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
+ndiscard = int(simeta['File001']['SI']['hFastZ']['numDiscardFlybackFrames'])
 nvolumes = int(simeta['File001']['SI']['hFastZ']['numVolumes'])
-# nslices = int(simeta['File001']['SI']['hFastZ']['numFramesPerVolume'])
 nslices = int(simeta['File001']['SI']['hStackManager']['numSlices'])
 tmp_channels = simeta['File001']['SI']['hChannels']['channelSave']
 if isinstance(tmp_channels, int):
     nchannels = simeta['File001']['SI']['hChannels']['channelSave']
 else:
     nchannels = len(simeta['File001']['SI']['hChannels']['channelSave']) 
-#nchannels = #len([int(i) for i in simeta['File001']['SI']['hChannels']['channelSave']]) # if i.isnumeric()])
 print "Raw SI info:"
 print "N channels: {nchannels}, N slices: {nslices}, N volumes: {nvolumes}".format(nchannels=nchannels, nslices=nslices, nvolumes=nvolumes)
-print "Num discarded frames for flyback:", discard
+print "Num discarded frames for flyback:", ndiscard
 
-if do_flyback_correction:
+flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-H', raw_hashid,
+                  '-z', nslices, '-c', nchannels, '-v', nvolumes]
+if len(pid_hash) > 0:
+    flyback_options.extend(['-p', pid_hash])
+
+if execute_flyback:
     print "Correcting incorrect flyback frames in volumes."
-    if save_tiffs is False:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
-                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
-                       '-z', nslices, '-c', nchannels, '-v', nvolumes, \
-                       '--native', '--correct-flyback', '--notiffs']
-    else:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
-                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
-                       '-z', nslices, '-c', nchannels, '-v', nvolumes, \
-                       '--native', '--correct-flyback']
-else:
-    print "Not doing flyback correction."
-    if save_tiffs is False:
-        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
-                       '-r', run, '--flyback=%i' % flyback, '--discard=%i' % discard, \
-                       '-z', nslices, '-c', nchannels, '-v', nvolumes, \
-                       '--native', '--notiffs']
-    else: 
-        flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, \
-                           '-r', run, \
-                           '-z', nslices, '-c', nchannels, '-v', nvolumes, \
-                           '--native']
+    flyback_options.extend(['--correct-flyback', '--flyback=%i' % nflyback, '--discard=%i' % ndiscard])
+    
+if save_tiffs is False:
+    flyback_options.extend(['--notiffs'])
 
-import correct_flyback
-processed_hashid = correct_flyback.main(flyback_options)
-print "DONE PROCESSING RAW."
+import correct_flyback as fb
+flyback_hash, pid_hash = fb.do_flyback_correction(flyback_options)
+print "Flyback hash: %s" % flyback_hash
+print "PID %s: Flyback finished." % pid_hash
 
+# ===========================================================================
+# 3.  Correct bidir scanning, if needed:
+# ===========================================================================
+import correct_bidirscan as bd
+bidir_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+if slurm is True:
+    bidir_options.extend(['--slurm'])
+if execute_bidi is True:
+    bidir_options.extend(['--bidi'])
+    
+bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+print "Bidir hash: %s" % bidir_hash
+print "PID %s: BIDIR finished." % pid_hash
+
+# ===========================================================================
+# 4.  Correct motion, if needed:
+# ===========================================================================
+import correct_motion as mc
+mc_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+if slurm is True:
+    mc_options.extend(['--slurm'])
+if execute_motion is True:
+    mc_options.extend(['--motion'])
+    
+mcdir_hash, pid_hash = mc.do_motion(mc_options)
+print "MC hash: %s" % mcdir_hash
+print "PID %s: MC finished." % pid_hash
+
+
+# ===========================================================================
+# 4.  Clean up and update meta files:
+# ===========================================================================
+processed_dir = os.path.join(acquisition_dir, run, 'processed')
+print "PI %s: DONE PROCESSING RAW." % pid_hash
+pid_path = os.path.join(processed_dir, 'tmp_pids', 'tmp_pid_%s.json' % pid_hash)
+with open(pid_path, 'r') as f:
+    PID = json.load(f)
+        
+# UPDATE PID entry in dict:
+with open(os.path.join(processed_dir, '%s.json' % pid_info_basename), 'r') as f:
+    processdict = json.load(f)
+processdict[PID['process_id']] = PID
+print "Final PID: %s | tmp PID: %s." % (PID['tmp_hashid'], pid_hash)
+
+# DELETE TMP PID FILE:
+print "Removing tmp PID file: %s" % pid_path
+os.remove(pid_path)

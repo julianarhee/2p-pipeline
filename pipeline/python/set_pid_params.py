@@ -5,7 +5,6 @@ Created on Fri Nov  3 17:19:12 2017
 
 @author: julianarhee
 """
-
 import os
 import json
 import pprint
@@ -41,141 +40,8 @@ def get_file_size(file_path):
     if os.path.isfile(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
-    
-# PID-SPECIFIC METHODS:
-def load_processdict(acquisition_dir, run):
-    processdict = None
-    processdict_filepath = os.path.join(acquisition_dir, run, 'processed', 'pid_info_%s.json' % run)
-    
-    # Load analysis "processdict" file:
-    if os.path.exists(processdict_filepath):
-        print "exists!"
-        with open(processdict_filepath, 'r') as f:
-            processdict = json.load(f)
-            
-    return processdict
-              
-def get_process_id(PARAMS, acquisition_dir, run)
-    
-    process_id = None
-    
-    print "********************************"
-    print "Checking previous PROCESS IDs..."
-    print "********************************"
-    
-    # Load previously created PIDs:
-    processdict = load_processdict(acquisition_dir, run)
-    
-    #Check current PARAMS against existing PId params by hashid:
-    if processdict is None or len(processdict.keys()) == 0:
-        processdict = dict()
-        existing_pids = []
-        is_new_pid = True
-        print "No existing PIDs found."
-        create_pid_file = True
-    else:
-        create_pid_file = False
-        existing_pids = sorted([str(k) for k in processdict.keys()], key=natural_keys)
 
-        matching_pids = sorted([pid for pid in existing_pids if processdict[pid]['PARAMS']['hashid'] == PARAMS['hashid']], key=natural_keys)
-        if len(matching_pids) > 0:
-            while True:
-                print "WARNING **********************************"
-                print "Current param config matches existing PID:"
-                for pidx, pid in enumerate(matching_pids):
-                    print "******************************************"
-                    print pidx, pid
-                    pp.pprint(processdict[pid])
-                check_pidx = raw_input('Enter IDX of pid to re-use, or hit <ENTER> to create new: ')
-                if len(check_pidx) == 0:
-                    is_new_pid = True
-                    break
-                else:
-                    
-                    confirm_reuse = raw_input('Re-use PID %s? Press <Y> to confirm, any key to try again:' % existing_pids[int(check_pidx)])
-                    if confirm_reuse == 'Y':
-                        is_new_pid = False
-                        break
-
-    if is_new_pid is True:
-        # Create new PID by incrementing num of process dirs found:
-        process_id = 'processed%03d' % int(len(existing_pids)+1)
-        print "Creating NEW pid: %s" % process_id
-    else:
-        # Re-using an existing PID:
-        process_id = existing_pids[int(check_pidx)]
-        print "Reusing existing pid: %s" % process_id
- 
-    return process_id, is_new_pid, create_pid_file
-
-
-def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
-                    correct_flyback=None, nflyback_frames=0):
-    
-    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    
-    DEFPARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
-                         acquisition=acquisition, run=run, tiffsource='raw',
-                         correct_motion=False, correct_bidir=False,
-                         correct_flyback=correct_flyback, nflyback_frames=nflyback_frames)
-    
-    # Generate new process_id based on input params:
-    pid = initialize_pid(DEFPARAMS, acquisition_dir, run):
-    
-    # UPDATE RECORDS:
-    update_records(pid, acquisition_dir, run)
-    
-    # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_params_%s.json' % pid['hashid'][0:8]
-    with open(os.path.join(acquisition_dir, run, 'processed', tmp_pid_fn), 'w') as f:
-        json.dump(pid, f, indent=4, sort_keys=True)
-        
-    return pid
-
-def initialize_pid(PARAMS, acquisition_dir, run):
-    
-    print "************************"
-    print "Initialize PID."
-    print "************************"
-    process_id, is_new_pid, create_pid_file = get_process_id(PARAMS, acquisition_dir, run)
-
-    pid = dict()
-    version = pkg_resources.get_distribution('pipeline').version
-    
-    pid['version'] = version 
-    pid['process_id'] = process_id
-    pid['PARAMS'] = PARAMS
-    pid['SRC'] = os.path.join(acquisition_dir, run, PARAMS['source']['tiffsource']) #source_dir
-    pid['DST'] = os.path.join(acquisition_dir, run, 'processed', process_id)
-    
-    correct_flyback = pid['PARAMS']['preprocessing']['correct_flyback']
-    correct_bidir = pid['PARAMS']['preprocessing']['correct_bidir']
-    correct_motion = pid['PARAMS']['preprocessing']['correct_motion']
-    
-    # Set source/dest dirs for Preprocessing tiffs:
-    pid['PARAMS']['preprocessing']['sourcedir'] = pid['SRC']
-    pid['PARAMS']['preprocessing']['destdir'] = None
-    if correct_flyback is True:
-        pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'raw')
-    if correct_bidir is True:
-        pid['PARAMS']['preprocessing']['sourcedir'] = os.path.join(pid['DST'], 'raw')
-        pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'bidi')
-       
-    # Set source/dest dirs for Motion-Correction:
-    pid['PARAMS']['motion']['sourcedir'] =  pid['PARAMS']['preprocessing']['destdir']
-    pid['PARAMS']['motion']['destdir'] = None
-    if correct_motion is True:
-        if pid['PARAMS']['motion']['sourcedir'] is None:
-            pid['PARAMS']['motion']['sourcedir'] = pid['SRC']
-        pid['PARAMS']['motion']['destdir'] = os.path.join(pid['DST'], 'mcorrected')
-
-    # TODO:  Generate hash for full PID dict
-    pid['hashid'] = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()
-    
-    return pid
-     
-    
-def set_mcparams(correct_motion=False,
+def set_motion_params(correct_motion=False,
                  ref_channel=0,
                  ref_file=0,
                  method=None,
@@ -223,8 +89,7 @@ def set_mcparams(correct_motion=False,
     
     return motion_params
 
-
-def set_preparams(correct_flyback=False,
+def set_preprocessing_params(correct_flyback=False,
                   nflyback_frames=0,
                   correct_bidir=False,
                   split_channels=False
@@ -242,8 +107,7 @@ def set_preparams(correct_flyback=False,
     return preprocess_params
 
 
-
-def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None,
+def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype='raw',
                correct_bidir=False, correct_flyback=False, nflyback_frames=None,
                split_channels=False, correct_motion=False, ref_file=1, ref_channel=1,
                mc_method=None, mc_algorithm=None):
@@ -327,16 +191,20 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
 
     if not os.path.exists(os.path.join(acquisition_dir, run, 'processed')): 
         os.makedirs(os.path.join(acquisition_dir, run, 'processed'))
-
-    processed_dirs = sorted([p for p in os.listdir(os.path.join(acquisition_dir, run, 'processed'))
+        
+    rundir = os.path.join(acquisition_dir, run)
+    
+    processed_dirs = sorted([p for p in os.listdir(os.path.join(rundir, 'processed'))
                               if 'processed' in p], key=natural_keys)
  
+    rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
+    
     if tiffsource is None or len(tiffsource) == 0:
         while True:
             print "TIFF SOURCE was not specified."
             tiffsource_type = raw_input('Enter <P> if source is processed, <R> if raw: ')
             if tiffsource_type == 'R':
-                tiffsource = 'raw'
+                tiffsource = rawdir_name[0]
                 break
             elif tiffsource_type =='P':
                 print "Selected PROCESSED source."
@@ -354,34 +222,179 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                 if confirm_selection == 'Y':
                     break
                     
-    PARAMS['source']['tiffsource'] = tiffsource
+    if 'processed' in tiffsource:
+        tiffsource_name = [p for p in os.listdir(os.path.join(rundir, 'processed')) if tiffsource in p][0]
+        tiffsource_path = os.path.join(rundir, 'processed', tiffsource_name)
+        tiffsource_child = '/' + [d for d in os.listdir(tiffsource_path) if sourcetype in d and os.path.isdir(os.path.join(tiffsource_path, d))][0]
+    else:
+        if not tiffsource == rawdir_name[0]:
+            tiffsource = rawdir_name[0]
+        tiffsource_name = tiffsource
+        tiffsource_child = ''
+        
+    PARAMS['source']['tiffsource'] = tiffsource + tiffsource_child
     
     # ----------------------------------------------------------
     # Get preprocessing opts:
     # ----------------------------------------------------------
-    preparams = set_preparams(correct_flyback=correct_flyback,
+    PARAMS['preprocessing'] = set_preprocessing_params(correct_flyback=correct_flyback,
                              nflyback_frames=nflyback_frames,
                              correct_bidir=correct_bidir,
                              split_channels=split_channels)
-    #pp.pprint(preparams)
-    PARAMS['preprocessing'] = preparams
     
     # ------------------------------------------
     # Check user-provided MC params:
     # ------------------------------------------
     print correct_motion
-    mcparams = set_mcparams(correct_motion=correct_motion,
+    PARAMS['motion'] = mcparams = set_motion_params(correct_motion=correct_motion,
                             ref_channel=ref_channel,
                             ref_file=ref_file,
                             method=mc_method,
                             algorithm=mc_algorithm)
-    #pp.pprint(mcparams)
-    PARAMS['motion'] = mcparams
-    
+
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()
     
     return PARAMS
 
+def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
+    
+    print "************************"
+    print "Initialize PID."
+    print "************************"
+    process_id, is_new_pid, create_pid_file = get_process_id(PARAMS, acquisition_dir, run, auto=auto)
+
+    pid = dict()
+    version = pkg_resources.get_distribution('pipeline').version
+    
+    pid['version'] = version 
+    pid['process_id'] = process_id
+    pid['PARAMS'] = PARAMS
+    pid['SRC'] = os.path.join(acquisition_dir, run, PARAMS['source']['tiffsource']) #source_dir
+    pid['DST'] = os.path.join(acquisition_dir, run, 'processed', process_id)
+    
+    correct_flyback = pid['PARAMS']['preprocessing']['correct_flyback']
+    correct_bidir = pid['PARAMS']['preprocessing']['correct_bidir']
+    correct_motion = pid['PARAMS']['motion']['correct_motion']
+    
+    # Set source/dest dirs for Preprocessing tiffs:
+    pid['PARAMS']['preprocessing']['sourcedir'] = pid['SRC']
+    pid['PARAMS']['preprocessing']['destdir'] = None
+    if correct_flyback is True:
+        pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'raw')
+    if correct_bidir is True:
+        pid['PARAMS']['preprocessing']['sourcedir'] = os.path.join(pid['DST'], 'raw')
+        pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'bidi')
+       
+    # Set source/dest dirs for Motion-Correction:
+    pid['PARAMS']['motion']['sourcedir'] =  pid['PARAMS']['preprocessing']['destdir']
+    pid['PARAMS']['motion']['destdir'] = None
+    if correct_motion is True:
+        if pid['PARAMS']['motion']['sourcedir'] is None:
+            pid['PARAMS']['motion']['sourcedir'] = pid['SRC']
+        pid['PARAMS']['motion']['destdir'] = os.path.join(pid['DST'], 'mcorrected')
+
+    # TODO:  Generate hash for full PID dict
+    tmp_hashid = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()
+    pid['tmp_hashid'] = tmp_hashid[0:6]
+    
+    return pid
+
+def load_processdict(acquisition_dir, run):
+    processdict = None
+    processdict_filepath = os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run)
+    
+    # Load analysis "processdict" file:
+    if os.path.exists(processdict_filepath):
+        print "exists!"
+        with open(processdict_filepath, 'r') as f:
+            processdict = json.load(f)
+            
+    return processdict
+
+def get_process_id(PARAMS, acquisition_dir, run, auto=False):
+    
+    process_id = None
+    
+    print "********************************"
+    print "Checking previous PROCESS IDs..."
+    print "********************************"
+    
+    # Load previously created PIDs:
+    processdict = load_processdict(acquisition_dir, run)
+    
+    #Check current PARAMS against existing PId params by hashid:
+    if processdict is None or len(processdict.keys()) == 0:
+        processdict = dict()
+        existing_pids = []
+        is_new_pid = True
+        print "No existing PIDs found."
+        create_pid_file = True
+    else:
+        create_pid_file = False
+        existing_pids = sorted([str(k) for k in processdict.keys()], key=natural_keys)
+        matching_pids = sorted([pid for pid in existing_pids if processdict[pid]['PARAMS']['hashid'] == PARAMS['hashid']], key=natural_keys)
+        is_new_pid = False
+        if len(matching_pids) > 0:            
+            while True:
+                print "WARNING **************************************"
+                print "Current param config matches existing PID:"
+                for pidx, pid in enumerate(matching_pids):
+                    print "******************************************"
+                    print pidx, pid
+                    pp.pprint(processdict[pid])
+                if auto is True:
+                    check_pidx = ''
+                else:
+                    check_pidx = raw_input('Enter IDX of pid to re-use, or hit <ENTER> to create new: ')
+                if len(check_pidx) == 0:
+                    is_new_pid = True
+                    break
+                else:
+                    confirm_reuse = raw_input('Re-use PID %s? Press <Y> to confirm, any key to try again:' % existing_pids[int(check_pidx)])
+                    if confirm_reuse == 'Y':
+                        is_new_pid = False
+                        break
+
+    if is_new_pid is True:
+        # Create new PID by incrementing num of process dirs found:
+        process_id = 'processed%03d' % int(len(existing_pids)+1)
+        print "Creating NEW pid: %s" % process_id
+    else:
+        # Re-using an existing PID:
+        process_id = existing_pids[int(check_pidx)]
+        print "Reusing existing pid: %s" % process_id
+ 
+    return process_id, is_new_pid, create_pid_file
+
+
+def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
+                    correct_flyback=None, nflyback_frames=0):
+    
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    rundir = os.path.join(acquisition_dir, run)
+    rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
+    rawdir = rawdir_name[0]
+    
+    DEFPARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
+                         acquisition=acquisition, run=run, tiffsource=rawdir, sourcetype='raw',
+                         correct_motion=False, correct_bidir=False,
+                         correct_flyback=correct_flyback, nflyback_frames=nflyback_frames)
+    
+    # Generate new process_id based on input params:
+    pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True)
+    
+    # UPDATE RECORDS:
+    update_records(pid, acquisition_dir, run)
+    
+    # STORE TMP FILE OF CURRENT PARAMS:
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
+    tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
+    if not os.path.exists(tmp_pid_dir):
+        os.makedirs(tmp_pid_dir)
+    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
+        json.dump(pid, f, indent=4, sort_keys=True)
+        
+    return pid
 
 def update_records(pid, acquisition_dir, run):
 
@@ -389,7 +402,7 @@ def update_records(pid, acquisition_dir, run):
     print "Updating JSONS..."
     print "************************"
 
-    processdict_filepath = os.path.join(acquisition_dir, run, 'processed', 'pid_info_%s.json' % run)
+    processdict_filepath = os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run)
     if os.path.exists(processdict_filepath):
         with open(processdict_filepath, 'r') as f:
             processdict = json.load(f)
@@ -404,10 +417,10 @@ def update_records(pid, acquisition_dir, run):
         json.dump(processdict, f, sort_keys=True, indent=4)
 
     print "Process Info UPDATED."
-
-
+    
 
 def main(options):
+   
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -421,6 +434,7 @@ def main(options):
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
+    parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
 
     # Preprocessing params:
     parser.add_option('--bidi', action='store_true', dest='bidi', default=False, help='Set flag if correct bidirectional scanning phase offset.')
@@ -443,6 +457,7 @@ def main(options):
     run = options.run
 
     tiffsource = options.tiffsource
+    sourcetype = options.sourcetype
 
     # PREPROCESSING params:
     correct_bidir = options.bidi
@@ -456,26 +471,37 @@ def main(options):
     ref_file = options.ref_file
     ref_channel = options.ref_channel
 
+    # -------------------------------------------------------------
+    # Set basename for files created containing meta/reference info:
+    # -------------------------------------------------------------
+    raw_simeta_basename = 'SI_%s' % run #functional_dir
+    run_info_basename = '%s' % run #functional_dir
+    pid_info_basename = 'pids_%s' % run
+    # -------------------------------------------------------------
+
     # Create config of PARAMS:
     PARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
-                            acquisition=acquisition, run=run, tiffsource=tiffsource,
+                            acquisition=acquisition, run=run, tiffsource=tiffsource, sourcetype=sourcetype,
                             correct_bidir=correct_bidir, correct_flyback=correct_flyback, nflyback_frames=nflyback_frames,
                             correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel, 
                             mc_method=mc_method, mc_algorithm=mc_algorithm)
     
     # Generate new process_id based on input params:
-    pid = initialize_pid(PARAMS, acquisition_dir, run):
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    pid = initialize_pid(PARAMS, acquisition_dir, run)
     
     # UPDATE RECORDS:
     update_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_params_%s.json' % pid['hashid'][0:6]
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
     with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
         json.dump(pid, f, indent=4, sort_keys=True)
+       
+    print "Params set for PID: %s" % pid['tmp_hashid']
 
 #%%
 

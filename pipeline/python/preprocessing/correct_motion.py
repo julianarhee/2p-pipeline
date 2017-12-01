@@ -12,47 +12,140 @@ import os
 import json
 import optparse
 from stat import S_IREAD, S_IRGRP, S_IROTH
+import matlab.engine
+import copy
+from checksumdir import dirhash
 from os.path import expanduser
 home = expanduser("~")
 
 import matlab.engine
 
-parser = optparse.OptionParser()
+def do_motion(options):
+    parser = optparse.OptionParser()
 
-# PATH opts:
-parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
-parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
-parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
-parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
-parser.add_option('-P', '--repo', action='store', dest='repo_path', default='~/Repositories/2p-pipeline', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
-parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
+    # PATH opts:
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
+    parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
+    parser.add_option('-P', '--repo', action='store', dest='repo_path', default='~/Repositories/2p-pipeline', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
+    parser.add_option('--motion', action='store_true', dest='do_mc', default=False, help='flag to actually do motion-correction')
 
-(options, args) = parser.parse_args() 
+    (options, args) = parser.parse_args() 
 
-rootdir = options.rootdir #'/nas/volume1/2photon/projects'
-animalid = options.animalid
-session = options.session #'20171003_JW016' #'20170927_CE059'
-acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
-run = options.run
+    rootdir = options.rootdir #'/nas/volume1/2photon/projects'
+    animalid = options.animalid
+    session = options.session #'20171003_JW016' #'20170927_CE059'
+    acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
+    run = options.run
 
-repo_path = options.repo_path
-slurm = options.slurm
+    repo_path = options.repo_path
+    slurm = options.slurm
 
-if slurm is True and 'coxfs01' not in repo_path:
-    repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'
-if '~' in repo_path:
-    repo_path = repo_path.replace('~', hom)
-repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab')
+    do_mc = options.do_mc
 
-acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-paramspath = os.path.join(acquisition_dir, run, 'processed', 'tmp_processparams.json')
-refpath = os.path.join(acquisition_dir, run, 'reference_%s.json' % run)
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
-eng = matlab.engine.start_matlab()
-eng.cd(repo_path_matlab, nargout=0)
-eng.add_repo_paths(nargout=0)
-eng.do_motion_correction(paramspath, nargout=0)
-eng.quit()
+    # -------------------------------------------------------------
+    # Set basename for files created containing meta/reference info:
+    # -------------------------------------------------------------
+    raw_simeta_basename = 'SI_%s' % run #functional_dir
+    run_info_basename = '%s' % run #functional_dir
+    pid_info_basename = 'pids_%s' % run
+    # -------------------------------------------------------------
 
-print "FINISHED MOTION CORRECTION STEP."
+    tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
+    paramspath = os.path.join(tmp_pid_dir, 'tmp_pid_%s.json' % pid_hash)
+    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+
+    # -----------------------------------------------------------------------------
+    # Update SOURCE/DEST paths for current PID, if needed:
+    # -----------------------------------------------------------------------------
+    with open(paramspath, 'r') as f:
+        PID = json.load(f)
+
+    if pid_hash not in PID['DST']:
+        PID['DST'] = os.path.join(acquisition_dir, run, 'processed', '%s_%s' % (PID['process_id'], pid_hash))
+
+    # Make sure source dir for MC is PID-specific:
+    if correct_bidir is True or correct_flyback is True:
+        PID['PARAMS']['motion']['sourcedir'] = PID['PARAMS']['preprocessing']['destdir'] 
+        # ^^NOTE: will either be raw_<hash> if only did flyback-correction, or bidi_<hash> if did any bidi-correction
+    else:
+        # Load runinfo to get rawtiff info:
+        with open(runmeta_path, 'r') as fr:
+            runmeta = json.load(f)
+        # Using RAW tiffs, so should match raw_<hash> generated by get_scanimage_metadata.py:
+        rawtiff_dir = runmeta['rawtiff_dir']
+        source_hash = rawtiff_dir.split('_')[1]
+        if source_hash not in PID['SRC']:
+            PID['SRC'] = os.path.join(os.path.split(PID['SRC'])[0], rawtiff_dir)
+        PID['PARAMS']['motion']['sourcedir'] = PID['SRC']
+    
+    if do_mc is True:
+        PID['PARAMS']['motion']['destdir'] = os.path.join(PID['DST'], 'mcorrected')
+
+    with open(paramspath, 'w') as f:
+        json.dump(PID, f, indent=4, sort_keys=True)
+    # -----------------------------------------------------------------------------
+
+
+    if do_mc is True:
+        eng = matlab.engine.start_matlab()
+        eng.cd(repo_path_matlab, nargout=0)
+        eng.add_repo_paths(nargout=0)
+        eng.do_motion_correction(paramspath, nargout=0)
+        eng.quit()
+
+    # ========================================================================================
+    # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
+    # ========================================================================================
+    write_hash = None
+    if do_mc is True:
+        write_dir = PID['PARAMS']['motion']['destdir']
+        excluded_files = [str(f) for f in os.listdir(write_dir) if not f.endswith('tif')]
+        write_hash = dirhash(write_dir, 'sha1', excluded_files=excluded_files)[0:6]
+        if write_hash not in write_dir:
+            newdir_name = write_dir + '_%s' % write_hash
+            if not os.path.exists(newdir_name):
+                os.rename(write_dir, newdir_name)
+            PID['PARAMS']['motion']['destdir'] = newdir_name
+            print "Renamed mc:", newdir_name
+
+            # Make sure newly created TIFFs are READ-ONLY:
+            for f in os.listdir(newdir_name):
+                os.chmod(os.path.join(newdir_name, f), S_IREAD|S_IRGRP|S_IROTH)  
+
+            if os.path.exists(write_dir + '_slices'):
+                newslicedir_name = write_dir + '_%s_slices' % write_hash
+                if not os.path.exists(newslicedir_name):
+                    os.rename(write_dir + '_slices', newslicedir_name)
+                print "Renamed mc-slices:", newslicedir_name
+
+                # Make sure newly created TIFFs are READ-ONLY:
+                for f in os.listdir(newdir_name):
+                    os.chmod(os.path.join(newdir_name, f), S_IREAD|S_IRGRP|S_IROTH)  
+
+    with open(paramspath, 'w') as f:
+        print paramspath
+        json.dump(PID, f, indent=4, sort_keys=True)
+    # ========================================================================================
+
+    # if write_hash is None:
+    #     write_hash = source_hash
+
+return write_hash, pid_hash
+
+
+def main(options):
+    
+    mc_hash, pid_hash = do_motion(options)
+    
+    print "PID %s: Finished motion-correction step: output dir hash %s" % (pid_hash, mc_hash)
+    
+if __name__ == '__main__':
+    main(sys.argv[1:]) 
+
+    
