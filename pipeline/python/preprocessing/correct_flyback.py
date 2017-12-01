@@ -19,8 +19,9 @@ import scipy.io
 import shutil
 from json_tricks.np import dump, dumps, load, loads
 import re
+import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from pipeline.python.set_pid_params import get_default_pid
+from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from checksumdir import dirhash
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
@@ -30,6 +31,7 @@ def atoi(text):
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
+
 
 def do_flyback_correction(options):
 
@@ -76,6 +78,7 @@ def do_flyback_correction(options):
 
 
     (options, args) = parser.parse_args(options) 
+    
     save_tiffs = options.save_tiffs
     if save_tiffs is True:
         print "Correcting flyback and saving TIFFs."
@@ -122,35 +125,11 @@ def do_flyback_correction(options):
     # Identify RAW tiff dir from acquisition:
     # -----------------------------------------------------------------------------------
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    raw_tiff_dir = [os.path.join(acquisition_dir, run, rd) for rd in os.listdir(os.path.join(acquisition_dir, run)) if 'raw' in rd and os.path.isdir(os.path.join(acquisition_dir, run, rd))][0] # SHOULD ONLY BE ONE SINGLE RAW TIFF FOLDER
-    
-    if source_hash not in raw_tiff_dir or len(source_hash) == 0:
-        print "WARNING*********************************"
-        print "Source hash does not match RAW tiff dir:\n%s" % raw_tiff_dir
-        print "Using default stored rawtiff_dir from run info struct: %s" % run_info_basename
-        print "****************************************"
-        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'r') as f:
-            runmeta = json.load(f)
-        raw_tiff_dir = os.path.join(acquisition_dir, run, runmeta['rawtiff_dir'])
-        print raw_tiff_dir
-    else:
-        print "Checking for flyback correction for tiffs from source:\n%s" % raw_tiff_dir
-        
+
     # Set and create PROCESSED write dir:
     # -----------------------------------------------------------------------------------
     processed_dir = os.path.join(acquisition_dir, run, 'processed') #, 'DATA', 'Raw')    
-    # if not os.path.exists(processed_dir):
-    #     os.makedirs(processed_dir)
 
-    # Load PID dict to access pids and hashes:
-    # -----------------------------------------------------------------------------------
-    if os.path.exists(os.path.join(processed_dir, '%s.json' % pid_info_basename)):
-        with open(os.path.join(processed_dir, '%s.json' % pid_info_basename), 'r') as f:
-            processdict = json.load(f)
-    else:
-        processdict = dict()
-    
-    
     # Load user-created PID tmp file, or create default if none exists (no bidir- or motion-correction):
     # -----------------------------------------------------------------------------------
     tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
@@ -158,73 +137,53 @@ def do_flyback_correction(options):
         os.makedirs(tmp_pid_dir)
         
     tmp_pids = [p for p in os.listdir(tmp_pid_dir) if p.endswith('json')]
-    if len(pid_hash) == 0:
-        print "No PID hash specified..."
-        if len(tmp_pids) == 1:
-            pid_hash = tmp_pids[0]
-            print "But only 1 PID process exists anyway:", tmp_pids[0]
-            
-    print "Running PID %s" % pid_hash
-    tmp_pid_fn = [h for h in tmp_pids if pid_hash in h]
+    tmp_pid_fn = [h for h in tmp_pids if len(pid_hash) > 0 and pid_hash in h]
     if len(tmp_pid_fn) > 0:
-        # PID Exists
         with open(os.path.join(tmp_pid_dir, tmp_pid_fn[0]), 'r') as f:
             PID = json.load(f)
     else:
-        # ONLY do flyback correction, create PID with default params:
+        if len(pid_hash) > 0:
+            print "PID hash specified does not exist."
+        else:
+            print "No PID hash specified..."
+        # ONLY do flyback correction, create PID with default params (safest):
+        print "Creating default PID for SIMETA and flyback-correction ONLY."
         PID = get_default_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,
                               run=run, correct_flyback=correct_flyback, nflyback_frames=nflyback)
+        pid_hash = PID['tmp_hashid']
     
-    
-    pid_hash = PID['tmp_hashid']    
     tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     print "PID %s: FLYBACK CORRECTION step for PID:" % pid_hash
-    pp.pprint(PID)            
+    #pp.pprint(PID)            
     
-    # Set specific PID dir for current processing run:
-    
-    # Increment process_id so can't overwrite, even though source is always "raw"
-    # Write flyback-corrected TIFFs to 'raw' subdir (may want to play with n flyback corrected)
-    # processed_dirs = [p for p in os.listdir(save_basepath) if os.path.isdir(os.path.join(save_basepath, p))] 
-    # increment_processed = int(len(processed_dirs) + 1)
-    # process_id = 'processed%03d' % increment_processed
-    # savepath = os.path.join(save_basepath, process_id, 'raw')
-    # if not os.path.exists(savepath):
-    #     os.makedirs(savepath)
 
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
     paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
-    
-    processed_folder = '%s_%s' % (PID['process_id'], pid_hash)
-    processed_dest_path = os.path.join(processed_dir, processed_folder)
-    if not os.path.exists(processed_dest_path):
-        os.makedirs(processed_dest_path)
         
-    # Update processing SRC/sourcedir, if default 'raw' changed to raw_<hashid>:
-    if source_hash not in PID['SRC']:
-        PID['SRC'] = raw_tiff_dir
-        PID['PARAMS']['preprocessing']['sourcedir'] = raw_tiff_dir
-    
-    # Update processing DST/(destdir) with pid_hash:
-    if pid_hash not in PID['DST']:
-        PID['DST'] = processed_dest_path
-        
-    write_dir = os.path.join(PID['DST'], 'raw')
-    if correct_flyback:
-        if not os.path.exists(write_dir):
-            os.makedirs(write_dir)
-        PID['PARAMS']['preprocessing']['destdir'] = write_dir
+    # Make sure preprocessing sourcedir/destdir are correct:
+    PID = append_hash_to_paths(PID, pid_hash, step='flyback')
     
     with open(paramspath, 'w') as f:
         json.dump(PID, f, indent=4, sort_keys=True)
-        
-    source_dir = PID['PARAMS']['preprocessing']['sourcedir']
-    # -----------------------------------------------------------------------------
-
     
-    # GET TIFFS:
+    source_dir = PID['PARAMS']['preprocessing']['sourcedir']
+    write_dir = PID['PARAMS']['preprocessing']['destdir']
+    
+    print "======================================================="
+    print "PID: %s -- FLYBACK" % pid_hash
+    #pp.pprint(PID)
+    print "SOURCE:", source_dir
+    print "DEST:", write_dir
+    print "======================================================="
+    
+    if not os.path.exists(write_dir):
+        os.makedirs(write_dir)
+    
+    # -----------------------------------------------------------------------------
+    # Correct TIFFs, get frame indices:
+    # -----------------------------------------------------------------------------
     tiffs = os.listdir(source_dir)
     tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
     print "Found %i TIFFs." % len(tiffs)
@@ -233,7 +192,7 @@ def do_flyback_correction(options):
         # Adjust TIFF file name so that all included files increment correctly,
         # and naming format matches standard:	
         origname = tiffname.split('.')[0]
-    	prefix = '_'.join(origname.split('_')[0:-1])
+        prefix = '_'.join(origname.split('_')[0:-1])
         prefix = prefix.replace('-', '_')
         newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) 
        
@@ -242,24 +201,22 @@ def do_flyback_correction(options):
             
             # Read in RAW tiff: 
             stack = tf.imread(os.path.join(source_dir, tiffs[tiffidx]))
-    	    # if uint16:
-    	    # stack = img_as_uint(stack) 
-    	    print "TIFF: %s" % tiffs[tiffidx]
-    	    print "size: ", stack.shape
-    	    print "dtype: ", stack.dtype
-    	   
-    	    # First, remove DISCARD frames:
-    	    nslices_orig = nslices_full - ndiscard # N specified slices during acquis.     
+            # if uint16:
+                # stack = img_as_uint(stack) 
+            print "TIFF: %s" % tiffs[tiffidx]
+            print "size: ", stack.shape
+            print "dtype: ", stack.dtype
+
+            # First, remove DISCARD frames:
+            nslices_orig = nslices_full - ndiscard # N specified slices during acquis.     
             if save_tiffs is True:
                 start_idxs = np.arange(0, stack.shape[0], nslices_full*nchannels)
                 substack = np.empty((nslices_orig*nchannels*nvolumes, stack.shape[1], stack.shape[2]), dtype=stack.dtype)
                 print "Removing SI discard frames. Tmp stack shape:", substack.shape 
- 
                 newstart = 0
                 for x in range(len(start_idxs)):    
                     substack[newstart:newstart+(nslices_orig*nchannels),:,:] = stack[start_idxs[x]:start_idxs[x]+(nslices_orig*nchannels), :, :]
                     newstart = newstart + (nslices_orig*nchannels)
-             
                 print "Removed discard frames. New substack shape is: ", substack.shape    
  
             # Also get frame indices of kept-frames to exclude discard: 
@@ -271,18 +228,16 @@ def do_flyback_correction(options):
             for x in range(len(start_idxs_single)):
                 frame_idxs[newstart:newstart+(nslices_orig)] = allframe_idxs[start_idxs_single[x]:start_idxs_single[x] + (nslices_orig)]
                 newstart = newstart + (nslices_orig) 
-    	     
-    	    # Next, crop off FLYBACK frames: 
+                
+            # Next, crop off FLYBACK frames: 
             nslices_crop = nslices_orig - nflyback 
             if save_tiffs is True:    
                 start_idxs = np.arange(nflyback*nchannels, substack.shape[0], nslices_orig*nchannels)
                 final = np.empty((nslices_crop*nchannels*nvolumes, substack.shape[1], substack.shape[2]), dtype=stack.dtype)
-            
                 newstart = 0
                 for x in range(len(start_idxs)):
                     final[newstart:newstart+(nslices_crop*nchannels),:,:] = substack[start_idxs[x]:start_idxs[x]+(nslices_crop*nchannels), :, :]
                     newstart = newstart + (nslices_crop*nchannels)
-                
                 print "Removed flyback frames. Final shape is: ", final.shape
 
                 # Write substack to DATA dir: 
@@ -298,19 +253,18 @@ def do_flyback_correction(options):
                 newstart = newstart + (nslices_crop)
      
             print "Created frame-idx array. Final shape: ", frame_idxs_final.shape
-                   		    
-     	else:
-#     	    print "Not creating substacks from input tiffs."
-#     	    if uint16:
-#                 print "Converting raw tiff to uint16."
-#                 stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
-#     	        final = img_as_uint(stack)
-    
-#                 dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] 
-#     	        if save_tiffs is True: 
-#                     tf.imsave(os.path.join(write_dir, dtype_fn), final)
-     	    
+        
+        else:
             frame_idxs_final = [] # if not index correction needed, just leave blank 
+
+            # print "Not creating substacks from input tiffs."
+            # if uint16:
+            #     print "Converting raw tiff to uint16."
+            #     stack = tf.imread(os.path.join(raw_tiff_dir, tiffs[tiffidx]))
+            #     final = img_as_uint(stack)
+            #     dtype_fn = '%s_uint16.tif' % newtiff_fn.split('.')[0] 
+            #     if save_tiffs is True: 
+            #         tf.imsave(os.path.join(write_dir, dtype_fn), final)
              
 #     	if crop_fov:
 #             if not correct_flyback:  # stack not yet read in:
@@ -336,21 +290,29 @@ def do_flyback_correction(options):
 #     	    if save_tiffs is True:
 #                 tf.imsave(os.path.join(write_dir, cropped_fn), final)
     	    
-    	if visible: 
-    	    ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
-    	    rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
-    	    if save_tiffs is True:
+        if visible: 
+            ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
+            rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
+            if save_tiffs is True:
                 tf.imsave(os.path.join(write_dir, rangetiff_fn), ranged)
 
     
         # ----------------------------------------------------------------------   
-        # ADJUST METADATA, if needed:  
+        # Adjust RUNMETA data:
         # ----------------------------------------------------------------------   
-        frame_idxs = [int(f) for f in frame_idxs]
-        
+        frame_idxs_final = [int(f) for f in frame_idxs_final]
+
         # 1.  Update REFMETA struct:
+        if not os.path.isfile(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)):
+            runmeta = create_runmeta(rootdir, animalid, session, acquisition, run, 
+                                     rawdir, run_info_basename, scanimage_metadata)
+            
         with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'r') as fr:
-    	    runmeta = json.load(fr)
+            runmeta = json.load(fr)
+        # if rawdir_hash not in runmeta['rawtiff_source'] and '_' not in runmeta['rawtiff_source']:
+        #     runmeta['rawtiff_dir'] = runmeta['rawtiff_dir'] + '_%s' % rawdir_hash
+        print "Raw Tiff DIR (runmeta):", runmeta['rawtiff_dir']
+            
         runmeta['base_filename'] = prefix
         runmeta['frame_idxs'] = frame_idxs_final
     
@@ -360,27 +322,19 @@ def do_flyback_correction(options):
             print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
             runmeta['slices'] = range(1, nslices_crop+1)
             runmeta['ntiffs'] = len(tiffs) 
-        # else:
-        #     if save_tiffs is True:
-        #         if not visible and not crop_fov and not uint16:
-        #             print "Copying RAW tiff to DATA dir. No changes."
-        #             shutil.copy(os.path.join(source_dir, tiffs[tiffidx]), os.path.join(write_dir, newtiff_fn))
-        
+            
         # Save updated JSON:
         with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
-    	    #json.dump(refinfo, fw)
+            #json.dump(refinfo, fw)
             dump(runmeta, fw, indent=4)
     
-        # Also save updated MAT:
-        #refinfo_mat = "%s.mat" % refinfo_basename
-        #scipy.io.savemat(os.path.join(acquisition_dir, refinfo_mat), mdict=refinfo)
-    
-
         
-    # 2.  Update SIMETA info:
+    # -----------------------------------------------------------------------------
+    # Adjust SIMETA data
+    # -----------------------------------------------------------------------------
     if correct_flyback:
-        raw_simeta_fn = [j for j in os.listdir(raw_tiff_dir) if j.endswith('json')][0]
-        with open(os.path.join(raw_tiff_dir, raw_simeta_fn), 'r') as fj:
+        raw_simeta_fn = [j for j in os.listdir(source_dir) if j.endswith('json')][0]
+        with open(os.path.join(source_dir, raw_simeta_fn), 'r') as fj:
             raw_simeta = json.load(fj)
 
         adj_simeta = dict()
@@ -389,7 +343,6 @@ def do_flyback_correction(options):
 
         for fi in filenames:
             adj_simeta[fi] = dict()
-            frame_idxs = runmeta['frame_idxs']
             nslices_orig = raw_simeta[fi]['SI']['hStackManager']['numSlices']
             ndiscard_orig = raw_simeta[fi]['SI']['hFastZ']['numDiscardFlybackFrames']
 
@@ -406,7 +359,9 @@ def do_flyback_correction(options):
             raw_simeta[fi]['SI']['hFastZ']['discardFlybackFames'] = 0 # flag this so Acquisition2P's parseScanImageTiff tkaes correct n slices
 
             if len(frame_idxs) > 0:
-                raw_simeta[fi]['imgdescr'] = [raw_simeta[fi]['imgdescr'][int(i)] for i in frame_idxs]
+                print raw_simeta[fi]['imgdescr'][int(frame_idxs[0])]
+                selected_imgdescr = [raw_simeta[fi]['imgdescr'][int(i)] for i in frame_idxs]
+                raw_simeta[fi]['imgdescr'] = selected_imgdescr
 
             adj_simeta[fi]['SI'] = raw_simeta[fi]['SI']
             adj_simeta[fi]['frameNumbers'] = [f['frameNumbers'] for f in raw_simeta[fi]['imgdescr']]
@@ -414,41 +369,22 @@ def do_flyback_correction(options):
             adj_simeta[fi]['frameNumberAcquisition'] = [f['frameNumberAcquisition'] for f in raw_simeta[fi]['imgdescr']]
             adj_simeta[fi]['epoch'] = raw_simeta[fi]['imgdescr'][-1]['epoch']
 
-    # else:
-    #     print "Copying SI meta data over..."
-    #     adj_simeta = raw_simeta
-
         with open(os.path.join(write_dir, raw_simeta_fn), 'w') as fw:
             dump(adj_simeta, fw, indent=4) #, sort_keys=True)
 
+        
     # ========================================================================================
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================
     write_hash = None
     if correct_flyback:
         # 3.  Update write-dir hash ids:
-        excluded_files = [str(f) for f in os.listdir(write_dir) if not f.endswith('tif')]
-        print "Checking flyback hash, excluded_files:", excluded_files
-        write_hash = dirhash(write_dir, 'sha1', excluded_files=excluded_files)[0:6]
-        newwrite_dir = write_dir + '_%s' % write_hash
-        os.rename(write_dir, newwrite_dir)
-        
-        # Make sure newly created TIFFs are READ-ONLY:
-        if correct_flyback:
-            for f in os.listdir(newwrite_dir):
-                os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)  
-            
-        PID['PARAMS']['preprocessing']['destdir'] = newwrite_dir
-        print "OUTPUT DIR: %s" % PID['PARAMS']['preprocessing']['destdir']
+        write_hash, PID = write_hash_readonly(write_dir, PID, step='preprocessing', label='flyback')
 
     with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
         print tmp_pid_fn
         json.dump(PID, f, indent=4, sort_keys=True)            
     # ========================================================================================
-    
-    
-    # if write_hash is None:
-    #     write_hash = source_hash
         
     return write_hash, pid_hash
     

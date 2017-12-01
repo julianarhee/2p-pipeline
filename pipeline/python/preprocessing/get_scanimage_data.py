@@ -15,6 +15,8 @@ import re
 import scipy.io
 import numpy as np
 from checksumdir import dirhash
+import copy
+from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from caiman.utils import utils
 from os.path import expanduser
@@ -31,6 +33,42 @@ def set_default(obj):
         return list(obj)
     raise TypeError
 
+def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_info_basename, scanimage_metadata):
+    
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    rawtiff_dir = os.path.join(acquisition_dir, run, rawdir)
+    rawtiffs = sorted([t for t in os.listdir(rawtiff_dir) if t.endswith('.tif')], key=natural_keys)
+    
+    runmeta = dict()
+    runmeta['rootdir'] = rootdir 
+    runmeta['animal_id'] = animalid 
+    runmeta['session'] = session
+    runmeta['acquisition'] = acquisition
+    runmeta['run'] = run
+    runmeta['rawtiff_dir'] = rawdir
+    specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
+    runmeta['slices'] = range(1, specified_nslices+1) 
+    runmeta['ntiffs'] = len(rawtiffs)
+    if isinstance(scanimage_metadata['File001']['SI']['hChannels']['channelSave'], int):
+        runmeta['nchannels'] =  scanimage_metadata['File001']['SI']['hChannels']['channelSave']
+    else:
+        runmeta['nchannels'] = len(scanimage_metadata['File001']['SI']['hChannels']['channelSave']) # if i.isdigit()])
+    runmeta['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
+    runmeta['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
+    runmeta['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
+    runmeta['frame_rate'] = float(scanimage_metadata['File001']['SI']['hRoiManager']['scanFrameRate'])
+    runmeta['volume_rate'] = float(scanimage_metadata['File001']['SI']['hRoiManager']['scanVolumeRate'])
+    
+    runmeta['acquisition_base_dir'] = acquisition_dir
+    runmeta['params_path'] = os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run)
+    runmeta['raw_simeta_path'] = os.path.join(acquisition_dir, run, rawdir, 'SI_%s.json' % run) #raw_simeta_mat)
+    runmeta['roi_dir'] = os.path.join(acquisition_dir, 'ROIs')
+    runmeta['trace_dir'] = os.path.join(acquisition_dir, 'Traces')
+
+    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
+        json.dump(runmeta, fp, indent=4)
+
+    return runmeta
 
 def format_si_value(value):
     num_format = re.compile(r'\-?[0-9]+\.?[0-9]*|\.?[0-9]')
@@ -107,26 +145,21 @@ def get_meta(options):
     # Get RAW tiffs from acquisition:
     rawdir = [r for r in os.listdir(os.path.join(acquisition_dir, run)) if 'raw' in r and os.path.isdir(os.path.join(acquisition_dir, run, r))][0]
     rawtiff_dir = os.path.join(acquisition_dir, run, rawdir)
-    rawtiffs = sorted([t for t in os.listdir(rawtiff_dir) if t.endswith('.tif')], key=natural_keys)
-    nontiffs = sorted([t for t in os.listdir(rawtiff_dir) if t not in rawtiffs], key=natural_keys)
-    print rawtiffs
     
-    # Generate SHA1-hash for tiffs in 'raw' dir:
+    # ======================================================================
+    # Get hash for RAW TIFF dir, and rename dir:
+    # ======================================================================
     print "Checking tiffdir hash..."
-    rawdir_hash = dirhash(rawtiff_dir, 'sha1', excluded_files=nontiffs)[0:6]
-    print rawdir_hash
-    
-    # Rename RAW dir to include len 8 hash:
-    if rawdir_hash not in rawdir:
-        print "RAW DIR is: %s" % rawdir
-        rawdir = 'raw_%s' % rawdir_hash
-        print "Renaming with hash: %s" % rawdir_hash
-        os.rename(rawtiff_dir, os.path.join(acquisition_dir, run, rawdir))
+    rawdir_hash, PID = write_hash_readonly(rawtiff_dir, PID=None, step='simeta', label='raw')
+    if rawdir_hash not in rawtiff_dir:
+        rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
+    print "Raw Tiff hash:", rawtiff_dir
+    # ======================================================================
 
-    # First, check if metadata already extracted:
+    # Check if metadata already extracted:
     raw_simeta_json = '%s.json' % raw_simeta_basename
-    if os.path.isfile(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json)):
-        with open(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json), 'r') as f:
+    if os.path.isfile(os.path.join(rawtiff_dir, raw_simeta_json)):
+        with open(os.path.join(rawtiff_dir, raw_simeta_json), 'r') as f:
             scanimage_metadata = json.load(f)
         file_keys = [k for k in scanimage_metadata.keys() if 'File' in k]
         incompletes = [f for f in file_keys if 'SI' not in scanimage_metadata[f].keys() or 'imgdescr' not in scanimage_metadata[f].keys()]
@@ -136,6 +169,11 @@ def get_meta(options):
             extract_si = False
     else:
         extract_si = True
+    
+    # Get SIMETA, if need:
+    rawtiffs = sorted([t for t in os.listdir(rawtiff_dir) if t.endswith('.tif')], key=natural_keys)
+    nontiffs = sorted([t for t in os.listdir(rawtiff_dir) if t not in rawtiffs], key=natural_keys)
+    print rawtiffs
     
     if extract_si is True:
         print "================================================="
@@ -153,7 +191,7 @@ def get_meta(options):
             curr_file = 'File{:03d}'.format(fidx+1)
             print "Processing:", curr_file
 
-            currtiffpath = os.path.join(acquisition_dir, run, rawdir, rawtiff)
+            currtiffpath = os.path.join(rawtiff_dir, rawtiff)
 
             # Make sure TIFF is READ ONLY:
             os.chmod(currtiffpath, S_IREAD|S_IRGRP|S_IROTH)  
@@ -206,54 +244,10 @@ def get_meta(options):
         if new_acquisition is True:
             os.chmod(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
 
-        
-    # Also save as .mat for now:
-    #raw_simeta_mat = '%s.mat' % raw_simeta_basename
-    #scipy.io.savemat(os.path.join(acquisition_dir, raw_simeta_mat), mdict=scanimage_metadata, long_field_names=True)
-    #print "Saved .MAT to: ", os.path.join(acquisition_dir, raw_simeta_mat)
-
-
     # Create REFERENCE info file or overwrite relevant fields, if exists: 
-    if new_acquisition is True:
-        runmeta = dict()
-    elif os.path.exists(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)):
-        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'r') as fp:
-            refinfo = json.load(fp)
-    else:
-        runmeta = dict() 
-
-    runmeta['rootdir'] = rootdir 
-    runmeta['animal_id'] = animalid 
-    runmeta['session'] = session
-    runmeta['acquisition'] = acquisition
-    runmeta['run'] = run
-    runmeta['rawtiff_dir'] = rawdir
-    specified_nslices =  int(scanimage_metadata['File001']['SI']['hStackManager']['numSlices'])
-    runmeta['slices'] = range(1, specified_nslices+1) 
-    runmeta['ntiffs'] = len(rawtiffs)
-    if isinstance(scanimage_metadata['File001']['SI']['hChannels']['channelSave'], int):
-        runmeta['nchannels'] =  scanimage_metadata['File001']['SI']['hChannels']['channelSave']
-    else:
-        runmeta['nchannels'] = len(scanimage_metadata['File001']['SI']['hChannels']['channelSave']) # if i.isdigit()])
-    runmeta['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
-    runmeta['lines_per_frame'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['linesPerFrame'])
-    runmeta['pixels_per_line'] = int(scanimage_metadata['File001']['SI']['hRoiManager']['pixelsPerLine'])
-    runmeta['frame_rate'] = float(scanimage_metadata['File001']['SI']['hRoiManager']['scanFrameRate'])
-    runmeta['volume_rate'] = float(scanimage_metadata['File001']['SI']['hRoiManager']['scanVolumeRate'])
-
-    runmeta['raw_simeta_path'] = os.path.join(acquisition_dir, run, rawdir, raw_simeta_json) #raw_simeta_mat)
-
-    if 'acquisition_base_dir' not in runmeta.keys():
-        runmeta['acquisition_base_dir'] = acquisition_dir
-    if 'params_path' not in runmeta.keys():
-        runmeta['params_path'] = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
-    if 'roi_dir' not in runmeta.keys():
-        runmeta['roi_dir'] = os.path.join(acquisition_dir, 'ROIs')
-    if 'trace_dir' not in runmeta.keys():
-        runmeta['trace_dir'] = os.path.join(acquisition_dir, 'Traces')
-
-    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
-        json.dump(runmeta, fp, indent=4)
+    #if new_acquisition is True:
+    runmeta = create_runmeta(rootdir, animalid, session, acquisition, run,
+                                 rawdir, run_info_basename, scanimage_metadata)
 
     return rawdir_hash
 

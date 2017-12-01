@@ -61,7 +61,6 @@ nflyback = int(options.flyback)
 
 slurm = options.slurm
 
-
 # -------------------------------------------------------------
 # Set basename for files created containing meta/reference info:
 # -------------------------------------------------------------
@@ -75,6 +74,8 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # ===========================================================================
 # If PID specified, that takes priority:
 # ===========================================================================
+execute_bidi = False
+execute_motion = False
 if len(pid_hash) > 0:
     tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     with open(os.path.join(acquisition_dir, run, 'processed', 'tmp_pids', tmp_pid_fn), 'r') as f:
@@ -83,7 +84,9 @@ if len(pid_hash) > 0:
     nflyback = int(PID['PARAMS']['preprocessing']['nflyback_frames'])
     execute_bidi = PID['PARAMS']['preprocessing']['correct_bidir']
     execute_motion = PID['PARAMS']['motion']['correct_motion']
-
+print "Flyback:", execute_flyback
+print "Bidir:", execute_bidi
+print "Motion:", execute_motion
 
 # ===========================================================================
 # 1.  Get SI meta data from raw tiffs:
@@ -132,7 +135,7 @@ flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisiti
 if len(pid_hash) > 0:
     flyback_options.extend(['-p', pid_hash])
 
-if execute_flyback:
+if execute_flyback is True:
     print "Correcting incorrect flyback frames in volumes."
     flyback_options.extend(['--correct-flyback', '--flyback=%i' % nflyback, '--discard=%i' % ndiscard])
     
@@ -153,7 +156,8 @@ if slurm is True:
     bidir_options.extend(['--slurm'])
 if execute_bidi is True:
     bidir_options.extend(['--bidi'])
-    
+print bidir_options
+
 bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
 print "Bidir hash: %s" % bidir_hash
 print "PID %s: BIDIR finished." % pid_hash

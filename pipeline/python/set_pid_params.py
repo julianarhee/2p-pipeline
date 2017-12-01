@@ -14,6 +14,11 @@ import pandas as pd
 import optparse
 import sys
 import hashlib
+import copy
+from checksumdir import dirhash
+from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
+import shutil
+
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -41,11 +46,111 @@ def get_file_size(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
 
+def write_hash_readonly(write_dir, PID=None, step='', label=''):
+    
+    # Before changing anything, check if there is a corresponding 'slices" dir:
+    adjust_slicedir = False
+    if os.path.isdir(write_dir + '_slices'):
+        adjust_slicedir = True             # WRITE-DIR has companion _slices dir.
+        slice_dir = write_dir + '_slices'
+
+    write_hash = None
+    excluded_files = [str(f) for f in os.listdir(write_dir) if not f.endswith('tif')]
+    print "Checking %s hash, excluded_files:" % label, excluded_files
+    write_hash = dirhash(write_dir, 'sha1', excluded_files=excluded_files)[0:6]
+    
+    # Rename dir if hash is not included:
+    if write_hash not in write_dir:
+        newwrite_dir = write_dir + '_%s' % write_hash
+        shutil.move(write_dir, newwrite_dir)
+    else:
+        newwrite_dir = write_dir
+    
+    # Set READ-ONLY permissions:
+    for f in os.listdir(newwrite_dir):
+        os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)  
+        
+    if PID is not None:
+        if write_hash not in PID['PARAMS'][step]['destdir']:
+            PID['PARAMS'][step]['destdir'] = newwrite_dir
+        print "PID %s: Renamed output dir: %s" % (PID['tmp_hashid'], PID['PARAMS'][step]['destdir'])
+    
+    # Adjust slice dir, too, if needed:
+    if adjust_slicedir is True:
+        print "Also adding hash to _slices dir:", slice_dir
+        if write_hash not in slice_dir:
+            newwrite_dir_slices = write_dir + '_%s_slices' % write_hash
+            shutil.move(slice_dir, newwrite_dir_slices)
+        else:
+            newwrite_dir_slices = slice_dir
+        # Set READ-ONLY permissions:
+        for f in os.listdir(newwrite_dir_slices):
+            os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)  
+
+        
+    return write_hash, PID
+
+def append_hash_to_paths(PID, pid_hash, step=''):
+    correct_flyback = PID['PARAMS']['preprocessing']['correct_flyback']
+    correct_bidir = PID['PARAMS']['preprocessing']['correct_bidir']
+    correct_motion = PID['PARAMS']['motion']['correct_motion']
+
+    # If get_scanimage_data.py not run, <rundir>/raw/ does not have hash:
+    if PID['PARAMS']['source']['tiffsource'] == 'raw':
+        rawtiff_dir = PID['SRC']
+        rawtiff_hashdir = [r for r in os.listdir(os.path.split(PID['SRC'])[0]) if 'raw_' in r]
+        if len(rawtiff_hashdir) == 1:
+            # Raw-hashed renamed dir exists
+            rawtiff_dir = os.path.join(os.path.split(PID['SRC'])[0], rawtiff_hashdir[0])
+        elif os.path.exists(rawtiff_dir):
+            # No hash created, rawtiff folder is just 'raw':
+            print "Checking tiffdir hash..."
+            rawdir_hash, PID = write_hash_readonly(rawtiff_hashdir, PID=None, step='simeta')
+            if rawdir_hash not in rawtiff_dir:
+                rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
+                print "Got hash for RAW dir:", rawtiff_dir
+        PID['SRC'] = rawtiff_dir
+        
+    if pid_hash not in PID['DST']:
+        PID['DST'] = PID['DST'] + '_%s' % pid_hash
+        
+    print " ----STEP: %s ---------------------------------" % step
+    print 'PID %s: SRC is %s' % (pid_hash, PID['SRC'])
+    print 'PID %s: DST is %s' % (pid_hash, PID['DST'])
+    print "------------------------------------------------------"
+
+    # Update source/dest, depending on current step and params:
+    if step == 'flyback':
+        PID['PARAMS']['preprocessing']['sourcedir'] = PID['SRC']
+        if correct_flyback is True:
+            PID['PARAMS']['preprocessing']['destdir'] = os.path.join(PID['DST'], 'raw')
+
+    if step == 'bidir':
+        if correct_flyback is True:
+            # Bidir-correction is on flyback-corrected tiffs:
+            PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
+        else:
+            # Bidir-correction is raw/SRC tiffs:
+            PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['SRC'])
+        if correct_bidir is True:
+            PID['PARAMS']['preprocessing']['destdir'] = os.path.join(PID['DST'], 'bidi')
+
+    if step == 'motion':
+        if correct_bidir is True:
+            PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['sourcedir'])
+        else:
+            PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['SRC'])
+        if correct_motion is True:
+            PID['PARAMS']['motion']['destdir'] = os.path.join(PID['DST'], 'mcorrected')
+
+    return PID
+
 def set_motion_params(correct_motion=False,
                  ref_channel=0,
                  ref_file=0,
                  method=None,
-                 algorithm=None
+                 algorithm=None,
+                 auto=False
                 ):
 
     mc_methods = ['Acquisition2P', 'NoRMCorre']
@@ -56,6 +161,9 @@ def set_motion_params(correct_motion=False,
     if correct_motion is True:
         if method is None:
             while True:
+                if auto is True:
+                    method = 'Acquisition2P'
+                    break
                 print "No MC method specified. Use default [Acquisition2P]?"
                 mc_choice = raw_input('Enter <Y> to use default, or <o> to see options:')
                 if mc_choice == 'Y':
@@ -69,11 +177,14 @@ def set_motion_params(correct_motion=False,
                     method = mc_methods[mc_select]
                     break
         if algorithm is None or (algorithm not in mc_algos[method]):
-            print "No MC algorithm specified... Here are the options:"
-            for algonum, algoname in enumerate(mc_algos[method]):
-                print algonum, algoname
-            algo_choice = input('Enter IDX of mc algorithm to use:')
-            algorithm = mc_algos[method][algo_choice] 
+            if auto is True:
+                algorithm = mc_algos['Acquisition2P'][0]
+            else:
+                print "No MC algorithm specified... Here are the options:"
+                for algonum, algoname in enumerate(mc_algos[method]):
+                    print algonum, algoname
+                algo_choice = input('Enter IDX of mc algorithm to use:')
+                algorithm = mc_algos[method][algo_choice] 
     else:
         ref_channel = 0
         ref_file = 0
@@ -110,7 +221,7 @@ def set_preprocessing_params(correct_flyback=False,
 def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype='raw',
                correct_bidir=False, correct_flyback=False, nflyback_frames=None,
                split_channels=False, correct_motion=False, ref_file=1, ref_channel=1,
-               mc_method=None, mc_algorithm=None):
+               mc_method=None, mc_algorithm=None, auto=False):
     
     '''
     Create a dictionary of PARAMS used for processing TIFFs.
@@ -172,7 +283,8 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
-        rawtiff_dir = os.path.join(acquisition_dir, run, 'raw')
+        rawdir_name = [r for r in os.listdir(os.path.join(acquisition_dir, run)) if 'raw' in r][0]
+        rawtiff_dir = os.path.join(acquisition_dir, run, rawdir_name)
         tiffs = [t for t in os.listdir(rawtiff_dir) if t.endswith('tif')]
         file_sizes = [get_file_size(os.path.join(rawtiff_dir, t)) for t in tiffs]
         gb_files = [f for f in file_sizes if 'GB' in f]
@@ -201,6 +313,9 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     
     if tiffsource is None or len(tiffsource) == 0:
         while True:
+            if auto is True:
+                tiffsource = rawdir_name[0]
+                break
             print "TIFF SOURCE was not specified."
             tiffsource_type = raw_input('Enter <P> if source is processed, <R> if raw: ')
             if tiffsource_type == 'R':
@@ -250,7 +365,8 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                             ref_channel=ref_channel,
                             ref_file=ref_file,
                             method=mc_method,
-                            algorithm=mc_algorithm)
+                            algorithm=mc_algorithm,
+                            auto=auto)
 
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()
     
@@ -354,6 +470,8 @@ def get_process_id(PARAMS, acquisition_dir, run, auto=False):
                     if confirm_reuse == 'Y':
                         is_new_pid = False
                         break
+        else:
+            is_new_pid = True
 
     if is_new_pid is True:
         # Create new PID by incrementing num of process dirs found:
@@ -419,7 +537,7 @@ def update_records(pid, acquisition_dir, run):
     print "Process Info UPDATED."
     
 
-def main(options):
+def create_pid(options):
    
     parser = optparse.OptionParser()
 
@@ -432,6 +550,7 @@ def main(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--default', action='store_true', dest='auto', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
@@ -458,6 +577,8 @@ def main(options):
 
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
+    
+    auto = options.auto
 
     # PREPROCESSING params:
     correct_bidir = options.bidi
@@ -484,11 +605,11 @@ def main(options):
                             acquisition=acquisition, run=run, tiffsource=tiffsource, sourcetype=sourcetype,
                             correct_bidir=correct_bidir, correct_flyback=correct_flyback, nflyback_frames=nflyback_frames,
                             correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel, 
-                            mc_method=mc_method, mc_algorithm=mc_algorithm)
+                            mc_method=mc_method, mc_algorithm=mc_algorithm, auto=auto)
     
     # Generate new process_id based on input params:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    pid = initialize_pid(PARAMS, acquisition_dir, run)
+    pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
     
     # UPDATE RECORDS:
     update_records(pid, acquisition_dir, run)
@@ -503,9 +624,23 @@ def main(options):
        
     print "Params set for PID: %s" % pid['tmp_hashid']
 
+    return pid
+
 #%%
 
-if __name__ == '__main__':
-    main(sys.argv[1:])
+# if __name__ == '__main__':
+#     main(sys.argv[1:])
     
+def main(options):
+    
+    pid = create_pid(options)
+    
+    print "****************************************************************"
+    print "Created PID."
+    print "----------------------------------------------------------------"
+    pp.pprint(pid)
+    print "****************************************************************"
+    
+if __name__ == '__main__':
+    main(sys.argv[1:]) 
 

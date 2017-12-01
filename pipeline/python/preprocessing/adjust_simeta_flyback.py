@@ -44,7 +44,7 @@ for fi in filenames:
     raw_simeta[fi]['SI']['hStackManager']['zs'] = raw_simeta['SI']['hStackManager']['zs'][ndiscarded_extra:]
     raw_simeta[fi]['SI']['hFastZ']['numDiscardFlybackFrames'] = 0
     raw_simeta[fi]['SI']['hFastZ']['numFramesPerVolume'] = nslices_selected
-    raw_simeta[fi]['SI']['hFastZ']['discardFlybackFames'] = 0 # flag this so Acquisition2P's parseScanImageTiff tkaes correct n slices
+    raw_simeta[fi]['SI']['hFastZ']['discardFlybackFrames'] = 0 # flag this so Acquisition2P's parseScanImageTiff tkaes correct n slices
    
     if len(frame_idxs) > 0: 
         raw_simeta[fi]['imgdescr'] = [raw_simeta[fi]['imgdescr'][i] for i in frame_idxs] 
