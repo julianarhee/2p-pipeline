@@ -18,10 +18,12 @@ import copy
 from checksumdir import dirhash
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs
+from memory_profiler import profile
+
 from os.path import expanduser
 home = expanduser("~")
 
-
+@profile
 def do_bidir_correction(options):
 
     parser = optparse.OptionParser()
@@ -76,6 +78,16 @@ def do_bidir_correction(options):
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
 
     # -------------------------------------------------------------
+    # Load run info:
+    # -------------------------------------------------------------
+    with open(runmeta_path, 'r') as f:
+        runinfo = json.load(f)
+    if len(runinfo['slices']) > 1 or runinfo['nchannels'] > 1:
+        multiplanar = True
+    else:
+        multiplanar = False
+        
+    # -------------------------------------------------------------
     # Load PID:
     # -------------------------------------------------------------
     tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
@@ -86,7 +98,6 @@ def do_bidir_correction(options):
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
-        
     # Make sure preprocessing sourcedir/destdir are correct:
     PID = append_hash_to_paths(PID, pid_hash, step='bidir')
     
@@ -95,6 +106,7 @@ def do_bidir_correction(options):
     
     source_dir = PID['PARAMS']['preprocessing']['sourcedir']
     write_dir = PID['PARAMS']['preprocessing']['destdir']
+    
     
     print "======================================================="
     print "PID: %s -- BIDIR" % pid_hash
@@ -109,7 +121,6 @@ def do_bidir_correction(options):
     # -------------------------------------------------------------
     # Do correction:
     # -------------------------------------------------------------
-    
     if do_bidi is True:
         print "================================================="
         print "Doing BIDI correction."
@@ -121,28 +132,31 @@ def do_bidir_correction(options):
         eng.do_bidi_correction(paramspath, runmeta_path, nargout=0)
         eng.quit()
     
+    print write_dir
+    
+    # -------------------------------------------------------------
     # Check for Interleaving/Deinterleaving:
-    if os.path.isdir(write_dir + '_slices'):
-        write_dir2 = write_dir + '_slices'
-        sort_deinterleaved_tiffs(write_dir2, runmeta_path)
+    # -------------------------------------------------------------
+    volume_dir = copy.copy(write_dir)
+    slice_dir = volume_dir + '_slices'
         
+    if multiplanar is True:
+        print "Multiple slices/channels found. Sorting deinterleaved tiffs."
+        sort_deinterleaved_tiffs(slice_dir, runmeta_path)
+
     # ========================================================================================
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================
     write_hash = None
     if do_bidi is True:
-        write_dir = PID['PARAMS']['preprocessing']['destdir']
-        write_hash, PID = write_hash_readonly(write_dir, PID=PID, step='preprocessing', label='bidir')
+        write_hash, PID = write_hash_readonly(volume_dir, PID=PID, step='preprocessing', label='bidi')
         
     with open(paramspath, 'w') as f:
         print paramspath
         json.dump(PID, f, indent=4, sort_keys=True)
 
     # ========================================================================================
-    
-    # if write_hash is None:
-    #     write_hash = source_hash
-        
+
     return write_hash, pid_hash
 
 

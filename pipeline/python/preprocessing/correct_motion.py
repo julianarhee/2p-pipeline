@@ -18,11 +18,14 @@ import copy
 from checksumdir import dirhash
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs
+from memory_profiler import profile
+
 from os.path import expanduser
 home = expanduser("~")
 
 import matlab.engine
 
+@profile
 def do_motion(options):
     parser = optparse.OptionParser()
 
@@ -70,7 +73,17 @@ def do_motion(options):
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     paramspath = os.path.join(tmp_pid_dir, 'tmp_pid_%s.json' % pid_hash)
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
-
+    
+    # -------------------------------------------------------------
+    # Load run info:
+    # -------------------------------------------------------------
+    with open(runmeta_path, 'r') as f:
+        runinfo = json.load(f)
+    if len(runinfo['slices']) > 1 or runinfo['nchannels'] > 1:
+        multiplanar = True
+    else:
+        multiplanar = False
+        
     # -------------------------------------------------------------
     # Load PID:
     # -------------------------------------------------------------
@@ -82,22 +95,21 @@ def do_motion(options):
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
-        
     # Make sure preprocessing sourcedir/destdir are correct:
     PID = append_hash_to_paths(PID, pid_hash, step='motion')
     
+    interleave_write_tiffs = False
+    if PID['PARAMS']['motion']['method'] == 'Acquisition2P' and multiplanar is True:
+        # Default is to write deinterleaved slices to write_dir
+        PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_slices'
+        interleave_write_tiffs = True
+        
     with open(paramspath, 'w') as f:
         json.dump(PID, f, indent=4, sort_keys=True)
     
     source_dir = PID['PARAMS']['motion']['sourcedir']
     write_dir = PID['PARAMS']['motion']['destdir']
     
-    interleave_write_tiffs = False
-    if PID['PARAMS']['motion']['method'] == 'Acquisition2P':
-        # Default is to write deinterleaved slices to write_dir
-        write_dir = write_dir + '_slices'
-        interleave_write_tiffs = True
-        
     print "======================================================="
     print "PID: %s -- MOTION", pid_hash
     #pp.pprint(PID)
@@ -110,7 +122,6 @@ def do_motion(options):
     # -------------------------------------------------------------
     # Do correction:
     # -------------------------------------------------------------
-    
     if do_mc is True:
         print "================================================="
         print "Doing MOTION correction."
@@ -121,31 +132,32 @@ def do_motion(options):
         eng.do_motion_correction(paramspath, nargout=0)
         eng.quit()
 
+    # -------------------------------------------------------------
     # Check for Interleaving/Deinterleaving:
-    write_dir_is_slicedir = False
+    # -------------------------------------------------------------
     if interleave_write_tiffs is True:
-        write_dir2 = write_dir.split('_slices')[0]
-        interleave_tiffs(write_dir, write_dir2, runmeta_path)
-        write_dir_is_slicedir = True
+        slice_dir = copy.copy(write_dir)
+        volume_dir = slice_dir.split('_slices')[0]
+        interleave_tiffs(slice_dir, volume_dir, runmeta_path)
+    else:
+        volume_dir = copy.copy(write_dir)
+        slice_dir = volume_dir + '_slices'
         
+    if multiplanar is True:
+        print "Multiple slices/channels found. Sorting deinterleaved tiffs."
+        sort_deinterleaved_tiffs(slice_dir, runmeta_path)
+
     # ========================================================================================
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================
     write_hash = None
     if do_mc is True:
-        if write_dir_is_slicedir is True:
-            write_dir = write_dir2
-        else:
-            write_dir = PID['PARAMS']['motion']['destdir']
-        write_hash, PID = write_hash_readonly(write_dir, PID=PID, step='motion', label='motion-correction')
+        write_hash, PID = write_hash_readonly(volume_dir, PID=PID, step='motion', label='mc')
         
     with open(paramspath, 'w') as f:
         print paramspath
         json.dump(PID, f, indent=4, sort_keys=True)
     # ========================================================================================
-
-    # if write_hash is None:
-    #     write_hash = source_hash
 
     return write_hash, pid_hash
 

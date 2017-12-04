@@ -21,6 +21,7 @@ from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from caiman.utils import utils
 from os.path import expanduser
 home = expanduser("~")
+from memory_profiler import profile
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -93,7 +94,7 @@ def format_si_value(value):
         else:
             return value
 
-
+@profile
 def get_meta(options):
  
     parser = optparse.OptionParser()
@@ -153,6 +154,8 @@ def get_meta(options):
     rawdir_hash, PID = write_hash_readonly(rawtiff_dir, PID=None, step='simeta', label='raw')
     if rawdir_hash not in rawtiff_dir:
         rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
+    if rawdir_hash not in rawdir:
+        rawdir = rawdir + '_%s' % rawdir_hash
     print "Raw Tiff hash:", rawtiff_dir
     # ======================================================================
 
@@ -232,17 +235,17 @@ def get_meta(options):
             scanimage_metadata[curr_file]['imgdescr'] = imgdescr
 
         # Save SIMETA info:
-        if os.path.isfile(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json)):
+        if os.path.isfile(os.path.join(rawtiff_dir, raw_simeta_json)):
             # Change permissions to allow write, if file already exists:
-            os.chmod(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json), S_IWRITE|S_IWGRP|S_IWOTH)
+            os.chmod(os.path.join(rawtiff_dir, raw_simeta_json), S_IWRITE|S_IWGRP|S_IWOTH)
 
-        with open(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json), 'w') as fp:
+        with open(os.path.join(rawtiff_dir, raw_simeta_json), 'w') as fp:
             json.dump(scanimage_metadata, fp, sort_keys=True, indent=4, default=set_default)
             #json.dumps(scanimage_metadata, fp, default=set_default, sort_keys=True, indent=4)
 
         # Make sure SIMETA data is now read-only:
         if new_acquisition is True:
-            os.chmod(os.path.join(acquisition_dir, run, rawdir, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
+            os.chmod(os.path.join(rawtiff_dir, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
 
     # Create REFERENCE info file or overwrite relevant fields, if exists: 
     #if new_acquisition is True:

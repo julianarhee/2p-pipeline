@@ -46,6 +46,13 @@ def get_file_size(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
 
+def change_permissions_recursive(path, mode):
+    for root, dirs, files in os.walk(path, topdown=False):
+        #for dir in [os.path.join(root,d) for d in dirs]:
+            #os.chmod(dir, mode)
+        for file in [os.path.join(root, f) for f in files]:
+            os.chmod(file, mode)
+            
 def write_hash_readonly(write_dir, PID=None, step='', label=''):
     
     # Before changing anything, check if there is a corresponding 'slices" dir:
@@ -62,13 +69,14 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     # Rename dir if hash is not included:
     if write_hash not in write_dir:
         newwrite_dir = write_dir + '_%s' % write_hash
-        shutil.move(write_dir, newwrite_dir)
+        os.rename(write_dir, newwrite_dir)
     else:
         newwrite_dir = write_dir
     
     # Set READ-ONLY permissions:
-    for f in os.listdir(newwrite_dir):
-        os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)  
+    change_permissions_recursive(newwrite_dir, S_IREAD|S_IRGRP|S_IROTH)
+    # for f in os.listdir(newwrite_dir):
+    #     os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)  
         
     if PID is not None:
         if write_hash not in PID['PARAMS'][step]['destdir']:
@@ -80,12 +88,13 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
         print "Also adding hash to _slices dir:", slice_dir
         if write_hash not in slice_dir:
             newwrite_dir_slices = write_dir + '_%s_slices' % write_hash
-            shutil.move(slice_dir, newwrite_dir_slices)
+            os.rename(slice_dir, newwrite_dir_slices)
         else:
             newwrite_dir_slices = slice_dir
         # Set READ-ONLY permissions:
-        for f in os.listdir(newwrite_dir_slices):
-            os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)  
+        change_permissions_recursive(newwrite_dir_slices, S_IREAD|S_IRGRP|S_IROTH)
+        # for f in os.listdir(newwrite_dir_slices):
+        #     os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)  
 
         
     return write_hash, PID
@@ -127,17 +136,24 @@ def append_hash_to_paths(PID, pid_hash, step=''):
 
     if step == 'bidir':
         if correct_flyback is True:
-            # Bidir-correction is on flyback-corrected tiffs:
-            PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
+            bidi_destdir = PID['PARAMS']['preprocessing']['destdir'] 
+            if PID['tmp_hashid'] in bidi_destdir and 'raw' in bidi_destdir:
+                # Bidir-correction is on flyback-corrected tiffs:
+                PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
+            else:
+                # Get flyback-corrected tiffs in current processing dir:
+                raw_flyback_dir = [r for r in os.listdir(PID['DST']) if 'raw' in r and os.path.isdir(os.path.join(PID['DST'], r))][0]
+                PID['PARAMS']['preprocessing']['sourcedir'] = os.path.join(PID['DST'], raw_flyback_dir)
         else:
             # Bidir-correction is raw/SRC tiffs:
-            PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['SRC'])
+            print "processing on RAW"
+            PID['PARAMS']['preprocessing']['sourcedir'] = PID['SRC']
         if correct_bidir is True:
             PID['PARAMS']['preprocessing']['destdir'] = os.path.join(PID['DST'], 'bidi')
 
     if step == 'motion':
-        if correct_bidir is True:
-            PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['sourcedir'])
+        if correct_bidir is True or correct_flyback is True:
+            PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
         else:
             PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['SRC'])
         if correct_motion is True:
@@ -280,6 +296,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     PARAMS['source'] = dict()
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    print acquisition_dir
     
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
@@ -317,11 +334,11 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                 tiffsource = rawdir_name[0]
                 break
             print "TIFF SOURCE was not specified."
-            tiffsource_type = raw_input('Enter <P> if source is processed, <R> if raw: ')
-            if tiffsource_type == 'R':
+            raw_or_processed = raw_input('Enter <P> if source is processed, <R> if raw: ')
+            if raw_or_processed == 'R':
                 tiffsource = rawdir_name[0]
                 break
-            elif tiffsource_type =='P':
+            elif raw_or_processed =='P':
                 print "Selected PROCESSED source."
                 pp.pprint(processed_dirs)
                 if process_dict is None or (len(process_dict.keys()) == 0 and len(processed_dirs) == 0):
@@ -340,6 +357,23 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     if 'processed' in tiffsource:
         tiffsource_name = [p for p in os.listdir(os.path.join(rundir, 'processed')) if tiffsource in p][0]
         tiffsource_path = os.path.join(rundir, 'processed', tiffsource_name)
+        if sourcetype is None or len(sourcetype) == 0:
+            while True:
+                if auto is True:
+                    sourcetype = 'raw'
+                    break
+                processed_types = sorted([p for p in os.listdir(tiffsource_path)], key=natural_keys)
+                print "Specified PROCESSED tiff source, but not which type:"
+                for pidx,ptype in enumerate(processed_types):
+                    print pidx, ptype
+                processed_type_idx = raw_input('Enter IDX of processed source to use: ')
+                if processed_type_idx in range(len(processed_types)):
+                    processed_type = processed_type[processed_type_idx]
+                    confirm_type = raw_input('Selected source %s/%s. Press <Y> to confirm: ' % (tiffsource_name, processed_type))
+                    if confirm_type == 'Y':
+                        sourcetype = processed_type
+                        break
+                
         tiffsource_child = '/' + [d for d in os.listdir(tiffsource_path) if sourcetype in d and os.path.isdir(os.path.join(tiffsource_path, d))][0]
     else:
         if not tiffsource == rawdir_name[0]:
@@ -609,6 +643,7 @@ def create_pid(options):
     
     # Generate new process_id based on input params:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    print "ACQ DIR:", acquisition_dir
     pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
     
     # UPDATE RECORDS:

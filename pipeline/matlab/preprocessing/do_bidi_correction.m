@@ -16,7 +16,7 @@ dest = params.PARAMS.preprocessing.destdir;
 
 [processdir, childdir, ~] = fileparts(params.PARAMS.preprocessing.sourcedir);
 simeta_fn = sprintf('SI_%s.json', params.PARAMS.source.run);
-%fprintf('SI: %s\n', fullfile(processdir, simeta_fn));
+fprintf('SI: %s\n', fullfile(source, simeta_fn));
 simeta = loadjson(fullfile(source, simeta_fn));
 %simeta = loadjson(A.raw_simeta_path);
 

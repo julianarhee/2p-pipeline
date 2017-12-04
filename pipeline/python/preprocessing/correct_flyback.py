@@ -23,6 +23,8 @@ import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from checksumdir import dirhash
+from memory_profiler import profile
+
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -32,7 +34,22 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+import time
+from functools import wraps
+ 
+def fn_timer(function):
+    @wraps(function)
+    def function_timer(*args, **kwargs):
+        t0 = time.time()
+        result = function(*args, **kwargs)
+        t1 = time.time()
+        print ("Total time running %s: %s seconds" %
+               (function.func_name, str(t1-t0))
+               )
+        return result
+    return function_timer
 
+@profile
 def do_flyback_correction(options):
 
     parser = optparse.OptionParser()

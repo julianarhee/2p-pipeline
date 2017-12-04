@@ -120,6 +120,9 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
         print "**WARNING*********************"
         print "Mismatch in tiffs found (%i) and expected n tiffs (%i)." % (len(all_tiffs), expected_ntiffs)
         good_to_go = False
+    else:
+        print "Found %i TIFFs in source:", source_dir
+        print "Expected n tiffs:", expected_ntiffs
 
     if good_to_go is True:
         for channel_name in channel_names:
@@ -133,10 +136,12 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
             for file_name in file_names:
                 print "Sorting %s" % file_name
                 tiffs_by_file = [t for t in tiffs_by_channel if file_name in t]
+                print "Curr file tiffs:", tiffs_by_file
                 file_dir = os.path.join(channel_dir, file_name)
+                print "File dir:", file_dir
                 if not os.path.exists(file_dir):
                     os.makedirs(file_dir)
                 for fi_tiff in tiffs_by_file:
                     shutil.move(os.path.join(channel_dir, fi_tiff), os.path.join(file_dir, fi_tiff))
     print "Done organizing tiffs."
- 
+
