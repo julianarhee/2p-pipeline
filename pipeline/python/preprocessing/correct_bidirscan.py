@@ -59,7 +59,9 @@ def do_bidir_correction(options):
     if '~' in repo_path:
         repo_path = repo_path.replace('~', home)
     repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab')
-    
+   
+    repo_prefix = os.path.split(repo_path)[0]
+ 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
     # -------------------------------------------------------------
@@ -128,7 +130,7 @@ def do_bidir_correction(options):
         # 2. Run BIDIR-CORRECTION (Matlab):              
         eng = matlab.engine.start_matlab('-nojvm')
         eng.cd(repo_path_matlab, nargout=0)
-        eng.add_repo_paths(nargout=0)
+        eng.add_repo_paths(repo_prefix, nargout=0)
         eng.do_bidi_correction(paramspath, runmeta_path, nargout=0)
         eng.quit()
     

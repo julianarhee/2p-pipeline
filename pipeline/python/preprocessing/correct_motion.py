@@ -57,6 +57,8 @@ def do_motion(options):
         repo_path = repo_path.replace('~', home)
     repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab')
     
+    repo_prefix = os.path.split(repo_path)[0]
+
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -128,7 +130,7 @@ def do_motion(options):
         print "================================================="
         eng = matlab.engine.start_matlab()
         eng.cd(repo_path_matlab, nargout=0)
-        eng.add_repo_paths(nargout=0)
+        eng.add_repo_paths(repo_prefix, nargout=0)
         eng.do_motion_correction(paramspath, nargout=0)
         eng.quit()
 
