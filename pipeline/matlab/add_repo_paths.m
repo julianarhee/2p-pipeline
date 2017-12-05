@@ -1,15 +1,20 @@
+function add_repo_paths(vargin)
 %% Set paths
-addpath(genpath('~/Repositories/2p-pipeline'));
-addpath(genpath('~/Repositories/ca_source_extraction'));
-addpath(genpath('~/Repositories/NoRMCorre'));
-addpath(genpath('~/Repositories/Acquisition2P_class'));
-addpath(genpath('~/Repositories/helperFunctions'));
-addpath(genpath('~/Repositories/12k2p-software'));
-
-if ~exist('~/Documents/MATLAB/cvx', 'dir')
-    cd ~/MATLAB/cvx; cvx_setup;
+if length(vargin) == 0
+    repo_prefix = '~/Repositories';
 else
-    cd ~/Documents/MATLAB/cvx; cvx_setup;
+    repo_prefix = varargin{1};
 end
-cd ~/Repositories/2p-pipeline
+
+addpath(genpath(fullfile(repo_prefix, '2p-pipeline')));
+addpath(genpath(fullfile(repo_prefix, 'ca_source_extraction')));
+addpath(genpath(fullfile(repo_prefix, 'NoRMCorre')));
+addpath(genpath(fullfile(repo_prefix, 'Acquisition2P_class')));
+addpath(genpath(fullfile(repo_prefix, 'helperFunctions')));
+addpath(genpath(fullfile(repo_prefix, '12k2p-software')));
+if exist(fullfile(repo_prefix, '2p-pipeline', 'pipeline', 'matlab', 'helperfuncs', 'cvx'), 'dir')
+    cd fullfile(repo_prefix, '2p-pipeline', 'pipeline', 'matlab', 'helperfuncs', 'cvs'); cvx_setup;
+end
+cd fullfile(repo_prefix, '2p-pipeline', 'pipeline')
+
 
