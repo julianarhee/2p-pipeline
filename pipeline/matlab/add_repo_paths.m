@@ -12,13 +12,13 @@ end
 
 
 %addpath(genpath(fullfile(repo_prefix, 'ca_source_extraction')));
-%addpath(genpath(fullfile(repo_prefix, 'NoRMCorre')));
+addpath(genpath(fullfile(repo_prefix, 'NoRMCorre')));
 addpath(genpath(fullfile(repo_prefix, 'Acquisition2P_class')));
 addpath(genpath(fullfile(repo_prefix, 'helperFunctions')));
-%addpath(genpath(fullfile(repo_prefix, '12k2p-software')));
+addpath(genpath(fullfile(repo_prefix, '12k2p-software')));
 
 if exist(cvx_path, 'dir')
-    cd(cvx_dir);
+    cd(cvx_path);
     cvx_setup;
 end
 addpath(genpath(fullfile(repo_prefix, '2p-pipeline')));

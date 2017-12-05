@@ -8,6 +8,7 @@ function do_bidi_correction(paramspath, refpath)
 % source - can be 'Corrected' or 'Parsed' (i.e., do correcitonon mc or raw data)
 % varargin - if no interleaved TIFFs exist, can reinterleave from parsed slice tiffs 
 
+fprintf('Loading paramspath... %s\n', paramspath)
 params = loadjson(paramspath);
 A = loadjson(refpath);
 
