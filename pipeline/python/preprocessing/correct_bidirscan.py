@@ -38,6 +38,8 @@ def do_bidir_correction(options):
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
     parser.add_option('-P', '--repo', action='store', dest='repo_path', default='~/Repositories/2p-pipeline', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
+    parser.add_option('-C', '--cvx', action='store', dest='cvx_path', default='~/MATLAB/cvx', help='Path to cvx install dir [default: ~/MATLAB/cvx. If --slurm, default: /n/coxfs01/2p-pipeline/pkgs/cvx]')
+
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
     parser.add_option('--bidi', action='store_true', dest='do_bidi', default=False, help='flag to actually do bidi-correction')
     
@@ -50,12 +52,15 @@ def do_bidir_correction(options):
     run = options.run
     pid_hash = options.pid_hash
     repo_path = options.repo_path
+    cvx_path = options.cvx_path
     slurm = options.slurm
     do_bidi = options.do_bidi
     if do_bidi is True:
         print "Doing BIDIR correction."
     if slurm is True and 'coxfs01' not in repo_path:
         repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'
+    if slurm is True and 'coxfs01' not in cvx_path:
+	cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
     if '~' in repo_path:
         repo_path = repo_path.replace('~', home)
     repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab')
@@ -130,7 +135,7 @@ def do_bidir_correction(options):
         # 2. Run BIDIR-CORRECTION (Matlab):              
         eng = matlab.engine.start_matlab('-nojvm')
         eng.cd(repo_path_matlab, nargout=0)
-        eng.add_repo_paths(repo_prefix, nargout=0)
+        eng.add_repo_paths(cvx_path, repo_prefix, nargout=0)
         eng.do_bidi_correction(paramspath, runmeta_path, nargout=0)
         eng.quit()
     
