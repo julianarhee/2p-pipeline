@@ -1,0 +1,2 @@
+CMDLINE /home/julianarhee/anaconda2/envs/pipeline/bin/python test_batch.py
+MEM 0.687500 1512441636.4605

@@ -56,6 +56,6 @@ for pid_path in pid_paths:
     with open(pid_path, 'r') as f:
         pinfo = json.load(f)
     opts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid']]
-    Process = target=process_pid, args=(opts,)).start()
+    Process(target=process_pid, args=(opts,)).start()
  
 

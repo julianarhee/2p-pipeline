@@ -7,6 +7,7 @@ Created on Fri Nov  3 17:19:12 2017
 """
 import os
 import json
+import copy
 import pprint
 import re
 import pkg_resources
@@ -84,25 +85,31 @@ if not os.path.exists(pid_savedir):
     os.makedirs(pid_savedir)
 print "Saving PIDs to process in dir: ", pid_savedir
 
+print base_opts
 for curr_acq in session_dict.keys():
-    for curr_run in session_dict[acq].keys():
-        base_opts.extend(['-A', curr_acq, '-r', curr_run])
+    print curr_acq
+    for curr_run in session_dict[curr_acq].keys():
+        pinfo = dict()
+        curr_opts = copy.copy(base_opts)
+        curr_opts.extend(['-A', curr_acq, '-r', curr_run])
         if 'volume' in curr_acq and correct_flyback is True:
-            base_opts.extend(['--flyback', '-F', nflyback_frames])
-        pid = create_pid(base_opts)
+            curr_opts.extend(['--flyback', '-F', nflyback_frames])
+        print curr_opts
+        pid = create_pid(curr_opts)
+        pp.pprint(pid)
         #session_dict[curr_acq][curr_run] = pid['tmp_hashid']
         pinfo['rootdir'] = rootdir
         pinfo['animalid'] = animalid
         pinfo['session'] = session
         pinfo['acquisition'] = curr_acq
         pinfo['run'] = curr_run
-        pinfo['pid'] = pid['tmp_hash']
+        pinfo['pid'] = pid['tmp_hashid']
 
         pid_fn = 'pid_%s.json' % pinfo['pid']        
         with open(os.path.join(pid_savedir, pid_fn), 'w') as f:
             json.dump(pinfo, f, indent=4)
         
-pid_files = [p for p in os.listdir(pid_savedir) if p.endswith('json') as 'pid' in p]
+pid_files = [p for p in os.listdir(pid_savedir) if p.endswith('json') and 'pid' in p]
 print "Created PIDs for session %s | acquisitions: runs --" % session
 pp.pprint(pid_files)
 print "Requesting %i PIDs to process." % len(pid_files)
