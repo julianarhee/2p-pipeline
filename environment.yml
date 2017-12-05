@@ -250,7 +250,6 @@ dependencies:
   - backports.functools-lru-cache==1.4
   - backports.shutil-get-terminal-size==1.0.0
   - backports.ssl-match-hostname==3.5.0.1
-  - caiman==1.0
   - checksumdir==1.1.4
   - future==0.16.0
   - h5py==2.7.1
@@ -265,7 +264,6 @@ dependencies:
   - networkx==1.11
   - olefile==0.44
   - pillow==4.1.1
-  - pipeline (/home/julianarhee/Repositories/2p-pipeline)==0.1.0
   - prompt-toolkit==1.0.15
   - pymworks==2.0.1
   - pywavelets==0.5.2

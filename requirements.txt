@@ -5,7 +5,6 @@ backports.ssl-match-hostname==3.5.0.1
 bkcharts==0.2
 bleach==1.5.0
 bokeh==0.12.7
-caiman==1.0
 certifi==2016.2.28
 checksumdir==1.1.4
 configparser==3.5.0
@@ -33,7 +32,6 @@ jupyter-console==5.2.0
 jupyter-core==4.3.0
 MarkupSafe==1.0
 matlab-wrapper==0.9.8
-matlabengineforpython===R2015b
 matplotlib==2.0.2
 memory-profiler==0.50.0
 mistune==0.7.4
@@ -50,7 +48,6 @@ patsy==0.4.1
 pexpect==4.2.1
 pickleshare==0.7.4
 Pillow==4.1.1
--e git+git@github.com:julianarhee/2p-pipeline.git@f5d972cc3b42f80c4b3a0cf6f01e82cfd05b5ca5#egg=pipeline
 prompt-toolkit==1.0.15
 psutil==5.2.2
 ptyprocess==0.5.2
