@@ -110,14 +110,20 @@ def process_pid(options):
     # ===========================================================================
     # 1.  Get SI meta data from raw tiffs:
     # ===========================================================================
-    print "Getting SI meta data"
+    if slurm is True:
+	if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/julianarhee/testdata'
+	sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+	print sireader_path
+
     simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
+
+    print "Getting SI meta data"
     if new_acquisition is False:
         simeta_options.extend(['--rerun'])
     if slurm is True:
-        sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
         simeta_options.extend(['-P', sireader_path])
-
+		 
     print simeta_options
 
     import get_scanimage_data as sim

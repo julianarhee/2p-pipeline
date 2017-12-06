@@ -83,10 +83,17 @@ if __name__ == "__main__":
     session = options.session #'20171003_JW016' #'20170927_CE059'
     nprocesses = int(options.nprocesses)
     slurm = options.slurm
+    if slurm is True:
+	print "SLURM"
+	rootdir = '/n/coxfs01/julianarhee/testdata'
+	path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+	path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
+	sys.path.append(path_to_si_reader)
 
     session_dir = os.path.join(rootdir, animalid, session)
     pid_dir = os.path.join(session_dir, 'tmp_spids')
-    if not os.path.exists(pid_dir) or len(os.listdir(pid_dir)) == 0:
+    print pid_dir
+    if len(os.listdir(pid_dir)) == 0:
         print "No PIDs to process."
         process_batch = False
     else:
@@ -98,7 +105,10 @@ if __name__ == "__main__":
         with open(pid_path, 'r') as f:
             pinfo = json.load(f)
         opts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid']]
+	if slurm is True:
+	    opts.extend(['--slurm'])
         opts_list.append(opts)
+	print "PID:", pid_path, opts
         #Process(target=process_pid, args=(opts,)).start()
 
     pool = mp.Pool(processes=nprocesses) #, memory_usage)
