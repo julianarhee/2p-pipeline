@@ -46,6 +46,27 @@ def get_file_size(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
 
+def post_pid_cleanup(acquisition_dir, run, pid_hash):
+    processed_dir = os.path.join(acquisition_dir, run, 'processed')
+    print "Cleaning up PID info: %s" % pid_hash
+    pid_path = os.path.join(processed_dir, 'tmp_pids', 'tmp_pid_%s.json' % pid_hash)
+    with open(pid_path, 'r') as f:
+        PID = json.load(f)
+
+    processdict_fn = 'pids_%s.json' % run
+    # UPDATE PID entry in dict:
+    with open(os.path.join(processed_dir, processdict_fn), 'r') as f:
+        processdict = json.load(f)
+    process_id_basename = PID['process_id']
+    new_process_id_key = '_'.join((process_id_basename, pid_hash))
+    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
+    print "Updated main process dict, with key: %s" % new_process_id_key
+    
+    # Save updated PID dict:
+    with open(os.path.join(processed_dir, processdict_fn), 'w') as fw:
+        json.dump(processdict, fw, indent=4, sort_keys=True)
+
+
 def change_permissions_recursive(path, mode):
     for root, dirs, files in os.walk(path, topdown=False):
         #for dir in [os.path.join(root,d) for d in dirs]:
@@ -613,7 +634,7 @@ def create_pid(options):
     parser.add_option('-F', '--nflyback', action='store', dest='nflyback_frames', default=0, help='Number of flyback frames to remove from top of each volume [default: 0]')
 
     # MOTION params:
-    parser.add_option('--motion', action='store_true', dest='mc', default=False, help='Set flag if should run motion-correction.')
+    parser.add_option('--motion', action='store_true', dest='do_mc', default=False, help='Set flag if should run motion-correction.')
     parser.add_option('-c', '--channel', action='store', dest='ref_channel', default=1, help='Index of CHANNEL to use for reference if doing motion correction [default: 1]')
     parser.add_option('-f', '--file', action='store', dest='ref_file', default=1, help='Index of FILE to use for reference if doing motion correction [default: 1]')
     parser.add_option('-M', '--method', action='store', dest='mc_method', default=None, help='Method for motion-correction. OPTS: Acquisition2P, NoRMCorre [default: Acquisition2P]')
@@ -638,7 +659,7 @@ def create_pid(options):
     nflyback_frames = options.nflyback_frames
 
     # MOTION params:
-    correct_motion = options.mc
+    correct_motion = options.do_mc
     mc_method = options.mc_method
     mc_algorithm = options.algorithm
     ref_file = int(options.ref_file)
