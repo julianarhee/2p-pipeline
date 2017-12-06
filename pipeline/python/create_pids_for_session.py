@@ -52,7 +52,8 @@ rootdir = options.rootdir #'/nas/volume1/2photon/projects'
 animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 slurm = options.slurm
-
+if slurm is True:
+    rootdir = '/n/coxfs01/julianarhee/testdata'
 tiffsource = 'raw'
 
 correct_flyback = options.correct_flyback

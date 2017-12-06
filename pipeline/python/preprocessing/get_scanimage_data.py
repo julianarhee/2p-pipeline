@@ -18,6 +18,8 @@ from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
+import matplotlib as mpl
+mpl.use('TKAgg')
 from caiman.utils import utils
 from os.path import expanduser
 home = expanduser("~")
