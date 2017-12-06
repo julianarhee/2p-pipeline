@@ -119,7 +119,24 @@ def append_hash_to_paths(PID, pid_hash, step=''):
                 rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
                 print "Got hash for RAW dir:", rawtiff_dir
         PID['SRC'] = rawtiff_dir
-        
+    elif 'processed' in PID['PARAMS']['source']['tiffsource']:
+        acquisition_dir = os.path.join(PID['PARAMS']['source']['rootdir'], PID['PARAMS']['source']['animalid'],\
+                            PID['PARAMS']['source']['session'], PID['PARAMS']['source']['acquisition'])
+        processed_dir = os.path.join(acquisition_dir, PID['PARAMS']['source']['run'], 'processed')
+        processed_name = PID['PARAMS']['source']['tiffsource'].split('/')[0]
+        processed_hashid = [p for p in os.listdir(processed_dir) if processed_name in p][0]
+        if processed_hashid not in PID['PARAMS']['source']['tiffsource']:
+            # Replace all processed src paths with hashed src:
+            print "Adding processed dir hash to all sources."
+            PID['SRC'] = PID['SRC'].split(processed_name)[0] + processed_hashid + PID['SRC'].split(processed_name)[1] 
+            for pkey in PID['PARAMS'].keys():
+                if not isinstance(PID['PARAMS'][pkey], dict):
+                    continue
+                src_pkey = [skey for skey in PID['PARAMS'][pkey].keys() if 'source' in skey]
+                if len(src_pkey) > 0:
+                    for skey in src_pkey:
+                        PID['PARAMS'][pkey][skey] = PID['PARAMS'][pkey][skey].split(processed_name)[0]\
+                                                        + processed_hashid + PID['PARAMS'][pkey][skey].split(processed_name)[1]
     if pid_hash not in PID['DST']:
         PID['DST'] = PID['DST'] + '_%s' % pid_hash
         
@@ -300,6 +317,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
+        print os.listdir(os.path.join(acquisition_dir, run))
         rawdir_name = [r for r in os.listdir(os.path.join(acquisition_dir, run)) if 'raw' in r][0]
         rawtiff_dir = os.path.join(acquisition_dir, run, rawdir_name)
         tiffs = [t for t in os.listdir(rawtiff_dir) if t.endswith('tif')]
@@ -374,14 +392,14 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                         sourcetype = processed_type
                         break
                 
-        tiffsource_child = '/' + [d for d in os.listdir(tiffsource_path) if sourcetype in d and os.path.isdir(os.path.join(tiffsource_path, d))][0]
+        tiffsource_child = [d for d in os.listdir(tiffsource_path) if sourcetype in d and os.path.isdir(os.path.join(tiffsource_path, d))][0]
+        tiffsource_for_run = '/'.join(('processed', tiffsource_name, tiffsource_child))
     else:
         if not tiffsource == rawdir_name[0]:
             tiffsource = rawdir_name[0]
-        tiffsource_name = tiffsource
-        tiffsource_child = ''
-        
-    PARAMS['source']['tiffsource'] = tiffsource + tiffsource_child
+        tiffsource_for_run = tiffsource
+       
+    PARAMS['source']['tiffsource'] = tiffsource_for_run
     
     # ----------------------------------------------------------
     # Get preprocessing opts:
@@ -623,8 +641,8 @@ def create_pid(options):
     correct_motion = options.mc
     mc_method = options.mc_method
     mc_algorithm = options.algorithm
-    ref_file = options.ref_file
-    ref_channel = options.ref_channel
+    ref_file = int(options.ref_file)
+    ref_channel = int(options.ref_channel)
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
