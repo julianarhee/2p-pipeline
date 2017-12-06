@@ -54,6 +54,12 @@ dependencies:
 - !!python/unicode
   'xz=5.2.3=0'
 - !!python/unicode
+  'alabaster=0.7.10=py27_0'
+- !!python/unicode
+  'astroid=1.5.3=py27_0'
+- !!python/unicode
+  'babel=2.5.0=py27_0'
+- !!python/unicode
   'backports=1.0=py27_0'
 - !!python/unicode
   'backports_abc=0.5=py27_0'
@@ -66,6 +72,8 @@ dependencies:
 - !!python/unicode
   'certifi=2016.2.28=py27_0'
 - !!python/unicode
+  'chardet=3.0.4=py27_0'
+- !!python/unicode
   'configparser=3.5.0=py27_0'
 - !!python/unicode
   'cycler=0.10.0=py27_0'
@@ -76,6 +84,8 @@ dependencies:
 - !!python/unicode
   'decorator=4.1.2=py27_0'
 - !!python/unicode
+  'docutils=0.14=py27_0'
+- !!python/unicode
   'entrypoints=0.2.3=py27_0'
 - !!python/unicode
   'enum34=1.1.6=py27_0'
@@ -83,6 +93,8 @@ dependencies:
   'expat=2.1.0=0'
 - !!python/unicode
   'functools32=3.2.3.2=py27_0'
+- !!python/unicode
+  'functools_lru_cache=1.4=py27_0'
 - !!python/unicode
   'futures=3.1.1=py27_0'
 - !!python/unicode
@@ -96,6 +108,8 @@ dependencies:
 - !!python/unicode
   'html5lib=0.9999999=py27_0'
 - !!python/unicode
+  'imagesize=0.7.1=py27_0'
+- !!python/unicode
   'ipykernel=4.6.1=py27_0'
 - !!python/unicode
   'ipyparallel=6.0.2=py27_0'
@@ -105,6 +119,10 @@ dependencies:
   'ipython_genutils=0.2.0=py27_0'
 - !!python/unicode
   'ipywidgets=6.0.0=py27_0'
+- !!python/unicode
+  'isort=4.2.15=py27_0'
+- !!python/unicode
+  'jedi=0.10.2=py27_2'
 - !!python/unicode
   'jinja2=2.9.6=py27_0'
 - !!python/unicode
@@ -119,6 +137,8 @@ dependencies:
   'jupyter_console=5.2.0=py27_0'
 - !!python/unicode
   'jupyter_core=4.3.0=py27_0'
+- !!python/unicode
+  'lazy-object-proxy=1.3.1=py27_0'
 - !!python/unicode
   'libffi=3.2.1=1'
 - !!python/unicode
@@ -148,6 +168,8 @@ dependencies:
 - !!python/unicode
   'notebook=5.0.0=py27_0'
 - !!python/unicode
+  'numpydoc=0.7.0=py27_0'
+- !!python/unicode
   'openssl=1.0.2l=0'
 - !!python/unicode
   'pandas=0.20.3=py27_0'
@@ -161,6 +183,8 @@ dependencies:
   'patsy=0.4.1=py27_0'
 - !!python/unicode
   'pcre=8.39=1'
+- !!python/unicode
+  'pep8=1.7.0=py27_0'
 - !!python/unicode
   'pexpect=4.2.1=py27_0'
 - !!python/unicode
@@ -178,7 +202,11 @@ dependencies:
 - !!python/unicode
   'pycairo=1.10.0=py27_0'
 - !!python/unicode
+  'pyflakes=1.6.0=py27_0'
+- !!python/unicode
   'pygments=2.2.0=py27_0'
+- !!python/unicode
+  'pylint=1.7.2=py27_0'
 - !!python/unicode
   'pyparsing=2.2.0=py27_0'
 - !!python/unicode
@@ -194,11 +222,17 @@ dependencies:
 - !!python/unicode
   'pyzmq=16.0.2=py27_0'
 - !!python/unicode
+  'qtawesome=0.4.4=py27_0'
+- !!python/unicode
   'qtconsole=4.3.1=py27_0'
+- !!python/unicode
+  'qtpy=1.3.1=py27_0'
 - !!python/unicode
   'readline=6.2=2'
 - !!python/unicode
   'requests=2.14.2=py27_0'
+- !!python/unicode
+  'rope=0.9.4=py27_1'
 - !!python/unicode
   'scandir=1.5=py27_0'
 - !!python/unicode
@@ -213,6 +247,16 @@ dependencies:
   'sip=4.18=py27_0'
 - !!python/unicode
   'six=1.10.0=py27_0'
+- !!python/unicode
+  'snowballstemmer=1.2.1=py27_0'
+- !!python/unicode
+  'sphinx=1.6.3=py27_0'
+- !!python/unicode
+  'sphinxcontrib=1.0=py27_0'
+- !!python/unicode
+  'sphinxcontrib-websupport=1.0.1=py27_0'
+- !!python/unicode
+  'spyder=3.1.4=py27_0'
 - !!python/unicode
   'sqlite=3.13.0=0'
 - !!python/unicode
@@ -234,11 +278,15 @@ dependencies:
 - !!python/unicode
   'traitlets=4.3.2=py27_0'
 - !!python/unicode
+  'typing=3.6.2=py27_0'
+- !!python/unicode
   'wcwidth=0.1.7=py27_0'
 - !!python/unicode
   'wheel=0.29.0=py27_0'
 - !!python/unicode
   'widgetsnbextension=3.0.2=py27_0'
+- !!python/unicode
+  'wrapt=1.10.11=py27_0'
 - !!python/unicode
   'yaml=0.1.6=0'
 - !!python/unicode
@@ -251,6 +299,12 @@ dependencies:
   - backports.shutil-get-terminal-size==1.0.0
   - backports.ssl-match-hostname==3.5.0.1
   - checksumdir==1.1.4
+  - cvxcanon==0.1.1
+  - cvxopt==1.1.9
+  - cvxpy==0.4.11
+  - dill==0.2.7.1
+  - ecos==2.0.5
+  - fastcache==1.0.2
   - future==0.16.0
   - h5py==2.7.1
   - ipython-genutils==0.2.0
@@ -261,6 +315,7 @@ dependencies:
   - matlab-wrapper==0.9.8
   - matlabengineforpython==R2015b
   - memory-profiler==0.50.0
+  - multiprocess==0.70.5
   - networkx==1.11
   - olefile==0.44
   - pillow==4.1.1
@@ -269,8 +324,10 @@ dependencies:
   - pywavelets==0.5.2
   - scikit-image==0.13.0
   - scikit-learn==0.18.1
+  - scs==2.0.2
   - shapely==1.5.17.post1
   - sima==1.3.2
   - tifffile==0.12.1
+  - toolz==0.8.2
 prefix: !!python/unicode '/home/julianarhee/anaconda2/envs/pipeline'
 
