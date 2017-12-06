@@ -84,11 +84,11 @@ if __name__ == "__main__":
     nprocesses = int(options.nprocesses)
     slurm = options.slurm
     if slurm is True:
-	print "SLURM"
-	rootdir = '/n/coxfs01/julianarhee/testdata'
-	path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-	path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
-	sys.path.append(path_to_si_reader)
+        print "SLURM"
+	    rootdir = '/n/coxfs01/julianarhee/testdata'
+	    path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+	    path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
+	    sys.path.append(path_to_si_reader)
 
     session_dir = os.path.join(rootdir, animalid, session)
     pid_dir = os.path.join(session_dir, 'tmp_spids')
@@ -118,3 +118,9 @@ if __name__ == "__main__":
     pool.close()
     pool.join()
 
+    finished_dir = os.path.join(pid_dir, 'completed')
+    if not os.path.exists(finished_dir):
+        os.makedirs(finished_dir)
+    for pid_path in pid_paths:
+        pid_fn = os.path.split(pid_path)[1]
+        shutil.move(pid_path, os.path.join(finished_dir, pid_fn))
