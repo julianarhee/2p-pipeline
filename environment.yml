@@ -313,7 +313,6 @@ dependencies:
   - jupyter-console==5.2.0
   - jupyter-core==4.3.0
   - matlab-wrapper==0.9.8
-  - matlabengineforpython==R2015b
   - memory-profiler==0.50.0
   - multiprocess==0.70.5
   - networkx==1.11
