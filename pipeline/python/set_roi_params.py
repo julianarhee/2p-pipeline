@@ -17,6 +17,7 @@ import sys
 import hashlib
 import copy
 from caiman.source_extraction.cnmf import utilities as cmu
+import caiman as cm
 
 from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
@@ -29,6 +30,67 @@ def atoi(text):
 
 def natural_keys(text):
     return [atoi(c) for c in re.split('(\d+)', text)]
+
+def create_rid(options):
+
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+#    parser.add_option('--default', action='store_true', dest='auto', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+
+    parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
+    parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
+    parser.add_option('-o', '--roi-type', action='store', dest='roi_type', default='', help="roi type ['caiman2D', 'manual2D_circle', etc.]")
+
+    (options, args) = parser.parse_args(options) 
+
+    
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+    tiffsource = options.tiffsource
+    sourcetype = options.sourcetype
+    roi_type = options.roi_type
+
+    session_dir = os.path.join(rootdir, animalid, session)
+    roi_dir = os.path.join(session_dir, 'ROIs')
+    if not os.path.exists(roi_dir):
+        os.makedirs(roi_dir)
+
+    rundir = os.path.join(rootdir, animalid, session, acquisition, run)
+    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run,
+                           tiffsource=tiffsource, sourcetype=sourcetype)
+
+    tiff_dir = os.path.split(tiffpaths[0])[0]
+    print "SRC: %s, found %i tiffs." % (tiff_dir, len(tiffpaths))
+	 
+    roi_options = None
+
+    PARAMS = set_params(tiff_dir, roi_options, roi_type=roi_type)
+    rid = initialize_rid(PARAMS, session_dir)
+
+    roi_name = '_'.join((rid['roi_id'], rid['params_hashid']))
+    curr_roi_dir = os.path.join(roi_dir, roi_name)
+    if not os.path.exists(curr_roi_dir):
+	os.makedirs(curr_roi_dir)
+
+    # Rename RID fields to include roiparams hash:
+    if rid['params_hashid'] not in rid['DST']:
+	rid['DST'] = rid['DST'] + '_' + rid['params_hashid']
+    update_roi_records(rid, session_dir)
+
+    print "Created new ROI ID, hash:", rid['params_hashid']
+
+    return rid
 
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
 #    rootdir = '/nas/volume1/2photon/data'
@@ -114,7 +176,7 @@ def load_roidict(session_dir):
     return roidict
 
 
-def set_params(tiffsource, nmfoptions, roi_type=''):
+def set_params(tiffsource, roi_options, roi_type=''):
     
     PARAMS = dict()
     
@@ -124,24 +186,37 @@ def set_params(tiffsource, nmfoptions, roi_type=''):
     
     # Check mmap hash:
     if roi_type == 'caiman2D':
-        mmap_dirs = [m for m in os.listdir(tiffparent) if 'mmap' in m]
-        if len(mmap_dirs) == 1:
-            mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
-        else:
-            mmap_dir = tiffsource + '_mmap'
-        
-        excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
-        mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
-        if mmap_hash not in mmap_dir:
-            PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
-            os.rename(mmap_dir, PARAMS['mmap_source'])
-            print "Renamed mmap with hash:", PARAMS['mmap_source']
-        else:
-            PARAMS['mmap_source'] = mmap_dir
-    
-    PARAMS['options'] = nmfoptions
+        if roi_options is None:
+	    tiffs = [t for t in os.listdir(tiffsource) if t.endswith('tif')]
+	    m_orig = cm.load_movie_chain([os.path.join(tiffsource, tiffs[0])])
+            roi_options = cmu.CNMFSetParams(m_orig)
+	else:
+	    mmap_dirs = [m for m in os.listdir(tiffparent) if 'mmap' in m]
+	    if len(mmap_dirs) == 1:
+		mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
+	    else:
+		mmap_dir = tiffsource + '_mmap'
+	    
+	    excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
+	    mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+	    if mmap_hash not in mmap_dir:
+		PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
+		os.rename(mmap_dir, PARAMS['mmap_source'])
+		print "Renamed mmap with hash:", PARAMS['mmap_source']
+	    else:
+		PARAMS['mmap_source'] = mmap_dir
+	roi_options = to_json(roi_options)
+
+    elif 'manual' in roi_type:
+        roi_options = dict()
+        roi_options['roi_type'] = roi_type
+        	
+    PARAMS['options'] = roi_options
     PARAMS['roi_type'] = roi_type
-    
+   
+    PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
+    print "PARAMS hashid is:", PARAMS['hashid']
+
     return PARAMS
 
 
@@ -261,6 +336,20 @@ def update_roi_records(rid, session_dir):
 
     print "ROI Info UPDATED."
     
+
+def main(options):
+    
+    rid = create_rid(options)
+    
+    print "****************************************************************"
+    print "Created RID."
+    print "----------------------------------------------------------------"
+    pp.pprint(rid)
+    print "****************************************************************"
+    
+if __name__ == '__main__':
+    main(sys.argv[1:]) 
+
 #%%
 #tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run)
 
