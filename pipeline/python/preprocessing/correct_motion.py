@@ -17,7 +17,7 @@ import matlab.engine
 import copy
 from checksumdir import dirhash
 from pipeline.python.set_pid_params import create_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
-from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs
+from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs, write_dict_to_json
 from memory_profiler import profile
 
 from os.path import expanduser
@@ -49,10 +49,19 @@ def extract_options(options):
 
     (options, args) = parser.parse_args(options) 
 
-    if options.slurm is True and 'coxfs01' not in options.rootdir:
-        options.rootdir = '/n/coxfs01/julianarhee/testdata'
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        if 'coxfs01' not in options.repo_path:
+            options.repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline' 
+        if 'coxfs01' not in options.cvx_path:
+	        options.cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
     if '~' in options.rootdir:
         options.rootdir.replace('~', home)
+    if '~' in options.repo_path:
+        options.repo_path = options.repo_path.replace('~', home)
+    if '~' in options.cvx_path:
+        options.cvx_path = options.cvx_path.replace('~', home)
     
     return options
 
@@ -71,20 +80,6 @@ def do_motion(options):
     cvx_path = options.cvx_path
     slurm = options.slurm
     do_mc = options.do_mc
-    if slurm is True:
-        if 'coxfs01' not in repo_path:
-            repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'
-        if 'coxfs01' not in cvx_path:
-	        cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
-#        if 'coxfs01' not in rootdir:
-#            rootdir = '/n/coxfs01/julianarhee/testdata'
-#
-#    if '~' in rootdir:
-#        rootdir = rootdir.replace('~', home)
-    if '~' in 'cvx_path':
-        cvx_path = cvx_path.replace('~', home)
-    if '~' in repo_path:
-        repo_path = repo_path.replace('~', home)
 
     repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab') 
     repo_prefix = os.path.split(repo_path)[0]
@@ -163,10 +158,11 @@ def do_motion(options):
         # Default is to write deinterleaved slices to write_dir
         PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_slices'
         interleave_write_tiffs = True
-        
-    with open(paramspath, 'w') as f:
-        json.dump(PID, f, indent=4, sort_keys=True)
-    
+       
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        json.dump(PID, f, indent=4, sort_keys=True)
+#    
     source_dir = PID['PARAMS']['motion']['sourcedir']
     write_dir = PID['PARAMS']['motion']['destdir']
     
@@ -213,10 +209,12 @@ def do_motion(options):
     write_hash = None
     if do_mc is True:
         write_hash, PID = write_hash_readonly(volume_dir, PID=PID, step='motion', label='mc')
-        
-    with open(paramspath, 'w') as f:
-        print paramspath
-        json.dump(PID, f, indent=4, sort_keys=True)
+
+    print paramspath    
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        print paramspath
+#        json.dump(PID, f, indent=4, sort_keys=True)
     # ========================================================================================
 
     return write_hash, pid_hash

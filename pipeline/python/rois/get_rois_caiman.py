@@ -276,7 +276,8 @@ nchannels = params['info']['nchannels']
 signal_channel = params['info']['signal_channel']
 volumerate = params['info']['volumerate']
 is_3D = params['info']['is_3D']
-fr = params['eval']['final_frate']          # imaging rate in frames per second
+frate = params['eval']['final_frate']          # imaging rate in frames per second
+movie_files = params['display']['movie_files']
 
 display_average = params['display']['use_average']
 inspect_components = False
@@ -353,7 +354,7 @@ try:
         m_images = cm.movie(images)    
         Av = np.mean(m_images, axis=0)
         
-        #%%
+        #%
         pl.figure()
         pl.subplot(1,2,1); pl.title('Average'); pl.imshow(Av, cmap='gray'); pl.axis('off')
         pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
@@ -382,12 +383,12 @@ try:
         
         idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
             estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, fr, decay_time, params['patch']['gSig'], dims, 
+                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
                                              dview=dview, min_SNR=min_SNR, 
                                              r_values_min=rval_thr, use_cnn=use_cnn)
         
         pl.figure(figsize=(5,15))
-        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*r_values_min, 'r')
+        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
         pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
         pl.xlabel('roi')
         pl.suptitle(curr_filename)
@@ -475,7 +476,7 @@ try:
         
         idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
             estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, fr, decay_time, params['patch']['gSig'], dims, 
+                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
                                              dview=dview, min_SNR=min_SNR, 
                                              r_values_min=rval_thr, use_cnn=use_cnn) 
         
@@ -495,8 +496,8 @@ try:
         
         #
         pl.figure();
-        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
-        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
         
         pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_contours_%s.png' % curr_filename))
         pl.close()

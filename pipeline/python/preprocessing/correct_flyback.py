@@ -17,11 +17,13 @@ import optparse
 import json
 import scipy.io
 import shutil
-from json_tricks.np import dump, dumps, load, loads
+#from json_tricks.np import dump, dumps, load, loads
 import re
 import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
+from pipeline.python.utils import write_dict_to_json
+
 from checksumdir import dirhash
 from memory_profiler import profile
 
@@ -102,7 +104,7 @@ def extract_options(options):
  
     return options
 
-@profile
+#@profile
 def do_flyback_correction(options):
   
     options = extract_options(options)
@@ -208,10 +210,11 @@ def do_flyback_correction(options):
         
     # Make sure preprocessing sourcedir/destdir are correct:
     PID = append_hash_to_paths(PID, pid_hash, step='flyback')
-    
-    with open(paramspath, 'w') as f:
-        json.dump(PID, f, indent=4, sort_keys=True)
-    
+   
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        json.dump(PID, f, indent=4, sort_keys=True)
+#    
     source_dir = PID['PARAMS']['preprocessing']['sourcedir']
     write_dir = PID['PARAMS']['preprocessing']['destdir']
     
@@ -368,10 +371,12 @@ def do_flyback_correction(options):
             runmeta['ntiffs'] = len(tiffs) 
             
         # Save updated JSON:
-        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
-            #json.dump(refinfo, fw)
-            dump(runmeta, fw, indent=4)
-    
+        runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+        write_dict_to_json(runmeta, runmeta_path)
+#        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
+#            #json.dump(refinfo, fw)
+#            dump(runmeta, fw, indent=4)
+#    
         
     # -----------------------------------------------------------------------------
     # Adjust SIMETA data
@@ -425,9 +430,12 @@ def do_flyback_correction(options):
         # 3.  Update write-dir hash ids:
         write_hash, PID = write_hash_readonly(write_dir, PID, step='preprocessing', label='flyback')
 
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        print tmp_pid_fn
-        json.dump(PID, f, indent=4, sort_keys=True)            
+    print tmp_pid_fn
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(PID, tmp_pid_path)
+#    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
+#        print tmp_pid_fn
+#        json.dump(PID, f, indent=4, sort_keys=True)            
     # ========================================================================================
         
     return write_hash, pid_hash

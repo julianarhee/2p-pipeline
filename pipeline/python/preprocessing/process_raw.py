@@ -21,8 +21,10 @@ import optparse
 import sys
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from pipeline.python.set_pid_params import post_pid_cleanup
+import get_scanimage_data as sim
+import correct_flyback as fb
+import correct_motion as mc
 
- 
 import time
 from functools import wraps
  
@@ -116,7 +118,7 @@ def process_pid(options):
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/julianarhee/testdata'
         sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-	    print sireader_path
+        print sireader_path
 
     simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
 
@@ -124,11 +126,9 @@ def process_pid(options):
     if new_acquisition is False:
         simeta_options.extend(['--rerun'])
     if slurm is True:
-        simeta_options.extend(['-P', sireader_path])
-		 
+        simeta_options.extend(['-P', sireader_path, '--slurm']) 
     print simeta_options
 
-    import get_scanimage_data as sim
     raw_hashid = sim.get_meta(simeta_options)
     print "Finished getting SI metadata!"
     print "Raw hash: %s" % raw_hashid
@@ -169,7 +169,9 @@ def process_pid(options):
     if save_tiffs is False:
         flyback_options.extend(['--notiffs'])
 
-    import correct_flyback as fb
+    if slurm is True:
+        flyback_options.extend(['--slurm'])
+
     flyback_hash, pid_hash = fb.do_flyback_correction(flyback_options)
     print "Flyback hash: %s" % flyback_hash
     print "PID %s: Flyback finished." % pid_hash
@@ -192,7 +194,6 @@ def process_pid(options):
     # ===========================================================================
     # 4.  Correct motion, if needed:
     # ===========================================================================
-    import correct_motion as mc
     mc_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
     if slurm is True:
         mc_options.extend(['--slurm'])
