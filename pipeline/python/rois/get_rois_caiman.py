@@ -12,6 +12,8 @@ import re
 import json
 import shutil
 import scipy
+import tifffile
+import hashlib
 import pylab as pl
 import caiman as cm
 import numpy as np
@@ -24,12 +26,15 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
 from caiman.source_extraction.cnmf.utilities import extract_DF_F
 
+from pipeline.python.set_roi_params import create_rid # get_tiff_paths, set_params, initialize_rid, update_roi_records
+from pipeline.python.utils import write_dict_to_json, jsonify_array
 
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
+
 
 #%%
 
@@ -180,6 +185,32 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
     
     return mmap_outpath
 
+#%% MEMORY-MAPPING (plus make non-negative)
+def check_memmapped_tiffs(tiffpaths, mmap_dir):
+    expected_filenames = [os.path.splitext(os.path.split(tpath)[1])[0].split('_')[-1] for tpath in tiffpaths]
+    tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+    missing_mmap_fns = []
+    for f in expected_filenames:
+        matched_mmap = [m for m in tmp_mmap_fns if f in m]
+        if len(matched_mmap) == 0:
+            missing_mmap_fns.append(f)
+
+    tiffs_to_mmap = [[t for t in tiffpaths if m in t][0] for m in missing_mmap_fns]
+    print "Need to mmap %i tiffs." % len(tiffs_to_mmap)
+    
+    if len(tiffs_to_mmap) > 0:
+        output = mp.Queue()
+        processes = [mp.Process(target=memmap_tiff, args=(tpath, mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
+        for p in processes:
+            p.start()
+        for p in processes:
+            p.join()
+        print "Finished memmapping..."
+        
+    mmap_paths = sorted([os.path.join(mmap_dir, m) for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+    
+    return expected_filenames, mmap_paths
+
 #%%
 
 # dataset dependent parameters
@@ -188,171 +219,44 @@ animalid = 'JR063'
 session = '20171128_JR063_testbig'
 acquisition = 'FOV1_zoom1x'
 run = 'gratings_static_run1'
+slurm = False
 
 tiffsource = 'processed002'
 sourcetype = 'mcorrected'
+rid_hash = '32e288'
 
-#%% Get TIFF source and set paths
-    
-from pipeline.python.set_roi_params import get_tiff_paths, set_params, initialize_rid, update_roi_records
-
-rundir = os.path.join(rootdir, animalid, session, acquisition, run)
-tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run,
-                           tiffsource=tiffsource, sourcetype=sourcetype)
-
-tiff_dir = os.path.split(tiffpaths[0])[0]
-tiffsrc_hash = os.path.split(tiff_dir)[1]
-tiffsrc_parent = os.path.split(tiff_dir)[0]
-mmap_dirs = [md for md in os.listdir(tiffsrc_parent) if 'mmap' in md and tiffsrc_hash in md]
-if len(mmap_dirs) == 0:
-    mmap_dir = os.path.split(tiffpaths[0])[0] + '_mmap'
-    if not os.path.exists(mmap_dir):
-        os.makedirs(mmap_dir)
-else:
-    mmap_dir = os.path.join(tiffsrc_parent, mmap_dirs[0])
-print "MMAP dir is:", mmap_dir
-
-
-#%% Load run meta info:
-runinfo_fn = os.path.join(rundir, '%s.json' % run)
-
-with open(runinfo_fn, 'r') as f:
-    runinfo = json.load(f)
-
-expected_filenames = ['File%03d' % int(fi+1) for fi in range(runinfo['ntiffs'])]
-nchannels = runinfo['nchannels']
-signal_channel = 1
-volumerate = runinfo
-is_3D = len(runinfo['slices']) > 1
-
-fr = runinfo['frame_rate']          # imaging rate in frames per second
-decay_time = 0.4                    # length of a typical transient in seconds
-
-#%% MEMORY-MAPPING (plus make non-negative)
-
-tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
-missing_mmap_fns = []
-for f in expected_filenames:
-    matched_mmap = [m for m in tmp_mmap_fns if f in m]
-    if len(matched_mmap) == 0:
-        missing_mmap_fns.append(f)
-
-tiffs_to_mmap = [[t for t in tiffpaths if m in t][0] for m in missing_mmap_fns]
-print "Need to mmap %i tiffs." % len(tiffs_to_mmap)
-
-#%%
-if len(tiffs_to_mmap) > 0:
-    output = mp.Queue()
-    processes = [mp.Process(target=memmap_tiff, args=(tpath, mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
-    for p in processes:
-        p.start()
-    for p in processes:
-        p.join()
-    print "Finished memmapping..."
-    
-#%%
-mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
-
-#%%
+#%% CHECK TIFF paths and get corresponding MMAP paths:
 session_dir = os.path.join(rootdir, animalid, session)
 roi_dir = os.path.join(session_dir, 'ROIs')
-
 if not os.path.exists(roi_dir):
     os.makedirs(roi_dir)
-#%%
-
     
-#%% start a cluster for parallel processing
-c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=None, single_thread=False)
-
-#%% cNMF PARAMS:
-params = dict()
-
-# parameters for source extraction and deconvolution
-params['patch'] = {
-        'p': 2,                       # order of the autoregressive system
-        'gnb': 1,                     # number of global background components
-        'merge_thresh': 0.8,          # merging threshold, max correlation allowed
-        'gSig': [8, 8],               # expected half size of neurons
-        'init_method': 'greedy_roi',  # initialization method (if analyzing dendritic data using 'sparse_nmf')
-        'is_dendrites': False,        # flag for analyzing dendritic data
-        'alpha_snmf': None,           # sparsity penalty for dendritic data analysis through sparse NMF
-        'low_rank_background': True,
-        'method_deconv': 'cvxpy',
-        'noise_method': 'logmexp', 
-        'rf': 30,                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
-        'stride': 15,            # amount of overlap between the patches in pixels
-        'K': 10,                      # number of components per patch
-        'only_init_patch': True
-        }
-
-params['full'] = {
-        'rf': None,
-        'stride': None,
-        'only_init_patch': False
-        }
-
-# parameters for component evaluation
-params['eval'] = {
-        'min_SNR': 2.5,               # signal to noise ratio for accepting a component
-        'rval_thr': 0.8,              # space correlation threshold for accepting a component
-        'decay_time': 1.0,            # length of typical transient (sec)
-        'use_cnn': False,             # CNN classifier designed for 2d data ?
-        'cnn_thr': 0.8,               # threshold for CNN based classifier
-        'final_frate': volumerate     # demos downsample - not sure if this matters for evaluation
-        }
-
-# parameters for displaying stuff
-params_display = {
-    'downsample_ratio': .2,
-    'thr_plot': 0.8,
-    'use_average': True
-}
-
-#%%
+    
+if len(rid_hash) == 0:
+    print "Creating new RID..."
+    rid_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
+                       '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
+    if slurm is True:
+        rid_options.extend(['--slurm'])
         
-border_pix = 0
+    RID = create_rid(rootdir)
+    rid_hash = RID['rid_hash']
+    tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+    
+else:
+    print "RID %s -- Loading params..." % rid_hash
+    tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+    with open(tmp_rid_path, 'r') as f:
+        RID = json.load(f)
+    
 
-cnm = cnmf.CNMF(k=params['patch']['K'], gSig=params['patch']['gSig'], merge_thresh=params['patch']['merge_thresh'],
-                p=params['patch']['p'],
-                dview=dview, n_processes=n_processes,
-                rf=params['patch']['rf'], stride=params['patch']['stride_cnmf'], memory_fact=1,
-                method_init=params['patch']['init_method'], alpha_snmf=params['patch']['alpha_snmf'],
-                only_init_patch=params['patch']['only_init_patch'],
-                gnb=params['patch']['gnb'], method_deconvolution=params['patch']['method_deconv'], border_pix=border_pix,
-                low_rank_background=params['patch']['low_rank_background'])
-                #deconv_flag = True) 
+tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
+print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
+mmap_dir = RID['PARAMS']['mmap_source']
+expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir)
 
-# adjust opts:
-
-cnm.options['preprocess_params']['noise_method'] = params['patch']['noise_method']
-cnm.options['temporal_params']['noise_method'] = params['patch']['noise_method']
-cnm.options['temporal_params']['memory_efficient'] = True
-cnm.options['temporal_params']['method'] = params['patch']['method_deconv']
-cnm.options['temporal_params']['verbosity'] = True
-
-#cnm.options['init_params']['rolling_sum'] = False #True
-cnm.options['init_params']['normalize_init'] = False
-cnm.options['init_params']['center_psf'] = True
-
-
-#%% UPDATE RID:
-
-PARAMS = set_params(tiff_dir, cnm.options, roi_type='caiman2D')
-rid = initialize_rid(PARAMS, session_dir)
-
-roi_name = '_'.join((rid['roi_id'], rid['params_hashid']))
-curr_roi_dir = os.path.join(roi_dir, roi_name)
-if not os.path.exists(curr_roi_dir):
-    os.makedirs(curr_roi_dir)
-
-# Rename RID fields to include roiparams hash:
-if rid['params_hashid'] not in rid['DST']:
-    rid['DST'] = rid['DST'] + '_' + rid['params_hashid']
-update_roi_records(rid, session_dir)
-
-#%% Prepare output paths:
+#%% Set output paths:
+curr_roi_dir = RID['DST']
 nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
 nmf_figdir = os.path.join(nmf_outdir, 'figures')
 nmf_movdir = os.path.join(nmf_outdir, 'movies')
@@ -362,18 +266,35 @@ if not os.path.exists(nmf_figdir):
 if not os.path.exists(nmf_movdir):
     os.makedirs(nmf_movdir)
 
-#%% Load a file:
-display_average = params_display['use_average']
-inspect_components = True
+print "RID %s -- writing cNMF output files to %s." % (rid_hash, nmf_outdir)
+    
+#%%
+params = RID['PARAMS']['options']
 
+nmovies = params['info']['nmovies']
+nchannels = params['info']['nchannels']
+signal_channel = params['info']['signal_channel']
+volumerate = params['info']['volumerate']
+is_3D = params['info']['is_3D']
+fr = params['eval']['final_frate']          # imaging rate in frames per second
+
+display_average = params['display']['use_average']
+inspect_components = False
+save_movies = params['display']['save_movies']
+remove_bad = False
+
+#%% start a cluster for parallel processing
+c, dview, n_processes = cm.cluster.setup_cluster(
+    backend='local', n_processes=None, single_thread=False)
 
 #%%
-fidx = 0
-curr_filename = expected_filenames[fidx]
+#fidx = 0
+#curr_filename = expected_filenames[fidx]
 try:
     for curr_filename in expected_filenames:
+        #%%
         print "Extracting ROIs:", curr_filename
-        curr_mmap = [os.path.join(rid['PARAMS']['mmap_source'], m) for m in mmap_fns if curr_filename in m][0]
+        curr_mmap = [m for m in mmap_paths if curr_filename in m][0]
         Yr, dims, T = cm.load_memmap(curr_mmap)
         if is_3D:
             d1, d2, d3 = dims
@@ -381,9 +302,49 @@ try:
             d1, d2 = dims
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
         
+        print "RID %s -- %s: ITER 1 -- RUNNING CNMF FIT..." % (rid_hash, curr_filename)
+        #%% Create CNMF object:
+                
+        cnm = cnmf.CNMF(k=params['extraction']['K'], gSig=params['extraction']['gSig'],
+                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
+                        dview=dview, n_processes=n_processes, memory_fact=1,
+                        rf=params['patch']['rf'], stride=params['patch']['stride'], 
+                        method_init=params['patch']['init_method'], only_init_patch=params['patch']['only_init_patch'],
+                        gnb=params['extraction']['gnb'], low_rank_background=params['extraction']['low_rank_background'],
+                        method_deconvolution=params['extraction']['method_deconv'],
+                        border_pix=0)                #deconv_flag = True) 
         
-        print "%s : ITER 1 -- RUNNING CNMF FIT..." % curr_filename
+        # adjust opts:
+        cnm.options['temporal_params']['memory_efficient'] = True
+        cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
+        cnm.options['temporal_params']['verbosity'] = True
+        
+        #cnm.options['init_params']['rolling_sum'] = False #True
+        #cnm.options['init_params']['normalize_init'] = False
+        #cnm.options['init_params']['center_psf'] = True
+        if curr_filename == 'File001':
+            print "RID %s -- Updating tmp RID file with cnmf options." % rid_hash
+            
+            # Save CNMF options with has:
+            nmfoptions = jsonify_array(cnm.options)
+            nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
+            write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
+            
+            # Update tmp RID dict:
+            RID['PARAMS']['nmf_hashid'] = nmfopts_hashid
+            write_dict_to_json(RID, tmp_rid_path)
+            
+            # Update main RID dict:
+            roidict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
+            with open(roidict_path, 'r') as f:
+                roidict = json.load(f)
+            roidict[RID['roi_id']] = RID
+            write_dict_to_json(roidict, roidict_path)
+            
+
+        #%%
         cnm = cnm.fit(images)
+        
         #%% Look at local correlations:
         Y = np.reshape(Yr, dims + (T,), order='F')
         Cn = cm.local_correlations(Y)
@@ -404,9 +365,9 @@ try:
         #%% ITER 1 -- view initial spatial footprints
         pl.figure()
         if display_average is True:
-            crd = plot_contours(cnm.A, Av, thr=params_display['thr_plot'])
+            crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
         else:
-            crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
+            crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
         
         pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
         pl.close()
@@ -436,8 +397,8 @@ try:
         
         #
         pl.figure();
-        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
-        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
         
         pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_contours_%s.png' % curr_filename))
         pl.close()
@@ -459,7 +420,7 @@ try:
 #                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
 #                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
 #                
-        remove_bad = False
+        
         
         #%%
 
@@ -479,11 +440,11 @@ try:
         
         #%% ITER 2:  re-run seeded cNMF:
         
-        cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['patch']['gSig'], merge_thresh=params['patch']['merge_thresh'],
-                        p=params['patch']['p'],
-                        dview=dview, n_processes=n_processes,
-                        rf=params['full']['rf'], stride=params['full']['stride'], memory_fact=1,
-                        method_deconvolution=params['patch']['method_deconv'],
+        cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['extraction']['gSig'],
+                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
+                        dview=dview, n_processes=n_processes,  memory_fact=1,
+                        rf=params['full']['rf'], stride=params['full']['stride'],
+                        method_deconvolution=params['extraction']['method_deconv'],
                         Ain=A_tot, Cin=C_tot, f_in=f_tot)
         # adjust opts:
         cnm.options['temporal_params']['memory_efficient'] = True
@@ -496,9 +457,9 @@ try:
             
         pl.figure()
         if display_average is True:
-            crd = plot_contours(cnm.A, Av, thr=params_display['thr_plot'])
+            crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
         else:
-            crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
+            crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
         
         pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
         pl.close()
@@ -552,6 +513,7 @@ try:
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         pl.colorbar(im, cax=cax); 
+        pl.savefig(os.path.join(nmf_figdir, 'zproj_final_%s.png' % curr_filename))
         pl.close()
     
         # %% save results
@@ -565,6 +527,47 @@ try:
                 
     
         print("FINAL N COMPONENTS:", A.shape[1])
+    
+        #%%
+        if inspect_components is True:
+            if display_average is True:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
+                             YrA=YrA[idx_components, :], img=Av)
+            else:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
+                             YrA=YrA[idx_components, :], img=Cn)
+                
+            # %%
+            if display_average is True:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
+            else:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
+            
+            # %% reconstruct denoised movie
+        if save_movies is True:
+            if curr_filename in movie_files:
+                #%% save denoised movie:
+                currmovie = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                
+                currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_plusbackground_%s.tif' % curr_filename))
+            
+                #%% background only 
+                currmovie = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+                currmovie.save(os.path.join(nmf_movdir, 'backgroundmov_%s.tif' % curr_filename))
+            
+                # %% reconstruct denoised movie without background
+                currmovie = cm.movie(A.dot(C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                    
+                currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_nobackground_%s.tif' % curr_filename))
+
+        #%% show background(s)
+        BB  = cm.movie(b.reshape(dims+(-1,), order = 'F').transpose(2,0,1))
+        #BB.play(gain=2, offset=0, fr=2, magnification=4)
+        pl.figure()
+        BB.zproject()
+        pl.savefig(os.path.join(nmf_figdir, 'background_zproj_%s.png' % curr_filename))
+        pl.close()
+    
     
         #%%
 except:

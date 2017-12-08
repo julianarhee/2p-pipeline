@@ -16,9 +16,10 @@ import optparse
 import sys
 import hashlib
 import copy
+from pipeline.python.utils import write_dict_to_json
 from caiman.source_extraction.cnmf import utilities as cmu
 import caiman as cm
-
+import numpy as np
 from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 import shutil
@@ -31,7 +32,13 @@ def atoi(text):
 def natural_keys(text):
     return [atoi(c) for c in re.split('(\d+)', text)]
 
-def create_rid(options):
+
+def extract_options(options):
+    choices_sourcetype = ('raw', 'mcorrected', 'bidi')
+    default_sourcetype = 'mcorrected'
+
+    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon')
+    default_roitype = 'caiman2D'
 
     parser = optparse.OptionParser()
 
@@ -43,54 +50,93 @@ def create_rid(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-#    parser.add_option('--default', action='store_true', dest='auto', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+    parser.add_option('--default', action='store_true', dest='auto', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
-    parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
-    parser.add_option('-o', '--roi-type', action='store', dest='roi_type', default='', help="roi type ['caiman2D', 'manual2D_circle', etc.]")
+    parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
+    parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
+
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     (options, args) = parser.parse_args(options) 
-
     
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+
+    return options
+
+def create_rid(options):
+    
+    options = extract_options(options)
+    
+    # Set USER INPUT options:
     rootdir = options.rootdir
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
     run = options.run
+
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     roi_type = options.roi_type
+
+    auto = options.auto
 
     session_dir = os.path.join(rootdir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
     if not os.path.exists(roi_dir):
         os.makedirs(roi_dir)
+        
+    # Get paths to tiffs from which to create ROIs:
+    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
+                               acquisition=acquisition, run=run,
+                               tiffsource=tiffsource, sourcetype=sourcetype)
+    
+    # Get roi-type specific options:
+    if roi_type == 'caiman2D':
+        movie_idxs = []
+        roi_options = set_options_cnmf(rootdir=rootdir, animalid=animalid, session=session,
+                                       acquisition=acquisition, run=run,
+                                       movie_idxs=movie_idxs)
+    elif 'manual' in roi_type:
+        roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
+                                         acquisition=acquisition, run=run,
+                                         roi_type=roi_type)
+    
+    # Create roi-params dict with source and roi-options:
+    tiff_sourcedir = os.path.split(tiffpaths[0])[0]
+    print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_dir=None, check_hash=False)
+    
+    # Create ROI ID (RID):
+    RID = initialize_rid(PARAMS, session_dir)
 
-    rundir = os.path.join(rootdir, animalid, session, acquisition, run)
-    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run,
-                           tiffsource=tiffsource, sourcetype=sourcetype)
-
-    tiff_dir = os.path.split(tiffpaths[0])[0]
-    print "SRC: %s, found %i tiffs." % (tiff_dir, len(tiffpaths))
-	 
-    roi_options = None
-
-    PARAMS = set_params(tiff_dir, roi_options, roi_type=roi_type)
-    rid = initialize_rid(PARAMS, session_dir)
-
-    roi_name = '_'.join((rid['roi_id'], rid['params_hashid']))
+    # Create ROI output directory:
+    roi_name = '_'.join((RID['roi_id'], RID['rid_hash']))
     curr_roi_dir = os.path.join(roi_dir, roi_name)
     if not os.path.exists(curr_roi_dir):
-	os.makedirs(curr_roi_dir)
+        os.makedirs(curr_roi_dir)
 
-    # Rename RID fields to include roiparams hash:
-    if rid['params_hashid'] not in rid['DST']:
-	rid['DST'] = rid['DST'] + '_' + rid['params_hashid']
-    update_roi_records(rid, session_dir)
+    # Check RID fields to include RID hash, and save updated to ROI DICT:
+    if RID['rid_hash'] not in RID['DST']:
+        RID['DST'] = RID['DST'] + '_' + RID['rid_hash']
+    update_roi_records(RID, session_dir)
+    
+    # Write to tmp_rid folder in current run source:
+    tmp_rid_dir = os.path.join(roi_dir, 'tmp_rids')
+    if not os.path.exists(tmp_rid_dir):
+        os.makedirs(tmp_rid_dir)
+        
+    tmp_rid_path = os.path.join(tmp_rid_dir, 'tmp_rid_%s.json' % RID['rid_hash'])
+    write_dict_to_json(RID, tmp_rid_path)
+        
+    print "********************************************"
+    print "Created params for ROI SET, hash: %s" % RID['rid_hash']
+    print "********************************************"
+    
+    return RID
 
-    print "Created new ROI ID, hash:", rid['params_hashid']
-
-    return rid
 
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
 #    rootdir = '/nas/volume1/2photon/data'
@@ -160,6 +206,7 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
 
     return tiffpaths
 
+
 def load_roidict(session_dir):
     
     roidict = None
@@ -176,41 +223,121 @@ def load_roidict(session_dir):
     return roidict
 
 
-def set_params(tiffsource, roi_options, roi_type=''):
+def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run='',
+                    movie_idxs=[], fr=None, signal_channel=1, 
+                    gSig=[8,8], rf=30, stride=15, K=10, p=2, gnb=1, merge_thr=0.8,
+                    init_method='greedy_roi', method_deconv='cvxpy',
+                    rval_thr=0.8, min_SNR=2, decay_time=1.0, use_cnn=False, cnn_thr=0.8,
+                    use_average=True, save_movies=True, thr_plot=0.8):
+    
+    # Load run meta info:
+    rundir = os.path.join(rootdir, animalid, session, acquisition, run)
+    runinfo_fn = os.path.join(rundir, '%s.json' % run)
+    
+    with open(runinfo_fn, 'r') as f:
+        runinfo = json.load(f)
+    
+    params = dict()
+    
+    params['info'] = {
+            'nmovies': runinfo['ntiffs'],
+            'nchannels': runinfo['nchannels'],
+            'signal_channel': signal_channel,
+            'volumerate': runinfo['volume_rate'],
+            'is_3D': len(runinfo['slices']) > 1
+            }
+    
+    # parameters for source extraction and deconvolution
+    params['extraction'] = {
+            'p': p,                       # order of the autoregressive system
+            'gnb': gnb,                   # number of global background components
+            'merge_thresh': merge_thr,    # merging threshold, max correlation allowed
+            'gSig': gSig,                 # expected half size of neurons
+            'init_method': init_method,   # initialization method (if analyzing dendritic data using 'sparse_nmf')
+            'method_deconv': method_deconv,
+            'K': K,                       # number of components per patch
+            'is_dendrites': False,        # flag for analyzing dendritic data
+            'low_rank_background': True
+            }
+    
+    params['patch'] = {
+            'init_method': init_method, #initialization method (if analyzing dendritic data using 'sparse_nmf')
+            'rf': rf,                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
+            'stride': stride,            # amount of overlap between the patches in pixels
+            'only_init_patch': True
+            }
+    
+    params['full'] = {
+            'rf': None,
+            'stride': None,
+            'only_init_patch': False
+            }
+    
+    # parameters for component evaluation
+    if fr is None:
+        fr = params['info']['volumerate']
+    if len(movie_idxs) == 0 and save_movies is True:
+        movie_idxs = [i for i in np.arange(1, params['info']['nmovies']+1, 2)]
+        
+    params['eval'] = {
+            'min_SNR': min_SNR,               # signal to noise ratio for accepting a component
+            'rval_thr': rval_thr,              # space correlation threshold for accepting a component
+            'decay_time': decay_time,            # length of typical transient (sec)
+            'use_cnn': use_cnn,             # CNN classifier designed for 2d data ?
+            'cnn_thr': cnn_thr,               # threshold for CNN based classifier
+            'final_frate': fr     # demos downsample - not sure if this matters for evaluation
+            }
+    
+    # parameters for displaying stuff
+    params['display'] = {
+        'downsample_ratio': .2,
+        'thr_plot': thr_plot,
+        'use_average': use_average,
+        'save_movies': save_movies, 
+        'movie_files': ['File%03d' % int(i) for i in movie_idxs]
+    }
+
+    return params
+
+def set_options_manual(rootdir='', animalid='', session='', acquisition='', run='',
+                    roi_type=''): 
+    
+    params = dict()
+    params['roi_type'] = roi_type
+    
+    return params
+
+
+def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, check_hash=False):
+    
+    '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
+    '''
     
     PARAMS = dict()
     
-    PARAMS['tiff_source'] = tiffsource
+    PARAMS['tiff_sourcedir'] = tiff_sourcedir
     
-    tiffparent = os.path.split(tiffsource)[0]
-    
-    # Check mmap hash:
-    if roi_type == 'caiman2D':
-        if roi_options is None:
-	    tiffs = [t for t in os.listdir(tiffsource) if t.endswith('tif')]
-	    m_orig = cm.load_movie_chain([os.path.join(tiffsource, tiffs[0])])
-            roi_options = cmu.CNMFSetParams(m_orig)
-	else:
-	    mmap_dirs = [m for m in os.listdir(tiffparent) if 'mmap' in m]
-	    if len(mmap_dirs) == 1:
-		mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
-	    else:
-		mmap_dir = tiffsource + '_mmap'
-	    
-	    excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
-	    mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
-	    if mmap_hash not in mmap_dir:
-		PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
-		os.rename(mmap_dir, PARAMS['mmap_source'])
-		print "Renamed mmap with hash:", PARAMS['mmap_source']
-	    else:
-		PARAMS['mmap_source'] = mmap_dir
-	roi_options = to_json(roi_options)
-
-    elif 'manual' in roi_type:
-        roi_options = dict()
-        roi_options['roi_type'] = roi_type
-        	
+    if mmap_dir is None:
+        tiffparent = os.path.split(tiff_sourcedir)[0]
+        mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
+        if len(mmap_dirs) == 1:
+            mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
+            mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+        else:
+            mmap_dir = tiff_sourcedir + '_mmap'
+            check_hash = True
+            
+        if check_hash is True:
+            excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
+            mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+            
+        if mmap_hash not in mmap_dir:
+            PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
+            os.rename(mmap_dir, PARAMS['mmap_source'])
+            print "Renamed mmap with hash:", PARAMS['mmap_source']
+        else:
+            PARAMS['mmap_source'] = mmap_dir
+            
     PARAMS['options'] = roi_options
     PARAMS['roi_type'] = roi_type
    
@@ -275,15 +402,6 @@ def get_roi_id(PARAMS, session_dir, auto=False):
  
     return roi_id
 
-def to_json(curropts):  
-    jsontypes = (list, tuple, str, int, float)
-    for pkey in curropts.keys():
-        if isinstance(curropts[pkey], dict):
-            for subkey in curropts[pkey].keys():
-                if curropts[pkey][subkey] is not None and not isinstance(curropts[pkey][subkey], jsontypes) and len(curropts[pkey][subkey].shape) > 1:
-                    curropts[pkey][subkey] = curropts[pkey][subkey].tolist()
-    return curropts
-
 
 def initialize_rid(PARAMS, session_dir, auto=False):
     
@@ -297,18 +415,18 @@ def initialize_rid(PARAMS, session_dir, auto=False):
     
     rid['version'] = version 
     rid['roi_id'] = roi_id
-    rid['SRC'] = PARAMS['tiff_source'] #source_dir
+    rid['SRC'] = PARAMS['tiff_sourcedir'] #source_dir
     rid['DST'] = os.path.join(session_dir, 'ROIs', roi_id)
     rid['roi_type'] = PARAMS['roi_type']
 
     rid['PARAMS'] = PARAMS
     
     # deal with jsonify:
-    curropts = to_json(PARAMS['options'])
-    rid['PARAMS']['options'] = curropts
+    #curropts = to_json(PARAMS['options'])
+    #rid['PARAMS']['options'] = curropts
 
     # TODO:  Generate hash for full PID dict
-    rid['params_hashid'] = hashlib.sha1(json.dumps(rid, sort_keys=True)).hexdigest()[0:6]
+    rid['rid_hash'] = hashlib.sha1(json.dumps(rid, sort_keys=True)).hexdigest()[0:6]
         
     return rid
 
@@ -331,11 +449,11 @@ def update_roi_records(rid, session_dir):
     roidict[roi_id] = rid
 
     #% Update Process Info DICT:
-    with open(roidict_filepath, 'w') as f:
-        json.dump(roidict, f, sort_keys=True, indent=4)
+    write_dict_to_json(roidict, roidict_filepath)
 
     print "ROI Info UPDATED."
     
+
 
 def main(options):
     
@@ -347,12 +465,6 @@ def main(options):
     pp.pprint(rid)
     print "****************************************************************"
     
+    
 if __name__ == '__main__':
     main(sys.argv[1:]) 
-
-#%%
-#tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run)
-
-#PARAMS = set_roi_params(tiff_dir, cnm.options)
-#rid = initialize_rid(PARAMS, session_dir)
-#update_roi_records(rid, session_dir)

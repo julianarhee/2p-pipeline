@@ -15,6 +15,8 @@ import optparse
 import sys
 import hashlib
 import copy
+from pipeline.python.utils import write_dict_to_json
+
 from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 import shutil
@@ -63,8 +65,8 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     print "Updated main process dict, with key: %s" % new_process_id_key
     
     # Save updated PID dict:
-    with open(os.path.join(processed_dir, processdict_fn), 'w') as fw:
-        json.dump(processdict, fw, indent=4, sort_keys=True)
+    path_to_processdict = os.path.join(processed_dir, processdict_fn)
+    write_dict_to_json(processdict, path_to_processdict)
 
 
 def change_permissions_recursive(path, mode):
@@ -584,9 +586,9 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        json.dump(pid, f, indent=4, sort_keys=True)
-        
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(pid, tmp_pid_path)
+
     return pid
 
 def update_pid_records(pid, acquisition_dir, run):
@@ -606,14 +608,12 @@ def update_pid_records(pid, acquisition_dir, run):
     processdict[process_id] = pid
 
     #% Update Process Info DICT:
-    with open(processdict_filepath, 'w') as f:
-        json.dump(processdict, f, sort_keys=True, indent=4)
+    write_dict_to_json(processdict, processdict_filepath)
 
     print "Process Info UPDATED."
     
 
-def create_pid(options):
-   
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -629,6 +629,7 @@ def create_pid(options):
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     # Preprocessing params:
     parser.add_option('--bidi', action='store_true', dest='bidi', default=False, help='Set flag if correct bidirectional scanning phase offset.')
@@ -643,6 +644,18 @@ def create_pid(options):
     parser.add_option('-a', '--algo', action='store', dest='algorithm', default=None, help='Algorithm to use for motion-correction, e.g., @withinFile_withinFrame_lucasKanade if method=Acquisition2P, or nonrigid if method=NoRMCorre')
 
     (options, args) = parser.parse_args(options) 
+    
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        if 'coxfs01' not in options.path_to_si_reader:
+            options.path_to_si_reader = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux/share/python'
+
+    return options
+
+def create_pid(options):
+   
+    options = extract_options(options)
 
     rootdir = options.rootdir
     animalid = options.animalid
@@ -695,8 +708,8 @@ def create_pid(options):
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        json.dump(pid, f, indent=4, sort_keys=True)
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(pid, tmp_pid_path)
        
     print "Params set for PID: %s" % pid['tmp_hashid']
 
