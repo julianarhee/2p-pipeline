@@ -364,7 +364,9 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     
     processed_dirs = sorted([p for p in os.listdir(os.path.join(rundir, 'processed'))
                               if 'processed' in p], key=natural_keys)
- 
+    
+    process_dict = load_processdict(acquisition_dir, run)
+    
     rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
     
     if tiffsource is None or len(tiffsource) == 0:
@@ -407,7 +409,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                     print pidx, ptype
                 processed_type_idx = raw_input('Enter IDX of processed source to use: ')
                 if processed_type_idx in range(len(processed_types)):
-                    processed_type = processed_type[processed_type_idx]
+                    processed_type = processed_types[processed_type_idx]
                     confirm_type = raw_input('Selected source %s/%s. Press <Y> to confirm: ' % (tiffsource_name, processed_type))
                     if confirm_type == 'Y':
                         sourcetype = processed_type
@@ -434,7 +436,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     # Check user-provided MC params:
     # ------------------------------------------
     print correct_motion
-    PARAMS['motion'] = mcparams = set_motion_params(correct_motion=correct_motion,
+    PARAMS['motion'] = set_motion_params(correct_motion=correct_motion,
                             ref_channel=ref_channel,
                             ref_file=ref_file,
                             method=mc_method,
@@ -575,7 +577,7 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
     pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True)
     
     # UPDATE RECORDS:
-    update_records(pid, acquisition_dir, run)
+    update_pid_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
     tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
@@ -587,7 +589,7 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
         
     return pid
 
-def update_records(pid, acquisition_dir, run):
+def update_pid_records(pid, acquisition_dir, run):
 
     print "************************"
     print "Updating JSONS..."
