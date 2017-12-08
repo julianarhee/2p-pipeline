@@ -1,0 +1,573 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec  7 11:36:30 2017
+
+@author: julianarhee
+"""
+import matplotlib
+matplotlib.use('TkAgg')
+import os
+import re
+import json
+import shutil
+import scipy
+import pylab as pl
+import caiman as cm
+import numpy as np
+import multiprocessing as mp
+from checksumdir import dirhash
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from caiman.utils.visualization import plot_contours, view_patches_bar
+from caiman.source_extraction.cnmf import cnmf as cnmf
+from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
+from caiman.source_extraction.cnmf.utilities import extract_DF_F
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
+#%%
+
+def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0, idx_xy=None,
+                order='F', xy_shifts=None, is_3D=False, add_to_movie=0, border_to_0=0):
+    """ Saves efficiently a list of tif files into a memory mappable file
+    Parameters:
+    ----------
+        filenames: list
+            list of tif files or list of numpy arrays
+        base_name: str
+            the base used to build the file name. IT MUST NOT CONTAIN "_"
+        resize_fact: tuple
+            x,y, and z downampling factors (0.5 means downsampled by a factor 2)
+        remove_init: int
+            number of frames to remove at the begining of each tif file
+            (used for resonant scanning images if laser in rutned on trial by trial)
+        idx_xy: tuple size 2 [or 3 for 3D data]
+            for selecting slices of the original FOV, for instance
+            idx_xy = (slice(150,350,None), slice(150,350,None))
+        order: string
+            whether to save the file in 'C' or 'F' order
+        xy_shifts: list
+            x and y shifts computed by a motion correction algorithm to be applied before memory mapping
+        is_3D: boolean
+            whether it is 3D data
+    Returns:
+    -------
+        fname_new: the name of the mapped file, the format is such that
+            the name will contain the frame dimensions and the number of f
+    """
+
+    # TODO: can be done online
+    Ttot = 0
+    for idx, f in enumerate(filenames):
+        if isinstance(f, str):
+            print(f)
+
+        if is_3D:
+            #import tifffile
+            #            print("Using tifffile library instead of skimage because of  3D")
+            Yr = f if isinstance(f, basestring) else tifffile.imread(f)
+            if idx_xy is None:
+                Yr = Yr[remove_init:]
+            elif len(idx_xy) == 2:
+                Yr = Yr[remove_init:, idx_xy[0], idx_xy[1]]
+            else:
+                Yr = Yr[remove_init:, idx_xy[0], idx_xy[1], idx_xy[2]]
+
+        else:
+            Yr = cm.load(f, fr=1, in_memory=True) if isinstance(f, basestring) else cm.movie(f)
+            if xy_shifts is not None:
+                Yr = Yr.apply_shifts(xy_shifts, interpolation='cubic', remove_blanks=False)
+
+            if idx_xy is None:
+                if remove_init > 0:
+                    Yr = np.array(Yr)[remove_init:]
+            elif len(idx_xy) == 2:
+                Yr = np.array(Yr)[remove_init:, idx_xy[0], idx_xy[1]]
+            else:
+                raise Exception('You need to set is_3D=True for 3D data)')
+                Yr = np.array(Yr)[remove_init:, idx_xy[0], idx_xy[1], idx_xy[2]]
+
+        if border_to_0 > 0:
+
+            min_mov = Yr.calc_min()
+            Yr[:, :border_to_0, :] = min_mov
+            Yr[:, :, :border_to_0] = min_mov
+            Yr[:, :, -border_to_0:] = min_mov
+            Yr[:, -border_to_0:, :] = min_mov
+
+        fx, fy, fz = resize_fact
+        if fx != 1 or fy != 1 or fz != 1:
+
+            if 'movie' not in str(type(Yr)):
+                Yr = cm.movie(Yr, fr=1)
+
+            Yr = Yr.resize(fx=fx, fy=fy, fz=fz)
+        T, dims = Yr.shape[0], Yr.shape[1:]
+        Yr = np.transpose(Yr, list(range(1, len(dims) + 1)) + [0])
+        Yr = np.reshape(Yr, (np.prod(dims), T), order='F')
+
+        if idx == 0:
+            fname_tot = base_name + '_d1_' + str(dims[0]) + '_d2_' + str(dims[1]) + '_d3_' + str(
+                1 if len(dims) == 2 else dims[2]) + '_order_' + str(order)
+            if isinstance(f, str):
+                fname_tot = os.path.join(os.path.split(f)[0], os.path.splitext(os.path.split(f)[1])[0] + '_' + fname_tot)
+            big_mov = np.memmap(fname_tot, mode='w+', dtype=np.float32,
+                                shape=(np.prod(dims), T), order=order)
+        else:
+            big_mov = np.memmap(fname_tot, dtype=np.float32, mode='r+',
+                                shape=(np.prod(dims), Ttot + T), order=order)
+
+        big_mov[:, Ttot:Ttot + T] = np.asarray(Yr, dtype=np.float32) + 1e-10 + add_to_movie
+        big_mov.flush()
+        del big_mov
+        Ttot = Ttot + T
+
+    fname_new = fname_tot + '_frames_' + str(Ttot) + '_.mmap'
+    try:
+        # need to explicitly remove destination on windows
+        os.unlink(fname_new)
+    except OSError:
+        pass
+    os.rename(fname_tot, fname_new)
+
+    return fname_new
+
+#%%
+def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
+    
+    border_to_0 = 0
+        
+    idx_xy = None
+    
+    # TODO: needinfo
+    #add_to_movie = min_value #-np.nanmin(m_els) + 1  # movie must be positive
+    # if you need to remove frames from the beginning of each file
+    remove_init = 0
+    # downsample movie in time: use .2 or .1 if file is large and you want a quick answer
+    downsample_factor = 1
+    #base_name = acqmeta['base_filename'] #fname[0].split('/')[-1][:-4]  # omit this in save_memmap_each() to use original filenames as base for mmap files
+
+    # estimate offset:
+    m_orig = cm.load_movie_chain([filepath])
+    add_to_movie = -np.nanmin(m_orig)
+    print "min val:", add_to_movie
+    del m_orig
+    
+#    mmap_fpath = cm.save_memmap_each(
+#            [filepath], dview=dview,
+#            resize_fact=(1, 1, downsample_factor), remove_init=remove_init, 
+#            idx_xy=idx_xy, add_to_movie=add_to_movie, border_to_0=border_to_0)
+    mmap_fpath = save_memmap2(
+            [filepath], base_name=basename, is_3D=is_3D,
+            resize_fact=(1, 1, downsample_factor), remove_init=remove_init, 
+            idx_xy=idx_xy, add_to_movie=add_to_movie, border_to_0=border_to_0)
+
+    if isinstance(mmap_fpath, list):
+        mmap_fpath = mmap_fpath[0]
+
+    mmap_fn = os.path.split(mmap_fpath)[1]
+    print mmap_fn
+        
+    shutil.move(mmap_fpath, os.path.join(outpath, mmap_fn))
+    
+    mmap_outpath = os.path.join(outpath, mmap_fn)
+    
+    return mmap_outpath
+
+#%%
+
+# dataset dependent parameters
+rootdir = '/nas/volume1/2photon/data'
+animalid = 'JR063'
+session = '20171128_JR063_testbig'
+acquisition = 'FOV1_zoom1x'
+run = 'gratings_static_run1'
+
+tiffsource = 'processed002'
+sourcetype = 'mcorrected'
+
+#%% Get TIFF source and set paths
+    
+from pipeline.python.set_roi_params import get_tiff_paths, set_params, initialize_rid, update_roi_records
+
+rundir = os.path.join(rootdir, animalid, session, acquisition, run)
+tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition, run=run,
+                           tiffsource=tiffsource, sourcetype=sourcetype)
+
+tiff_dir = os.path.split(tiffpaths[0])[0]
+tiffsrc_hash = os.path.split(tiff_dir)[1]
+tiffsrc_parent = os.path.split(tiff_dir)[0]
+mmap_dirs = [md for md in os.listdir(tiffsrc_parent) if 'mmap' in md and tiffsrc_hash in md]
+if len(mmap_dirs) == 0:
+    mmap_dir = os.path.split(tiffpaths[0])[0] + '_mmap'
+    if not os.path.exists(mmap_dir):
+        os.makedirs(mmap_dir)
+else:
+    mmap_dir = os.path.join(tiffsrc_parent, mmap_dirs[0])
+print "MMAP dir is:", mmap_dir
+
+
+#%% Load run meta info:
+runinfo_fn = os.path.join(rundir, '%s.json' % run)
+
+with open(runinfo_fn, 'r') as f:
+    runinfo = json.load(f)
+
+expected_filenames = ['File%03d' % int(fi+1) for fi in range(runinfo['ntiffs'])]
+nchannels = runinfo['nchannels']
+signal_channel = 1
+volumerate = runinfo
+is_3D = len(runinfo['slices']) > 1
+
+fr = runinfo['frame_rate']          # imaging rate in frames per second
+decay_time = 0.4                    # length of a typical transient in seconds
+
+#%% MEMORY-MAPPING (plus make non-negative)
+
+tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+missing_mmap_fns = []
+for f in expected_filenames:
+    matched_mmap = [m for m in tmp_mmap_fns if f in m]
+    if len(matched_mmap) == 0:
+        missing_mmap_fns.append(f)
+
+tiffs_to_mmap = [[t for t in tiffpaths if m in t][0] for m in missing_mmap_fns]
+print "Need to mmap %i tiffs." % len(tiffs_to_mmap)
+
+#%%
+if len(tiffs_to_mmap) > 0:
+    output = mp.Queue()
+    processes = [mp.Process(target=memmap_tiff, args=(tpath, mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+    print "Finished memmapping..."
+    
+#%%
+mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+
+#%%
+session_dir = os.path.join(rootdir, animalid, session)
+roi_dir = os.path.join(session_dir, 'ROIs')
+
+if not os.path.exists(roi_dir):
+    os.makedirs(roi_dir)
+#%%
+
+    
+#%% start a cluster for parallel processing
+c, dview, n_processes = cm.cluster.setup_cluster(
+    backend='local', n_processes=None, single_thread=False)
+
+#%% cNMF PARAMS:
+params = dict()
+
+# parameters for source extraction and deconvolution
+params['patch'] = {
+        'p': 2,                       # order of the autoregressive system
+        'gnb': 1,                     # number of global background components
+        'merge_thresh': 0.8,          # merging threshold, max correlation allowed
+        'gSig': [8, 8],               # expected half size of neurons
+        'init_method': 'greedy_roi',  # initialization method (if analyzing dendritic data using 'sparse_nmf')
+        'is_dendrites': False,        # flag for analyzing dendritic data
+        'alpha_snmf': None,           # sparsity penalty for dendritic data analysis through sparse NMF
+        'low_rank_background': True,
+        'method_deconv': 'cvxpy',
+        'noise_method': 'logmexp', 
+        'rf': 30,                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
+        'stride': 15,            # amount of overlap between the patches in pixels
+        'K': 10,                      # number of components per patch
+        'only_init_patch': True
+        }
+
+params['full'] = {
+        'rf': None,
+        'stride': None,
+        'only_init_patch': False
+        }
+
+# parameters for component evaluation
+params['eval'] = {
+        'min_SNR': 2.5,               # signal to noise ratio for accepting a component
+        'rval_thr': 0.8,              # space correlation threshold for accepting a component
+        'decay_time': 1.0,            # length of typical transient (sec)
+        'use_cnn': False,             # CNN classifier designed for 2d data ?
+        'cnn_thr': 0.8,               # threshold for CNN based classifier
+        'final_frate': volumerate     # demos downsample - not sure if this matters for evaluation
+        }
+
+# parameters for displaying stuff
+params_display = {
+    'downsample_ratio': .2,
+    'thr_plot': 0.8,
+    'use_average': True
+}
+
+#%%
+        
+border_pix = 0
+
+cnm = cnmf.CNMF(k=params['patch']['K'], gSig=params['patch']['gSig'], merge_thresh=params['patch']['merge_thresh'],
+                p=params['patch']['p'],
+                dview=dview, n_processes=n_processes,
+                rf=params['patch']['rf'], stride=params['patch']['stride_cnmf'], memory_fact=1,
+                method_init=params['patch']['init_method'], alpha_snmf=params['patch']['alpha_snmf'],
+                only_init_patch=params['patch']['only_init_patch'],
+                gnb=params['patch']['gnb'], method_deconvolution=params['patch']['method_deconv'], border_pix=border_pix,
+                low_rank_background=params['patch']['low_rank_background'])
+                #deconv_flag = True) 
+
+# adjust opts:
+
+cnm.options['preprocess_params']['noise_method'] = params['patch']['noise_method']
+cnm.options['temporal_params']['noise_method'] = params['patch']['noise_method']
+cnm.options['temporal_params']['memory_efficient'] = True
+cnm.options['temporal_params']['method'] = params['patch']['method_deconv']
+cnm.options['temporal_params']['verbosity'] = True
+
+#cnm.options['init_params']['rolling_sum'] = False #True
+cnm.options['init_params']['normalize_init'] = False
+cnm.options['init_params']['center_psf'] = True
+
+
+#%% UPDATE RID:
+
+PARAMS = set_params(tiff_dir, cnm.options, roi_type='caiman2D')
+rid = initialize_rid(PARAMS, session_dir)
+
+roi_name = '_'.join((rid['roi_id'], rid['params_hashid']))
+curr_roi_dir = os.path.join(roi_dir, roi_name)
+if not os.path.exists(curr_roi_dir):
+    os.makedirs(curr_roi_dir)
+
+# Rename RID fields to include roiparams hash:
+if rid['params_hashid'] not in rid['DST']:
+    rid['DST'] = rid['DST'] + '_' + rid['params_hashid']
+update_roi_records(rid, session_dir)
+
+#%% Prepare output paths:
+nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+nmf_figdir = os.path.join(nmf_outdir, 'figures')
+nmf_movdir = os.path.join(nmf_outdir, 'movies')
+
+if not os.path.exists(nmf_figdir):
+    os.makedirs(nmf_figdir)
+if not os.path.exists(nmf_movdir):
+    os.makedirs(nmf_movdir)
+
+#%% Load a file:
+display_average = params_display['use_average']
+inspect_components = True
+
+
+#%%
+fidx = 0
+curr_filename = expected_filenames[fidx]
+try:
+    for curr_filename in expected_filenames:
+        print "Extracting ROIs:", curr_filename
+        curr_mmap = [os.path.join(rid['PARAMS']['mmap_source'], m) for m in mmap_fns if curr_filename in m][0]
+        Yr, dims, T = cm.load_memmap(curr_mmap)
+        if is_3D:
+            d1, d2, d3 = dims
+        else:
+            d1, d2 = dims
+        images = np.reshape(Yr.T, [T] + list(dims), order='F')
+        
+        
+        print "%s : ITER 1 -- RUNNING CNMF FIT..." % curr_filename
+        cnm = cnm.fit(images)
+        #%% Look at local correlations:
+        Y = np.reshape(Yr, dims + (T,), order='F')
+        Cn = cm.local_correlations(Y)
+        Cn[np.isnan(Cn)] = 0
+        
+        m_images = cm.movie(images)    
+        Av = np.mean(m_images, axis=0)
+        
+        #%%
+        pl.figure()
+        pl.subplot(1,2,1); pl.title('Average'); pl.imshow(Av, cmap='gray'); pl.axis('off')
+        pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
+                   vmin=np.percentile(Cn, 1), vmax=np.percentile(Cn, 99)); pl.axis('off')
+        pl.suptitle(curr_filename)
+        pl.savefig(os.path.join(nmf_figdir, 'zproj_%s.png' % curr_filename))
+        pl.close()
+
+        #%% ITER 1 -- view initial spatial footprints
+        pl.figure()
+        if display_average is True:
+            crd = plot_contours(cnm.A, Av, thr=params_display['thr_plot'])
+        else:
+            crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
+        pl.close()
+        
+        #%% ITER 1:  Evaluate components :
+            
+        final_frate = volumerate
+        rval_thr = params['eval']['rval_thr']   # accept components with space corr threshold or higher
+        decay_time = 1.0                        # length of typical transient (sec)
+        use_cnn = False                         # CNN classifier designed for 2d data ?
+        min_SNR = params['eval']['min_SNR']     # accept components with peak-SNR of this or higher
+        
+        idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
+            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
+                                             cnm.YrA, fr, decay_time, params['patch']['gSig'], dims, 
+                                             dview=dview, min_SNR=min_SNR, 
+                                             r_values_min=rval_thr, use_cnn=use_cnn)
+        
+        pl.figure(figsize=(5,15))
+        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*r_values_min, 'r')
+        pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
+        pl.xlabel('roi')
+        pl.suptitle(curr_filename)
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_metrics_%s.png' % curr_filename))
+        pl.close()
+        
+        #
+        pl.figure();
+        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_contours_%s.png' % curr_filename))
+        pl.close()
+        
+        #%%
+        if inspect_components is True:
+            if display_average is True:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
+                                 dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Av)
+            else:
+                view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
+                                 dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Cn)
+                    
+            # %%
+#            if display_average is True:
+#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+#                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
+#            else:
+#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+#                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
+#                
+        remove_bad = False
+        
+        #%%
+
+        if remove_bad is True:
+            A_tot = cnm.A[:, idx_components]
+            C_tot = cnm.C[idx_components]
+        else:
+            A_tot = cnm.A
+            C_tot = cnm.C
+        
+        YrA_tot = cnm.YrA
+        b_tot = cnm.b
+        f_tot = cnm.f
+        sn_tot = cnm.sn
+        
+        print(('Number of components:' + str(A_tot.shape[-1])))
+        
+        #%% ITER 2:  re-run seeded cNMF:
+        
+        cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['patch']['gSig'], merge_thresh=params['patch']['merge_thresh'],
+                        p=params['patch']['p'],
+                        dview=dview, n_processes=n_processes,
+                        rf=params['full']['rf'], stride=params['full']['stride'], memory_fact=1,
+                        method_deconvolution=params['patch']['method_deconv'],
+                        Ain=A_tot, Cin=C_tot, f_in=f_tot)
+        # adjust opts:
+        cnm.options['temporal_params']['memory_efficient'] = True
+        cnm.options['temporal_params']['method'] = params['patch']['method_deconv']
+        cnm.options['temporal_params']['verbosity'] = True
+
+        cnm = cnm.fit(images)
+        
+        #%% Save contours from second iteration of seeded components:
+            
+        pl.figure()
+        if display_average is True:
+            crd = plot_contours(cnm.A, Av, thr=params_display['thr_plot'])
+        else:
+            crd = plot_contours(cnm.A, Cn, thr=params_display['thr_plot'])
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
+        pl.close()
+        
+        
+        #%% ITER 2:  Evaluate components and save output:
+        
+        final_frate = params['eval']['final_frate']
+        rval_thr = params['eval']['rval_thr']       # accept components with space corr threshold or higher
+        decay_time = params['eval']['decay_time']   # length of typical transient (sec)
+        use_cnn = params['eval']['use_cnn']         # CNN classifier designed for 2d data ?
+        min_SNR = params['eval']['min_SNR']         # accept components with peak-SNR of this or higher
+        
+        idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
+            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
+                                             cnm.YrA, fr, decay_time, params['patch']['gSig'], dims, 
+                                             dview=dview, min_SNR=min_SNR, 
+                                             r_values_min=rval_thr, use_cnn=use_cnn) 
+        
+        print(('Should keep ' + str(len(idx_components)) +
+           ' and discard  ' + str(len(idx_components_bad))))
+
+        #%% save eval output:
+            
+        pl.figure(figsize=(5,15))
+        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
+        pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
+        pl.xlabel('roi')
+        pl.suptitle(curr_filename)
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_metrics_%s.png' % curr_filename))
+        pl.close()
+        
+        #
+        pl.figure();
+        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params_display['thr_plot']); pl.axis('off')
+        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params_display['thr_plot']); pl.axis('off')
+        
+        pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_contours_%s.png' % curr_filename))
+        pl.close()
+        
+        #%% Save NMF outupt:
+        A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
+        
+#        print(S.max())
+        
+        pl.figure()
+        pl.subplot(1,3,1); pl.title('avg'); pl.imshow(Av, cmap='gray'); pl.axis('off')
+        pl.subplot(1,3,2); pl.title('cn'); pl.imshow(Cn, cmap='gray'); pl.axis('off')
+        ax = pl.subplot(1,3,3); pl.title('sn'); im = pl.imshow(np.reshape(sn, (d1,d2), order='F')); pl.axis('off')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        pl.colorbar(im, cax=cax); 
+        pl.close()
+    
+        # %% save results
+        Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
+        #%%
+        np.savez(os.path.join(nmf_outdir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'),
+                 A=A, Cdf=Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, S=S, dims=cnm.dims, 
+                 idx_components=idx_components, idx_components_bad=idx_components_bad,
+                 r_values=r_values, SNR_comp=SNR_comp, Av=Av, Cn=Cn,
+                 bl=cnm.bl, g=cnm.g, c1=cnm.c1, neurons_sn=cnm.neurons_sn, lam=cnm.lam)
+                
+    
+        print("FINAL N COMPONENTS:", A.shape[1])
+    
+        #%%
+except:
+    print "No .mmap file found for %s" % curr_filename
+
+
