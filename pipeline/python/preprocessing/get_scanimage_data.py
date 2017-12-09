@@ -175,6 +175,8 @@ def get_meta(options):
             rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
         if rawdir_hash not in rawdir:
             rawdir = rawdir + '_%s' % rawdir_hash
+    else:
+        rawdir_hash = rawdir.split('_')[1]
     print "Raw Tiff hash:", rawtiff_dir
     # ======================================================================
 

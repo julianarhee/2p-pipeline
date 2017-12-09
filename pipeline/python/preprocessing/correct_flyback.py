@@ -419,8 +419,10 @@ def do_flyback_correction(options):
             adj_simeta[fi]['frameNumberAcquisition'] = [f['frameNumberAcquisition'] for f in raw_simeta[fi]['imgdescr']]
             adj_simeta[fi]['epoch'] = raw_simeta[fi]['imgdescr'][-1]['epoch']
 
-        with open(os.path.join(write_dir, raw_simeta_fn), 'w') as fw:
-            dump(adj_simeta, fw, indent=4) #, sort_keys=True)
+        adjmeta_fn = os.path.join(write_dir, raw_simeta_fn)
+        write_dict_to_json(adj_simeta, adjmeta_fn)
+#        with open(os.path.join(write_dir, raw_simeta_fn), 'w') as fw:
+#            dump(adj_simeta, fw, indent=4) #, sort_keys=True)
 
         
     # ========================================================================================
