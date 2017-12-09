@@ -62,7 +62,7 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     # UPDATE PID entry in dict:
     with open(os.path.join(processed_dir, processdict_fn), 'r') as f:
         processdict = json.load(f)
-    process_id = [p for p in processdict.keys() if processdict[p]['pid_has'] == pid_hash][0]
+    process_id = [p for p in processdict.keys() if processdict[p]['pid_hash'] == pid_hash][0]
 #    process_id_basename = PID['process_id']
 #    new_process_id_key = '_'.join((process_id_basename, pid_hash))
 #    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
