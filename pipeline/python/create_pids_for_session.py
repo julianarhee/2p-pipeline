@@ -41,6 +41,8 @@ parser.add_option('--motion', action='store_true', dest='correct_motion', defaul
 parser.add_option('-M', '--mcmethod', action='store', dest='mcmethod', default='Acquisition2P', help="Method of motion-correction to use [default: Acquisition2P]")
 parser.add_option('-a', '--mcalgorithm', action='store', dest='mcalgorithm', default='@withinFile_withinFrame_lucasKanade', help="Algorithm to use for motion-correction [default: @withinFile_withinFrame_lucasKanade]")
 parser.add_option('--bidi', action='store_true', dest='correct_bidir', default=False, help="do bidirectional scan correction")
+parser.add_option('--indie', action='store_true', dest='individual', default=False, help="Set flag if want to use tmp_pid created individually for each run")
+
 
 
 (options, args) = parser.parse_args() 
@@ -63,6 +65,7 @@ correct_motion = options.correct_motion
 mc_method = options.mcmethod
 mc_algorithm = options.mcalgorithm
 
+individual = options.individual
 # -------------------------------------------------------------
 # Set paths:
 # -------------------------------------------------------------
@@ -91,20 +94,43 @@ for curr_acq in session_dict.keys():
     print curr_acq
     for curr_run in session_dict[curr_acq].keys():
         pinfo = dict()
-        curr_opts = copy.copy(base_opts)
-        curr_opts.extend(['-A', curr_acq, '-r', curr_run])
-        if 'volume' in curr_acq and correct_flyback is True:
-            curr_opts.extend(['--flyback', '-F', nflyback_frames])
-        print curr_opts
-        pid = create_pid(curr_opts)
+        create_new = False
+        if individual is True:
+            curr_tmp_pid_dir = os.path.join(session_dir, curr_acq, curr_run, 'processed', 'tmp_pids')
+            found_tmp_pid_fns = [f for f in os.listdir(curr_tmp_pid_dir) if f.endswith('json')]
+            if len(found_tmp_pid_fns) == 1:
+                with open(os.path.join(curr_tmp_pid_dir, found_tmp_pid_fns[0]), 'r') as fp:
+                    pid = json.load(fp)
+            elif len(found_tmp_pid_fns) > 1:
+                print "Found more than 1 PID file in acq %s, run %s." % (curr_acq, curr_run)
+                while True:
+                    for pidx, pidfile in enumerate(found_tmp_pid_fns):
+                        print pidx, pidfile
+                    view_pidx = input("Select IDX of PID file to view:")
+                    with open(os.path.join(curr_tmp_pid_dir, found_tmp_pid_fns[int(view_pidx)]), 'r') as ft:
+                        pid = json.load(ft)
+                    confirm_pidx = raw_input("Enter <P> to use this PID, or <ENTER> to view another:")
+                    if confirm_pidx == 'P':
+                        break
+            else:
+                print "No tmp PID files found in acq %s, run %s. Creating new..."
+                create_new = True
+        
+        if create_new is True:
+            curr_opts = copy.copy(base_opts)
+            curr_opts.extend(['-A', curr_acq, '-r', curr_run])
+            if 'volume' in curr_acq and correct_flyback is True:
+                curr_opts.extend(['--flyback', '-F', nflyback_frames])
+            print curr_opts
+            pid = create_pid(curr_opts)
+        
         pp.pprint(pid)
-        #session_dict[curr_acq][curr_run] = pid['tmp_hashid']
         pinfo['rootdir'] = rootdir
         pinfo['animalid'] = animalid
         pinfo['session'] = session
         pinfo['acquisition'] = curr_acq
         pinfo['run'] = curr_run
-        pinfo['pid'] = pid['tmp_hashid']
+        pinfo['pid'] = pid['pid_hash']
 
         pid_fn = 'pid_%s.json' % pinfo['pid']        
         with open(os.path.join(pid_savedir, pid_fn), 'w') as f:

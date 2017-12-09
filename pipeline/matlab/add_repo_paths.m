@@ -2,6 +2,7 @@ function add_repo_paths(varargin)
 %% Set paths
 if length(varargin) == 0
     cvx_path = '~/MATLAB/cvx';
+    repo_prefix = '~/Repositories';
 elseif length(varargin) == 1
     cvx_path = varargin{1}
     repo_prefix = '~/Repositories'

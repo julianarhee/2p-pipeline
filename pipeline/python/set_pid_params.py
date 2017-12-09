@@ -15,6 +15,8 @@ import optparse
 import sys
 import hashlib
 import copy
+from pipeline.python.utils import write_dict_to_json
+
 from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 import shutil
@@ -45,6 +47,35 @@ def get_file_size(file_path):
     if os.path.isfile(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
+
+def post_pid_cleanup(acquisition_dir, run, pid_hash):
+    processed_dir = os.path.join(acquisition_dir, run, 'processed')
+    print "Cleaning up PID info: %s" % pid_hash
+    tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+    pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    with open(pid_path, 'r') as f:
+        PID = json.load(f)
+
+    processdict_fn = 'pids_%s.json' % run
+    # UPDATE PID entry in dict:
+    with open(os.path.join(processed_dir, processdict_fn), 'r') as f:
+        processdict = json.load(f)
+    process_id_basename = PID['process_id']
+    new_process_id_key = '_'.join((process_id_basename, pid_hash))
+    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
+    print "Updated main process dict, with key: %s" % new_process_id_key
+    
+    # Save updated PID dict:
+    path_to_processdict = os.path.join(processed_dir, processdict_fn)
+    write_dict_to_json(processdict, path_to_processdict)
+
+    finished_dir = os.path.join(tmp_pid_dir, 'completed')
+    if not os.path.exists(finished_dir):
+        os.makedirs(finished_dir)
+    shutil.move(pid_path, os.path.join(finished_dir, tmp_pid_fn))
+    print "Moved tmp pid file to completed."
+
 
 def change_permissions_recursive(path, mode):
     for root, dirs, files in os.walk(path, topdown=False):
@@ -81,7 +112,7 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     if PID is not None:
         if write_hash not in PID['PARAMS'][step]['destdir']:
             PID['PARAMS'][step]['destdir'] = newwrite_dir
-        print "PID %s: Renamed output dir: %s" % (PID['tmp_hashid'], PID['PARAMS'][step]['destdir'])
+        print "PID %s: Renamed output dir: %s" % (PID['pid_hash'], PID['PARAMS'][step]['destdir'])
     
     # Adjust slice dir, too, if needed:
     if adjust_slicedir is True:
@@ -154,7 +185,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
     if step == 'bidir':
         if correct_flyback is True:
             bidi_destdir = PID['PARAMS']['preprocessing']['destdir'] 
-            if PID['tmp_hashid'] in bidi_destdir and 'raw' in bidi_destdir:
+            if PID['pid_hash'] in bidi_destdir and 'raw' in bidi_destdir:
                 # Bidir-correction is on flyback-corrected tiffs:
                 PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
             else:
@@ -343,7 +374,9 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     
     processed_dirs = sorted([p for p in os.listdir(os.path.join(rundir, 'processed'))
                               if 'processed' in p], key=natural_keys)
- 
+    
+    process_dict = load_processdict(acquisition_dir, run)
+    
     rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
     
     if tiffsource is None or len(tiffsource) == 0:
@@ -386,7 +419,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                     print pidx, ptype
                 processed_type_idx = raw_input('Enter IDX of processed source to use: ')
                 if processed_type_idx in range(len(processed_types)):
-                    processed_type = processed_type[processed_type_idx]
+                    processed_type = processed_types[processed_type_idx]
                     confirm_type = raw_input('Selected source %s/%s. Press <Y> to confirm: ' % (tiffsource_name, processed_type))
                     if confirm_type == 'Y':
                         sourcetype = processed_type
@@ -413,7 +446,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     # Check user-provided MC params:
     # ------------------------------------------
     print correct_motion
-    PARAMS['motion'] = mcparams = set_motion_params(correct_motion=correct_motion,
+    PARAMS['motion'] = set_motion_params(correct_motion=correct_motion,
                             ref_channel=ref_channel,
                             ref_file=ref_file,
                             method=mc_method,
@@ -462,8 +495,7 @@ def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
         pid['PARAMS']['motion']['destdir'] = os.path.join(pid['DST'], 'mcorrected')
 
     # TODO:  Generate hash for full PID dict
-    tmp_hashid = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()
-    pid['tmp_hashid'] = tmp_hashid[0:6]
+    pid['pid_hash'] = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()[0:6]
     
     return pid
 
@@ -554,19 +586,19 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
     pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True)
     
     # UPDATE RECORDS:
-    update_records(pid, acquisition_dir, run)
+    update_pid_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        json.dump(pid, f, indent=4, sort_keys=True)
-        
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(pid, tmp_pid_path)
+
     return pid
 
-def update_records(pid, acquisition_dir, run):
+def update_pid_records(pid, acquisition_dir, run):
 
     print "************************"
     print "Updating JSONS..."
@@ -583,14 +615,12 @@ def update_records(pid, acquisition_dir, run):
     processdict[process_id] = pid
 
     #% Update Process Info DICT:
-    with open(processdict_filepath, 'w') as f:
-        json.dump(processdict, f, sort_keys=True, indent=4)
+    write_dict_to_json(processdict, processdict_filepath)
 
     print "Process Info UPDATED."
     
 
-def create_pid(options):
-   
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -606,6 +636,7 @@ def create_pid(options):
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     # Preprocessing params:
     parser.add_option('--bidi', action='store_true', dest='bidi', default=False, help='Set flag if correct bidirectional scanning phase offset.')
@@ -613,13 +644,25 @@ def create_pid(options):
     parser.add_option('-F', '--nflyback', action='store', dest='nflyback_frames', default=0, help='Number of flyback frames to remove from top of each volume [default: 0]')
 
     # MOTION params:
-    parser.add_option('--motion', action='store_true', dest='mc', default=False, help='Set flag if should run motion-correction.')
+    parser.add_option('--motion', action='store_true', dest='do_mc', default=False, help='Set flag if should run motion-correction.')
     parser.add_option('-c', '--channel', action='store', dest='ref_channel', default=1, help='Index of CHANNEL to use for reference if doing motion correction [default: 1]')
     parser.add_option('-f', '--file', action='store', dest='ref_file', default=1, help='Index of FILE to use for reference if doing motion correction [default: 1]')
     parser.add_option('-M', '--method', action='store', dest='mc_method', default=None, help='Method for motion-correction. OPTS: Acquisition2P, NoRMCorre [default: Acquisition2P]')
     parser.add_option('-a', '--algo', action='store', dest='algorithm', default=None, help='Algorithm to use for motion-correction, e.g., @withinFile_withinFrame_lucasKanade if method=Acquisition2P, or nonrigid if method=NoRMCorre')
 
     (options, args) = parser.parse_args(options) 
+    
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        if 'coxfs01' not in options.path_to_si_reader:
+            options.path_to_si_reader = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux/share/python'
+
+    return options
+
+def create_pid(options):
+   
+    options = extract_options(options)
 
     rootdir = options.rootdir
     animalid = options.animalid
@@ -638,7 +681,7 @@ def create_pid(options):
     nflyback_frames = options.nflyback_frames
 
     # MOTION params:
-    correct_motion = options.mc
+    correct_motion = options.do_mc
     mc_method = options.mc_method
     mc_algorithm = options.algorithm
     ref_file = int(options.ref_file)
@@ -665,17 +708,17 @@ def create_pid(options):
     pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
     
     # UPDATE RECORDS:
-    update_records(pid, acquisition_dir, run)
+    update_pid_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        json.dump(pid, f, indent=4, sort_keys=True)
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(pid, tmp_pid_path)
        
-    print "Params set for PID: %s" % pid['tmp_hashid']
+    print "Params set for PID: %s" % pid['pid_hash']
 
     return pid
 

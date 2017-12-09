@@ -17,11 +17,13 @@ import optparse
 import json
 import scipy.io
 import shutil
-from json_tricks.np import dump, dumps, load, loads
+#from json_tricks.np import dump, dumps, load, loads
 import re
 import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
+from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
+from pipeline.python.utils import write_dict_to_json
+
 from checksumdir import dirhash
 from memory_profiler import profile
 
@@ -49,8 +51,7 @@ def fn_timer(function):
         return result
     return function_timer
 
-@profile
-def do_flyback_correction(options):
+def extract_options(options):
 
     parser = optparse.OptionParser()
 
@@ -64,6 +65,7 @@ def do_flyback_correction(options):
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
     parser.add_option('-H', '--raw', action='store', dest='source_hash', default='', help="PID hash of raw source dir (6 char), default will use rawtiff_dir hash stored in runinfo metadata (from get_scanimage_data.py)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
 
     # TIFF saving opts:
     # parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
@@ -73,9 +75,9 @@ def do_flyback_correction(options):
 
     # SUBSTACK opts (for correcting flyback):
     # -----------------------------------------------------------
-    parser.add_option('--correct-flyback', action='store_true', dest='correct_flyback', default=False, help='Create substacks of data-only by removing all artifact/discard frames [default: False]')
+    parser.add_option('--flyback', action='store_true', dest='correct_flyback', default=False, help='Create substacks of data-only by removing all artifact/discard frames [default: False]')
 
-    parser.add_option('--flyback', action='store', dest='nflyback', default=0, help='Num flyback frames at top of stack [default: 0]')
+    parser.add_option('-F', '--nflyback', action='store', dest='nflyback', default=0, help='Num flyback frames at top of stack [default: 0]')
     parser.add_option('--discard', action='store', dest='ndiscard', default=0, help='Num discard frames at end of stack [default: 0]')
     parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help='Flag to run without saving TIFFs')
  
@@ -92,10 +94,21 @@ def do_flyback_correction(options):
     # parser.add_option('-Y', '--ystart', action='store', dest='y_startidx', default=0, help='Starting idx for y-dimension, i.e., rows [default: 0]')
     # parser.add_option('-W', '--width', action='store', dest='width', default='', help='Width of FOV, i.e., cols [default: '']')
     # parser.add_option('-H', '--height', action='store', dest='height', default='', help='Height of FOV, i.e., rows [default: '']')
-
-
+    
     (options, args) = parser.parse_args(options) 
     
+    if options.slurm is True and 'coxfs01' not in options.rootdir:
+        options.rootdir = '/n/coxfs01/julianarhee/testdata'
+    if '~' in options.rootdir:
+        options.rootdir = options.rootdir.replace('~', home)
+ 
+    return options
+
+#@profile
+def do_flyback_correction(options):
+  
+    options = extract_options(options)
+
     save_tiffs = options.save_tiffs
     if save_tiffs is True:
         print "Correcting flyback and saving TIFFs."
@@ -125,7 +138,7 @@ def do_flyback_correction(options):
     run = options.run
     pid_hash = options.pid_hash
     source_hash = options.source_hash
-    
+        
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
     # -------------------------------------------------------------
@@ -152,24 +165,41 @@ def do_flyback_correction(options):
     tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-        
-    tmp_pids = [p for p in os.listdir(tmp_pid_dir) if p.endswith('json')]
-    tmp_pid_fn = [h for h in tmp_pids if len(pid_hash) > 0 and pid_hash in h]
-    if len(tmp_pid_fn) > 0:
-        with open(os.path.join(tmp_pid_dir, tmp_pid_fn[0]), 'r') as f:
-            PID = json.load(f)
+
+    if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
+        # NO VALID PID, create default with input opts:
+        print "Creating default PID with specified BIDIR input opts:"
+        bidir_opts = [-'R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--default']
+        if do_bidi is True:
+            bidir_opts.extend(['--bidi'])
+        PID = create_pid(bidir_opts)
+        pid_hash = PID['pid_hash']
+        tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     else:
-        if len(pid_hash) > 0:
-            print "PID hash specified does not exist."
-        else:
-            print "No PID hash specified..."
-        # ONLY do flyback correction, create PID with default params (safest):
-        print "Creating default PID for SIMETA and flyback-correction ONLY."
-        PID = get_default_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,
-                              run=run, correct_flyback=correct_flyback, nflyback_frames=nflyback)
-        pid_hash = PID['tmp_hashid']
-    
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+        # LOAD PID specified by pid_hash:
+        #tmp_pid_fn = [j for j in os.listdir(tmp_pid_dir) if pid_hash in j][0]
+        tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+        with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
+            PID = json.load(f) 
+ 
+#    tmp_pids = [p for p in os.listdir(tmp_pid_dir) if p.endswith('json')]
+#    tmp_pid_fn = [h for h in tmp_pids if len(pid_hash) > 0 and pid_hash in h]
+#    if len(tmp_pid_fn) > 0:
+#        with open(os.path.join(tmp_pid_dir, tmp_pid_fn[0]), 'r') as f:
+#            PID = json.load(f)
+#    else:
+#        if len(pid_hash) > 0:
+#            print "PID hash specified does not exist."
+#        else:
+#            print "No PID hash specified..."
+#        # ONLY do flyback correction, create PID with default params (safest):
+#        print "Creating default PID for SIMETA and flyback-correction ONLY."
+#        PID = get_default_pid(rootdir=rootdir, animalid=animalid, session=session, acquisition=acquisition,
+#                              run=run, correct_flyback=correct_flyback, nflyback_frames=nflyback)
+#        pid_hash = PID['tmp_hashid']
+#    
+
+    paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
     print "PID %s: FLYBACK CORRECTION step for PID:" % pid_hash
     #pp.pprint(PID)            
     
@@ -177,14 +207,14 @@ def do_flyback_correction(options):
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
-    paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
         
     # Make sure preprocessing sourcedir/destdir are correct:
     PID = append_hash_to_paths(PID, pid_hash, step='flyback')
-    
-    with open(paramspath, 'w') as f:
-        json.dump(PID, f, indent=4, sort_keys=True)
-    
+   
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        json.dump(PID, f, indent=4, sort_keys=True)
+#    
     source_dir = PID['PARAMS']['preprocessing']['sourcedir']
     write_dir = PID['PARAMS']['preprocessing']['destdir']
     
@@ -341,10 +371,12 @@ def do_flyback_correction(options):
             runmeta['ntiffs'] = len(tiffs) 
             
         # Save updated JSON:
-        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
-            #json.dump(refinfo, fw)
-            dump(runmeta, fw, indent=4)
-    
+        runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+        write_dict_to_json(runmeta, runmeta_path)
+#        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
+#            #json.dump(refinfo, fw)
+#            dump(runmeta, fw, indent=4)
+#    
         
     # -----------------------------------------------------------------------------
     # Adjust SIMETA data
@@ -398,18 +430,28 @@ def do_flyback_correction(options):
         # 3.  Update write-dir hash ids:
         write_hash, PID = write_hash_readonly(write_dir, PID, step='preprocessing', label='flyback')
 
-    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
-        print tmp_pid_fn
-        json.dump(PID, f, indent=4, sort_keys=True)            
+    print tmp_pid_fn
+    tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
+    write_dict_to_json(PID, tmp_pid_path)
+#    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'w') as f:
+#        print tmp_pid_fn
+#        json.dump(PID, f, indent=4, sort_keys=True)            
     # ========================================================================================
         
     return write_hash, pid_hash
+
     
 def main(options):
-    
+
     flyback_hash, pid_hash = do_flyback_correction(options)
     
     print "PID %s: Finished flyback-correction step: output dir hash %s" % (pid_hash, flyback_hash)
+    
+    options = extract_options(options)     
+    acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
+    run = options.run 
+    post_pid_cleanup(acquisition_dir, run, pid_hash)
+    print "FINISHED FLYBACK, PID: %s" % pid_hash
     
 if __name__ == '__main__':
     main(sys.argv[1:]) 

@@ -16,8 +16,8 @@ from stat import S_IREAD, S_IRGRP, S_IROTH
 import matlab.engine
 import copy
 from checksumdir import dirhash
-from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
-from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs
+from pipeline.python.set_pid_params import create_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
+from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs, write_dict_to_json
 from memory_profiler import profile
 
 from os.path import expanduser
@@ -25,8 +25,8 @@ home = expanduser("~")
 
 import matlab.engine
 
-@profile
-def do_motion(options):
+def extract_options(options):
+
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -38,11 +38,37 @@ def do_motion(options):
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
     parser.add_option('-P', '--repo', action='store', dest='repo_path', default='~/Repositories/2p-pipeline', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
     parser.add_option('-C', '--cvx', action='store', dest='cvx_path', default='~/MATLAB/cvx', help='Path to cvx install dir [default: ~/MATLAB/cvx. If --slurm, default: /n/coxfs01/2p-pipeline/pkgs/cvx]')
-
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
-    parser.add_option('--motion', action='store_true', dest='do_mc', default=False, help='flag to actually do motion-correction')
+
+    # MOTION params:
+    parser.add_option('--motion', action='store_true', dest='do_mc', default=False, help='Set flag if should run motion-correction.')
+    parser.add_option('-c', '--channel', action='store', dest='ref_channel', default=1, help='Index of CHANNEL to use for reference if doing motion correction [default: 1]')
+    parser.add_option('-f', '--file', action='store', dest='ref_file', default=1, help='Index of FILE to use for reference if doing motion correction [default: 1]')
+    parser.add_option('-M', '--method', action='store', dest='mc_method', default=None, help='Method for motion-correction. OPTS: Acquisition2P, NoRMCorre [default: Acquisition2P]')
+    parser.add_option('-a', '--algo', action='store', dest='algorithm', default=None, help='Algorithm to use for motion-correction, e.g., @withinFile_withinFrame_lucasKanade if method=Acquisition2P, or nonrigid if method=NoRMCorre')
 
     (options, args) = parser.parse_args(options) 
+
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        if 'coxfs01' not in options.repo_path:
+            options.repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline' 
+        if 'coxfs01' not in options.cvx_path:
+	        options.cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
+    if '~' in options.rootdir:
+        options.rootdir = options.rootdir.replace('~', home)
+    if '~' in options.repo_path:
+        options.repo_path = options.repo_path.replace('~', home)
+    if '~' in options.cvx_path:
+        options.cvx_path = options.cvx_path.replace('~', home)
+    
+    return options
+
+#@profile
+def do_motion(options):
+
+    options = extract_options(options)
 
     rootdir = options.rootdir #'/nas/volume1/2photon/projects'
     animalid = options.animalid
@@ -54,17 +80,17 @@ def do_motion(options):
     cvx_path = options.cvx_path
     slurm = options.slurm
     do_mc = options.do_mc
-    if slurm is True and 'coxfs01' not in repo_path:
-        repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'
-    if slurm is True and 'coxfs01' not in cvx_path:
-	cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
-    if '~' in repo_path:
-        repo_path = repo_path.replace('~', home)
-    repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab')
-    
+
+    repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab') 
     repo_prefix = os.path.split(repo_path)[0]
 
-
+    # MOTION params:
+    correct_motion = options.do_mc
+    mc_method = options.mc_method
+    mc_algorithm = options.algorithm
+    ref_file = int(options.ref_file)
+    ref_channel = int(options.ref_channel)
+ 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
     # -------------------------------------------------------------
@@ -78,7 +104,28 @@ def do_motion(options):
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
-    paramspath = os.path.join(tmp_pid_dir, 'tmp_pid_%s.json' % pid_hash)
+    if not os.path.exists(tmp_pid_dir):
+        os.makedirs(tmp_pid_dir)
+
+    if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
+        # NO VALID PID, create default with input opts:
+        print "Creating default PID with specified MCORRECTION input opts:"
+        mc_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--default']
+        if do_mc is True:
+            mc_opts.extend(['--motion', '-c', ref_channel, '-f', ref_file, '-M', mc_method, '-a', mc_algorithm])
+        PID = create_pid(mc_opts)
+        pid_hash = PID['pid_hash']
+        print "New PID:", pid_hash
+        tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash 
+    else:
+        # -------------------------------------------------------------
+        # Load PID:
+        # -------------------------------------------------------------
+        tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+        with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
+            PID = json.load(f)
+ 
+    paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
     
     # -------------------------------------------------------------
@@ -111,10 +158,11 @@ def do_motion(options):
         # Default is to write deinterleaved slices to write_dir
         PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_slices'
         interleave_write_tiffs = True
-        
-    with open(paramspath, 'w') as f:
-        json.dump(PID, f, indent=4, sort_keys=True)
-    
+       
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        json.dump(PID, f, indent=4, sort_keys=True)
+#    
     source_dir = PID['PARAMS']['motion']['sourcedir']
     write_dir = PID['PARAMS']['motion']['destdir']
     
@@ -161,10 +209,12 @@ def do_motion(options):
     write_hash = None
     if do_mc is True:
         write_hash, PID = write_hash_readonly(volume_dir, PID=PID, step='motion', label='mc')
-        
-    with open(paramspath, 'w') as f:
-        print paramspath
-        json.dump(PID, f, indent=4, sort_keys=True)
+
+    print paramspath    
+    write_dict_to_json(PID, paramspath) 
+#    with open(paramspath, 'w') as f:
+#        print paramspath
+#        json.dump(PID, f, indent=4, sort_keys=True)
     # ========================================================================================
 
     return write_hash, pid_hash
@@ -175,7 +225,14 @@ def main(options):
     mc_hash, pid_hash = do_motion(options)
     
     print "PID %s: Finished motion-correction step: output dir hash %s" % (pid_hash, mc_hash)
-    
+   
+
+    options = extract_options(options)
+    acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
+    run = options.run 
+    post_pid_cleanup(acquisition_dir, run, pid_hash)
+    print "FINISHED MOTION, PID: %s" % pid_hash
+ 
 if __name__ == '__main__':
     main(sys.argv[1:]) 
 

@@ -20,6 +20,10 @@ import json
 import optparse
 import sys
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
+from pipeline.python.set_pid_params import post_pid_cleanup
+import get_scanimage_data as sim
+import correct_flyback as fb
+import correct_motion as mc
 
 import time
 from functools import wraps
@@ -111,10 +115,10 @@ def process_pid(options):
     # 1.  Get SI meta data from raw tiffs:
     # ===========================================================================
     if slurm is True:
-	if 'coxfs01' not in rootdir:
+        if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/julianarhee/testdata'
-	sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-	print sireader_path
+        sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+        print sireader_path
 
     simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
 
@@ -122,11 +126,9 @@ def process_pid(options):
     if new_acquisition is False:
         simeta_options.extend(['--rerun'])
     if slurm is True:
-        simeta_options.extend(['-P', sireader_path])
-		 
+        simeta_options.extend(['-P', sireader_path, '--slurm']) 
     print simeta_options
 
-    import get_scanimage_data as sim
     raw_hashid = sim.get_meta(simeta_options)
     print "Finished getting SI metadata!"
     print "Raw hash: %s" % raw_hashid
@@ -167,7 +169,9 @@ def process_pid(options):
     if save_tiffs is False:
         flyback_options.extend(['--notiffs'])
 
-    import correct_flyback as fb
+    if slurm is True:
+        flyback_options.extend(['--slurm'])
+
     flyback_hash, pid_hash = fb.do_flyback_correction(flyback_options)
     print "Flyback hash: %s" % flyback_hash
     print "PID %s: Flyback finished." % pid_hash
@@ -190,7 +194,6 @@ def process_pid(options):
     # ===========================================================================
     # 4.  Correct motion, if needed:
     # ===========================================================================
-    import correct_motion as mc
     mc_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
     if slurm is True:
         mc_options.extend(['--slurm'])
@@ -205,22 +208,10 @@ def process_pid(options):
     # ===========================================================================
     # 4.  Clean up and update meta files:
     # ===========================================================================
-    processed_dir = os.path.join(acquisition_dir, run, 'processed')
-    print "PI %s: DONE PROCESSING RAW." % pid_hash
-    pid_path = os.path.join(processed_dir, 'tmp_pids', 'tmp_pid_%s.json' % pid_hash)
-    with open(pid_path, 'r') as f:
-        PID = json.load(f)
-
-    # UPDATE PID entry in dict:
-    with open(os.path.join(processed_dir, '%s.json' % pid_info_basename), 'r') as f:
-        processdict = json.load(f)
-    processdict[PID['process_id']] = PID
-    print "Final PID: %s | tmp PID: %s." % (PID['tmp_hashid'], pid_hash)
-
-    # DELETE TMP PID FILE:
-    print "Removing tmp PID file: %s" % pid_path
-    os.remove(pid_path)
-    
+    post_pid_cleanup(acquisition_dir, run, pid_hash)
+         
+    print "FINISHED PROCESSING PID %s" % pid_hash
+   
     return pid_hash
     
 def main(options):

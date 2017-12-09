@@ -14,12 +14,15 @@ import json
 import re
 import scipy.io
 import numpy as np
+import matplotlib as mpl
+mpl.use('TKAgg')
+
 from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
+from pipeline.python.utils import write_dict_to_json
+
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-import matplotlib as mpl
-mpl.use('TKAgg')
 from caiman.utils import utils
 from os.path import expanduser
 home = expanduser("~")
@@ -68,8 +71,10 @@ def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_inf
     runmeta['roi_dir'] = os.path.join(acquisition_dir, 'ROIs')
     runmeta['trace_dir'] = os.path.join(acquisition_dir, 'Traces')
 
-    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
-        json.dump(runmeta, fp, indent=4)
+#    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
+#        json.dump(runmeta, fp, indent=4)
+    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+    write_dict_to_json(runmeta, runmeta_path)
 
     return runmeta
 
@@ -96,37 +101,55 @@ def format_si_value(value):
         else:
             return value
 
-@profile
-def get_meta(options):
- 
+
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_base', default='~/Downloads/ScanImageTiffReader-1.1-Linux', help='path to dir containing ScanImageTiffReader.py')
+    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_base', default='~/Downloads/ScanImageTiffReader-1.1-Linux', help='path to dir containing ScanImageTiffReader.py [default: ~/Downloads/ScanImageTiffReader-1.1.-Linux]')
     parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('-H', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
-    
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
+   
     parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
 
 
     (options, args) = parser.parse_args(options) 
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        if 'coxfs01' not in options.path_to_si_base:
+            options.path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+    if '~' in options.rootdir:
+        options.rootdir = options.rootdir.replace('~', home)
+    if '~' in options.path_to_si_base:
+        options.path_to_si_base = options.path_to_si_base.replace('~', home)
 
+    return options
+
+#@profile
+def get_meta(options):
+
+    options = extract_options(options)
+ 
     new_acquisition = options.new_acquisition
     if new_acquisition is False:
         print "This is a RE-RUN."
 
     path_to_si_base = options.path_to_si_base
+    path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
+    print "SI READER:", path_to_si_reader
+    sys.path.append(path_to_si_reader)
+    from ScanImageTiffReader import ScanImageTiffReader
 
     rootdir = options.rootdir
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
     run = options.run
-    pid_hash = options.pid_hash
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -135,13 +158,6 @@ def get_meta(options):
     run_info_basename = '%s' % run #functional_dir
     pid_info_basename = 'pids_%s' % run
     # -------------------------------------------------------------
-
-    if '~' in path_to_si_base:
-        path_to_si_base = path_to_si_base.replace('~', home)
-    path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
-    print path_to_si_reader
-    sys.path.append(path_to_si_reader)
-    from ScanImageTiffReader import ScanImageTiffReader
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 

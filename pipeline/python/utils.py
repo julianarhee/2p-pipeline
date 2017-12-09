@@ -12,6 +12,21 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+def jsonify_array(curropts):  
+    jsontypes = (list, tuple, str, int, float)
+    for pkey in curropts.keys():
+        if isinstance(curropts[pkey], dict):
+            for subkey in curropts[pkey].keys():
+                if curropts[pkey][subkey] is not None and not isinstance(curropts[pkey][subkey], jsontypes) and len(curropts[pkey][subkey].shape) > 1:
+                    curropts[pkey][subkey] = curropts[pkey][subkey].tolist()
+    return curropts
+
+def write_dict_to_json(pydict, writepath):
+    jstring = json.dumps(pydict, indent=4, allow_nan=True, sort_keys=True)
+    f = open(writepath, 'w')
+    print >> f, jstring
+    f.close()
+                
 def interleave_tiffs(source_dir, write_dir, runinfo_path):
     '''
     source_dir (str) : path to folder containing tiffs to interleave
