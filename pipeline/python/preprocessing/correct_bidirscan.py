@@ -52,7 +52,7 @@ def extract_options(options):
         if 'coxfs01' not in options.cvx_path:
 	        options.cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
     if '~' in options.rootdir:
-        options.rootdir.replace('~', home)
+        options.rootdir = options.rootdir.replace('~', home)
     if '~' in options.repo_path:
         options.repo_path = options.repo_path.replace('~', home)
     if '~' in options.cvx_path:
@@ -61,7 +61,7 @@ def extract_options(options):
     return options
 
 
-@profile
+#@profile
 def do_bidir_correction(options):
 
     options = extract_options(options)

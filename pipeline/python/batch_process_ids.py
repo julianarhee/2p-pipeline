@@ -85,7 +85,7 @@ for curr_acq in session_dict.keys():
         if 'volume' in curr_acq and correct_flyback is True:
             base_opts.extend(['--flyback', '-F', nflyback_frames])
         pid = create_pid(base_opts)
-        session_dict[curr_acq][curr_run] = pid['tmp_hashid']
+        session_dict[curr_acq][curr_run] = pid['pid_hash']
 print "Created PIDs for session %s | acquisitions: runs --" % session
 pp.pprint(session_dict)
 

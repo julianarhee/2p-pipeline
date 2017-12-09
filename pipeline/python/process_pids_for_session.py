@@ -85,10 +85,10 @@ if __name__ == "__main__":
     slurm = options.slurm
     if slurm is True:
         print "SLURM"
-	    rootdir = '/n/coxfs01/julianarhee/testdata'
-	    path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-	    path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
-	    sys.path.append(path_to_si_reader)
+        rootdir = '/n/coxfs01/julianarhee/testdata'
+        path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+        path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
+        sys.path.append(path_to_si_reader)
 
     session_dir = os.path.join(rootdir, animalid, session)
     pid_dir = os.path.join(session_dir, 'tmp_spids')

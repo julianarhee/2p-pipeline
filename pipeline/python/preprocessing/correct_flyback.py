@@ -100,7 +100,7 @@ def extract_options(options):
     if options.slurm is True and 'coxfs01' not in options.rootdir:
         options.rootdir = '/n/coxfs01/julianarhee/testdata'
     if '~' in options.rootdir:
-        options.rootdir.replace('~', home)
+        options.rootdir = options.rootdir.replace('~', home)
  
     return options
 
@@ -173,7 +173,7 @@ def do_flyback_correction(options):
         if do_bidi is True:
             bidir_opts.extend(['--bidi'])
         PID = create_pid(bidir_opts)
-        pid_hash = PID['tmp_hashid']
+        pid_hash = PID['pid_hash']
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     else:
         # LOAD PID specified by pid_hash:

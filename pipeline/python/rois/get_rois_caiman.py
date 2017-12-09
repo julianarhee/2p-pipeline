@@ -449,7 +449,7 @@ try:
                         Ain=A_tot, Cin=C_tot, f_in=f_tot)
         # adjust opts:
         cnm.options['temporal_params']['memory_efficient'] = True
-        cnm.options['temporal_params']['method'] = params['patch']['method_deconv']
+        cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
         cnm.options['temporal_params']['verbosity'] = True
 
         cnm = cnm.fit(images)

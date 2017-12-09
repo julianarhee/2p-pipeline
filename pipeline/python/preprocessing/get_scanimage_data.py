@@ -20,7 +20,7 @@ mpl.use('TKAgg')
 from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
-from pipelien.python.utils import write_dict_to_json
+from pipeline.python.utils import write_dict_to_json
 
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from caiman.utils import utils
@@ -124,7 +124,9 @@ def extract_options(options):
         if 'coxfs01' not in options.path_to_si_base:
             options.path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
     if '~' in options.rootdir:
-        options.rootdir.replace('~', home)
+        options.rootdir = options.rootdir.replace('~', home)
+    if '~' in options.path_to_si_base:
+        options.path_to_si_base = options.path_to_si_base.replace('~', home)
 
     return options
 
@@ -139,7 +141,7 @@ def get_meta(options):
 
     path_to_si_base = options.path_to_si_base
     path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
-    print path_to_si_reader
+    print "SI READER:", path_to_si_reader
     sys.path.append(path_to_si_reader)
     from ScanImageTiffReader import ScanImageTiffReader
 

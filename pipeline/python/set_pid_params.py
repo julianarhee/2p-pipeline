@@ -51,7 +51,9 @@ def get_file_size(file_path):
 def post_pid_cleanup(acquisition_dir, run, pid_hash):
     processed_dir = os.path.join(acquisition_dir, run, 'processed')
     print "Cleaning up PID info: %s" % pid_hash
-    pid_path = os.path.join(processed_dir, 'tmp_pids', 'tmp_pid_%s.json' % pid_hash)
+    tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+    pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
     with open(pid_path, 'r') as f:
         PID = json.load(f)
 
@@ -67,6 +69,12 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     # Save updated PID dict:
     path_to_processdict = os.path.join(processed_dir, processdict_fn)
     write_dict_to_json(processdict, path_to_processdict)
+
+    finished_dir = os.path.join(tmp_pid_dir, 'completed')
+    if not os.path.exists(finished_dir):
+        os.makedirs(finished_dir)
+    shutil.move(pid_path, os.path.join(finished_dir, tmp_pid_fn))
+    print "Moved tmp pid file to completed."
 
 
 def change_permissions_recursive(path, mode):
@@ -104,7 +112,7 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     if PID is not None:
         if write_hash not in PID['PARAMS'][step]['destdir']:
             PID['PARAMS'][step]['destdir'] = newwrite_dir
-        print "PID %s: Renamed output dir: %s" % (PID['tmp_hashid'], PID['PARAMS'][step]['destdir'])
+        print "PID %s: Renamed output dir: %s" % (PID['pid_hash'], PID['PARAMS'][step]['destdir'])
     
     # Adjust slice dir, too, if needed:
     if adjust_slicedir is True:
@@ -177,7 +185,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
     if step == 'bidir':
         if correct_flyback is True:
             bidi_destdir = PID['PARAMS']['preprocessing']['destdir'] 
-            if PID['tmp_hashid'] in bidi_destdir and 'raw' in bidi_destdir:
+            if PID['pid_hash'] in bidi_destdir and 'raw' in bidi_destdir:
                 # Bidir-correction is on flyback-corrected tiffs:
                 PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
             else:
@@ -487,8 +495,7 @@ def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
         pid['PARAMS']['motion']['destdir'] = os.path.join(pid['DST'], 'mcorrected')
 
     # TODO:  Generate hash for full PID dict
-    tmp_hashid = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()
-    pid['tmp_hashid'] = tmp_hashid[0:6]
+    pid['pid_hash'] = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()[0:6]
     
     return pid
 
@@ -582,7 +589,7 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
     update_pid_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
@@ -701,17 +708,17 @@ def create_pid(options):
     pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
     
     # UPDATE RECORDS:
-    update_records(pid, acquisition_dir, run)
+    update_pid_records(pid, acquisition_dir, run)
     
     # STORE TMP FILE OF CURRENT PARAMS:
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid['tmp_hashid'][0:6]
+    tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
     tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
     write_dict_to_json(pid, tmp_pid_path)
        
-    print "Params set for PID: %s" % pid['tmp_hashid']
+    print "Params set for PID: %s" % pid['pid_hash']
 
     return pid
 

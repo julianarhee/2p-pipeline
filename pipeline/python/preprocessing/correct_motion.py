@@ -57,7 +57,7 @@ def extract_options(options):
         if 'coxfs01' not in options.cvx_path:
 	        options.cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
     if '~' in options.rootdir:
-        options.rootdir.replace('~', home)
+        options.rootdir = options.rootdir.replace('~', home)
     if '~' in options.repo_path:
         options.repo_path = options.repo_path.replace('~', home)
     if '~' in options.cvx_path:
@@ -65,7 +65,7 @@ def extract_options(options):
     
     return options
 
-@profile
+#@profile
 def do_motion(options):
 
     options = extract_options(options)
@@ -114,7 +114,7 @@ def do_motion(options):
         if do_mc is True:
             mc_opts.extend(['--motion', '-c', ref_channel, '-f', ref_file, '-M', mc_method, '-a', mc_algorithm])
         PID = create_pid(mc_opts)
-        pid_hash = PID['tmp_hashid']
+        pid_hash = PID['pid_hash']
         print "New PID:", pid_hash
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash 
     else:
