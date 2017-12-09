@@ -16,7 +16,7 @@ from stat import S_IREAD, S_IRGRP, S_IROTH
 import matlab.engine
 import copy
 from checksumdir import dirhash
-from pipeline.python.set_pid_params import create_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
+from pipeline.python.set_pid_params import create_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup, update_pid_records
 from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs, write_dict_to_json
 from memory_profiler import profile
 
@@ -160,9 +160,10 @@ def do_motion(options):
         interleave_write_tiffs = True
        
     write_dict_to_json(PID, paramspath) 
-#    with open(paramspath, 'w') as f:
-#        json.dump(PID, f, indent=4, sort_keys=True)
-#    
+    
+    # And update process dict entry:
+    update_pid_records(PID, acquisition_dir, run)
+    
     source_dir = PID['PARAMS']['motion']['sourcedir']
     write_dir = PID['PARAMS']['motion']['destdir']
     

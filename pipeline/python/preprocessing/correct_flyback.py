@@ -21,7 +21,8 @@ import shutil
 import re
 import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup
+from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup, update_pid_records
+
 from pipeline.python.utils import write_dict_to_json
 
 from checksumdir import dirhash
@@ -209,12 +210,12 @@ def do_flyback_correction(options):
     # -----------------------------------------------------------------------------
         
     # Make sure preprocessing sourcedir/destdir are correct:
-    PID = append_hash_to_paths(PID, pid_hash, step='flyback')
-   
+    PID = append_hash_to_paths(PID, pid_hash, step='flyback')   
     write_dict_to_json(PID, paramspath) 
-#    with open(paramspath, 'w') as f:
-#        json.dump(PID, f, indent=4, sort_keys=True)
-#    
+    
+    # And update processdict entry: 
+    update_pid_records(PID, acquisition_dir, run)
+    
     source_dir = PID['PARAMS']['preprocessing']['sourcedir']
     write_dir = PID['PARAMS']['preprocessing']['destdir']
     

@@ -168,12 +168,13 @@ def get_meta(options):
     # ======================================================================
     # Get hash for RAW TIFF dir, and rename dir:
     # ======================================================================
-    print "Checking tiffdir hash..."
-    rawdir_hash, PID = write_hash_readonly(rawtiff_dir, PID=None, step='simeta', label='raw')
-    if rawdir_hash not in rawtiff_dir:
-        rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
-    if rawdir_hash not in rawdir:
-        rawdir = rawdir + '_%s' % rawdir_hash
+    if '_' not in rawdir:
+        print "Checking tiffdir hash..."
+        rawdir_hash, PID = write_hash_readonly(rawtiff_dir, PID=None, step='simeta', label='raw')
+        if rawdir_hash not in rawtiff_dir:
+            rawtiff_dir = rawtiff_dir + '_%s' % rawdir_hash
+        if rawdir_hash not in rawdir:
+            rawdir = rawdir + '_%s' % rawdir_hash
     print "Raw Tiff hash:", rawtiff_dir
     # ======================================================================
 
