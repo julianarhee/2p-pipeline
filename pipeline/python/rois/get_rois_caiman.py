@@ -7,6 +7,8 @@ Created on Thu Dec  7 11:36:30 2017
 """
 import matplotlib
 matplotlib.use('Agg')
+import sys
+import optparse
 import os
 import re
 import json
@@ -154,11 +156,9 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
     idx_xy = None
     
     # TODO: needinfo
-    #add_to_movie = min_value #-np.nanmin(m_els) + 1  # movie must be positive
-    # if you need to remove frames from the beginning of each file
-    remove_init = 0
-    # downsample movie in time: use .2 or .1 if file is large and you want a quick answer
-    downsample_factor = 1
+    remove_init = 0           # if you need to remove frames from the beginning of each file
+    downsample_factor = 1     # downsample movie in time: use .2 or .1 if file is large and you want a quick answer
+
     #base_name = acqmeta['base_filename'] #fname[0].split('/')[-1][:-4]  # omit this in save_memmap_each() to use original filenames as base for mmap files
 
     # estimate offset:
@@ -166,11 +166,7 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
     add_to_movie = -np.nanmin(m_orig)
     print "min val:", add_to_movie
     del m_orig
-    
-#    mmap_fpath = cm.save_memmap_each(
-#            [filepath], dview=dview,
-#            resize_fact=(1, 1, downsample_factor), remove_init=remove_init, 
-#            idx_xy=idx_xy, add_to_movie=add_to_movie, border_to_0=border_to_0)
+
     mmap_fpath = save_memmap2(
             [filepath], base_name=basename, is_3D=is_3D,
             resize_fact=(1, 1, downsample_factor), remove_init=remove_init, 
@@ -187,6 +183,7 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
     mmap_outpath = os.path.join(outpath, mmap_fn)
     
     return mmap_outpath
+
 
 #%% MEMORY-MAPPING (plus make non-negative)
 def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D):
@@ -221,398 +218,464 @@ def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D):
 
 #%%
 
-# dataset dependent parameters
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063'
-session = '20171202_JR063'
-acquisition = 'FOV1_zoom1x'
-run = 'static_gratings'
-slurm = False
+def extract_cnmf_rois(options):
 
-tiffsource = 'processed001'
-sourcetype = 'mcorrected'
-rid_hash = 'fa5f0f'
+    # PATH opts:
+    choices_sourcetype = ('raw', 'mcorrected', 'bidi')
+    default_sourcetype = 'mcorrected'
 
-#%% CHECK TIFF paths and get corresponding MMAP paths:
-session_dir = os.path.join(rootdir, animalid, session)
-roi_dir = os.path.join(session_dir, 'ROIs')
-if not os.path.exists(roi_dir):
-    os.makedirs(roi_dir)
-    
-    
-if len(rid_hash) == 0:
-    print "Creating new RID..."
-    rid_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
-                       '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
+    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon')
+    default_roitype = 'caiman2D'
+
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+
+    parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
+    parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
+
+    parser.add_option('-p', '--rid', action='store', dest='rid_hash', default='', help="RID hash of current ROI extraction (6 char), default will create new if set_roi_params.py not run")
+
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
+
+    (options, args) = parser.parse_args(options) 
+
+
+    # dataset dependent parameters
+    #rootdir = '/nas/volume1/2photon/data'
+    #animalid = 'JR063'
+    #session = '20171202_JR063'
+    #acquisition = 'FOV1_zoom1x'
+    #run = 'static_gratings'
+    #slurm = False
+    #
+    #tiffsource = 'processed001'
+    #sourcetype = 'mcorrected'
+    #rid_hash = 'fa5f0f'
+    #
+    # Set USER INPUT options:
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+
+    tiffsource = options.tiffsource
+    sourcetype = options.sourcetype
+    rid_hash = options.rid_hash
+    slurm = options.slurm
+
     if slurm is True:
-        rid_options.extend(['--slurm'])
+        if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/2p-data'
+
+    #%% CHECK TIFF paths and get corresponding MMAP paths:
+    session_dir = os.path.join(rootdir, animalid, session)
+    roi_dir = os.path.join(session_dir, 'ROIs')
+    if not os.path.exists(roi_dir):
+        os.makedirs(roi_dir)
         
-    RID = create_rid(rootdir)
-    rid_hash = RID['rid_hash']
-    tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
-    
-else:
-    print "RID %s -- Loading params..." % rid_hash
-    tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
-    with open(tmp_rid_path, 'r') as f:
-        RID = json.load(f)
-    
-
-#%% Set output paths:
-curr_roi_dir = RID['DST']
-nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
-nmf_figdir = os.path.join(nmf_outdir, 'figures')
-nmf_movdir = os.path.join(nmf_outdir, 'movies')
-
-if not os.path.exists(nmf_figdir):
-    os.makedirs(nmf_figdir)
-if not os.path.exists(nmf_movdir):
-    os.makedirs(nmf_movdir)
-
-print "RID %s -- writing cNMF output files to %s." % (rid_hash, nmf_outdir)
-    
-#%%
-params = RID['PARAMS']['options']
-
-nmovies = params['info']['nmovies']
-nchannels = params['info']['nchannels']
-signal_channel = params['info']['signal_channel']
-volumerate = params['info']['volumerate']
-is_3D = params['info']['is_3D']
-frate = params['eval']['final_frate']          # imaging rate in frames per second
-movie_files = params['display']['movie_files']
-
-display_average = params['display']['use_average']
-inspect_components = False
-save_movies = params['display']['save_movies']
-remove_bad = False
-
-
-tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
-print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
-for t in tiffpaths:
-    print t
-mmap_dir = RID['PARAMS']['mmap_source']
-expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
-
-#%% Update mmap dir with hashed mmap files, update RID:
-check_mmap_hash = False
-if '_mmap_' not in mmap_dir:
-    check_mmap_hash = True
-else:
-    mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
-
-if check_mmap_hash is True:
-    print "RID %s -- Checking mmap dir hash..." % rid_hash
-    excluded_files = [m for m in os.listdir(mmap_dir) if not m.endswith('mmap')]
-    mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
-
-if mmap_hash not in mmap_dir: 
-    mmap_dir_hash =  mmap_dir + '_' + mmap_hash
-    os.rename(mmap_dir, mmap_dir_hash)
-    RID['PARAMS']['mmap_source'] = mmap_dir_hash
-    mmap_dir = mmap_dir_hash
-    write_dict_to_json(RID, tmp_rid_path)
-    update_roi_records(RID, session_dir)
-    print "RID %s -- ROI entry updated." % rid_hash
-    mmap_paths = [os.path.join(mmap_dir, m) for m in os.listdir(mmap_dir) if m.endswith('mmap')]
-
-print "******************************"
-print "Done MEMMAPPING tiffs:"
-print "******************************"
-for m in mmap_paths:
-    print m
- 
-#%% start a cluster for parallel processing
-c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=None, single_thread=False)
-
-#%%
-#fidx = 0
-#curr_filename = expected_filenames[fidx]
-try:
-    for curr_filename in expected_filenames:
-        #%%
-        print "Extracting ROIs:", curr_filename
-        curr_mmap = [m for m in mmap_paths if curr_filename in m][0]
-        Yr, dims, T = cm.load_memmap(curr_mmap)
-        if is_3D:
-            d1, d2, d3 = dims
-        else:
-            d1, d2 = dims
-        images = np.reshape(Yr.T, [T] + list(dims), order='F')
         
-        print "RID %s -- %s: ITER 1 -- RUNNING CNMF FIT..." % (rid_hash, curr_filename)
-        #%% Create CNMF object:
-                
-        cnm = cnmf.CNMF(k=params['extraction']['K'], gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['patch']['rf'], stride=params['patch']['stride'], 
-                        method_init=params['patch']['init_method'], only_init_patch=params['patch']['only_init_patch'],
-                        gnb=params['extraction']['gnb'], low_rank_background=params['extraction']['low_rank_background'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        border_pix=0)                #deconv_flag = True) 
-        
-        # adjust opts:
-        cnm.options['temporal_params']['memory_efficient'] = True
-        cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
-        cnm.options['temporal_params']['verbosity'] = True
-        
-        #cnm.options['init_params']['rolling_sum'] = False #True
-        #cnm.options['init_params']['normalize_init'] = False
-        #cnm.options['init_params']['center_psf'] = True
-        if curr_filename == 'File001':
-            print "RID %s -- Updating tmp RID file with cnmf options." % rid_hash
+    if len(rid_hash) == 0:
+        print "Creating new RID..."
+        rid_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
+                           '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
+        if slurm is True:
+            rid_options.extend(['--slurm'])
             
-            # Save CNMF options with has:
-            nmfoptions = jsonify_array(cnm.options)
-            nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
-            write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
-            
-            # Update tmp RID dict:
-            RID['PARAMS']['nmf_hashid'] = nmfopts_hashid
-            write_dict_to_json(RID, tmp_rid_path)
-            
-            # Update main RID dict:
-            roidict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
-            with open(roidict_path, 'r') as f:
-                roidict = json.load(f)
-            roidict[RID['roi_id']] = RID
-            write_dict_to_json(roidict, roidict_path)
-            
+        RID = create_rid(rootdir)
+        rid_hash = RID['rid_hash']
+        tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+        
+    else:
+        print "RID %s -- Loading params..." % rid_hash
+        tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+        with open(tmp_rid_path, 'r') as f:
+            RID = json.load(f)
+        
 
-        #%%
-        cnm = cnm.fit(images)
-        
-        #%% Look at local correlations:
-        Y = np.reshape(Yr, dims + (T,), order='F')
-        Cn = cm.local_correlations(Y)
-        Cn[np.isnan(Cn)] = 0
-        
-        m_images = cm.movie(images)    
-        Av = np.mean(m_images, axis=0)
-        
-        #%
-        pl.figure()
-        pl.subplot(1,2,1); pl.title('Average'); pl.imshow(Av, cmap='gray'); pl.axis('off')
-        pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
-                   vmin=np.percentile(Cn, 1), vmax=np.percentile(Cn, 99)); pl.axis('off')
-        pl.suptitle(curr_filename)
-        pl.savefig(os.path.join(nmf_figdir, 'zproj_%s.png' % curr_filename))
-        pl.close()
+    #%% Set output paths:
+    curr_roi_dir = RID['DST']
+    nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+    nmf_figdir = os.path.join(nmf_outdir, 'figures')
+    nmf_movdir = os.path.join(nmf_outdir, 'movies')
 
-        #%% ITER 1 -- view initial spatial footprints
-        pl.figure()
-        if display_average is True:
-            crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
-        else:
-            crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
+    if not os.path.exists(nmf_figdir):
+        os.makedirs(nmf_figdir)
+    if not os.path.exists(nmf_movdir):
+        os.makedirs(nmf_movdir)
+
+    print "RID %s -- writing cNMF output files to %s." % (rid_hash, nmf_outdir)
         
-        pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
-        pl.close()
-        
-        #%% ITER 1:  Evaluate components :
-            
-        final_frate = volumerate
-        rval_thr = params['eval']['rval_thr']   # accept components with space corr threshold or higher
-        decay_time = 1.0                        # length of typical transient (sec)
-        use_cnn = False                         # CNN classifier designed for 2d data ?
-        min_SNR = params['eval']['min_SNR']     # accept components with peak-SNR of this or higher
-        
-        idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
-            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
-                                             dview=dview, min_SNR=min_SNR, 
-                                             r_values_min=rval_thr, use_cnn=use_cnn)
-        
-        pl.figure(figsize=(5,15))
-        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
-        pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
-        pl.xlabel('roi')
-        pl.suptitle(curr_filename)
-        
-        pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_metrics_%s.png' % curr_filename))
-        pl.close()
-        
-        #
-        pl.figure();
-        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        
-        pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_contours_%s.png' % curr_filename))
-        pl.close()
-        
-        #%%
-        if inspect_components is True:
-            if display_average is True:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
-                                 dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Av)
+    #%%
+    params = RID['PARAMS']['options']
+
+    nmovies = params['info']['nmovies']
+    nchannels = params['info']['nchannels']
+    signal_channel = params['info']['signal_channel']
+    volumerate = params['info']['volumerate']
+    is_3D = params['info']['is_3D']
+    frate = params['eval']['final_frate']          # imaging rate in frames per second
+    movie_files = params['display']['movie_files']
+
+    display_average = params['display']['use_average']
+    inspect_components = False
+    save_movies = params['display']['save_movies']
+    remove_bad = False
+
+
+    tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
+    print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
+    for t in tiffpaths:
+        print t
+    mmap_dir = RID['PARAMS']['mmap_source']
+    expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
+
+    #%% Update mmap dir with hashed mmap files, update RID:
+    check_mmap_hash = False
+    if '_mmap_' not in mmap_dir:
+        check_mmap_hash = True
+    else:
+        mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+
+    if check_mmap_hash is True:
+        print "RID %s -- Checking mmap dir hash..." % rid_hash
+        excluded_files = [m for m in os.listdir(mmap_dir) if not m.endswith('mmap')]
+        mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+
+    if mmap_hash not in mmap_dir: 
+        mmap_dir_hash =  mmap_dir + '_' + mmap_hash
+        os.rename(mmap_dir, mmap_dir_hash)
+        RID['PARAMS']['mmap_source'] = mmap_dir_hash
+        mmap_dir = mmap_dir_hash
+        write_dict_to_json(RID, tmp_rid_path)
+        update_roi_records(RID, session_dir)
+        print "RID %s -- ROI entry updated." % rid_hash
+        mmap_paths = [os.path.join(mmap_dir, m) for m in os.listdir(mmap_dir) if m.endswith('mmap')]
+
+    print "******************************"
+    print "Done MEMMAPPING tiffs:"
+    print "******************************"
+    for m in mmap_paths:
+        print m
+     
+    #%% start a cluster for parallel processing
+    c, dview, n_processes = cm.cluster.setup_cluster(
+        backend='local', n_processes=None, single_thread=False)
+
+    #%%
+    #fidx = 0
+    #curr_filename = expected_filenames[fidx]
+    try:
+        for curr_filename in expected_filenames:
+            #%%
+            print "Extracting ROIs:", curr_filename
+            curr_mmap = [m for m in mmap_paths if curr_filename in m][0]
+            Yr, dims, T = cm.load_memmap(curr_mmap)
+            if is_3D:
+                d1, d2, d3 = dims
             else:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
-                                 dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Cn)
+                d1, d2 = dims
+            images = np.reshape(Yr.T, [T] + list(dims), order='F')
+            
+            print "RID %s -- %s: ITER 1 -- RUNNING CNMF FIT..." % (rid_hash, curr_filename)
+            #%% Create CNMF object:
                     
-            # %%
-#            if display_average is True:
-#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-#                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
-#            else:
-#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-#                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
-#                
-        
-        
-        #%%
-
-        if remove_bad is True:
-            A_tot = cnm.A[:, idx_components]
-            C_tot = cnm.C[idx_components]
-        else:
-            A_tot = cnm.A
-            C_tot = cnm.C
-        
-        YrA_tot = cnm.YrA
-        b_tot = cnm.b
-        f_tot = cnm.f
-        sn_tot = cnm.sn
-        
-        print(('Number of components:' + str(A_tot.shape[-1])))
-        
-        #%% ITER 2:  re-run seeded cNMF:
-        
-        cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes,  memory_fact=1,
-                        rf=params['full']['rf'], stride=params['full']['stride'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        Ain=A_tot, Cin=C_tot, f_in=f_tot)
-        # adjust opts:
-        cnm.options['temporal_params']['memory_efficient'] = True
-        cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
-        cnm.options['temporal_params']['verbosity'] = True
-
-        cnm = cnm.fit(images)
-        
-        #%% Save contours from second iteration of seeded components:
+            cnm = cnmf.CNMF(k=params['extraction']['K'], gSig=params['extraction']['gSig'],
+                            p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
+                            dview=dview, n_processes=n_processes, memory_fact=1,
+                            rf=params['patch']['rf'], stride=params['patch']['stride'], 
+                            method_init=params['patch']['init_method'], only_init_patch=params['patch']['only_init_patch'],
+                            gnb=params['extraction']['gnb'], low_rank_background=params['extraction']['low_rank_background'],
+                            method_deconvolution=params['extraction']['method_deconv'],
+                            border_pix=0)                #deconv_flag = True) 
             
-        pl.figure()
-        if display_average is True:
-            crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
-        else:
-            crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
-        
-        pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
-        pl.close()
-        
-        
-        #%% ITER 2:  Evaluate components and save output:
-        
-        final_frate = params['eval']['final_frate']
-        rval_thr = params['eval']['rval_thr']       # accept components with space corr threshold or higher
-        decay_time = params['eval']['decay_time']   # length of typical transient (sec)
-        use_cnn = params['eval']['use_cnn']         # CNN classifier designed for 2d data ?
-        min_SNR = params['eval']['min_SNR']         # accept components with peak-SNR of this or higher
-        
-        idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
-            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
-                                             dview=dview, min_SNR=min_SNR, 
-                                             r_values_min=rval_thr, use_cnn=use_cnn) 
-        
-        print(('Should keep ' + str(len(idx_components)) +
-           ' and discard  ' + str(len(idx_components_bad))))
-
-        #%% save eval output:
+            # adjust opts:
+            cnm.options['temporal_params']['memory_efficient'] = True
+            cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
+            cnm.options['temporal_params']['verbosity'] = True
             
-        pl.figure(figsize=(5,15))
-        pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
-        pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
-        pl.xlabel('roi')
-        pl.suptitle(curr_filename)
-        
-        pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_metrics_%s.png' % curr_filename))
-        pl.close()
-        
-        #
-        pl.figure();
-        pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        
-        pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_contours_%s.png' % curr_filename))
-        pl.close()
-        
-        #%% Save NMF outupt:
-        A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
-        
-#        print(S.max())
-        
-        pl.figure()
-        pl.subplot(1,3,1); pl.title('avg'); pl.imshow(Av, cmap='gray'); pl.axis('off')
-        pl.subplot(1,3,2); pl.title('cn'); pl.imshow(Cn, cmap='gray'); pl.axis('off')
-        ax = pl.subplot(1,3,3); pl.title('sn'); im = pl.imshow(np.reshape(sn, (d1,d2), order='F')); pl.axis('off')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        pl.colorbar(im, cax=cax); 
-        pl.savefig(os.path.join(nmf_figdir, 'zproj_final_%s.png' % curr_filename))
-        pl.close()
-    
-        # %% save results
-        Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
-        #%%
-        np.savez(os.path.join(nmf_outdir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'),
-                 A=A, Cdf=Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, S=S, dims=cnm.dims, 
-                 idx_components=idx_components, idx_components_bad=idx_components_bad,
-                 r_values=r_values, SNR_comp=SNR_comp, Av=Av, Cn=Cn,
-                 bl=cnm.bl, g=cnm.g, c1=cnm.c1, neurons_sn=cnm.neurons_sn, lam=cnm.lam)
+            #cnm.options['init_params']['rolling_sum'] = False #True
+            #cnm.options['init_params']['normalize_init'] = False
+            #cnm.options['init_params']['center_psf'] = True
+            if curr_filename == 'File001':
+                print "RID %s -- Updating tmp RID file with cnmf options." % rid_hash
                 
-    
-        print("FINAL N COMPONENTS:", A.shape[1])
-    
-        #%%
-        if inspect_components is True:
-            if display_average is True:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
-                             YrA=YrA[idx_components, :], img=Av)
-            else:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
-                             YrA=YrA[idx_components, :], img=Cn)
+                # Save CNMF options with has:
+                nmfoptions = jsonify_array(cnm.options)
+                nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
+                write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
                 
-            # %%
+                # Update tmp RID dict:
+                RID['PARAMS']['nmf_hashid'] = nmfopts_hashid
+                write_dict_to_json(RID, tmp_rid_path)
+                
+                # Update main RID dict:
+                roidict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
+                with open(roidict_path, 'r') as f:
+                    roidict = json.load(f)
+                roidict[RID['roi_id']] = RID
+                write_dict_to_json(roidict, roidict_path)
+                
+
+            #%%
+            cnm = cnm.fit(images)
+            
+            #%% Look at local correlations:
+            Y = np.reshape(Yr, dims + (T,), order='F')
+            Cn = cm.local_correlations(Y)
+            Cn[np.isnan(Cn)] = 0
+            
+            m_images = cm.movie(images)    
+            Av = np.mean(m_images, axis=0)
+            
+            #%
+            pl.figure()
+            pl.subplot(1,2,1); pl.title('Average'); pl.imshow(Av, cmap='gray'); pl.axis('off')
+            pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
+                       vmin=np.percentile(Cn, 1), vmax=np.percentile(Cn, 99)); pl.axis('off')
+            pl.suptitle(curr_filename)
+            pl.savefig(os.path.join(nmf_figdir, 'zproj_%s.png' % curr_filename))
+            pl.close()
+
+            #%% ITER 1 -- view initial spatial footprints
+            pl.figure()
             if display_average is True:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
+                crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
             else:
-                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
+                crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
             
-            # %% reconstruct denoised movie
-        if save_movies is True:
-            if curr_filename in movie_files:
-                #%% save denoised movie:
-                currmovie = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                
-                currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_plusbackground_%s.tif' % curr_filename))
+            pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
+            pl.close()
             
-                #%% background only 
-                currmovie = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-                currmovie.save(os.path.join(nmf_movdir, 'backgroundmov_%s.tif' % curr_filename))
+            #%% ITER 1:  Evaluate components :
+                
+            final_frate = volumerate
+            rval_thr = params['eval']['rval_thr']   # accept components with space corr threshold or higher
+            decay_time = 1.0                        # length of typical transient (sec)
+            use_cnn = False                         # CNN classifier designed for 2d data ?
+            min_SNR = params['eval']['min_SNR']     # accept components with peak-SNR of this or higher
             
-                # %% reconstruct denoised movie without background
-                currmovie = cm.movie(A.dot(C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                    
-                currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_nobackground_%s.tif' % curr_filename))
+            idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
+                estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
+                                                 cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
+                                                 dview=dview, min_SNR=min_SNR, 
+                                                 r_values_min=rval_thr, use_cnn=use_cnn)
+            
+            pl.figure(figsize=(5,15))
+            pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
+            pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
+            pl.xlabel('roi')
+            pl.suptitle(curr_filename)
+            
+            pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_metrics_%s.png' % curr_filename))
+            pl.close()
+            
+            #
+            pl.figure();
+            pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
+            pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
+            
+            pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_contours_%s.png' % curr_filename))
+            pl.close()
+            
+            #%%
+            if inspect_components is True:
+                if display_average is True:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
+                                     dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Av)
+                else:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
+                                     dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Cn)
+                        
+                # %%
+    #            if display_average is True:
+    #                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+    #                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
+    #            else:
+    #                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+    #                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
+    #                
+            
+            
+            #%%
 
-        #%% show background(s)
-        BB  = cm.movie(b.reshape(dims+(-1,), order = 'F').transpose(2,0,1))
-        #BB.play(gain=2, offset=0, fr=2, magnification=4)
-        pl.figure()
-        BB.zproject()
-        pl.savefig(os.path.join(nmf_figdir, 'background_zproj_%s.png' % curr_filename))
-        pl.close()
-    
-    
-        #%%
-except Exception as e:
-    print "RID %s -- EXCEPTION during processing of %s" % (rid_hash, curr_filename)
-    print(e)
-finally:
-    print "RID %s -- No Errors. Completed ROI extraction from %s" % (rid_hash, curr_filename)
+            if remove_bad is True:
+                A_tot = cnm.A[:, idx_components]
+                C_tot = cnm.C[idx_components]
+            else:
+                A_tot = cnm.A
+                C_tot = cnm.C
+            
+            YrA_tot = cnm.YrA
+            b_tot = cnm.b
+            f_tot = cnm.f
+            sn_tot = cnm.sn
+            
+            print(('Number of components:' + str(A_tot.shape[-1])))
+            
+            #%% ITER 2:  re-run seeded cNMF:
+            
+            cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['extraction']['gSig'],
+                            p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
+                            dview=dview, n_processes=n_processes,  memory_fact=1,
+                            rf=params['full']['rf'], stride=params['full']['stride'],
+                            method_deconvolution=params['extraction']['method_deconv'],
+                            Ain=A_tot, Cin=C_tot, f_in=f_tot)
+            # adjust opts:
+            cnm.options['temporal_params']['memory_efficient'] = True
+            cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
+            cnm.options['temporal_params']['verbosity'] = True
 
+            cnm = cnm.fit(images)
+            
+            #%% Save contours from second iteration of seeded components:
+                
+            pl.figure()
+            if display_average is True:
+                crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
+            else:
+                crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
+            
+            pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
+            pl.close()
+            
+            
+            #%% ITER 2:  Evaluate components and save output:
+            
+            final_frate = params['eval']['final_frate']
+            rval_thr = params['eval']['rval_thr']       # accept components with space corr threshold or higher
+            decay_time = params['eval']['decay_time']   # length of typical transient (sec)
+            use_cnn = params['eval']['use_cnn']         # CNN classifier designed for 2d data ?
+            min_SNR = params['eval']['min_SNR']         # accept components with peak-SNR of this or higher
+            
+            idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
+                estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
+                                                 cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
+                                                 dview=dview, min_SNR=min_SNR, 
+                                                 r_values_min=rval_thr, use_cnn=use_cnn) 
+            
+            print(('Should keep ' + str(len(idx_components)) +
+               ' and discard  ' + str(len(idx_components_bad))))
+
+            #%% save eval output:
+                
+            pl.figure(figsize=(5,15))
+            pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
+            pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
+            pl.xlabel('roi')
+            pl.suptitle(curr_filename)
+            
+            pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_metrics_%s.png' % curr_filename))
+            pl.close()
+            
+            #
+            pl.figure();
+            pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
+            pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
+            
+            pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_contours_%s.png' % curr_filename))
+            pl.close()
+            
+            #%% Save NMF outupt:
+            A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
+            
+    #        print(S.max())
+            
+            pl.figure()
+            pl.subplot(1,3,1); pl.title('avg'); pl.imshow(Av, cmap='gray'); pl.axis('off')
+            pl.subplot(1,3,2); pl.title('cn'); pl.imshow(Cn, cmap='gray'); pl.axis('off')
+            ax = pl.subplot(1,3,3); pl.title('sn'); im = pl.imshow(np.reshape(sn, (d1,d2), order='F')); pl.axis('off')
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            pl.colorbar(im, cax=cax); 
+            pl.savefig(os.path.join(nmf_figdir, 'zproj_final_%s.png' % curr_filename))
+            pl.close()
+        
+            # %% save results
+            Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
+            #%%
+            np.savez(os.path.join(nmf_outdir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'),
+                     A=A, Cdf=Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, S=S, dims=cnm.dims, 
+                     idx_components=idx_components, idx_components_bad=idx_components_bad,
+                     r_values=r_values, SNR_comp=SNR_comp, Av=Av, Cn=Cn,
+                     bl=cnm.bl, g=cnm.g, c1=cnm.c1, neurons_sn=cnm.neurons_sn, lam=cnm.lam)
+                    
+        
+            print("FINAL N COMPONENTS:", A.shape[1])
+        
+            #%%
+            if inspect_components is True:
+                if display_average is True:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
+                                 YrA=YrA[idx_components, :], img=Av)
+                else:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
+                                 YrA=YrA[idx_components, :], img=Cn)
+                    
+                # %%
+                if display_average is True:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+                                 dims[1], YrA=YrA[idx_components_bad, :], img=Av)
+                else:
+                    view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
+                                 dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
+                
+                # %% reconstruct denoised movie
+            if save_movies is True:
+                if curr_filename in movie_files:
+                    #%% save denoised movie:
+                    currmovie = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                
+                    currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_plusbackground_%s.tif' % curr_filename))
+                
+                    #%% background only 
+                    currmovie = cm.movie(b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+                    currmovie.save(os.path.join(nmf_movdir, 'backgroundmov_%s.tif' % curr_filename))
+                
+                    # %% reconstruct denoised movie without background
+                    currmovie = cm.movie(A.dot(C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])                    
+                    currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_nobackground_%s.tif' % curr_filename))
+
+            #%% show background(s)
+            BB  = cm.movie(b.reshape(dims+(-1,), order = 'F').transpose(2,0,1))
+            #BB.play(gain=2, offset=0, fr=2, magnification=4)
+            pl.figure()
+            BB.zproject()
+            pl.savefig(os.path.join(nmf_figdir, 'background_zproj_%s.png' % curr_filename))
+            pl.close()
+        
+        
+            #%%
+    except Exception as e:
+        print "RID %s -- EXCEPTION during processing of %s" % (rid_hash, curr_filename)
+        print(e)
+    finally:
+        print "RID %s -- No Errors. Completed ROI extraction from %s" % (rid_hash, curr_filename)
+
+
+    return nmf_hash, rid_hash
+
+
+def main(options):
+
+    nmf_hash, rid_hash = extract_cnmf_rois(options)
+    
+    print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmf_hash)
+    
+#    options = extract_options(options)     
+#    acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
+#    run = options.run 
+#    post_pid_cleanup(acquisition_dir, run, pid_hash)
+#    print "FINISHED FLYBACK, PID: %s" % pid_hash
+    
+if __name__ == '__main__':
+    main(sys.argv[1:]) 
