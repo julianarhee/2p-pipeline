@@ -17,7 +17,7 @@ import matlab.engine
 import copy
 from checksumdir import dirhash
 from pipeline.python.set_pid_params import create_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup, update_pid_records
-from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs, write_dict_to_json
+from pipeline.python.utils import sort_deinterleaved_tiffs, interleave_tiffs, deinterleave_tiffs, write_dict_to_json, zproj_tseries
 from memory_profiler import profile
 
 from os.path import expanduser
@@ -41,7 +41,13 @@ def extract_options(options):
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
 
     parser.add_option('--bidi', action='store_true', dest='do_bidi', default=False, help='flag to actually do bidi-correction')
-    
+
+    parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
+    parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+
+    parser.add_option('-Z', '--zproj-type', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
+
     (options, args) = parser.parse_args(options) 
     
     if options.slurm is True:
@@ -77,6 +83,11 @@ def do_bidir_correction(options):
     slurm = options.slurm
     do_bidi = options.do_bidi
 
+    tiffsource = options.tiffsource
+    sourcetype = options.sourcetype
+    default = options.default
+    zproj_type = options.zproj_type
+
     repo_path_matlab = os.path.join(repo_path, 'pipeline', 'matlab') 
     repo_prefix = os.path.split(repo_path)[0]
  
@@ -100,7 +111,9 @@ def do_bidir_correction(options):
     if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
         # NO VALID PID, create default with input opts:
         print "Creating default PID with specified BIDIR input opts:"
-        bidir_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--default']
+        bidir_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-t', tiffsource, '-s', sourcetype]
+        if default is True:
+            bidir_opts.extend([ '--default'])
         if do_bidi is True:
             bidir_opts.extend(['--bidi'])
         print bidir_opts
@@ -201,17 +214,27 @@ def do_bidir_correction(options):
 
 def main(options):
     
+    # Do bidi correction:    
     bidir_hash, pid_hash = do_bidir_correction(options)
-    
     print "PID %s: Finished bidir-correction step: output dir hash %s" % (pid_hash, bidir_hash)
-    
+   
+    # Clean up tmp files and udpate meta info: 
     options = extract_options(options)
     acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
     run = options.run 
     post_pid_cleanup(acquisition_dir, run, pid_hash)
-    print "FINISHED BIDIR, PID: %s" % pid_hash
+    print "PID %s -- Finished cleaning up tmp files, updated dicts." % pid_hash
  
-
+    # Create average slices for viewing:
+    with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
+        currpid = json.load(f)
+    curr_process_id = [p for p in currpid.keys() if p['pid_hash'] == pid_hash][0]
+    source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
+    runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
+    if os.path.isdir(source_dir):
+        zproj_tseries(source_dir, runmeta_fn, zproj=options.zproj_type)
+    print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
+ 
 if __name__ == '__main__':
     main(sys.argv[1:]) 
 

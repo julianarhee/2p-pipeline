@@ -5,6 +5,8 @@ import tifffile as tf
 import json
 import re
 import shutil
+from skimage import exposure 
+from skimage import img_as_ubyte
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -12,8 +14,17 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
+    fn_base = 'Slice%02d_Channel%02d_File%03d' % (slicenum, channelnum, filenum)
+    if run is not None:
+        fn_base = '%s_%s' % (run, fn_base)
+    if acq is not None:
+        fn_base = '%s_%s' % (acq, fn_base) 
+    
+    return fn_base
+
 def jsonify_array(curropts):  
-    jsontypes = (list, tuple, str, int, float)
+    jsontypes = (list, tuple, str, int, float, bool, unicode, long)
     for pkey in curropts.keys():
         if isinstance(curropts[pkey], dict):
             for subkey in curropts[pkey].keys():
@@ -128,6 +139,18 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     print "Expected channels:", channel_names
     print "Expected file:", file_names
 
+    # Check that no "vis" duplicate files are in source_dir:
+    vis_tiffs = sorted([t for t in os.listdir(source_dir) if 'vis_' in t and t.endswith('tif')], key=natural_keys)
+    if len(vis_tiffs) > 0:
+        print "Found tiffs with matching vis_ files."
+        visible_dir = os.path.join(source_dir, 'visible')
+        if not os.path.exists(visible_dir):
+            os.makedirs(visible_dir)
+        for vtiff in vis_tiffs:
+            shutil.move(os.path.join(source_dir, vtiff), os.path.join(visible_dir, vtiff))
+        print "Moved set of VISIBLE tiff duplicates to:", visible_dir
+        
+
     all_tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
     expected_ntiffs = nfiles * nchannels * nslices
     good_to_go = True
@@ -160,3 +183,58 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
                     shutil.move(os.path.join(channel_dir, fi_tiff), os.path.join(file_dir, fi_tiff))
     print "Done organizing tiffs."
 
+
+def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
+    '''
+    source_dir (str) : path to folder containing tiffs to deinterleave and z-project
+    runinfo_path (str) : path to .json contaning run meta info
+    write_dir (str) : path to save averaged slices to
+    '''
+    with open(runinfo_path, 'r') as f:
+        runinfo = json.load(f)
+    nfiles = runinfo['ntiffs']
+    nchannels = runinfo['nchannels']
+    nslices = len(runinfo['slices'])
+    nvolumes = runinfo['nvolumes']
+    ntotalframes = nslices * nvolumes * nchannels
+    basename = runinfo['base_filename']
+
+    # Default write-dir should be source_dir_<projectiontype>_slices
+    if write_dir is None:
+        write_dir = source_dir + '_%s_slices' % zproj
+    if not os.path.exists(write_dir):
+        os.makedirs(write_dir)
+    print "Writing AVERAGED SLICES to:", write_dir
+
+    tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
+
+    filenames = ['File%03d' % int(i+1) for i in range(nfiles)]
+    for fi, fname in enumerate(sorted(filenames, key=natural_keys)):
+        filenum = int(fi + 1)
+        tiff_fns = [t for t in tiffs if fname in t]
+        tfn = tiff_fns[0]
+        currtiff = tf.imread(os.path.join(source_dir, tfn))
+        if currtiff.shape[0] == nchannels*nslices*nvolumes:
+            for ch in range(nchannels):
+                channelnum = int(ch+1)
+                ch_tiff = currtiff[ch::nchannels]
+                for sl in range(nslices):
+                    slicenum = int(sl+1)
+                    sl_tiff = ch_tiff[sl::nslices]    
+                    if zproj == 'mean' or zproj == 'average':
+                        zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
+                    elif zproj == 'std':
+                        zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype) 
+                    curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None) 
+                    tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj, curr_slice_fn)), zprojslice)
+                    
+                    # Save visible too:
+                    byteimg = img_as_ubyte(zprojslice)
+                    zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
+                    tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj, curr_slice_fn)), zproj_vis)
+                    
+                    print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
+
+    # Sort separated tiff slice images:
+    sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
+    sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)

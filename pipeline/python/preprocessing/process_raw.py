@@ -60,6 +60,9 @@ def process_pid(options):
     parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
     parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+    parser.add_option('--zproject', action='store_true', dest='get_zproj', default='store_false', help="Set flag to create z-projection slices for processed tiffs.")
+    parser.add_option('-Z', '--zproj-type', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
     tiffsource = 'raw'
 
@@ -83,6 +86,10 @@ def process_pid(options):
     nflyback = int(options.flyback)
 
     slurm = options.slurm
+    default = options.default
+    
+    get_zproj = options.get_zproj
+    zproj_type = options.zproj_type
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -181,6 +188,8 @@ def process_pid(options):
     # ===========================================================================
     import correct_bidirscan as bd
     bidir_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+    if default is True:
+        bidir_otions.extend(['--default'])
     if slurm is True:
         bidir_options.extend(['--slurm'])
     if execute_bidi is True:
@@ -191,10 +200,25 @@ def process_pid(options):
     print "Bidir hash: %s" % bidir_hash
     print "PID %s: BIDIR finished." % pid_hash
 
+    # Create average slices for viewing:
+    if get_zproj is True:
+        with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
+            currpid = json.load(f)
+        curr_process_id = [p for p in currpid.keys() if p['pid_hash'] == pid_hash][0]
+        source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
+        runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
+        if os.path.isdir(source_dir):
+            zproj_tseries(source_dir, runmeta_fn, zproj=zproj_type)
+        print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
+     
+
+
     # ===========================================================================
     # 4.  Correct motion, if needed:
     # ===========================================================================
     mc_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+    if default is True:
+        mc_options.extend(['--default'])
     if slurm is True:
         mc_options.extend(['--slurm'])
     if execute_motion is True:
@@ -204,7 +228,18 @@ def process_pid(options):
     print "MC hash: %s" % mcdir_hash
     print "PID %s: MC finished." % pid_hash
 
+    # Create average slices for viewing:
+    if get_zproj is True:
+        with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
+            currpid = json.load(f)
+        curr_process_id = [p for p in currpid.keys() if p['pid_hash'] == pid_hash][0]
+        source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
+        runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
+        if os.path.isdir(source_dir):
+            zproj_tseries(source_dir, runmeta_fn, zproj=zproj_type)
+        print "PID %s -- Finished creating ZPROJ slice images from motion-corrected tiffs." % pid_hash
 
+ 
     # ===========================================================================
     # 4.  Clean up and update meta files:
     # ===========================================================================
