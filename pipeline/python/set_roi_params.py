@@ -50,7 +50,7 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('--default', action='store_true', dest='auto', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
@@ -81,7 +81,7 @@ def create_rid(options):
     sourcetype = options.sourcetype
     roi_type = options.roi_type
 
-    auto = options.auto
+    auto = options.default
 
     session_dir = os.path.join(rootdir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
@@ -370,7 +370,8 @@ def get_roi_id(PARAMS, session_dir, auto=False):
         print "No existing RIDs found."
     else:
         existing_rids = sorted([str(k) for k in roidict.keys()], key=natural_keys)
-        matching_rids = sorted([rid for rid in existing_rids if roidict[rid]['hashid'] == PARAMS['hashid']], key=natural_keys)
+        print existing_rids
+        matching_rids = sorted([rid for rid in existing_rids if roidict[rid]['PARAMS']['hashid'] == PARAMS['hashid']], key=natural_keys)
         is_new_rid = False
         if len(matching_rids) > 0:            
             while True:

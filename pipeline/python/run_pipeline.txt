@@ -1,0 +1,85 @@
+#!/usr/bin/env python2
+'''
+Example steps to run each step of the pipeline sequentially. A single run is processed at a time this way.
+'''
+
+# ----------------------------------------------------------------------------
+# 1. Get ScanImage metadata from raw tiffs:
+# ----------------------------------------------------------------------------
+$ python preprocessing/get_scanimage_data.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME>
+
+# NOTES:
+# This step will create .json containing acquisition info and tiff-page info for each file (.tif) in specified run.
+# Meta info is saved to <rundir>/raw/ and all files in this dir are set to read-only.
+# We create a hash (6-char) for the files in <rundir>/raw/ and rename the dir: <rundir>/raw_<HASHID>/
+
+
+# ----------------------------------------------------------------------------
+# 2. Set parameters for processing raw data:
+# ----------------------------------------------------------------------------
+$ python set_pid_params.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -sraw -traw --bidi --flyback -F<NFLYBACKFRAMES> --motion -M<MCMETHOD> -a<MCALGORITHM>
+
+# NOTES:  
+# Add the --default flag to just use default MC settings (-M'Acquisition2P' -a'@withinFile_withinFrame_lucasKanade'.
+# This step will print the PIDHASH (6-char) identifying the parameter set to use for processing steps.
+# The process ID params ("PID" params) are stored temporarily in <rundir>/processed/tmp_pids/tmp_pid_<PIDHASH>.json
+
+
+# ----------------------------------------------------------------------------
+# 3. Do flyback correction on raw data to extract data-only frames from raw:
+# ----------------------------------------------------------------------------
+$ python preprocessing/correct_flyback.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<PIDHASH> 
+
+# NOTES:
+# If no PID is created/specified (Step 2), you should add --flyback and --nflyback=N (or -FN) to remove N flyback frames.
+# Blank frames specified during acquisition by SI will automatically be removed.. Use -h for details.
+# This step also assumes that flyback-correction is being done on raw tiffs found in <rundir>/raw_<hashid>/
+
+
+# ----------------------------------------------------------------------------
+# 4. Do bidirectional-scan phase correction:
+# ----------------------------------------------------------------------------
+$ python preprocessing/correct_bidirscan.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<PIDHASH> 
+
+# NOTES:
+# If no PID is created/specified (Step 2), you should add --bidi to actually do bidi correction.
+# Since bidi can be performed on a "raw" (raw acquisitions) or "processed" tiff (e.g., flyback-corrected "raw" tiffs, motion-correction tiffs), you should specify TIFFSOURCE (i.e., -t'raw' or -t'processed001') and the SOURCETYPE (i.e., -s'bidi', -s'mcorrected', -s'raw').
+# Add flag --default  to run without interactive mode.  Default will process on raw data (-t'raw', -s'raw').
+
+
+# ----------------------------------------------------------------------------
+# 5. Do motion correction:
+# ----------------------------------------------------------------------------
+$ python preprocessing/correct_motion.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<PIDHASH> 
+
+# NOTES:
+# If no PID is created/specified (Step 2), you should add --motion to actually run motion-correction.
+# Include TIFFSOURCE (e.g., -t'raw', -t'processed001', -t'processed006', etc.) and SOURCETYPE (-s'raw', -s'bidi', -s'mcorrected') if not providing PIDHASH.
+# Add flag --default  to run without interactive mode.  Default will process on raw data (-t'raw', -s'raw').
+
+
+# ----------------------------------------------------------------------------
+# 6. Set ROI params:
+# ----------------------------------------------------------------------------
+$ python set_roi_params.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -s<TIFFSOURCE> -t<SOURCETYPE -o<ROITYPE>
+
+# NOTES:
+# TIFFSOURCE should be 'raw' or 'processed00X', where X is one of the processed dirs.
+# SOURCETYPE should be 'raw', 'bidi', or 'mcorrected'
+# Add flag --default if want to run without interactive params and use default params where missing.
+
+
+# ----------------------------------------------------------------------------
+# 7. Extract ROIs:
+# ----------------------------------------------------------------------------
+$ python rois/get_rois_caiman.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<RIDHASH> -o<ROITYPE>
+
+# NOTES:
+# If no RID is specified (Step 6), need to provide input params:
+#   TIFFSOURCE should be 'raw' or 'processed00X', where X is one of the processed dirs.
+#   SOURCETYPE should be 'raw', 'bidi', or 'mcorrected'
+#   --default, if not interactive mode, and using defaults (raw tiffs, default ROI params, etc.)
+# Add flag --default if want to run without interactive params and use default params where missing.
+
+
+
