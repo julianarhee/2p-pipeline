@@ -2,117 +2,110 @@ get_rois_manual2D
 
 clc; clear all;
 % 
-% %% Get Path to image
-%  % Set info manually:
+%% Set info manually:
 rootdir = '/nas/volume1/2photon/data';
 animalid = 'JR063';
-session = '20171128_JR063_testbig';
-acquisition = 'FOV1_zoom1x'; %'FOV1_zoom3x';
-run = 'gratings_static_run1';
-
-tiffsource = 'processed002';
-sourcetype = 'mcorrected';
+session = '20171202_JR063';
 
 roi_slices = '';
-%roi_type = 'manual2D_circle';
-roi_name = 'rois002';
-roi_hashid = '828a01';
 
+rid_hash = 'e4893c';
+zproj_type = 'mean';
+
+%% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
+roidict = loadjson(fullfile(roi_dir, sprintf('rids_%s.json', session)));
+roi_ids = fieldnames(roidict);
+for rkey = 1:length(fieldnames(roidict))
+    if strcmp(roidict.(roi_ids{rkey}).rid_hash, rid_hash)
+        roi_id = roi_ids{rkey};
+        RID = roidict.(roi_id);
+    end   
+end
+roi_type = RID.roi_type;
+
+
+%% Get paths:
+animalroot = strsplit(RID.SRC, session);
+sessionparts = strsplit(animalroot{2}, '/');
+acquisition = sessionparts{2};
+run = sessionparts{3};
+if length(sessionparts(4:end)) > 2
+    is_processed = true;
+    tiffsource_name = sessionparts{5};
+    tiffsource_pts = strsplit(tiffsource_name, '_');
+    tiffsource = tiffsource_pts{1};
+    sourcetype_name = sessionparts{6};
+    post_rundir_path = fullfile('processed', tiffsource_name, sourcetype_name);
+else
+    is_processed = false;
+    tiffsource_name = sessionparts{4};
+    tiffsource_pts = strsplit(tiffsource_name, '_');
+    tiffsource = tiffsource_pts{1};
+    sourcetype_name = '';
+    post_rundir_path = tiffsource_name;
+end
+
+%% Get reference file/channel for manual ROI selection:
 acquisition_dir = fullfile(rootdir, animalid, session, acquisition);
 runinfo = loadjson(fullfile(acquisition_dir, run, sprintf('%s.json', run)));
-pidinfo = loadjson(fullfile(acquisition_dir, run, 'processed', sprintf('pids_%s.json', run)));
-roiinfo = loadjson(fullfile(roi_dir, sprintf('rids_%s.json', session)));
-
-if ismember(roi_name, fieldnames(roiinfo))
-    roikey = roi_name;
-else
-    roikey = sprintf('%s_%s', roi_name, roi_hashid);
-end
-roiparams = roiinfo.(roikey)
-
-roi_type = roiparams.roi_type
-
-% if any(strfind(tiffsource, 'processed'))
-%     tiffsource_parent = fullfile(acquisition_dir, run, 'processed');
-%     tiff_opts = dir(fullfile(tiffsource_parent, [tiffsource '*']));
-% else
-%     tiffsource_parent = fullfile(acquisition_dir, run);
-%     tiff_opts = dir(fullfile(tiffsource_parent, 'raw*'));
-% end
-% tiffsource_id = tiff_opts.name;
-% tiffsource_path = fullfile(tiffsource_parent, tiffsource_id);
-% 
-% source_opts = dir(fullfile(tiffsource_path, [sourcetype '*']));
-% if length(source_opts) == 0
-%     fprintf('Unable to find sourcetype specified -%s- in %s.\n', sourcetype, tiffsource_path);
-%     fprintf('Found the following alt sources:\n');
-%     alts = dir(tiffsource_path);
-%     for a=1:length(alts)
-%         display(alts(a).name);
-%     end
-% elseif length(source_opts) > 1
-%     for s=1:length(source_opts)
-%         if length(strfind(source_opts(s).name, '_')) == 1
-%             sourcetype_dir = source_opts(s).name;
-%         end
-%     end
-% else
-%     sourcetype_dir = source_opts(1).name;
-% end
-
-% Get AVERAGE SLICE files:
-% average_images_dir = fullfile(tiffsource_path, [sourcetype_dir '_average_slices']);
-average_images_dir = [roiparams.SRC '_average_slices'];
-average_image_fns = dir(fullfile(average_images_dir, '*.tif'));
-average_image_fns = {average_image_fns(:).name}';
-
-[src_parent, src_name, ~] = fileparts(roiparams.SRC);
-[src_root, tiffsource, ~] = fileparts(src_parent);
-if length(strfind(tiffsource, '_'))==1
-    tiffsrc_pts = strsplit(tiffsource, '_');
-    tiffsource_name = tiffsrc_pts{1};
-    tiffsource_id = tiffsrc_pts{2};
-else
-    tiffsource_name = tiffsource;
-    tiffsource_id = '';
-end
-
-% Get REFERENCE info:
-if any(strfind(src_name, 'mcorrected'))
-    % Motion-corrected, so use whatever reference file was used as ref
-    if ismember(tiffsource, fieldnames(pidinfo))
-        pidkey = tiffsource;
-    else
-        pidkey = tiffsource_name;
+if is_processed
+    pidinfo = loadjson(fullfile(acquisition_dir, run, 'processed', sprintf('pids_%s.json', run)));
+    if pidinfo.(tiffsource).PARAMS.motion.correct_motion
+        ref_file = pidinfo.(tiffsource).PARAMS.motion.ref_file;
+        ref_channel = pidinfo.(tiffsource).PARAMS.motion.ref_channel;
     end
-    ref_file = pidinfo.(pidkey).PARAMS.motion.ref_file;
-    ref_channel = pidinfo.(pidkey).PARAMS.motion.ref_channel;
 else
     ref_file = 1;
     ref_channel = 1;
 end
+ref_filename = sprintf('File%03d', ref_file);
+ref_channelname = sprintf('Channel%02d', ref_channel);
+fprintf('RID %s -- Using %s, %s as reference for manual ROI creation.\n', rid_hash, ref_filename, ref_channelname);
 
-if length(roi_slices) == 0
+
+if length(roi_slices) == 0 || ~ismember('slices', fieldnames(RID))
     roi_slices = runinfo.slices;
+    fprintf('RID %s -- Slices not specified for manual ROI creation. Using all %i slices.\n', rid_hash, length(runinfo.slices));
+else
+    fprintf('RID %s -- Specified slices %s.\n', rid_hash, mat2str(roi_slices));
+end
+    
+
+%% Get AVERAGE SLICE files:
+% average_images_dir = fullfile(tiffsource_path, [sourcetype_dir '_average_slices']);
+average_images_dir = [RID.SRC sprintf('_%s_slices', zproj_type)];
+if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
+    slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
+else
+    slice_sourcedir = average_images_dir;
+end
+slice_tiffs = dir(fullfile(slice_sourcedir, '*.tif'));
+slice_tiffs = {slice_tiffs(:).name}';
+if length(slice_tiffs) == length(roi_slices)
+    fprintf('RID %s -- Found expected number of slice images in:\n%s\n', rid_hash, slice_sourcedir);
+else
+    fprintf('RID %s -- WARNING:  Incorrect number of slices found in specified dir:\n%s\n', rid_hash, slice_sourcedir);
 end
 
-%create empty structure and cells to save roi info
+
+
+%% create empty structure and cells to save roi info
 roiparams = struct;
 nrois = {};
 sourcepaths = {};
-maskpaths = {};
+% maskpaths = {};
+allmasks = {};
 
-
-%% Go through slices and load images
-for slidx = length(roi_slices)
+% Go through slices and load images
+for slidx = roi_slices
     curr_slice = roi_slices(slidx)
     
     % define slice name
-    curr_slice_fn = sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition, curr_slice, ref_channel, ref_file)
+    curr_slice_fn = slice_tiffs{curr_slice}; %sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition, curr_slice, ref_channel, ref_file)
 
     %load image as double
-    calcimg = tiffRead(fullfile(average_images_dir, curr_slice_fn));
+    calcimg = tiffRead(fullfile(slice_sourcedir, curr_slice_fn));
 
     %normalize image
     calcimg_norm = (calcimg-min(calcimg(:)))./(max(calcimg(:))-min(calcimg(:)));
@@ -132,7 +125,7 @@ for slidx = length(roi_slices)
     %% Save masks
 
     %defining target directories and filepaths
-    roi_base_dir = roiparams.DST;
+    roi_base_dir = RID.DST;
 
     mask_dir = fullfile(roi_base_dir,'masks');
     if ~isdir(mask_dir)
@@ -145,25 +138,26 @@ for slidx = length(roi_slices)
     end
 
     %save masks
-    mask_filename = sprintf('%s_%s_Slice%02d_Channel%02d_masks.mat', session, acquisition, curr_slice, ref_channel);
+    %mask_filename = sprintf('%s_%s_Slice%02d_Channel%02d_masks.mat', session, acquisition, curr_slice, ref_channel);
+    %mask_filename = 'masks.h5';
     
-    %* if file exists, ask user to confirm before overwriting
-    if exist(fullfile(mask_dir,mask_filename),'file')==2
-        answer = inputdlg('File with masks already exists, overwite? (Y/N)');
-
-        while ~ (strcmpi(answer,'Y') || strcmpi(answer,'N'))
-            answer = inputdlg('File with masks already exists, overwite? (Y/N)');
-        end
-
-        if strcmpi(answer,'Y')%replace file
-            save(fullfile(mask_dir,mask_filename),'masks');
-        elseif stparcmpi(answer,'N')%write file with extra id appended
-            mask_filename = make_duplicate(mask_filename,mask_dir);
-            save(fullfile(mask_dir,mask_filename),'masks');
-        end
-    else
-        save(fullfile(mask_dir,mask_filename),'masks');
-    end
+%     %* if file exists, ask user to confirm before overwriting
+%     if exist(fullfile(mask_dir,mask_filename),'file')==2
+%         answer = inputdlg('File with masks already exists, overwite? (Y/N)');
+% 
+%         while ~ (strcmpi(answer,'Y') || strcmpi(answer,'N'))
+%             answer = inputdlg('File with masks already exists, overwite? (Y/N)');
+%         end
+% 
+%         if strcmpi(answer,'Y')%replace file
+%             save(fullfile(mask_dir,mask_filename),'masks');
+%         elseif stparcmpi(answer,'N')%write file with extra id appended
+%             mask_filename = make_duplicate(mask_filename,mask_dir);
+%             save(fullfile(mask_dir,mask_filename),'masks');
+%         end
+%     else
+%         save(fullfile(mask_dir,mask_filename),'masks');
+%     end
 
 
     %save images
@@ -183,17 +177,58 @@ for slidx = length(roi_slices)
     %keep track of info to save to roiparams
     nrois{slidx} = size(masks,3);
     sourcepaths{slidx} = fullfile(average_images_dir, curr_slice_fn);
-    maskpaths{slidx} = fullfile(mask_dir,mask_filename);
-    
+%     maskpaths{slidx} = fullfile(mask_dir,mask_filename);
+    allmasks{slidx} = masks;
+
+
 end
 
-%save roiparams
-ROIPARAMS.nrois = nrois;
-ROIPARAMS.sourceslices = roi_slices;
-ROIPARAMS.sourcepaths = sourcepaths;
-ROIPARAMS.maskpaths = maskpaths;
 
-roiparams_path = fullfile(roi_base_dir, 'roiparams.mat');
-save(roiparams_path,'-struct','ROIPARAMS');
 
-fprintf('Saved ROIs to: %s\n', roi_base_dir);
+%% Save ROI masks by slice:
+mask_fn = fullfile(mask_dir, 'masks.h5');
+
+for slidx = 1:length(sourcepaths)
+    masks = allmasks{slidx};
+    curr_slice = roi_slices(slidx);
+    for curr_roi = 1:size(masks,3)
+        %h5create(mask_fn, sprintf('/masks/slice%i/roi%i', curr_slice, curr_roi), size(masks(:,:,curr_roi)))
+        h5write(mask_fn, sprintf('/masks/slice%i/roi%i', curr_slice, curr_roi), masks(:,:,curr_roi))
+    end
+    h5writeatt(mask_fn,  sprintf('/masks/slice%i', curr_slice) ,'creation_date', datestr(now))
+    h5writeatt(mask_fn,  sprintf('/masks/slice%i', curr_slice) ,'source', sourcepaths{slidx})
+end
+h5writeatt(mask_fn,  sprintf('/masks'), 'creation_date', datestr(now));
+h5writeatt(mask_fn,  sprintf('/masks'), 'roi_type', roi_type);
+h5writeatt(mask_fn,  sprintf('/masks'), 'roi_hash', rid_hash);
+h5writeatt(mask_fn,  sprintf('/masks'), 'animal', animalid);
+h5writeatt(mask_fn,  sprintf('/masks'), 'session', session);
+h5writeatt(mask_fn,  sprintf('/masks'), 'acquisition', acquisition);
+h5writeatt(mask_fn,  sprintf('/masks'), 'run', run);
+h5writeatt(mask_fn,  sprintf('/masks'), 'zproj', zproj_type);
+
+% h5disp(mask_fn)
+info = hdf5info(mask_fn)
+
+%
+for a=1:length(info.GroupHierarchy.Groups(1).Attributes)
+    roiset_attr = info.GroupHierarchy.Groups(1).Attributes;
+    fprintf('%s: %s\n', roiset_attr(a).Name, roiset_attr(a).Value.Data);
+end
+
+    
+%%
+% 
+% %save roiparams
+% ROIPARAMS.nrois = nrois;
+% ROIPARAMS.sourceslices = roi_slices;
+% ROIPARAMS.sourcepaths = sourcepaths;
+% ROIPARAMS.maskpaths = maskpaths;
+% 
+% roiparams_path = fullfile(roi_base_dir, 'roiparamsh5.mat');
+% save(roiparams_path,'-struct','ROIPARAMS');
+% 
+% fprintf('Saved ROIs to: %s\n', roi_base_dir);
+
+
+%%
