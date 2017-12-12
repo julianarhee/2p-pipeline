@@ -116,7 +116,7 @@ def create_rid(options):
         roi_options = set_options_cnmf(rootdir=rootdir, animalid=animalid, session=session,
                                        acquisition=acquisition, run=run,
                                        movie_idxs=movie_idxs, method_deconv=nmf_deconv, K=nmf_K,
-                                       gSig=[int(nmf_gsig), int(nmf_gsig)], rf=nmf_rf, stride=nmf_stride, p=nmf_p)
+                                       gSig=nmf_gsig, rf=nmf_rf, stride=nmf_stride, p=nmf_p)
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
