@@ -55,8 +55,8 @@ def process_pid(options):
 
     parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
 
-    parser.add_option('--correct-flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
-    parser.add_option('--flyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
+    parser.add_option('--flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
+    parser.add_option('-F', '--nflyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
     parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
     parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
@@ -164,7 +164,7 @@ def process_pid(options):
 
     if execute_flyback is True:
         print "Correcting incorrect flyback frames in volumes."
-        flyback_options.extend(['--correct-flyback', '--flyback=%i' % nflyback, '--discard=%i' % ndiscard])
+        flyback_options.extend(['--flyback', '--nflyback=%i' % nflyback, '--discard=%i' % ndiscard])
 
     if save_tiffs is False:
         flyback_options.extend(['--notiffs'])

@@ -113,6 +113,7 @@ def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0
                 Yr = cm.movie(Yr, fr=1)
 
             Yr = Yr.resize(fx=fx, fy=fy, fz=fz)
+            
         T, dims = Yr.shape[0], Yr.shape[1:]
         Yr = np.transpose(Yr, list(range(1, len(dims) + 1)) + [0])
         Yr = np.reshape(Yr, (np.prod(dims), T), order='F')
@@ -134,6 +135,8 @@ def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0
         Ttot = Ttot + T
 
     fname_new = fname_tot + '_frames_' + str(Ttot) + '_.mmap'
+    print fname_new
+    print fname_tot
     try:
         # need to explicitly remove destination on windows
         os.unlink(fname_new)
@@ -186,9 +189,14 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
     return mmap_outpath
 
 #%% MEMORY-MAPPING (plus make non-negative)
-def check_memmapped_tiffs(tiffpaths, mmap_dir):
+def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D):
     expected_filenames = [os.path.splitext(os.path.split(tpath)[1])[0].split('_')[-1] for tpath in tiffpaths]
-    tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+    if os.path.isdir(mmap_dir):
+        tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
+    else:
+        tmp_mmap_fns = []
+        os.makedirs(mmap_dir)
+
     missing_mmap_fns = []
     for f in expected_filenames:
         matched_mmap = [m for m in tmp_mmap_fns if f in m]
@@ -200,7 +208,7 @@ def check_memmapped_tiffs(tiffpaths, mmap_dir):
     
     if len(tiffs_to_mmap) > 0:
         output = mp.Queue()
-        processes = [mp.Process(target=memmap_tiff, args=(tpath, mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
+        processes = [mp.Process(target=memmap_tiff, args=(str(tpath), mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
         for p in processes:
             p.start()
         for p in processes:
@@ -216,14 +224,14 @@ def check_memmapped_tiffs(tiffpaths, mmap_dir):
 # dataset dependent parameters
 rootdir = '/nas/volume1/2photon/data'
 animalid = 'JR063'
-session = '20171128_JR063_testbig'
+session = '20171202_JR063'
 acquisition = 'FOV1_zoom1x'
-run = 'gratings_static_run1'
+run = 'static_gratings'
 slurm = False
 
-tiffsource = 'processed002'
+tiffsource = 'processed001'
 sourcetype = 'mcorrected'
-rid_hash = '32e288'
+rid_hash = 'fa5f0f'
 
 #%% CHECK TIFF paths and get corresponding MMAP paths:
 session_dir = os.path.join(rootdir, animalid, session)
@@ -249,11 +257,6 @@ else:
     with open(tmp_rid_path, 'r') as f:
         RID = json.load(f)
     
-
-tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
-print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
-mmap_dir = RID['PARAMS']['mmap_source']
-expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir)
 
 #%% Set output paths:
 curr_roi_dir = RID['DST']
@@ -284,6 +287,20 @@ inspect_components = False
 save_movies = params['display']['save_movies']
 remove_bad = False
 
+
+tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
+print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
+for t in tiffpaths:
+    print t
+mmap_dir = RID['PARAMS']['mmap_source']
+expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
+
+print "******************************"
+print "Done MEMMAPPING tiffs:"
+print "******************************"
+for m in mmap_paths:
+    print m
+ 
 #%% start a cluster for parallel processing
 c, dview, n_processes = cm.cluster.setup_cluster(
     backend='local', n_processes=None, single_thread=False)

@@ -139,14 +139,9 @@ def create_rid(options):
 
 
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
-#    rootdir = '/nas/volume1/2photon/data'
-#    animalid = 'JR063'
-#    session = '20171128_JR063_testbig'
-#    acquisition = 'FOV1_zoom1x'
-#    run = 'gratings_static_run1'
-    #tiffsource = 'process002'
-    #sourcetype = 'mcorrected'
-    
+
+    tiffpaths = []
+ 
     rundir = os.path.join(rootdir, animalid, session, acquisition, run)
     processed_dir = os.path.join(rundir, 'processed')
     
@@ -172,7 +167,16 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
                 confirm_tiffsource = raw_input('Tiffs are %s? Press <Y> to confirm. ' % tiffsource)
                 if confirm_tiffsource == 'Y':
                     break
-                
+    
+    if 'processed' in tiffsource: 
+        tiffsource_name = [t for t in os.listdir(processed_dir) if tiffsource in t and os.path.isdir(os.path.join(processed_dir, t))][0]
+        tiff_parent = os.path.join(processed_dir, tiffsource_name)
+    else:
+        tiffsource_name = [t for t in os.listdir(rundir) if tiffsource in t and os.path.isdir(os.path.join(rundir, t))][0]
+        tiff_parent = os.path.join(rundir, tiffsource_name)
+
+    print "Using tiffsource:", tiffsource_name
+ 
     if sourcetype is None:
         while True:
             if auto is True or tiffsource == 'raw':
@@ -188,21 +192,18 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
             confirm_sourcetype = raw_input('Tiffs are from %s? Press <Y> to confirm. ' % sourcetype)
             if confirm_sourcetype == 'Y':
                 break
-            
-    try:
-        if 'processed' in tiffsource:
-            tiffsrc_parent = [p for p in os.listdir(os.path.join(rundir, 'processed')) if tiffsource in p][0]
-            tiffsrc_folder = [p for p in os.listdir(os.path.join(rundir, 'processed', tiffsrc_parent)) if sourcetype in p][0]
-            tiff_path = os.path.join(rundir, 'processed', tiffsrc_parent, tiffsrc_folder)
-        else:
-            tiffsrc_parent = [p for p in os.listdir(rundir) if 'raw' in p][0]
-            tiff_path = os.path.join(rundir, tiffsrc_parent)
-            
-        tiff_fns = [t for t in os.listdir(tiff_path) if t.endswith('tif')]
-        tiffpaths = sorted([os.path.join(tiff_path, fn) for fn in tiff_fns], key=natural_keys)
-        print "Found %i TIFFs for cNMF ROI extraction." % len(tiff_fns)
-    except:
-        print "ERROR: tiffsource %s of type %s not found in run dir %s" % (tiffsource, sourcetype, rundir)
+
+    if 'processed' in tiffsource_name:
+        sourcetype_name = [s for s in os.listdir(tiff_parent) if sourcetype in s and os.path.isdir(os.path.join(tiff_parent, s))][0]
+        tiff_path = os.path.join(tiff_parent, sourcetype_name)
+    else:
+        tiff_path = tiff_parent
+    
+    
+    print "Looking for tiffs in tiff_path: %s" % tiff_path 
+    tiff_fns = [t for t in os.listdir(tiff_path) if t.endswith('tif')]
+    tiffpaths = sorted([os.path.join(tiff_path, fn) for fn in tiff_fns], key=natural_keys)
+    print "Found %i TIFFs for cNMF ROI extraction." % len(tiff_fns)
 
     return tiffpaths
 
@@ -326,12 +327,15 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, che
         else:
             mmap_dir = tiff_sourcedir + '_mmap'
             check_hash = True
-            
+             
         if check_hash is True:
-            excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
-            mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+            if os.path.isdir(mmap_dir):
+                excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
+                mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+            else:
+                mmap_hash = None
             
-        if mmap_hash not in mmap_dir:
+        if mmap_hash is not None and mmap_hash not in mmap_dir:
             PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
             os.rename(mmap_dir, PARAMS['mmap_source'])
             print "Renamed mmap with hash:", PARAMS['mmap_source']

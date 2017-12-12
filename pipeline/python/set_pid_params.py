@@ -49,6 +49,7 @@ def get_file_size(file_path):
         return convert_bytes(file_info.st_size)
 
 def post_pid_cleanup(acquisition_dir, run, pid_hash):
+
     processed_dir = os.path.join(acquisition_dir, run, 'processed')
     print "Cleaning up PID info: %s" % pid_hash
     tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
@@ -61,10 +62,12 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     # UPDATE PID entry in dict:
     with open(os.path.join(processed_dir, processdict_fn), 'r') as f:
         processdict = json.load(f)
-    process_id_basename = PID['process_id']
-    new_process_id_key = '_'.join((process_id_basename, pid_hash))
-    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
-    print "Updated main process dict, with key: %s" % new_process_id_key
+    process_id = [p for p in processdict.keys() if processdict[p]['pid_hash'] == pid_hash][0]
+#    process_id_basename = PID['process_id']
+#    new_process_id_key = '_'.join((process_id_basename, pid_hash))
+#    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
+#    print "Updated main process dict, with key: %s" % new_process_id_key
+    processdict[process_id] = PID
     
     # Save updated PID dict:
     path_to_processdict = os.path.join(processed_dir, processdict_fn)

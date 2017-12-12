@@ -11,12 +11,13 @@ import pprint
 import re
 import optparse
 import sys
+import psutil
 from pipeline.python.preprocessing.process_raw import process_pid
 #from multiprocessing import Process, Pool
 import multiprocessing as mp
-import psutil
 
 pp = pprint.PrettyPrinter(indent=4)
+
 
 # GENERAL METHODS:
 def atoi(text):
@@ -60,7 +61,7 @@ def memory_usage():
     return result
 
 
-if __name__ == "__main__":
+def main(options):
 
     # PATH opts:
     # -------------------------------------------------------------
@@ -73,7 +74,7 @@ if __name__ == "__main__":
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
-    (options, args) = parser.parse_args() 
+    (options, args) = parser.parse_args(options) 
 
     # -------------------------------------------------------------
     # INPUT PARAMS:
@@ -100,27 +101,34 @@ if __name__ == "__main__":
         process_batch = True
         pid_paths = [os.path.join(pid_dir, p) for p in os.listdir(pid_dir) if p.endswith('json') and 'pid_' in p]
 
-    opts_list = []
+    jobs = []
     for pid_path in pid_paths:
         with open(pid_path, 'r') as f:
             pinfo = json.load(f)
         opts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid']]
-	if slurm is True:
-	    opts.extend(['--slurm'])
-        opts_list.append(opts)
-	print "PID:", pid_path, opts
-        #Process(target=process_pid, args=(opts,)).start()
+        if slurm is True:
+            opts.extend(['--slurm'])
+        print "PID %s -- opts:" % pinfo['pid'], opts
+        j = mp.Process(name=pinfo['pid'], target=process_pid, args=(opts,))
+        jobs.append(j)
+        j.start()
 
-    pool = mp.Pool(processes=nprocesses) #, memory_usage)
-    results = [pool.apply_async(process_pid, args=(opts,)) for opts in opts_list]
-    output = [p.get() for p in results]
-    print "COMPLETED:", output
-    pool.close()
-    pool.join()
-
+    status = dict()
+    for j in jobs:
+        j.join()
+        print '%s.exitcode = %s' % (j.name, j.exitcode)
+        status[j.name] = j.exitcode
+       
     finished_dir = os.path.join(pid_dir, 'completed')
     if not os.path.exists(finished_dir):
         os.makedirs(finished_dir)
-    for pid_path in pid_paths:
-        pid_fn = os.path.split(pid_path)[1]
-        shutil.move(pid_path, os.path.join(finished_dir, pid_fn))
+    for jobpid in status.keys():
+        if status[jobpid] == 0:
+            corresponding_pidpath = [p for p in pid_paths if jobpid in p][0]
+            pid_fn = os.path.split(corresponding_pidpath)[1]
+            shutil.move(pid_path, os.path.join(finished_dir, pid_fn))
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+ 
