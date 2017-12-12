@@ -272,6 +272,7 @@ def extract_cnmf_rois(options):
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     rid_hash = options.rid_hash
+    slurm = options.slurm
 
     if slurm is True:
         if 'coxfs01' not in rootdir:
