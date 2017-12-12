@@ -6,7 +6,7 @@ Created on Thu Dec  7 11:36:30 2017
 @author: julianarhee
 """
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import os
 import re
 import json
@@ -26,7 +26,7 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
 from caiman.source_extraction.cnmf.utilities import extract_DF_F
 
-from pipeline.python.set_roi_params import create_rid # get_tiff_paths, set_params, initialize_rid, update_roi_records
+from pipeline.python.set_roi_params import create_rid, update_roi_records # get_tiff_paths, set_params, initialize_rid, update_roi_records
 from pipeline.python.utils import write_dict_to_json, jsonify_array
 
 def atoi(text):
@@ -294,6 +294,28 @@ for t in tiffpaths:
     print t
 mmap_dir = RID['PARAMS']['mmap_source']
 expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
+
+#%% Update mmap dir with hashed mmap files, update RID:
+check_mmap_hash = False
+if '_mmap_' not in mmap_dir:
+    check_mmap_hash = True
+else:
+    mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+
+if check_mmap_hash is True:
+    print "RID %s -- Checking mmap dir hash..." % rid_hash
+    excluded_files = [m for m in os.listdir(mmap_dir) if not m.endswith('mmap')]
+    mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+
+if mmap_hash not in mmap_dir: 
+    mmap_dir_hash =  mmap_dir + '_' + mmap_hash
+    os.rename(mmap_dir, mmap_dir_hash)
+    RID['PARAMS']['mmap_source'] = mmap_dir_hash
+    mmap_dir = mmap_dir_hash
+    write_dict_to_json(RID, tmp_rid_path)
+    update_roi_records(RID, session_dir)
+    print "RID %s -- ROI entry updated." % rid_hash
+    mmap_paths = [os.path.join(mmap_dir, m) for m in os.listdir(mmap_dir) if m.endswith('mmap')]
 
 print "******************************"
 print "Done MEMMAPPING tiffs:"
@@ -588,7 +610,9 @@ try:
     
     
         #%%
-except:
-    print "No .mmap file found for %s" % curr_filename
-
+except Exception as e:
+    print "RID %s -- EXCEPTION during processing of %s" % (rid_hash, curr_filename)
+    print(e)
+finally:
+    print "RID %s -- No Errors. Completed ROI extraction from %s" % (rid_hash, curr_filename)
 
