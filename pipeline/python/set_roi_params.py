@@ -58,6 +58,14 @@ def extract_options(options):
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
+    parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='method deconvolution if using cNMF [default: oasis]')
+    parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='half size of neurons if using cNMF [default: 8]')
+    parser.add_option('--K', action='store', dest='nmf_K', default=10, help='N expected components per patch [default: 10]')
+    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='Half size of patch if using cNMF [default: 30]')
+    parser.add_option('--overlap', action='store', dest='nmf_stride', default=15, help='Amount of patch overlap if using cNMF [default: 15]')
+    parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='Order of autoregressive system if using cNMF [default: 2]')
+
+
     (options, args) = parser.parse_args(options) 
     
     if options.slurm is True:
@@ -83,6 +91,14 @@ def create_rid(options):
 
     auto = options.default
 
+    # cNMF-specific opts:
+    nmf_deconv = options.nmf_deconv
+    nmf_gsig = [int(options.nmf_gsig), int(options.nmf_gsig)]
+    nmf_K = int(options.nmf_K)
+    nmf_rf = int(options.nmf_rf)
+    nmf_stride = int(options.nmf_stride)
+    nmf_p = int(options.nmf_p)
+
     session_dir = os.path.join(rootdir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
     if not os.path.exists(roi_dir):
@@ -95,10 +111,12 @@ def create_rid(options):
     
     # Get roi-type specific options:
     if roi_type == 'caiman2D':
+        print "Creating param set for caiman2D ROIs."
         movie_idxs = []
         roi_options = set_options_cnmf(rootdir=rootdir, animalid=animalid, session=session,
                                        acquisition=acquisition, run=run,
-                                       movie_idxs=movie_idxs)
+                                       movie_idxs=movie_idxs, method_deconv=nmf_deconv, K=nmf_K,
+                                       gSig=[int(nmf_gsig), int(nmf_gsig)], rf=nmf_rf, stride=nmf_stride, p=nmf_p)
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
@@ -227,7 +245,7 @@ def load_roidict(session_dir):
 def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run='',
                     movie_idxs=[], fr=None, signal_channel=1, 
                     gSig=[8,8], rf=30, stride=15, K=10, p=2, gnb=1, merge_thr=0.8,
-                    init_method='greedy_roi', method_deconv='cvxpy',
+                    init_method='greedy_roi', method_deconv='oasis',
                     rval_thr=0.8, min_SNR=2, decay_time=1.0, use_cnn=False, cnn_thr=0.8,
                     use_average=True, save_movies=True, thr_plot=0.8):
     
