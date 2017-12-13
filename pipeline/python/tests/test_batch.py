@@ -11,5 +11,4 @@ import os
 
 # os.system('python process_pids_for_session.py -iJR063 -S20171128_JR063_test5')
 
-os.system('python ../process_pids_for_session.py -iJR063 -S20171128_JR063_testbig -n12')           
-
+os.system('python ../process_pids_for_session.py -iJR063 -S20171202_JR063 -n24')           
