@@ -246,6 +246,8 @@ def extract_cnmf_rois(options):
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
+    parser.add_option('-x', '--exclude', action="store",
+                  dest="excluded_files", default='', help="Tiff numbers to exclude (comma-separated)")
 
     (options, args) = parser.parse_args(options) 
 
@@ -273,7 +275,16 @@ def extract_cnmf_rois(options):
     sourcetype = options.sourcetype
     rid_hash = options.rid_hash
     slurm = options.slurm
-
+    
+    exclude_str = options.excluded_files
+    if len(exclude_str) > 0:
+        excluded_fids = exclude_str.split(',')
+        excluded_files = ['File%03d' % int(f) for f in excluded_fids]
+    else:
+        excluded_files = []
+    
+    print "Excluding files:", excluded_files
+ 
     if slurm is True:
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
@@ -368,15 +379,21 @@ def extract_cnmf_rois(options):
     for m in mmap_paths:
         print m
      
-    #%% start a cluster for parallel processing
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=None, single_thread=False)
+
+#
+#    c, dview, n_processes = cm.cluster.setup_cluster(
+#        backend='local', n_processes=None, single_thread=False)
+
 
     #%%
     #fidx = 0
     #curr_filename = expected_filenames[fidx]
     for curr_filename in expected_filenames:
         #%%
+        
+        if curr_filename in excluded_files:
+            continue
+        
         print "Extracting ROIs:", curr_filename
         curr_mmap = [m for m in mmap_paths if curr_filename in m][0]
         Yr, dims, T = cm.load_memmap(curr_mmap)
@@ -387,6 +404,16 @@ def extract_cnmf_rois(options):
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
         
         print "RID %s -- %s: ITER 1 -- RUNNING CNMF FIT..." % (rid_hash, curr_filename)
+        #%% start a cluster for parallel processing
+        try:
+            dview.terminate() # stop it if it was running
+        except:
+            pass
+        
+        c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
+                                                         n_processes=46,  # number of process to use, reduce if out of mem
+                                                         single_thread = False)
+
         #%% Create CNMF object:
                 
         cnm = cnmf.CNMF(k=params['extraction']['K'], gSig=params['extraction']['gSig'],
@@ -411,6 +438,7 @@ def extract_cnmf_rois(options):
             
             # Save CNMF options with has:
             nmfoptions = jsonify_array(cnm.options)
+            nmfoptions['excluded_files'] = excluded_files
             nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
             write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
             
