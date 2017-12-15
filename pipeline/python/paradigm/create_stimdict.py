@@ -2,12 +2,12 @@
 import os
 import json
 import re
-import scipy.io as spio
-import numpy as np
-from json_tricks.np import dump, dumps, load, loads
-from mat2py import loadmat
-import cPickle as pkl
+import optparse
 import operator
+import h5py
+import numpy as np
+from pipeline.python.utils import hash_file
+
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -17,7 +17,8 @@ def natural_keys(text):
 
 class StimInfo:
     def __init__(self):
-        self.stimid = []
+        self.stiminfo = dict()
+
         self.trials = []
         self.frames = []
         self.frames_sec = []
@@ -43,7 +44,7 @@ def serialize_json(instance=None, path=None):
 ## iti_pre = float(options.iti_pre)
 # same_order = False #True
 
-import optparse
+#%%
 
 parser = optparse.OptionParser()
 
@@ -98,232 +99,263 @@ session = options.session
 acquisition = options.acquisition
 run = options.run
 
+iti_pre = float(options.iti_pre)
+
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
-vols_per_trial = int(options.vols_per_trial)
-first_stim_volume_num = int(options.first_stim_volume_num)
 
-abort = False
-if custom_mw is True and (vols_per_trial==0 or first_stim_volume_num==0):
-    print "Must set N vols-per-trial and IDX of first volume stimulus begins."
-    abort = True
 
-if abort is False:
 
-    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 
-    # Load reference info:
-    runinfo_path = os.path.join(run_dir, '%s.json' % run)
-    with open(runinfo_path, 'r') as fr:
-        runinfo = json.load(fr)
-    nfiles = runinfo['ntiffs']
-    file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
+#%%
 
-    frame_idxs = runinfo['frame_idxs']
-    if len(frame_idxs) > 0:
-        print "Found %i frames from flyback correction." % len(frame_idxs)
-    else:
-        frame_idxs = np.arange(0, runinfo['nvolumes'])
+run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+paradigm_dir = os.path.join(run_dir, 'paradigm')
 
-#    if flyback_corrected is True:
-#        frame_idxs = runinfo['frame_idxs']
-#        print "Found %i frames from flyback correction." % len(frame_idxs)
+outfile = os.path.join(paradigm_dir, 'frames_.hdf5')
 
-    ntiffs = runinfo['ntiffs']
-    file_names = sorted(['File%03d' % int(f+1) for f in range(ntiffs)], key=natural_keys)
-    volumerate = runinfo['volume_rate']
+# -------------------------------------------------------------------------
+# Load reference info:
+# -------------------------------------------------------------------------
+runinfo_path = os.path.join(run_dir, '%s.json' % run)
+with open(runinfo_path, 'r') as fr:
+    runinfo = json.load(fr)
+nfiles = runinfo['ntiffs']
+file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
 
-    #vols_per_trial = float(options.vols_per_trial)
-    #first_stim_volume_num = int(options.first_stim_volume_num)
+# Get frame_idxs -- these are FRAME indices in the current .tif file, i.e.,
+# removed flyback frames and discard frames at the top and bottom of the
+# volume should not be included in the indices...
+frame_idxs = runinfo['frame_idxs']
+if len(frame_idxs) > 0:
+    print "Found %i frames from flyback correction." % len(frame_idxs)
+else:
+    frame_idxs = np.arange(0, runinfo['nvolumes'] * len(runinfo['slices']))
 
-    iti_pre = float(options.iti_pre)
 
-    if custom_mw is True:
-#        with open(runinfo['raw_simeta_path'], 'r') as f:
-#            simeta = json.load(f)
-#        volumerate = float(simeta['File001']['SI']['hRoiManager']['scanVolumeRate'])
+ntiffs = runinfo['ntiffs']
+file_names = sorted(['File%03d' % int(f+1) for f in range(ntiffs)], key=natural_keys)
+volumerate = runinfo['volume_rate']
+framerate = runinfo['frame_rate']
+nvolumes = runinfo['nvolumes']
+nslices = int(len(runinfo['slices']))
 
+#%%
+# =========================================================================
+# This section takes care of custom (non-MW) stim presentation protocols:
+# =========================================================================
+if custom_mw is True:
+    try:
         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-
         first_stimulus_volume_num = int(options.first_stim_volume_num) #50
         vols_per_trial = float(options.vols_per_trial) # 15
-        #iti_full = (vols_per_trial - (stim_on_sec * volumerate)) / volumerate
         iti_full = (vols_per_trial/volumerate) - stim_on_sec
         iti_post = iti_full - iti_pre
+        print "==============================================================="
+        print "Using CUSTOM trial-info (not MW)."
+        print "==============================================================="
         print "First stim on:", first_stimulus_volume_num
         print "Volumes per trial:", vols_per_trial
         print "ITI POST (s):", iti_post
         print "ITT full (s):", iti_full
         print "TRIAL dur (s):", stim_on_sec + iti_full
         print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * volumerate
-#     else:
-#         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-#         iti_full = float(options.iti_full)# 4.
-#         iti_post = iti_full - iti_pre
-#         print "ITI POST:", iti_post
+        print "==============================================================="
 
-    # =================================================================================
+        ### Get stim-order files:
+        stimorder_fns = sorted([f for f in os.listdir(paradigm_dir) if 'stimorder' in f and f.endswith('txt')], key=natural_keys)
+        print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), nfiles)
+        if len(stimorder_fns) < ntiffs:
+            if same_order:
+                # Same stimulus order for each file (complete set)
+                stimorder_fns = np.tile(stimorder_fns, [ntiffs,])
+
+    except Exception as e:
+        print "---------------------------------------------------------------"
+        print "Using CUSTOM trial-info. Use -h to check required options:"
+        print "---------------------------------------------------------------"
+        print "- volume num of 1st stimulus in tif"
+        print "- N vols per trial"
+        print "- duration (s) of stimulus-on period in trial"
+        print " - stimorder.txt file with each line containing IDX of stim id."
+        print " - whether the same order of stimuli are presented across all files."
+        print "Aborting with error:"
+        print "---------------------------------------------------------------"
+        print e
+        print "---------------------------------------------------------------"
+
+else:
+    ### Get PARADIGM INFO if using standard MW:
+    try:
+        trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')][0]
+
+        with open(os.path.join(paradigm_dir, trial_fn), 'r') as f:
+            trialdict = json.load(f)
+
+        # Get presentation info (should be constant across trials and files):
+        trial_list = sorted(trialdict.keys(), key=natural_keys)
+        stim_durs = [round(trialdict[t]['stim_dur_ms']/1E3, 1)for t in trial_list]
+        assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
+        stim_on_sec = stim_durs[0]
+        iti_durs = [round(trialdict[t]['iti_dur_ms']/1E3, 1) for t in trial_list]
+        assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
+        iti_full = iti_durs[0]
+        iti_post = iti_full - iti_pre
+
+    except Exception as e:
+        print "Could not find unique trial-file for current run %s..." % run
+        print "Aborting with error:"
+        print "---------------------------------------------------------------"
+        print e
+        print "---------------------------------------------------------------"
 
 
-    ### Get PARADIGM INFO:
-    paradigm_outdir = os.path.join(run_dir, 'paradigm')
-    if custom_mw is False:
-        with open(os.path.join(paradigm_outdir, 'parsed_trials.pkl'), 'rb') as f:
-            trialdict = pkl.load(f)
-        print "Trial Info dicts found for %i files:" % len(trialdict.keys())
+try:
+    nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
+    nframes_iti_pre = iti_pre * volumerate
+    nframes_iti_post = iti_post*volumerate # int(round(iti_post * volumerate))
+    nframes_iti_full = iti_full * volumerate #int(round(iti_full * volumerate))
+    nframes_post_onset = (stim_on_sec + iti_post) * volumerate
+except Exception as e:
+    print "Problem calcuating nframes for trial epochs..."
+    print e
 
-    ### Get stim-order files:
-    stimorder_fns = sorted([f for f in os.listdir(paradigm_outdir) if 'stimorder' in f or 'stim_order' in f])
-    print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), nfiles)
-    if len(stimorder_fns) < nfiles:
-        if same_order:
-            # Same stimulus order for each file (complete set)
-            stimorder_fns = np.tile(stimorder_fns, [nfiles,])
+#%%
 
+# =================================================================================
+# Create stimulusdict:
+# =================================================================================
 
-    # =================================================================================
-    # Create stimulusdict:
-    # =================================================================================
+# stimdict[stim][currfile].trials
+# stimdict[stim][currfile].frames
+# stimdict[stim][currfile].frames_sec
+# stimdict[stim][currfile].stim_on_idx
 
-    # stimdict[stim][currfile].trials
-    # stimdict[stim][currfile].frames
-    # stimdict[stim][currfile].frames_sec
-    # stimdict[stim][currfile].stim_on_idx
+# 1. Create HDF5 file to store ALL trials in run with stimulus info and frame info:
+run_grp = h5py.File(outfile, 'w')
 
-    stimdict = dict()
-    for fi in range(nfiles):
-        currfile= "File%03d" % int(fi+1)
+#%
+# 1. Get stimulus preseentation order for each TIFF found:
 
-#        nvolumes = int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-#        #nslices = len(ref['slices']) #int(simeta[currfile]['SI']['hFastZ']['numVolumes'])
-#        nslices = int(simeta[currfile]['SI']['hFastZ']['numFramesPerVolume'])
-#        framerate = float(simeta[currfile]['SI']['hRoiManager']['scanFrameRate'])
-#        volumerate = float(simeta[currfile]['SI']['hRoiManager']['scanVolumeRate'])
-#        	#print "framerate:", framerate
-#        	#print "volumerate:", volumerate
+trial_counter = 0
+for tiffnum in range(ntiffs):
+    trial_in_file = 0
+    currfile= "File%03d" % int(tiffnum+1)
+    #frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
 
-        nvolumes = runinfo['nvolumes']
-        nslices = int(len(runinfo['slices']))
-        volumerate = runinfo['volume_rate']
-        frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
+    if custom_mw is True:
+        stim_fn = stimorder_fns[tiffnum]
+        with open(os.path.join(paradigm_dir, stimorder_fns[tiffnum])) as f:
+            stimorder_data = f.readlines()
+        stimorder = [l.strip() for l in stimorder]
+    else:
+        stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
+                         if trialdict[t]['aux_file_idx'] == tiffnum]
+        trials_in_run = sorted([t for t in trial_list if trialdict[t]['aux_file_idx'] == tiffnum], key=natural_keys)
 
-        # Load stim-order:
-        stim_fn = stimorder_fns[fi] #'stim_order.txt'
-        with open(os.path.join(paradigm_outdir, stim_fn)) as f:
-            stimorder = f.readlines()
-        curr_stimorder = [l.strip() for l in stimorder]
-        unique_stims = sorted(set(curr_stimorder), key=natural_keys)
+    unique_stims = sorted(set(stimorder), key=natural_keys)
 
-        for trialnum,stim in enumerate(curr_stimorder):
-            currtrial = str(trialnum+1)
+    for trialidx,trialstim in enumerate(sorted(stimorder, key=natural_keys)):
+        trial_counter += 1
+        trial_in_file += 1
+        currtrial_in_file = 'trial%03d' % int(trial_in_file)
 
-            if custom_mw is False:
-                stim_on_sec = round(trialdict[currfile][currtrial]['stim_dur_ms']/1E3)
-                iti_full = round(trialdict[currfile][currtrial]['iti_dur_ms']/1E3)
-                iti_post = iti_full - iti_pre
-
-            nframes_on = stim_on_sec * volumerate #int(round(stim_on_sec * volumerate))
-            nframes_iti_pre = iti_pre * volumerate
-            nframes_iti_post = iti_post*volumerate # int(round(iti_post * volumerate))
-            nframes_iti_full = iti_full * volumerate #int(round(iti_full * volumerate))
-            nframes_post_onset = (stim_on_sec + iti_post) * volumerate
-
-            if not stim in stimdict.keys():
-                stimdict[stim] = dict()
-            if not currfile in stimdict[stim].keys():
-                stimdict[stim][currfile] = StimInfo()
-
-            if custom_mw is True:
-                if trialnum==0:
-                    first_frame_on = first_stimulus_volume_num
-                else:
-                    first_frame_on += vols_per_trial
+        if custom_mw is True:
+            if trialidx==0:
+                first_frame_on = first_stimulus_volume_num
             else:
-                #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
-                first_frame_on = int(trialdict[currfile][currtrial]['stim_on_idx'])
-
-                if flyback_corrected is True:
-                    if first_frame_on in frame_idxs:
-                        first_frame_on = frame_idxs.index(first_frame_on)
+                first_frame_on += vols_per_trial
+            currtrial_in_run = 'trial%05d' % int(trial_counter)
+        else:
+            currtrial_in_run = trials_in_run[trialidx]
+            #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
+            no_frame_match = False
+            first_frame_on = int(trialdict[currtrial_in_run]['frame_stim_on'])
+            try:
+                first_frame_on = frame_idxs.index(first_frame_on)
+            except Exception as e:
+                print "------------------------------------------------------------------"
+                print "Found first frame on from serialdata file NOT found in frame_idxs."
+                print "Trying 1 frame before / after..."
+                try:
+                    if first_frame_on+1 in frame_idxs:
+                        first_frame_on = frame_idxs.index(first_frame_on+1)
                     else:
-                        if first_frame_on+1 in frame_idxs:
-                            first_frame_on = frame_idxs.index(first_frame_on+1)
-                        elif first_frame_on-1 in frame_idxs:
-                            first_frame_on = frame_idxs.index(first_frame_on-1)
-                        else:
-                            print "NO match found for FIRST frame ON:", first_frame_on
+                        # Try first_frame_on-1 in frame_idxs:
+                        first_frame_on = frame_idxs.index(first_frame_on-1)
+                except Exception as e:
+                    print "------------------------------------------------------------------"
+                    print "NO match found for FIRST frame ON:", first_frame_on
+                    print "File: %s, Trial %s, Stim: %s." % (currfile, currtrial_in_run, trialstim)
+                    print e
+                    print "------------------------------------------------------------------"
+                    no_frame_match = True
+                if no_frame_match is True:
+                    print "Aborting."
+                    print "------------------------------------------------------------------"
 
-            preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
-            postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+        preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
+        postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
 
-            framenums = [preframes, [first_frame_on], postframes]
-            framenums = reduce(operator.add, framenums)
-            #print "POST FRAMES:", len(framenums)
-            diffs = np.diff(framenums)
-            consec = [i for i in np.diff(diffs) if not i==0]
+        framenums = [preframes, [first_frame_on], postframes]
+        framenums = reduce(operator.add, framenums)
+        #print "POST FRAMES:", len(framenums)
+        diffs = np.diff(framenums)
+        consec = [i for i in np.diff(diffs) if not i==0]
+        assert len(consec)==0, "Bad frame parsing in %s, %s, frames: %s " % (currtrial_in_run, trialstim, str(framenums))
 
-            if len(consec)>0:
-                print "BAD FRAMES:", trialnum, stim, framenums
+        # Create dataset for current trial with frame indices:
+        fridxs = run_grp.create_dataset(currtrial_in_run, np.array(framenums).shape, np.array(framenums).dtype)
+        fridxs[...] = np.array(framenums)
+        fridxs.attrs['trial_in_run'] = currtrial_in_run
+        fridxs.attrs['trial_in_file'] = currtrial_in_file
+        fridxs.attrs['aux_file_idx'] = tiffnum
+        fridxs.attrs['stim_on_idxs'] = first_frame_on
+        fridxs.attrs['stim_dur_sec'] = stim_on_sec
+        fridxs.attrs['iti_dur_sec'] = iti_full
+        fridxs.attrs['baseline_dur_sec'] = iti_pre
 
-            if custom_mw is True:
-                stimname = 'stimulus%02d' % int(stim)
-            else:
-                stimname = trialdict[currfile][currtrial]['name']
+run_grp.close()
 
+# Rename FRAME file with hash:
+frame_file_hashid = hash_file(outfile)
+new_filename = os.path.splitext(outfile)[0] + frame_file_hashid + os.path.splitext(outfile)[1]
+os.rename(outfile, new_filename)
 
-# 	    if flyback_corrected is True:
-#                 for f in framenums:
-#                     if f in frame_idxs:
-#                         match = frame_idxs.index(f)
-#                     else:
-#                         if f-1 in frame_idxs:
-#                             match = frame_idxs.index(f-1)
-#                         elif f+1 in frame_idxs:
-#                             match = frame_idxs.index(f+1)
-#                         else:
-#                             print "NO MATCH FOUND for frame:", f
-#                             #framenums = [frame_idxs.index(f) for f in framenums]
+print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
+print "Saved frame file to:", new_filename
+
+#%%
+
+#            stimdict[stim][currfile].stiminfo = trialdict[currfile][currtrial]['stiminfo']
+
+#            stimdict[stim][currfile].trials.append(trialnum)
+#            stimdict[stim][currfile].frames.append(framenums)
+#            #stimdict[stim][currfile].frames_sec.append(frametimes)
+#            stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
+#            stimdict[stim][currfile].stim_dur = round(stim_on_sec) #.append(stim_on_sec)
+#            stimdict[stim][currfile].iti_dur = round(iti_full) #.append(iti_full)
+#            stimdict[stim][currfile].baseline_dur = round(iti_pre) #.append(iti_full)
 #
-#                     if first_frame_on in frame_idxs:
-#                         first_frame_on = frame_idxs.index(first_frame_on)
-#                     else:
-#                         if first_frame_on-1 in frame_idxs:
-#                             first_frame_on = frame_idxs.index(first_frame_on-1)
-#                         elif first_frame_on+1 in frame_idxs:
-#                                     first_frame_on = frame_idxs.index(first_frame_on+1)
-#                         else:
-#                             print "NO match found for FIRST frame ON:", first_frame_on
-#
-            #print "sec to plot:", len(framenums)/volumerate
-
-            #frametimes = [frames_tsecs[f] for f in framenums]
-
-            stimdict[stim][currfile].stimid.append(stimname) #trialdict[currfile][currtrial]['name'])
-            stimdict[stim][currfile].trials.append(trialnum)
-            stimdict[stim][currfile].frames.append(framenums)
-            #stimdict[stim][currfile].frames_sec.append(frametimes)
-            stimdict[stim][currfile].stim_on_idx.append(first_frame_on)
-            stimdict[stim][currfile].stim_dur = round(stim_on_sec) #.append(stim_on_sec)
-            stimdict[stim][currfile].iti_dur = round(iti_full) #.append(iti_full)
-            stimdict[stim][currfile].volumerate = volumerate
+#            stimdict[stim][currfile].volumerate = volumerate
 
         #print [len(stimdict[stim][currfile].frames[i]) for i in range(len(stimdict[stim][currfile].frames))]
 
-    # Save to PKL:
-    curr_stimdict_pkl = 'stimdict.pkl' #% currfile # % currslice
-    print curr_stimdict_pkl
-    with open(os.path.join(paradigm_outdir, curr_stimdict_pkl), 'wb') as f:
-        pkl.dump(stimdict, f, protocol=pkl.HIGHEST_PROTOCOL) #, f, indent=4)
-
-    # Save to JSON:
-    for fi in range(nfiles):
-        currfile = "File%03d" % int(fi+1)
-        for stim in stimdict.keys():
-            stimdict[stim][currfile] = serialize_json(stimdict[stim][currfile])
-
-    curr_stimdict_json = 'stimdict.json' #% currfile # % currslice
-    print curr_stimdict_json
-    with open(os.path.join(paradigm_outdir, curr_stimdict_json), 'w') as f:
-        dump(stimdict, f, indent=4)
-
+#    # Save to PKL:
+#    curr_stimdict_pkl = 'stimdict.pkl' #% currfile # % currslice
+#    print curr_stimdict_pkl
+#    with open(os.path.join(paradigm_outdir, curr_stimdict_pkl), 'wb') as f:
+#        pkl.dump(stimdict, f, protocol=pkl.HIGHEST_PROTOCOL) #, f, indent=4)
+#
+#    # Save to JSON:
+#    for fi in range(nfiles):
+#        currfile = "File%03d" % int(fi+1)
+#        for stim in stimdict.keys():
+#            stimdict[stim][currfile] = serialize_json(stimdict[stim][currfile])
+#
+#    curr_stimdict_json = 'stimdict.json' #% currfile # % currslice
+#    print curr_stimdict_json
+#    with open(os.path.join(paradigm_outdir, curr_stimdict_json), 'w') as f:
+#        dump(stimdict, f, indent=4)
+#
 

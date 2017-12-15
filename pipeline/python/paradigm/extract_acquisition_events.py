@@ -2,13 +2,15 @@
 import os
 import json
 import re
-import scipy.io as spio
+import hashlib
+import optparse
+
 import numpy as np
-from json_tricks.np import dump, dumps, load, loads
 import pandas as pd
-import pymworks
 import cPickle as pkl
 from collections import Counter
+from pipeline.python.paradigm import process_mw_files as mw
+from pipeline.python.utils import file_hash
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -16,109 +18,32 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
-import optparse
-
-parser = optparse.OptionParser()
-
-parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-
-# Set specific session/run for current animal:
-parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-
-parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-
-
-parser.add_option('--stim', action="store",
-                  dest="stimtype", default="grating", help="stimulus type [options: grating, image, bar].")
-parser.add_option('--phasemod', action="store_true",
-                  dest="phasemod", default=False, help="include if stimulus mod (phase-modulation).")
-parser.add_option('-t', '--triggervar', action="store",
-                  dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
-
-
-(options, args) = parser.parse_args()
-
-trigger_varname = options.frametrigger_varname
-
-# Set USER INPUT options:
-rootdir = options.rootdir
-animalid = options.animalid
-session = options.session
-acquisition = options.acquisition
-run = options.run
-
 #%%
 
-run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False):
 
-# # ================================================================================
-# # frame info:
-# # ================================================================================
-# first_frame_on = 50
-# stim_on_sec = 0.5
-# iti = 1.
-# vols_per_trial = 15
-# same_order = True
-# # =================================================================================
-
-# Load reference info:
-runinfo_path = os.path.join(run_dir, '%s.json' % run)
-
-with open(runinfo_path, 'r') as fr:
-    runinfo = json.load(fr)
-nfiles = runinfo['ntiffs']
-file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
-
-
-
-# Get PARADIGM INFO:
-paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files')
-paradigm_outdir = os.path.join(run_dir, 'paradigm')
-
-# Get SERIAL data:
-serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
-print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
-
-# Load MW info:
-trialinfo_jsons = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'trial_info' in j], key=natural_keys)
-print "Found %02d MW files, and %02d ARD files." % (len(trialinfo_jsons), len(serialdata_fns))
-
-trialdict_by_file = dict()
-for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
-
-    framerate = float(runinfo['frame_rate'])
-
-    currfile = "File%03d" % int(fid+1)
-
-    print "================================="
-    print "Processing files:"
-    print "MW: ", trialinfo_jsons[fid]
-    print "ARD: ", serialdata_fns[fid]
-    print "---------------------------------"
+    trialevents = None
 
     ### LOAD MW DATA.
-    with open(os.path.join(paradigm_outdir, trialinfo_jsons[fid]), 'r') as f:
-        trials = json.load(f)
+    with open(mwtrial_path, 'r') as f:
+        mwtrials = json.load(f)
 
     ### LOAD SERIAL DATA.
-    ardata = pd.read_csv(os.path.join(paradigm_rawdir, serialdata_fns[fid]), sep='\t')
-    print ardata.columns
+    serialdata = pd.read_csv(serialfn_path, sep='\t')
+    if verbose is True:
+        print serialdata.columns
 
-    frame_triggers = ardata[' frame_trigger']
-    arduino_time = ardata[' relative_arduino_time']
-    bitcodes = ardata[' pixel_clock']
+    ### Extract events from serialdata:
+    frame_triggers = serialdata[' frame_trigger']
+    bitcodes = serialdata[' pixel_clock']
 
+    ### Find frame ON triggers (from NIDAQ-SI):
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
-    #print len(frame_on_idxs)
     frame_on_idxs.append(0)
     frame_on_idxs = sorted(frame_on_idxs)
     print "Found %i frame-triggers:" % len(frame_on_idxs)
 
-
-    ### Get bitcodes for each frame:
+    ### Get arduino-processed bitcodes for each frame:
     frame_bitcodes = dict()
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
@@ -128,42 +53,52 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
             bcodes = bitcodes[frameidx:frame_on_idxs[idx+1]]
         frame_bitcodes[idx] = bcodes
 
-    ### Get first frame of trial start:
+
+    ### Find first frame of MW experiment start:
     modes_by_frame = dict()
     for frame in frame_bitcodes.keys():
         bitcode_counts = Counter(frame_bitcodes[frame])
         modes_by_frame[frame] = bitcode_counts.most_common(1)[0][0]
 
     # Take the 2nd frame that has the first-stim value (in case bitcode of Image on Trial1 is 0):
-    if 'grating' in trials['1']['stimuli']['type']:
+    trialnames = sorted(mwtrials.keys(), key=natural_keys)
+    if 'grating' in mwtrials[trialnames[0]]['stimuli']['type']:
         first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][0]
     else:
         first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][1] #[0]
 
-    #%%Get all bitcodes and corresonding frame-numbers for each trial:
-    trialdict = dict()
+
+    ### Get all bitcodes and corresonding frame-numbers for each trial:
+    trialevents = dict()
     allframes = sorted(frame_bitcodes.keys()) #, key=natural_keys)
     curr_frames = sorted(allframes[first_stim_frame+1:]) #, key=natural_keys)
     first_frame = first_stim_frame
 
-    for trial in sorted(trials.keys(), key=natural_keys): #sorted(trials.keys, key=natural_keys):
-        #print trial
-        trialdict[trial] = dict()
-        trialdict[trial]['name'] = trials[trial]['stimuli']['stimulus']
-        trialdict[trial]['stim_dur_ms'] = trials[trial]['stim_off_times'] - trials[trial]['stim_on_times']
-        trialdict[trial]['iti_dur_ms'] = trials[trial]['iti_duration']
 
-        if int(trial)>1:
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)):
+
+        # Create hash of current MWTRIAL dict:
+        mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
+
+
+        #print trial
+        trialevents[mwtrial_hash] = dict()
+        #trialevents[trial]['mwtrial_hash'] = mwtrial_hash
+        #trialevents[trial]['stiminfo'] = mwtrials[trial]['stimuli']
+        trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
+        #trialevents[trial]['iti_dur_ms'] = mwtrials[trial]['iti_duration']
+
+        if int(tidx+1)>1:
         	    # Skip a good number of frames from the last "found" index of previous trial.
         	    # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
         	    # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
-        	    nframes_to_skip = int(((trials[trial]['iti_duration']/1E3) * framerate) - 5)
-        	    print 'skipping iti...', nframes_to_skip
+        	    nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 5)
+        	    #print 'skipping iti...', nframes_to_skip
         	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = []
         minframes = 5
-        for bitcode in trials[trial]['all_bitcodes']:
+        for bitcode in mwtrials[trial]['all_bitcodes']:
             looking = True
             while looking is True:
                 for frame in sorted(curr_frames):
@@ -174,7 +109,7 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
                         tmp_frames_pre = [i for i in frame_bitcodes[int(frame)-1] if i==bitcode]
                         consecutives_pre = [i for i in np.diff(tmp_frames_pre) if i==0]
 
-                    if len(trials[trial]['all_bitcodes'])<3:
+                    if len(mwtrials[trial]['all_bitcodes'])<3:
                     #Single-image (static images) will only have a single bitcode, plus ITI bitcode,
                         # Don't look before/after found-frame idx.
                         if len(consecutives)>=minframes:
@@ -203,35 +138,151 @@ for fid,fn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
         #if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
         #print "Trial %i dur (s):" % int(trial)
-        print (first_found_frame[-1][1] - first_found_frame[0][1])/framerate, '[Trial %i]' % int(trial)
+        print (first_found_frame[-1][1] - first_found_frame[0][1])/framerate, '[%s]' % trial
 
-        trialdict[trial]['stim_on_idx'] = first_found_frame[0][1]
-        trialdict[trial]['stim_off_idx'] = first_found_frame[-1][1]
+        trialevents[mwtrial_hash]['stim_on_idx'] = first_found_frame[0][1]
+        trialevents[mwtrial_hash]['stim_off_idx'] = first_found_frame[-1][1]
+        trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
 
+    return trialevents
+#%%
 
-    #%% Get stimulus list:
-    if fid==0:
-        stimlist = set([trialdict[trial]['name'] for trial in trialdict.keys()])
-        stimlist = sorted(stimlist, key=natural_keys)
-        print stimlist
+parser = optparse.OptionParser()
 
-    for trial in sorted(trialdict.keys(), key=natural_keys): #sorted(trials.keys, key=natural_keys):
-        stimid = stimlist.index(trialdict[trial]['name'])
-        trialdict[trial]['stimid'] = stimid #+ 1
+parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
-    stimorder = [trialdict[trial]['stimid'] for trial in sorted(trialdict.keys(), key=natural_keys)]
-    with open(os.path.join(paradigm_outdir, 'stimorder_%s.txt' % currfile),'w') as f:
-        f.write('\n'.join([str(n) for n in stimorder])+'\n')
-
-    trialdict_by_file[currfile] = trialdict
-
-with open(os.path.join(paradigm_outdir, 'parsed_trials.pkl'), 'wb') as f:
-    pkl.dump(trialdict_by_file, f, protocol=pkl.HIGHEST_PROTOCOL)
-print "PARSED TRIALS saved to:", os.path.join(paradigm_outdir, 'parsed_trials.pkl')
-print trialdict_by_file.keys()
-# pkl.dump(stimdict, f, protocol=pkl.HIGHEST_PROTOCOL) #, f, indent=4)
+# Set specific session/run for current animal:
+parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
 
+parser.add_option('--retinobar', action="store_true",
+                  dest="retionbar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
+parser.add_option('--phasemod', action="store_true",
+                  dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated gratings.")
+parser.add_option('-t', '--triggervar', action="store",
+                  dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
+
+
+(options, args) = parser.parse_args()
+
+# Set USER INPUT options:
+rootdir = options.rootdir
+animalid = options.animalid
+session = options.session
+acquisition = options.acquisition
+run = options.run
+slurm = options.slurm
+
+if slurm is True and 'coxfs01' not in rootdir:
+    rootdir = '/n/coxfs01/julianarhee/testdata'
+
+# MW specific options:
+retinobar = options.retinobar
+phasemod = options.phasemod
+trigger_varname = options.frametrigger_varname
+
+stimorder_files = True
+
+#%%
+# ================================================================================
+# MW trial extraction:
+# ================================================================================
+mwopts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-t', trigger_varname]
+if slurm is True:
+    mwopts.extend(['--slurm'])
+if retinobar is True:
+    mwopts.extend(['--retinobar'])
+if phasemod is True:
+    mwopts.extend(['--phasemod'])
+
+paradigm_outdir = mw.parse_mw_trials(mwopts)
+
+#%%
+if stimorder_files is True:
+    mw.create_stimorder_files(paradigm_outdir)
+
+#%%
+# ================================================================================
+# Load reference info:
+# ================================================================================
+run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+runinfo_path = os.path.join(run_dir, '%s.json' % run)
+
+with open(runinfo_path, 'r') as fr:
+    runinfo = json.load(fr)
+nfiles = runinfo['ntiffs']
+file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
+
+#%%
+
+# Set outpath to save trial info file for whole run:
+outdir = os.path.join(run_dir, 'paradigm')
+
+#%%
+# ================================================================================
+# Get SERIAL data:
+# ================================================================================
+paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files')
+serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
+print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
+
+# Load MW info:
+mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'trials_' in j], key=natural_keys)
+print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
+
+
+#%%
+RUN = dict()
+trialnum = 0
+for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
+
+    framerate = float(runinfo['frame_rate'])
+
+    currfile = "File%03d" % int(fid+1)
+
+    print "================================="
+    print "Processing files:"
+    print "MW: ", mwtrial_fns[fid]
+    print "ARD: ", serialdata_fns[fid]
+    print "---------------------------------"
+
+    mwtrial_path = os.path.join(paradigm_outdir, mwtrial_fns[fid])
+    serialfn_path = os.path.join(paradigm_rawdir, serialfn)
+
+
+    trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False)
+    sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
+    sorted_stim_frames = [(trialevents[t]['stim_on_idx'], trialevents[t]['stim_off_idx']) for t in sorted_trials_in_run]
+
+    for trialhash in sorted_trials_in_run:
+        trialnum += 1
+        trialname = 'trial%05d' % int(trialnum)
+
+        RUN[trialname] = dict()
+        RUN[trialname]['trial_hash'] = trialhash
+        RUN[trialname]['aux_file_idx'] = fid
+        RUN[trialname]['behavior_data_path'] = mwtrial_path
+        RUN[trialname]['serial_data_path'] = serialfn_path
+
+        RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
+        RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
+        RUN[trialname]['stim_dur_ms'] = trialevents[trialhash]['mw_trial']['stim_off_times']\
+                                                - trialevents[trialhash]['mw_trial']['stim_on_times']
+        RUN[trialname]['iti_dur_ms'] = trialevents[trialhash]['mw_trial']['iti_duration']
+        RUN[trialname]['stimuli'] = trialevents[trialhash]['mw_trial']['stimuli']
+
+        RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
+        RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
+        RUN[trialname]['trial_in_run'] = trialnum
+
+
+run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
+with open(os.path.join(outdir, 'trials_%s.json' % run_trial_hash), 'w') as f:
+    json.dump(RUN, f, sort_keys=True, indent=4)
 
 
 

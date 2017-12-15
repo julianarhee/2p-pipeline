@@ -14,6 +14,10 @@ import hashlib
 import tifffile as tf
 import pylab as pl
 import numpy as np
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+
+
 
 from pipeline.python.utils import natural_keys
 
@@ -94,7 +98,7 @@ else:
     tracedict = dict()
 
 # Check that this is a unique trace set:
-match_tids = [t for t in tracedict.keys() if tracedict[t]['hash_id'] == TID['hash_id']]
+match_tids = [t for t in tracedict.keys() if tracedict[t]['trace_hash'] == TID['trace_hash']]
 new_trace_set = True
 
 if auto is False:
@@ -103,6 +107,7 @@ if auto is False:
         while True:
             print "Found matching trace-set config:"
             for mix, mid in enumerate(match_tids):
+		print mix, mid
                 pp.pprint(tracedict[mid])
             uchoice = raw_input('Press IDX of trace set to load, or press <N> to create new trace set: ')
             if uchoice == 'N':
@@ -121,19 +126,18 @@ if new_trace_set is True:
     TID['trace_id'] = trace_id
 
 
-tracedict[trace_id] = TID
+tracedict['trace_id'] = TID
 with open(tracedict_path, 'w') as tw:
     json.dump(tracedict, tw, indent=4, sort_keys=True)
 
-trace_outdir = os.path.join(trace_dir, 'traces_%s' % trace_hash)
+trace_basedir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
+trace_outdir = os.path.join(trace_basedir, 'extracted')
 if not os.path.exists(trace_outdir):
     os.makedirs(trace_outdir)
 
-trace_figdir = os.path.join(trace_outdir, 'figures')
+trace_figdir = os.path.join(trace_basedir, 'figures')
 if not os.path.exists(trace_figdir):
     os.makedirs(trace_figdir)
-
-
 
 trace_fn_base = 'rawtraces_%s' % TID['trace_hash']
 

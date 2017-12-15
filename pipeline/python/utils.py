@@ -1,10 +1,11 @@
 #!/usr/bin/env python2 
 import os
-import numpy as np
-import tifffile as tf
 import json
 import re
 import shutil
+import hashlib
+import numpy as np
+import tifffile as tf
 from skimage import exposure 
 from skimage import img_as_ubyte
 
@@ -22,6 +23,25 @@ def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
         fn_base = '%s_%s' % (acq, fn_base) 
     
     return fn_base
+
+def hash_file(fpath, hashtype='sha1'):
+
+    BLOCKSIZE = 65536
+    if hashtype=='md5':
+        hasher = hashlib.md5()
+    else:
+        hasher = hashlib.sha1()
+
+    with open(fpath, 'rb') as afile:
+        buf = afile.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = afile.read(BLOCKSIZE)
+
+    #print(hasher.hexdigest())
+
+    return hasher.hexdigest()[0:6]
+
 
 def jsonify_array(curropts):  
     jsontypes = (list, tuple, str, int, float, bool, unicode, long)

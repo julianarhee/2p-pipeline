@@ -1,5 +1,6 @@
-
-# coding: utf-8
+#!/usr/bin/env python2
+'''
+'''
 
 # In[79]:
 
@@ -7,106 +8,108 @@
 import os
 import json
 import re
-import scipy.io as spio
-import numpy as np
-from bokeh.plotting import figure
-import tifffile as tf
-import seaborn as sns
-# %matplotlib notebook
-from matplotlib import gridspec
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.pyplot as plt
-import skimage.color
-from json_tricks.np import dump, dumps, load, loads
-from mat2py import loadmat
-from skimage import color
-import cPickle as pkl
-from  matplotlib.ticker import FuncFormatter
-from matplotlib.ticker import MaxNLocator
-
-def get_axis_limits(ax, scale=(0.9, 0.9)):
-    return ax.get_xlim()[1]*scale[0], ax.get_ylim()[1]*scale[1]
-
-
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
-import os
-import json
-import re
-import scipy.io as spio
-import numpy as np
-from bokeh.plotting import figure
-import tifffile as tf
-import seaborn as sns
-# %matplotlib notebook
-from matplotlib import gridspec
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.pyplot as plt
-import skimage.color
-from json_tricks.np import dump, dumps, load, loads
-from mat2py import loadmat
-from skimage import color
-import cPickle as pkl
-from  matplotlib.ticker import FuncFormatter
-from matplotlib.ticker import MaxNLocator
-
-def get_axis_limits(ax, scale=(0.9, 0.9)):
-    return ax.get_xlim()[1]*scale[0], ax.get_ylim()[1]*scale[1]
-
-
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
-
+import h5py
 import optparse
+import sys
+import itertools
+import scipy.io as spio
+import numpy as np
+import tifffile as tf
+import seaborn as sns
+import cPickle as pkl
 
+# %matplotlib notebook
+from bokeh.plotting import figure
+from matplotlib import gridspec
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.pyplot as plt
+import skimage.color
+from json_tricks.np import dump, dumps, load, loads
+from  matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import MaxNLocator
+
+def get_axis_limits(ax, scale=(0.9, 0.9)):
+    return ax.get_xlim()[1]*scale[0], ax.get_ylim()[1]*scale[1]
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
+#%%%
 parser = optparse.OptionParser()
-parser.add_option('-S', '--source', action='store', dest='source', default='/nas/volume1/2photon/projects', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/projects]')
-parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', help='experiment type (parent of session dir)') 
-parser.add_option('-s', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
-parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder [default: FOV1]")
-parser.add_option('-f', '--functional', action='store', dest='functional', default='functional', help="folder containing functional TIFFs. [default: 'functional']")
 
-# Analysis-specific params:
-parser.add_option('-I', '--id', action="store",
-                  dest="analysis_id", default='', help="analysis_id (includes mcparams, roiparams, and ch). see <acquisition_dir>/analysis_record.json for help.")
+parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
-parser.add_option('-z', '--slice', action="store",
-                  dest="sliceidx", default=1, help="Slice number look at (1-index) [default: 1]")
+# Set specific session/run for current animal:
+parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
 
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
-parser.add_option('--processed', action="store_true",
-                  dest="dont_use_raw", default=False, help="Flag to use processed traces instead of raw.")
+parser.add_option('-t', '--trace-id', action="store",
+                  dest="trace_id", default='', help="Name of trace extraction set to use.")
 
-parser.add_option('--df', action="store_true",
-                  dest="use_df", default=False, help="Flag to use NMF-extracted df traces.")
+(options, args) = parser.parse_args()
 
 
 
-(options, args) = parser.parse_args() 
+# Set USER INPUT options:
+rootdir = options.rootdir
+animalid = options.animalid
+session = options.session
+acquisition = options.acquisition
+run = options.run
+slurm = options.slurm
+trace_id = options.trace_id
+
+trace_type = 'parsed'
+
+#%%
+session_dir = os.path.join(rootdir, animalid, session)
+run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+
+# Load reference info:
+runinfo_path = os.path.join(run_dir, '%s.json' % run)
+
+with open(runinfo_path, 'r') as fr:
+    runinfo = json.load(fr)
+nfiles = runinfo['ntiffs']
+file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
+nvolumes = runinfo['nvolumes']
+frame_idxs = runinfo['frame_idxs']
+if len(frame_idxs) == 0:
+    # No flyback
+    frame_idxs = np.arange(0, nvolumes)
+
+# LOAD TID:
+trace_dir_base = os.path.join(session_dir, 'Traces')
+tracedict_path = os.path.join(trace_dir_base, 'tid_%s.json' % session)
+with open(tracedict_path, 'r') as tr:
+    tracedict = json.load(tr)
+TID = tracedict[trace_id]
 
 
-# In[96]:
+# Get TRACE DIR, create output dir:
+traceid_dir = os.path.join(trace_dir_base, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
+trace_dir = os.path.join(traceid_dir, trace_type)
+
+print "Loading traces from:", trace_dir
+
+# Create parsed-trials dir with default format:
+parsed_fn = [p for p in os.listdir(trace_dir) if p.endswith('hdf5') and TID['trace_hash'] in p and 'rois' not in p]
+print "Found %i trace-files corresponding to %i tiffs." % (len(parsed_fn), nfiles)
+parsed_path = os.path.join(trace_dir, parsed_fn[0])
+
+infile = h5py.File(parsed_path, 'r')
 
 
-analysis_id = options.analysis_id #'analysis02'
-
-source = options.source #'/nas/volume1/2photon/projects'
-experiment = options.experiment #'gratings_phaseMod' #'gratings_phaseMod' #'retino_bar' #'gratings_phaseMod'
-session = options.session #'20171025_CE062' #'20170927_CE059' #'20170902_CE054' #'20170825_CE055'
-acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x' #'FOV1_zoom3x_run2' #'FOV1_planar'
-functional_dir = options.functional #'functional' #'functional_subset'
-
-#iti_pre = float(options.iti_pre) # 1.0 #float(options.iti_pre)
-
-curr_slice_idx = int(options.sliceidx) #int(1) #int(options.sliceidx)
-
-
+roistruct_path = os.path.join(trace_dir, 'rois_%s_%s.hdf5' % (TID['trace_id'], TID['trace_hash']))
+outfile = h5py.File(roistruct_path, 'w')
 
 # In[97]:
 
@@ -114,110 +117,98 @@ curr_slice_idx = int(options.sliceidx) #int(1) #int(options.sliceidx)
 # ---------------------------------------------------------------------------------
 # PLOTTING parameters:
 # ---------------------------------------------------------------------------------
-dont_use_raw = options.dont_use_raw #True #options.dont_use_raw
-use_df = options.use_df
+
 
 
 # ---------------------------------------------------------------------
 # Get relevant stucts:
 # ---------------------------------------------------------------------
-acquisition_dir = os.path.join(source, experiment, session, acquisition)
-
-
-# Load reference info:
-ref_json = 'reference_%s.json' % functional_dir 
-with open(os.path.join(acquisition_dir, ref_json), 'r') as fr:
-    ref = json.load(fr)
-    
-# Get ROIPARAMS:
-roi_dir = os.path.join(ref['roi_dir'], ref['roi_id'][analysis_id]) #, 'ROIs')
-roiparams = loadmat(os.path.join(roi_dir, 'roiparams.mat'))
-if 'roiparams' in roiparams.keys():
-    roiparams = roiparams['roiparams']
-maskpaths = roiparams['maskpaths']
-print maskpaths
-if not isinstance(maskpaths, list) and len(maskpaths)==1:
-    maskpaths = [maskpaths] #[str(i) for i in maskpaths]
-if isinstance(maskpaths, unicode):
-    maskpaths = [maskpaths]
-
-nrois = roiparams['nrois']
-if isinstance(nrois, float) or isinstance(nrois, int):
-    nrois = int(nrois)
-else:
-    nrois = int(roiparams['nrois'][curr_slice_idx])
-
-# Check slices to see if maskpaths exist for all slices, or just a subset:
-if 'sourceslices' in roiparams.keys():
-    slices = roiparams['sourceslices']
-else:
-    slices = np.arange(1, len(maskpaths)+1) #range(len(maskpaths))
-print "Found masks for slices:", slices
-if isinstance(slices, int):
-    slices = [slices]
-if not isinstance(slices, list): # i.e., only 1 slice
-    slices = [int(i) for i in slices]
-print "SLICES:", slices
-
-
-# Get selected slice for current slice:
-if isinstance(ref['slices'], int):
-    all_slices = ['Slice%02d' % int(i+1) for i in range(ref['slices'])]
-else:
-    all_slices = ['Slice%02d' % int(i+1) for i in range(len(ref['slices']))]
-
-curr_slice_idx = [i for i in sorted(slices)].index(curr_slice_idx)
-
-slice_names = sorted(['Slice%02d' % int(i) for i in sorted(slices)], key=natural_keys)
-print "SLICE NAMES:", slice_names
-curr_slice_name = "Slice%02d" % slices[curr_slice_idx]
-
-
-# In[101]:
-
-if use_df is True:
-    roi_trace_type = 'df'
-else:
-    if dont_use_raw is True:
-        roi_trace_type = 'processed' #figdir = os.path.join(figbase, 'rois_processed')
-    else:
-        roi_trace_type = 'raw'
+slice_names = sorted([str(k) for k in infile.keys()], key=natural_keys)
+print "Extracting traces from ROIs across %i slices...." % len(slice_names)
 
 # In[102]:
 
+nrois = dict()
+for currslice in slice_names:
+    if currslice not in outfile.keys():
+        slice_grp = outfile.create_group(currslice)
+    else:
+        slice_grp = outfile[currslice]
+
+    stim_names = sorted([str(k) for k in infile[currslice].keys()], key=natural_keys)
+
+    nrois[currslice] = infile[currslice][stim_names[0]]['trial00001'].shape[1]
+
+    # Get unique configurations of stim ID, position, rotation, and size:
+    stimconfigs = dict()
+    stimfile = dict()
+    stimlist = sorted(infile[currslice].keys(), key=natural_keys)
+    for stim_name in sorted(infile[currslice].keys(), key=natural_keys):
+        stimconfigs[stim_name] = {'position': [],
+                                  'size': [],
+                                  'rotation': []
+                                  }
+        positions = [tuple(infile[currslice][stim_name][trialnum].attrs['position']) for trialnum in infile[currslice][stim_name].keys()]
+        rotations = [infile[currslice][stim_name][trialnum].attrs['rotation'] for trialnum in infile[currslice][stim_name].keys()]
+        sizes = [tuple(infile[currslice][stim_name][trialnum].attrs['scale']) for trialnum in infile[currslice][stim_name].keys()]
+
+        ntransforms = len(stimconfigs[stim_name].keys())
+        transform_combos = list(itertools.product(list(set(positions)), list(set(sizes)), list(set(rotations))))
+        ncombinations = len(transform_combos)
+
+        stimconfigs[stim_name]['position'] = list(set(positions))
+        stimconfigs[stim_name]['rotation'] = list(set(rotations))
+        stimconfigs[stim_name]['size'] = list(set(sizes))
+
+        stimfile[stim_name] = dict()
+        filepaths = list(set([infile[currslice][stim_name][trialnum].attrs['filepath'] for trialnum in infile[currslice][stim_name].keys()]))
+        filehashes = list(set([infile[currslice][stim_name][trialnum].attrs['filehash'] for trialnum in infile[currslice][stim_name].keys()]))
+
+        if len(filepaths) > 1 or len(filehashes) > 1:
+            print "*********WARNING*****************************"
+            print "STIM %s: multiple file paths or hashes found!" % stim_name
+            print "*********WARNING*****************************"
+            stimfile[stim_name]['filepath'] = filepaths
+            stimfile[stim_name]['filehashes'] = filehashes
+        else:
+            stimfile[stim_name]['filepath'] = filepaths[0]
+            stimfile[stim_name]['filehash'] = filehashes[0]
+
+    for roi in range(nrois[currslice]):
+        roi_name = 'roi%05d' % int(roi)
+        if roi_name not in slice_grp.keys():
+            roi_grp = outfile[currslice].create_group(roi_name)
+        else:
+            roi_grp = outfile[currslice][roi_name]
+
+        for config_idx in range(ncombinations):
+
+            curr_pos = transform_combos[config_idx][0]
+            curr_size = transform_combos[config_idx][1]
+            curr_rot = transform_combos[config_idx][2]
+
+            curr_trials = dict((stim_name, [trialname for trialname in infile[currslice][stim_name].keys()\
+                                            if (infile[currslice][stim_name][trialname].attrs['position'] == curr_pos).all()\
+                                            and infile[currslice][stim_name][trialname].attrs['rotation'] == curr_rot\
+                                            and (infile[currslice][stim_name][trialname].attrs['scale'] == curr_size).all()])\
+                                for stim_name in stimlist)
 
 
-# Get PARADIGM INFO:
-path_to_functional = os.path.join(acquisition_dir, functional_dir)
-paradigm_dir = 'paradigm_files'
-path_to_paradigm_files = os.path.join(path_to_functional, paradigm_dir)
-#path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', roi_method, 'Parsed')
-path_to_trace_structs = os.path.join(acquisition_dir, 'Traces', ref['trace_id'][analysis_id], 'Parsed')
-   
-roi_struct_dir = os.path.join(path_to_trace_structs, 'rois')
-if not os.path.exists(roi_struct_dir):
-    os.mkdir(roi_struct_dir)
- 
-# Load stim trace structs:
-print "Loading parsed traces..."
-signal_channel = ref['signal_channel'][analysis_id] #int(options.selected_channel)
+            for stim_name in sorted(curr_trials.keys(), key=natural_keys):
+                print "roi", roi, stim_name
+                trialmat = np.array([infile[currslice][stim_name][trialnum][:, roi] for trialnum in curr_trials[stim_name]])
+                print trialmat.dtype
 
-currchannel = "Channel%02d" % int(signal_channel)
-currslice = "Slice%02d" % slices[curr_slice_idx] # curr_slice_idx
-stimtrace_fns = os.listdir(path_to_trace_structs)
-stimtrace_fn = "%s_stimtraces_%s_%s.pkl" % (analysis_id, currslice, currchannel)
+                dset = roi_grp.create_dataset(stim_name, trialmat.shape, dtype=trialmat.dtype)
+                dset[...] = trialmat
+                dset.attrs['position'] = curr_pos
+                dset.attrs['size'] = curr_size
+                dset.attrs['rotation'] = curr_rot
+                dset.attrs['filepath'] = stimfile[stim_name]['filepath']
+                dset.attrs['filehash'] = stimfile[stim_name]['filehash']
 
-if not stimtrace_fn in stimtrace_fns:
-    print "No stimtraces found for %s: %s, %s. Did you run files_to_trials.py?" % (analysis_id, currslice, currchannel)
-else: 
-    print "Selected Channel, Slice:", currchannel, currslice
-    with open(os.path.join(path_to_trace_structs, stimtrace_fn), 'rb') as f:
-	stimtraces = pkl.load(f)
+#%%
 
-stimlist = sorted(stimtraces.keys(), key=natural_keys)
-nstimuli = len(stimlist)
-
-print stimtraces[stimlist[0]].keys()
 
 # In[103]:
 
@@ -227,7 +218,7 @@ stiminfo = dict()
 if experiment=='gratings_phaseMod' or experiment=='gratings_static':
     print "STIM | ori - sf"
     for stim in stimlist: #sorted(stimtraces.keys(), key=natural_keys):
-	
+
         ori = stimtraces[stim]['name'].split('-')[2]
         sf = stimtraces[stim]['name'].split('-')[4]
         stiminfo[stim] = (int(ori), float(sf))
@@ -272,17 +263,17 @@ for roi in rois_to_plot:
         if sum(diffs)>0:
             print "Incorrect frame nums per trial:", stimnum, stim
             print nframestmp
-	    	
+
         else:
             nframestmp = nframestmp[0]
- 
+
 #         raw = np.empty((ntrialstmp, nframestmp))
 #         for trialnum in range(ntrialstmp):
 # 	    print currtraces[trialnum].shape
 #             raw[trialnum, :] = currtraces[trialnum][0:nframestmp, roi].T
 
 	raw = currtraces[:,:,roi]
-        #print raw.shape 
+        #print raw.shape
 	ntrials = raw.shape[0]
         nframes_in_trial = raw.shape[1]
 
@@ -297,10 +288,10 @@ for roi in rois_to_plot:
 	    frame_on_idx = [i for i in stimtraces[stim]['frames'][trial]].index(frame_on)
 
             xvals[trial, :] = (stimtraces[stim]['frames'][trial] - frame_on) #+ stimnum*spacing
-            
+
             if use_df is True:
                 curr_dfs[trial,:] = raw[trial,:]
-            else: 
+            else:
                 baseline = np.mean(raw[trial, 0:frame_on_idx])
                 if baseline==0: # or (abs(baseline)>max(raw[trial,:])):
                     print stim, trial, baseline
@@ -310,16 +301,16 @@ for roi in rois_to_plot:
                         #print stim, trial
                 curr_dfs[trial,:] = df
 
-            #stim_dur = stimtraces[stim]['frames_stim_on'] 
+            #stim_dur = stimtraces[stim]['frames_stim_on']
 	    #stimtraces[stim]['frames_stim_on'][trial][1]-stimtraces[stim]['frames_stim_on'][trial][0]
 	    volumerate = float(stimtraces[stim]['volumerate'])
 	    nframes_on = int(round(stimtraces[stim]['stim_dur'] * volumerate))
-            #print stimtraces[stim]['stim_dur'], nframes_on+frame_on_idx 
+            #print stimtraces[stim]['stim_dur'], nframes_on+frame_on_idx
             baseline_frames = curr_dfs[trial, 0:frame_on_idx]
             stim_frames = curr_dfs[trial, frame_on_idx:frame_on_idx+nframes_on]
 	    #print stim, len(stim_frames)
             std_baseline = np.nanstd(baseline_frames)
-	    #print np.mean(stim_frames) 
+	    #print np.mean(stim_frames)
             mean_stim_on = np.nanmean(stim_frames)
             zval_trace = mean_stim_on / std_baseline
 
@@ -334,7 +325,7 @@ for roi in rois_to_plot:
             dfstruct[roi][stim]['frame_on'] = (frame_on_idx, frame_on)
             dfstruct[roi][stim]['baseline_vals'] = baseline_frames
             dfstruct[roi][stim]['stim_on_vals'] = stim_frames
-            dfstruct[roi][stim]['stim_on_nframes'] = nframes_on 
+            dfstruct[roi][stim]['stim_on_nframes'] = nframes_on
 	    dfstruct[roi][stim]['stim_dur'] = stimtraces[stim]['stim_dur']
 	    dfstruct[roi][stim]['iti_dur'] = stimtraces[stim]['iti_dur']
             #print stimtraces[stim]['filesource']
