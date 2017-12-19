@@ -68,7 +68,7 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
 #    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
 #    print "Updated main process dict, with key: %s" % new_process_id_key
     processdict[process_id] = PID
-    
+
     # Save updated PID dict:
     path_to_processdict = os.path.join(processed_dir, processdict_fn)
     write_dict_to_json(processdict, path_to_processdict)
@@ -86,9 +86,9 @@ def change_permissions_recursive(path, mode):
             #os.chmod(dir, mode)
         for file in [os.path.join(root, f) for f in files]:
             os.chmod(file, mode)
-            
+
 def write_hash_readonly(write_dir, PID=None, step='', label=''):
-    
+
     # Before changing anything, check if there is a corresponding 'slices" dir:
     adjust_slicedir = False
     if os.path.isdir(write_dir + '_slices'):
@@ -99,24 +99,24 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     excluded_files = [str(f) for f in os.listdir(write_dir) if not f.endswith('tif')]
     print "Checking %s hash, excluded_files:" % label, excluded_files
     write_hash = dirhash(write_dir, 'sha1', excluded_files=excluded_files)[0:6]
-    
+
     # Rename dir if hash is not included:
     if write_hash not in write_dir:
         newwrite_dir = write_dir + '_%s' % write_hash
         os.rename(write_dir, newwrite_dir)
     else:
         newwrite_dir = write_dir
-    
+
     # Set READ-ONLY permissions:
     change_permissions_recursive(newwrite_dir, S_IREAD|S_IRGRP|S_IROTH)
     # for f in os.listdir(newwrite_dir):
-    #     os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)  
-        
+    #     os.chmod(os.path.join(newwrite_dir, f), S_IREAD|S_IRGRP|S_IROTH)
+
     if PID is not None:
         if write_hash not in PID['PARAMS'][step]['destdir']:
             PID['PARAMS'][step]['destdir'] = newwrite_dir
         print "PID %s: Renamed output dir: %s" % (PID['pid_hash'], PID['PARAMS'][step]['destdir'])
-    
+
     # Adjust slice dir, too, if needed:
     if adjust_slicedir is True:
         print "Also adding hash to _slices dir:", slice_dir
@@ -128,9 +128,9 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
         # Set READ-ONLY permissions:
         change_permissions_recursive(newwrite_dir_slices, S_IREAD|S_IRGRP|S_IROTH)
         # for f in os.listdir(newwrite_dir_slices):
-        #     os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)  
+        #     os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)
 
-        
+
     return write_hash, PID
 
 def append_hash_to_paths(PID, pid_hash, step=''):
@@ -162,7 +162,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
         if processed_hashid not in PID['PARAMS']['source']['tiffsource']:
             # Replace all processed src paths with hashed src:
             print "Adding processed dir hash to all sources."
-            PID['SRC'] = PID['SRC'].split(processed_name)[0] + processed_hashid + PID['SRC'].split(processed_name)[1] 
+            PID['SRC'] = PID['SRC'].split(processed_name)[0] + processed_hashid + PID['SRC'].split(processed_name)[1]
             for pkey in PID['PARAMS'].keys():
                 if not isinstance(PID['PARAMS'][pkey], dict):
                     continue
@@ -173,7 +173,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
                                                         + processed_hashid + PID['PARAMS'][pkey][skey].split(processed_name)[1]
     if pid_hash not in PID['DST']:
         PID['DST'] = PID['DST'] + '_%s' % pid_hash
-        
+
     print " ----STEP: %s ---------------------------------" % step
     print 'PID %s: SRC is %s' % (pid_hash, PID['SRC'])
     print 'PID %s: DST is %s' % (pid_hash, PID['DST'])
@@ -187,7 +187,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
 
     if step == 'bidir':
         if correct_flyback is True:
-            bidi_destdir = PID['PARAMS']['preprocessing']['destdir'] 
+            bidi_destdir = PID['PARAMS']['preprocessing']['destdir']
             if PID['pid_hash'] in bidi_destdir and 'raw' in bidi_destdir:
                 # Bidir-correction is on flyback-corrected tiffs:
                 PID['PARAMS']['preprocessing']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
@@ -251,20 +251,20 @@ def set_motion_params(correct_motion=False,
                 for algonum, algoname in enumerate(mc_algos[method]):
                     print algonum, algoname
                 algo_choice = input('Enter IDX of mc algorithm to use:')
-                algorithm = mc_algos[method][algo_choice] 
+                algorithm = mc_algos[method][algo_choice]
     else:
         ref_channel = 0
         ref_file = 0
         method = None
         algorithm = None
-        
+
     motion_params = dict()
     motion_params['correct_motion'] = correct_motion
     motion_params['method'] = method
     motion_params['algorithm'] = algorithm
     motion_params['ref_channel'] = ref_channel
     motion_params['ref_file'] = ref_file
-    
+
     return motion_params
 
 def set_preprocessing_params(correct_flyback=False,
@@ -272,16 +272,16 @@ def set_preprocessing_params(correct_flyback=False,
                   correct_bidir=False,
                   split_channels=False
                  ):
-    
+
     preprocess_params = dict()
     if correct_flyback is False:
         nflyback_frames = 0
-    
+
     preprocess_params['correct_flyback'] = correct_flyback
     preprocess_params['nflyback_frames'] = nflyback_frames
     preprocess_params['correct_bidir'] = correct_bidir
     preprocess_params['split_channels'] = split_channels
-   
+
     return preprocess_params
 
 
@@ -289,7 +289,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                correct_bidir=False, correct_flyback=False, nflyback_frames=None,
                split_channels=False, correct_motion=False, ref_file=1, ref_channel=1,
                mc_method=None, mc_algorithm=None, auto=False):
-    
+
     '''
     Create a dictionary of PARAMS used for processing TIFFs.
     PARAMS = {
@@ -339,16 +339,16 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                 }
         'hashid' (str)
             Generated hash using the above key-value pairs, specific to PARAMS.
-            Note: full PID dict includes extra house-keeping info that gets its own hash id.       
+            Note: full PID dict includes extra house-keeping info that gets its own hash id.
     }
     '''
-    
+
     PARAMS = dict()
     PARAMS['source'] = dict()
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     print acquisition_dir
-    
+
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
         print os.listdir(os.path.join(acquisition_dir, run))
@@ -360,7 +360,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
         toobig = [g for g in gb_files if float(g.split('GB')[0]) > 4.0]
         if len(toobig) > 0:
             split_channels = True
-        
+
     # ----------------------------------------------------------
     # Get source params:
     # ----------------------------------------------------------
@@ -370,18 +370,18 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     PARAMS['source']['acquisition'] = acquisition
     PARAMS['source']['run'] = run
 
-    if not os.path.exists(os.path.join(acquisition_dir, run, 'processed')): 
+    if not os.path.exists(os.path.join(acquisition_dir, run, 'processed')):
         os.makedirs(os.path.join(acquisition_dir, run, 'processed'))
-        
+
     rundir = os.path.join(acquisition_dir, run)
-    
+
     processed_dirs = sorted([p for p in os.listdir(os.path.join(rundir, 'processed'))
                               if 'processed' in p], key=natural_keys)
-    
+
     process_dict = load_processdict(acquisition_dir, run)
-    
+
     rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
-    
+
     if tiffsource is None or len(tiffsource) == 0:
         while True:
             if auto is True:
@@ -407,7 +407,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                 confirm_selection = raw_input('Selected %s. Press <Y> to confirm.' % tiffsource)
                 if confirm_selection == 'Y':
                     break
-                    
+
     if 'processed' in tiffsource:
         tiffsource_name = [p for p in os.listdir(os.path.join(rundir, 'processed')) if tiffsource in p][0]
         tiffsource_path = os.path.join(rundir, 'processed', tiffsource_name)
@@ -427,16 +427,16 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                     if confirm_type == 'Y':
                         sourcetype = processed_type
                         break
-                
+
         tiffsource_child = [d for d in os.listdir(tiffsource_path) if sourcetype in d and os.path.isdir(os.path.join(tiffsource_path, d))][0]
         tiffsource_for_run = '/'.join(('processed', tiffsource_name, tiffsource_child))
     else:
         if not tiffsource == rawdir_name[0]:
             tiffsource = rawdir_name[0]
         tiffsource_for_run = tiffsource
-       
+
     PARAMS['source']['tiffsource'] = tiffsource_for_run
-    
+
     # ----------------------------------------------------------
     # Get preprocessing opts:
     # ----------------------------------------------------------
@@ -444,7 +444,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                              nflyback_frames=nflyback_frames,
                              correct_bidir=correct_bidir,
                              split_channels=split_channels)
-    
+
     # ------------------------------------------
     # Check user-provided MC params:
     # ------------------------------------------
@@ -457,29 +457,29 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
                             auto=auto)
 
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()
-    
+
     return PARAMS
 
 def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
-    
+
     print "************************"
     print "Initialize PID."
     print "************************"
-    process_id, is_new_pid, create_pid_file = get_process_id(PARAMS, acquisition_dir, run, auto=auto)
+    process_id = get_process_id(PARAMS, acquisition_dir, run, auto=auto)
 
     pid = dict()
     version = pkg_resources.get_distribution('pipeline').version
-    
-    pid['version'] = version 
+
+    pid['version'] = version
     pid['process_id'] = process_id
     pid['PARAMS'] = PARAMS
     pid['SRC'] = os.path.join(acquisition_dir, run, PARAMS['source']['tiffsource']) #source_dir
     pid['DST'] = os.path.join(acquisition_dir, run, 'processed', process_id)
-    
+
     correct_flyback = pid['PARAMS']['preprocessing']['correct_flyback']
     correct_bidir = pid['PARAMS']['preprocessing']['correct_bidir']
     correct_motion = pid['PARAMS']['motion']['correct_motion']
-    
+
     # Set source/dest dirs for Preprocessing tiffs:
     pid['PARAMS']['preprocessing']['sourcedir'] = pid['SRC']
     pid['PARAMS']['preprocessing']['destdir'] = None
@@ -488,7 +488,7 @@ def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
     if correct_bidir is True:
         pid['PARAMS']['preprocessing']['sourcedir'] = os.path.join(pid['DST'], 'raw')
         pid['PARAMS']['preprocessing']['destdir'] = os.path.join(pid['DST'], 'bidi')
-       
+
     # Set source/dest dirs for Motion-Correction:
     pid['PARAMS']['motion']['sourcedir'] =  pid['PARAMS']['preprocessing']['destdir']
     pid['PARAMS']['motion']['destdir'] = None
@@ -499,45 +499,43 @@ def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
 
     # TODO:  Generate hash for full PID dict
     pid['pid_hash'] = hashlib.sha1(json.dumps(pid, sort_keys=True)).hexdigest()[0:6]
-    
+
     return pid
 
 def load_processdict(acquisition_dir, run):
     processdict = None
     processdict_filepath = os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run)
-    
+
     # Load analysis "processdict" file:
     if os.path.exists(processdict_filepath):
         print "exists!"
         with open(processdict_filepath, 'r') as f:
             processdict = json.load(f)
-            
+
     return processdict
 
 def get_process_id(PARAMS, acquisition_dir, run, auto=False):
-    
+
     process_id = None
-    
+
     print "********************************"
     print "Checking previous PROCESS IDs..."
     print "********************************"
-    
+
     # Load previously created PIDs:
     processdict = load_processdict(acquisition_dir, run)
-    
+
     #Check current PARAMS against existing PId params by hashid:
     if processdict is None or len(processdict.keys()) == 0:
         processdict = dict()
         existing_pids = []
         is_new_pid = True
         print "No existing PIDs found."
-        create_pid_file = True
     else:
-        create_pid_file = False
         existing_pids = sorted([str(k) for k in processdict.keys()], key=natural_keys)
         matching_pids = sorted([pid for pid in existing_pids if processdict[pid]['PARAMS']['hashid'] == PARAMS['hashid']], key=natural_keys)
         is_new_pid = False
-        if len(matching_pids) > 0:            
+        if len(matching_pids) > 0:
             while True:
                 print "WARNING **************************************"
                 print "Current param config matches existing PID:"
@@ -568,29 +566,29 @@ def get_process_id(PARAMS, acquisition_dir, run, auto=False):
         # Re-using an existing PID:
         process_id = existing_pids[int(check_pidx)]
         print "Reusing existing pid: %s" % process_id
- 
-    return process_id, is_new_pid, create_pid_file
+
+    return process_id
 
 
 def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
                     correct_flyback=None, nflyback_frames=0):
-    
+
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     rundir = os.path.join(acquisition_dir, run)
     rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
     rawdir = rawdir_name[0]
-    
+
     DEFPARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
                          acquisition=acquisition, run=run, tiffsource=rawdir, sourcetype='raw',
                          correct_motion=False, correct_bidir=False,
                          correct_flyback=correct_flyback, nflyback_frames=nflyback_frames)
-    
+
     # Generate new process_id based on input params:
     pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True)
-    
+
     # UPDATE RECORDS:
     update_pid_records(pid, acquisition_dir, run)
-    
+
     # STORE TMP FILE OF CURRENT PARAMS:
     tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
@@ -614,14 +612,14 @@ def update_pid_records(pid, acquisition_dir, run):
     else:
         processdict = dict()
 
-    process_id = pid['process_id'] 
+    process_id = pid['process_id']
     processdict[process_id] = pid
 
     #% Update Process Info DICT:
     write_dict_to_json(processdict, processdict_filepath)
 
     print "Process Info UPDATED."
-    
+
 
 def extract_options(options):
     parser = optparse.OptionParser()
@@ -653,8 +651,8 @@ def extract_options(options):
     parser.add_option('-M', '--method', action='store', dest='mc_method', default=None, help='Method for motion-correction. OPTS: Acquisition2P, NoRMCorre [default: Acquisition2P]')
     parser.add_option('-a', '--algo', action='store', dest='algorithm', default=None, help='Algorithm to use for motion-correction, e.g., @withinFile_withinFrame_lucasKanade if method=Acquisition2P, or nonrigid if method=NoRMCorre')
 
-    (options, args) = parser.parse_args(options) 
-    
+    (options, args) = parser.parse_args(options)
+
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/julianarhee/testdata'
@@ -664,7 +662,7 @@ def extract_options(options):
     return options
 
 def create_pid(options):
-   
+
     options = extract_options(options)
 
     rootdir = options.rootdir
@@ -675,7 +673,7 @@ def create_pid(options):
 
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
-    
+
     auto = options.default
 
     # PREPROCESSING params:
@@ -702,17 +700,17 @@ def create_pid(options):
     PARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
                             acquisition=acquisition, run=run, tiffsource=tiffsource, sourcetype=sourcetype,
                             correct_bidir=correct_bidir, correct_flyback=correct_flyback, nflyback_frames=nflyback_frames,
-                            correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel, 
+                            correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel,
                             mc_method=mc_method, mc_algorithm=mc_algorithm, auto=auto)
-    
+
     # Generate new process_id based on input params:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     print "ACQ DIR:", acquisition_dir
     pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
-    
+
     # UPDATE RECORDS:
     update_pid_records(pid, acquisition_dir, run)
-    
+
     # STORE TMP FILE OF CURRENT PARAMS:
     tmp_pid_fn = 'tmp_pid_%s.json' % pid['pid_hash'][0:6]
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
@@ -720,7 +718,7 @@ def create_pid(options):
         os.makedirs(tmp_pid_dir)
     tmp_pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
     write_dict_to_json(pid, tmp_pid_path)
-       
+
     print "Params set for PID: %s" % pid['pid_hash']
 
     return pid
@@ -729,17 +727,17 @@ def create_pid(options):
 
 # if __name__ == '__main__':
 #     main(sys.argv[1:])
-    
+
 def main(options):
-    
+
     pid = create_pid(options)
-    
+
     print "****************************************************************"
     print "Created PID."
     print "----------------------------------------------------------------"
     pp.pprint(pid)
     print "****************************************************************"
-    
+
 if __name__ == '__main__':
-    main(sys.argv[1:]) 
+    main(sys.argv[1:])
 

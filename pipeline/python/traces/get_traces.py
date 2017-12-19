@@ -10,7 +10,7 @@ import os
 import h5py
 import json
 import re
-import hashlib
+import datetime
 import tifffile as tf
 import pylab as pl
 import numpy as np
@@ -19,123 +19,79 @@ pp = pprint.PrettyPrinter(indent=4)
 
 
 
-from pipeline.python.utils import natural_keys
+from pipeline.python.utils import natural_keys, hash_file
 
-
-def hash_file(fpath, hashtype='sha1'):
-
-    BLOCKSIZE = 65536
-    if hashtype=='md5':
-        hasher = hashlib.md5()
-    else:
-        hasher = hashlib.sha1()
-
-    with open(fpath, 'rb') as afile:
-        buf = afile.read(BLOCKSIZE)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = afile.read(BLOCKSIZE)
-
-    #print(hasher.hexdigest())
-
-    return hasher.hexdigest()[0:6]
 
 
 #%%
 rootdir = '/nas/volume1/2photon/data'
 animalid = 'JR063'
 session = '20171202_JR063'
+acquisition = 'FOV1_zoom1x_volume'
+run = 'scenes'
+slurm = False
 
-session_dir = os.path.join(rootdir, animalid, session)
-roi_dir = os.path.join(session_dir, 'ROIs')
-
-roi_name = 'rois002'
-
-tiff_dir = ''
-
+trace_id = 'traces001'
 auto = False
 
-#%%
-with open(os.path.join(roi_dir, 'rids_%s.json' % session), 'r') as f:
-    roidict = json.load(f)
-RID = roidict[roi_name]
+if slurm is True:
+    if 'coxfs01' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
 
-# Get TIFF source:
-if tiff_dir is None or len(tiff_dir) == 0:
-    tiff_dir = RID['SRC']
+#%%
+run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+trace_dir = os.path.join(run_dir, 'traces')
+if not os.path.exists(trace_dir):
+    os.makedirs(trace_dir)
+
+try:
+    print "Loading params for TRACE SET, hash %s" % tid_hash
+    tmp_tid_path = os.path.join(trace_dir, 'tmp_tids', 'tmp_tid_%s.json' % tid_hash)
+    with open(tmp_tid_path, 'r') as f:
+        TID = json.load(f)
+except Exception as E:
+    print "---------------------------------------------------------------"
+    print "tmp tid file not found, with error:"
+    print E
+    try:
+        print "Loading params for TRACE SET, id %s" % trace_id
+        tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
+        with open(tracedict_path, 'r') as f:
+            tracedict = json.load(f)
+        TID = tracedict[trace_id]
+    except Exception as e:
+        print "No TRACE SET entry exists for specified id: %s" % trace_id
+        print "ABORTING with error:"
+        print e
+        print "---------------------------------------------------------------"
+
+#%%
+
+tiff_dir = TID['SRC']
+roi_name = TID['PARAMS']['roi_id']
 tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
 # Get associated RUN info:
-pathparts = tiff_dir.split(session_dir)[1].split('/')
-acquisition = pathparts[1]
-run = pathparts[2]
-runmeta_path = os.path.join(session_dir, acquisition, run, '%s.json' % run)
+runmeta_path = os.path.join(run_dir, '%s.json' % run)
 with open(runmeta_path, 'r') as r:
     runinfo = json.load(r)
 
 nslices = len(runinfo['slices'])
 nchannels = runinfo['nchannels']
 nvolumes = runinfo['nvolumes']
+ntiffs = runinfo['ntiffs']
 
 #%%
-trace_dir = os.path.join(session_dir, 'Traces')
 
-# Create HASH from tiff source and ROI params:
-TID = dict()
-TID['tiff_source'] = tiff_dir
-TID['roi_id'] = RID['roi_id']
-TID['rid_hash'] = RID['rid_hash']
-TID['roi_type'] = RID['roi_type']
-trace_hash = hashlib.sha1(json.dumps(TID, sort_keys=True)).hexdigest()[0:6]
-TID['trace_hash'] = trace_hash
+# Load trace id:
 
-tracedict_path = os.path.join(trace_dir, 'tid_%s.json' % session)
-if os.path.exists(tracedict_path):
-    with open(tracedict_path, 'r') as tr:
-        tracedict = json.load(tr)
-else:
-    tracedict = dict()
-
-# Check that this is a unique trace set:
-match_tids = [t for t in tracedict.keys() if tracedict[t]['trace_hash'] == TID['trace_hash']]
-new_trace_set = True
-
-if auto is False:
-    # Allow user-interactive mode to reload existing TID:
-    if len(match_tids) > 0:
-        while True:
-            print "Found matching trace-set config:"
-            for mix, mid in enumerate(match_tids):
-		print mix, mid
-                pp.pprint(tracedict[mid])
-            uchoice = raw_input('Press IDX of trace set to load, or press <N> to create new trace set: ')
-            if uchoice == 'N':
-                new_trace_set = True
-            else:
-                confirm_uchoice = raw_input('Load existing trace set %s? Press <Y> to confirm.' % tracedict[match_tids[int(uchoice)]])
-                if confirm_uchoice == 'Y':
-                    new_trace_set = False
-                    TID = tracedict[match_tids[int(uchoice)]]
-                    break
-    else:
-        new_trace_set = True
-
-if new_trace_set is True:
-    trace_id = 'traces%03d' % int(len(tracedict.keys()) + 1)
-    TID['trace_id'] = trace_id
-
-
-tracedict['trace_id'] = TID
-with open(tracedict_path, 'w') as tw:
-    json.dump(tracedict, tw, indent=4, sort_keys=True)
-
-trace_basedir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-trace_outdir = os.path.join(trace_basedir, 'extracted')
+traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
+trace_outdir = os.path.join(traceid_dir, 'extracted')
 if not os.path.exists(trace_outdir):
     os.makedirs(trace_outdir)
 
-trace_figdir = os.path.join(trace_basedir, 'figures')
+trace_figdir = os.path.join(traceid_dir, 'figures')
 if not os.path.exists(trace_figdir):
     os.makedirs(trace_figdir)
 
@@ -143,6 +99,16 @@ trace_fn_base = 'rawtraces_%s' % TID['trace_hash']
 
 
 #%%
+# =============================================================================
+# Create mask array and save mask images:
+# =============================================================================
+
+# Load ROI set specified in Traces param set:
+roi_dir = os.path.join(rootdir, animalid, session, 'ROIs')
+roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
+with open(roidict_path, 'r') as f:
+    roidict = json.load(f)
+RID = roidict[TID['PARAMS']['roi_id']]
 
 # Load mask file:
 mask_path = os.path.join(RID['DST'], 'masks', 'masks.h5')
@@ -199,7 +165,11 @@ for sidx in range(len(roi_slices)):
     MASKS[curr_slice]['maskarray'] = maskarray
 
 
+#%%
+# =============================================================================
 # Extract ROIs for each specified slice for each file:
+# =============================================================================
+
 file_hashdict = dict()
 for tfn in tiff_files:
 
@@ -271,8 +241,113 @@ with open(os.path.join(trace_outdir, 'fileinfo_%s.json' % TID['trace_hash']), 'w
     json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
 
+#%%
+# =============================================================================
+# Create time courses for ROIs:
+# =============================================================================
 
 
+#% Load raw traces:
+try:
+    tracestruct_fns = [f for f in os.listdir(trace_outdir) if f.endswith('hdf5') and 'rawtraces' in f]
+    print "Found tracestructs for %i tifs in dir: %s" % (len(tracestruct_fns), trace_outdir)
+    trace_source_dir = trace_outdir
+except Exception as e:
+    print "Unable to find extracted tracestructs from trace set: %s" % trace_id
+    print "Aborting with error:"
+    print e
 
+
+# Get VOLUME indices to align to frame indices:
+# -----------------------------------------------------------------------------
+nslices = len(runinfo['slices'])
+nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
+print "Creating volume index list for %i total slices. %i frames were discarded for flyback." % (nslices_full, nslices_full - nslices)
+
+vol_idxs = np.empty((nvolumes*nslices_full,))
+vcounter = 0
+for v in range(nvolumes):
+    vol_idxs[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
+    vcounter += nslices_full
+vol_idxs = [int(v) for v in vol_idxs]
+
+# Create output file for parsed traces:
+# -----------------------------------------------------------------------------
+trace_fn = 'roi_trials_.hdf5'
+trace_outfile_path = os.path.join(traceid_dir, trace_fn)
+
+roi_outfile = h5py.File(trace_outfile_path, 'w')
+roi_outfile.attrs['tiff_source'] = TID['SRC']
+roi_outfile.attrs['trace_id'] = TID['trace_id']
+roi_outfile.attrs['trace_hash'] = TID['trace_hash']
+roi_outfile.attrs['trace_source'] = traceid_dir
+roi_outfile.attrs['roiset_id'] = RID['roi_id']
+roi_outfile.attrs['roiset_hash'] = RID['rid_hash']
+roi_outfile.attrs['run'] = run
+roi_outfile.attrs['session'] = session
+roi_outfile.attrs['acquisition'] = acquisition
+roi_outfile.attrs['animalid'] = animalid
+roi_outfile.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# Concatenate time courses across all files to create single time-source for RUN:
+# -----------------------------------------------------------------------------
+tmp_tracestruct = h5py.File(os.path.join(trace_source_dir, tracestruct_fns[0]), 'r')
+total_nframes_in_run = tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
+tmp_tracestruct.close(); del tmp_tracestruct
+
+nframes_in_file = runinfo['nvolumes']
+curr_frame_idx = 0
+for tracefile in sorted(tracestruct_fns, key=natural_keys):
+    print "Loading file:", tracefile
+    tracestruct = h5py.File(os.path.join(trace_source_dir, tracefile), 'r')         # keys are SLICES (Slice01, Slice02, ...)
+
+    roi_counter = 0
+    for currslice in sorted(tracestruct.keys(), key=natural_keys):
+        print "Loading slice:", currslice
+        maskarray = tracestruct[currslice]['masks']
+        d1, d2 = tracestruct[currslice]['rawtraces'].attrs['dims'][0:-1]
+        T = tracestruct[currslice]['rawtraces'].attrs['nframes']
+        nrois = maskarray.shape[1]
+        masks = np.reshape(maskarray, (d1, d2, nrois), order='C')
+
+        for roi in range(nrois):
+            roi_counter += 1
+            roiname = 'roi%05d' % int(roi_counter)
+
+            if roiname not in roi_outfile.keys():
+                roi_grp = roi_outfile.create_group(roiname)
+                roi_grp.attrs['roi_idx'] = roi
+                roi_grp.attrs['slice'] = currslice
+                roi_grp.attrs['roi_img_path'] = tracestruct[currslice]['masks'].attrs['img_path']
+            else:
+                roi_grp = roi_outfile[roiname]
+
+            if 'mask' not in roi_grp.keys():
+                roi_mask = roi_grp.create_dataset('mask', masks[:,:,roi].shape, masks[:,:,roi].dtype)
+                roi_mask[...] = masks[:,:,roi]
+                roi_mask.attrs['roi_idx'] = roi
+                roi_mask.attrs['slice'] = currslice
+
+            if 'timecourse' not in roi_grp.keys():
+                roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracestruct[currslice]['rawtraces'][:, roi].dtype)
+            else:
+                roi_tcourse = roi_outfile[roiname]['timecourse']
+
+            roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = tracestruct[currslice]['rawtraces'][:, roi]
+            roi_tcourse.attrs['trace_source'] = os.path.join(trace_source_dir, tracefile)
+
+    curr_frame_idx += nframes_in_file
+
+
+# Rename FRAME file with hash:
+roi_outfile.close()
+
+roi_tcourse_filehash = hash_file(trace_outfile_path)
+new_filename = os.path.splitext(trace_outfile_path)[0] + roi_tcourse_filehash + os.path.splitext(trace_outfile_path)[1]
+os.rename(trace_outfile_path, new_filename)
+
+print "Finished extracting time course for run %s by roi." % run
+print "Saved ROI TIME COURSE file to:", new_filename
 
 

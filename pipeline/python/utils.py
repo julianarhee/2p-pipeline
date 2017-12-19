@@ -1,4 +1,4 @@
-#!/usr/bin/env python2 
+#!/usr/bin/env python2
 import os
 import json
 import re
@@ -6,7 +6,7 @@ import shutil
 import hashlib
 import numpy as np
 import tifffile as tf
-from skimage import exposure 
+from skimage import exposure
 from skimage import img_as_ubyte
 
 def atoi(text):
@@ -20,9 +20,80 @@ def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
     if run is not None:
         fn_base = '%s_%s' % (run, fn_base)
     if acq is not None:
-        fn_base = '%s_%s' % (acq, fn_base) 
-    
+        fn_base = '%s_%s' % (acq, fn_base)
+
     return fn_base
+
+
+def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
+
+    tiffpaths = []
+
+    rundir = os.path.join(rootdir, animalid, session, acquisition, run)
+    processed_dir = os.path.join(rundir, 'processed')
+
+    if tiffsource is None:
+        while True:
+            if auto is True:
+                tiffsource = 'raw'
+                break
+            tiffsource_idx = raw_input('No tiffsource specified. Enter <R> for raw, or <P> for processed: ')
+            processed_dirlist = sorted([p for p in os.listdir(processed_dir) if os.path.isdir(os.path.join(processed_dir, p))], key=natural_keys)
+            if len(processed_dirlist) == 0 or tiffsource_idx == 'R':
+                tiffsource = 'raw'
+                if len(processed_dirlist) == 0:
+                    print "No processed dirs... Using raw."
+                confirm_tiffsource = raw_input('Press <Y> to use raw.')
+                if confirm_tiffsource == 'Y':
+                    break
+            elif len(processed_dirlist) > 0:
+                for pidx, pfolder in enumerate(sorted(processed_dirlist, key=natural_keys)):
+                    print pidx, pfolder
+                tiffsource_idx = int(input("Enter IDX of processed source to use: "))
+                tiffsource = processed_dirlist[tiffsource_idx]
+                confirm_tiffsource = raw_input('Tiffs are %s? Press <Y> to confirm. ' % tiffsource)
+                if confirm_tiffsource == 'Y':
+                    break
+
+    if 'processed' in tiffsource:
+        tiffsource_name = [t for t in os.listdir(processed_dir) if tiffsource in t and os.path.isdir(os.path.join(processed_dir, t))][0]
+        tiff_parent = os.path.join(processed_dir, tiffsource_name)
+    else:
+        tiffsource_name = [t for t in os.listdir(rundir) if tiffsource in t and os.path.isdir(os.path.join(rundir, t))][0]
+        tiff_parent = os.path.join(rundir, tiffsource_name)
+
+    print "Using tiffsource:", tiffsource_name
+
+    if sourcetype is None:
+        while True:
+            if auto is True or tiffsource == 'raw':
+                sourcetype = 'raw'
+                break
+            print "Specified PROCESSED tiff source, but not process type."
+            curr_processed_dir = os.path.join(rundir, 'processed', tiffsource)
+            processed_typlist = sorted([t for t in os.listdir(curr_processed_dir) if os.path.isdir(os.path.join(curr_processed_dir, t))], key=natural_keys)
+            for tidx, tname in enumerate(processed_typlist):
+                print tidx, tname
+            sourcetype_idx = int(input('Enter IDX of processed dir to use: '))
+            sourcetype = processed_typlist[sourcetype_idx]
+            confirm_sourcetype = raw_input('Tiffs are from %s? Press <Y> to confirm. ' % sourcetype)
+            if confirm_sourcetype == 'Y':
+                break
+
+    if 'processed' in tiffsource_name:
+        sourcetype_name = [s for s in os.listdir(tiff_parent) if sourcetype in s and os.path.isdir(os.path.join(tiff_parent, s))][0]
+        tiff_path = os.path.join(tiff_parent, sourcetype_name)
+    else:
+        tiff_path = tiff_parent
+
+
+    print "Looking for tiffs in tiff_path: %s" % tiff_path
+    tiff_fns = [t for t in os.listdir(tiff_path) if t.endswith('tif')]
+    tiffpaths = sorted([os.path.join(tiff_path, fn) for fn in tiff_fns], key=natural_keys)
+    print "Found %i TIFFs." % len(tiff_fns)
+
+    return tiffpaths
+
 
 def hash_file(fpath, hashtype='sha1'):
 
@@ -43,7 +114,7 @@ def hash_file(fpath, hashtype='sha1'):
     return hasher.hexdigest()[0:6]
 
 
-def jsonify_array(curropts):  
+def jsonify_array(curropts):
     jsontypes = (list, tuple, str, int, float, bool, unicode, long)
     for pkey in curropts.keys():
         if isinstance(curropts[pkey], dict):
@@ -57,7 +128,7 @@ def write_dict_to_json(pydict, writepath):
     f = open(writepath, 'w')
     print >> f, jstring
     f.close()
-                
+
 def interleave_tiffs(source_dir, write_dir, runinfo_path):
     '''
     source_dir (str) : path to folder containing tiffs to interleave
@@ -84,7 +155,7 @@ def interleave_tiffs(source_dir, write_dir, runinfo_path):
         interleaved_fn = "{basename}_{currfile}.tif".format(basename=basename, currfile=curr_file)
         print "New tiff name:", interleaved_fn
         curr_file_fns = [t for t in tiffs if curr_file in t]
-        sample = tf.imread(os.path.join(source_dir, curr_file_fns[0])) 
+        sample = tf.imread(os.path.join(source_dir, curr_file_fns[0]))
         print "Found %i tiffs for current file." % len(curr_file_fns)
         stack = np.empty((ntotalframes, sample.shape[1], sample.shape[2]), dtype=sample.dtype)
         for fn in curr_file_fns:
@@ -99,7 +170,7 @@ def interleave_tiffs(source_dir, write_dir, runinfo_path):
 
 def deinterleave_tiffs(source_dir, write_dir, runinfo_path):
     '''
-    source_dir (str) : path to folder containing interleaved tiffs 
+    source_dir (str) : path to folder containing interleaved tiffs
     write_dir (str): path to save deinterleaved tiffs to (sorted by Channel, File)
     runinfo_path (str) : path to .json containing meta info about run
     '''
@@ -122,7 +193,7 @@ def deinterleave_tiffs(source_dir, write_dir, runinfo_path):
     if not len(tiffs) == nfiles:
         print "Mismatch in num tiffs. Expected %i files, found %i tiffs in dir:\n%s" % (ntiffs, len(tiffs), source_dir)
         good_to_go = False
-    if good_to_go: 
+    if good_to_go:
         # Load in each TIFF and deinterleave:
         for fidx,filename in enumerate(sorted(tiffs, key=natural_keys)):
             print "Deinterleaving File %i of %i [%s]" % (int(fidx+1), nfiles, filename)
@@ -142,7 +213,7 @@ def deinterleave_tiffs(source_dir, write_dir, runinfo_path):
 
 def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     '''
-    source_dir (str) : path to folder containing deinterleaved tiffs 
+    source_dir (str) : path to folder containing deinterleaved tiffs
     runinfo_path (str) : path to .json containing meta info about run
     '''
     with open(runinfo_path, 'r') as f:
@@ -169,7 +240,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
         for vtiff in vis_tiffs:
             shutil.move(os.path.join(source_dir, vtiff), os.path.join(visible_dir, vtiff))
         print "Moved set of VISIBLE tiff duplicates to:", visible_dir
-        
+
 
     all_tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
     expected_ntiffs = nfiles * nchannels * nslices
@@ -240,19 +311,19 @@ def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
                 ch_tiff = currtiff[ch::nchannels]
                 for sl in range(nslices):
                     slicenum = int(sl+1)
-                    sl_tiff = ch_tiff[sl::nslices]    
+                    sl_tiff = ch_tiff[sl::nslices]
                     if zproj == 'mean' or zproj == 'average':
                         zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
                     elif zproj == 'std':
-                        zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype) 
-                    curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None) 
+                        zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
+                    curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
                     tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj, curr_slice_fn)), zprojslice)
-                    
+
                     # Save visible too:
                     byteimg = img_as_ubyte(zprojslice)
                     zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
                     tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj, curr_slice_fn)), zproj_vis)
-                    
+
                     print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
 
     # Sort separated tiff slice images:

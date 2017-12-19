@@ -1,4 +1,53 @@
 #!/usr/bin/env python2
+'''
+This script combines behavior/stimulation info with acquisition/frame info.
+
+Input:
+    - Raw behavior files saved in <run_dir>/raw/paradigm_files/ -- both serial data (*.txt) and protocol info (*.mwk)
+    - Assumes .mwk files for behavior events and csv-saved .txt file that samples the acquisition rig at 1kHz
+
+Steps:
+1.  It creates a parsed .json for EACH behavior file (.mwk) that contains relevant info for each trial in that file.
+    - function uses process_mw_files.py
+    - trial_<behavior_file_name>.json files are created with process_mw_files.py
+    - output files (1 for multiple .tifs, or 1 for each .tif) are saved to: <run_dir>/paradigm/files/
+    - (OPTIONAL: also can create a stimorder.txt file for EACH .tif to be aligned (option if not using .mwk), for align_acquisition_events.py)
+
+2.  It uses the parsed trials for each behavior file to align image-acquisition events (serial data stored in .txt files) with behavior events.
+    All trials are combined across all .tif files and behavior files and creates dictionary for each trial:
+    'trial00001': {
+                    'aux_file_idx': tif file index in run,
+                    'behavior_data_path': path to input files containing parsd trial info for each behavior file,
+                    'serial_data_path': path to input files containing serial data for each frame acquired frame,
+                    'start_time_ms': msec from start of experiment that the trial began,
+                    'end_time_ms': msec from start of experiment that trial ends,
+                    'stim_dur_ms': duration of stim on,
+                    'iti_dur_ms': duration of ITI period after stim offset,
+                    'stimuli': {
+                                'filepath': path to stimulus on stimulation computer',
+                                'filehash': file hash of shown stimulus,
+                                'position': x,y position (tuple of floats),
+                                'rotation': rotation specified by protocol (float),
+                                'scale': x,y size of stimulus (tuple of floats),
+                                'stimulus': name or index of shown stimulus,
+                                'type': type of stimulus (e.g., image, drifting_grating)
+                                },
+                    'trial_hash': hash created for entire trial dictionary in input parsed-trials file (trial_<behavior_file_name>.json)
+                    'trial_in_run': idx (1-indexed) of current trial across whole run (across all behavior files, if multiple exist),
+                    'frame_stim_on': idx (0-indexed) of the closest-matching frame to stimulus onset (index in .tif)
+                    'frame_stim_off':  idx(0-indexed) of frame at which stimulus goes off
+                    }
+
+3. Output is a .json file that contains trial details across the entire run:
+    - Saved to:  <run_dir>/paradigm/trials_by_file_<trialdict_hash>.json
+    - The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['aux_file_idx']
+
+Notes:
+
+This output is used by align_acquisition_events.py to use the frame_stim_on and frame_stim_off for each trial across all files,
+combined with a user-specified baseline period (default, 1 sec) to get trial-epoch aligned frame indices.
+'''
+
 import os
 import json
 import re
@@ -10,7 +59,7 @@ import pandas as pd
 import cPickle as pkl
 from collections import Counter
 from pipeline.python.paradigm import process_mw_files as mw
-from pipeline.python.utils import file_hash
+from pipeline.python.utils import hash_file
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -97,7 +146,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
         	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = []
-        minframes = 5
+        minframes = 4
         for bitcode in mwtrials[trial]['all_bitcodes']:
             looking = True
             while looking is True:
@@ -199,6 +248,8 @@ if retinobar is True:
 if phasemod is True:
     mwopts.extend(['--phasemod'])
 
+#%%
+
 paradigm_outdir = mw.parse_mw_trials(mwopts)
 
 #%%
@@ -231,7 +282,7 @@ serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('t
 print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
 
 # Load MW info:
-mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'trials_' in j], key=natural_keys)
+mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
 print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
@@ -268,8 +319,8 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         RUN[trialname]['behavior_data_path'] = mwtrial_path
         RUN[trialname]['serial_data_path'] = serialfn_path
 
-        RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
-        RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
+        RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
+        RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
         RUN[trialname]['stim_dur_ms'] = trialevents[trialhash]['mw_trial']['stim_off_times']\
                                                 - trialevents[trialhash]['mw_trial']['stim_on_times']
         RUN[trialname]['iti_dur_ms'] = trialevents[trialhash]['mw_trial']['iti_duration']
@@ -281,7 +332,7 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
 
 run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
-with open(os.path.join(outdir, 'trials_%s.json' % run_trial_hash), 'w') as f:
+with open(os.path.join(outdir, 'trials_by_file_%s.json' % run_trial_hash), 'w') as f:
     json.dump(RUN, f, sort_keys=True, indent=4)
 
 

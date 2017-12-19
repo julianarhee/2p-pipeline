@@ -25,14 +25,14 @@ OUTPUTS:
 import os
 import json
 import re
-import scipy.io as spio
-import numpy as np
 import datetime
-from json_tricks.np import dump, dumps, load, loads
-import cPickle as pkl
-import scipy.io
 import optparse
 import h5py
+import pprint
+import numpy as np
+import cPickle as pkl
+import scipy.io
+pp = pprint.PrettyPrinter(indent=4)
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -70,9 +70,6 @@ parser.add_option('-t', '--trace-id', action="store",
 
 (options, args) = parser.parse_args()
 
-deconvolved = False #True
-df = True
-
 
 # Set USER INPUT options:
 rootdir = options.rootdir
@@ -83,18 +80,30 @@ run = options.run
 slurm = options.slurm
 trace_id = options.trace_id
 
-trace_type = 'extracted'
+
+#%% Load TRACE ID:
+try:
+    tracedict_path = os.path.join(trace_basedir, 'traceids_%s.json' % run)
+    with open(tracedict_path, 'r') as tr:
+        tracedict = json.load(tr)
+    TID = tracedict[trace_id]
+    print "USING TRACE ID: %s" % TID['trace_id']
+    pp.pprint(TID)
+except Exception as e:
+    print "Unable to load TRACE params info: %s:" % trace_id
+    print "Aborting with error:"
+    print e
+
 
 #%%
-session_dir = os.path.join(rootdir, animalid, session)
-run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 
 # Load reference info:
+run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 runinfo_path = os.path.join(run_dir, '%s.json' % run)
 
 with open(runinfo_path, 'r') as fr:
     runinfo = json.load(fr)
-nfiles = runinfo['ntiffs']
+ntiffs = runinfo['ntiffs']
 file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
 nvolumes = runinfo['nvolumes']
 frame_idxs = runinfo['frame_idxs']
@@ -102,49 +111,47 @@ if len(frame_idxs) == 0:
     # No flyback
     frame_idxs = np.arange(0, nvolumes)
 
-# LOAD TID:
-trace_dir_base = os.path.join(session_dir, 'Traces')
-tracedict_path = os.path.join(trace_dir_base, 'tid_%s.json' % session)
-with open(tracedict_path, 'r') as tr:
-    tracedict = json.load(tr)
-TID = tracedict[trace_id]
-
-
-# Get TRACE DIR, create output dir:
-traceid_dir = os.path.join(trace_dir_base, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-trace_dir = os.path.join(traceid_dir, trace_type)
-
-print "Loading traces from:", trace_dir
-
-# Get Trace files:
-trace_fns = sorted([t for t in os.listdir(trace_dir) if t.endswith('hdf5')], key=natural_keys)
-print "Found %i trace-files corresponding to %i tiffs." % (len(trace_fns), nfiles)
-
-# Create parsed-trials dir with default format:
-parsed_traces_dir = os.path.join(traceid_dir, 'parsed')
-if not os.path.exists(parsed_traces_dir):
-    os.mkdir(parsed_traces_dir)
-
 
 # Get PARADIGM INFO:
 # -----------------------------------------------------------------------------
 paradigm_outdir = os.path.join(run_dir, 'paradigm')
 
 # Load stimulus dict:
-print "Loading stim-frame key (stimdict)..."
-stimdict_fn = 'stimdict.pkl'
-with open(os.path.join(paradigm_outdir, stimdict_fn), 'r') as f:
-     stimdict = pkl.load(f) #json.load(f)
+print "Loading parsed trials-to-frames file for run..."
+try:
+    parsed_fn = [f for f in os.listdir(paradigm_outdir) if 'frames_' in f and f.endswith('hdf5')]
+    assert len(parsed_fn)==1, "More than 1 frame-trial file found!"
+    paradigm_filepath = os.path.join(paradigm_outdir, parsed_fn[0])
+    framestruct = h5py.File(paradigm_filepath, 'r')
+    trial_list = sorted(framestruct.keys(), key=natural_keys)
+    file_list = sorted(list(set(['File%03d' % int(framestruct[t].attrs['aux_file_idx']+1) for t in trial_list])), key=natural_keys)
+    print "Found %i behavior files, with %i trials each. Total %i in run %s." % (len(file_list), len(trial_list)/len(file_list), len(trial_list), run)
+except Exception as e:
+    print "-------------------------------------------------------------------"
+    print "No frame-trial hdf5 file found. Did you run align_acquisition_events.py?"
+    print "Aborting with error:"
+    print e
+    print "-------------------------------------------------------------------"
 
-# Get num trials for each stimulus (combine across files):
-stim_ntrials = dict()
-for stim in stimdict.keys():
-    stim_ntrials[stim] = 0
-    for fi in stimdict[stim].keys():
-        stim_ntrials[stim] += len(stimdict[stim][fi].trials)
 
-# Get VOLUME indices to align to frame indices:
+#%% Load raw traces:
+trace_basedir = os.path.join(rootdir, animalid, session, acquisition, run, 'traces')
+try:
+    trace_name = [t for t in os.listdir(trace_basedir) if trace_id in t and os.path.isdir(os.path.join(trace_basedir, t))][0]
+    tracestruct_fns = [f for f in os.listdir(os.path.join(trace_basedir, trace_name, 'extracted')) if f.endswith('hdf5') and 'rawtraces' in f]
+    print "Found tracestructs for %i tifs in dir: %s" % (len(tracestruct_fns), trace_name)
+    traceid_dir = os.path.join(trace_basedir, trace_name)
+    trace_source_dir = os.path.join(traceid_dir, 'extracted')
+except Exception as e:
+    print "Unable to find extracted tracestructs from trace set: %s" % trace_id
+    print "Aborting with error:"
+    print e
+
+#%% Get VOLUME indices to align to frame indices:
+nslices = len(runinfo['slices'])
 nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
+print "Creating volume index list for %i total slices. %i frames were discarded for flyback." % (nslices_full, nslices_full - nslices)
+
 vol_idxs = np.empty((nvolumes*nslices_full,))
 vcounter = 0
 for v in range(nvolumes):
@@ -153,26 +160,7 @@ for v in range(nvolumes):
 vol_idxs = [int(v) for v in vol_idxs]
 
 #%%
-# Create output dir for parsed traces:
-# -----------------------------------------------------------------------------
-parsed_traces_dir = os.path.join(traceid_dir, 'parsed')
-if not os.path.exists(parsed_traces_dir):
-    os.makedirs(parsed_traces_dir)
-print "Saving parsed traces to:", parsed_traces_dir
 
-# Create outfile:
-trace_fn = 'raw_%s_%s.hdf5' % (TID['trace_id'], TID['trace_hash'])
-trace_outfile_path = os.path.join(parsed_traces_dir, trace_fn)
-
-file_grp = h5py.File(trace_outfile_path, 'w')
-file_grp.attrs['tiffsource'] = TID['tiff_source']
-file_grp.attrs['trace_id'] = TID['trace_id']
-file_grp.attrs['trace_hash'] = TID['trace_hash']
-file_grp.attrs['run'] = run
-file_grp.attrs['session'] = session
-file_grp.attrs['acquisition'] = acquisition
-file_grp.attrs['animalid'] = animalid
-file_grp.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 #%%
 # -----------------------------------------------------------------------------

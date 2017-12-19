@@ -725,7 +725,8 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
         nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
 
-        print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-nbitcode_events)
+        if not nexpected_pixelevents == nbitcode_events:
+            print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-nbitcode_events)
 
         # Create trial struct:
         trial = dict() # dict((i+1, dict()) for i in range(len(stimevents)))
@@ -740,30 +741,77 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
             trial[trialname]['end_time_ms'] = round((iti.time/1E3 + session_info['ITI']))
-            if 'grating' in session_info['stimulus']:
-                ori = stim.value[1]['rotation']
-                sf = round(stim.value[1]['frequency'], 2)
-                stimname = 'grating-ori-%i-sf-%f' % (ori, sf)
+            stimtype = stim.value[1]['type']
+            stimname = stim.value[1]['name']
+            stimrotation = stim.value[1]['rotation']
+            if 'grating' in stimtype:
+                #ori = stim.value[1]['rotation']
+                #sf = round(stim.value[1]['frequency'], 2)
+                #stimname = 'grating-ori-%i-sf-%f' % (ori, sf)
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
-                stimsize = stim.value[1]['height']
+                stimsize = (stim.value[1]['width'], stim.value[1]['height'])
+                phase = stim.value[1]['current_phase']
+                freq = stim.value[1]['frequency']
+                speed = stim.value[1]['speed']
+                direction = stim.value[1]['direction']
+#                stimfile = 'NA'
+#                stimhash = 'NA'
+
+                trial[trialname]['stimuli'] = {'stimulus': stimname,
+                                              'position': stimpos,
+                                              'scale': stimsize,
+                                              'type': stimtype,
+                                              'rotation': stimrotation,
+                                              'phase': phase,
+                                              'frequency': freq,
+                                              'speed': speed,
+                                              'direction': direction}
+
             else:
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
-                stimname = stim.value[1]['name'] #''
+                #stimname = stim.value[1]['name'] #''
                 stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
                 stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
+#                phase = 0
+#                freq = 0
+#                speed = 0
+#                direction = 0
+                stimfile = stim.value[1]['filename']
+                stimhash = stim.value[1]['file_hash']
 
-            stimtype = stim.value[1]['type']
-            stimfile = stim.value[1]['filename']
-            stimhash = stim.value[1]['file_hash']
-            stimrotation = stim.value[1]['rotation']
+                trial[trialname]['stimuli'] = {'stimulus': stimname,
+                                              'position': stimpos,
+                                              'scale': stimsize,
+                                              'type': stimtype,
+                                              'filepath': stimfile,
+                                              'filehash': stimhash,
+                                              'rotation': stimrotation
+                                              }
 
-            trial[trialname]['stimuli'] = {'stimulus': stimname,
-                                         'position': stimpos,
-                                         'scale': stimsize,
-                                          'type': stimtype,
-                                          'filepath': stimfile,
-                                          'filehash': stimhash,
-                                          'rotation': stimrotation}
+            #stimtype = stim.value[1]['type']
+#            if stimtype == 'image':
+#                stimfile = stim.value[1]['filename']
+#                stimhash = stim.value[1]['file_hash']
+#                phase = 0
+#                freq = 0
+#                speed = 0
+#                direction = 0
+#            else:
+#                stimfile = 'NA'
+#                stimhash = 'NA'
+#
+#            trial[trialname]['stimuli'] = {'stimulus': stimname,
+#                                          'position': stimpos,
+#                                          'scale': stimsize,
+#                                          'type': stimtype,
+#                                          'filepath': stimfile,
+#                                          'filehash': stimhash,
+#                                          'rotation': stimrotation,
+#                                          'phase': phase,
+#                                          'frequency': freq,
+#                                          'speed': speed,
+#                                          'direction': direction}
+
 
             trial[trialname]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialname]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
@@ -834,7 +882,7 @@ def save_trials(trial, paradigm_outdir, curr_dfn_base):
 #        f.close()
 
     # also save as json for easy reading:
-    trialinfo_json = 'trials_%s.json' % curr_dfn_base
+    trialinfo_json = 'parsed_trials_%s.json' % curr_dfn_base
     with open(os.path.join(paradigm_outdir, trialinfo_json), 'w') as f:
         json.dump(trial, f, sort_keys=True, indent=4)
 
