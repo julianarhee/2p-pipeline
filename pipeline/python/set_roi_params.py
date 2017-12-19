@@ -120,7 +120,7 @@ def create_rid(options):
     tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
                                acquisition=acquisition, run=run,
                                tiffsource=tiffsource, sourcetype=sourcetype,
-                               ref=ref_file, auto=auto)
+                               auto=auto)
 
     # Get roi-type specific options:
     if roi_type == 'caiman2D':

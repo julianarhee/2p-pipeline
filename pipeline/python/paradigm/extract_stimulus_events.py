@@ -209,7 +209,7 @@ parser.add_option('--slurm', action='store_true', dest='slurm', default=False, h
 
 
 parser.add_option('--retinobar', action="store_true",
-                  dest="retionbar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
+                  dest="retinobar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
 parser.add_option('--phasemod', action="store_true",
                   dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated gratings.")
 parser.add_option('-t', '--triggervar', action="store",

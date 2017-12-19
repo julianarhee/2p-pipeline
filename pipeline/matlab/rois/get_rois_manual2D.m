@@ -3,9 +3,9 @@ clc; clear all;
 % 
 %% Set info manually:
 rootdir = '/nas/volume1/2photon/data';
-animalid = 'CE059'; %'JR063';
-session = '20171009_CE059'; %'20171202_JR063';
-roi_id = 'rois001'; %'e4893c';
+animalid = 'JR063'; %'JR063';
+session = '20171202_JR063'; %'20171202_JR063';
+roi_id = 'rois005'; %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -230,7 +230,17 @@ end
 
 %% Clean up tmp file
 
+tmp_rid_dir = fullfile(roi_dir, 'tmp_rids');
+tmp_rid_fn = sprintf('tmp_rid_%s.json', rid_hash);
 
+finished_rid_dir = fullfile(tmp_rid_dir, 'completed');
+if ~exist(finished_rid_dir)
+    mkdir(finished_rid_dir)
+end
+
+if exist(fullfile(tmp_rid_dir, tmp_rid_fn), 'file')
+    movefile(fullfile(tmp_rid_dir, tmp_rid_fn), fullfile(finished_rid_dir, tmp_rid_fn));
+end
 
 %%
 % 
