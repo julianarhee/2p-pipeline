@@ -82,8 +82,7 @@ def create_rid(options):
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     roi_type = options.roi_type
-    auto = options.auto
-
+    auto = options.default
 
     # cNMF-specific opts:
     nmf_deconv = options.nmf_deconv
@@ -260,7 +259,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, che
 
     PARAMS['tiff_sourcedir'] = tiff_sourcedir
 
-    if mmap_dir is None:
+    if mmap_dir is None and 'caiman' in roi_type:
         tiffparent = os.path.split(tiff_sourcedir)[0]
         mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
         if len(mmap_dirs) == 1:
