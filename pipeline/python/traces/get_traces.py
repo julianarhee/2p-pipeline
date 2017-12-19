@@ -11,62 +11,111 @@ import h5py
 import json
 import re
 import datetime
+import optparse
+import pprint
 import tifffile as tf
 import pylab as pl
 import numpy as np
-import pprint
-pp = pprint.PrettyPrinter(indent=4)
-
-
-
 from pipeline.python.utils import natural_keys, hash_file
 
-
+pp = pprint.PrettyPrinter(indent=4)
 
 #%%
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063'
-session = '20171202_JR063'
-acquisition = 'FOV1_zoom1x_volume'
-run = 'scenes'
-slurm = False
 
-trace_id = 'traces001'
-auto = False
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'CE059' #'JR063'
+#session = '20171009_CE059' #'20171202_JR063'
+#acquisition = 'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+#run = 'gratings_phasemod' #'scenes'
+#slurm = False
+#
+#trace_id = 'traces001'
+#auto = False
+#
+#if slurm is True:
+#    if 'coxfs01' not in rootdir:
+#        rootdir = '/n/coxfs01/2p-data'
+
+#%%
+
+parser = optparse.OptionParser()
+
+# PATH opts:
+parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+
+(options, args) = parser.parse_args()
+
+# Set USER INPUT options:
+rootdir = options.rootdir
+animalid = options.animalid
+session = options.session
+acquisition = options.acquisition
+run = options.run
+
+trace_id = options.trace_id
+slurm = options.slurm
+
+auto = options.default
 
 if slurm is True:
     if 'coxfs01' not in rootdir:
         rootdir = '/n/coxfs01/2p-data'
 
 #%%
+# =============================================================================
+# Load specified trace-ID parameter set:
+# =============================================================================
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 trace_dir = os.path.join(run_dir, 'traces')
 if not os.path.exists(trace_dir):
     os.makedirs(trace_dir)
-
 try:
-    print "Loading params for TRACE SET, hash %s" % tid_hash
-    tmp_tid_path = os.path.join(trace_dir, 'tmp_tids', 'tmp_tid_%s.json' % tid_hash)
-    with open(tmp_tid_path, 'r') as f:
-        TID = json.load(f)
-except Exception as E:
-    print "---------------------------------------------------------------"
-    print "tmp tid file not found, with error:"
-    print E
+    print "Loading params for TRACE SET, id %s" % trace_id
+    tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
+    with open(tracedict_path, 'r') as f:
+        tracedict = json.load(f)
+    TID = tracedict[trace_id]
+    pp.pprint(TID)
+except Exception as e:
+    print "No TRACE SET entry exists for specified id: %s" % trace_id
+    print e
     try:
-        print "Loading params for TRACE SET, id %s" % trace_id
-        tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
-        with open(tracedict_path, 'r') as f:
-            tracedict = json.load(f)
-        TID = tracedict[trace_id]
-    except Exception as e:
-        print "No TRACE SET entry exists for specified id: %s" % trace_id
-        print "ABORTING with error:"
+        print "Checking tmp trace-id dir..."
+        tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+        if auto is False:
+            while True:
+                tmpfns = [t for t in os.listdir(tmp_tid_dir) if t.endswith('json')]
+                for tidx, tidfn in enumerate(tmpfns):
+                    print tidx, tidfn
+                userchoice = raw_input("Select IDX of found tmp trace-id to view: ")
+                with open(os.path.join(tmp_tid_dir, tmpfns[int(userchoice)]), 'r') as f:
+                    tmpTID = json.load(f)
+                print "Showing tid: %s, %s" % (tmpTID['trace_id'], tmpTID['trace_hash'])
+                pp.pprint(tmpTID)
+                userconfirm = raw_input('Press <Y> to use this trace ID, or <q> to abort: ')
+                if userconfirm == 'Y':
+                    TID = tmpTID
+                    break
+                elif userconfirm == 'q':
+                    break
+    except Exception as E:
+        print "---------------------------------------------------------------"
+        print "No tmp trace-ids found either... ABORTING with error:"
         print e
         print "---------------------------------------------------------------"
 
-#%%
 
+#%%
+# =============================================================================
+# Get meta info for current run and source tiffs using trace-ID params:
+# =============================================================================
 tiff_dir = TID['SRC']
 roi_name = TID['PARAMS']['roi_id']
 tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
@@ -83,11 +132,12 @@ nvolumes = runinfo['nvolumes']
 ntiffs = runinfo['ntiffs']
 
 #%%
-
-# Load trace id:
+# =============================================================================
+# Create mask array and save mask images for quick reference:
+# =============================================================================
 
 traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-trace_outdir = os.path.join(traceid_dir, 'extracted')
+trace_outdir = os.path.join(traceid_dir, 'files')
 if not os.path.exists(trace_outdir):
     os.makedirs(trace_outdir)
 
@@ -100,7 +150,7 @@ trace_fn_base = 'rawtraces_%s' % TID['trace_hash']
 
 #%%
 # =============================================================================
-# Create mask array and save mask images:
+# Create mask array and save mask images for each slice specified in ROI set:
 # =============================================================================
 
 # Load ROI set specified in Traces param set:
@@ -109,9 +159,10 @@ roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
 with open(roidict_path, 'r') as f:
     roidict = json.load(f)
 RID = roidict[TID['PARAMS']['roi_id']]
+rid_hash = RID['rid_hash']
 
 # Load mask file:
-mask_path = os.path.join(RID['DST'], 'masks', 'masks.h5')
+mask_path = os.path.join(RID['DST'], 'masks', 'masks_%s.h5' % rid_hash)
 f = h5py.File(mask_path, "r")
 
 roi_slices = sorted([str(s) for s in f['/masks'].keys()], key=natural_keys)
