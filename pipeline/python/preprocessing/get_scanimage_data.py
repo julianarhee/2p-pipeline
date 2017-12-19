@@ -41,8 +41,11 @@ def set_default(obj):
 
 def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_info_basename, scanimage_metadata):
     
-    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    rawtiff_dir = os.path.join(acquisition_dir, run, rawdir)
+    session_dir = os.path.join(rootdir, animalid, session)
+    acquisition_dir = os.path.join(session_dir, acquisition)
+    run_dir = os.path.join(acquisition_dir, run)
+
+    rawtiff_dir = os.path.join(run_dir, rawdir)
     rawtiffs = sorted([t for t in os.listdir(rawtiff_dir) if t.endswith('.tif')], key=natural_keys)
     
     runmeta = dict()
@@ -68,12 +71,12 @@ def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_inf
     runmeta['acquisition_base_dir'] = acquisition_dir
     runmeta['params_path'] = os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run)
     runmeta['raw_simeta_path'] = os.path.join(acquisition_dir, run, rawdir, 'SI_%s.json' % run) #raw_simeta_mat)
-    runmeta['roi_dir'] = os.path.join(acquisition_dir, 'ROIs')
-    runmeta['trace_dir'] = os.path.join(acquisition_dir, 'Traces')
+    runmeta['roi_dir'] = os.path.join(session_dir, 'ROIs')
+    runmeta['trace_dir'] = os.path.join(run_dir, 'Traces')
 
 #    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
 #        json.dump(runmeta, fp, indent=4)
-    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+    runmeta_path = os.path.join(run_dir, '%s.json' % run_info_basename)
     write_dict_to_json(runmeta, runmeta_path)
 
     return runmeta
