@@ -49,7 +49,11 @@ def extract_options(options):
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
+    parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="File NUM of tiff to use as reference, if applicable [default: 1]")
+    parser.add_option('-c', '--ref-channel', action='store', dest='ref_channel', default=1, help="Channel NUM of tiff to use as reference, if applicable [default: 1]")
+    parser.add_option('-z', '--slices', action='store', dest='slices', default='', help="Comma-separated list of slice numbers (1-indexed) for ROI extraction [default: all slices in run tiffs]")
 
+    parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
 
     parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='method deconvolution if using cNMF [default: oasis]')
     parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='half size of neurons if using cNMF [default: 8]')
@@ -82,6 +86,21 @@ def create_rid(options):
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     roi_type = options.roi_type
+    ref_file = int(options.ref_file)
+    ref_channel = int(options.ref_channel)
+    slices_str = options.slices
+    if len(slices_str)==0:
+        # Use all slices
+        runmeta_path = os.path.join(rootdir, animalid, session, acquisition, run, '%s.json' % run)
+        with open(runmeta_path, 'r') as f:
+            runinfo = json.load(f)
+        slices = runinfo['slices']
+    else:
+        slices = slices_str.split(',')
+        slices = [int(s) for s in slices]
+
+    zproj_type = options.zproj_type
+
     auto = options.default
 
     # cNMF-specific opts:
@@ -100,7 +119,8 @@ def create_rid(options):
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
                                acquisition=acquisition, run=run,
-                               tiffsource=tiffsource, sourcetype=sourcetype, auto=auto)
+                               tiffsource=tiffsource, sourcetype=sourcetype,
+                               ref=ref_file, auto=auto)
 
     # Get roi-type specific options:
     if roi_type == 'caiman2D':
@@ -113,7 +133,8 @@ def create_rid(options):
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
-                                         roi_type=roi_type)
+                                         roi_type=roi_type, zproj_type=zproj_type,
+                                         ref_file=ref_file, ref_channel=ref_channel, slices=slices)
 
     # Create roi-params dict with source and roi-options:
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
@@ -242,10 +263,14 @@ def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run=''
     return params
 
 def set_options_manual(rootdir='', animalid='', session='', acquisition='', run='',
-                    roi_type=''):
+                    roi_type='', zproj_type='', ref_file=1, ref_channel=1, slices=[1]):
 
     params = dict()
     params['roi_type'] = roi_type
+    params['zproj_type'] = zproj_type
+    params['ref_file'] = int(ref_file)
+    params['ref_channel'] = int(ref_channel)
+    params['slices'] = slices
 
     return params
 
