@@ -75,6 +75,8 @@ if slurm is True:
 # =============================================================================
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 trace_dir = os.path.join(run_dir, 'traces')
+tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+
 if not os.path.exists(trace_dir):
     os.makedirs(trace_dir)
 try:
@@ -89,7 +91,6 @@ except Exception as e:
     print e
     try:
         print "Checking tmp trace-id dir..."
-        tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
         if auto is False:
             while True:
                 tmpfns = [t for t in os.listdir(tmp_tid_dir) if t.endswith('json')]
@@ -117,6 +118,8 @@ except Exception as e:
 # =============================================================================
 # Get meta info for current run and source tiffs using trace-ID params:
 # =============================================================================
+trace_hash = TID['trace_hash']
+
 tiff_dir = TID['SRC']
 roi_name = TID['PARAMS']['roi_id']
 tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
@@ -402,4 +405,11 @@ os.rename(trace_outfile_path, new_filename)
 print "Finished extracting time course for run %s by roi." % run
 print "Saved ROI TIME COURSE file to:", new_filename
 
+#%% move tmp file:
+tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
+completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
+if not os.path.exists(completed_tid_dir):
+    os.makedirs(completed_tid_dir)
+if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
+    os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
 
