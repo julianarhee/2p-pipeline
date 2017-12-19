@@ -298,12 +298,12 @@ def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
     print "Writing AVERAGED SLICES to:", write_dir
 
     tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
-
+    print tiffs
     filenames = ['File%03d' % int(i+1) for i in range(nfiles)]
-    for fi, fname in enumerate(sorted(filenames, key=natural_keys)):
+    for fi, (tfn, fname) in enumerate(zip(sorted(tiffs, key=natural_keys), sorted(filenames, key=natural_keys))):
         filenum = int(fi + 1)
-        tiff_fns = [t for t in tiffs if fname in t]
-        tfn = tiff_fns[0]
+        #tiff_fns = [t for t in tiffs if fname in t]
+        #tfn = tiff_fns[0]
         currtiff = tf.imread(os.path.join(source_dir, tfn))
         if currtiff.shape[0] == nchannels*nslices*nvolumes:
             for ch in range(nchannels):

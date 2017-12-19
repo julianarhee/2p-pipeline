@@ -251,7 +251,7 @@ def main(options):
     # Create average slices for viewing:
     with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
         currpid = json.load(f)
-    curr_process_id = [p for p in currpid.keys() if p['pid_hash'] == pid_hash][0]
+    curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
     source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
     runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
     if os.path.isdir(source_dir):

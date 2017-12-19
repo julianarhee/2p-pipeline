@@ -105,6 +105,9 @@ def do_bidir_correction(options):
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
+    print "PID specified:", pid_hash
+    print os.listdir(tmp_pid_dir)
+
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
 
@@ -118,7 +121,7 @@ def do_bidir_correction(options):
             bidir_opts.extend(['--bidi'])
         print bidir_opts
         PID = create_pid(bidir_opts)
-        pid_hash = PID['tmp_hashid']
+        pid_hash = PID['pid_hash']
         print "New PID:", pid_hash
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     else:
@@ -228,7 +231,7 @@ def main(options):
     # Create average slices for viewing:
     with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
         currpid = json.load(f)
-    curr_process_id = [p for p in currpid.keys() if p['pid_hash'] == pid_hash][0]
+    curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
     source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
     runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
     if os.path.isdir(source_dir):
