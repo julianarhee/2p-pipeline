@@ -86,7 +86,7 @@ def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
     return fn_base
 
 
-def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
+def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, ref=1, auto=False):
 
     tiffpaths = []
 
@@ -117,10 +117,14 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
                     break
 
     if 'processed' in tiffsource:
-        tiffsource_name = [t for t in os.listdir(processed_dir) if tiffsource in t and os.path.isdir(os.path.join(processed_dir, t))][0]
+        process_id_dirs = [t for t in os.listdir(processed_dir) if tiffsource in t and os.path.isdir(os.path.join(processed_dir, t))]
+        assert len(process_id_dirs) == 1, "More than 1 specified processed dir found!"
+        tiffsource_name = process_id_dirs[0]
         tiff_parent = os.path.join(processed_dir, tiffsource_name)
     else:
-        tiffsource_name = [t for t in os.listdir(rundir) if tiffsource in t and os.path.isdir(os.path.join(rundir, t))][0]
+        raw_dirs = [t for t in os.listdir(rundir) if tiffsource in t and os.path.isdir(os.path.join(rundir, t))]
+        assert len(raw_dirs) == 1, "More than 1 RAW tiff dir found..."
+        tiffsource_name = raw_dirs[0]
         tiff_parent = os.path.join(rundir, tiffsource_name)
 
     print "Using tiffsource:", tiffsource_name
@@ -142,11 +146,12 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
                 break
 
     if 'processed' in tiffsource_name:
-        sourcetype_name = [s for s in os.listdir(tiff_parent) if sourcetype in s and os.path.isdir(os.path.join(tiff_parent, s))][0]
+        source_type_dirs = [s for s in os.listdir(tiff_parent) if sourcetype in s and os.path.isdir(os.path.join(tiff_parent, s)) and len(s.split('_'))<=2]
+        assert len(source_type_dirs) == 1, "More than 1 specified source [%s] found..." % sourcetype
+        sourcetype_name = source_type_dirs[0]
         tiff_path = os.path.join(tiff_parent, sourcetype_name)
     else:
         tiff_path = tiff_parent
-
 
     print "Looking for tiffs in tiff_path: %s" % tiff_path
     tiff_fns = [t for t in os.listdir(tiff_path) if t.endswith('tif')]
@@ -390,4 +395,4 @@ def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
-    sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)
+    #sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)
