@@ -71,7 +71,7 @@ def create_tid(options):
     sourcetype = options.sourcetype
     roi_name = options.roi_name
 
-    auto = options.auto
+    auto = options.default
 
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
@@ -233,7 +233,7 @@ def update_tid_records(TID, run_dir):
     print "************************"
     print "Updating JSONS..."
     print "************************"
-
+    run = os.path.split(run_dir)[1]
     tracedict_filepath = os.path.join(run_dir, 'traces', 'traceids_%s.json' % run)
 
     if os.path.exists(tracedict_filepath):
@@ -251,7 +251,19 @@ def update_tid_records(TID, run_dir):
     print "Trace Set Info UPDATED."
 
 
+def main(options):
 
+    tid = create_tid(options)
+
+    print "****************************************************************"
+    print "Created TRACE ID."
+    print "----------------------------------------------------------------"
+    pp.pprint(tid)
+    print "****************************************************************"
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
 
 
 

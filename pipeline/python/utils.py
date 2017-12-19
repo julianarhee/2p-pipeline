@@ -86,7 +86,7 @@ def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
     return fn_base
 
 
-def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, ref=1, auto=False):
+def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
 
     tiffpaths = []
 
@@ -135,8 +135,8 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
                 sourcetype = 'raw'
                 break
             print "Specified PROCESSED tiff source, but not process type."
-            curr_processed_dir = os.path.join(rundir, 'processed', tiffsource)
-            processed_typlist = sorted([t for t in os.listdir(curr_processed_dir) if os.path.isdir(os.path.join(curr_processed_dir, t))], key=natural_keys)
+            process_id_dir = os.path.join(rundir, 'processed', tiffsource)
+            processed_typlist = sorted([t for t in os.listdir(process_id_dir) if os.path.isdir(os.path.join(process_id_dir, t))], key=natural_keys)
             for tidx, tname in enumerate(processed_typlist):
                 print tidx, tname
             sourcetype_idx = int(input('Enter IDX of processed dir to use: '))
