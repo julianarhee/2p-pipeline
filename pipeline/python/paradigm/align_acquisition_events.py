@@ -14,7 +14,8 @@ with the frame indices of the associate .tif file
 
 This output info for the run can then be used as indices into extracted traces.
 '''
-
+import matplotlib
+matplotlib.use('Agg')
 import os
 import json
 import re
@@ -23,6 +24,7 @@ import operator
 import h5py
 import pprint
 import itertools
+import datetime
 import seaborn as sns
 import pylab as pl
 import numpy as np
@@ -76,6 +78,7 @@ parser.add_option('-S', '--session', action='store', dest='session', default='',
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
 parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
 parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
 parser.add_option('-b', '--baseline', action="store",
                   dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
@@ -89,9 +92,9 @@ parser.add_option('--order', action="store_true",
                   dest="same_order", default=False, help="Set if same stimulus order across all files (1 stimorder.txt)")
 parser.add_option('-O', '--stimon', action="store",
                   dest="stim_on_sec", default=0, help="Time (s) stimulus ON.")
-parser.add_option('-t', '--vol', action="store",
+parser.add_option('-v', '--vol', action="store",
                   dest="vols_per_trial", default=0, help="Num volumes per trial. Specifiy if custom_mw=True")
-parser.add_option('-v', '--first', action="store",
+parser.add_option('-V', '--first', action="store",
                   dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
 
 
@@ -117,8 +120,6 @@ same_order = options.same_order #False #True
 
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 paradigm_dir = os.path.join(run_dir, 'paradigm')
-
-outfile = os.path.join(paradigm_dir, 'frames_by_file_.hdf5')
 
 # -------------------------------------------------------------------------
 # Load reference info:
@@ -227,20 +228,22 @@ except Exception as e:
     print "Problem calcuating nframes for trial epochs..."
     print e
 
+nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
+nframes_per_file = nslices_full * nvolumes
+
 #%%
 
-# =================================================================================
+# =============================================================================
 # Get frame indices for specified trial epochs:
-# =================================================================================
+# =============================================================================
+outfile = os.path.join(paradigm_dir, 'frames.hdf5')
 
 # 1. Create HDF5 file to store ALL trials in run with stimulus info and frame info:
 run_grp = h5py.File(outfile, 'w')
 run_grp.attrs['framerate'] = framerate
 run_grp.attrs['volumerate'] = volumerate
 run_grp.attrs['baseline_dur'] = iti_pre
-
-nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
-nframes_per_file = nslices_full * nvolumes
+#run_grp.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 #%
 # 1. Get stimulus preseentation order for each TIFF found:
@@ -335,20 +338,19 @@ for tiffnum in range(ntiffs):
 
 run_grp.close()
 
-# Rename FRAME file with hash:
+#%% Rename FRAME file with hash:
 frame_file_hashid = hash_file(outfile)
-file_frames_outfilename = os.path.splitext(outfile)[0] + frame_file_hashid + os.path.splitext(outfile)[1]
-os.rename(outfile, file_frames_outfilename)
+framestruct_path = '%s_%s.hdf5' % (os.path.splitext(outfile)[0], frame_file_hashid)
+os.rename(outfile, framestruct_path)
 
 print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
-print "Saved frame file to:", file_frames_outfilename
+print "Saved frame file to:", framestruct_path
 
 
 #%%
-
-# =================================================================================
+# =============================================================================
 # Get VOLUME indices to assign frame numbers to volumes:
-# =================================================================================
+# =============================================================================
 vol_idxs_file = np.empty((nvolumes*nslices_full,))
 vcounter = 0
 for v in range(nvolumes):
@@ -363,9 +365,9 @@ vol_idxs = np.array(sorted(np.concatenate(vol_idxs).ravel()))
 
 
 #%%
-# =================================================================================
+# =============================================================================
 # Load TRACE ID:
-# =================================================================================
+# =============================================================================
 
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 trace_basedir = os.path.join(run_dir, 'traces')
@@ -381,12 +383,12 @@ except Exception as e:
     print "Aborting with error:"
     print e
 
-#%%
-# =================================================================================
-# Load timecourses for specified trace set:
-# =================================================================================
-
 traceid_dir = TID['DST']
+
+#%%
+# =============================================================================
+# Load timecourses for specified trace set:
+# =============================================================================
 print "================================================="
 print "Loading time courses from trace set: %s"%  trace_id
 print "================================================="
@@ -417,10 +419,16 @@ except Exception as e:
 
 #%%
 
-framestruct = h5py.File(file_frames_outfilename, 'r')
+# TODO: fix this so that specific frame dict is loaded...
+framestruct_fn = [f for f in os.listdir(paradigm_dir) if 'frames_' in f and f.endswith('hdf5')][0]
+
+framestruct_path = os.path.join(paradigm_dir, framestruct_fn)
+framestruct = h5py.File(framestruct_path, 'r')
 
 #%%
-
+# =============================================================================
+# Get all unique stimulus configurations:
+# =============================================================================
 trial_list = sorted(trialdict.keys(), key=natural_keys)
 #stimids = sorted(list(set([trialdict[t]['stimuli']['stimulus'] for t in trial_list])), key=natural_keys)
 stimtype = trialdict[trial_list[0]]['stimuli']['type']
@@ -471,32 +479,23 @@ if stimtype=='image':
 
 
 #%%
-sliceids = dict((curr_slices[s], s) for s in range(len(curr_slices)))
 
-
+# Create OUTFILE to save each ROI's time course for each trial, sorted by stimulus config
 roi_stimdict_path = os.path.join(traceid_dir, 'rois_by_stim.hdf5')
 stiminfo = h5py.File(roi_stimdict_path, 'w')
 
+#%%
+# =============================================================================
+# Group ROI time-courses for each trial by stimulus config:
+# =============================================================================
 
-#for roi in roi_list[0:5]:
-#    print roi
+sliceids = dict((curr_slices[s], s) for s in range(len(curr_slices)))
 
 for config_idx in range(ncombinations):
-#        curr_pos = transform_combos[config_idx][0]
-#        curr_size = transform_combos[config_idx][1]
-#        curr_rot = transform_combos[config_idx][2]
-#        curr_stim = [k for k in stimhash.keys() if stimhash[k] == transform_combos[config_idx][3]][0]
-#        configname = 'stimconfig%i' % config_idx # int(curr_stim)
-#
-#        curr_trials = [trial for trial in trial_list
-#                       if trialdict[trial]['stimuli']['stimulus'] == curr_stim
-#                        and trialdict[trial]['stimuli']['position'] == [curr_pos[0], curr_pos[1]]
-#                        and trialdict[trial]['stimuli']['rotation'] == curr_rot
-#                        and trialdict[trial]['stimuli']['scale'] == [curr_size[0], curr_size[1]]]
-
 
     configname = 'config%03d' % int(config_idx)
     currconfig = configs[configname]
+    pp.pprint(currconfig)
     curr_trials = [trial for trial in trial_list
                    if all(trialdict[trial]['stimuli'][param] == currconfig[param] for param in currconfig.keys())]
 
@@ -507,6 +506,7 @@ for config_idx in range(ncombinations):
 
     tracemat = []
     for tidx, trial in enumerate(sorted(curr_trials, key=natural_keys)):
+        #print trial
 #            if trial=='trial00160':
 #                continue
         curr_trial_volume_idxs = [vol_idxs[int(i)] for i in framestruct[trial]['frames_in_run']]
@@ -539,40 +539,113 @@ for config_idx in range(ncombinations):
 
 stiminfo.close()
 
+
+#%% 
+# =============================================================================
+# Set plotting params for trial average plots for each ROI:
+# =============================================================================
+if 'grating' in stimtype:
+    sfs = list(set([configs[c]['frequency'] for c in configs.keys()]))
+    oris = list(set([configs[c]['rotation'] for c in configs.keys()]))
+    
+    noris = len(oris)
+    nsfs = len(sfs)
+    
+    nrows = min([noris, nsfs])
+    ncols = (nsfs * noris) / nrows
+
+    subplot_stimlist = []
+    for sf in sorted(sfs):
+        for oi in sorted(oris):
+            match = [k for k in configs.keys() if configs[k]['rotation']==oi and configs[k]['frequency']==sf][0]
+            subplot_stimlist.append(match)
+    #print subplot_stimlist 
+    
+else:
+    nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
+    ncols = len(configs.keys()) / nrows
+    
+    subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[k]['stimulus'])
+    
+# get the tick label font size
+fontsize_pt = 20 #float(plt.rcParams['ytick.labelsize'])
+dpi = 72.27
+spacer = 20
+
+# comput the matrix height in points and inches
+matrix_height_pt = fontsize_pt * nrows * spacer
+matrix_height_in = matrix_height_pt / dpi
+
+# compute the required figure height 
+top_margin = 0.01  # in percentage of the figure height
+bottom_margin = 0.05 # in percentage of the figure height
+figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
+
+
+ylim_min = -0.5
+ylim_max = 2.5
+
 #%%
+roi_stimdict_path = os.path.join(traceid_dir, 'rois_by_stim.hdf5')
+
 stiminfo = h5py.File(roi_stimdict_path, 'r')
-
+ 
 #%%
-
 roi_output_figdir = os.path.join(os.path.split(roi_stimdict_path)[0], 'figures', 'psths')
 if not os.path.exists(roi_output_figdir):
     os.makedirs(roi_output_figdir)
 
 for roi in roi_list:
+    #%%
     print roi
-    fig = pl.figure(figsize=(15,10))
+    if nrows==1:
+        figwidth_multiplier = ncols*1
+    else:
+        figwidth_multiplier = 1
+    
+    fig, axs = pl.subplots(
+	    nrows=nrows, 
+	    ncols=ncols, 
+	    sharex=True,
+	    sharey=True,
+	    figsize=(figure_height*figwidth_multiplier,figure_height), 
+	    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
 
+    row=0
+    col=0
+    plotidx = 0
 
     nframes_on = framestruct['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
-    pidx = 1
-    #roi = 'roi00003'
-    for config in stiminfo.keys():
+    stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+    iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+    tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
+    #roi = 'roi00003'
+    for config in subplot_stimlist:
+        
+        if col==(ncols) and nrows>1:
+            row += 1
+            col = 0
+        if len(axs.shape)>1:
+            ax_curr = axs[row, col] #, col]
+        else:
+            ax_curr = axs[col]
+                
         stim_trials = sorted([t for t in stiminfo[config][roi].keys()], key=natural_keys)
         nvols = max([stiminfo[config][roi][t].shape[0] for t in stim_trials])
         ntrials = len(stim_trials)
         trialmat = np.ones((ntrials, nvols)) * np.nan
         dfmat = []
-
+        
         first_on = int(min([[i for i in stiminfo[config][roi][t].attrs['frame_idxs']].index(stiminfo[config][roi][t].attrs['frame_on']) for t in stim_trials]))
+        tsecs = (np.arange(0, nvols) - first_on ) / volumerate
 
-        ax = fig.add_subplot(4,5,pidx)
         if 'grating' in stimtype:
-            stimname = 'Ori %.2d, SF: %.2d' % (configs[config]['rotation'], configs[config]['frequency'])
+            stimname = 'Ori %.0f, SF: %.1f' % (configs[config]['rotation'], configs[config]['frequency'])
         else:
             stimname = configs[config]['stimulus']
 
-        ax.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+        ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
 
         for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
             trace = stiminfo[config][roi][trial]
@@ -588,20 +661,23 @@ for roi in roi_list:
             baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
             df = (trialmat[tidx,:] - baseline) / baseline
 
-            ax.plot(df, 'k', alpha=0.2, linewidth=0.5)
-            ax.plot([first_on, first_on+nframes_on], [0, 0], 'r', linewidth=1, alpha=0.1)
+            ax_curr.plot(tsecs, df, 'k', alpha=0.2, linewidth=0.5)
+            ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
 
             dfmat.append(df)
 
-        ax.plot(np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
-
-
-        #stim_frames = [traces.attrs['frame_on']
-        #pl.plot()
-        pidx += 1
-
+        ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
+        
+        ax_curr.set_ylim([ylim_min, ylim_max])
+        ax_curr.set(xticks=tpoints)
+        ax_curr.tick_params(axis='x', which='both',length=0)
+        
+        col = col + 1
+        plotidx += 1
+    
     sns.despine(offset=2, trim=True)
 
+    #%%
     pl.savefig(os.path.join(roi_output_figdir, '%s.png' % roi))
     pl.close()
 

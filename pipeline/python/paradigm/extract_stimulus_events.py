@@ -7,7 +7,8 @@ Input:
     - Assumes .mwk files for behavior events and csv-saved .txt file that samples the acquisition rig at 1kHz
 
 Steps:
-1.  It creates a parsed .json for EACH behavior file (.mwk) that contains relevant info for each trial in that file.
+    
+1.  Creates a parsed .json for EACH behavior file (.mwk) that contains relevant info for each trial in that file.
     - function uses process_mw_files.py
     - trial_<behavior_file_name>.json files are created with process_mw_files.py
     - output files (1 for multiple .tifs, or 1 for each .tif) are saved to: <run_dir>/paradigm/files/
@@ -39,7 +40,7 @@ Steps:
                     }
 
 3. Output is a .json file that contains trial details across the entire run:
-    - Saved to:  <run_dir>/paradigm/trials_by_file_<trialdict_hash>.json
+    - Saved to:  <run_dir>/paradigm/trials_<trialdict_hash>.json
     - The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['aux_file_idx']
 
 Notes:
@@ -332,7 +333,7 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
 
 run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
-with open(os.path.join(outdir, 'trials_by_file_%s.json' % run_trial_hash), 'w') as f:
+with open(os.path.join(outdir, 'trials_%s.json' % run_trial_hash), 'w') as f:
     json.dump(RUN, f, sort_keys=True, indent=4)
 
 
