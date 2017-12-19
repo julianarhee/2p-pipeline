@@ -5,7 +5,8 @@ Created on Tue Dec 12 11:57:24 2017
 
 @author: julianarhee
 """
-
+import matplotlib
+matplotlib.use('Agg')
 import os
 import h5py
 import json
