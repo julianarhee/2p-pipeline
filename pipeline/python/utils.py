@@ -342,7 +342,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     print "Done organizing tiffs."
 
 
-def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
+def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
     '''
     source_dir (str) : path to folder containing tiffs to deinterleave and z-project
     runinfo_path (str) : path to .json contaning run meta info
@@ -359,7 +359,7 @@ def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
 
     # Default write-dir should be source_dir_<projectiontype>_slices
     if write_dir is None:
-        write_dir = source_dir + '_%s_slices' % zproj
+        write_dir = source_dir + '_%s_slices' % zproj_type
     if not os.path.exists(write_dir):
         os.makedirs(write_dir)
     print "Writing AVERAGED SLICES to:", write_dir
@@ -379,17 +379,17 @@ def zproj_tseries(source_dir, runinfo_path, zproj='mean', write_dir=None):
                 for sl in range(nslices):
                     slicenum = int(sl+1)
                     sl_tiff = ch_tiff[sl::nslices]
-                    if zproj == 'mean' or zproj == 'average':
+                    if zproj_type == 'mean' or zproj_type == 'average':
                         zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
-                    elif zproj == 'std':
+                    elif zproj_type == 'std':
                         zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
                     curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
-                    tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj, curr_slice_fn)), zprojslice)
+                    tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj_type, curr_slice_fn)), zprojslice)
 
                     # Save visible too:
                     byteimg = img_as_ubyte(zprojslice)
                     zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
-                    tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj, curr_slice_fn)), zproj_vis)
+                    tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
 
                     print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
 

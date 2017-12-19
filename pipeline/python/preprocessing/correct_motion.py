@@ -51,7 +51,7 @@ def extract_options(options):
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
 
-    parser.add_option('-Z', '--zproj-type', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
+    parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
     (options, args) = parser.parse_args(options) 
 
@@ -255,7 +255,7 @@ def main(options):
     source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
     runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
     if os.path.isdir(source_dir):
-        zproj_tseries(source_dir, runmeta_fn, zproj=options.zproj_type)
+        zproj_tseries(source_dir, runmeta_fn, zproj_type=options.zproj_type)
     print "Finished creating ZPROJ slice images from motion-corrected tiffs."
  
 if __name__ == '__main__':

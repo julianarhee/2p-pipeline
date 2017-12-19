@@ -46,7 +46,7 @@ def extract_options(options):
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
 
-    parser.add_option('-Z', '--zproj-type', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
+    parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
     (options, args) = parser.parse_args(options) 
     
@@ -235,7 +235,7 @@ def main(options):
     source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
     runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
     if os.path.isdir(source_dir):
-        zproj_tseries(source_dir, runmeta_fn, zproj=options.zproj_type)
+        zproj_tseries(source_dir, runmeta_fn, zproj_type=options.zproj_type)
     print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
  
 if __name__ == '__main__':

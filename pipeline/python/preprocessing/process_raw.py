@@ -62,7 +62,7 @@ def process_pid(options):
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--zproject', action='store_true', dest='get_zproj', default='store_false', help="Set flag to create z-projection slices for processed tiffs.")
-    parser.add_option('-Z', '--zproj-type', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
+    parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
     tiffsource = 'raw'
 
@@ -208,7 +208,7 @@ def process_pid(options):
         source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
         if os.path.isdir(source_dir):
-            zproj_tseries(source_dir, runmeta_fn, zproj=zproj_type)
+            zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
         print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
      
 
@@ -236,7 +236,7 @@ def process_pid(options):
         source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
         if os.path.isdir(source_dir):
-            zproj_tseries(source_dir, runmeta_fn, zproj=zproj_type)
+            zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
         print "PID %s -- Finished creating ZPROJ slice images from motion-corrected tiffs." % pid_hash
 
  
