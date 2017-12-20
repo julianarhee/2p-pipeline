@@ -98,9 +98,9 @@ parser.add_option('-V', '--first', action="store",
                   dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
 
 parser.add_option('-y', '--ylim_min', action="store",
-                  dest="ylim_min", default=-1.0, help="min lim for Y axis, df/f plots [default: -1.0])
+                  dest="ylim_min", default=-1.0, help="min lim for Y axis, df/f plots [default: -1.0]")
 parser.add_option('-Y', '--ylim_max', action="store",
-                  dest="ylim_max", default=1.0, help="max lim for Y axis, df/f plots [default: 1.0])
+                  dest="ylim_max", default=1.0, help="max lim for Y axis, df/f plots [default: 1.0]")
 
 (options, args) = parser.parse_args()
 
@@ -119,8 +119,8 @@ iti_pre = float(options.iti_pre)
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
 
-ylim_min = options.ylim_min #-1.0
-ylim_max = options.ylim_max #3.0
+ylim_min = float(options.ylim_min) #-1.0
+ylim_max = float(options.ylim_max) #3.0
 
 #%%
 
