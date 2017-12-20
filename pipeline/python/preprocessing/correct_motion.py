@@ -114,11 +114,13 @@ def do_motion(options):
     # Set paths:
     # -------------------------------------------------------------
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    assert os.path.exists(acquisition_dir), "Acquisition dir %s not found. Check inputs." % acquisition_dir
 
     tmp_pid_dir = os.path.join(acquisition_dir, run, 'processed', 'tmp_pids')
     if not os.path.exists(tmp_pid_dir):
         os.makedirs(tmp_pid_dir)
-
+    
+    tmp_pid_fns = [j for j in os.listdir(tmp_pid_dir) if pid_hash in j]
     if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
         # NO VALID PID, create default with input opts:
         print "Creating default PID with specified MCORRECTION input opts:"
