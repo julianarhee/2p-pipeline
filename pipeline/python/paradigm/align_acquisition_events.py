@@ -97,6 +97,10 @@ parser.add_option('-v', '--vol', action="store",
 parser.add_option('-V', '--first', action="store",
                   dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
 
+parser.add_option('-y', '--ylim_min', action="store",
+                  dest="ylim_min", default=-1.0, help="min lim for Y axis, df/f plots [default: -1.0])
+parser.add_option('-Y', '--ylim_max', action="store",
+                  dest="ylim_max", default=1.0, help="max lim for Y axis, df/f plots [default: 1.0])
 
 (options, args) = parser.parse_args()
 
@@ -115,6 +119,8 @@ iti_pre = float(options.iti_pre)
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
 
+ylim_min = options.ylim_min #-1.0
+ylim_max = options.ylim_max #3.0
 
 #%%
 
@@ -540,17 +546,17 @@ for config_idx in range(ncombinations):
 stiminfo.close()
 
 
-#%% 
+#%%
 # =============================================================================
 # Set plotting params for trial average plots for each ROI:
 # =============================================================================
 if 'grating' in stimtype:
     sfs = list(set([configs[c]['frequency'] for c in configs.keys()]))
     oris = list(set([configs[c]['rotation'] for c in configs.keys()]))
-    
+
     noris = len(oris)
     nsfs = len(sfs)
-    
+
     nrows = min([noris, nsfs])
     ncols = (nsfs * noris) / nrows
 
@@ -559,14 +565,14 @@ if 'grating' in stimtype:
         for oi in sorted(oris):
             match = [k for k in configs.keys() if configs[k]['rotation']==oi and configs[k]['frequency']==sf][0]
             subplot_stimlist.append(match)
-    #print subplot_stimlist 
-    
+    #print subplot_stimlist
+
 else:
     nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
     ncols = len(configs.keys()) / nrows
-    
-    subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[k]['stimulus'])
-    
+
+    subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[x]['stimulus'])
+
 # get the tick label font size
 fontsize_pt = 20 #float(plt.rcParams['ytick.labelsize'])
 dpi = 72.27
@@ -576,39 +582,37 @@ spacer = 20
 matrix_height_pt = fontsize_pt * nrows * spacer
 matrix_height_in = matrix_height_pt / dpi
 
-# compute the required figure height 
+# compute the required figure height
 top_margin = 0.01  # in percentage of the figure height
 bottom_margin = 0.05 # in percentage of the figure height
 figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
 
 
-ylim_min = -0.5
-ylim_max = 2.5
 
 #%%
 roi_stimdict_path = os.path.join(traceid_dir, 'rois_by_stim.hdf5')
 
 stiminfo = h5py.File(roi_stimdict_path, 'r')
- 
+
 #%%
 roi_output_figdir = os.path.join(os.path.split(roi_stimdict_path)[0], 'figures', 'psths')
 if not os.path.exists(roi_output_figdir):
     os.makedirs(roi_output_figdir)
 
 for roi in roi_list:
-    #%%
+    #%
     print roi
     if nrows==1:
         figwidth_multiplier = ncols*1
     else:
         figwidth_multiplier = 1
-    
+
     fig, axs = pl.subplots(
-	    nrows=nrows, 
-	    ncols=ncols, 
+	    nrows=nrows,
+	    ncols=ncols,
 	    sharex=True,
 	    sharey=True,
-	    figsize=(figure_height*figwidth_multiplier,figure_height), 
+	    figsize=(figure_height*figwidth_multiplier,figure_height),
 	    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
 
     row=0
@@ -622,7 +626,7 @@ for roi in roi_list:
 
     #roi = 'roi00003'
     for config in subplot_stimlist:
-        
+
         if col==(ncols) and nrows>1:
             row += 1
             col = 0
@@ -630,13 +634,13 @@ for roi in roi_list:
             ax_curr = axs[row, col] #, col]
         else:
             ax_curr = axs[col]
-                
+
         stim_trials = sorted([t for t in stiminfo[config][roi].keys()], key=natural_keys)
         nvols = max([stiminfo[config][roi][t].shape[0] for t in stim_trials])
         ntrials = len(stim_trials)
         trialmat = np.ones((ntrials, nvols)) * np.nan
         dfmat = []
-        
+
         first_on = int(min([[i for i in stiminfo[config][roi][t].attrs['frame_idxs']].index(stiminfo[config][roi][t].attrs['frame_on']) for t in stim_trials]))
         tsecs = (np.arange(0, nvols) - first_on ) / volumerate
 
@@ -667,17 +671,17 @@ for roi in roi_list:
             dfmat.append(df)
 
         ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
-        
+
         ax_curr.set_ylim([ylim_min, ylim_max])
         ax_curr.set(xticks=tpoints)
         ax_curr.tick_params(axis='x', which='both',length=0)
-        
+
         col = col + 1
         plotidx += 1
-    
+
     sns.despine(offset=2, trim=True)
 
-    #%%
+    #%
     pl.savefig(os.path.join(roi_output_figdir, '%s.png' % roi))
     pl.close()
 
