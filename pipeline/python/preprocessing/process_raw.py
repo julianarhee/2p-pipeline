@@ -202,6 +202,8 @@ def process_pid(options):
 
     # Create average slices for viewing:
     if get_zproj is True and execute_bidi is True:
+        print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
+
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
             currpid = json.load(f)
         curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
@@ -230,6 +232,7 @@ def process_pid(options):
 
     # Create average slices for viewing:
     if get_zproj is True and execute_motion is True:
+        print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
             currpid = json.load(f)
         curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]

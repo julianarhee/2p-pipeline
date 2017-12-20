@@ -97,6 +97,9 @@ for curr_acq in session_dict.keys():
         create_new = False
         if individual is True:
             curr_tmp_pid_dir = os.path.join(session_dir, curr_acq, curr_run, 'processed', 'tmp_pids')
+            if not os.path.exists(curr_tmp_pid_dir):
+                session_dict[curr_acq].pop(curr_run, session_dict[curr_acq][curr_run])
+                continue
             found_tmp_pid_fns = [f for f in os.listdir(curr_tmp_pid_dir) if f.endswith('json')]
             if len(found_tmp_pid_fns) == 1:
                 with open(os.path.join(curr_tmp_pid_dir, found_tmp_pid_fns[0]), 'r') as fp:
@@ -113,7 +116,7 @@ for curr_acq in session_dict.keys():
                     if confirm_pidx == 'P':
                         break
             else:
-                print "No tmp PID files found in acq %s, run %s. Creating new..."
+                print "No tmp PID files found in acq %s, run %s. Skipping..."
                 create_new = True
         
         if create_new is True:
