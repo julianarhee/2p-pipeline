@@ -136,7 +136,8 @@ def main(options):
         if status[jobpid] == 0:
             corresponding_pidpath = [p for p in pid_paths if jobpid in p][0]
             pid_fn = os.path.split(corresponding_pidpath)[1]
-            shutil.move(pid_path, os.path.join(finished_dir, pid_fn))
+             
+            shutil.move(corresponding_pidpath, os.path.join(finished_dir, pid_fn))
 
 
 if __name__ == '__main__':
