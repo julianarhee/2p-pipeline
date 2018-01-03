@@ -59,7 +59,7 @@ def extract_options(options):
     parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='half size of neurons if using cNMF [default: 8]')
     parser.add_option('--K', action='store', dest='nmf_K', default=10, help='N expected components per patch [default: 10]')
     parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='Half size of patch if using cNMF [default: 30]')
-    parser.add_option('--overlap', action='store', dest='nmf_stride', default=15, help='Amount of patch overlap if using cNMF [default: 15]')
+    parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='Amount of patch overlap if using cNMF [default: 5]')
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='Order of autoregressive system if using cNMF [default: 2]')
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
@@ -188,7 +188,7 @@ def load_roidict(session_dir):
 
 def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run='',
                     movie_idxs=[], fr=None, signal_channel=1,
-                    gSig=[8,8], rf=30, stride=15, K=10, p=2, gnb=1, merge_thr=0.8,
+                    gSig=[8,8], rf=30, stride=5, K=10, p=2, gnb=1, merge_thr=0.8,
                     init_method='greedy_roi', method_deconv='oasis',
                     rval_thr=0.8, min_SNR=2, decay_time=1.0, use_cnn=False, cnn_thr=0.8,
                     use_average=True, save_movies=True, thr_plot=0.8):
