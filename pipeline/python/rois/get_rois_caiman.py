@@ -247,7 +247,7 @@ def extract_cnmf_rois(options):
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     parser.add_option('-x', '--exclude', action="store",
-                  dest="excluded_files", default='', help="Tiff numbers to exclude (comma-separated)")
+                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
 
     (options, args) = parser.parse_args(options) 
 
@@ -276,14 +276,14 @@ def extract_cnmf_rois(options):
     rid_hash = options.rid_hash
     slurm = options.slurm
     
-    exclude_str = options.excluded_files
+    exclude_str = options.excluded_tiffs
     if len(exclude_str) > 0:
         excluded_fids = exclude_str.split(',')
-        excluded_files = ['File%03d' % int(f) for f in excluded_fids]
+        excluded_tiffs = ['File%03d' % int(f) for f in excluded_fids]
     else:
-        excluded_files = []
+        excluded_tiffs = []
     
-    print "Excluding files:", excluded_files
+    print "Excluding files:", excluded_tiffs
  
     if slurm is True:
         if 'coxfs01' not in rootdir:
@@ -360,8 +360,8 @@ def extract_cnmf_rois(options):
 
     if check_mmap_hash is True:
         print "RID %s -- Checking mmap dir hash..." % rid_hash
-        excluded_files = [m for m in os.listdir(mmap_dir) if not m.endswith('mmap')]
-        mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+        hash_ignore_files = [m for m in os.listdir(mmap_dir) if not m.endswith('mmap')]
+        mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=hash_ignore_files)[0:6]
 
     if mmap_hash not in mmap_dir: 
         mmap_dir_hash =  mmap_dir + '_' + mmap_hash
@@ -391,7 +391,7 @@ def extract_cnmf_rois(options):
     for curr_filename in expected_filenames:
         #%%
         
-        if curr_filename in excluded_files:
+        if curr_filename in excluded_tiffs:
             continue
         
         print "Extracting ROIs:", curr_filename
@@ -438,7 +438,7 @@ def extract_cnmf_rois(options):
             
             # Save CNMF options with has:
             nmfoptions = jsonify_array(cnm.options)
-            nmfoptions['excluded_files'] = excluded_files
+            nmfoptions['excluded_tiffs'] = excluded_tiffs
             nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
             write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
             
