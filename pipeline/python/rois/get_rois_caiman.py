@@ -224,9 +224,6 @@ def extract_cnmf_rois(options):
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
 
-    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon')
-    default_roitype = 'caiman2D'
-
     parser = optparse.OptionParser()
 
     # PATH opts:
