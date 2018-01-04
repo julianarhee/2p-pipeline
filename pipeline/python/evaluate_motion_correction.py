@@ -14,37 +14,24 @@ import pandas as pd
 
 from pipeline.python.utils import natural_keys
 
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063'
-session = '20171128_JR063'
-acquisition = 'FOV2_zoom1x'
-
-run = 'gratings_static'
-
-process_id = 'processed001'
-zproj = 'mean'
-
 #%%
-def main(options):
-    #%%
-    # -------------------------------------------------------------
+def get_source_info(acquisition_dir, run)
     # Set basename for files created containing meta/reference info:
     # -------------------------------------------------------------
-    raw_simeta_basename = 'SI_%s' % run #functional_dir
     run_info_basename = '%s' % run #functional_dir
     pid_info_basename = 'pids_%s' % run
 
-    # -------------------------------------------------------------
     # Set paths:
     # -------------------------------------------------------------
-    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     pidinfo_path = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
     
+    # Load run meta info:
+    # -------------------------------------------------------------
     with open(runmeta_path, 'r') as r:
         runmeta = json.load(r)
     
-    # -------------------------------------------------------------
     # Load PID:
     # -------------------------------------------------------------
     with open(pidinfo_path, 'r') as f:
@@ -63,30 +50,32 @@ def main(options):
     # Get correlation of MEAN image (mean slice across time) to reference:
     ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
     ref_channel = 'Channel%02d' % PID['PARAMS']['motion']['ref_channel']
-    
-    # Get image dims:
-    d1 = runmeta['lines_per_frame']
-    d2 = runmeta['pixels_per_line']
-    d3 = len(runmeta['slices'])
-    T = runmeta['nvolumes']
-     
-    process_dir = PID['DST']
 
-    #%%
-    # Create HDF5 file to save evaluation data:
-    eval_outfile = os.path.join(mc_evaldir, 'mc_metrics.hdf5')
-    metrics = h5py.File(eval_outfile, 'w')
-    metrics.attrs['source'] = mc_sourcedir
-    metrics.attrs['ref_file'] = ref_filename
-    metrics.attrs['ref_channel'] = ref_channel
-    metrics.attrs['dims'] = [d1, d2, d3, T]
-    metrics.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Create dict to pass around to methods
+    info['process_dir'] = PID['DST']
+    info['source_dir'] = mc_sourcedir
+    info['output_dir'] = mc_evaldir
+    info['ref_filename'] = ref_filename
+    info['ref_channel'] = ref_channel
+    info['d1'] = runmeta['lines_per_frame']
+    info['d2'] = runmeta['pixels_per_line']
+    info['d3'] = d3
+    info['T'] = runmeta['nvolumes']
+    info['ntiffs'] = runmeta['ntiffs']
     
-    #%%
-    # -------------------------------------------------------------------------
-    # 1. Check zproj across time for each slice. Plot corrcoefs to reference.
-    # -------------------------------------------------------------------------
-   
+    return info
+
+#%%
+def get_zproj_correlations(info, nstds=2, zproj='mean'):
+    
+    zproj_results = dict()
+    
+    process_dir = info['process_dir']
+    ref_channel = info['ref_channel']
+    ref_filename = info['ref_filename']
+    d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
+    mc_evaldir = info['output_dir']
+
     mean_slice_dirs = [m for m in os.listdir(process_dir) if zproj in m and os.path.isdir(os.path.join(process_dir, m))]
     try:
         assert len(mean_slice_dirs)==1, "No zproj dirs for type %s found." % zproj
@@ -101,14 +90,6 @@ def main(options):
         print e
         print "Aborting."
 
-    if 'zproj_slice' not in metrics.keys():
-        slice_corr_grp = metrics.create_group('zproj_slice')
-        slice_corr_grp.attrs['nslices'] = d3
-        slice_corr_grp.attrs['nfiles'] = len(filenames)
-        slice_corr_grp.attrs['zproj'] = zproj
-    else:
-        slice_corr_grp = metrics['slice_correlations']
-
     try:
         print "Loading REFERENCE file image..."
         ref_slices = sorted([t for t in os.listdir(os.path.join(ref_channel_dir, ref_filename)) if t.endswith('tif')], key=natural_keys)
@@ -119,14 +100,10 @@ def main(options):
             ref_img_tmp = tf.imread(os.path.join(ref_channel_dir, ref_filename, sfn))
             ref_image[:, :, sidx] = ref_img_tmp #np.ravel(ref_img_tmp, order='C')
         
+        zproj_results['files'] = dict((fname, dict()) for fname in sorted(filenames, key=natural_keys))
         for filename in filenames:
             if filename == ref_filename:
                 continue
-            if filename not in slice_corr_grp.keys():
-                file_grp = slice_corr_grp.create_group(filename)
-                file_grp.attrs['source_images'] = os.path.join(ref_channel_dir, filename)
-            else:
-                file_grp = slice_corr_grp[filename]
                 
             file_corrvals = []
             slice_files = sorted([t for t in os.listdir(os.path.join(ref_channel_dir, filename)) if t.endswith('tif')], key=natural_keys)
@@ -135,14 +112,13 @@ def main(options):
                 corr = np.corrcoef(ref_image[:,:,slice_idx].flat, slice_img.flat)
                 file_corrvals.append(corr[0,1])
             file_corrvals = np.array(file_corrvals)
-            
-            slice_corr_vals = file_grp.create_dataset('corrcoefs_by_slice', file_corrvals.shape, file_corrvals.dtype)
-            slice_corr_vals[...] = file_corrvals
-            slice_corr_vals.attrs['nslices'] = len(slice_files)
 
-        
+            zproj_results['files'][filename]['source_images'] = os.path.join(ref_channel_dir, filename)
+            zproj_results['files'][filename]['slice_corrcoefs'] = file_corrvals
+            zproj_results['files'][filename]['nslices'] = len(slice_files)
+            
         # PLOT:  for each file, plot each slice's correlation to reference slice
-        df = pd.DataFrame(dict((k, slice_corr_grp[k]['corrcoefs_by_slice']) for k in slice_corr_grp.keys()))
+        df = pd.DataFrame(dict((k, zproj_results['files'][k]['slice_corrcoefs']) for k in zproj_results['files'].keys()))
         sns.set(style="whitegrid", color_codes=True)
         pl.figure(figsize=(12, 4)); sns.stripplot(data=df, jitter=True, split=True)
         pl.title('%s across time, corrcoef by slice (reference: %s)' % (zproj, ref_filename))
@@ -151,10 +127,9 @@ def main(options):
         pl.close()
         
         # Use some metric to determine while TIFFs might be "bad":
-        nstds = 2
         bad_files = [(df.columns[i], sl) for sl in range(df.values.shape[0]) for i,d in enumerate(df.values[sl,:]) if abs(d-np.mean(df.values[sl,:])) >= np.std(df.values[sl,:])*nstds]
-        slice_corr_vals.attrs['metric'] = '%i std' % nstds
-        slice_corr_vals.attrs['bad_files'] = bad_files
+        zproj_results['metric'] = '%i std' % nstds
+        zproj_results['bad_files'] = bad_files
         
         # Collapse across slices to get a single correlation val for each tiff:
         means_by_file = np.mean(df.values, axis=0)
@@ -171,15 +146,14 @@ def main(options):
         figname = 'corrcoef_%s_across_time_volume.png' % zproj
         pl.savefig(os.path.join(mc_evaldir, figname))
         pl.close()
-        mean_corr_vals = file_grp.create_dataset('mean_corrcoefs', means_by_file.shape, means_by_file.dtype)
-        mean_corr_vals[...] = means_by_file
+        zproj_results['mean_corrcoefs'] = means_by_file
         
         # Re-plot corr to ref by slice, but connect slices:
         pl.figure(figsize=(12,4))
         for sl in range(d3):
-            currslice = [slice_corr_grp[k]['corrcoefs_by_slice'][sl] for k in sorted(slice_corr_grp.keys(), key=natural_keys)]
+            currslice = [zproj_results['files'][k]['slice_corrcoefs'][sl] for k in sorted(zproj_results['files'].keys(), key=natural_keys)]
             pl.plot(currslice, label='slice%02d' % int(sl+1))
-        pl.xticks(range(len(currslice)), [k for k in sorted(slice_corr_grp.keys(), key=natural_keys)])
+        pl.xticks(range(len(currslice)), [k for k in sorted(zproj_results['files'].keys(), key=natural_keys)])
         pl.legend()
         figname = 'corrcoef_%s_across_time2.png' % zproj
         pl.savefig(os.path.join(mc_evaldir, figname))
@@ -190,29 +164,29 @@ def main(options):
         print e
         print "Aborting"
     
-    #%%
-    # -------------------------------------------------------------------------
-    # 2. Within each movie, check frame-to-frame corr. Plot corrvals across time.
-    # -------------------------------------------------------------------------
-    ref_frame = 0
-    if 'within_file' not in metrics.keys():
-        frame_corr_grp = metrics.create_group('within_file')
-        frame_corr_grp.attrs['nslices'] = d3
-        frame_corr_grp.attrs['nframes'] = T
-        frame_corr_grp.attrs['ref_frame'] = ref_frame
-    else:
-        frame_corr_grp = metrics['within_file']
+    return zproj_results
+    
+#%%
+def get_frame_correlations(info, nstds=4, ref_frame=0):
+
+    framecorr_results = dict()
+    
+    mc_sourcedir = info['source_dir']
+    mc_evaldir = info['output_dir']
+    nexpected_tiffs = info['ntiffs']
+    T = info['T']
+    d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
 
     tiff_fns = sorted([t for t in os.listdir(mc_sourcedir) if 'File' in t and t.endswith('tif')], key=natural_keys)
-    assert len(tiff_fns) == runmeta['ntiffs'], "Expected %i tiffs, found %i in dir\n%s" % (runmeta['ntiffs'], len(tiff_fns), mc_sourcedir)
+    assert len(tiff_fns) == runmeta['ntiffs'], "Expected %i tiffs, found %i in dir\n%s" % (nexpected_tiffs, len(tiff_fns), mc_sourcedir)
     tiff_paths = [os.path.join(mc_sourcedir, f) for f in tiff_fns] # if filename in f for filename in filenames]
     #%
     
     t = time.time()
-    nstds = 4
     for fidx,fn in enumerate(sorted(tiff_paths, key=natural_keys)):
         mov = tf.imread(fn)
         curr_filename = filenames[fidx]
+        framecorr_results[curr_filename] = dict()
         print "Loaded %s. Mov size:" % curr_filename, mov.shape      # T*d3, d1, d2 (d1 = lines/fr, d2 = pix/lin)
         mov = np.squeeze(np.reshape(mov, [T, d3, d1, d2], order='C'))  # Reshape so that slices in vol are grouped together
         movR = np.reshape(mov, [T, d1*d2*d3], order='C')
@@ -220,17 +194,13 @@ def main(options):
         fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
         corrcoefs = np.array([df.T[ref_frame].corr(df.T[fr]) for fr in fr_idxs])
         bad_frames = [idx for idx,val in zip(fr_idxs, corrcoefs) if abs(val - np.mean(corrcoefs)) > (np.std(corrcoefs)*nstds)]
-
-        if curr_filename not in frame_corr_grp.keys():
-            frame_corr_file = frame_corr_grp.create_dataset(curr_filename, corrcoefs.shape, corrcoefs.dtype)
-            frame_corr_file[...] = corrcoefs
-            frame_corr_file.attrs['file_source'] = fn
-            frame_corr_file.attrs['dims'] = mov.shape
-            frame_corr_file.attrs['metric'] = '%i stds' % nstds
-            frame_corr_file.attrs['bad_frames'] = bad_frames
-        else:
-            frame_corr_file = frame_corr_grp[curr_filename]
         
+        framecorr_results[curr_filename]['frame_corrcoefs'] = corrcoefs
+        framecorr_results[curr_filename]['file_source'] = fn
+        framecorr_results[curr_filename]['dims'] = mov.shape
+        framecorr_results[curr_filename]['metric'] = '%i stds' % nstds
+        framecorr_results[curr_filename]['bad_frames'] = bad_frames
+                
         pl.figure()
         pl.plot(corrcoefs)
         if len(bad_frames) > 0:
@@ -244,6 +214,113 @@ def main(options):
     elapsed = time.time() - t
     print "Time elapsed:", elapsed
     
+    return framecorr_results
+
+
+#%%
+def main(options):
     #%%
+    rootdir = '/nas/volume1/2photon/data'
+    animalid = 'JR063'
+    session = '20171128_JR063'
+    acquisition = 'FOV2_zoom1x'
+    
+    run = 'gratings_static'
+    
+    process_id = 'processed001'
+    zproj = 'mean'
+    #%%
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.session
+    run = options.run
+    slurm = options.slurm
+    if slurm is True:
+        if 'coxfs' not in rootdir:
+            rootdir = '/n/coxfs01/...'
+            
+    process_id = options.process_id
+    zproj = options.zproj
+    
+    ref_frame = 0
+    
+    #%% Get info about MC to evaluate:
+    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    info = get_source_info(acquisition_dir, run)
+
+    #%% Create HDF5 file to save evaluation data:
+    eval_outfile = os.path.join(info['output_dir'], 'mc_metrics.hdf5')
+    metrics = h5py.File(eval_outfile, 'w')
+    metrics.attrs['source'] = info['source_dir']
+    metrics.attrs['ref_file'] = info['ref_filename']
+    metrics.attrs['ref_channel'] = info['ref_channel']
+    metrics.attrs['dims'] = [info['d1'], info['d2'], info['d3'], info['T']]
+    metrics.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    #%%
+    # -------------------------------------------------------------------------
+    # 1. Check zproj across time for each slice. Plot corrcoefs to reference.
+    # -------------------------------------------------------------------------
+    
+    zproj_results = get_zproj_correlations(info, nstds=nstds, zproj=zproj)
+    
+    if 'zproj_slice' not in metrics.keys():
+        slice_corr_grp = metrics.create_group('zproj_slice')
+        slice_corr_grp.attrs['nslices'] = list(set([zproj_results['files'][k]['nslices'] for k in zproj_results['files'].keys()]))
+        slice_corr_grp.attrs['nfiles'] = len(zproj_results['files'].keys())
+        slice_corr_grp.attrs['zproj'] = zproj
+    else:
+        slice_corr_grp = metrics['slice_correlations']
+    
+    for fn in zproj_results['files'].keys():
+        if filename not in slice_corr_grp.keys():
+            file_grp = slice_corr_grp.create_group(fn)
+            file_grp.attrs['source_images'] = zproj_results['files'][fn]['source_images']
+        else:
+            file_grp = slice_corr_grp[fn]
+        corrvals_for_file = zproj_results['files'][fn]['slice_corrcoefs']
+        slice_corr_vals = file_grp.create_dataset('corrcoefs_by_slice', corrvals_for_file.shape,  corrvals_for_file.dtype)
+        slice_corr_vals[...] = corrvals_for_file
+        slice_corr_vals.attrs['nslices'] =  zproj_results['files'][fn]['nslices']
+        slice_corr_vals.attrs['metric'] = zproj_results['metric']
+        slice_corr_vals.attrs['bad_files'] = zproj_results['bad_files']
+    
+    means_by_file = zproj_results['mean_corrcoefs']
+    mean_corr_vals = file_grp.create_dataset('mean_corrcoefs', means_by_file.shape, means_by_file.dtype)
+    mean_corr_vals[...] = means_by_file
+    
+    #%%
+    # -------------------------------------------------------------------------
+    # 2. Within each movie, check frame-to-frame corr. Plot corrvals across time.
+    # -------------------------------------------------------------------------
+    framecorr_results = get_frame_correlations(info, nstds=4, ref_frame=ref_frame)
+
+    if 'within_file' not in metrics.keys():
+        frame_corr_grp = metrics.create_group('within_file')
+        frame_corr_grp.attrs['nslices'] = info['d3']
+        frame_corr_grp.attrs['nframes'] = info['T']
+        frame_corr_grp.attrs['ref_frame'] = ref_frame
+    else:
+        frame_corr_grp = metrics['within_file']
+    
+    for fn in framecorr_results.keys():
+        if fn not in frame_corr_grp.keys():
+            curr_corrcoefs = framecorr_results[fn]['frame_corrcoefs']
+            frame_corr_file = frame_corr_grp.create_dataset(fn, corrcoefs.shape, corrcoefs.dtype)
+            frame_corr_file[...] = corrcoefs
+            frame_corr_file.attrs['file_source'] = framecorr_results[fn]['file_source']
+            frame_corr_file.attrs['dims'] = framecorr_results[fn]['dims']
+            frame_corr_file.attrs['metric'] = framecorr_results['metric']
+            frame_corr_file.attrs['bad_frames'] = framecorr_results[fn]['bad_frames']
+        else:
+            frame_corr_file = frame_corr_grp[fn]
+    
+    #%%
+    # -------------------------------------------------------------------------
+    # 3. Identify border pixels:
+    # -------------------------------------------------------------------------
+    
+    #%
     metrics.close()
         

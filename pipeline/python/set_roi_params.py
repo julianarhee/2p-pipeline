@@ -61,7 +61,8 @@ def extract_options(options):
     parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='Half size of patch if using cNMF [default: 30]')
     parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='Amount of patch overlap if using cNMF [default: 5]')
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='Order of autoregressive system if using cNMF [default: 2]')
-
+    parser.add_option('--border', action='store', dest='border_pix', default=0, help='N pixels to exclude for border (from motion correcting) [default: 0]')
+    
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
     (options, args) = parser.parse_args(options)
@@ -110,6 +111,7 @@ def create_rid(options):
     nmf_rf = int(options.nmf_rf)
     nmf_stride = int(options.nmf_stride)
     nmf_p = int(options.nmf_p)
+    border_pix = int(options.border_pix)
 
     session_dir = os.path.join(rootdir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
@@ -128,13 +130,22 @@ def create_rid(options):
         movie_idxs = []
         roi_options = set_options_cnmf(rootdir=rootdir, animalid=animalid, session=session,
                                        acquisition=acquisition, run=run,
-                                       movie_idxs=movie_idxs, method_deconv=nmf_deconv, K=nmf_K,
-                                       gSig=nmf_gsig, rf=nmf_rf, stride=nmf_stride, p=nmf_p)
+                                       movie_idxs=movie_idxs,
+                                       method_deconv=nmf_deconv,
+                                       K=nmf_K,
+                                       gSig=nmf_gsig,
+                                       rf=nmf_rf,
+                                       stride=nmf_stride,
+                                       p=nmf_p,
+                                       border_pix=border_pix)
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
-                                         roi_type=roi_type, zproj_type=zproj_type,
-                                         ref_file=ref_file, ref_channel=ref_channel, slices=slices)
+                                         roi_type=roi_type,
+                                         zproj_type=zproj_type,
+                                         ref_file=ref_file,
+                                         ref_channel=ref_channel,
+                                         slices=slices)
 
     # Create roi-params dict with source and roi-options:
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
@@ -191,7 +202,8 @@ def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run=''
                     gSig=[8,8], rf=30, stride=5, K=10, p=2, gnb=1, merge_thr=0.8,
                     init_method='greedy_roi', method_deconv='oasis',
                     rval_thr=0.8, min_SNR=2, decay_time=1.0, use_cnn=False, cnn_thr=0.8,
-                    use_average=True, save_movies=True, thr_plot=0.8):
+                    use_average=True, save_movies=True, thr_plot=0.8,
+                    border_pix=0):
 
     # Load run meta info:
     rundir = os.path.join(rootdir, animalid, session, acquisition, run)
@@ -207,7 +219,8 @@ def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run=''
             'nchannels': runinfo['nchannels'],
             'signal_channel': signal_channel,
             'volumerate': runinfo['volume_rate'],
-            'is_3D': len(runinfo['slices']) > 1
+            'is_3D': len(runinfo['slices']) > 1,
+            'max_shifts': border_pix
             }
 
     # parameters for source extraction and deconvolution

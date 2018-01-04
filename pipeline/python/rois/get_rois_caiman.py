@@ -18,6 +18,7 @@ import tifffile
 import hashlib
 import time
 import pprint
+import glob
 import pylab as pl
 import caiman as cm
 import numpy as np
@@ -158,9 +159,9 @@ def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0
     return fname_new
 
 #%%
-def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
+def memmap_tiff(filepath, outpath, is_3D, border_to_0, basename='Yr'):
     
-    border_to_0 = 0
+    #border_to_0 = 0
         
     idx_xy = None
     
@@ -195,7 +196,7 @@ def memmap_tiff(filepath, outpath, is_3D, basename='Yr'):
 
 
 #%% MEMORY-MAPPING (plus make non-negative)
-def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D):
+def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D, border_pix=0):
     expected_filenames = [os.path.splitext(os.path.split(tpath)[1])[0].split('_')[-1] for tpath in tiffpaths]
     if os.path.isdir(mmap_dir):
         tmp_mmap_fns = sorted([m for m in os.listdir(mmap_dir) if m.endswith('mmap')], key=natural_keys)
@@ -214,7 +215,7 @@ def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D):
     
     if len(tiffs_to_mmap) > 0:
         output = mp.Queue()
-        processes = [mp.Process(target=memmap_tiff, args=(str(tpath), mmap_dir, is_3D,)) for tpath in tiffs_to_mmap]
+        processes = [mp.Process(target=memmap_tiff, args=(str(tpath), mmap_dir, is_3D, border_pix,)) for tpath in tiffs_to_mmap]
         for p in processes:
             p.start()
         for p in processes:
@@ -342,6 +343,7 @@ def extract_cnmf_rois(options):
     signal_channel = params['info']['signal_channel']
     volumerate = params['info']['volumerate']
     is_3D = params['info']['is_3D']
+    border_pix = params['info']['max_shifts']
     frate = params['eval']['final_frate']          # imaging rate in frames per second
     movie_files = params['display']['movie_files']
 
@@ -357,7 +359,7 @@ def extract_cnmf_rois(options):
     for t in tiffpaths:
         print t
     mmap_dir = RID['PARAMS']['mmap_source']
-    expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
+    expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D, border_pix=border_pix)
 
     #%% 
     # Update mmap dir with hashed mmap files, update RID:
@@ -440,7 +442,7 @@ def extract_cnmf_rois(options):
                         gnb=params['extraction']['gnb'],
                         low_rank_background=params['extraction']['low_rank_background'],
                         method_deconvolution=params['extraction']['method_deconv'],
-                        border_pix=0)                #deconv_flag = True) 
+                        border_pix=params['info']['max_shifts'])                #deconv_flag = True) 
         
         # adjust opts:
         cnm.options['temporal_params']['memory_efficient'] = True
@@ -591,7 +593,8 @@ def extract_cnmf_rois(options):
                         method_deconvolution=params['extraction']['method_deconv'],
                         Ain=A_tot,
                         Cin=C_tot,
-                        f_in=f_tot)
+                        f_in=f_tot,
+                        border_pix=params['info']['max_shifts'])
         # adjust opts:
         cnm.options['temporal_params']['memory_efficient'] = True
         cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
@@ -752,6 +755,12 @@ def extract_cnmf_rois(options):
     print "Each iteration lasted:"
     pp.pprint(durations)
     print "-------------------------------------------------------------------"
+    
+    #% STOP CLUSTER and clean up log files
+    cm.stop_server(dview=dview)
+    log_files = glob.glob('*_LOG_*')
+    for log_file in log_files:
+        os.remove(log_file)
     
     return nmfopts_hash, rid_hash
 
