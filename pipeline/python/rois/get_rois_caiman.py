@@ -16,6 +16,8 @@ import shutil
 import scipy
 import tifffile
 import hashlib
+import time
+import pprint
 import pylab as pl
 import caiman as cm
 import numpy as np
@@ -31,13 +33,20 @@ from caiman.source_extraction.cnmf.utilities import extract_DF_F
 from pipeline.python.set_roi_params import create_rid, update_roi_records # get_tiff_paths, set_params, initialize_rid, update_roi_records
 from pipeline.python.utils import write_dict_to_json, jsonify_array
 
+pp = pprint.PrettyPrinter(indent=4)
+
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
-
+def timer(start,end):
+    hours, rem = divmod(end-start, 3600)
+    minutes, seconds = divmod(rem, 60)
+    formatted_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
+    return formatted_time
+   
 #%%
 
 def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0, idx_xy=None,
@@ -260,7 +269,7 @@ def extract_cnmf_rois(options):
     #tiffsource = 'processed001'
     #sourcetype = 'mcorrected'
     #rid_hash = 'fa5f0f'
-    #
+    
     # Set USER INPUT options:
     rootdir = options.rootdir
     animalid = options.animalid
@@ -274,6 +283,8 @@ def extract_cnmf_rois(options):
     slurm = options.slurm
     
     exclude_str = options.excluded_tiffs
+    
+    #%%
     if len(exclude_str) > 0:
         excluded_fids = exclude_str.split(',')
         excluded_tiffs = ['File%03d' % int(f) for f in excluded_fids]
@@ -299,7 +310,6 @@ def extract_cnmf_rois(options):
                            '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
         if slurm is True:
             rid_options.extend(['--slurm'])
-            
         RID = create_rid(rootdir)
         rid_hash = RID['rid_hash']
         tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
@@ -340,7 +350,8 @@ def extract_cnmf_rois(options):
     save_movies = params['display']['save_movies']
     remove_bad = False
 
-
+    # Get TIFF paths, and create memmapped files, if needed:
+    # =========================================================================
     tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
     print "RID %s -- Extracting cNMF ROIs from %i tiffs." % (rid_hash, len(tiffpaths))
     for t in tiffpaths:
@@ -348,7 +359,9 @@ def extract_cnmf_rois(options):
     mmap_dir = RID['PARAMS']['mmap_source']
     expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D)
 
-    #%% Update mmap dir with hashed mmap files, update RID:
+    #%% 
+    # Update mmap dir with hashed mmap files, update RID:
+    # =========================================================================
     check_mmap_hash = False
     if '_mmap_' not in mmap_dir:
         check_mmap_hash = True
@@ -376,20 +389,21 @@ def extract_cnmf_rois(options):
     for m in mmap_paths:
         print m
      
-
-#
-#    c, dview, n_processes = cm.cluster.setup_cluster(
-#        backend='local', n_processes=None, single_thread=False)
-
-
+    #%%
+    durations = dict()
+    
     #%%
     #fidx = 0
     #curr_filename = expected_filenames[fidx]
     for curr_filename in expected_filenames:
-        #%%
+        #%
         
         if curr_filename in excluded_tiffs:
             continue
+        
+        #%%
+        durations[curr_filename] = dict()
+        t_start = time.time()
         
         print "Extracting ROIs:", curr_filename
         curr_mmap = [m for m in mmap_paths if curr_filename in m][0]
@@ -401,6 +415,7 @@ def extract_cnmf_rois(options):
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
         
         print "RID %s -- %s: ITER 1 -- RUNNING CNMF FIT..." % (rid_hash, curr_filename)
+        
         #%% start a cluster for parallel processing
         try:
             dview.terminate() # stop it if it was running
@@ -408,17 +423,22 @@ def extract_cnmf_rois(options):
             pass
         
         c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
-                                                         n_processes=46,  # number of process to use, reduce if out of mem
+                                                         n_processes=None,  # number of process to use, reduce if out of mem
                                                          single_thread = False)
 
         #%% Create CNMF object:
-                
-        cnm = cnmf.CNMF(k=params['extraction']['K'], gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
+        # =====================================================================
+        cnm = cnmf.CNMF(k=params['extraction']['K'],
+                        gSig=params['extraction']['gSig'],
+                        p=params['extraction']['p'],
+                        merge_thresh=params['extraction']['merge_thresh'],
                         dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['patch']['rf'], stride=params['patch']['stride'], 
-                        method_init=params['patch']['init_method'], only_init_patch=params['patch']['only_init_patch'],
-                        gnb=params['extraction']['gnb'], low_rank_background=params['extraction']['low_rank_background'],
+                        rf=params['patch']['rf'],
+                        stride=params['patch']['stride'],
+                        method_init=params['patch']['init_method'],
+                        only_init_patch=params['patch']['only_init_patch'],
+                        gnb=params['extraction']['gnb'],
+                        low_rank_background=params['extraction']['low_rank_background'],
                         method_deconvolution=params['extraction']['method_deconv'],
                         border_pix=0)                #deconv_flag = True) 
         
@@ -426,10 +446,12 @@ def extract_cnmf_rois(options):
         cnm.options['temporal_params']['memory_efficient'] = True
         cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
         cnm.options['temporal_params']['verbosity'] = True
-        
         #cnm.options['init_params']['rolling_sum'] = False #True
         #cnm.options['init_params']['normalize_init'] = False
         #cnm.options['init_params']['center_psf'] = True
+        
+        # Save CNMF options:
+        # =========================================================================
         if curr_filename == 'File001':
             print "RID %s -- Updating tmp RID file with cnmf options." % rid_hash
             
@@ -451,10 +473,18 @@ def extract_cnmf_rois(options):
             write_dict_to_json(roidict, roidict_path)
             
 
-        #%%
+        #%% Extract ROIs with specified params:
+        # =====================================================================
+        t = time.time()
         cnm = cnm.fit(images)
+        #elapsed = time.time() - t
+        curr_dur = timer(t, time.time())
+        print "ITERATION 1 -- Time elapsed:", curr_dur #elapsed
+        durations[curr_filename]['iter1'] = curr_dur
+        write_dict_to_json(durations, os.path.join(nmf_outdir, 'durations.json'))
         
         #%% Look at local correlations:
+        # =====================================================================
         Y = np.reshape(Yr, dims + (T,), order='F')
         Cn = cm.local_correlations(Y)
         Cn[np.isnan(Cn)] = 0
@@ -462,7 +492,7 @@ def extract_cnmf_rois(options):
         m_images = cm.movie(images)    
         Av = np.mean(m_images, axis=0)
         
-        #%
+        #% PLOT: Correlation img and Average img ------------------------------
         pl.figure()
         pl.subplot(1,2,1); pl.title('Average'); pl.imshow(Av, cmap='gray'); pl.axis('off')
         pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
@@ -470,8 +500,10 @@ def extract_cnmf_rois(options):
         pl.suptitle(curr_filename)
         pl.savefig(os.path.join(nmf_figdir, 'zproj_%s.png' % curr_filename))
         pl.close()
+        # ---------------------------------------------------------------------
 
-        #%% ITER 1 -- view initial spatial footprints
+
+        # PLOT: Iteration 1 -- view initial spatial footprints ----------------
         pl.figure()
         if display_average is True:
             crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
@@ -480,9 +512,12 @@ def extract_cnmf_rois(options):
         
         pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
         pl.close()
+        # ---------------------------------------------------------------------
         
-        #%% ITER 1:  Evaluate components :
-            
+        #%%
+        # ITERATION 1:  Evaluate components
+        # =====================================================================
+        
         final_frate = volumerate
         rval_thr = params['eval']['rval_thr']   # accept components with space corr threshold or higher
         decay_time = 1.0                        # length of typical transient (sec)
@@ -490,29 +525,36 @@ def extract_cnmf_rois(options):
         min_SNR = params['eval']['min_SNR']     # accept components with peak-SNR of this or higher
         
         idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
-            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
-                                             dview=dview, min_SNR=min_SNR, 
-                                             r_values_min=rval_thr, use_cnn=use_cnn)
+            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA,
+                                             final_frate, decay_time,
+                                             params['extraction']['gSig'], dims, 
+                                             dview=dview,
+                                             min_SNR=min_SNR, 
+                                             r_values_min=rval_thr,
+                                             use_cnn=use_cnn)
         
+        #% PLOT: Iteration 1 - Visualize Spatial and Temporal component evaluation ----------
         pl.figure(figsize=(5,15))
         pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
         pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
         pl.xlabel('roi')
         pl.suptitle(curr_filename)
-        
         pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_metrics_%s.png' % curr_filename))
         pl.close()
+        # ---------------------------------------------------------------------
         
-        #
+        
+        # PLOT: Iteration 1 - Show components that pass/fail evaluation metric --------------
         pl.figure();
         pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
         pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        
         pl.savefig(os.path.join(nmf_figdir, 'iter1_eval_contours_%s.png' % curr_filename))
         pl.close()
+        # ---------------------------------------------------------------------
         
         #%%
+        # [INTERACTIVE] Page through components:
+        # =====================================================================
         if inspect_components is True:
             if display_average is True:
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
@@ -520,19 +562,9 @@ def extract_cnmf_rois(options):
             else:
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(cnm.A.tocsc()[:, idx_components]), cnm.C[idx_components, :], cnm.b, cnm.f,
                                  dims[0], dims[1], YrA=cnm.YrA[idx_components, :], img=Cn)
-                    
-            # %%
-#            if display_average is True:
-#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-#                             dims[1], YrA=YrA[idx_components_bad, :], img=Av)
-#            else:
-#                view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
-#                             dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
-#                
         
-        
-        #%%
-
+        #%% Filter REALLY BAD components:
+        # =====================================================================
         if remove_bad is True:
             A_tot = cnm.A[:, idx_components]
             C_tot = cnm.C[idx_components]
@@ -540,42 +572,52 @@ def extract_cnmf_rois(options):
             A_tot = cnm.A
             C_tot = cnm.C
         
-        YrA_tot = cnm.YrA
-        b_tot = cnm.b
+        #YrA_tot = cnm.YrA
+        #b_tot = cnm.b
         f_tot = cnm.f
-        sn_tot = cnm.sn
+        #sn_tot = cnm.sn
         
         print(('Number of components:' + str(A_tot.shape[-1])))
         
-        #%% ITER 2:  re-run seeded cNMF:
-        
-        cnm = cnmf.CNMF(k=A_tot.shape, gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'], merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes,  memory_fact=1,
-                        rf=params['full']['rf'], stride=params['full']['stride'],
+        #%% ITERATION 2:  re-run seeded cNMF:
+        # =====================================================================
+        cnm = cnmf.CNMF(k=A_tot.shape,
+                        gSig=params['extraction']['gSig'],
+                        p=params['extraction']['p'],
+                        merge_thresh=params['extraction']['merge_thresh'],
+                        dview=dview, n_processes=n_processes, memory_fact=1,
+                        rf=params['full']['rf'],
+                        stride=params['full']['stride'],
                         method_deconvolution=params['extraction']['method_deconv'],
-                        Ain=A_tot, Cin=C_tot, f_in=f_tot)
+                        Ain=A_tot,
+                        Cin=C_tot,
+                        f_in=f_tot)
         # adjust opts:
         cnm.options['temporal_params']['memory_efficient'] = True
         cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
         cnm.options['temporal_params']['verbosity'] = True
 
+        t = time.time()
         cnm = cnm.fit(images)
+        #elapsed = time.time() - t
+        curr_dur = timer(t, time.time())
+        print "ITERATION 2 -- Time elapsed:", curr_dur #elapsed
+        durations[curr_filename]['iter2'] = curr_dur #elapsed
+        write_dict_to_json(durations, os.path.join(nmf_outdir, 'durations.json'))
         
-        #%% Save contours from second iteration of seeded components:
-            
+        # PLOT: Iteration 2 -- view initial spatial footprints ----------------
         pl.figure()
         if display_average is True:
             crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
         else:
             crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
-        
         pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
         pl.close()
-        
-        
-        #%% ITER 2:  Evaluate components and save output:
-        
+        # ---------------------------------------------------------------------
+
+        #%%
+        # ITER 2:  Evaluate components and save output:
+        # =====================================================================
         final_frate = params['eval']['final_frate']
         rval_thr = params['eval']['rval_thr']       # accept components with space corr threshold or higher
         decay_time = params['eval']['decay_time']   # length of typical transient (sec)
@@ -583,51 +625,48 @@ def extract_cnmf_rois(options):
         min_SNR = params['eval']['min_SNR']         # accept components with peak-SNR of this or higher
         
         idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
-            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, 
-                                             cnm.YrA, final_frate, decay_time, params['extraction']['gSig'], dims, 
-                                             dview=dview, min_SNR=min_SNR, 
-                                             r_values_min=rval_thr, use_cnn=use_cnn) 
+            estimate_components_quality_auto(images, cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA,
+                                             final_frate, decay_time,
+                                             params['extraction']['gSig'], dims, 
+                                             dview=dview,
+                                             min_SNR=min_SNR, 
+                                             r_values_min=rval_thr,
+                                             use_cnn=use_cnn) 
         
         print(('Should keep ' + str(len(idx_components)) +
            ' and discard  ' + str(len(idx_components_bad))))
 
-        #%% save eval output:
-            
+
+        #% PLOT: Iteration 2 - Visualize Spatial and Temporal component evaluation ----------
         pl.figure(figsize=(5,15))
         pl.subplot(2,1,1); pl.title('r values (spatial)'); pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*rval_thr, 'r')
         pl.subplot(2,1,2); pl.title('SNR_comp'); pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*min_SNR, 'r')
         pl.xlabel('roi')
         pl.suptitle(curr_filename)
-        
         pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_metrics_%s.png' % curr_filename))
         pl.close()
+        # -----------------------------------------------------------------------------------
         
-        #
+        
+        # PLOT: Iteration 2 - Show components that pass/fail evaluation metric --------------
         pl.figure();
         pl.subplot(1,2,1); pl.title('pass'); plot_contours(cnm.A.tocsc()[:, idx_components], Av, thr=params['display']['thr_plot']); pl.axis('off')
         pl.subplot(1,2,2); pl.title('fail'); plot_contours(cnm.A.tocsc()[:, idx_components_bad], Av, thr=params['display']['thr_plot']); pl.axis('off')
-        
         pl.savefig(os.path.join(nmf_figdir, 'iter2_eval_contours_%s.png' % curr_filename))
         pl.close()
+        # -----------------------------------------------------------------------------------
         
-        #%% Save NMF outupt:
+        #%% 
+        # Save NMF outupt:
+        # =====================================================================
         A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
         
 #        print(S.max())
-        
-        pl.figure()
-        pl.subplot(1,3,1); pl.title('avg'); pl.imshow(Av, cmap='gray'); pl.axis('off')
-        pl.subplot(1,3,2); pl.title('cn'); pl.imshow(Cn, cmap='gray'); pl.axis('off')
-        ax = pl.subplot(1,3,3); pl.title('sn'); im = pl.imshow(np.reshape(sn, (d1,d2), order='F')); pl.axis('off')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        pl.colorbar(im, cax=cax); 
-        pl.savefig(os.path.join(nmf_figdir, 'zproj_final_%s.png' % curr_filename))
-        pl.close()
-    
-        # %% save results
+
+        #% Extract DF/F:
         Cdf = extract_DF_F(Yr=Yr, A=A, C=C, bl=cnm.bl)
-        #%%
+        
+        #% save results:
         np.savez(os.path.join(nmf_outdir, os.path.split(curr_mmap)[1][:-4] + 'results_analysis.npz'),
                  A=A, Cdf=Cdf, C=C, b=b, f=f, YrA=YrA, sn=sn, S=S, dims=cnm.dims, 
                  idx_components=idx_components, idx_components_bad=idx_components_bad,
@@ -637,7 +676,20 @@ def extract_cnmf_rois(options):
     
         print("FINAL N COMPONENTS:", A.shape[1])
     
-        #%%
+        #%% Plot SN:
+        pl.figure()
+        pl.subplot(1,3,1); pl.title('avg'); pl.imshow(Av, cmap='gray'); pl.axis('off')
+        pl.subplot(1,3,2); pl.title('cn'); pl.imshow(Cn, cmap='gray'); pl.axis('off')
+        ax = pl.subplot(1,3,3); pl.title('sn'); im = pl.imshow(np.reshape(sn, (d1,d2), order='F')); pl.axis('off')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        pl.colorbar(im, cax=cax); 
+        pl.savefig(os.path.join(nmf_figdir, 'zproj_final_%s.png' % curr_filename))
+        pl.close()
+        
+        #%% 
+        # [INTERACTIVE] Iter 2 -- Page through components
+        # =====================================================================
         if inspect_components is True:
             if display_average is True:
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
@@ -646,7 +698,7 @@ def extract_cnmf_rois(options):
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components]), C[idx_components, :], b, f, dims[0], dims[1],
                              YrA=YrA[idx_components, :], img=Cn)
                 
-            # %%
+            # %
             if display_average is True:
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
                              dims[1], YrA=YrA[idx_components_bad, :], img=Av)
@@ -654,7 +706,9 @@ def extract_cnmf_rois(options):
                 view_patches_bar(Yr, scipy.sparse.coo_matrix(A.tocsc()[:, idx_components_bad]), C[idx_components_bad, :], b, f, dims[0],
                              dims[1], YrA=YrA[idx_components_bad, :], img=Cn)
             
-            # %% reconstruct denoised movie
+        # %% 
+        # Reconstruct denoised movie:
+        # =====================================================================
         if save_movies is True:
             if curr_filename in movie_files:
                 #%% save denoised movie:
@@ -677,6 +731,10 @@ def extract_cnmf_rois(options):
         pl.savefig(os.path.join(nmf_figdir, 'background_zproj_%s.png' % curr_filename))
         pl.close()
     
+        #elapsed_full = time.time() - t_start
+        full_dur = timer(t_start, time.time())
+        durations[curr_filename]['full'] = full_dur #elapsed_full
+        write_dict_to_json(durations, os.path.join(nmf_outdir, 'durations.json'))
         
             #%%
 #    except Exception as e:
@@ -685,7 +743,15 @@ def extract_cnmf_rois(options):
 #    finally:
 #        print "RID %s -- No Errors. Completed ROI extraction from %s" % (rid_hash, curr_filename)
 
+    # SAVE HASH for current nmf options set:
     nmfopts_hash = RID['PARAMS']['nmf_hashid']
+    
+    print "-------------------------------------------------------------------"
+    print "RID %s: COMPLETED!" % rid_hash
+    print "-------------------------------------------------------------------"
+    print "Each iteration lasted:"
+    pp.pprint(durations)
+    print "-------------------------------------------------------------------"
     
     return nmfopts_hash, rid_hash
 
