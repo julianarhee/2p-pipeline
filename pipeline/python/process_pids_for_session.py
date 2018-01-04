@@ -74,7 +74,7 @@ def main(options):
     #parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help='num processes to use [default: 4]') 
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--zproject', action='store_true', dest='get_zproj', default='store_false', help="Set flag to create z-projection slices for processed tiffs.")
+    parser.add_option('--zproject', action='store_true', dest='get_zproj', default=False, help="Set flag to create z-projection slices for processed tiffs.")
     parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
 
@@ -88,7 +88,7 @@ def main(options):
     session = options.session #'20171003_JW016' #'20170927_CE059'
     #nprocesses = int(options.nprocesses)
     slurm = options.slurm
-    zproj_each_step = options.slurm
+    zproj_each_step = options.get_zproj
     zproj_type = options.zproj_type
 
     if slurm is True:
