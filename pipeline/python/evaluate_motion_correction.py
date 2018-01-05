@@ -267,14 +267,14 @@ def evaluate_motion(options):
     #%%
     options = parse_options(options)
     
-    rootdir = '/nas/volume1/2photon/data'
-    animalid = 'JR063'
-    session = '20171128_JR063'
-    acquisition = 'FOV2_zoom1x'
-    run = 'gratings_static'
-    process_id = 'processed001'
-    zproj = 'mean'
-    ref_frame = 0
+#    rootdir = '/nas/volume1/2photon/data'
+#    animalid = 'JR063'
+#    session = '20171128_JR063'
+#    acquisition = 'FOV2_zoom1x'
+#    run = 'gratings_static'
+#    process_id = 'processed001'
+#    zproj = 'mean'
+#    ref_frame = 0
     
     #%%
     rootdir = options.rootdir
@@ -309,28 +309,28 @@ def evaluate_motion(options):
     
     #%%
     if 'zproj_slice' not in metrics.keys():
-        slice_corr_grp = metrics.create_group('zproj_slice')
-        slice_corr_grp.attrs['nslices'] = list(set([zproj_results['files'][k]['nslices'] for k in zproj_results['files'].keys()]))
-        slice_corr_grp.attrs['nfiles'] = len(zproj_results['files'].keys())
-        slice_corr_grp.attrs['zproj'] = zproj
+        zproj_corr_grp = metrics.create_group('zproj_corrcoefs')
+        zproj_corr_grp.attrs['nslices'] = list(set([zproj_results['files'][k]['nslices'] for k in zproj_results['files'].keys()]))
+        zproj_corr_grp.attrs['nfiles'] = len(zproj_results['files'].keys())
+        zproj_corr_grp.attrs['zproj'] = zproj
+        zproj_corr_grp.attrs['metric'] = zproj_results['metric']
+        zproj_corr_grp.attrs['bad_files'] = zproj_results['bad_files']
     else:
-        slice_corr_grp = metrics['slice_correlations']
+        zproj_corr_grp = metrics['zproj_corrcoefs']
     
     for fn in zproj_results['files'].keys():
-        if fn not in slice_corr_grp.keys():
-            file_grp = slice_corr_grp.create_group(fn)
+        if fn not in zproj_corr_grp.keys():
+            file_grp = zproj_corr_grp.create_group(fn)
             file_grp.attrs['source_images'] = zproj_results['files'][fn]['source_images']
         else:
-            file_grp = slice_corr_grp[fn]
+            file_grp = zproj_corr_grp[fn]
         corrvals_for_file = zproj_results['files'][fn]['slice_corrcoefs']
         slice_corr_vals = file_grp.create_dataset('corrcoefs_by_slice', corrvals_for_file.shape,  corrvals_for_file.dtype)
         slice_corr_vals[...] = corrvals_for_file
         slice_corr_vals.attrs['nslices'] =  zproj_results['files'][fn]['nslices']
-        slice_corr_vals.attrs['metric'] = zproj_results['metric']
-        slice_corr_vals.attrs['bad_files'] = zproj_results['bad_files']
-    
+
     means_by_file = zproj_results['mean_corrcoefs']
-    mean_corr_vals = file_grp.create_dataset('mean_corrcoefs', means_by_file.shape, means_by_file.dtype)
+    mean_corr_vals = zproj_corr_grp.create_dataset('mean_corrcoefs', means_by_file.shape, means_by_file.dtype)
     mean_corr_vals[...] = means_by_file
     
     #%%
