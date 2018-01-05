@@ -280,7 +280,7 @@ def evaluate_motion(options):
     rootdir = options.rootdir
     animalid = options.animalid
     session = options.session
-    acquisition = options.session
+    acquisition = options.acquisition
     run = options.run
     #slurm = options.slurm           
     process_id = options.process_id
@@ -314,7 +314,8 @@ def evaluate_motion(options):
         zproj_corr_grp.attrs['nfiles'] = len(zproj_results['files'].keys())
         zproj_corr_grp.attrs['zproj'] = zproj
         zproj_corr_grp.attrs['metric'] = zproj_results['metric']
-        zproj_corr_grp.attrs['bad_files'] = zproj_results['bad_files']
+        zproj_corr_grp.attrs['bad_files'] = [str(bfile[0]) for bfile in zproj_results['bad_files']]
+        #print [str(bfile[0]) for bfile in zproj_results['bad_files']]
     else:
         zproj_corr_grp = metrics['zproj_corrcoefs']
     
