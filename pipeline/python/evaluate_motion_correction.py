@@ -5,10 +5,12 @@ Created on Thu Jan  4 11:54:38 2018
 @author: julianarhee
 """
 import os
+import sys
 import h5py
 import json
 import time
 import datetime
+import optparse
 import matplotlib
 matplotlib.use('Agg')
 import pylab as pl
@@ -234,19 +236,45 @@ def get_frame_correlations(info, nstds=4, ref_frame=0):
     
     return framecorr_results
 
+#%%
+def parse_options(options):
+    
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('-P', '--process-id', action='store', dest='process_id', default='', help="Process ID (for ex: processed001, or processed005, etc.")
+    parser.add_option('-Z', '--zproj', action='store', dest='zproj', default='mean', help="Z-projection across time for comparing slice images for each file to reference [default: mean]")
+    parser.add_option('-f', '--ref-frame', action='store', dest='ref_frame', default=0, help="Frame within tiff to use as reference for frame-to-frame correlations [default: 0]")
+    
+    (options, args) = parser.parse_args(options)
+    
+    if options.slurm is True:
+        if 'coxfs' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/...'
+            
+    return options
 
 #%%
-def main(options):
+def evaluate_motion(options):
     #%%
+    options = parse_options(options)
+    
     rootdir = '/nas/volume1/2photon/data'
     animalid = 'JR063'
     session = '20171128_JR063'
     acquisition = 'FOV2_zoom1x'
-    
     run = 'gratings_static'
-    
     process_id = 'processed001'
     zproj = 'mean'
+    ref_frame = 0
     
     #%%
     rootdir = options.rootdir
@@ -254,15 +282,10 @@ def main(options):
     session = options.session
     acquisition = options.session
     run = options.run
-    slurm = options.slurm
-    if slurm is True:
-        if 'coxfs' not in rootdir:
-            rootdir = '/n/coxfs01/...'
-            
+    #slurm = options.slurm           
     process_id = options.process_id
     zproj = options.zproj
-    
-    ref_frame = 0
+    ref_frame = options.ref_frame
     
     #%% Get info about MC to evaluate:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -314,7 +337,6 @@ def main(options):
     # -------------------------------------------------------------------------
     # 2. Within each movie, check frame-to-frame corr. Plot corrvals across time.
     # -------------------------------------------------------------------------
-    ref_frame = 0
     nstds_frames = 4
     framecorr_results = get_frame_correlations(info, nstds=nstds_frames, ref_frame=ref_frame)
 
@@ -348,4 +370,20 @@ def main(options):
     
     #%%
     metrics.close()
-        
+    
+    return eval_outfile
+
+#%%
+def main(options):
+
+    eval_outfile = evaluate_motion(options)
+
+    print "----------------------------------------------------------------"
+    print "Finished evulation motion-correction."
+    print "Saved output to:"
+    print eval_outfile
+    print "----------------------------------------------------------------"
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
