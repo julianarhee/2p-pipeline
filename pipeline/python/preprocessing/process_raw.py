@@ -20,7 +20,8 @@ import json
 import optparse
 import sys
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from pipeline.python.set_pid_params import post_pid_cleanup
+from pipeline.python.set_pid_params import update_pid_records, post_pid_cleanup
+from pipeline.python.utils import zproj_tseries
 import get_scanimage_data as sim
 import correct_flyback as fb
 import correct_motion as mc
@@ -180,6 +181,7 @@ def process_pid(options):
         flyback_options.extend(['--slurm'])
 
     flyback_hash, pid_hash = fb.do_flyback_correction(flyback_options)
+    #pid_hash = PID['pid_hash']
     print "Flyback hash: %s" % flyback_hash
     print "PID %s: Flyback finished." % pid_hash
 
@@ -197,6 +199,7 @@ def process_pid(options):
     print bidir_options
 
     bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+    #pid_hash = PID['pid_hash']
     print "Bidir hash: %s" % bidir_hash
     print "PID %s: BIDIR finished." % pid_hash
 
@@ -209,8 +212,8 @@ def process_pid(options):
         curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
         source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
-        if os.path.isdir(source_dir):
-            zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
+        #if os.path.isdir(source_dir):
+        zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
         print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
      
 
@@ -227,9 +230,10 @@ def process_pid(options):
         mc_options.extend(['--motion'])
 
     mcdir_hash, pid_hash = mc.do_motion(mc_options)
+    #pid_hash = PID['pid_hash']
     print "MC hash: %s" % mcdir_hash
     print "PID %s: MC finished." % pid_hash
-
+ 
     # Create average slices for viewing:
     if get_zproj is True and execute_motion is True:
         print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
@@ -238,16 +242,16 @@ def process_pid(options):
         curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
         source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
-        if os.path.isdir(source_dir):
-            zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
+        print "SOURCE dir is:", source_dir
+        #if os.path.isdir(source_dir):
+        zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
         print "PID %s -- Finished creating ZPROJ slice images from motion-corrected tiffs." % pid_hash
 
  
     # ===========================================================================
     # 4.  Clean up and update meta files:
     # ===========================================================================
-    post_pid_cleanup(acquisition_dir, run, pid_hash)
-         
+    post_pid_cleanup(acquisition_dir, run, pid_hash)     
     print "FINISHED PROCESSING PID %s" % pid_hash
    
     return pid_hash

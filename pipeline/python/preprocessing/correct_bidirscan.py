@@ -206,19 +206,23 @@ def do_bidir_correction(options):
 
     print paramspath    
     write_dict_to_json(PID, paramspath) 
+    # And update processdict entry:
+    update_pid_records(PID, acquisition_dir, run)
+
 #    with open(paramspath, 'w') as f:
 #        print paramspath
 #        json.dump(PID, f, indent=4, sort_keys=True)
 #
     # ========================================================================================
 
-    return write_hash, pid_hash
+    return write_hash, pid_hash #PID #pid_hash
 
 
 def main(options):
     
     # Do bidi correction:    
     bidir_hash, pid_hash = do_bidir_correction(options)
+    #pid_hash = PID['pid_hash']
     print "PID %s: Finished bidir-correction step: output dir hash %s" % (pid_hash, bidir_hash)
    
     # Clean up tmp files and udpate meta info: 

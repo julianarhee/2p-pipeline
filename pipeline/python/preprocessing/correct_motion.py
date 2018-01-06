@@ -154,15 +154,15 @@ def do_motion(options):
     else:
         multiplanar = False
         
-    # -------------------------------------------------------------
-    # Load PID:
-    # -------------------------------------------------------------
-    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
-    paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
-    with open(paramspath, 'r') as f:
-        print "Loading run PID file:", paramspath 
-        PID = json.load(f)
-        
+#    # -------------------------------------------------------------
+#    # Load PID:
+#    # -------------------------------------------------------------
+#    tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
+#    paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
+#    with open(paramspath, 'r') as f:
+#        print "Loading run PID file:", paramspath 
+#        PID = json.load(f)
+#        
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
@@ -175,8 +175,7 @@ def do_motion(options):
         PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_slices'
         interleave_write_tiffs = True
        
-    write_dict_to_json(PID, paramspath) 
-    
+    write_dict_to_json(PID, paramspath)  
     # And update process dict entry:
     update_pid_records(PID, acquisition_dir, run)
     
@@ -229,26 +228,30 @@ def do_motion(options):
 
     print paramspath    
     write_dict_to_json(PID, paramspath) 
+    # And update process dict entry:
+    update_pid_records(PID, acquisition_dir, run)
+ 
 #    with open(paramspath, 'w') as f:
 #        print paramspath
 #        json.dump(PID, f, indent=4, sort_keys=True)
     # ========================================================================================
 
-    return write_hash, pid_hash
+    return write_hash, pid_hash #PID #pid_hash
 
 
 def main(options):
    
     # Do motion-correction: 
     mc_hash, pid_hash = do_motion(options) 
+    #pid_hash = PID['pid_hash']
     print "PID %s: Finished motion-correction step: output dir hash %s" % (pid_hash, mc_hash)
   
     # Clean up tmp files and udpate meta info: 
     options = extract_options(options)
     acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
-    run = options.run 
+    run = options.run
     post_pid_cleanup(acquisition_dir, run, pid_hash)
-    print "FINISHED MOTION, PID: %s" % pid_hash
+    print "PID %s -- Finished cleaning up tmp files, updated dicts." % pid_hash
 
     # Create average slices for viewing:
     with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:

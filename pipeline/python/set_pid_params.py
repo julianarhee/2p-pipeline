@@ -103,6 +103,7 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     # Rename dir if hash is not included:
     if write_hash not in write_dir:
         newwrite_dir = write_dir + '_%s' % write_hash
+        print "New output dir:", newwrite_dir
         os.rename(write_dir, newwrite_dir)
     else:
         newwrite_dir = write_dir
@@ -129,7 +130,6 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
         change_permissions_recursive(newwrite_dir_slices, S_IREAD|S_IRGRP|S_IROTH)
         # for f in os.listdir(newwrite_dir_slices):
         #     os.chmod(os.path.join(newwrite_dir_slices, f), S_IREAD|S_IRGRP|S_IROTH)
-
 
     return write_hash, PID
 

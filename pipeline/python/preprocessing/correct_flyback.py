@@ -441,13 +441,15 @@ def do_flyback_correction(options):
 #        json.dump(PID, f, indent=4, sort_keys=True)            
     # ========================================================================================
         
-    return write_hash, pid_hash
+    return write_hash, pid_hash # PID #write_hash, pid_hash
 
     
 def main(options):
 
+    # flyback_hash, pid_hash = do_flyback_correction(options)
     flyback_hash, pid_hash = do_flyback_correction(options)
-    
+    #pid_hash = PID['pid_hash']
+     
     print "PID %s: Finished flyback-correction step: output dir hash %s" % (pid_hash, flyback_hash)
     
     options = extract_options(options)     
