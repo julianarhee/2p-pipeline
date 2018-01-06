@@ -14,6 +14,7 @@ import pkg_resources
 import optparse
 import sys
 import hashlib
+import shutil
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 import numpy as np
 from checksumdir import dirhash
@@ -26,12 +27,40 @@ def atoi(text):
 def natural_keys(text):
     return [atoi(c) for c in re.split('(\d+)', text)]
 
+def post_rid_cleanup(session_dir, rid_hash):
+
+    session = os.path.split(session_dir)[1]
+    roi_dir = os.path.join(session_dir, 'ROIs')
+    print "Cleaning up RID info: %s" % rid_hash
+    tmp_rid_dir = os.path.join(roi_dir, 'tmp_rids')
+    tmp_rid_fn = 'tmp_rid_%s.json' % rid_hash
+    rid_path = os.path.join(tmp_rid_dir, tmp_rid_fn)
+    with open(rid_path, 'r') as f:
+        RID = json.load(f)
+
+    roidict_fn = 'rids_%s.json' % session
+    # UPDATE PID entry in dict:
+    with open(os.path.join(roi_dir, roidict_fn), 'r') as f:
+        roidict = json.load(f)
+    roi_id = [p for p in roidict.keys() if roidict[p]['rid_hash'] == rid_hash][0]
+    roidict[roi_id] = RID
+
+    # Save updated PID dict:
+    path_to_roidict = os.path.join(roi_dir, roidict_fn)
+    write_dict_to_json(roidict, path_to_roidict)
+
+    finished_dir = os.path.join(tmp_rid_dir, 'completed')
+    if not os.path.exists(finished_dir):
+        os.makedirs(finished_dir)
+    shutil.move(rid_path, os.path.join(finished_dir, tmp_rid_fn))
+    print "Moved tmp rid file to completed."
+
 
 def extract_options(options):
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
 
-    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon')
+    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon', 'coregister')
     default_roitype = 'caiman2D'
 
     parser = optparse.OptionParser()
@@ -45,26 +74,30 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
+    
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
-    parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="File NUM of tiff to use as reference, if applicable [default: 1]")
-    parser.add_option('-c', '--ref-channel', action='store', dest='ref_channel', default=1, help="Channel NUM of tiff to use as reference, if applicable [default: 1]")
-    parser.add_option('-z', '--slices', action='store', dest='slices', default='', help="Comma-separated list of slice numbers (1-indexed) for ROI extraction [default: all slices in run tiffs]")
 
-    parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
-
-    parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='method deconvolution if using cNMF [default: oasis]')
-    parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='half size of neurons if using cNMF [default: 8]')
-    parser.add_option('--K', action='store', dest='nmf_K', default=10, help='N expected components per patch [default: 10]')
-    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='Half size of patch if using cNMF [default: 30]')
-    parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='Amount of patch overlap if using cNMF [default: 5]')
-    parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='Order of autoregressive system if using cNMF [default: 2]')
-    parser.add_option('--border', action='store', dest='border_pix', default=0, help='N pixels to exclude for border (from motion correcting) [default: 0]')
+    # MANUAL OPTS:
+    parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="[man]: File NUM of tiff to use as reference, if applicable [default: 1]")
+    parser.add_option('-c', '--ref-channel', action='store', dest='ref_channel', default=1, help="[man]: Channel NUM of tiff to use as reference, if applicable [default: 1]")
+    parser.add_option('-z', '--slices', action='store', dest='slices', default='', help="[man]: Comma-separated list of slice numbers (1-indexed) for ROI extraction [default: all slices in run tiffs]")
+    parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="[man]: Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
     
-    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
-
+    # cNMF OPTS:
+    parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='[nmf]: method deconvolution if using cNMF [default: oasis]')
+    parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons if using cNMF [default: 8]')
+    parser.add_option('--K', action='store', dest='nmf_K', default=10, help='[nmf]: N expected components per patch [default: 10]')
+    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch if using cNMF [default: 30]')
+    parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap if using cNMF [default: 5]')
+    parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system if using cNMF [default: 2]')
+    parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
+    
+    # COREG OPTS:
+    parser.add_option('-u', '--roi-source', action='store', dest='roi_source_id', default='', help='[coreg]: Name of ROI ID that is the source of coregsitered ROIs (TODO: allow for multiple sources)')
+    
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True:
@@ -87,21 +120,23 @@ def create_rid(options):
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     roi_type = options.roi_type
+    
+    # manual options:
     ref_file = int(options.ref_file)
     ref_channel = int(options.ref_channel)
-    slices_str = options.slices
-    if len(slices_str)==0:
-        # Use all slices
-        runmeta_path = os.path.join(rootdir, animalid, session, acquisition, run, '%s.json' % run)
-        with open(runmeta_path, 'r') as f:
-            runinfo = json.load(f)
-        slices = runinfo['slices']
-    else:
-        slices = slices_str.split(',')
-        slices = [int(s) for s in slices]
-
     zproj_type = options.zproj_type
-
+    slices_str = options.slices
+    if not roi_type=='coregister':
+        if len(slices_str)==0:
+            # Use all slices
+            runmeta_path = os.path.join(rootdir, animalid, session, acquisition, run, '%s.json' % run)
+            with open(runmeta_path, 'r') as f:
+                runinfo = json.load(f)
+            slices = runinfo['slices']
+        else:
+            slices = slices_str.split(',')
+            slices = [int(s) for s in slices]
+    
     auto = options.default
 
     # cNMF-specific opts:
@@ -112,6 +147,10 @@ def create_rid(options):
     nmf_stride = int(options.nmf_stride)
     nmf_p = int(options.nmf_p)
     border_pix = int(options.border_pix)
+    
+    # COREG specific opts:
+    roi_source_id = options.roi_source_id
+    
 
     session_dir = os.path.join(rootdir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
@@ -119,11 +158,14 @@ def create_rid(options):
         os.makedirs(roi_dir)
 
     # Get paths to tiffs from which to create ROIs:
-    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
-                               acquisition=acquisition, run=run,
-                               tiffsource=tiffsource, sourcetype=sourcetype,
-                               auto=auto)
-
+    if not roi_type == 'coregister':
+        tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
+                                   acquisition=acquisition, run=run,
+                                   tiffsource=tiffsource, sourcetype=sourcetype,
+                                   auto=auto)
+        tiff_sourcedir = os.path.split(tiffpaths[0])[0]
+        print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
+        
     # Get roi-type specific options:
     if roi_type == 'caiman2D':
         print "Creating param set for caiman2D ROIs."
@@ -146,10 +188,14 @@ def create_rid(options):
                                          ref_file=ref_file,
                                          ref_channel=ref_channel,
                                          slices=slices)
-
+    elif roi_type == 'coregister':
+        roi_options = set_options_coregister(rootdir=rootdir, animalid=animalid, session=session,
+                                         roi_source=roi_source_id,
+                                         roi_type=roi_type)
+        tiff_sourcedir = roi_options['source']['tiff_dir']
+        
+        
     # Create roi-params dict with source and roi-options:
-    tiff_sourcedir = os.path.split(tiffpaths[0])[0]
-    print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
     PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_dir=None, check_hash=False)
 
     # Create ROI ID (RID):
@@ -287,6 +333,28 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
     return params
 
+def set_options_coregister(rootdir='', animalid='', session='',
+                           roi_source='', roi_type=''):
+
+    # TODO:  Allow multiple ROI sets from 1 session to be coregistered
+    # TODO:  Allow multiple sessions to be coregistered...
+    
+    params = dict()
+    params['roi_type'] = roi_type
+    params['roi_source'] = roi_source
+    
+    # Load ROI info from source set:
+    rid_info_path = os.path.join(rootdir, animalid, session, 'ROIs', 'rids_%s.json' % session)
+    with open(rid_info_path, 'r') as f:
+        rdict = json.load(f)
+    src_rid = rdict[roi_source]
+    params['source'] = dict()
+    params['source']['roi_dir'] = src_rid['DST']
+    params['source']['tiff_dir'] = src_rid['SRC']
+    params['source']['rid_hash'] = src_rid['rid_hash']
+    params['source']['roi_id'] = src_rid['roi_id']
+
+    return params
 
 def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, check_hash=False):
 

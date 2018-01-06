@@ -762,13 +762,15 @@ def extract_cnmf_rois(options):
     for log_file in log_files:
         os.remove(log_file)
     
-    return nmfopts_hash, rid_hash
+    return RID #nmfopts_hash, rid_hash
 
 #%%
 def main(options):
 
-    nmf_hash, rid_hash = extract_cnmf_rois(options)
-    
+    #nmf_hash, rid_hash = extract_cnmf_rois(options)
+    RID = extract_cnmf_rois(options)
+    rid_hash = RID['rid_hash']
+    nmf_hash = RID['PARAMS']['nmf_hashid']
     print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmf_hash)
     
 #    options = extract_options(options)     
