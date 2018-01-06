@@ -85,7 +85,7 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
     d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
     mc_evaldir = info['output_dir']
 
-    mean_slice_dirs = [m for m in os.listdir(process_dir) if zproj in m and os.path.isdir(os.path.join(process_dir, m))]
+    mean_slice_dirs = [m for m in os.listdir(process_dir) if zproj in m and 'mcorrected' in m and os.path.isdir(os.path.join(process_dir, m))]
     try:
         assert len(mean_slice_dirs)==1, "No zproj dirs for type %s found." % zproj
         mean_slices_dir = os.path.join(process_dir, mean_slice_dirs[0])
@@ -308,7 +308,7 @@ def evaluate_motion(options):
     zproj_results = get_zproj_correlations(info, nstds=nstds, zproj=zproj)
     
     #%%
-    if 'zproj_slice' not in metrics.keys():
+    if 'zproj_corrcoefs' not in metrics.keys():
         zproj_corr_grp = metrics.create_group('zproj_corrcoefs')
         zproj_corr_grp.attrs['nslices'] = list(set([zproj_results['files'][k]['nslices'] for k in zproj_results['files'].keys()]))
         zproj_corr_grp.attrs['nfiles'] = len(zproj_results['files'].keys())
