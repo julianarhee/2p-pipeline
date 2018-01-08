@@ -454,7 +454,7 @@ def extract_cnmf_rois(options):
         
         # Save CNMF options:
         # =========================================================================
-        if curr_filename == 'File001':
+        if not 'nmf_hashid' in RID['PARAMS'].keys(): #curr_filename == 'File001':
             print "RID %s -- Updating tmp RID file with cnmf options." % rid_hash
             
             # Save CNMF options with has:
@@ -747,6 +747,7 @@ def extract_cnmf_rois(options):
 #        print "RID %s -- No Errors. Completed ROI extraction from %s" % (rid_hash, curr_filename)
 
     # SAVE HASH for current nmf options set:
+    pp.pprint(RID)
     nmfopts_hash = RID['PARAMS']['nmf_hashid']
     
     print "-------------------------------------------------------------------"
@@ -762,15 +763,15 @@ def extract_cnmf_rois(options):
     for log_file in log_files:
         os.remove(log_file)
     
-    return RID #nmfopts_hash, rid_hash
+    return nmfopts_hash, rid_hash
 
 #%%
 def main(options):
 
     #nmf_hash, rid_hash = extract_cnmf_rois(options)
-    RID = extract_cnmf_rois(options)
-    rid_hash = RID['rid_hash']
-    nmf_hash = RID['PARAMS']['nmf_hashid']
+    nmf_hash, rid_hash = extract_cnmf_rois(options)
+    #rid_hash = RID['rid_hash']
+    #nmf_hash = RID['PARAMS']['nmf_hashid']
     print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmf_hash)
     
 #    options = extract_options(options)     

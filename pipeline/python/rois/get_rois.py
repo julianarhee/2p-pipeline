@@ -273,11 +273,32 @@ if roi_type == 'caiman2D':
 elif roi_type == 'blob_detector':
     # Do some other stuff
     print "blobs"
+    format_roi_output = False
 
 elif 'manual' in roi_type:
     # Do some matlab-loading stuff ?
     print "manual"
+    format_roi_output = False
 
+elif roi_type == 'coregister':
+    # options:
+    use_max_nrois = True        # Use file which has the max N ROIs as reference
+    params_thr = dict()
+
+    params_thr['dist_maxthr'] = dist_maxthr            # threshold for turning spatial components into binary masks (default: 0.1)
+    params_thr['dist_exp'] = dist_exp                  # power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+    params_thr['dist_thr'] = dist_thr                  # threshold for setting a distance to infinity. (default: 0.5)
+    params_thr['dist_overlap_thr'] = dist_overlap_thr  # overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+    if use_max_nrois is True:
+        params_thr['filter_type'] = 'max'
+    else:
+        params_thr['filter_type'] = 'ref'
+
+    # Save ROI params info for coreg:
+    #roiparams['coreg'] = params_thr
+
+    # Do some more stuff:
+        
 else:
     print "ERROR: %s -- roi type not known..." % roi_type
 
@@ -389,6 +410,10 @@ if format_roi_output is True :
                     
 
 #%% Save ROI params info:
+    
+# TODO: Include ROI eval info for other methods?
+# TODO: If using NMF eval methods, make func to do evaluation at post-extraction step (since extract_rois_caiman.py keeps all when saving anyway)
+    
 if roi_type == 'caiman2D':
     roiparams['eval'] = RID['PARAMS']['options']['eval']
 roiparams['keep_good_rois'] = keep_good_rois
@@ -407,25 +432,6 @@ maskfile.close()
 # =============================================================================
 # Coregister ROIs, if applicable:
 # =============================================================================
-
-# options:
-use_max_nrois = True        # Use file which has the max N ROIs as reference
-params_thr = dict()
-
-if coregister is True:
-
-    params_thr['dist_maxthr'] = dist_maxthr            # threshold for turning spatial components into binary masks (default: 0.1)
-    params_thr['dist_exp'] = dist_exp                  # power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
-    params_thr['dist_thr'] = dist_thr                  # threshold for setting a distance to infinity. (default: 0.5)
-    params_thr['dist_overlap_thr'] = dist_overlap_thr  # overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
-    if use_max_nrois is True:
-        params_thr['filter_type'] = 'max'
-    else:
-        params_thr['filter_type'] = 'ref'
-
-# Save ROI params info for coreg:
-roiparams['coreg'] = params_thr
-
 
 
 #%%
