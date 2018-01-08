@@ -228,7 +228,7 @@ run = options.run
 slurm = options.slurm
 
 if slurm is True and 'coxfs01' not in rootdir:
-    rootdir = '/n/coxfs01/julianarhee/testdata'
+    rootdir = '/n/coxfs01/2p-data'
 
 # MW specific options:
 retinobar = options.retinobar

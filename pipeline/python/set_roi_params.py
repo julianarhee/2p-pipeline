@@ -102,7 +102,7 @@ def extract_options(options):
 
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+            options.rootdir = '/n/coxfs01/2p-data'
 
     return options
 

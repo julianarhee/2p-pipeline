@@ -93,7 +93,7 @@ def main(options):
 
     if slurm is True:
         print "SLURM"
-        rootdir = '/n/coxfs01/julianarhee/testdata'
+        rootdir = '/n/coxfs01/2p-data'
         path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
         path_to_si_reader = os.path.join(path_to_si_base, 'share/python')
         sys.path.append(path_to_si_reader)

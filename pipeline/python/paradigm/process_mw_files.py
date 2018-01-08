@@ -947,7 +947,7 @@ def parse_mw_trials(options):
 
     slurm = options.slurm
     if slurm is True and 'coxfs01' not in rootdir:
-        rootdir = '/n/coxfs01/julianarhee/testdata'
+        rootdir = '/n/coxfs01/2p-data'
 
     # Set paths:
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)

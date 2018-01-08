@@ -124,7 +124,7 @@ def process_pid(options):
     # ===========================================================================
     if slurm is True:
         if 'coxfs01' not in rootdir:
-            rootdir = '/n/coxfs01/julianarhee/testdata'
+            rootdir = '/n/coxfs01/2p-data'
         sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
         print sireader_path
 

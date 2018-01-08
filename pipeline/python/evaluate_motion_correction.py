@@ -258,7 +258,7 @@ def parse_options(options):
     
     if options.slurm is True:
         if 'coxfs' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/...'
+            options.rootdir = '/n/coxfs01/2p-data'
             
     return options
 

@@ -655,7 +655,7 @@ def extract_options(options):
 
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+            options.rootdir = '/n/coxfs01/2p-data'
         if 'coxfs01' not in options.path_to_si_reader:
             options.path_to_si_reader = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux/share/python'
 

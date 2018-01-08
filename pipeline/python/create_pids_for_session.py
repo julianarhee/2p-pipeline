@@ -55,7 +55,7 @@ animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 slurm = options.slurm
 if slurm is True:
-    rootdir = '/n/coxfs01/julianarhee/testdata'
+    rootdir = '/n/coxfs01/2p-data'
 tiffsource = 'raw'
 
 correct_flyback = options.correct_flyback
