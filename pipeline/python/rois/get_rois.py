@@ -62,6 +62,7 @@ import numpy as np
 from pipeline.python.utils import natural_keys, hash_file, write_dict_to_json
 from pipeline.python.rois import extract_rois_caiman as rcm
 from pipeline.python.set_roi_params import post_rid_cleanup
+from pipeline.python.evaluate_motion_correction import get_source_info
 from scipy.sparse import spdiags, issparse
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -128,18 +129,18 @@ if slurm is True:
         rootdir = '/n/coxfs01/2p-data'
 
 #%%
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR066' #'JR063'
-session = '20180103_JR066_test' #'20171128_JR063'
-roi_id = 'rois001'
-slurm = False
-auto = False
-
-
-dist_maxthr = 0.1
-dis_exp = 0.1
-dist_thr = 0.5
-dist_overlap_thr = 0.8
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR066' #'JR063'
+#session = '20180103_JR066_test' #'20171128_JR063'
+#roi_id = 'rois001'
+#slurm = False
+#auto = False
+#
+#
+#dist_maxthr = 0.1
+#dis_exp = 0.1
+#dist_thr = 0.5
+#dist_overlap_thr = 0.8
 
 #%%
 # =============================================================================
@@ -262,7 +263,7 @@ if roi_type == 'caiman2D':
     if len(exclude_str) > 0:
         roi_opts.extend(['-x', exclude_str])
         
-    RID = rcm.extract_cnmf_rois(roi_opts)
+    nmf_hash, rid_hash = rcm.extract_cnmf_rois(roi_opts)
     
     # Clean up tmp RID files:
     session_dir = os.path.join(rootdir, animalid, session)
