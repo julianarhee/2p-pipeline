@@ -92,23 +92,23 @@ NOTES:
 # ----------------------------------------------------------------------------
 $ python set_roi_params.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -s<TIFFSOURCE> -t<SOURCETYPE -o<ROITYPE>
 
-# NOTES:
-# TIFFSOURCE should be 'raw' or 'processed00X', where X is one of the processed dirs.
-# SOURCETYPE should be 'raw', 'bidi', or 'mcorrected'
-# Add flag --default if want to run without interactive params and use default params where missing.
+NOTES:
+- TIFFSOURCE should be 'raw' or 'processed00X', where X is one of the processed dirs.
+- SOURCETYPE should be 'raw', 'bidi', or 'mcorrected'
+- ROI_TYPE is important to specify which params/options are saved for a given roi_type (set by roi-type-specific method, "set_options_<METHOD>()" defined in set_roi_params.py)
+- 'COREGISTER' is a special "roi type" because it requires an existing roi set from which to create overlapping/co-registered ROIs (only tested with caiman2D)
 
 
 # ----------------------------------------------------------------------------
-# 7. Extract ROIs:
+# 5. Extract ROIs:
 # ----------------------------------------------------------------------------
-$ python rois/get_rois_caiman.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<RIDHASH> -o<ROITYPE>
+$ python rois/get_rois_caiman.py -i<ANIMALID> -S<SESSIONID> -r<ROI_ID>
 
-# NOTES:
-# If no RID is specified (Step 6), need to provide input params:
-#   TIFFSOURCE should be 'raw' or 'processed00X', where X is one of the processed dirs.
-#   SOURCETYPE should be 'raw', 'bidi', or 'mcorrected'
-#   --default, if not interactive mode, and using defaults (raw tiffs, default ROI params, etc.)
-# Add flag --default if want to run without interactive params and use default params where missing.
+NOTES:
+- Must run set_roiparams -- this makes sure that for all ROI extraction types, the proper formatting is produced based on what is specified in set_roi_params.py
+- For new ROI types, need to create an "options" method in set_roi_params.py
+- Different ROI types will use different extraction methods in get_rois.py
+- (only tested with caiman2D, and manual 2D ROIS -- the manual methods are run with MATLAB script)
 
 
 
