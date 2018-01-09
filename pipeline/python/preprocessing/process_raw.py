@@ -52,6 +52,8 @@ def process_pid(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
+    parser.add_option('-P', '--repo', action='store', dest='repo_path', default='', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
+
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
     #parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
@@ -81,6 +83,7 @@ def process_pid(options):
     acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
     run = options.run
     pid_hash = options.pid_hash
+    repo_path = options.repo_path
     #source_hash = options.source_hash
 
     execute_flyback = options.do_fyback_correction 
@@ -134,7 +137,8 @@ def process_pid(options):
     if new_acquisition is False:
         simeta_options.extend(['--rerun'])
     if slurm is True:
-        simeta_options.extend(['-P', sireader_path, '--slurm']) 
+        simeta_options.extend(['-T', sireader_path, '--slurm']) 
+
     print simeta_options
 
     raw_hashid = sim.get_meta(simeta_options)
@@ -196,6 +200,8 @@ def process_pid(options):
         bidir_options.extend(['--slurm'])
     if execute_bidi is True:
         bidir_options.extend(['--bidi'])
+    if len(repo_path) > 0:
+        bidir_options.extend(['-P', repo_path])
     print bidir_options
 
     bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
@@ -228,6 +234,8 @@ def process_pid(options):
         mc_options.extend(['--slurm'])
     if execute_motion is True:
         mc_options.extend(['--motion'])
+     if len(repo_path) > 0:
+        mc_options.extend(['-P', repo_path])
 
     mcdir_hash, pid_hash = mc.do_motion(mc_options)
     #pid_hash = PID['pid_hash']
