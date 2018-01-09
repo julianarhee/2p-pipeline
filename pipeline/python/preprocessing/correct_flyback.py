@@ -170,10 +170,10 @@ def do_flyback_correction(options):
     if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
         # NO VALID PID, create default with input opts:
         print "Creating default PID with specified BIDIR input opts:"
-        bidir_opts = [-'R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--default']
-        if do_bidi is True:
-            bidir_opts.extend(['--bidi'])
-        PID = create_pid(bidir_opts)
+        fb_opts = [-'R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '--default']
+        if correct_flyback is True:
+            fb_opts.extend(['--flyback', '-F', nflyback])
+        PID = create_pid(fb_opts)
         pid_hash = PID['pid_hash']
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     else:
