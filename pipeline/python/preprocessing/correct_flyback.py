@@ -21,7 +21,7 @@ import shutil
 import re
 import copy
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup, update_pid_records
+from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths, post_pid_cleanup, update_pid_records, create_pid
 
 from pipeline.python.utils import write_dict_to_json
 
