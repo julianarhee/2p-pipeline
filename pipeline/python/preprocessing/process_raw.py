@@ -234,7 +234,7 @@ def process_pid(options):
         mc_options.extend(['--slurm'])
     if execute_motion is True:
         mc_options.extend(['--motion'])
-     if len(repo_path) > 0:
+    if len(repo_path) > 0:
         mc_options.extend(['-P', repo_path])
 
     mcdir_hash, pid_hash = mc.do_motion(mc_options)
