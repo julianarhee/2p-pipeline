@@ -55,7 +55,7 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
     tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
     pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
-    with open(pid_path, 'r') as f:
+    with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
         PID = json.load(f)
 
     processdict_fn = 'pids_%s.json' % run
@@ -75,9 +75,10 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
 
     finished_dir = os.path.join(tmp_pid_dir, 'completed')
     if not os.path.exists(finished_dir):
-        os.makedirs(finished_dir)
-    shutil.move(pid_path, os.path.join(finished_dir, tmp_pid_fn))
-    print "Moved tmp pid file to completed."
+        os.mkdir(finished_dir)
+    dest_fname = os.path.join(finished_dir, os.path.basename(pid_path)) 
+    shutil.move(pid_path, dest_fname)
+    print "Moved tmp pid file to completed:", dest_fname
 
 
 def change_permissions_recursive(path, mode):
@@ -351,7 +352,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
 
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
-        print os.listdir(os.path.join(acquisition_dir, run))
+        print run, ':', os.listdir(os.path.join(acquisition_dir, run))
         rawdir_name = [r for r in os.listdir(os.path.join(acquisition_dir, run)) if 'raw' in r][0]
         rawtiff_dir = os.path.join(acquisition_dir, run, rawdir_name)
         tiffs = [t for t in os.listdir(rawtiff_dir) if t.endswith('tif')]

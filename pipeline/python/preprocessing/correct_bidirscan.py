@@ -131,6 +131,7 @@ def do_bidir_correction(options):
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
         with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
             PID = json.load(f)
+        do_bidi = PID['PARAMS']['preprocessing']['correct_bidir']
 
     paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn) 
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
@@ -224,14 +225,11 @@ def main(options):
     bidir_hash, pid_hash = do_bidir_correction(options)
     #pid_hash = PID['pid_hash']
     print "PID %s: Finished bidir-correction step: output dir hash %s" % (pid_hash, bidir_hash)
-   
-    # Clean up tmp files and udpate meta info: 
+ 
     options = extract_options(options)
     acquisition_dir = os.path.join(options.rootdir, options.animalid, options.session, options.acquisition)
     run = options.run 
-    post_pid_cleanup(acquisition_dir, run, pid_hash)
-    print "PID %s -- Finished cleaning up tmp files, updated dicts." % pid_hash
- 
+  
     # Create average slices for viewing:
     with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
         currpid = json.load(f)
@@ -241,6 +239,10 @@ def main(options):
     if os.path.isdir(source_dir):
         zproj_tseries(source_dir, runmeta_fn, zproj_type=options.zproj_type)
     print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
+ 
+    # Clean up tmp files and udpate meta info: 
+    post_pid_cleanup(acquisition_dir, run, pid_hash)
+    print "PID %s -- Finished cleaning up tmp files, updated dicts." % pid_hash
  
 if __name__ == '__main__':
     main(sys.argv[1:]) 

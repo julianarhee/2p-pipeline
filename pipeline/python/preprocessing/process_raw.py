@@ -54,7 +54,7 @@ def process_pid(options):
     parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
-    parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
+    #parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
 
     parser.add_option('--flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
     parser.add_option('-F', '--nflyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
@@ -81,7 +81,7 @@ def process_pid(options):
     acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
     run = options.run
     pid_hash = options.pid_hash
-    source_hash = options.source_hash
+    #source_hash = options.source_hash
 
     execute_flyback = options.do_fyback_correction 
     nflyback = int(options.flyback)
@@ -165,7 +165,7 @@ def process_pid(options):
     print "N channels: {nchannels}, N slices: {nslices}, N volumes: {nvolumes}".format(nchannels=nchannels, nslices=nslices, nvolumes=nvolumes)
     print "Num discarded frames for flyback:", ndiscard
 
-    flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-H', raw_hashid,
+    flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
                       '-z', nslices, '-c', nchannels, '-v', nvolumes]
     if len(pid_hash) > 0:
         flyback_options.extend(['-p', pid_hash])

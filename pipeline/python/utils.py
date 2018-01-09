@@ -309,7 +309,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
 
 
     all_tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
-    print "Tiffs to deinterleave:", all_tiffs
+    #print "Tiffs to deinterleave:", all_tiffs
     expected_ntiffs = nfiles * nchannels * nslices
     good_to_go = True
     if not len(all_tiffs) == expected_ntiffs:
@@ -317,7 +317,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
         print "Mismatch in tiffs found (%i) and expected n tiffs (%i)." % (len(all_tiffs), expected_ntiffs)
         good_to_go = False
     else:
-        print "Found %i TIFFs in source:", source_dir
+        print "Found %i TIFFs in source:" % len(all_tiffs), source_dir
         print "Expected n tiffs:", expected_ntiffs
 
     if good_to_go is True:

@@ -74,6 +74,13 @@ def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_inf
     runmeta['roi_dir'] = os.path.join(session_dir, 'ROIs')
     runmeta['trace_dir'] = os.path.join(run_dir, 'Traces')
 
+    # Add frame idxs and tstamps:
+    runmeta['frame_idxs'] = []
+    runmeta['frame_nums'] = [int(desc['frameNumberAcquisition']) for desc in scanimage_metadata['File001']['imgdescr']]
+    runmeta['frame_tstamps_sec'] = [desc['frameTimestamps_sec'] for desc in scanimage_metadata['File001']['imgdescr']]
+    base_filename = '_'.join(scanimage_metadata['filenames'][0].split('.')[0].split('_')[0:-1]) 
+    runmeta['base_filename'] = base_filename
+
 #    with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fp:
 #        json.dump(runmeta, fp, indent=4)
     runmeta_path = os.path.join(run_dir, '%s.json' % run_info_basename)

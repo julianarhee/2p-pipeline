@@ -65,14 +65,14 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
-    parser.add_option('-H', '--raw', action='store', dest='source_hash', default='', help="PID hash of raw source dir (6 char), default will use rawtiff_dir hash stored in runinfo metadata (from get_scanimage_data.py)")
+    # parser.add_option('-H', '--raw', action='store', dest='source_hash', default='', help="PID hash of raw source dir (6 char), default will use rawtiff_dir hash stored in runinfo metadata (from get_scanimage_data.py)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help='flag to use SLURM default opts')
 
     # TIFF saving opts:
     # parser.add_option('--native', action='store_false', dest='uint16', default=True, help='Keep int16 tiffs as native [default: convert to uint16]')
-    parser.add_option('--visible', action='store_true', dest='visible', default=False, help='Also create tiffs with adjusted display-range to make visible.')
-    parser.add_option('-m', '--min', action='store', dest='displaymin', default=10, help='min display range value [default: 10]')
-    parser.add_option('-M', '--max', action='store', dest='displaymax', default=2000, help='max display range value [default: 2000]')
+    # parser.add_option('--visible', action='store_true', dest='visible', default=False, help='Also create tiffs with adjusted display-range to make visible.')
+    # parser.add_option('-m', '--min', action='store', dest='displaymin', default=10, help='min display range value [default: 10]')
+    # parser.add_option('-M', '--max', action='store', dest='displaymax', default=2000, help='max display range value [default: 2000]')
 
     # SUBSTACK opts (for correcting flyback):
     # -----------------------------------------------------------
@@ -138,7 +138,7 @@ def do_flyback_correction(options):
     acquisition = options.acquisition
     run = options.run
     pid_hash = options.pid_hash
-    source_hash = options.source_hash
+    # source_hash = options.source_hash
         
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -148,10 +148,10 @@ def do_flyback_correction(options):
     pid_info_basename = 'pids_%s' % run
     # -------------------------------------------------------------
 
-    visible = options.visible
-    if visible:
-	    displaymin = options.displaymin
-	    displaymax = options.displaymax
+#    visible = options.visible
+#    if visible:
+#	    displaymin = options.displaymin
+#	    displaymax = options.displaymax
 
     # Identify RAW tiff dir from acquisition:
     # -----------------------------------------------------------------------------------
@@ -208,7 +208,7 @@ def do_flyback_correction(options):
     # -----------------------------------------------------------------------------
     # Update SOURCE/DEST paths for current PID, if needed:
     # -----------------------------------------------------------------------------
-        
+
     # Make sure preprocessing sourcedir/destdir are correct:
     PID = append_hash_to_paths(PID, pid_hash, step='flyback')   
     write_dict_to_json(PID, paramspath) 
@@ -225,26 +225,27 @@ def do_flyback_correction(options):
     print "SOURCE:", source_dir
     print "DEST:", write_dir
     print "======================================================="
-    
-    if not os.path.exists(write_dir):
-        os.makedirs(write_dir)
-    
+     
+   
     # -----------------------------------------------------------------------------
     # Correct TIFFs, get frame indices:
     # -----------------------------------------------------------------------------
-    tiffs = os.listdir(source_dir)
-    tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
-    print "Found %i TIFFs." % len(tiffs)
-    
-    for tiffidx,tiffname in enumerate(tiffs):
-        # Adjust TIFF file name so that all included files increment correctly,
-        # and naming format matches standard:	
-        origname = tiffname.split('.')[0]
-        prefix = '_'.join(origname.split('_')[0:-1])
-        prefix = prefix.replace('-', '_')
-        newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) 
-       
-        if correct_flyback:
+    if correct_flyback is True:
+        if not os.path.exists(write_dir):
+            os.makedirs(write_dir)
+     
+        tiffs = os.listdir(source_dir)
+        tiffs = sorted([t for t in tiffs if t.endswith('.tif')], key=natural_keys)
+        print "Found %i TIFFs." % len(tiffs)
+        
+        for tiffidx,tiffname in enumerate(tiffs):
+            # Adjust TIFF file name so that all included files increment correctly,
+            # and naming format matches standard:	
+            origname = tiffname.split('.')[0]
+            prefix = '_'.join(origname.split('_')[0:-1])
+            prefix = prefix.replace('-', '_')
+            newtiff_fn = '%s_File%03d.tif' % (prefix, int(tiffidx+1)) 
+           
             print "Creating file in DATA dir:", newtiff_fn
             
             # Read in RAW tiff: 
@@ -302,9 +303,9 @@ def do_flyback_correction(options):
      
             print "Created frame-idx array. Final shape: ", frame_idxs_final.shape
         
-        else:
-            frame_idxs_final = [] # if not index correction needed, just leave blank 
-
+    else:
+        frame_idxs_final = [] # if not index correction needed, just leave blank 
+#
             # print "Not creating substacks from input tiffs."
             # if uint16:
             #     print "Converting raw tiff to uint16."
@@ -338,16 +339,17 @@ def do_flyback_correction(options):
 #     	    if save_tiffs is True:
 #                 tf.imsave(os.path.join(write_dir, cropped_fn), final)
     	    
-        if visible: 
-            ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
-            rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
-            if save_tiffs is True:
-                tf.imsave(os.path.join(write_dir, rangetiff_fn), ranged)
-
+#        if visible: 
+#            ranged = exposure.rescale_intensity(final, in_range=(displaymin, displaymax))
+#            rangetiff_fn = '%s_visible.tif' % newtiff_fn.split('.')[0] #'File%03d_visible.tif' % int(tiffidx+1)
+#            if save_tiffs is True:
+#                tf.imsave(os.path.join(write_dir, rangetiff_fn), ranged)
+#
     
-        # ----------------------------------------------------------------------   
-        # Adjust RUNMETA data:
-        # ----------------------------------------------------------------------   
+    # ----------------------------------------------------------------------   
+    # Adjust RUNMETA data:
+    # ----------------------------------------------------------------------   
+    if correct_flyback is True:
         frame_idxs_final = [int(f) for f in frame_idxs_final]
 
         # 1.  Update REFMETA struct:
@@ -361,19 +363,19 @@ def do_flyback_correction(options):
         #     runmeta['rawtiff_dir'] = runmeta['rawtiff_dir'] + '_%s' % rawdir_hash
         print "Raw Tiff DIR (runmeta):", runmeta['rawtiff_dir']
             
-        runmeta['base_filename'] = prefix
-        runmeta['frame_idxs'] = frame_idxs_final
+        #runmeta['base_filename'] = prefix
+        #runmeta['frame_idxs'] = frame_idxs_final
     
-        if correct_flyback:    
-            print "Changing REF info:" 
-            print "Orig N slices:", nslices_orig
-            print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
-            runmeta['slices'] = range(1, nslices_crop+1)
-            runmeta['ntiffs'] = len(tiffs) 
-            
+        print "Changing REF info:" 
+        print "Orig N slices:", nslices_orig
+        print "New N slices with correction:", nslices_crop #len(range(1, nslices_crop+1))  
+        runmeta['slices'] = range(1, nslices_crop+1)
+        runmeta['ntiffs'] = len(tiffs) 
+        
         # Save updated JSON:
         runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
         write_dict_to_json(runmeta, runmeta_path)
+
 #        with open(os.path.join(acquisition_dir, run, '%s.json' % run_info_basename), 'w') as fw:
 #            #json.dump(refinfo, fw)
 #            dump(runmeta, fw, indent=4)
@@ -382,7 +384,7 @@ def do_flyback_correction(options):
     # -----------------------------------------------------------------------------
     # Adjust SIMETA data
     # -----------------------------------------------------------------------------
-    if correct_flyback:
+    if correct_flyback is True:
         raw_simeta_fn = [j for j in os.listdir(source_dir) if j.endswith('json')][0]
         with open(os.path.join(source_dir, raw_simeta_fn), 'r') as fj:
             raw_simeta = json.load(fj)
@@ -410,7 +412,7 @@ def do_flyback_correction(options):
 
             if len(frame_idxs) > 0:
                 print raw_simeta[fi]['imgdescr'][int(frame_idxs[0])]
-                selected_imgdescr = [raw_simeta[fi]['imgdescr'][int(i)] for i in frame_idxs]
+                selected_imgdescr = [raw_simeta[fi]['imgdescr'][int(i)] for i in frame_idxs_final]
                 raw_simeta[fi]['imgdescr'] = selected_imgdescr
 
             adj_simeta[fi]['SI'] = raw_simeta[fi]['SI']
@@ -429,7 +431,7 @@ def do_flyback_correction(options):
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================
     write_hash = None
-    if correct_flyback:
+    if correct_flyback is True:
         # 3.  Update write-dir hash ids:
         write_hash, PID = write_hash_readonly(write_dir, PID, step='preprocessing', label='flyback')
 
