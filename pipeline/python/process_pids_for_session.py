@@ -71,7 +71,7 @@ def main(options):
     parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
-    #parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help='num processes to use [default: 4]') 
+    parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help='num processes to use [default: 4]') 
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--zproject', action='store_true', dest='get_zproj', default=False, help="Set flag to create z-projection slices for processed tiffs.")
@@ -86,7 +86,7 @@ def main(options):
     rootdir = options.rootdir #'/nas/volume1/2photon/projects'
     animalid = options.animalid
     session = options.session #'20171003_JW016' #'20170927_CE059'
-    #nprocesses = int(options.nprocesses)
+    nprocesses = int(options.nprocesses)
     slurm = options.slurm
     zproj_each_step = options.get_zproj
     zproj_type = options.zproj_type
@@ -108,7 +108,7 @@ def main(options):
         process_batch = True
         pid_paths = [os.path.join(pid_dir, p) for p in os.listdir(pid_dir) if p.endswith('json') and 'pid_' in p]
 
-    jobs = []
+    jobs = dict() #[]
     for pid_path in pid_paths:
         with open(pid_path, 'r') as f:
             pinfo = json.load(f)
@@ -117,28 +117,46 @@ def main(options):
             opts.extend(['--slurm'])
         if zproj_each_step is True:
             opts.extend(['--zproject', '-Z', zproj_type])
+        jobs[pinfo['pid']] = opts #(opts)
+#        print "PID %s -- opts:" % pinfo['pid'], opts
+#        j = mp.Process(name=pinfo['pid'], target=process_pid, args=(opts,))
+#        jobs.append(j)
+#        j.start()
+#
+    # curr_process_opts = tuple(jobs)
+    pool = mp.Pool(nprocesses)
+    results = {}
+    for cpid in jobs.keys():
+        results[cpid] = pool.apply_async(process_pid, args=(jobs[cpid],))
+    pool.close()
+    pool.join()
+    try:
+        output = {pkey: result.get() for pkey, result in results.items()}
+        print output
+    except Exception as e:
+        print e
+        print "ERR"
+        print results
+    #results = pool.map_async(process_pid, curr_process_opts)
+    #pool.close()
+    #pool.join()
 
-        print "PID %s -- opts:" % pinfo['pid'], opts
-        j = mp.Process(name=pinfo['pid'], target=process_pid, args=(opts,))
-        jobs.append(j)
-        j.start()
-
-    status = dict()
-    for j in jobs:
-        j.join()
-        print '%s.exitcode = %s' % (j.name, j.exitcode)
-        status[j.name] = j.exitcode
-       
-    finished_dir = os.path.join(pid_dir, 'completed')
-    if not os.path.exists(finished_dir):
-        os.makedirs(finished_dir)
-    for jobpid in status.keys():
-        if status[jobpid] == 0:
-            corresponding_pidpath = [p for p in pid_paths if jobpid in p][0]
-            pid_fn = os.path.split(corresponding_pidpath)[1]
-             
-            shutil.move(corresponding_pidpath, os.path.join(finished_dir, pid_fn))
-
+#    status = dict()
+#    for j in jobs:
+#        j.join()
+#        print '%s.exitcode = %s' % (j.name, j.exitcode)
+#        status[j.name] = j.exitcode
+#       
+#    finished_dir = os.path.join(pid_dir, 'completed')
+#    if not os.path.exists(finished_dir):
+#        os.makedirs(finished_dir)
+#    for jobpid in status.keys():
+#        if status[jobpid] == 0:
+#            corresponding_pidpath = [p for p in pid_paths if jobpid in p][0]
+#            pid_fn = os.path.split(corresponding_pidpath)[1]
+#             
+#            shutil.move(corresponding_pidpath, os.path.join(finished_dir, pid_fn))
+#
 
 if __name__ == '__main__':
     main(sys.argv[1:])
