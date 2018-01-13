@@ -36,6 +36,15 @@ from pipeline.python.utils import write_dict_to_json, jsonify_array
 
 pp = pprint.PrettyPrinter(indent=4)
 
+
+
+#%%
+#if self.stride is None:
+#    self.stride = np.int(self.rf * 2 * .1)
+#    print(
+#        ('**** Setting the stride to 10% of 2*rf automatically:' + str(self.stride)))
+
+#%%
 def atoi(text):
     return int(text) if text.isdigit() else text
 

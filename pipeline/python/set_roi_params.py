@@ -353,6 +353,7 @@ def set_options_coregister(rootdir='', animalid='', session='',
     params['source']['tiff_dir'] = src_rid['SRC']
     params['source']['rid_hash'] = src_rid['rid_hash']
     params['source']['roi_id'] = src_rid['roi_id']
+    params['source']['roi_type'] = src_rid['roi_type']
 
     return params
 
