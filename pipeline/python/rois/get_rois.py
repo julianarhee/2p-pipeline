@@ -452,7 +452,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, dview=None, eval_outdi
     decay_time = evalparams['decay_time']   # length of typical transient (sec)
     use_cnn = evalparams['use_cnn']         # CNN classifier designed for 2d data ?
     min_SNR = evalparams['min_SNR']         # accept components with peak-SNR of this or higher
-    gSig = evalparams['gSig']
+    gSig = [int(evalparams['gSig']), int(evalparams['gSig'])]
     
     Yr, dims, T = cm.load_memmap(mmap_path)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -819,7 +819,7 @@ format_roi_output = False
 t_start = time.time()
 
 if roi_type == 'caiman2D':
-    #%%
+    #%
     roi_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', rid_hash]
     if slurm is True:
         roi_opts.extend(['--slurm'])
@@ -833,7 +833,7 @@ if roi_type == 'caiman2D':
     post_rid_cleanup(session_dir, rid_hash)
     
     format_roi_output = True
-    #%%
+    #%
     
 elif roi_type == 'blob_detector':
     #% Do some other stuff
@@ -846,7 +846,7 @@ elif 'manual' in roi_type:
     format_roi_output = False
 
 elif roi_type == 'coregister':
-    #%%
+    #%
     params_thr = dict()
     params_thr['keep_good_rois'] = keep_good_rois
     
@@ -902,7 +902,7 @@ elif roi_type == 'coregister':
             
             src_rid = roidict[RID['PARAMS']['options']['roi_source']]
             evalparams = src_evalparams.copy()
-            evalparams['gSig'] = src_rid['PARAMS']['options']['extraction']['gSig']
+            evalparams['gSig'] = src_rid['PARAMS']['options']['extraction']['gSig'][0]
             idxs_to_keep = None # Set to None, since if first eval (during nmf extraction) is good, no need to provide new/alt roi idxs
             
         #% Coregister ROIs using specified reference:
@@ -1001,7 +1001,7 @@ elif roi_type == 'coregister':
     format_roi_output = True
     
     
-        #%%
+        #%
 else:
     print "ERROR: %s -- roi type not known..." % roi_type
 
