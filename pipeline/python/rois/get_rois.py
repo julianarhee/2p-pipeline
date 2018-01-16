@@ -650,14 +650,18 @@ if format_roi_output is True :
     
     mask_filepath = os.path.join(rid_dir, 'masks.hdf5')
     maskfile = h5py.File(mask_filepath, 'w')
+    maskfile.attrs['roi_type'] = roi_type
     maskfile.attrs['roi_id'] = roi_id
     maskfile.attrs['rid_hash'] = rid_hash
+    maskfile.attrs['animal'] = animalid
+    maskfile.attrs['session'] = session
+    maskfile.attrs['ref_file'] = params_thr[ref_filename]
+    maskfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     maskfile.attrs['keep_good_rois'] = keep_good_rois
     maskfile.attrs['ntiffs_in_set'] = len(filenames)
     maskfile.attrs['mcmetrics_filepath'] = mcmetrics_filepath
     maskfile.attrs['mcmetric_type'] = mcmetric_type
-    maskfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
     try:
         if roi_type == 'caiman2D':
             nmf_output_dir = os.path.join(rid_dir, 'nmfoutput')
@@ -741,7 +745,7 @@ if format_roi_output is True :
                 filenames = sorted(filenames, key=natural_keys)
                 
                 # Load universal match info:
-                matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['coreg_ref_file'])
+                matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['ref_filename'])
                 with open(os.path.join(coreg_output_dir, '%s.json' % matchedrois_fn_base), 'r') as f:
                     matchedROIs = json.load(f)
                 

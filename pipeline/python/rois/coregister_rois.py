@@ -196,10 +196,10 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
         os.makedirs(output_dir_figs)
         
     all_matches = dict()
-    ref_file = str(params_thr['coreg_ref_file'])
+    ref_file = str(params_thr['ref_filename'])
     try:
         # Load reference file info:
-        ref = np.load(params_thr['coreg_ref_path'])
+        ref = np.load(params_thr['ref_filepath'])
         nr = ref['A'].all().shape[1]
         dims = ref['dims']   
         A1 = ref['A'].all()
@@ -212,13 +212,13 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
             nr = A1.shape[-1]
             
         # For each file, find best matching ROIs to ref:
-        nmf_src_dir = os.path.split(params_thr['coreg_ref_path'])[0]
+        nmf_src_dir = os.path.split(params_thr['ref_filepath'])[0]
         nmf_fns = [n for n in os.listdir(nmf_src_dir) if n.endswith('npz')]
         for nmf_fn in nmf_fns:
             
             curr_file = str(re.search('File(\d{3})', nmf_fn).group(0))
 
-            if nmf_fn == os.path.basename(params_thr['coreg_ref_path']):
+            if nmf_fn == os.path.basename(params_thr['ref_filepath']):
                 if save_output is True:
                     idx_components = np.array(ref_idx_components)
                     kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'roi_idxs']), idx_components.shape, idx_components.dtype)
@@ -284,7 +284,7 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
                 all_matches[curr_file] = matches.tolist()
 
         # Also save to json for easy viewing:
-        match_fn_base = 'matches_byfile_r%s' % str(params_thr['coreg_ref_file'])
+        match_fn_base = 'matches_byfile_r%s' % str(params_thr['ref_filename'])
         with open(os.path.join(output_dir, '%s.json' % match_fn_base), 'w') as f:
             json.dump(all_matches, f, indent=4, sort_keys=True)
          
@@ -306,12 +306,12 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
     if not os.path.exists(savefig_dir):
         os.makedirs(savefig_dir)
     
-    src_nmf_dir = os.path.split(params_thr['coreg_ref_path'])[0]
+    src_nmf_dir = os.path.split(params_thr['ref_filepath'])[0]
     source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
         
     # Load reference:
-    ref_file = str(params_thr['coreg_ref_file'])
-    ref = np.load(params_thr['coreg_ref_path'])
+    ref_file = str(params_thr['ref_filename'])
+    ref = np.load(params_thr['ref_filepath'])
     nr = ref['A'].all().shape[1]
     dims = ref['dims']
     if len(ref['dims']) > 2:
@@ -337,7 +337,7 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
         
     for curr_file in all_matches.keys():
 
-        if curr_file==params_thr['coreg_ref_file']:
+        if curr_file==params_thr['ref_filename']:
             continue
  
         nmf_path = [f for f in source_nmf_paths if curr_file in f][0]
@@ -414,7 +414,7 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], idxs_to
 
     #% Find intersection of all matches with reference:
     filenames = all_matches.keys()
-    filenames.extend([str(params_thr['coreg_ref_file'])])
+    filenames.extend([str(params_thr['ref_filename'])])
     filenames = sorted(filenames, key=natural_keys)
 
     ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in excluded_tiffs]
@@ -431,16 +431,16 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], idxs_to
                     
 def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idxs_to_keep=None, cmap='jet', plot_by_file=True):
     
-    src_nmf_dir = os.path.split(params_thr['coreg_ref_path'])[0]
+    src_nmf_dir = os.path.split(params_thr['ref_filepath'])[0]
     source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
         
     # Load ref img:
-    ref_fn = [f for f in source_nmf_paths if str(params_thr['coreg_ref_file']) in f and f.endswith('npz')][0]
+    ref_fn = [f for f in source_nmf_paths if str(params_thr['ref_filename']) in f and f.endswith('npz')][0]
     ref = np.load(ref_fn)
     refimg = ref['Av']
     
     colormap = pl.get_cmap(cmap)
-    ref_rois = matchedROIs[params_thr['coreg_ref_file']]
+    ref_rois = matchedROIs[params_thr['ref_filename']]
     nrois = len(ref_rois)
     print "Plotting %i coregistered ROIs from each file..." % nrois
     
@@ -506,7 +506,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
                 cs = pl.contour(y, x, Bmat, [0.9], colors=[colorvals[ridx]]) #, cmap=colormap)
     #pl.axis('equal')
     #pl.axis('off')
-    #pl.savefig(os.path.join(save_dir, 'contours_%s_r%s_rois.png' % (plot_type,  str(params_thr['coreg_ref_file']))))
+    #pl.savefig(os.path.join(save_dir, 'contours_%s_r%s_rois.png' % (plot_type,  str(params_thr['ref_filename']))))
     
     nfiles = len(matchedROIs.keys())
     nrois = len(ref_rois)
@@ -532,7 +532,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
     pl.axis('off')
     
     #%
-    pl.savefig(os.path.join(save_dir, 'contours_%s_r%s.png' % (plot_type,  str(params_thr['coreg_ref_file'])))) #matchedrois_fn_base))
+    pl.savefig(os.path.join(save_dir, 'contours_%s_r%s.png' % (plot_type,  str(params_thr['ref_filename'])))) #matchedrois_fn_base))
     pl.close()
     
     
@@ -797,12 +797,12 @@ def run_coregistration(options):
             else:
                 nmax_idx = [s[1] for s in src_nrois].index(max([s[1] for s in src_nrois]))
                 nrois_max = src_nrois[nmax_idx][1]
-            params_thr['coreg_ref_file'] = src_nrois[nmax_idx][0]
-            params_thr['coreg_ref_path'] = source_nmf_paths[nmax_idx]
-            print "Using source %s as reference. Max N rois: %i" % (params_thr['coreg_ref_file'], nrois_max)
+            params_thr['ref_filename'] = src_nrois[nmax_idx][0]
+            params_thr['ref_filepath'] = source_nmf_paths[nmax_idx]
+            print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
         else:
-            params_thr['coreg_ref_file'] = mc_ref_file
-            params_thr['coreg_ref_path'] = source_nmf_paths.index([i for i in source_nmf_paths if mc_ref_file in i][0])
+            params_thr['ref_filename'] = mc_ref_file
+            params_thr['ref_filepath'] = source_nmf_paths.index([i for i in source_nmf_paths if mc_ref_file in i][0])
         
         #% Load eval params from src: 
         if len(coreg_output_dir) == 0:
@@ -833,7 +833,7 @@ def run_coregistration(options):
         #% Load coregistered roi matches and save universal matches:
         coreg_info = h5py.File(coreg_results_path, 'r')
         filenames = [str(i) for i in coreg_info.keys()]
-        filenames.append(str(params_thr['coreg_ref_file']))
+        filenames.append(str(params_thr['ref_filename']))
         filenames = sorted(filenames, key=natural_keys)
         
         # Save ROI idxs for each file that matches ref and is common to all:
@@ -842,7 +842,7 @@ def run_coregistration(options):
             print curr_file
             if curr_file in excluded_tiffs:
                 continue
-            if curr_file==str(params_thr['coreg_ref_file']):
+            if curr_file==str(params_thr['ref_filename']):
                 matchedROIs[curr_file] = ref_rois
             else:
                 curr_matches = coreg_info[curr_file]['matches']
@@ -851,7 +851,7 @@ def run_coregistration(options):
         coreg_info.close()
         
         # Save ROI idxs of unviersal matches:
-        matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['coreg_ref_file'])
+        matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['ref_filename'])
         print("Saving matches to: %s" % os.path.join(coreg_output_dir, matchedrois_fn_base))
         with open(os.path.join(coreg_output_dir, '%s.json' % matchedrois_fn_base), 'w') as f:
             json.dump(matchedROIs, f, indent=4, sort_keys=True)
