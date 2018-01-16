@@ -14,6 +14,7 @@ import pkg_resources
 import optparse
 import sys
 import hashlib
+import shutil
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 import numpy as np
 from checksumdir import dirhash
@@ -44,7 +45,7 @@ def extract_options(options):
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="Name of folder containing tiffs to be processed (ex: processed001). Should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-set', action='store', dest='roi_name', default=None, help="Roi id name (e.g., 'rois001' or 'rois011')")
-
+    parser.add_option('-c', '--channel', action='store', dest='signal_channel', default=1, help="Signal channel [default: 1]")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
     (options, args) = parser.parse_args(options)
@@ -72,6 +73,8 @@ def create_tid(options):
     roi_name = options.roi_name
 
     auto = options.default
+    
+    signal_channel = options.signal_channel
 
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
@@ -92,7 +95,7 @@ def create_tid(options):
 
     # Create trace-params dict with source and ROI set:
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
-    PARAMS = get_params_dict(tiff_sourcedir, RID)
+    PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID)
 
     # Create TRACE ID (TID):
     TID = initialize_tid(PARAMS, run_dir, auto=auto)
@@ -123,9 +126,10 @@ def create_tid(options):
     return TID
 
 
-def get_params_dict(tiff_sourcedir, RID):
+def get_params_dict(signal_channel, tiff_sourcedir, RID):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
+    PARAMS['signal_channel'] = signal_channel
     PARAMS['roi_id'] = RID['roi_id']
     PARAMS['rid_hash'] = RID['rid_hash']
     PARAMS['roi_type'] = RID['roi_type']
@@ -251,6 +255,34 @@ def update_tid_records(TID, run_dir):
     print "Trace Set Info UPDATED."
 
 
+def post_tid_cleanup(run_dir, trace_hash):
+
+    run = os.path.split(run_dir)[1]
+    trace_dir = os.path.join(run_dir, 'traces')
+    print "Cleaning up TID info: %s" % trace_hash
+    tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+    tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
+    tid_path = os.path.join(tmp_tid_dir, tmp_tid_fn)
+    with open(tid_path, 'r') as f:
+        TID = json.load(f)
+
+    tracedict_fn = 'traceids_%s.json' % run
+    # UPDATE PID entry in dict:
+    with open(os.path.join(trace_dir, tracedict_fn), 'r') as f:
+        tracedict = json.load(f)
+    trace_id = [p for p in tracedict.keys() if tracedict[p]['trace_hash'] == trace_hash][0]
+    tracedict[trace_id] = TID
+
+    # Save updated PID dict:
+    path_to_tracedict = os.path.join(trace_dir, tracedict_fn)
+    write_dict_to_json(tracedict, path_to_tracedict)
+
+    finished_dir = os.path.join(tmp_tid_dir, 'completed')
+    if not os.path.exists(finished_dir):
+        os.makedirs(finished_dir)
+    shutil.move(tid_path, os.path.join(finished_dir, tmp_tid_fn))
+    print "Moved tmp tid file to completed."
+    
 def main(options):
 
     tid = create_tid(options)
