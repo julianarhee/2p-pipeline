@@ -94,6 +94,7 @@ def extract_options(options):
     parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap if using cNMF [default: 5]')
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system if using cNMF [default: 2]')
     parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
+    parser.add_option('--mmap', action='store_true', dest='mmap_new', default=False, help="[nmf]: set if want to make new mmap set")
     
     # COREG OPTS:
     parser.add_option('-u', '--roi-source', action='store', dest='roi_source_id', default='', help='[coreg]: Name of ROI ID that is the source of coregsitered ROIs (TODO: allow for multiple sources)')
@@ -147,6 +148,7 @@ def create_rid(options):
     nmf_stride = int(options.nmf_stride)
     nmf_p = int(options.nmf_p)
     border_pix = int(options.border_pix)
+    mmap_new = options.mmap_new
     
     # COREG specific opts:
     roi_source_id = options.roi_source_id
@@ -196,7 +198,7 @@ def create_rid(options):
         
         
     # Create roi-params dict with source and roi-options:
-    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_dir=None, check_hash=False)
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_new=mmap_new, mmap_dir=None, check_hash=False, auto=auto)
 
     # Create ROI ID (RID):
     RID = initialize_rid(PARAMS, session_dir)
@@ -357,7 +359,7 @@ def set_options_coregister(rootdir='', animalid='', session='',
 
     return params
 
-def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, check_hash=False):
+def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_new=False, mmap_dir=None, check_hash=False, auto=False):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
@@ -369,15 +371,26 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_dir=None, che
     if mmap_dir is None and 'caiman' in roi_type:
         tiffparent = os.path.split(tiff_sourcedir)[0]
         mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
-        if len(mmap_dirs) == 1:
+        if len(mmap_dirs) == 1 and mmap_new is False:
             mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
             mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+        elif len(mmap_dirs) > 1 and mmap_new is False:
+            if auto is True:
+                mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
+                mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+            else:
+                print "Found multiple mmap dirs in source: %s" % tiffparent
+                for midx, mdir in enumerate(mmap_dirs):
+                    print midx, mdir
+                user_selected = input("Select IDX of mmap dir to use: ")
+                mmap_dir = os.path.join(tiffparent, mmap_dirs[user_selected])
+                mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
         else:
             mmap_dir = tiff_sourcedir + '_mmap'
             check_hash = True
 
         if check_hash is True:
-            if os.path.isdir(mmap_dir):
+            if os.path.isdir(mmap_dir): # Get hash for mmap files to rename mmap dir
                 excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
                 mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
             else:

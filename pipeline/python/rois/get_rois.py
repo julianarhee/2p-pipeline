@@ -244,21 +244,6 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
     print roi_idx_filepath
     
     return roi_idx_filepath
-#%%
-
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'CE059' #'JR063'
-#session = '20171009_CE059' #'20171202_JR063'
-#acquisition = 'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-#run = 'gratings_phasemod' #'scenes'
-#slurm = False
-#
-#trace_id = 'traces001'
-#auto = False
-#
-#if slurm is True:
-#    if 'coxfs01' not in rootdir:
-#        rootdir = '/n/coxfs01/2p-data'
 
 #%%
 
@@ -268,12 +253,17 @@ parser = optparse.OptionParser()
 parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
 parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-#parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-#parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+
 parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
 parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
 
+# Eval opts:
+parser.add_option('--good', action="store_true",
+                  dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+parser.add_option('--max', action="store_true",
+                  dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
+    
 # Coregistration options:
 parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
 parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
@@ -286,8 +276,6 @@ parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', de
 rootdir = options.rootdir
 animalid = options.animalid
 session = options.session
-#acquisition = options.acquisition
-#run = options.run
 roi_id = options.roi_id
 slurm = options.slurm
 auto = options.default
@@ -296,22 +284,30 @@ if slurm is True:
     if 'coxfs01' not in rootdir:
         rootdir = '/n/coxfs01/2p-data'
 
+keep_good_rois = options.keep_good_rois
+use_max_nrois = options.use_max_nrois
+
+dist_maxthr = options.dist_maxthr
+dist_exp = options.dist_exp
+dist_thr = options.dist_thr
+dist_overlap_thr = options.dist_overlap_thr
+
 #%%
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063' #'JR063'
-session = '20171128_JR063' #'20171128_JR063'
-roi_id = 'rois002'
-slurm = False
-auto = False
-
-keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
-
-# COREG-SPECIFIC opts:
-use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
-dist_maxthr = 0.1
-dist_exp = 0.1
-dist_thr = 0.5
-dist_overlap_thr = 0.8
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR063' #'JR063'
+#session = '20171128_JR063' #'20171128_JR063'
+#roi_id = 'rois002'
+#slurm = False
+#auto = False
+#
+#keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
+#
+## COREG-SPECIFIC opts:
+#use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
+#dist_maxthr = 0.1
+#dist_exp = 0.1
+#dist_thr = 0.5
+#dist_overlap_thr = 0.8
 
 #%%
 # =============================================================================
@@ -587,9 +583,16 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     
     nmf = np.load(nmf_filepath)
     nr = nmf['A'].all().shape[1]
+
     d1 = int(nmf['dims'][0])
     d2 = int(nmf['dims'][1])
-    dims = (d1, d2)
+    if len(nmf['dims']) > 2:
+        is_3D = True
+        d3 = int(nmf['dims'][2])
+        dims = (d1, d2)
+    else:
+        is_3D = False
+        dims = (d1, d2)
     
     A = nmf['A'].all()
     A2 = A.copy()
@@ -597,18 +600,27 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     nA2 = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
     rA = A * spdiags(old_div(1, nA2), 0, nr, nr)
     rA = rA.todense()
-    nr = A.shape[0]
+    nr = A.shape[1]
     
     # Create masks:
-    masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
-    if roiparams['keep_good_rois'] is True:
-        if kept_rois is None:
-            kept_rois = nmf['idx_components']
-        masks = masks[:,:,kept_rois]
-    if coreg_rois is not None:
-        masks = masks[:,:,coreg_rois]
+    if is_3D:
+        masks = np.reshape(np.array(rA), (d1, d2, d3, nr), order='F')
+        if roiparams['keep_good_rois'] is True:
+            if kept_rois is None:
+                kept_rois = nmf['idx_components']
+            masks = masks[:,:,:,kept_rois]
+        if coreg_rois is not None:
+            masks = masks[:,:,:,coreg_rois]
+    else:
+        masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
+        if roiparams['keep_good_rois'] is True:
+            if kept_rois is None:
+                kept_rois = nmf['idx_components']
+            masks = masks[:,:,kept_rois]
+        if coreg_rois is not None:
+            masks = masks[:,:,coreg_rois]
     
-    print("Keeping %i out of %i ROIs." % (len(kept_rois), nr))
+    #print("Keeping %i out of %i ROIs." % (len(kept_rois), nr))
     
     # Get center of mass for each ROI:
     coors = get_contours(A, dims, thr=0.9)
@@ -619,12 +631,12 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     if coreg_rois is not None:
         coors = [coors[i] for i in coreg_rois]
         
-    cc1 = [[l[0] for l in n['coordinates']] for n in coors]
-    cc2 = [[l[1] for l in n['coordinates']] for n in coors]
-    coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))] 
-    coms = np.array([list(n['CoM']) for n in coords])
+    #cc1 = [[l[0] for l in n['coordinates']] for n in coors]
+    #cc2 = [[l[1] for l in n['coordinates']] for n in coors]
+    #coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
+    #coms = np.array([np.array(n) for n in coords])
     
-    return masks, coms
+    return masks, coors, is_3D
 
 #%%
 # =============================================================================
@@ -669,20 +681,30 @@ if format_roi_output is True :
                 nmf = np.load(nmf_filepath)
                 img = nmf['Av']
                 
-                masks, coms = format_rois_nmf(nmf_filepath, roiparams)
+                masks, coord_info, is_3D= format_rois_nmf(nmf_filepath, roiparams)
+                maskfile.attrs['is_3D'] = is_3D
                 kept_idxs = nmf['idx_components']
                 
                 print('Mask array:', masks.shape)
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
-                if roiparams['keep_good_ros'] is True:
+                if roiparams['keep_good_rois'] is True:
                     currmasks.attrs['nrois'] = len(kept_idxs)
                     currmasks.attrs['roi_idxs'] = kept_idxs
                 else:
                     currmasks.attrs['nrois'] = masks.shape[-1]
-                        
+                
+                coms = np.array([r['CoM'] for r in coord_info])
                 currcoms = filegrp.create_dataset('coms', coms.shape, coms.dtype)
                 currcoms[...] = coms
+                
+                for ridx, roi in enumerate(coord_info):
+                    curr_roi = filegrp.create_dataset('/'.join(['coords', 'roi%04d' % ridx]), roi['coordinates'].shape, roi['coordinates'].dtype)
+                    curr_roi[...] = roi['coordinates']
+                    curr_roi.attrs['roi_source'] = nmf_filepath
+                    curr_roi.attrs['idx_in_src'] = roi['neuron_id']
+                    curr_roi.attrs['idx_in_kept'] = kept_idxs[ridx]
+                    
                 
                 # Plot figure with ROI masks:
                 vmax = np.percentile(img, 98)
@@ -716,7 +738,6 @@ if format_roi_output is True :
                 # Load coregistration info for each file:
                 coreg_info = h5py.File(coreg_outpath, 'r')
                 filenames = [str(i) for i in coreg_info.keys()]
-                filenames.append(str(params_thr['coreg_ref_file']))
                 filenames = sorted(filenames, key=natural_keys)
                 
                 # Load universal match info:
@@ -728,50 +749,66 @@ if format_roi_output is True :
                 for curr_file in filenames:
                     
                     idxs_to_keep[curr_file] = coreg_info[curr_file]['roi_idxs']
-                    nmf = np.load([n for n in source_nmf_paths if curr_file in n][0])
+                    nmf_filepath = [n for n in source_nmf_paths if curr_file in n][0]
+                    nmf = np.load(nmf_filepath)
                     img = nmf['Av']
                     
-                    print "Creating ROI masks for %s" % filenames[fidx]
+                    print "Creating ROI masks for %s" % curr_file
+                    
                     # Create group for current file:
-                    if filenames[fidx] not in maskfile.keys():
+                    if curr_file not in maskfile.keys():
                         filegrp = maskfile.create_group(curr_file)
                     else:
                         filegrp = maskfile[curr_file]
                     
-                    masks, coms = format_rois_nmf(nmf_filepath, roiparams, kept_rois=idxs_to_keep[curr_file], coreg_rois=matchedROIs[curr_file])
-        
+                    # Get masks:
+                    masks, coord_info, is_3D = format_rois_nmf(nmf_filepath, roiparams, kept_rois=idxs_to_keep[curr_file], coreg_rois=matchedROIs[curr_file])
+                    maskfile.attrs['is_3D'] = is_3D
+                    final_rois = matchedROIs[curr_file]
+                    
                     print('Mask array:', masks.shape)
                     currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                     currmasks[...] = masks
-                    if roiparams['keep_good_ros'] is True:
-                        currmasks.attrs['nrois'] = len(kept_idxs)
-                        currmasks.attrs['roi_idxs'] = kept_idxs
+                    if roiparams['keep_good_rois'] is True:
+                        currmasks.attrs['nrois'] = len(final_rois) #len(kept_idxs)
+                        currmasks.attrs['roi_idxs'] = final_rois
                     else:
                         currmasks.attrs['nrois'] = masks.shape[-1]
-                            
+                    
+                    print "Saving coms..."
+                    coms = np.array([r['CoM'] for r in coord_info])
                     currcoms = filegrp.create_dataset('coms', coms.shape, coms.dtype)
                     currcoms[...] = coms
                     
-                    zproj = filegrp.create_datatset('avg_img', img.shape, img.dtype)
+                    print "Saving ROI info..."
+                    for ridx, roi in enumerate(coord_info):
+                        curr_roi = filegrp.create_dataset('/'.join(['coords', 'roi%04d' % ridx]), roi['coordinates'].shape, roi['coordinates'].dtype)
+                        curr_roi[...] = roi['coordinates']
+                        curr_roi.attrs['roi_source'] = nmf_filepath
+                        curr_roi.attrs['idx_in_src'] = roi['neuron_id'] - 1 # 0-indexed
+                        curr_roi.attrs['idx_in_kept'] = idxs_to_keep[curr_file][ridx]
+                        curr_roi.attrs['idx_in_coreg'] = final_rois[ridx]
+                        
+                    zproj = filegrp.create_dataset('avg_img', img.shape, img.dtype)
                     zproj[...] = img
                     
                     # Plot figure with ROI masks:
                     vmax = np.percentile(img, 98)
                     pl.figure()
                     pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-                    for roi in range(len(kept_idxs)):
+                    for roi in range(len(final_rois)):
                         masktmp = masks[:,:,roi]
                         msk = masktmp.copy() 
                         msk[msk==0] = np.nan
                         pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
                         [ys, xs] = np.where(masktmp>0)
-                        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(kept_idxs[roi]), weight='bold')
+                        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(final_rois[roi]), weight='bold')
                         pl.axis('off')
                     pl.colorbar()
                     pl.tight_layout()
                     
                     # Save image:
-                    imname = '%s_%s_%s_masks.png' % (roi_id, rid_hash, filenames[fidx])
+                    imname = '%s_%s_%s_masks.png' % (roi_id, rid_hash, curr_file)
                     print(imname) 
                     pl.savefig(os.path.join(rid_figdir, imname))
                     pl.close()

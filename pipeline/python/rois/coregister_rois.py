@@ -581,8 +581,7 @@ def load_rid(session_dir, roi_id, auto=False):
             print "---------------------------------------------------------------"
     
     return RID, roidict
-     
-#%%
+
             
 #%%
 def run_coregistration(options):
