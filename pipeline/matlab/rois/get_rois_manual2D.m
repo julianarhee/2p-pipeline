@@ -4,8 +4,8 @@ clc; clear all;
 %% Set info manually:
 rootdir = '/nas/volume1/2photon/data';
 animalid = 'JR063'; %'JR063';
-session = '20171202_JR063'; %'20171202_JR063';
-roi_id = 'rois005'; %'e4893c';
+session = '20171128_JR063'; %'20171202_JR063';
+roi_id = 'rois004'; %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -16,7 +16,7 @@ RID = roidict.(roi_id)
 
 roi_type = RID.roi_type;
 zproj_type = RID.PARAMS.options.zproj_type
-rid_hash = RID.rid_hash;
+roi_hash = RID.rid_hash;
 roi_slices = RID.PARAMS.options.slices
 
 %% Get paths:
@@ -82,6 +82,11 @@ else
     fprintf('RID %s -- Specified slices %s.\n', rid_hash, mat2str(roi_slices));
 end
     
+if length(runinfo.slices) > 1
+    is_3D = false;
+else
+    is_3D = true;
+end
 
 %% Get AVERAGE SLICE files:
 % average_images_dir = fullfile(tiffsource_path, [sourcetype_dir '_average_slices']);
@@ -102,6 +107,7 @@ nrois = {};
 sourcepaths = {};
 % maskpaths = {};
 allmasks = {};
+zproj_imgs = {};
 
 % Go through slices and load images
 for slidx = roi_slices
@@ -133,41 +139,19 @@ for slidx = roi_slices
     %defining target directories and filepaths
     roi_base_dir = RID.DST;
 
-    mask_dir = fullfile(roi_base_dir,'masks');
-    if ~isdir(mask_dir)
-        mkdir(mask_dir)
-    end
+%     mask_dir = fullfile(roi_base_dir,'masks');
+%     if ~isdir(mask_dir)
+%         mkdir(mask_dir)
+%     end
 
     fig_dir = fullfile(roi_base_dir,'figures');
     if ~isdir(fig_dir)
         mkdir(fig_dir)
     end
 
-    %save masks
-    %mask_filename = sprintf('%s_%s_Slice%02d_Channel%02d_masks.mat', session, acquisition, curr_slice, ref_channel);
-    %mask_filename = 'masks.h5';
-    
-%     %* if file exists, ask user to confirm before overwriting
-%     if exist(fullfile(mask_dir,mask_filename),'file')==2
-%         answer = inputdlg('File with masks already exists, overwite? (Y/N)');
-% 
-%         while ~ (strcmpi(answer,'Y') || strcmpi(answer,'N'))
-%             answer = inputdlg('File with masks already exists, overwite? (Y/N)');
-%         end
-% 
-%         if strcmpi(answer,'Y')%replace file
-%             save(fullfile(mask_dir,mask_filename),'masks');
-%         elseif stparcmpi(answer,'N')%write file with extra id appended
-%             mask_filename = make_duplicate(mask_filename,mask_dir);
-%             save(fullfile(mask_dir,mask_filename),'masks');
-%         end
-%     else
-%         save(fullfile(mask_dir,mask_filename),'masks');
-%     end
-
-
     %save images
-    fig_filename = sprintf('%s_%s_Slice%02d_Channel%02d_File%03d_masks.tif', session, acquisition, curr_slice, ref_channel, ref_file);
+    %fig_filename = sprintf('%s_%s_Slice%02d_Channel%02d_File%03d_masks.tif', session, acquisition, curr_slice, ref_channel, ref_file);
+       fig_filename = sprintf('%s_%s_Slice%02d_Channel%02d_File%03d_masks.tif', roi_id, roi_hash, curr_slice, ref_channel, ref_file);
     %* check if file exists
     if exist(fullfile(fig_dir,fig_filename),'file')==2
         if strcmpi(answer,'Y')%replace file
@@ -181,41 +165,62 @@ for slidx = roi_slices
     end
     
     %keep track of info to save to roiparams
-    nrois{slidx} = size(masks,3);
-    sourcepaths{slidx} = fullfile(average_images_dir, curr_slice_fn);
+     nrois{slidx} = size(masks,3);
+     sourcepaths{slidx} = fullfile(average_images_dir, curr_slice_fn);
 %     maskpaths{slidx} = fullfile(mask_dir,mask_filename);
-    allmasks{slidx} = masks;
+     allmasks{slidx} = masks;
 
+     zproj_imgs{slidx} = calcimg;
+     
 
 end
 
 
 
 %% Save ROI masks by slice:
-maskname = sprintf('masks_%s', rid_hash)
-mask_fn = fullfile(mask_dir, sprintf('%s.h5', maskname));
+%maskname = sprintf('masks_%s', rid_hash)
+%mask_fn = fullfile(mask_dir, sprintf('%s.h5', maskname));
+%mask_fn = fullfile(roi_base_dir, sprintf('%s.hdf5', maskname));
+
+curr_filename = sprintf('File%03d', ref_file);
+
+mask_fn = fullfile(roi_base_dir, 'masks.hdf5');
+   
 for slidx = 1:length(sourcepaths)
     masks = allmasks{slidx};
     curr_slice = roi_slices(slidx);
-    for curr_roi = 1:size(masks,3)
-        h5create(mask_fn, sprintf('/masks/slice%i/roi%i', curr_slice, curr_roi), size(masks(:,:,curr_roi)))
-        h5write(mask_fn, sprintf('/masks/slice%i/roi%i', curr_slice, curr_roi), masks(:,:,curr_roi))
-    end
-    h5writeatt(mask_fn,  sprintf('/masks/slice%i', curr_slice) ,'creation_date', datestr(now))
-    h5writeatt(mask_fn,  sprintf('/masks/slice%i', curr_slice) ,'source', sourcepaths{slidx})
+    h5create(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice), size(masks))
+    h5write(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice), masks)
+    h5writeatt(mask_fn,  sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'source_file', sourcepaths{slidx})
+    h5writeatt(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'nrois', nrois{slidx})
+    h5writeatt(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'roi_idxs', [1:nrois{slidx}])
+    
+    h5create(mask_fn, sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice), size(zproj_imgs{slidx}))
+    h5write(mask_fn, sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice), zproj_imgs{slidx})
+    h5writeatt(mask_fn,  sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice) ,'source_file', sourcepaths{slidx})
 end
-h5writeatt(mask_fn,  sprintf('/masks'), 'creation_date', datestr(now));
-h5writeatt(mask_fn,  sprintf('/masks'), 'roi_type', roi_type);
-h5writeatt(mask_fn,  sprintf('/masks'), 'roi_hash', rid_hash);
-h5writeatt(mask_fn,  sprintf('/masks'), 'animal', animalid);
-h5writeatt(mask_fn,  sprintf('/masks'), 'session', session);
-h5writeatt(mask_fn,  sprintf('/masks'), 'acquisition', acquisition);
-h5writeatt(mask_fn,  sprintf('/masks'), 'run', run);
-h5writeatt(mask_fn,  sprintf('/masks'), 'zproj', zproj_type);
-h5writeatt(mask_fn,  sprintf('/masks'), 'ref_file', ref_file);
-h5writeatt(mask_fn,  sprintf('/masks'), 'ref_channel', ref_channel);
+h5writeatt(mask_fn, sprintf('/%s', curr_filename), 'source', slice_sourcedir)
 
-% h5disp(mask_fn)
+h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
+h5writeatt(mask_fn,  '/', 'roi_type', roi_type);
+h5writeatt(mask_fn,  '/', 'roi_hash', rid_hash);
+h5writeatt(mask_fn,  '/', 'roi_id', roi_id);
+h5writeatt(mask_fn,  '/', 'animal', animalid);
+h5writeatt(mask_fn,  '/', 'session', session);
+%h5writeatt(mask_fn,  sprintf('/masks'), 'acquisition', acquisition);
+%h5writeatt(mask_fn,  sprintf('/masks'), 'run', run);
+%h5writeatt(mask_fn,  sprintf('/masks'), 'zproj', zproj_type);
+h5writeatt(mask_fn,  '/', 'ref_file', ref_file);
+%h5writeatt(mask_fn,  sprintf('/masks'), 'ref_channel', ref_channel);
+if is_3D
+    is3D_val = 'True';
+else
+    is3D_val = 'False';
+end
+h5writeatt(mask_fn,  '/', 'is_3D', is3D_val);
+
+
+%% h5disp(mask_fn)
 info = hdf5info(mask_fn);
 
 %
