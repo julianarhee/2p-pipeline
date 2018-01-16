@@ -258,6 +258,8 @@ parser.add_option('--default', action='store_true', dest='default', default='sto
 parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
 
+parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default="mean", help="zproj to use for display [default: mean]")
+
 # Eval opts:
 parser.add_option('--good', action="store_true",
                   dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
@@ -291,6 +293,8 @@ dist_maxthr = options.dist_maxthr
 dist_exp = options.dist_exp
 dist_thr = options.dist_thr
 dist_overlap_thr = options.dist_overlap_thr
+
+zproj_type= options.zproj_type
 
 #%%
 #rootdir = '/nas/volume1/2photon/data'
@@ -661,6 +665,7 @@ if format_roi_output is True :
     maskfile.attrs['ntiffs_in_set'] = len(filenames)
     maskfile.attrs['mcmetrics_filepath'] = mcmetrics_filepath
     maskfile.attrs['mcmetric_type'] = mcmetric_type
+    maskfile.attrs['zproj'] = zproj_type
     
     try:
         if roi_type == 'caiman2D':
@@ -683,12 +688,16 @@ if format_roi_output is True :
                 # Get NMF output info:
                 nmf_filepath = os.path.join(nmf_output_dir, nmf_fn)
                 nmf = np.load(nmf_filepath)
-                img = nmf['Av']
+                if zproj_type == 'mean':
+                    img = nmf['Av']
+                elif zproj_type == 'corr':
+                    img = nmf['Cn']
                 
                 masks, coord_info, is_3D= format_rois_nmf(nmf_filepath, roiparams)
                 maskfile.attrs['is_3D'] = is_3D
                 kept_idxs = nmf['idx_components']
                 
+                # Save masks for current file (TODO: separate slices?)
                 print('Mask array:', masks.shape)
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
@@ -698,10 +707,12 @@ if format_roi_output is True :
                 else:
                     currmasks.attrs['nrois'] = masks.shape[-1]
                 
+                # Save CoM for each ROI:
                 coms = np.array([r['CoM'] for r in coord_info])
                 currcoms = filegrp.create_dataset('coms', coms.shape, coms.dtype)
                 currcoms[...] = coms
                 
+                # Save coords for each ROI:
                 for ridx, roi in enumerate(coord_info):
                     curr_roi = filegrp.create_dataset('/'.join(['coords', 'roi%04d' % ridx]), roi['coordinates'].shape, roi['coordinates'].dtype)
                     curr_roi[...] = roi['coordinates']
@@ -709,7 +720,12 @@ if format_roi_output is True :
                     curr_roi.attrs['idx_in_src'] = roi['neuron_id']
                     curr_roi.attrs['idx_in_kept'] = kept_idxs[ridx]
                     
+                # Save zproj image:
+                zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
+                zproj[...] = img
+                zproj.attrs['zproj_type'] = zproj_type
                 
+            
                 # Plot figure with ROI masks:
                 vmax = np.percentile(img, 98)
                 pl.figure()
@@ -793,7 +809,7 @@ if format_roi_output is True :
                         curr_roi.attrs['idx_in_kept'] = idxs_to_keep[curr_file][ridx]
                         curr_roi.attrs['idx_in_coreg'] = final_rois[ridx]
                         
-                    zproj = filegrp.create_dataset('avg_img', img.shape, img.dtype)
+                    zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
                     zproj[...] = img
                     
                     # Plot figure with ROI masks:
@@ -830,6 +846,11 @@ if format_roi_output is True :
         maskfile.close()
 
 
+#%% Clean up tmp files:
+
+print "RID %s -- Finished formatting ROI output to standard." % rid_hash
+post_rid_cleanup(session_dir, rid_hash)
+print "Cleaned up tmp rid files."
 
 #%%
 print "*************************************************"
