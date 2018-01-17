@@ -601,10 +601,7 @@ if not os.path.exists(roi_output_figdir):
     os.makedirs(roi_output_figdir)
 
 for roi in roi_list:
-    
-    curr_slice = roi_trials[roi].attrs['slice']
-    roi_in_slice = roi_trials[roi].attrs['roi_slice_id']
-    
+        
     #%
     print roi
     if nrows==1:
@@ -631,7 +628,9 @@ for roi in roi_list:
 
     #roi = 'roi00003'
     for config in subplot_stimlist:
-
+        curr_slice = roi_trials[config][roi].attrs['slice']
+        roi_in_slice = roi_trials[config][roi].attrs['roi_slice_id']
+        
         if col==(ncols) and nrows>1:
             row += 1
             col = 0
