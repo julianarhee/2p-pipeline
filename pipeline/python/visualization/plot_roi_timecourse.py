@@ -80,6 +80,15 @@ for fidx, filepair in enumerate(file_list):
                                            'sf': trials[trial]['stimuli']['frequency']},
                                            index=[idx]
                                            ))
+        else:
+            # do sth else:
+            trial_dfs.append(pd.DataFrame({'trial': str(trial),
+                                           'file': curr_file,
+                                           'stim_on': trials[trial]['stim_on_times']/1E3,
+                                           'stim_off': trials[trial]['stim_off_times']/1E3,
+                                           'img': int(trials[trial]['stimuli']['name'])},
+                                           index=[idx]
+                                           ))  
     
     traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
         
@@ -125,68 +134,102 @@ curr_save_dir = os.path.join(tcourse_figdir, selected_roi)
 if not os.path.exists(curr_save_dir):
     os.makedirs(curr_save_dir)
     
-if not os.path.exists(trace_figdir):
-    os.makedirs(trace_figdir)
-
 roi_df = DATA.loc[DATA['roi'] == selected_roi]
 file_df = roi_df.loc[roi_df['file'] == selected_file]
 
 min_val = 2000
 
+#%%
 # Look at trials of a specific stimulus type:
-if trials[trials.keys()[0]]['stimuli']['type'] == 'drifting_grating':
-    curr_rot = 45
-    curr_freq = 0.05
-    stimconfig = 'Ori: %.0f, SF: %.2f' % (curr_rot, curr_freq)
-    print "Specified:", stimconfig
-else:
-    curr_img_idx = 0
-    stimconfig = 'Img %i' % curr_img_idx
-print "Specified:", stimconfig
-
-key_trials = []
-for fidx, filepair in enumerate(file_list):
-    curr_file = filepair[0]
-    paradigm_fn = filepair[0]
-    with open(os.path.join(paradigm_dir, 'files', paradigm_fn), 'r') as fp:
-        trials = json.load(fp)        
-    key_trials.append([t for t in trials.keys() if trials[t]['stimuli']['rotation']==curr_rot and trials[t]['stimuli']['frequency']==curr_freq])
-
+#if trials[trials.keys()[0]]['stimuli']['type'] == 'drifting_grating':
+#    curr_rot = 45
+#    curr_freq = 0.05
+#    stimconfig = 'Ori: %.0f, SF: %.2f' % (curr_rot, curr_freq)
+#    print "Specified:", stimconfig
+#else:
+#    curr_img_idx = 0
+#    stimconfig = 'Img %i' % curr_img_idx
+#print "Specified:", stimconfig
+#
+#key_trials = []
+#for fidx, filepair in enumerate(file_list):
+#    curr_file = filepair[0]
+#    paradigm_fn = filepair[0]
+#    with open(os.path.join(paradigm_dir, 'files', paradigm_fn), 'r') as fp:
+#        trials = json.load(fp)        
+#    key_trials.append([t for t in trials.keys() if trials[t]['stimuli']['rotation']==curr_rot and trials[t]['stimuli']['frequency']==curr_freq])
+#
 
 
 #%% Plot traces, single file:
 
+# GET STIM CONFIG dict:
+curr_trials_df = TRIALS.loc[TRIALS['file'] == selected_file]
+if trials[trials.keys()[0]]['stimuli']['type'] == 'drifting_grating':
+    oris = curr_trials_df.ori.unique()
+    sfs = curr_trials_df.sf.unique()
+    config_idx = 1
+    configs = dict()
+    for ori in oris:
+        for sf in sfs:
+            stimconfig = 'Ori: %.0f, SF: %.2f' % (ori, sf)
+            
+            configs['config%03d' % int(config_idx)] = stimconfig
+            config_idx += 1
+else:
+    config_idx = 1
+    configs = dict()
+    imgs = curr_trials_df.img.unique()
+    for img in imgs:
+        stimconfig = 'Img: %i' % img
+        configs['config%03d' % int(config_idx)] = stimconfig
+        config_idx += 1
+
+# Plot time course of each file, highlight EACH stim config:
 fnames = roi_df.file.unique()
 sns.set_style("darkgrid", {"axes.facecolor": ".9"})
+
 for selected_file in fnames:
     file_df = roi_df.loc[roi_df['file'] == selected_file]
+    curr_trials_df = TRIALS.loc[TRIALS['file'] == selected_file]
+    
+    oris = curr_trials_df.ori.unique()
+    sfs = curr_trials_df.sf.unique()
+    
+    config_idx = 0
+    for ori in oris:
+        for sf in sfs:
+            stimconfig = 'Ori: %.0f, SF: %.2f' % (ori, sf)
+            config_key = [k for k in configs.keys() if configs[k] == stimconfig][0]
+            
+            key_trials = curr_trials_df.loc[(curr_trials_df['ori'] == ori) & (curr_trials_df['sf'] == sf)]['trial']
+            
+            grid = sns.FacetGrid(file_df, row="file", size=3, aspect=15)
+            #g = (grid.map(pl.plot, "tsec", "values", linewidth=0.5).fig.subplots_adjust(wspace=-.001, hspace=-.001))
+            grid.map(pl.plot, "tsec", "values", linewidth=0.5)
+            
+            for ax in grid.axes.flat:
+                got_legend = False
+                for trial in trials.keys():
+                    if trial in [k for k in key_trials]: #[int(file_idx-1)]:
+                        if got_legend is False:
+                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=stimconfig)
+                        else:
+                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=None)
+                        got_legend = True
+                    else:
+                        ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'k', label=None)
+                
+                ax.legend() #{stimconfig})        
+                
+            sns.despine(trim=True, offset=1)
 
-    grid = sns.FacetGrid(file_df, row="file", size=3, aspect=15)
-    #g = (grid.map(pl.plot, "tsec", "values", linewidth=0.5).fig.subplots_adjust(wspace=-.001, hspace=-.001))
-    grid.map(pl.plot, "tsec", "values", linewidth=0.5)
-    
-    for ax in grid.axes.flat:
-        got_legend = False
-        for trial in trials.keys():
-            if trial in key_trials[int(file_idx-1)]:
-                if got_legend is False:
-                    ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=stimconfig)
-                else:
-                    ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=None)
-                got_legend = True
-            else:
-                ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'k', label=None)
-        
-        ax.legend() #{stimconfig})        
-        file_counter += 1
-        
-    sns.despine(trim=True, offset=1)
-    
-    fname = '%s_%s_%s_timecourse.png' % (selected_roi, selected_slice, selected_file)
-    pl.savefig(os.path.join(curr_save_dir, fname), bbox_inches='tight')
-    pl.close()
+            fname = '%s_%s_%s_timecourse_%s.png' % (selected_roi, selected_slice, selected_file, config_key)
+            pl.savefig(os.path.join(curr_save_dir, fname), bbox_inches='tight')
+            pl.close()
    
 #%% Plot traces, sublots are files:
+    
 grid = sns.FacetGrid(roi_df, row="file", sharex=True, margin_titles=False)
 #grid.map(pl.plot, "tsec", "values")
 g = (grid.map(pl.plot, "tsec", "values", linewidth=0.5).fig.subplots_adjust(wspace=.001, hspace=.001))
@@ -220,10 +263,10 @@ sns.despine(trim=True)
 #                   legend_out=False, # let the legend inside the first subplot.
 #                   )
 # grid = sns.FacetGrid(roi_df, col="file", hue="file", col_wrap=5, size=1.5)
-
-melted = DATA.melt(id_vars=['roi', 'file', 'tsec'], value_vars=['values'])
-g = sns.FacetGrid(melted, col='file', hue='roi', sharex='col', margin_titles=True)
-g.map(pl.plot, 'tsec', 'value')
+#
+#melted = DATA.melt(id_vars=['roi', 'file', 'tsec'], value_vars=['values'])
+#g = sns.FacetGrid(melted, col='file', hue='roi', sharex='col', margin_titles=True)
+#g.map(pl.plot, 'tsec', 'value')
 
         #tr = traces[curr_slice]['rawtraces']
         #df = pd.DataFrame(np.reshape(tr, tr.shape), columns=roi_list)
@@ -237,14 +280,16 @@ g.map(pl.plot, 'tsec', 'value')
 #        pl.figure()
 #        pl.plot(curr_tstamps, curr_traces)
 #        pl.xlabel('sec')
-        melted = df.melt('frame_tsec', value_vars=['rois0001', 'rois0002']) #var_name='cols',  value_name='vals')
-        g = sns.FacetGrid(melted, row='variable', sharex='col', margin_titles=True)
-        g.map(pl.plot, 'value')
-#        g = sns.factorplot(x="X_Axis", y="vals", hue='cols', data=df)
 
-        for trial in trials.keys():
-            pl.plot([trials[trial]['stim_on_times'], trials[trial]['stim_off_times']], np.array([1,1])*min_val, 'r')
-        
-        figname = 'roi%04d_timecourse_%s_%s.png' % (roi_idx, curr_file, curr_slice)
-        pl.savefig(os.path.join(curr_save_dir, figname))
-        pl.close()
+
+#        melted = df.melt('frame_tsec', value_vars=['rois0001', 'rois0002']) #var_name='cols',  value_name='vals')
+#        g = sns.FacetGrid(melted, row='variable', sharex='col', margin_titles=True)
+#        g.map(pl.plot, 'value')
+##        g = sns.factorplot(x="X_Axis", y="vals", hue='cols', data=df)
+#
+#        for trial in trials.keys():
+#            pl.plot([trials[trial]['stim_on_times'], trials[trial]['stim_off_times']], np.array([1,1])*min_val, 'r')
+#        
+#        figname = 'roi%04d_timecourse_%s_%s.png' % (roi_idx, curr_file, curr_slice)
+#        pl.savefig(os.path.join(curr_save_dir, figname))
+#        pl.close()
