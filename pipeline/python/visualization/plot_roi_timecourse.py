@@ -20,12 +20,19 @@ from pipeline.python.utils import natural_keys
 
 rootdir = '/nas/volume1/2photon/data'
 animalid = 'JR063'
-session = '20171202_JR063'
-acquisition = 'FOV1_zoom1x'
-run = 'static_gratings'
-trace_id = 'traces002'
-roi_idx = 1
+session = '20171128_JR063'
+acquisition = 'FOV1_zoom1x_volume'
+run = 'gratings_static'
+trace_id = 'traces001'
 
+#%%
+
+roi_idx = 4
+slice_idx = 1
+file_idx = 1
+min_val = 2000
+
+#%%
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
 
 # Load parsed paradigm files:
@@ -123,9 +130,7 @@ if not os.path.exists(tcourse_figdir):
     os.makedirs(tcourse_figdir)
     
 #%%
-roi_idx = 4
-slice_idx = 1
-file_idx = 1
+
 selected_roi = 'roi%05d' % int(roi_idx)
 selected_slice = 'Slice%02d' % int(slice_idx)
 selected_file = 'File%03d' % int(file_idx)
@@ -136,8 +141,6 @@ if not os.path.exists(curr_save_dir):
     
 roi_df = DATA.loc[DATA['roi'] == selected_roi]
 file_df = roi_df.loc[roi_df['file'] == selected_file]
-
-min_val = 2000
 
 #%%
 # Look at trials of a specific stimulus type:
