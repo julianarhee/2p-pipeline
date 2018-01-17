@@ -645,7 +645,7 @@ for roi in roi_list:
         tsecs = (np.arange(0, nvols) - first_on ) / volumerate
 
         if 'grating' in stimtype:
-            stimname = 'Ori %.0f, SF: %.1f' % (configs[config]['rotation'], configs[config]['frequency'])
+            stimname = 'Ori %.0f, SF: %.2f' % (configs[config]['rotation'], configs[config]['frequency'])
         else:
             stimname = configs[config]['stimulus']
 
