@@ -189,6 +189,9 @@ else:
     roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
 
 #%% For each specified SLICE in this ROI set, create 2D mask array:
+print "======================================================================="
+
+print "TID %s -- Getting mask info..." % trace_hash
 
 MASKS = dict()
 for fidx, curr_file in enumerate(filenames):
@@ -290,6 +293,9 @@ frames_tsec = runinfo['frame_tstamps_sec']
 # =============================================================================
 # Extract ROIs for each specified slice for each file:
 # =============================================================================
+
+print "TID %s -- Applying masks to traces..."
+
 signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
 file_hashdict = dict()
@@ -405,6 +411,7 @@ with open(os.path.join(trace_outdir, 'fileinfo_%s.json' % TID['trace_hash']), 'w
 # Create time courses for ROIs:
 # =============================================================================
 
+print "TID %s -- sorting traces by ROI..."
 
 #% Load raw traces:
 try:
@@ -518,7 +525,8 @@ roi_tcourse_filehash = hash_file(trace_outfile_path)
 new_filename = os.path.splitext(trace_outfile_path)[0] + roi_tcourse_filehash + os.path.splitext(trace_outfile_path)[1]
 os.rename(trace_outfile_path, new_filename)
 
-print "Finished extracting time course for run %s by roi." % run
+print "======================================================================="
+print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, run)
 print "Saved ROI TIME COURSE file to:", new_filename
 
 #%% move tmp file:
@@ -529,3 +537,5 @@ if not os.path.exists(completed_tid_dir):
 if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
     os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
 
+print "Cleaned up tmp tid files."
+print "======================================================================="
