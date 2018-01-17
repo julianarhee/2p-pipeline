@@ -4,8 +4,8 @@ clc; clear all;
 %% Set info manually:
 rootdir = '/nas/volume1/2photon/data';
 animalid = 'JR063'; %'JR063';
-session = '20171202_JR063'; %'20171202_JR063';
-roi_id = 'rois006'; %'e4893c';
+session = '20171128_JR063'; %'20171202_JR063';
+roi_id = 'rois005'; %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
