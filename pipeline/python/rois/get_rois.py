@@ -659,7 +659,7 @@ if format_roi_output is True :
     maskfile.attrs['rid_hash'] = rid_hash
     maskfile.attrs['animal'] = animalid
     maskfile.attrs['session'] = session
-    maskfile.attrs['ref_file'] = params_thr[ref_filename]
+    maskfile.attrs['ref_file'] = params_thr['ref_filename']
     maskfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     maskfile.attrs['keep_good_rois'] = keep_good_rois
     maskfile.attrs['ntiffs_in_set'] = len(filenames)
