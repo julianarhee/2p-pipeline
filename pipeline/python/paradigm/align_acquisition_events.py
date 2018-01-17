@@ -686,7 +686,7 @@ for roi in roi_list:
     sns.despine(offset=2, trim=True)
 
     #%
-    pl.savefig(os.path.join(roi_output_figdir, '%s_%s_%s.png' % roi, curr_slice, roi_in_slice))
+    pl.savefig(os.path.join(roi_output_figdir, '%s_%s_%s.png' % (roi, curr_slice, roi_in_slice)))
     pl.close()
 
 
