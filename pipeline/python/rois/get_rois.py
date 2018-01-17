@@ -246,6 +246,66 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
     return roi_idx_filepath
 
 #%%
+def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
+    
+    nmf = np.load(nmf_filepath)
+    nr = nmf['A'].all().shape[1]
+
+    d1 = int(nmf['dims'][0])
+    d2 = int(nmf['dims'][1])
+    if len(nmf['dims']) > 2:
+        is_3D = True
+        d3 = int(nmf['dims'][2])
+        dims = (d1, d2)
+    else:
+        is_3D = False
+        dims = (d1, d2)
+    
+    A = nmf['A'].all()
+    A2 = A.copy()
+    A2.data **= 2
+    nA2 = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
+    rA = A * spdiags(old_div(1, nA2), 0, nr, nr)
+    rA = rA.todense()
+    nr = A.shape[1]
+    
+    # Create masks:
+    if is_3D:
+        masks = np.reshape(np.array(rA), (d1, d2, d3, nr), order='F')
+        if roiparams['keep_good_rois'] is True:
+            if kept_rois is None:
+                kept_rois = nmf['idx_components']
+            masks = masks[:,:,:,kept_rois]
+        if coreg_rois is not None:
+            masks = masks[:,:,:,coreg_rois]
+    else:
+        masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
+        if roiparams['keep_good_rois'] is True:
+            if kept_rois is None:
+                kept_rois = nmf['idx_components']
+            masks = masks[:,:,kept_rois]
+        if coreg_rois is not None:
+            masks = masks[:,:,coreg_rois]
+    
+    #print("Keeping %i out of %i ROIs." % (len(kept_rois), nr))
+    
+    # Get center of mass for each ROI:
+    coors = get_contours(A, dims, thr=0.9)
+    if roiparams['keep_good_rois'] is True:
+        if kept_rois is None:
+            kept_rois = nmf['idx_components']
+        coors = [coors[i] for i in kept_rois]
+    if coreg_rois is not None:
+        coors = [coors[i] for i in coreg_rois]
+        
+    #cc1 = [[l[0] for l in n['coordinates']] for n in coors]
+    #cc2 = [[l[1] for l in n['coordinates']] for n in coors]
+    #coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
+    #coms = np.array([np.array(n) for n in coords])
+    
+    return masks, coors, is_3D
+
+#%%
 
 parser = optparse.OptionParser()
 
@@ -491,7 +551,8 @@ elif roi_type == 'coregister':
     ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
     
     #%% Re-evaluate ROIs to less stringest thresholds
-    if len(ref_rois) == 0:
+    min_nrois = 4
+    if len(ref_rois) < min_nrois:
                     
         roi_eval_outdir = os.path.join(RID['DST'], 'src_evaluation')        
         if not os.path.exists(roi_eval_outdir):
@@ -582,65 +643,6 @@ with open(roiparams_filepath, 'w') as f:
     write_dict_to_json(roiparams, roiparams_filepath)
     
     
-#%%
-def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
-    
-    nmf = np.load(nmf_filepath)
-    nr = nmf['A'].all().shape[1]
-
-    d1 = int(nmf['dims'][0])
-    d2 = int(nmf['dims'][1])
-    if len(nmf['dims']) > 2:
-        is_3D = True
-        d3 = int(nmf['dims'][2])
-        dims = (d1, d2)
-    else:
-        is_3D = False
-        dims = (d1, d2)
-    
-    A = nmf['A'].all()
-    A2 = A.copy()
-    A2.data **= 2
-    nA2 = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
-    rA = A * spdiags(old_div(1, nA2), 0, nr, nr)
-    rA = rA.todense()
-    nr = A.shape[1]
-    
-    # Create masks:
-    if is_3D:
-        masks = np.reshape(np.array(rA), (d1, d2, d3, nr), order='F')
-        if roiparams['keep_good_rois'] is True:
-            if kept_rois is None:
-                kept_rois = nmf['idx_components']
-            masks = masks[:,:,:,kept_rois]
-        if coreg_rois is not None:
-            masks = masks[:,:,:,coreg_rois]
-    else:
-        masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
-        if roiparams['keep_good_rois'] is True:
-            if kept_rois is None:
-                kept_rois = nmf['idx_components']
-            masks = masks[:,:,kept_rois]
-        if coreg_rois is not None:
-            masks = masks[:,:,coreg_rois]
-    
-    #print("Keeping %i out of %i ROIs." % (len(kept_rois), nr))
-    
-    # Get center of mass for each ROI:
-    coors = get_contours(A, dims, thr=0.9)
-    if roiparams['keep_good_rois'] is True:
-        if kept_rois is None:
-            kept_rois = nmf['idx_components']
-        coors = [coors[i] for i in kept_rois]
-    if coreg_rois is not None:
-        coors = [coors[i] for i in coreg_rois]
-        
-    #cc1 = [[l[0] for l in n['coordinates']] for n in coors]
-    #cc2 = [[l[1] for l in n['coordinates']] for n in coors]
-    #coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
-    #coms = np.array([np.array(n) for n in coords])
-    
-    return masks, coors, is_3D
 
 #%%
 # =============================================================================

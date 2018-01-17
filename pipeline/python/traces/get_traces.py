@@ -439,7 +439,7 @@ vol_idxs = [int(v) for v in vol_idxs]
 
 # Create output file for parsed traces:
 # -----------------------------------------------------------------------------
-trace_fn = 'roi_trials_.hdf5'
+trace_fn = 'roi_timecourses.hdf5'
 trace_outfile_path = os.path.join(traceid_dir, trace_fn)
 
 roi_outfile = h5py.File(trace_outfile_path, 'w')
@@ -494,7 +494,8 @@ try:
                     if 'mask' not in roi_grp.keys():
                         roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
                         roi_mask[...] = masks[:,:,ridx]
-                        roi_grp.attrs['idx_in_set'] = roi
+                        roi_grp.attrs['id_in_set'] = roi_counter #roi
+                        roi_grp.attrs['id_in_slice'] = roi #ridx
                         roi_grp.attrs['idx_in_slice'] = ridx
                         roi_mask.attrs['slice'] = currslice
         

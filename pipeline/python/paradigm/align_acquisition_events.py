@@ -242,10 +242,10 @@ nframes_per_file = nslices_full * nvolumes
 # =============================================================================
 # Get frame indices for specified trial epochs:
 # =============================================================================
-outfile = os.path.join(paradigm_dir, 'frames.hdf5')
+parsed_frames_filepath = os.path.join(paradigm_dir, 'parsed_frames.hdf5')
 
 # 1. Create HDF5 file to store ALL trials in run with stimulus info and frame info:
-run_grp = h5py.File(outfile, 'w')
+run_grp = h5py.File(parsed_frames_filepath, 'w')
 run_grp.attrs['framerate'] = framerate
 run_grp.attrs['volumerate'] = volumerate
 run_grp.attrs['baseline_dur'] = iti_pre
@@ -345,9 +345,9 @@ for tiffnum in range(ntiffs):
 run_grp.close()
 
 #%% Rename FRAME file with hash:
-frame_file_hashid = hash_file(outfile)
-framestruct_path = '%s_%s.hdf5' % (os.path.splitext(outfile)[0], frame_file_hashid)
-os.rename(outfile, framestruct_path)
+frame_file_hashid = hash_file(parsed_frames_filepath)
+framestruct_path = '%s_%s.hdf5' % (os.path.splitext(parsed_frames_filepath)[0], frame_file_hashid)
+os.rename(parsed_frames_filepath, framestruct_path)
 
 print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
 print "Saved frame file to:", framestruct_path
@@ -400,9 +400,9 @@ print "Loading time courses from trace set: %s"%  trace_id
 print "================================================="
 
 try:
-    tcourse_fn = [t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_' in t][0]
-    tracestruct = h5py.File(os.path.join(traceid_dir, tcourse_fn), 'r')
-    roi_list = sorted(tracestruct.keys(), key=natural_keys)
+    tcourse_fn = [t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t][0]
+    roi_timecourses = h5py.File(os.path.join(traceid_dir, tcourse_fn), 'r')
+    roi_list = sorted(roi_timecourses.keys(), key=natural_keys)
     print "Loaded time-courses for run %s. Found %i ROIs total." % (run, len(roi_list))
 except Exception as e:
     print "-------------------------------------------------------------------"
@@ -413,7 +413,7 @@ except Exception as e:
     print "-------------------------------------------------------------------"
 
 try:
-    curr_slices = sorted(list(set([tracestruct[roi].attrs['slice'] for roi in roi_list])), key=natural_keys)
+    curr_slices = sorted(list(set([roi_timecourses[roi].attrs['slice'] for roi in roi_list])), key=natural_keys)
     print "ROIs are distributed across %i slices:" % len(curr_slices)
     print(curr_slices)
 except Exception as e:
@@ -487,8 +487,8 @@ if stimtype=='image':
 #%%
 
 # Create OUTFILE to save each ROI's time course for each trial, sorted by stimulus config
-roi_stimdict_path = os.path.join(traceid_dir, 'rois_by_stim.hdf5')
-stiminfo = h5py.File(roi_stimdict_path, 'w')
+roi_stimdict_path = os.path.join(traceid_dir, 'roi_trials.hdf5')
+roi_trials = h5py.File(roi_stimdict_path, 'w')
 
 #%%
 # =============================================================================
@@ -505,16 +505,13 @@ for config_idx in range(ncombinations):
     curr_trials = [trial for trial in trial_list
                    if all(trialdict[trial]['stimuli'][param] == currconfig[param] for param in currconfig.keys())]
 
-    if configname not in stiminfo.keys():
-        config_grp = stiminfo.create_group(configname)
+    if configname not in roi_trials.keys():
+        config_grp = roi_trials.create_group(configname)
     else:
-        config_grp = stiminfo[configname]
+        config_grp = roi_trials[configname]
 
     tracemat = []
     for tidx, trial in enumerate(sorted(curr_trials, key=natural_keys)):
-        #print trial
-#            if trial=='trial00160':
-#                continue
         curr_trial_volume_idxs = [vol_idxs[int(i)] for i in framestruct[trial]['frames_in_run']]
 #            slicenum = sliceids[tracestruct['roi00003'].attrs['slice']]
 #            slice_idxs = vol_idxs[3::nslices_full]
@@ -529,7 +526,7 @@ for config_idx in range(ncombinations):
 
         for roi in roi_list:
             #print roi
-            tcourse = tracestruct[roi]['timecourse'][trial_idxs]
+            tcourse = roi_timecourses[roi]['timecourse'][trial_idxs]
 
             #tracemat.append(tracestruct['roi00003']['timecourse'][tcourse_indices])
             #print trial, np.array(tracemat).dtype
@@ -540,10 +537,14 @@ for config_idx in range(ncombinations):
             tset[...] = tcourse
             tset.attrs['frame_on'] = stim_on_volume_idx #framestruct[trial]['frames_in_run'].attrs['stim_on_idx']
             tset.attrs['frame_idxs'] = trial_idxs
-
+            
+            config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
+            config_grp[roi].attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
+            #tset.attrs['slice'] = roi_timecourses[roi].attrs['slice']
+            #tset.attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
             #tset.attrs['stim_dur_sec'] = framestruct[trial]['frames_in_run'].attrs['stim_dur_sec']
 
-stiminfo.close()
+roi_trials.close()
 
 
 #%%
@@ -590,16 +591,20 @@ figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
 
 
 #%%
-roi_stimdict_path = os.path.join(traceid_dir, 'rois_by_stim.hdf5')
+roi_trials_filepath = os.path.join(traceid_dir, 'roi_trials.hdf5')
 
-stiminfo = h5py.File(roi_stimdict_path, 'r')
+roi_trials = h5py.File(roi_trials_filepath, 'r')
 
 #%%
-roi_output_figdir = os.path.join(os.path.split(roi_stimdict_path)[0], 'figures', 'psths')
+roi_output_figdir = os.path.join(os.path.split(roi_trials_filepath)[0], 'figures', 'psths')
 if not os.path.exists(roi_output_figdir):
     os.makedirs(roi_output_figdir)
 
 for roi in roi_list:
+    
+    curr_slice = roi_trials[roi].attrs['slice']
+    roi_in_slice = roi_trials[roi].attrs['roi_slice_id']
+    
     #%
     print roi
     if nrows==1:
@@ -635,13 +640,13 @@ for roi in roi_list:
         else:
             ax_curr = axs[col]
 
-        stim_trials = sorted([t for t in stiminfo[config][roi].keys()], key=natural_keys)
-        nvols = max([stiminfo[config][roi][t].shape[0] for t in stim_trials])
+        stim_trials = sorted([t for t in roi_trials[config][roi].keys()], key=natural_keys)
+        nvols = max([roi_trials[config][roi][t].shape[0] for t in stim_trials])
         ntrials = len(stim_trials)
         trialmat = np.ones((ntrials, nvols)) * np.nan
         dfmat = []
 
-        first_on = int(min([[i for i in stiminfo[config][roi][t].attrs['frame_idxs']].index(stiminfo[config][roi][t].attrs['frame_on']) for t in stim_trials]))
+        first_on = int(min([[i for i in roi_trials[config][roi][t].attrs['frame_idxs']].index(roi_trials[config][roi][t].attrs['frame_on']) for t in stim_trials]))
         tsecs = (np.arange(0, nvols) - first_on ) / volumerate
 
         if 'grating' in stimtype:
@@ -652,13 +657,13 @@ for roi in roi_list:
         ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
 
         for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
-            trace = stiminfo[config][roi][trial]
-            curr_on = int([i for i in trace.attrs['frame_idxs']].index(int(trace.attrs['frame_on'])))
-            trialmat[tidx, first_on:first_on+len(trace[curr_on:])] = trace[curr_on:]
+            trial_timecourse = roi_trials[config][roi][trial]
+            curr_on = int([i for i in trial_timecourse.attrs['frame_idxs']].index(int(trial_timecourse.attrs['frame_on'])))
+            trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
             if first_on < curr_on:
-                trialmat[tidx, 0:first_on] = trace[1:curr_on]
+                trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
             else:
-                trialmat[tidx, 0:first_on] = trace[0:curr_on]
+                trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
 
             #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
 
@@ -682,10 +687,11 @@ for roi in roi_list:
     sns.despine(offset=2, trim=True)
 
     #%
-    pl.savefig(os.path.join(roi_output_figdir, '%s.png' % roi))
+    pl.savefig(os.path.join(roi_output_figdir, '%s_%s_%s.png' % roi, curr_slice, roi_in_slice))
     pl.close()
 
 
+roi_trials.close()
 
 #%%
 #
