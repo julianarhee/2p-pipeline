@@ -4,8 +4,8 @@ clc; clear all;
 %% Set info manually:
 rootdir = '/nas/volume1/2photon/data';
 animalid = 'JR063'; %'JR063';
-session = '20171128_JR063'; %'20171202_JR063';
-roi_id = 'rois004'; %'e4893c';
+session = '20171202_JR063'; %'20171202_JR063';
+roi_id = 'rois006'; %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -72,14 +72,14 @@ ref_channel = rid_ref_channel;
 
 ref_filename = sprintf('File%03d', ref_file);
 ref_channelname = sprintf('Channel%02d', ref_channel);
-fprintf('RID %s -- Using %s, %s as reference for manual ROI creation.\n', rid_hash, ref_filename, ref_channelname);
+fprintf('RID %s -- Using %s, %s as reference for manual ROI creation.\n', roi_hash, ref_filename, ref_channelname);
 
 
 if length(roi_slices)==0 || ~ismember('slices', fieldnames(RID.PARAMS.options))
     roi_slices = runinfo.slices;
-    fprintf('RID %s -- Slices not specified for manual ROI creation. Using all %i slices.\n', rid_hash, length(runinfo.slices));
+    fprintf('RID %s -- Slices not specified for manual ROI creation. Using all %i slices.\n', roi_hash, length(runinfo.slices));
 else
-    fprintf('RID %s -- Specified slices %s.\n', rid_hash, mat2str(roi_slices));
+    fprintf('RID %s -- Specified slices %s.\n', roi_hash, mat2str(roi_slices));
 end
     
 if length(runinfo.slices) > 1
@@ -98,7 +98,7 @@ else
 end
 slice_tiffs = dir(fullfile(slice_sourcedir, '*.tif'));
 slice_tiffs = {slice_tiffs(:).name}';
-assert(length(slice_tiffs)==length(roi_slices), 'RID %s -- WARNING:  Incorrect number of slices found in specified dir:\n%s\n', rid_hash, slice_sourcedir);
+assert(length(slice_tiffs)==length(roi_slices), 'RID %s -- WARNING:  Incorrect number of slices found in specified dir:\n%s\n', roi_hash, slice_sourcedir);
 
 
 %% create empty structure and cells to save roi info
@@ -174,11 +174,24 @@ for slidx = roi_slices
      
 
 end
-
-
+% masks = zeros(512, 512, 65);
+% for r = 1:65
+%     mask = hdf5read(mfilepath, sprintf('/masks/slice1/roi%i', r));
+%     masks(:,:,r) = mask;
+% end
+% RGBimg = zeros([size(calcimg),3]);
+% RGBimg(:,:,1)=0;
+% RGBimg(:,:,2)=calcimg_norm;
+% RGBimg(:,:,3)=0;
+% for r = 1:65
+%     masks_ones=find(squeeze(masks(:,:,r))==1);
+%     RGBimg(:,:,3)=RGBimg(:,:,3)+0.5*masks(:,:,r);
+%     RGBimg(:,:,1)=RGBimg(:,:,1)+0.5*masks(:,:,r);
+% end
+% figure(); imshow(RGBimg);
 
 %% Save ROI masks by slice:
-%maskname = sprintf('masks_%s', rid_hash)
+%maskname = sprintf('masks_%s', roi_hash)
 %mask_fn = fullfile(mask_dir, sprintf('%s.h5', maskname));
 %mask_fn = fullfile(roi_base_dir, sprintf('%s.hdf5', maskname));
 
@@ -203,7 +216,7 @@ h5writeatt(mask_fn, sprintf('/%s', curr_filename), 'source', slice_sourcedir)
 
 h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
 h5writeatt(mask_fn,  '/', 'roi_type', roi_type);
-h5writeatt(mask_fn,  '/', 'roi_hash', rid_hash);
+h5writeatt(mask_fn,  '/', 'roi_hash', roi_hash);
 h5writeatt(mask_fn,  '/', 'roi_id', roi_id);
 h5writeatt(mask_fn,  '/', 'animal', animalid);
 h5writeatt(mask_fn,  '/', 'session', session);
@@ -236,7 +249,7 @@ end
 %% Clean up tmp file
 
 tmp_rid_dir = fullfile(roi_dir, 'tmp_rids');
-tmp_rid_fn = sprintf('tmp_rid_%s.json', rid_hash);
+tmp_rid_fn = sprintf('tmp_rid_%s.json', roi_hash);
 
 finished_rid_dir = fullfile(tmp_rid_dir, 'completed');
 if ~exist(finished_rid_dir)
