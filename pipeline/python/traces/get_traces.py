@@ -176,11 +176,14 @@ is_3D = bool(maskfile.attrs['is_3D'])
 filenames = maskfile.keys()
 
 # Check if masks are split up by slices:
-slice_keys = [s for s in maskfile[filenames[0]]['masks'].keys() if 'Slice' in s]
-if len(slice_keys) > 0:
-    slice_masks = True
-else:
+if type(maskfile[filenames[0]]['masks']) == h5py.Dataset:
     slice_masks = False
+else:
+    slice_keys = [s for s in maskfile[filenames[0]]['masks'].keys() if 'Slice' in s]
+    if len(slice_keys) > 0:
+        slice_masks = True
+    else:
+        slice_masks = False
 
 #%
 if slice_masks:
@@ -211,7 +214,8 @@ for fidx, curr_file in enumerate(filenames):
         else:
             avg = maskfile[curr_file]['zproj_img']
             MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
-            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file']
+            roinames = maskfile[curr_file]['coords'].keys()
+            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
             MASKS[curr_file][curr_slice]['roi_idxs'] = maskfile[curr_file]['masks'].attrs['roi_idxs']
                         
 #        avg_source = os.path.split(f['/masks/%s' % curr_slice].attrs['source'])[0]
@@ -238,14 +242,17 @@ for fidx, curr_file in enumerate(filenames):
         # Create maskarray:
         nrois = len(curr_rois)
         maskarray = np.empty((d, nrois))
-        
+        maskarray_roi_ids = np.empty((nrois,)) 
         for ridx, roi in enumerate(curr_rois):
             roi_id = int(roi[3:])-1
             if slice_masks: 
                 masktmp = np.array(maskfile[curr_file]['masks'][curr_slice]).T[:,:,ridx] # T is needed for MATLAB masks... (TODO: check roi_blobs)
             else:
-                masktmp = maskfile[curr_file]['masks'][:,:,sidx,ridx]
-            
+                if len(roi_slices) > 1:
+                    masktmp = maskfile[curr_file]['masks'][:,:,sidx,ridx]
+                else:
+                    masktmp = maskfile[curr_file]['masks'][:,:,ridx]
+ 
             #masktmp = f['/masks/%s/%s' % (curr_slice, roi)].value.T
             msk = masktmp.copy()
             msk[msk==0] = np.nan
@@ -257,7 +264,8 @@ for fidx, curr_file in enumerate(filenames):
             # Normalize by size:
             masktmp = np.reshape(masktmp, (d,), order='C')
             npixels = len(np.nonzero(masktmp)[0])
-            maskarray[:,roi_id] = masktmp/npixels
+            maskarray[:,ridx] = masktmp/npixels
+            maskarray_roi_ids[ridx] = roi_id
         
         MASKS[curr_file][curr_slice]['mask_array'] = maskarray
             
