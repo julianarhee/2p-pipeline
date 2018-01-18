@@ -366,7 +366,8 @@ def evaluate_motion(options):
     # -------------------------------------------------------------------------
     # 3. Identify border pixels:
     # -------------------------------------------------------------------------
-    
+    # The max N pixels on border should be set as input param to set_roi_params.py
+    # Currently, just using the same border pix size for all 4 borders
     
     
     #%%
