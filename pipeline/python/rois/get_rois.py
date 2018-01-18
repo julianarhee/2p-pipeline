@@ -106,7 +106,7 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     
     # Get center of mass for each ROI:
     coors = get_contours(A, dims, thr=0.9)
-    roi_idxs = np.range(0, nr)
+    roi_idxs = np.arange(0, nr)
     all_rois = [roi['neuron_id'] for roi in coors]
     print all_rois[0:5], roi_idxs[0:5]
 
@@ -121,11 +121,17 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
         if kept_rois is None:
             kept_rois = nmf['idx_components']
         coors = [coors[i] for i in kept_rois]
-        masks = masks[:,:,:,kept_rois]
+        if is_3D:
+            masks = masks[:,:,:,kept_rois]
+        else:
+            masks = masks[:,:,kept_rois]
         roi_idxs = [all_rois[i] for i in kept_rois]
     if coreg_rois is not None:
         coors = [coors[i] for i in coreg_rois]
-        masks = masks[:,:,:,coreg_rois]
+        if is_3D:
+            masks = masks[:,:,:,coreg_rois]
+        else:
+            masks = masks[:,:,coreg_rois]
         if roiparams['keep_good_rois'] is True:
             roi_idxs = np.array([kept_rois[r] for r in coreg_rois])
         else:
@@ -606,7 +612,7 @@ if format_roi_output is True :
                     
                     # Create group for current file:
                     filegrp = maskfile.create_group(curr_file)
-                    filegrp.attrs['source_file'] = os.path.join(nmf_output_dir, nmf_fn)
+                    filegrp.attrs['source_file'] = os.path.join(src_nmf_dir, nmf_filepath)
                 
                     # Get masks:
                     masks, coord_info, roi_idxs, is_3D = format_rois_nmf(nmf_filepath, roiparams, 

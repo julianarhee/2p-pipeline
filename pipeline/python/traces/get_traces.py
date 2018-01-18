@@ -1,10 +1,61 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
+Extracted time courses using a set of trace params (TID) defined with set_trace_params.py
+
+Outputs to <traceid_dir>:
+    a) ./figures/SliceXX_roisXX_<rid_hash>.png 
+        Masks overlaid on zprojected reference slice img with labeled rois.
+        
+    b) ./files/FileXXX_rawtraces_<traceid_hash>.hdf5
+        Extracted raw traces using specified trace params (and specified ROI set)
+        /FileXXX - group
+            /SliceXX - group
+                /masks - datatset
+                    [d1xd2xnrois] array
+                    - attrs: 
+                        roi_id: RID name, 
+                        rid_hash: RID hash, 
+                        roi_type: roi type, 
+                        nrois: num rois in set,
+                        roi_idxs:  original indices of rois in set (may be different than count if src is different)
+                /zproj - dataset
+                    [d1xd2] zprojected image
+                    - attrs:
+                        img_source: file path to zprojected reference image
+                /rawtraces - dataset
+                    [Txnrois] array
+                    - atttrs:
+                        nframes:  T (num of frames in file)
+                        dims: original dimensions of movie for reshaping (d1xd2)
+                /frames_tsec - dataset
+                    corresponding time in secs for each point in timecourse
+                
+    c) ./roi_timecourses.hdf5 
+        Trace arrays split up by ROI.
+        /roi00001 - Group
+            (length-5 name of ROI in set, 1-indexed)
+            - attrs:
+                slice:  slice on which current roi (or com) is
+                roi_img_path: source of zprojected slice image
+            /mask - dataset
+                [d1xd2] array
+                - attrs:
+                    id_in_set:  same as group name (int)
+                    id_in_slice:  id in current slice (if multi-slice, will be different than group name)
+                    idx_in_slice:  index in slice (if id in slice different than count of rois in slice)
+                    slice:  'SliceXX'
+            /timecourse = dataset
+                [T,] timecourse of roi
+                - attrs:
+                    source_file:  path to file from which trace is extracted
+
 Created on Tue Dec 12 11:57:24 2017
 
 @author: julianarhee
 """
+
+            
 import matplotlib
 matplotlib.use('Agg')
 import os
@@ -201,8 +252,7 @@ for fidx, curr_file in enumerate(filenames):
     MASKS[curr_file] = dict()
     
     for sidx, curr_slice in enumerate(roi_slices):
-    
-        #curr_slice = roi_slices[sidx]
+
         MASKS[curr_file][curr_slice] = dict()
     
         # Get average image:
@@ -215,22 +265,12 @@ for fidx, curr_file in enumerate(filenames):
             avg = maskfile[curr_file]['zproj_img']
             MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
             roinames = maskfile[curr_file]['coords'].keys()
-            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
+            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file'] #maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
             MASKS[curr_file][curr_slice]['roi_idxs'] = maskfile[curr_file]['masks'].attrs['roi_idxs']
-                        
-#        avg_source = os.path.split(f['/masks/%s' % curr_slice].attrs['source'])[0]
-#        avg_slice_fn = os.path.split(f['/masks/%s' % curr_slice].attrs['source'])[1]
-#        file_name = re.search(r"File\d{3}", avg_slice_fn).group()
-#        channel_name = re.search(r"Channel\d{2}", avg_slice_fn).group()
-#        sigchannel_idx = int(channel_name[7:]) - 1
-#        avg_slice_path = os.path.join(avg_source, channel_name, file_name, avg_slice_fn)
-#        avg = tf.imread(avg_slice_path)
-#        MASKS[curr_slice]['img_path'] = avg_slice_path
-    
+
         d1,d2 = avg.shape
         d = d1*d2
-        
-        
+
         # Plot labeled ROIs on avg img:
         pl.figure()
         pl.imshow(avg)
@@ -240,6 +280,7 @@ for fidx, curr_file in enumerate(filenames):
             curr_rois = ["roi%04d" % int(r) for r in maskfile[curr_file]['masks'].attrs['roi_idxs']]
         
         # Create maskarray:
+        print "Plotting ROIs:", curr_rois
         nrois = len(curr_rois)
         maskarray = np.empty((d, nrois))
         maskarray_roi_ids = np.empty((nrois,)) 
@@ -253,12 +294,11 @@ for fidx, curr_file in enumerate(filenames):
                 else:
                     masktmp = maskfile[curr_file]['masks'][:,:,ridx]
  
-            #masktmp = f['/masks/%s/%s' % (curr_slice, roi)].value.T
             msk = masktmp.copy()
             msk[msk==0] = np.nan
             pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
             [ys, xs] = np.where(masktmp>0)
-            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], roi_id, weight='bold')
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx), weight='bold')
             pl.axis('off')
             
             # Normalize by size:
@@ -269,20 +309,9 @@ for fidx, curr_file in enumerate(filenames):
         
         MASKS[curr_file][curr_slice]['mask_array'] = maskarray
             
-        pl.savefig(os.path.join(trace_figdir, '%s_%s_%s' % (curr_slice, RID['roi_id'], RID['rid_hash'])))
+        pl.savefig(os.path.join(trace_figdir, '%s_%s_%s.png' % (curr_slice, RID['roi_id'], RID['rid_hash'])))
         pl.close()
-    
-#        # Create maskarray:
-#        nrois = len(curr_rois)
-#        maskarray = np.empty((d, nrois))
-#        for roi in curr_rois:
-#            roi_id = int(roi[3:])-1
-#            masktmp = f['/masks/%s/%s' % (curr_slice, roi)].value.T
-#            masktmp = np.reshape(masktmp, (d,), order='C')
-#            npixels = len(np.nonzero(masktmp)[0])
-#            maskarray[:,roi_id] = masktmp/npixels
-#    
-#        MASKS[curr_slice]['maskarray'] = maskarray
+
 
 #%%
 # ================================================================================
@@ -318,19 +347,16 @@ for tfn in tiff_files:
         trace_outfile_path = os.path.join(trace_outdir, trace_fn)
 
         # Load input tiff file:
-        currtiff_path = os.path.join(tiff_dir, tfn)
-    
         print "Reading tiff..."
+        currtiff_path = os.path.join(tiff_dir, tfn)
         tiff = tf.imread(currtiff_path)
         T, d1, d2 = tiff.shape
         d = d1*d2
-    
         tiffR = np.reshape(tiff, (T, d), order='C')
     
         # First get signal channel only:
         tiffR = tiffR[signal_channel_idx::nchannels,:]
-        
-        
+
         # Apply masks to each slice:
         file_grp = h5py.File(trace_outfile_path, 'w')
         file_grp.attrs['source_file'] = currtiff_path
@@ -338,7 +364,6 @@ for tfn in tiff_files:
         file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
         file_grp.attrs['mask_sourcefile'] = mask_path
 
-        #mask_slice_names = sorted([str(k) for k in MASKS.keys()], key=natural_keys)
         # Get curr file's masks, or use reference:
         if curr_file in MASKS.keys():
             single_ref = False
@@ -346,8 +371,7 @@ for tfn in tiff_files:
         else:
             single_ref = True
             mask_key = MASKS.keys()[0]
-            
-            
+
         for sl in range(len(roi_slices)):
     
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
@@ -376,9 +400,7 @@ for tfn in tiff_files:
             mset.attrs['roi_type'] = str(RID['roi_type'])
             mset.attrs['nrois'] = maskarray.shape[1]
             mset.attrs['roi_idxs'] = MASKS[mask_key][curr_slice]['roi_idxs']
-            
-            #mset.attrs['img_path'] = maskdict['img_path']
-            
+                        
             # Save zproj img:
             zproj = MASKS[mask_key][curr_slice]['zproj_img']
             if 'zproj' not in slice_grp.keys():
@@ -431,7 +453,6 @@ except Exception as e:
     print "Aborting with error:"
     traceback.print_exc()
 
-
 # Get VOLUME indices to align to frame indices:
 # -----------------------------------------------------------------------------
 nslices = len(runinfo['slices'])
@@ -462,7 +483,6 @@ roi_outfile.attrs['session'] = session
 roi_outfile.attrs['acquisition'] = acquisition
 roi_outfile.attrs['animalid'] = animalid
 roi_outfile.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
 
 # Concatenate time courses across all files to create single time-source for RUN:
 # -----------------------------------------------------------------------------
