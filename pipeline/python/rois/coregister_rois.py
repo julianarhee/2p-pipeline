@@ -17,6 +17,7 @@ from builtins import map
 from builtins import range
 from past.utils import old_div
 import datetime
+import traceback
 import cv2
 import glob
 import numpy as np
@@ -290,7 +291,7 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
          
     except Exception as e:
         print "-- ERROR: in finding matches to ref. --------------------------"
-        print traceback.print_exc()
+        traceback.print_exc()
         print "---------------------------------------------------------------"
     finally:
         coreg_outfile.close()
@@ -329,7 +330,7 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
             idx_components = ref['idx_components']
         else:
             idx_components = idxs_to_keep[ref_file]
-        A1 = A1[:,  idx_components]
+        A1 = A1[:, idx_components]
         nr = A1.shape[-1]
     masks = np.reshape(np.array(A1.todense()), (d1, d2, nr), order='F')
     print "Loaded reference masks with shape:", masks.shape
@@ -351,7 +352,7 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
                 idx_components = nmf['idx_components']
             else:
                 idx_components = idxs_to_keep[curr_file]
-            print("Keeping %i out of %i components." % (len(idx_components), nr))
+            print("Plotting %i out of %i components." % (len(idx_components), nr))
             A2 = A2[:,  idx_components]
             nr = A2.shape[-1]
         masks2 = np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')

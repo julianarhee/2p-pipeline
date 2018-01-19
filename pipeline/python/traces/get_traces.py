@@ -260,13 +260,13 @@ for fidx, curr_file in enumerate(filenames):
             avg =np.array( maskfile[curr_file]['zproj_img'][curr_slice]).T # T is needed for MATLAB masks... (TODO: check roi_blobs)
             MASKS[curr_file][curr_slice]['zproj_img'] =  avg #maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
             MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
-            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['roi_idxs']
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']
         else:
             avg = maskfile[curr_file]['zproj_img']
             MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
-            roinames = maskfile[curr_file]['coords'].keys()
+            #roinames = maskfile[curr_file]['coords'].keys()
             MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file'] #maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
-            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'].attrs['roi_idxs']
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'].attrs['src_roi_idxs']
 
         d1,d2 = avg.shape
         d = d1*d2
@@ -275,10 +275,12 @@ for fidx, curr_file in enumerate(filenames):
         pl.figure()
         pl.imshow(avg)
         if slice_masks:
-            curr_rois = ["roi%04d" % int(r) for r in maskfile[curr_file]['masks'][curr_slice].attrs['roi_idxs']]
+            curr_rois = ["roi%05" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs'])]
+            print curr_rois
         else:
-            curr_rois = ["roi%04d" % int(r) for r in maskfile[curr_file]['masks'].attrs['roi_idxs']]
-        
+            curr_rois = ["roi%05d" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'].attrs['src_roi_idxs'])]
+            print curr_rois
+            
         # Create maskarray:
         print "Plotting ROIs:", curr_rois
         nrois = len(curr_rois)

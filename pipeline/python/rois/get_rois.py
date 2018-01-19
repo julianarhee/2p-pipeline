@@ -64,7 +64,7 @@ from pipeline.python.rois import extract_rois_caiman as rcm
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
 from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
-from pipeline.python.evaluation.evaluate_roi_extraction import run_roi_evaluation
+from pipeline.python.evaluation import evaluate_roi_extraction as ev
 from scipy.sparse import spdiags
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -77,6 +77,7 @@ def timer(start,end):
    
 pp = pprint.PrettyPrinter(indent=4)
 
+        
 #%%
 def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     """
@@ -207,7 +208,7 @@ evaluate_rois = options.evaluate_rois
 #rootdir = '/nas/volume1/2photon/data'
 #animalid = 'JR063' #'JR063'
 #session = '20171128_JR063' #'20171128_JR063'
-#roi_id = 'rois002'
+#roi_id = 'rois006'
 #slurm = False
 #auto = False
 #
@@ -400,9 +401,9 @@ elif roi_type == 'coregister':
     
     ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
     
-    #%% Re-evaluate ROIs to less stringest thresholds
+    #% Re-evaluate ROIs to less stringest thresholds
     if evaluate_rois is True:
-                    
+        print "REEVALTING ROIS"
         roi_eval_outdir = os.path.join(RID['DST'], 'src_evaluation')        
         if not os.path.exists(roi_eval_outdir):
             os.makedirs(roi_eval_outdir)
@@ -427,9 +428,8 @@ elif roi_type == 'coregister':
             print k, ':', evalparams[k]
         print "-----------------------------------------------------------"
                  
-        roi_idx_filepath = run_roi_evaluation(session_dir, src_roi_id, roi_eval_outdir, roi_type='caiman2D', evalparams=evalparams)
-
-        
+        roi_idx_filepath = ev.run_roi_evaluation(session_dir, src_roi_id, roi_eval_outdir, roi_type='caiman2D', evalparams=evalparams)
+                
         #% Re-run coregistration with new ROI idxs:
             
         coreg_output_dir = os.path.join(RID['DST'], 'reeval_coreg_results')

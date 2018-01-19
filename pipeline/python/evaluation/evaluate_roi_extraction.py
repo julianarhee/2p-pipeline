@@ -40,6 +40,8 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, dview=None, eval_outdi
         SNR_comp :  SNR val for each comp
         r_values :  spatial corr values for each comp
     """
+
+    
     eval_outdir_figs = os.path.join(eval_outdir, 'figures')
     if not os.path.exists(eval_outdir_figs):
         os.makedirs(eval_outdir_figs)
@@ -82,15 +84,16 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, dview=None, eval_outdi
                     eval_outfile.attrs[k] = evalparams[k]
                 eval_outfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-            if curr_file not in eval_outfile.keys():
-                file_grp = eval_outfile.create_group(curr_file)
-                file_grp.attrs['source'] = nmfout_path
-            else:
-                file_grp = eval_outfile[curr_file]
+#            if curr_file not in eval_outfile.keys():
+            file_grp = eval_outfile.create_group(curr_file)
+            file_grp.attrs['source'] = nmfout_path
+
+#            else:
+#                file_grp = eval_outfile[curr_file]
             
             kept = file_grp.create_dataset('kept_components', idx_components.shape, idx_components.dtype)
             kept[...] = idx_components
-            
+
             bad = file_grp.create_dataset('bad_components', idx_components_bad.shape, idx_components_bad.dtype)
             bad[...] = idx_components_bad
             
@@ -99,13 +102,16 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, dview=None, eval_outdi
             
             rvals = file_grp.create_dataset('r_values', r_values.shape, r_values.dtype)
             rvals[...] = r_values
-            
-            eval_outfile.close()
+                        
     except Exception as e:
-        print e
+        print "ERROR in evaluation"
+        traceback.print_exc()
+    finally:
         eval_outfile.close()
+
+    return idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds
         
-def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D', evalparams=None):
+def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, dview=None, roi_type='caiman2D', evalparams=None):
     
     session = os.path.split(session_dir)[1]
     roidict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
@@ -139,6 +145,7 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
         roi_idx_filepath = os.path.join(roi_eval_dir, 'roi_idxs_to_keep.hdf5')
         roifile = h5py.File(roi_idx_filepath, 'w')
         for k in evalparams.keys():
+            print k, evalparams[k]
             roifile.attrs[k] = evalparams[k]
         roifile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -155,15 +162,13 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
                     dview.terminate() # stop it if it was running
                 except:
                     pass
+                
                 c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
                                                                  n_processes=None,  # number of process to use, reduce if out of mem
                                                                  single_thread = False)
-        
-                good, bad, snr_vals, r_vals = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, 
-                                                                      evalparams, dview=dview,
-                                                                      eval_outdir=roi_eval_dir, save_output=True)
+                print "N processes:", n_processes
+                good, bad, snr_vals, r_vals, cnn_preds = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, evalparams, dview=dview, eval_outdir=roi_eval_dir, save_output=True)
                 #idxs_to_keep[curr_file] = good
-                        
                 rois = roifile.create_dataset('/'.join([curr_file, 'idxs_to_keep']), good.shape, good.dtype)
                 rois[...] = good
                 rois.attrs['tiff_source'] = curr_mmap_path
@@ -176,9 +181,18 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
             print "-----------------------------------------------------------"
         finally:
             roifile.close()
+            if dview is not None:
+                dview.terminate()
 
     print "Finished ROI evaluation step. ROI eval info saved to:"
     print roi_idx_filepath
     
     return roi_idx_filepath
+
+def main():
+    print "hi"
+    
+    
+if __name__ == '__main__':
+    main()
 
