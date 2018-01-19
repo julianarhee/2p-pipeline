@@ -141,48 +141,48 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, dview=None, roi_ty
             match_nmf = [f for f in source_nmf_paths if fn in f][0]
             match_mmap = [f for f in mem_paths if fn in f][0]
             src_file_list.append((match_mmap, match_nmf))
-                    
-        roi_idx_filepath = os.path.join(roi_eval_dir, 'roi_idxs_to_keep.hdf5')
-        roifile = h5py.File(roi_idx_filepath, 'w')
-        for k in evalparams.keys():
-            print k, evalparams[k]
-            roifile.attrs[k] = evalparams[k]
-        roifile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        try:
-            #idxs_to_keep = dict()
-            for src_file in src_file_list:
-                curr_mmap_path = src_file[0]
-                curr_nmfout_path = src_file[1]
-                
-                curr_file = str(re.search('File(\d{3})', curr_nmfout_path).group(0))
-                
-                #%start a cluster for parallel processing
-                try:
-                    dview.terminate() # stop it if it was running
-                except:
-                    pass
-                
-                c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
-                                                                 n_processes=None,  # number of process to use, reduce if out of mem
-                                                                 single_thread = False)
-                print "N processes:", n_processes
-                good, bad, snr_vals, r_vals, cnn_preds = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, evalparams, dview=dview, eval_outdir=roi_eval_dir, save_output=True)
-                #idxs_to_keep[curr_file] = good
-                rois = roifile.create_dataset('/'.join([curr_file, 'idxs_to_keep']), good.shape, good.dtype)
-                rois[...] = good
-                rois.attrs['tiff_source'] = curr_mmap_path
-                rois.attrs['roi_source'] = curr_nmfout_path
+
+            #%start a cluster for parallel processing
+            try:
+                dview.terminate() # stop it if it was running
+            except:
+                pass
             
-            roifile.close()
-        except Exception as e:
-            print "--- Error evaulating ROIs. Curr file: %s ---" % str(src_file)
-            traceback.print_exc()
-            print "-----------------------------------------------------------"
-        finally:
-            roifile.close()
-            if dview is not None:
-                dview.terminate()
+            c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
+                                                             n_processes=None,  # number of process to use, reduce if out of mem
+                                                             single_thread = False)   
+            try:
+                roi_idx_filepath = os.path.join(roi_eval_dir, 'roi_idxs_to_keep.hdf5')
+                roifile = h5py.File(roi_idx_filepath, 'a')
+                for k in evalparams.keys():
+                    print k, evalparams[k]
+                    roifile.attrs[k] = evalparams[k]
+                roifile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+    
+                #idxs_to_keep = dict()
+                for src_file in src_file_list:
+                    curr_mmap_path = src_file[0]
+                    curr_nmfout_path = src_file[1]
+                    
+                    curr_file = str(re.search('File(\d{3})', curr_nmfout_path).group(0))
+                    
+                    print "N processes:", n_processes
+                    good, bad, snr_vals, r_vals, cnn_preds = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, evalparams, dview=dview, eval_outdir=roi_eval_dir, save_output=True)
+                    #idxs_to_keep[curr_file] = good
+                    rois = roifile.create_dataset('/'.join([curr_file, 'idxs_to_keep']), good.shape, good.dtype)
+                    rois[...] = good
+                    rois.attrs['tiff_source'] = curr_mmap_path
+                    rois.attrs['roi_source'] = curr_nmfout_path
+            
+            except Exception as e:
+                print "--- Error evaulating ROIs. Curr file: %s ---" % str(src_file)
+                traceback.print_exc()
+                print "-----------------------------------------------------------"
+            finally:
+                roifile.close()
+                if dview is not None:
+                    dview.terminate()
 
     print "Finished ROI evaluation step. ROI eval info saved to:"
     print roi_idx_filepath
