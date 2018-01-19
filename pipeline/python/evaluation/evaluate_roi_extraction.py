@@ -50,6 +50,12 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, dview=None, eval_outdi
     
     nmf = np.load(nmfout_path)
     
+    print "----------------------------------"
+    print "EVALUATING ROIS with params:"
+    for k in evalparams.keys():
+        print k, ':', evalparams[k]
+    print "----------------------------------"
+    
     # Evaluate components and save output:
     final_frate = evalparams['final_frate']
     rval_thr = evalparams['rval_thr']       # accept components with space corr threshold or higher
