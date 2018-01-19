@@ -539,9 +539,9 @@ for config_idx in range(ncombinations):
             tset.attrs['frame_idxs'] = trial_idxs
             
             config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
-            config_grp[roi].attrs['id_in_set'] = roi_timecourses.attrs['id_in_set']
+            config_grp[roi].attrs['id_in_set'] = roi_timecourses[roi].attrs['id_in_set']
             config_grp[roi].attrs['id_in_slice'] = roi_timecourses[roi].attrs['id_in_slice']
-            config_grp[roi].attrs['idx_in_slice'] = roi_timecourses.attrs['idx_in_slice']
+            config_grp[roi].attrs['idx_in_slice'] = roi_timecourses[roi].attrs['idx_in_slice']
                         
             #tset.attrs['slice'] = roi_timecourses[roi].attrs['slice']
             #tset.attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
@@ -632,7 +632,7 @@ for roi in roi_list:
     #roi = 'roi00003'
     for config in subplot_stimlist:
         curr_slice = roi_trials[config][roi].attrs['slice']
-        roi_in_slice = roi_trials[config][roi].attrs['roi_slice_id']
+        roi_in_slice = roi_trials[config][roi].attrs['idx_in_slice']
         
         if col==(ncols) and nrows>1:
             row += 1

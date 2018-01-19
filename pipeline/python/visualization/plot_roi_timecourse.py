@@ -21,13 +21,13 @@ from pipeline.python.utils import natural_keys
 rootdir = '/nas/volume1/2photon/data'
 animalid = 'JR063'
 session = '20171128_JR063'
-acquisition = 'FOV1_zoom1x_volume'
+acquisition = 'FOV2_zoom1x'
 run = 'gratings_static'
 trace_id = 'traces001'
 
 #%%
 
-roi_idx = 4
+roi_idx = 1
 slice_idx = 1
 file_idx = 1
 min_val = 2000
@@ -46,7 +46,7 @@ traceid_dir = os.path.join(trace_dir, trace_name)
 trace_files = sorted([t for t in os.listdir(os.path.join(traceid_dir, 'files')) if t.endswith('hdf5')], key=natural_keys)
 file_names = ["File%03d" % int(i+1) for i in range(len(trace_files))]
 
-# Match paradigm files and trace files:
+#%% Match paradigm files and trace files:
 assert len(paradigm_files) == len(trace_files), "Mismatch in N paradigm files (%i) and N trace files (%i)" % (len(paradigm_files), len(trace_files))
 try:
     file_list = [(par, tra) for par, tra in zip(paradigm_files, trace_files)]
@@ -203,6 +203,7 @@ for selected_file in fnames:
     for ori in oris:
         for sf in sfs:
             stimconfig = 'Ori: %.0f, SF: %.2f' % (ori, sf)
+            print stimconfig
             config_key = [k for k in configs.keys() if configs[k] == stimconfig][0]
             
             key_trials = curr_trials_df.loc[(curr_trials_df['ori'] == ori) & (curr_trials_df['sf'] == sf)]['trial']

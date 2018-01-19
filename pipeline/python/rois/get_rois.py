@@ -430,7 +430,7 @@ elif roi_type == 'coregister':
         roi_idx_filepath = run_roi_evaluation(session_dir, src_roi_id, roi_eval_outdir, roi_type='caiman2D', evalparams=evalparams)
 
         
-        #%% Re-run coregistration with new ROI idxs:
+        #% Re-run coregistration with new ROI idxs:
             
         coreg_output_dir = os.path.join(RID['DST'], 'reeval_coreg_results')
         
@@ -449,7 +449,8 @@ elif roi_type == 'coregister':
             json.dump(params_thr, f, indent=4, sort_keys=True)
 
     format_roi_output = True
-
+    
+    #%%
 else:
     print "ERROR: %s -- roi type not known..." % roi_type
 
@@ -624,7 +625,7 @@ if format_roi_output is True :
                     currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                     currmasks[...] = masks
                     currmasks.attrs['nrois'] = len(roi_idxs) #len(kept_idxs)
-                    currmasks.attrs['roi_idxs'] = roi_idxs
+                    currmasks.attrs['src_roi_idxs'] = roi_idxs
                     
                     
                     print "Saving coms..."
@@ -634,16 +635,18 @@ if format_roi_output is True :
                     
                     print "Saving ROI info..."
                     for ridx, roi in enumerate(coord_info):
-                        curr_roi = filegrp.create_dataset('/'.join(['coords', 'roi%04d' % ridx]), roi['coordinates'].shape, roi['coordinates'].dtype)
+                        roi_name = 'roi%05d' % int(ridx+1)
+                        curr_roi = filegrp.create_dataset('/'.join(['coords', roi_name]), roi['coordinates'].shape, roi['coordinates'].dtype)
                         curr_roi[...] = roi['coordinates']
                         curr_roi.attrs['roi_source'] = nmf_filepath
-                        curr_roi.attrs['idx_in_src'] = roi['neuron_id']
+                        curr_roi.attrs['id_in_src'] = roi['neuron_id']
+                        curr_roi.attrs['idx_in_src'] = roi_idxs[ridx]
                         curr_roi.attrs['idx_in_kept'] = idxs_to_keep[curr_file][ridx]
                         curr_roi.attrs['idx_in_coreg'] = matchedROIs[curr_file][ridx]
                         
                     zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
                     zproj[...] = img
-
+                    zproj.attrs['zproj_type'] = zproj_type
 
                     # Plot figure with ROI masks:
                     vmax = np.percentile(img, 98)

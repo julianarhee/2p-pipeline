@@ -23,7 +23,7 @@ import numpy as np
 import os
 from scipy.sparse import spdiags, issparse
 from matplotlib import gridspec
-from pipeline.python.evaluate_motion_correction import get_source_info
+from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
 
 # import caiman
 from caiman.base.rois import com

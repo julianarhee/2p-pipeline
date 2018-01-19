@@ -260,13 +260,13 @@ for fidx, curr_file in enumerate(filenames):
             avg =np.array( maskfile[curr_file]['zproj_img'][curr_slice]).T # T is needed for MATLAB masks... (TODO: check roi_blobs)
             MASKS[curr_file][curr_slice]['zproj_img'] =  avg #maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
             MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
-            MASKS[curr_file][curr_slice]['roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['roi_idxs']
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['roi_idxs']
         else:
             avg = maskfile[curr_file]['zproj_img']
             MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
             roinames = maskfile[curr_file]['coords'].keys()
             MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file'] #maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
-            MASKS[curr_file][curr_slice]['roi_idxs'] = maskfile[curr_file]['masks'].attrs['roi_idxs']
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'].attrs['roi_idxs']
 
         d1,d2 = avg.shape
         d = d1*d2
@@ -298,7 +298,7 @@ for fidx, curr_file in enumerate(filenames):
             msk[msk==0] = np.nan
             pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
             [ys, xs] = np.where(masktmp>0)
-            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx), weight='bold')
+            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
             pl.axis('off')
             
             # Normalize by size:
@@ -331,7 +331,7 @@ frames_tsec = runinfo['frame_tstamps_sec']
 # Extract ROIs for each specified slice for each file:
 # =============================================================================
 
-print "TID %s -- Applying masks to traces..."
+print "TID %s -- Applying masks to traces..." % trace_hash
 
 signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
@@ -399,7 +399,7 @@ for tfn in tiff_files:
             mset.attrs['rid_hash'] = str(RID['rid_hash'])
             mset.attrs['roi_type'] = str(RID['roi_type'])
             mset.attrs['nrois'] = maskarray.shape[1]
-            mset.attrs['roi_idxs'] = MASKS[mask_key][curr_slice]['roi_idxs']
+            mset.attrs['src_roi_idxs'] = MASKS[mask_key][curr_slice]['src_roi_idxs']
                         
             # Save zproj img:
             zproj = MASKS[mask_key][curr_slice]['zproj_img']
@@ -441,7 +441,7 @@ with open(os.path.join(trace_outdir, 'fileinfo_%s.json' % TID['trace_hash']), 'w
 # Create time courses for ROIs:
 # =============================================================================
 
-print "TID %s -- sorting traces by ROI..."
+print "TID %s -- sorting traces by ROI..." % trace_hash
 
 #% Load raw traces:
 try:
@@ -504,11 +504,11 @@ try:
                 maskarray = tracefile[currslice]['masks']
                 d1, d2 = tracefile[currslice]['rawtraces'].attrs['dims'][0:-1]
                 T = tracefile[currslice]['rawtraces'].attrs['nframes']
-                roi_idxs = tracefile[currslice]['masks'].attrs['roi_idxs']
+                src_roi_idxs = tracefile[currslice]['masks'].attrs['src_roi_idxs']
                 nrois = maskarray.shape[1]
                 masks = np.reshape(maskarray, (d1, d2, nrois), order='C')
         
-                for ridx, roi in enumerate(roi_idxs):
+                for ridx, roi in enumerate(src_roi_idxs):
                     roi_counter += 1
                     roiname = 'roi%05d' % int(roi_counter)
         
@@ -523,7 +523,7 @@ try:
                         roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
                         roi_mask[...] = masks[:,:,ridx]
                         roi_grp.attrs['id_in_set'] = roi_counter #roi
-                        roi_grp.attrs['id_in_slice'] = roi #ridx
+                        roi_grp.attrs['id_in_src'] = roi #ridx
                         roi_grp.attrs['idx_in_slice'] = ridx
                         roi_mask.attrs['slice'] = currslice
         
@@ -551,7 +551,7 @@ finally:
 #roi_outfile.close()
 
 roi_tcourse_filehash = hash_file(trace_outfile_path)
-new_filename = os.path.splitext(trace_outfile_path)[0] + roi_tcourse_filehash + os.path.splitext(trace_outfile_path)[1]
+new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
 os.rename(trace_outfile_path, new_filename)
 
 print "======================================================================="
