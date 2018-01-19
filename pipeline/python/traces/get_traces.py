@@ -550,13 +550,13 @@ finally:
 ## Rename FRAME file with hash:
 #roi_outfile.close()
 
-roi_tcourse_filehash = hash_file(trace_outfile_path)
-new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
-os.rename(trace_outfile_path, new_filename)
+#roi_tcourse_filehash = hash_file(trace_outfile_path)
+#new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
+#os.rename(trace_outfile_path, new_filename)
 
 print "======================================================================="
 print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, run)
-print "Saved ROI TIME COURSE file to:", new_filename
+print "Saved ROI TIME COURSE file to:", trace_outfile_path
 
 #%% move tmp file:
 tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
