@@ -543,7 +543,7 @@ if format_roi_output is True :
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
                 currmasks.attrs['nrois'] = len(roi_idxs)
-                currmasks.attrs['roi_idxs'] = roi_idxs
+                currmasks.attrs['src_ro_idxs'] = roi_idxs
                 
                 # Save CoM for each ROI:
                 coms = np.array([r['CoM'] for r in coord_info])
@@ -552,10 +552,12 @@ if format_roi_output is True :
                 
                 # Save coords for each ROI:
                 for ridx, roi in enumerate(coord_info):
-                    curr_roi = filegrp.create_dataset('/'.join(['coords', 'roi%04d' % ridx]), roi['coordinates'].shape, roi['coordinates'].dtype)
+                    roi_name = 'roi%05d' % ridx
+                    curr_roi = filegrp.create_dataset('/'.join(['coords', roi_name]), roi['coordinates'].shape, roi['coordinates'].dtype)
                     curr_roi[...] = roi['coordinates']
                     curr_roi.attrs['roi_source'] = nmf_filepath
-                    curr_roi.attrs['idx_in_src'] = roi['neuron_id']
+                    curr_roi.attrs['id_in_src'] = roi['neuron_id']
+                    curr_roi.attrs['id_in_set'] = roi_name
                     
                 # Save zproj image:
                 zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
@@ -640,6 +642,7 @@ if format_roi_output is True :
                         curr_roi[...] = roi['coordinates']
                         curr_roi.attrs['roi_source'] = nmf_filepath
                         curr_roi.attrs['id_in_src'] = roi['neuron_id']
+                        curr_roi.attrs['id_in_set'] = roi_name
                         curr_roi.attrs['idx_in_src'] = roi_idxs[ridx]
                         curr_roi.attrs['idx_in_kept'] = idxs_to_keep[curr_file][ridx]
                         curr_roi.attrs['idx_in_coreg'] = matchedROIs[curr_file][ridx]

@@ -171,7 +171,7 @@ def run_roi_evaluation(session_dir, src_roi_id, roi_eval_dir, roi_type='caiman2D
             
             roifile.close()
         except Exception as e:
-            print "--- Error evaulating ROIs. Curr file: %s ---" % src_file
+            print "--- Error evaulating ROIs. Curr file: %s ---" % str(src_file)
             traceback.print_exc()
             print "-----------------------------------------------------------"
         finally:
