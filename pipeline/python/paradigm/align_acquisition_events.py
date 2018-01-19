@@ -538,10 +538,10 @@ for config_idx in range(ncombinations):
             tset.attrs['frame_on'] = stim_on_volume_idx #framestruct[trial]['frames_in_run'].attrs['stim_on_idx']
             tset.attrs['frame_idxs'] = trial_idxs
             
-            config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
             config_grp[roi].attrs['id_in_set'] = roi_timecourses[roi].attrs['id_in_set']
-            config_grp[roi].attrs['id_in_slice'] = roi_timecourses[roi].attrs['id_in_slice']
+            config_grp[roi].attrs['id_in_src'] = roi_timecourses[roi].attrs['id_in_src']
             config_grp[roi].attrs['idx_in_slice'] = roi_timecourses[roi].attrs['idx_in_slice']
+            config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
                         
             #tset.attrs['slice'] = roi_timecourses[roi].attrs['slice']
             #tset.attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
