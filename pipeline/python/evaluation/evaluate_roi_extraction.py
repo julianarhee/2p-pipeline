@@ -371,7 +371,7 @@ def run_evaluation(options):
 
     #% Define params dict:
     evalparams = dict()
-    if RID['roi_type'] == 'caiman2D':
+    if RID['roi_type'] == 'caiman2D' or (RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] == 'caiman2D'):
         evalparams['min_SNR'] = min_SNR
         evalparams['rval_thr'] = rval_thr
         evalparams['decay_time'] = decay_time
@@ -381,7 +381,6 @@ def run_evaluation(options):
         evalparams['use_cnn'] = use_cnn
         evalparams['cnn_thr'] = cnn_thr
         evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
-
     eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
     
     #% Save Eval info to dict:
