@@ -211,8 +211,7 @@ def evaluate_roi_set(RID, evalparams=None):
         traceback.print_exc()
         print "---------------------------------------------------------------"
     
-    
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs = get_source_paths(session_dir, RID)
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID)
     tstamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     
     # Set up output file:
