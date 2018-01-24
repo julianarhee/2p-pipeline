@@ -1,6 +1,66 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
+This script finds matches between ROIs in a specified reference file and all other files.
+User can choose to coregister only subsets of ROIs by providing a key that identifies which evaluation result set to use.
+
+# 1.  Load ROI evaluation info, if relevant (evalparams).
+- User-provided key specifying a particular evaluation result
+- Evaluation set is keyed with a date-time string (output of evaulate_roi_extraction.py)
+
+# 2.  Populate coregistration params (params_thr).
+- dist_maxthr <float>
+	threshold for turning spatial components into binary masks
+	(default: 0.1)
+- dist_exp <float>
+	power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n
+	(default: 1.0)
+- dist_thr <float>
+	threshold for setting a distance to infinity (illegal matches)
+	(default: 0.5)
+- dist_overlap_thr <float>
+	overlap threshold for detecting if one ROI is a subset of another
+	(default: 0.8)
+
+# 3.  Load ROI set info and get roi/tiff source paths.
+
+# 4.  Identify file to be used as coregistration reference.
+
+# 5.  Save coregistration parameters to output dir:
+	- params_thr saved to: 
+	<rid_dir>/coreg_results/coreg_params.json
+
+# 6.  Run coregistration (coregister_rois_nmf)
+
+	a. Find matches to reference for each file and save results (coreg_results_path):
+	   [outfile]:  <rid_dir>/coreg_results/coreg_results_<datetimestr>.hdf5
+	   --> keys are file groups (File001, File002, etc.), each of which contains:
+		roi_idxs :  indices of rois (source indices)
+		distance :  distance matrix between ref and current file
+		distance_thr :  thresholded distance matrix (params_thr['dist_thr'])
+		matches :  list of matches between ref rois and current file rois
+
+	b. Plot distance matrix and contour plots for each file's matches to reference:
+	   [outfiles]:  <rid_dir>/coreg_results/figures/files/distancematrix_FileXXX.png
+
+	c. Save matches to json for easy acccess:
+	   [outfile]:  <rid_dir>/coreg_results/matches_byfile_rFileRRR.json,
+	   where rFileRRR is the reference file.
+
+	d. Plot ROI matches for each file:
+	   [outfiles]:  <rid_dir>/coreg_results/figures/matches_rFileRRR_FileXXX.png
+
+	e. Identify universal ROIs, i.e., ROI idxs common across all files (ref_rois)
+
+	f. Save univeral ROIs to json file:
+	   [outfile]:  <rid_dir>/coreg_results/coregistered_rFileRRR.json
+
+	g. Plot universal ROIs on contour plots:
+	   [outfiles]: <rid_dir>/coreg_results/figures/contours_byfile_rFileRRR.png
+		       <rid_dir>/coreg_results/figures/contours_byroi_rFileRRR.png
+
+
+
 Created on Tue Nov  7 16:31:56 2017
 
 @author: julianarhee
@@ -8,44 +68,35 @@ Created on Tue Nov  7 16:31:56 2017
 
 
 from __future__ import division
+#import __builtin__
 #from __future__ import print_function
 import matplotlib
-#matplotlib.use('TkAgg')
-from builtins import zip
-from builtins import str
-from builtins import map
-from builtins import range
-from past.utils import old_div
+from future.utils import native
+matplotlib.use('TkAgg')
+#from builtins import zip
+#from builtins import str
+#from builtins import map
+#from builtins import range
 import datetime
 import traceback
-import cv2
-import glob
 import numpy as np
 import os
-from scipy.sparse import spdiags, issparse
+from scipy.sparse import issparse
 from matplotlib import gridspec
-from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
+from pipeline.python.rois.utils import load_RID, get_source_paths
 
-# import caiman
-from caiman.base.rois import com
-import caiman as cm
-from caiman.utils.visualization import plot_contours #get_contours
-
-import time
 import pylab as pl
 
 import re
 import json
 import h5py
-import cPickle as pkl
 import scipy.io
-import pandas as pd
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pprint
 from scipy import ndimage
 import optparse
 
 pp = pprint.PrettyPrinter(indent=4)
+
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -68,6 +119,7 @@ def byteify(input):
     else:
         return input
 
+#%%
 def minimumWeightMatching(costSet):
     '''
     Computes a minimum-weight matching in a bipartite graph
@@ -180,6 +232,7 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
                 
     return D
 
+#%%
 def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True):
      # TODO:  Add 3D compatibility...
     coreg_outpath = None
@@ -189,10 +242,11 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
         for k in params_thr.keys():
             if k == 'eval': # eval is a dict, will be saved in roiparams.json (no need to save as attr for coreg)
                 continue
-            coreg_outfile.attrs[k] = params_thr[k]
+            print k, type(params_thr[k])
+            coreg_outfile.attrs[k] = native(params_thr[k])
         coreg_outfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    output_dir_figs = os.path.join(output_dir, 'figures')
+    output_dir_figs = os.path.join(output_dir, 'figures', 'files')
     if not os.path.exists(output_dir_figs):
         os.makedirs(output_dir_figs)
         
@@ -301,8 +355,8 @@ def find_matches_nmf(params_thr, output_dir, idxs_to_keep=None, save_output=True
         
     return all_matches, coreg_outpath
 
-
-def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
+#%%
+def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
     # TODO:  Add 3D compatibility...
     if not os.path.exists(savefig_dir):
         os.makedirs(savefig_dir)
@@ -314,7 +368,6 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
     ref_file = str(params_thr['ref_filename'])
     ref = np.load(params_thr['ref_filepath'])
     nr = ref['A'].all().shape[1]
-    dims = ref['dims']
     if len(ref['dims']) > 2:
         is3D = True
         d1 = int(ref['dims'][0])
@@ -398,40 +451,12 @@ def plot_matched_rois(all_matches, params_thr, savefig_dir, idxs_to_keep=None):
         pl.savefig(os.path.join(savefig_dir, 'matches_%s_%s.png' % (str(ref_file), str(curr_file))))
         pl.close()
 
-
-def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], idxs_to_keep=None):
-    
-    ref_rois = []
-    
-    if not os.path.exists(coreg_output_dir):
-        os.makedirs(coreg_output_dir)
-    
-    # Get matches:
-    all_matches, coreg_results_path = find_matches_nmf(params_thr, coreg_output_dir, idxs_to_keep=idxs_to_keep, save_output=True)
-    
-    # Plot matches over reference:
-    coreg_figdir = os.path.join(coreg_output_dir, 'figures')
-    plot_matched_rois(all_matches, params_thr, coreg_figdir, idxs_to_keep=idxs_to_keep)
-
-    #% Find intersection of all matches with reference:
-    filenames = all_matches.keys()
-    filenames.extend([str(params_thr['ref_filename'])])
-    filenames = sorted(filenames, key=natural_keys)
-
-    ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in excluded_tiffs]
-    print "REF idxs:", len(ref_idxs)
-    #file_match_max = [len(r) for r in ref_idxs].index(max(len(r) for r in ref_idxs))
-    
-    ref_rois = set(ref_idxs[0])
-    for s in ref_idxs[1:]:
-        ref_rois.intersection_update(s)
-    ref_rois = list(ref_rois)
-    
-    return ref_rois, coreg_results_path
-
-                    
+#%%            
 def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idxs_to_keep=None, cmap='jet', plot_by_file=True):
     
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
     src_nmf_dir = os.path.split(params_thr['ref_filepath'])[0]
     source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
         
@@ -456,8 +481,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
         print "Plotting coregistered by ROI. Found %i rois." % len(ref_rois)
 
     colorvals[:,3] *= 0.5
-    
-    fig = pl.figure(figsize=(12, 10)) 
+    pl.figure(figsize=(12, 10)) 
     gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1]) 
     gs.update(wspace=0.05, hspace=0.05)
     ax1 = pl.subplot(gs[0])
@@ -465,7 +489,6 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
     ax1.imshow(refimg, cmap='gray')
     pl.axis('equal')
     pl.axis('off')
-    blank = np.ones(refimg.shape)*np.nan
     
     for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
         
@@ -491,7 +514,6 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
         A = np.array(A.todense()) 
         
         for ridx, roi in enumerate(curr_rois):
-            #print roi
             # compute the cumulative sum of the energy of the Ath component that 
             # has been ordered from least to highest:
             indx = np.argsort(A[:,roi], axis=None)[::-1]
@@ -500,22 +522,18 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
             Bvec = np.zeros(d1*d2)
             Bvec[indx] = cumEn
             Bmat = np.reshape(Bvec, (d1,d2), order='F')
-            #currcolor = (colorvals[fidx][0], colorvals[fidx][1], colorvals[fidx][2], 0.5)
             if plot_by_file is True:
                 cs = pl.contour(y, x, Bmat, [0.9], colors=[colorvals[fidx]]) #, cmap=colormap)
             else:
                 cs = pl.contour(y, x, Bmat, [0.9], colors=[colorvals[ridx]]) #, cmap=colormap)
-    #pl.axis('equal')
-    #pl.axis('off')
-    #pl.savefig(os.path.join(save_dir, 'contours_%s_r%s_rois.png' % (plot_type,  str(params_thr['ref_filename']))))
-    
+
     nfiles = len(matchedROIs.keys())
     nrois = len(ref_rois)
     print "N files:", nfiles
     print "N rois:", nrois
-    gap = 1
+
     #%
-    #pl.figure()
+    # PLOT labels and legend:
     ax2 = pl.subplot(gs[1])
     if plot_by_file is True:
         interval = np.arange(0., 1., 1./nfiles)
@@ -536,54 +554,37 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, idx
     pl.savefig(os.path.join(save_dir, 'contours_%s_r%s.png' % (plot_type,  str(params_thr['ref_filename'])))) #matchedrois_fn_base))
     pl.close()
     
+#%%
+def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], idxs_to_keep=None):
     
-def load_rid(session_dir, roi_id, auto=False):
+    ref_rois = []
     
-    RID = None
+    if not os.path.exists(coreg_output_dir):
+        os.makedirs(coreg_output_dir)
     
-    session = os.path.split(session_dir)[1]
-    print "SESSION:", session
+    # Get matches:
+    all_matches, coreg_results_path = find_matches_nmf(params_thr, coreg_output_dir, idxs_to_keep=idxs_to_keep, save_output=True)
     
-    roi_base_dir = os.path.join(session_dir, 'ROIs') #acquisition, run)
-    tmp_rid_dir = os.path.join(roi_base_dir, 'tmp_rids')
-    
-    try:
-        print "Loading params for ROI SET, id %s" % roi_id
-        roidict_path = os.path.join(roi_base_dir, 'rids_%s.json' % session)
-        with open(roidict_path, 'r') as f:
-            roidict = json.load(f)
-        RID = roidict[roi_id]
-        pp.pprint(RID)
-    except Exception as e:
-        print "No ROI SET entry exists for specified id: %s" % roi_id
-        traceback.print_exc()
-        try:
-            print "Checking tmp roi-id dir..."
-            if auto is False:
-                while True:
-                    tmpfns = [t for t in os.listdir(tmp_rid_dir) if t.endswith('json')]
-                    for ridx, ridfn in enumerate(tmpfns):
-                        print ridx, ridfn
-                    userchoice = raw_input("Select IDX of found tmp roi-id to view: ")
-                    with open(os.path.join(tmp_rid_dir, tmpfns[int(userchoice)]), 'r') as f:
-                        tmpRID = json.load(f)
-                    print "Showing tid: %s, %s" % (tmpRID['roi_id'], tmpRID['rid_hash'])
-                    pp.pprint(tmpRID)
-                    userconfirm = raw_input('Press <Y> to use this roi ID, or <q> to abort: ')
-                    if userconfirm == 'Y':
-                        RID = tmpRID
-                        break
-                    elif userconfirm == 'q':
-                        break
-        except Exception as e:
-            print "---------------------------------------------------------------"
-            print "No tmp roi-ids found either... ABORTING with error:"
-            traceback.print_exc()
-            print "---------------------------------------------------------------"
-    
-    return RID, roidict
+    # Plot matches over reference:
+    coreg_figdir = os.path.join(coreg_output_dir, 'figures', 'files')
+    plot_matched_rois_by_file(all_matches, params_thr, coreg_figdir, idxs_to_keep=idxs_to_keep)
 
-            
+    #% Find intersection of all matches with reference:
+    filenames = all_matches.keys()
+    filenames.extend([str(params_thr['ref_filename'])])
+    filenames = sorted(filenames, key=natural_keys)
+
+    ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in excluded_tiffs]
+    print "REF idxs:", len(ref_idxs)
+    #file_match_max = [len(r) for r in ref_idxs].index(max(len(r) for r in ref_idxs))
+    
+    ref_rois = set(ref_idxs[0])
+    for s in ref_idxs[1:]:
+        ref_rois.intersection_update(s)
+    ref_rois = list(ref_rois)
+    
+    return ref_rois, coreg_results_path
+   
 #%%
 def run_coregistration(options):
 
@@ -605,6 +606,9 @@ def run_coregistration(options):
     
     parser.add_option('-x', '--exclude', action="store",
                       dest="exclude_file_ids", default='', help="comma-separated list of files to exclude")
+    parser.add_option('-M', '--mcmetric', action="store",
+                  dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
+
     parser.add_option('--good', action="store_true",
                       dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
     parser.add_option('--max', action="store_true",
@@ -612,7 +616,10 @@ def run_coregistration(options):
     parser.add_option('--roipath', action="store",
                       dest="roipath", default="", help="If keep_good_rois is True, path to .json with ROI idxs for each file (if using cNMF). Default uses nmf-extraction ROIs.")
     parser.add_option('-O', '--outdir', action="store",
-                      dest="coreg_output_dir", default="", help="Output dir to save coreg results to. Default uses curr ROI dir + 'src_coreg_results'")
+                      dest="coreg_output_dir", default=None, help="Output dir to save coreg results to. Default uses curr ROI dir + 'coreg_results'")
+    
+    parser.add_option('-f', '--ref', action="store",
+                      dest="coreg_fidx", default=1, help="Reference file for coregistration if use_max_nrois==False [default: 1]")
 
 
     (options, args) = parser.parse_args(options)
@@ -625,8 +632,6 @@ def run_coregistration(options):
     rootdir = options.rootdir
     animalid = options.animalid
     session = options.session
-    #acquisition = options.acquisition
-    #run = options.run
     roi_id = options.roi_id
     slurm = options.slurm
     auto = options.default
@@ -644,31 +649,58 @@ def run_coregistration(options):
     use_max_nrois = options.use_max_nrois
     
     roipath = options.roipath
+    mcmetric = options.mcmetric
+    
+    #%%
+    # =========================================================================
+    # Load ROI evaluation results, if relevant:
+    # =========================================================================
     if len(roipath) == 0:
         idxs_to_keep = None
+        nrois_total = None
+        evalparams = None
     else:
         try:
             idxs_to_keep = dict()
+            nrois_total = dict()
+            evalparams = dict()
             print "Loaded ROI info for files:",
             print roipath
-            roi_eval_info = h5py.File(roipath, 'r')
-            for f in roi_eval_info.keys():
-                print f, len(roi_eval_info[f]['idxs_to_keep'])
-                idxs_to_keep[str(f)] = np.array(roi_eval_info[f]['idxs_to_keep'])
-            roi_eval_info.close()
-            pp.pprint(idxs_to_keep)
+            src_eval = h5py.File(roipath, 'r')
+            for f in src_eval.keys():
+                print "%s: %i rois" % (f, len(src_eval[f]['pass_rois']))
+                idxs_to_keep[str(f)] = np.array(src_eval[f]['pass_rois'])
+                nrois_total[str(f)] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
+                print "idxs:", idxs_to_keep[str(f)]
+                print "ntotal:", nrois_total[str(f)]
+                
+            for eparam in src_eval.attrs.keys():
+                if eparam == 'creation_date':
+                    continue
+                if isinstance(src_eval.attrs[eparam], np.ndarray):
+                    evalparams[eparam] = src_eval.attrs[eparam].tolist()
+                else:
+                    evalparams[eparam] = src_eval.attrs[eparam].item()
+                #print eparam, src_eval.attrs[eparam], src_eval.attrs[eparam].dtype
+                evalparams[eparam] = src_eval.attrs[eparam].tolist()
         except Exception as e:
-            roi_eval_info.close()
             print "ERROR LOADING ROI idxs ------------------------------------"
             print traceback.print_exc()
             print "User provided ROI idx path:"
             print roipath
             print "-----------------------------------------------------------"
-    
+        finally:
+            src_eval.close()
+            
     coreg_output_dir = options.coreg_output_dir
     
-    #%% ca-source-extraction options:
-        
+    coreg_fidx = int(options.coreg_fidx) - 1
+    reference_filename = "File%03d" % int(options.coreg_fidx)
+    
+    #%%
+    # =========================================================================
+    # Set Coregistration parameters:
+    # =========================================================================   
     params_thr = dict()
     
     # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
@@ -686,181 +718,162 @@ def run_coregistration(options):
     else:
         params_thr['filter_type'] = 'ref'
     
-    # =============================================================================
+    #%%    
+    # =========================================================================
     # Load specified ROI-ID parameter set:
-    # =============================================================================
+    # =========================================================================
     session_dir = os.path.join(rootdir, animalid, session)
+
+    try:
+        RID = load_RID(session_dir, roi_id)
+        print "Coregistering ROIs from set: %s" % RID['roi_id']
+    except Exception as e:
+        print "-- ERROR: unable to open source ROI dict. ---------------------"
+        traceback.print_exc()
+        print "---------------------------------------------------------------"
     
-    RID, roidict = load_rid(session_dir, roi_id, auto=auto)
-
-
     #%%
-    # =============================================================================
-    # Get meta info for current run and source tiffs using trace-ID params:
-    # =============================================================================
-    #rid_hash = RID['rid_hash']
-    tiff_dir = RID['SRC']
-    roi_id = RID['roi_id']
-    roi_type = RID['roi_type']
-    tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
-    print "Found %i tiffs in dir %s.\nExtracting %s ROIs...." % (len(tiff_files), tiff_dir, roi_type)
+    # =========================================================================
+    # Get info for ROI source files and TIFF/mmapped source files:
+    # =========================================================================
+    tiff_sourcedir = RID['SRC']
+    path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
+    acquisition = path_parts[1]
+    run = path_parts[2]
+    process_dirname = path_parts[4]
+    process_id = process_dirname.split('_')[0]
     
-    acquisition = tiff_dir.split(session)[1].split('/')[1]
-    run = tiff_dir.split(session)[1].split('/')[2]
-    process_id = tiff_dir.split(session)[1].split('/')[4]
-    
-    filenames = ['File%03d' % int(ti+1) for ti, t in enumerate(os.listdir(tiff_dir)) if t.endswith('tif')]
-    print "Source tiffs:"
-    for f in filenames:
-        print f
-        
-    #%% If motion-corrected (standard), check evaluation:
-    print "Loading Motion-Correction Info...======================================="
-    mcmetrics_filepath = None
-    mcmetric_type = None
-    excluded_tiffs = []
-    if 'mcorrected' in RID['SRC']:
-        try:
-            mceval_dir = '%s_evaluation' % RID['SRC']
-            assert 'mc_metrics.hdf5' in os.listdir(mceval_dir), "MC output file not found!"
-            mcmetrics_filepath = os.path.join(mceval_dir, 'mc_metrics.hdf5')
-            mcmetrics = h5py.File(mcmetrics_filepath, 'r')
-            print "Loaded MC eval file. Found metric types:"
-            for ki, k in enumerate(mcmetrics):
-                print ki, k
-        except Exception as e:
-            traceback.print_exc()
-            print "Unable to load motion-correction evaluation info."
-            
-        # Use zprojection corrs to find bad files:
-        mcmetric_type = 'zproj_corrcoefs'
-        bad_files = mcmetrics['zproj_corrcoefs'].attrs['bad_files']
-        if len(bad_files) > 0:
-            print "Found %i files that fail MC metric %s:" % (len(bad_files), mcmetric_type)
-            for b in bad_files:
-                print b
-            fidxs_to_exclude = [int(f[4:]) for f in bad_files]
-            if len(fidxs_to_exclude) > 1:
-                exclude_str = ','.join([i for i in fidxs_to_exclude])
-            else:
-                exclude_str = str(fidxs_to_exclude[0])
-        else:
-            exclude_str = ''
-    
-        # Get process info from attrs stored in metrics file:
-        mc_ref_channel = mcmetrics.attrs['ref_channel']
-        mc_ref_file = mcmetrics.attrs['ref_file']
-    else:
-        acquisition_dir = os.path.join(session_dir, acquisition)
-        info = get_source_info(acquisition_dir, run, process_id)
-        mc_ref_channel = info['ref_channel']
-        mc_ref_file = info['ref_file']
-        del info
-    
-    if len(exclude_str) > 0:
-        filenames = [f for f in filenames if int(f[4:]) not in [int(x) for x in exclude_str.split(',')]]
-        excluded_tiffs = ['File%03d' % int(fidx) for fidx in exclude_str.split(',')]
-    
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True, 
+                                                                                                      mcmetric=mcmetric,
+                                                                                                      acquisition=acquisition,
+                                                                                                      run=run,
+                                                                                                      process_id=process_id)
     if len(exclude_manual) > 0:
         excluded_tiffs.extend(exclude_manual)
         
-    print "Motion-correction info:"
-    print "MC reference is %s, %s." % (mc_ref_file, mc_ref_channel)
-    print "Found %i tiff files to exclude based on MC EVAL: %s." % (len(excluded_tiffs), mcmetric_type)
-    print "======================================================================="
-    
-    if len(exclude_manual) > 0:
-        excluded_tiffs.extend(exclude_manual)
     print "Additionally excluding manully-selected tiffs."
     print "Excluded:", excluded_tiffs
     
     params_thr['excluded_tiffs'] = excluded_tiffs
     
-    #%%
-    # Determine which file should be used as "reference" for coregistering ROIs:
     roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
-    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir']
+    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir'] 
+   
     
-    if roi_ref_type == 'caiman2D':
-        src_nmf_dir = os.path.join(roi_source_dir, 'nmfoutput')
-        source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
-        if use_max_nrois is True:
+    # =========================================================================
+    # Create output dir:
+    # =========================================================================
+    if coreg_output_dir is None:
+        coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')            
+    print "Saving COREG results to:", coreg_output_dir
+    if not os.path.exists(coreg_output_dir):
+        os.makedirs(coreg_output_dir)
+        
+    #%%
+    # =========================================================================
+    # Determine which file should be used as "reference" for coregistering ROIs:
+    # =========================================================================
+    
+    if idxs_to_keep is not None:
+        src_nrois = [(str(fkey), nrois_total[fkey], len(idxs_to_keep[fkey])) for fkey in sorted(idxs_to_keep.keys(), key=natural_keys)]    
+        
+    else:
+        if roi_ref_type == 'caiman2D':
+            # Go through all files to select the one that has the MOST number of ROIs:
             src_nrois = []
-            for src_nmf_path in source_nmf_paths:
-                snmf = np.load(src_nmf_path)
-                fname = re.search('File(\d{3})', src_nmf_path).group(0)
+            for roi_source in roi_source_paths:
+                snmf = np.load(roi_source)
+                fname = re.search('File(\d{3})', roi_source).group(0)
                 nall = snmf['A'].all().shape[1]
                 npass = len(snmf['idx_components'])
-                src_nrois.append((fname, nall, npass))
-            if keep_good_rois is True:
-                nmax_idx = [s[2] for s in src_nrois].index(max([s[2] for s in src_nrois]))
-                nrois_max = src_nrois[nmax_idx][2]
-            else:
-                nmax_idx = [s[1] for s in src_nrois].index(max([s[1] for s in src_nrois]))
-                nrois_max = src_nrois[nmax_idx][1]
-            params_thr['ref_filename'] = src_nrois[nmax_idx][0]
-            params_thr['ref_filepath'] = source_nmf_paths[nmax_idx]
-            print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
-        else:
-            params_thr['ref_filename'] = mc_ref_file
-            params_thr['ref_filepath'] = source_nmf_paths.index([i for i in source_nmf_paths if mc_ref_file in i][0])
-        
-        #% Load eval params from src: 
-        if len(coreg_output_dir) == 0:
-            coreg_output_dir = os.path.join(RID['DST'], 'src_coreg_results')            
-        print "Saving COREG results to:", coreg_output_dir
-        if not os.path.exists(coreg_output_dir):
-            os.makedirs(coreg_output_dir)
-            
+                src_nrois.append((str(fname), nall, npass))
+    
+    if use_max_nrois is True:
+        # Either select the file that has the MAX number of "good" ROIs:
         if keep_good_rois is True:
+            nmax_idx = [s[2] for s in src_nrois].index(max([s[2] for s in src_nrois]))
+            nrois_max = src_nrois[nmax_idx][2]
+        else:
+            # ... or, select file that has the MAX number of ROIs total:
+            nmax_idx = [s[1] for s in src_nrois].index(max([s[1] for s in src_nrois]))
+            nrois_max = src_nrois[nmax_idx][1]
+        params_thr['ref_filename'] = native(src_nrois[nmax_idx][0])
+        params_thr['ref_filepath'] = roi_source_paths[nmax_idx]
+    else:
+        # Use a reference file (either MC reference or default, File001):
+        print "Using reference:", reference_filename
+        params_thr['ref_filename'] = reference_filename
+        params_thr['ref_filepath'] = roi_source_paths[int(coreg_fidx)]
+        if keep_good_rois is True:
+            nrois_max = src_nrois[coreg_fidx][2]
+        else:
+            nrois_max = src_nrois[coreg_fidx][1]
+    print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
+    
+    # Show evaluation params, if filtered:
+    if keep_good_rois is True:
+        if evalparams is None:
             with open(os.path.join(roi_source_dir, 'roiparams.json'), 'r') as f:
                 src_roiparams = json.load(f)
-                src_evalparams = src_roiparams['eval']
-            print "-----------------------------------------------------------"
-            print "Coregistering ROIS from source..."
-            print "Source ROIs have been filtered with these eval params:"
-            for k in src_evalparams.keys():
-                print k, ':', src_evalparams[k]
-            print "-----------------------------------------------------------"
-        # Save info to current coreg dir:
-        params_thr['eval'] = src_evalparams
-        with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
-            json.dump(params_thr, f, indent=4, sort_keys=True)
-                
-        # COREGISTER ROIS:
-        ref_rois, coreg_results_path = coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=excluded_tiffs, idxs_to_keep=idxs_to_keep)
-        print("Found %i common ROIs matching reference." % len(ref_rois))
+            evalparams = src_roiparams['eval']
+        print "-----------------------------------------------------------"
+        print "Coregistering ROIS from source..."
+        print "Source ROIs were filtered with the following eval params:"
+        for eparam in evalparams.keys():
+            print eparam, evalparams[eparam]
+        print "-----------------------------------------------------------"
+    
+    params_thr['eval'] = evalparams
+    
+    #%%
+    # =========================================================================
+    # Save coreg params info to current coreg dir:
+    # =========================================================================
+    pp.pprint(params_thr)
+    with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
+        json.dump(params_thr, f, indent=4, sort_keys=True)
         
-        #% Load coregistered roi matches and save universal matches:
-        coreg_info = h5py.File(coreg_results_path, 'r')
-        filenames = [str(i) for i in coreg_info.keys()]
-        filenames.append(str(params_thr['ref_filename']))
-        filenames = sorted(filenames, key=natural_keys)
-        
-        # Save ROI idxs for each file that matches ref and is common to all:
-        matchedROIs = dict()
-        for curr_file in filenames: #all_matches.keys():
-            print curr_file
-            if curr_file in excluded_tiffs:
-                continue
-            if curr_file==str(params_thr['ref_filename']):
-                matchedROIs[curr_file] = ref_rois
-            else:
-                curr_matches = coreg_info[curr_file]['matches']
-                matchedROIs[curr_file] = [curr_matches[[i[0] for i in curr_matches].index(r)][1] for r in ref_rois]
-        
-        coreg_info.close()
-        
-        # Save ROI idxs of unviersal matches:
-        matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['ref_filename'])
-        print("Saving matches to: %s" % os.path.join(coreg_output_dir, matchedrois_fn_base))
-        with open(os.path.join(coreg_output_dir, '%s.json' % matchedrois_fn_base), 'w') as f:
-            json.dump(matchedROIs, f, indent=4, sort_keys=True)
-        
-        # Save plots of universal matches:
-        if len(ref_rois) > 0:
-            plot_coregistered_rois(matchedROIs, params_thr, source_nmf_paths, coreg_output_dir, idxs_to_keep=idxs_to_keep, plot_by_file=True)
-            plot_coregistered_rois(matchedROIs, params_thr, source_nmf_paths, coreg_output_dir, idxs_to_keep=idxs_to_keep, plot_by_file=False)
+    #%%
+    # =========================================================================
+    # COREGISTER ROIs:
+    # =========================================================================
+    ref_rois, coreg_results_path = coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=excluded_tiffs, idxs_to_keep=idxs_to_keep)
+    print("Found %i common ROIs matching reference." % len(ref_rois))
+
+    #%%
+    # =========================================================================
+    # Identify and save universal matches:
+    # =========================================================================
+    #% Re-load coregistered roi matches and save universal matches:
+    coreg_info = h5py.File(coreg_results_path, 'r')
+    filenames = [str(i) for i in coreg_info.keys()]
+    filenames.append(str(params_thr['ref_filename']))
+    filenames = sorted(filenames, key=natural_keys)
+    
+    # Save ROI idxs for each file that matches ref and is common to all:
+    matchedROIs = dict()
+    for curr_file in filenames: #all_matches.keys():
+        print curr_file
+        if curr_file in excluded_tiffs:
+            continue
+        if curr_file==str(params_thr['ref_filename']):
+            matchedROIs[curr_file] = ref_rois
+        else:
+            curr_matches = coreg_info[curr_file]['matches']
+            matchedROIs[curr_file] = [curr_matches[[i[0] for i in curr_matches].index(r)][1] for r in ref_rois]
+    coreg_info.close()
+    
+    #% Save ROI idxs of unviersal matches:
+    matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['ref_filename'])
+    print("Saving matches to: %s" % os.path.join(coreg_output_dir, matchedrois_fn_base))
+    with open(os.path.join(coreg_output_dir, '%s.json' % matchedrois_fn_base), 'w') as f:
+        json.dump(matchedROIs, f, indent=4, sort_keys=True)
+    
+    # Save plots of universal matches:
+    coreg_fig_dir = os.path.join(coreg_output_dir, 'figures')
+    if len(ref_rois) > 0:
+        plot_coregistered_rois(matchedROIs, params_thr, roi_source_paths, coreg_fig_dir, idxs_to_keep=idxs_to_keep, plot_by_file=True)
+        plot_coregistered_rois(matchedROIs, params_thr, roi_source_paths, coreg_fig_dir, idxs_to_keep=idxs_to_keep, plot_by_file=False)
     
     return ref_rois, params_thr, coreg_results_path
         

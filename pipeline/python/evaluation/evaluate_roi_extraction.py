@@ -20,6 +20,7 @@ import caiman as cm
 import pylab as pl
 import numpy as np
 from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
+from pipeline.python.rois.utils import load_RID, get_source_paths
 from caiman.utils.visualization import get_contours, plot_contours
 from pipeline.python.utils import natural_keys
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
@@ -56,49 +57,6 @@ pp = pprint.PrettyPrinter(indent=4)
 #session_dir = os.path.join(rootdir, animalid, session)
 #roi_base_dir = os.path.join(session_dir, 'ROIs') #acquisition, run)
 #tmp_rid_dir = os.path.join(roi_base_dir, 'tmp_rids')
-
-def load_RID(session_dir, roi_id):
-    
-    roi_base_dir = os.path.join(session_dir, 'ROIs') #acquisition, run)
-    session = os.path.split(session_dir)[1]
-    roidict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
-    tmp_rid_dir = os.path.join(roi_base_dir, 'tmp_rids')
-    
-    try:
-        print "Loading params for ROI SET, id %s" % roi_id
-        roidict_path = os.path.join(roi_base_dir, 'rids_%s.json' % session)
-        with open(roidict_path, 'r') as f:
-            roidict = json.load(f)
-        RID = roidict[roi_id]
-        pp.pprint(RID)
-    except Exception as e:
-        print "No ROI SET entry exists for specified id: %s" % roi_id
-        print e
-        try:
-            print "Checking tmp roi-id dir..."
-            if auto is False:
-                while True:
-                    tmpfns = [t for t in os.listdir(tmp_rid_dir) if t.endswith('json')]
-                    for ridx, ridfn in enumerate(tmpfns):
-                        print ridx, ridfn
-                    userchoice = raw_input("Select IDX of found tmp roi-id to view: ")
-                    with open(os.path.join(tmp_rid_dir, tmpfns[int(userchoice)]), 'r') as f:
-                        tmpRID = json.load(f)
-                    print "Showing tid: %s, %s" % (tmpRID['roi_id'], tmpRID['rid_hash'])
-                    pp.pprint(tmpRID)
-                    userconfirm = raw_input('Press <Y> to use this roi ID, or <q> to abort: ')
-                    if userconfirm == 'Y':
-                        RID = tmpRID
-                        break
-                    elif userconfirm == 'q':
-                        break
-        except Exception as E:
-            print "---------------------------------------------------------------"
-            print "No tmp roi-ids found either... ABORTING with error:"
-            print E
-            print "---------------------------------------------------------------"
-
-    return RID
     
 #%% Load specified ROI set:
 #rid_hash = RID['rid_hash']
@@ -117,67 +75,6 @@ def load_RID(session_dir, roi_id):
 #for f in filenames:
 #    print f
 
-#%% If motion-corrected (standard), check evaluation:
-def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs'):
-    
-    print "Loading Motion-Correction Info...======================================="
-    mcmetrics_filepath = None
-    mcmetric_type = None
-    excluded_tiffs = []
-    if 'mcorrected' in RID['SRC']:
-        try:
-            mceval_dir = '%s_evaluation' % RID['SRC']
-            assert 'mc_metrics.hdf5' in os.listdir(mceval_dir), "MC output file not found!"
-            mcmetrics_filepath = os.path.join(mceval_dir, 'mc_metrics.hdf5')
-            mcmetrics = h5py.File(mcmetrics_filepath, 'r')
-            print "Loaded MC eval file. Found metric types:"
-            for ki, k in enumerate(mcmetrics):
-                print ki, k
-        except Exception as e:
-            print e
-            print "Unable to load motion-correction evaluation info."
-            
-        # Use zprojection corrs to find bad files:
-        bad_files = mcmetrics['zproj_corrcoefs'].attrs['bad_files']
-        if len(bad_files) > 0:
-            print "Found %i files that fail MC metric %s:" % (len(bad_files), mcmetric_type)
-            for b in bad_files:
-                print b
-            fidxs_to_exclude = [int(f[4:]) for f in bad_files]
-            if len(fidxs_to_exclude) > 1:
-                exclude_str = ','.join([i for i in fidxs_to_exclude])
-            else:
-                exclude_str = str(fidxs_to_exclude[0])
-        else:
-            exclude_str = ''
-    
-        # Get process info from attrs stored in metrics file:
-        mc_ref_channel = mcmetrics.attrs['ref_channel']
-        mc_ref_file = mcmetrics.attrs['ref_file']
-    else:
-        tiff_dir = RID['SRC']
-        session_dir = RID['DST'].split('/ROIs')      
-        session = os.path.split(session_dir)[1]
-        acquisition = tiff_dir.split(session)[1].split('/')[1]
-        run = tiff_dir.split(session)[1].split('/')[2]
-        process_id = tiff_dir.split(session)[1].split('/')[4]
-
-        acquisition_dir = os.path.join(session_dir, acquisition)
-        info = get_source_info(acquisition_dir, run, process_id)
-        mc_ref_channel = info['ref_channel']
-        mc_ref_file = info['ref_file']
-        del info
-    
-    if len(exclude_str) > 0:
-        filenames = [f for f in filenames if int(f[4:]) not in [int(x) for x in exclude_str.split(',')]]
-        excluded_tiffs = ['File%03d' % int(fidx) for fidx in exclude_str.split(',')]
-    
-    print "Motion-correction info:"
-    print "MC reference is %s, %s." % (mc_ref_file, mc_ref_channel)
-    print "Found %i tiff files to exclude based on MC EVAL: %s." % (len(excluded_tiffs), mcmetric_type)
-    print "======================================================================="
-    
-    return filenames, excluded_tiffs
 
 #%%
 def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
@@ -288,44 +185,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
         
     return idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds
 
-#%%
-def get_source_paths(RID, check_motion=True):
-    
-    roi_source_dir = RID['DST']
-    roi_type = RID['roi_type']
-    roi_id = RID['roi_id']
-    excluded_tiffs = []
-    
-    if roi_type == 'caiman2D':
-        
-        # Get ROI source paths:
-        src_nmf_dir = os.path.join(roi_source_dir, 'nmfoutput')
-        roi_source_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
-        
-        # Get TIFF/mmap source from which ROIs were extracted:
-        src_mmap_dir = RID['PARAMS']['mmap_source']
-        tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
-        
-        # Get filenames for matches between roi source and tiff source:
-        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
-        filenames = []
-        for roi_src in roi_source_paths:
-            # Get filename base
-            # filenames = sorted([str(re.search('File(\d{3})', nmffile).group(0)) for nmffile in roi_source_paths], key=natural_keys)
-            filenames.append(str(re.search('File(\d{3})', roi_src).group(0)))
 
-    if check_motion is True:
-        filenames, excluded_tiffs = check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs')
-        if len(excluded_tiffs) > 0:
-            bad_roi_fns = []
-            bad_tiff_fns = []
-            for badfn in excluded_tiffs:
-                bad_roi_fns.append([r for r in roi_source_paths if badfn in r][0])
-                bad_tiff_fns.append([r for r in tiff_source_paths if badfn in r][0])
-            roi_source_paths = [r for r in roi_source_paths if r not in bad_roi_fns]
-            tiff_source_paths = [r for r in tiff_source_paths if r not in bad_tiff_fns]
-    
-    return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs
 
 #%%
 def evaluate_roi_set(RID, evalparams=None):
@@ -352,7 +212,7 @@ def evaluate_roi_set(RID, evalparams=None):
         print "---------------------------------------------------------------"
     
     
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs = get_source_paths(RID)
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs = get_source_paths(session_dir, RID)
     tstamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     
     # Set up output file:

@@ -57,9 +57,13 @@ def get_source_info(acquisition_dir, run, process_id):
         os.makedirs(mc_evaldir)
         
     # Get correlation of MEAN image (mean slice across time) to reference:
-    ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
-    ref_channel = 'Channel%02d' % PID['PARAMS']['motion']['ref_channel']
-
+    if PID['PARAMS']['motion']['correct_motion'] is True:
+        ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
+        ref_channel = 'Channel%02d' % PID['PARAMS']['motion']['ref_channel']
+    else:
+        ref_filename = 'File001'
+        ref_channel = 'Channel01'
+        
     # Create dict to pass around to methods
     info['process_dir'] = PID['DST']
     info['source_dir'] = mc_sourcedir
