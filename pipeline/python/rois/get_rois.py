@@ -358,7 +358,7 @@ elif roi_type == 'coregister':
                         pp.pprint(evaldict[eval_list[eval_select_idx]])
                         confirm_eval = raw_input('Enter <Y> to use this eval set, or <n> to return: ')
                         if confirm_eval == 'Y':
-                            eval_key = eval_list[eval_select_idx].split('evaluation_')[-1]
+                            eval_key = eval_list[eval_select_idx].split('evaluation_results_')[-1]
                             print "Using key: %s" % eval_key
                             break
                 else:
