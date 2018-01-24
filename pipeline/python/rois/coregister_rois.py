@@ -9,18 +9,14 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
 - Evaluation set is keyed with a date-time string (output of evaulate_roi_extraction.py)
 
 # 2.  Populate coregistration params (params_thr).
-- dist_maxthr <float>
-	threshold for turning spatial components into binary masks
-	(default: 0.1)
-- dist_exp <float>
-	power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n
-	(default: 1.0)
-- dist_thr <float>
-	threshold for setting a distance to infinity (illegal matches)
-	(default: 0.5)
-- dist_overlap_thr <float>
-	overlap threshold for detecting if one ROI is a subset of another
-	(default: 0.8)
+    - dist_maxthr <float>
+        	threshold for turning spatial components into binary masks (default: 0.1)
+    - dist_exp <float>
+        	power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1.0)
+    - dist_thr <float>
+        	threshold for setting a distance to infinity (illegal matches) (default: 0.5)
+    - dist_overlap_thr <float>
+        	overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
 
 # 3.  Load ROI set info and get roi/tiff source paths.
 
@@ -34,7 +30,7 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
 
 	a. Find matches to reference for each file and save results (coreg_results_path):
 	   [outfile]:  <rid_dir>/coreg_results/coreg_results_<datetimestr>.hdf5
-	   --> keys are file groups (File001, File002, etc.), each of which contains:
+	   --> file groups (File001, File002, etc.) each contain datasets:
 		roi_idxs :  indices of rois (source indices)
 		distance :  distance matrix between ref and current file
 		distance_thr :  thresholded distance matrix (params_thr['dist_thr'])
@@ -58,7 +54,6 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
 	g. Plot universal ROIs on contour plots:
 	   [outfiles]: <rid_dir>/coreg_results/figures/contours_byfile_rFileRRR.png
 		       <rid_dir>/coreg_results/figures/contours_byroi_rFileRRR.png
-
 
 
 Created on Tue Nov  7 16:31:56 2017
