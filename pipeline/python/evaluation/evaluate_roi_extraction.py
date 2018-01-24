@@ -380,7 +380,14 @@ def run_evaluation(options):
         evalparams['Npeaks'] = Npeaks
         evalparams['use_cnn'] = use_cnn
         evalparams['cnn_thr'] = cnn_thr
-        evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
+        if RID['roi_type'] == 'caiman2D':
+            evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
+        else:
+            with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
+                roidict = json.load(f)
+            src_rid = RID['PARAMS']['options']['source']['roi_id']
+            evalparams['gSig'] = roidict[src_rid]['PARAMS']['options']['extraction']['gSig']
+            
     eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
     
     #% Save Eval info to dict:
