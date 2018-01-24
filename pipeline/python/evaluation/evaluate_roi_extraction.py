@@ -212,7 +212,6 @@ def evaluate_roi_set(RID, evalparams=None):
         print "---------------------------------------------------------------"
     
     roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID)
-    tstamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     
     # Set up output file:
     eval_filename = 'evaluation_results_{tstamp}.hdf5'.format(tstamp=tstamp)
@@ -382,7 +381,7 @@ def run_evaluation(options):
         evalparams['use_cnn'] = use_cnn
         evalparams['cnn_thr'] = cnn_thr
         evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
-            
+
     eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
     
     #% Save Eval info to dict:
