@@ -4,12 +4,54 @@ import json
 import re
 import shutil
 import hashlib
+import scipy
+import h5py
 import numpy as np
 import tifffile as tf
 from skimage import exposure
 from skimage import img_as_ubyte
 import scipy.io as spio
 import numpy as np
+
+def save_sparse_hdf5(matrix, prefix, fname):
+    """ matrix: sparse matrix
+    prefix: prefix of dataset 
+    fname : name of h5py file where matrix will be saved
+    """
+    assert matrix.__class__==scipy.sparse.csc.csc_matrix,'Expecting csc/csr, got %s' % matrix.__class__ #matrix.__class__==scipy.sparse.csr.csr_matrix or 
+    with h5py.File(fname,mode='a') as f:
+        for info in ['data','indices','indptr','shape']:
+            key = '%s_%s'%(prefix,info)
+            try:
+                data = getattr(matrix, info)
+            except:
+                assert False,'Expecting attribute '+info+' in matrix'
+            """
+            For empty arrays, data, indicies and indptr will be []
+            To deal w/ this use np.nan in its place
+            """
+            if len(data)==0:
+                f.create_dataset(key, data=np.array([np.nan]))
+            else:
+                f.create_dataset(key, data=data)
+        key = prefix+'_type'
+        val = matrix.__class__.__name__
+        f.attrs[key] = np.string_(val) 
+
+#%
+def load_sparse_mat(prefix, fname):
+    with h5py.File(fname, mode='r') as f:
+        pars = []
+        for par in ('data', 'indices', 'indptr', 'shape'):
+            key = '%s_%s'%(prefix,par)
+            print key
+            print f[key]
+            pars.append(f[key].value)
+            #pars.append(getattr(f, '%s_%s' % (prefix, par)).read())
+            #pars.append(f['/'.join([prefix, par])prefix, par))
+    m = scipy.sparse.csc_matrix(tuple(pars[:3]), shape=pars[3])
+    return m
+
 
 def loadmat(filename):
     '''

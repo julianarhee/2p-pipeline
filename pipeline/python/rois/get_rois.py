@@ -57,14 +57,13 @@ import optparse
 import pprint
 import time
 import traceback
-import re
+import scipy
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, write_dict_to_json
+from pipeline.python.utils import natural_keys, write_dict_to_json, load_sparse_mat, save_sparse_hdf5
 from pipeline.python.rois import extract_rois_caiman as rcm
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
-from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
 from pipeline.python.rois.utils import load_RID, get_source_paths
 
 from scipy.sparse import spdiags
@@ -80,13 +79,12 @@ def timer(start,end):
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
-def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
+def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, coreg_rois=None):
     """
     Get shaped masks (filtered, if specified) and coordinate list for ROIs.
     Also return original indices of final ROIs (0-indexed).
     """
     nmf = np.load(nmf_filepath)
-    nr = nmf['A'].all().shape[1]
 
     d1 = int(nmf['dims'][0])
     d2 = int(nmf['dims'][1])
@@ -97,54 +95,77 @@ def format_rois_nmf(nmf_filepath, roiparams, kept_rois=None, coreg_rois=None):
     else:
         is_3D = False
         dims = (d1, d2)
+        
+    # Get zprojected image:
+    if zproj_type == 'corr':
+        img = nmf['Cn']
+    else:
+        img = nmf['Av']
+
+    A = nmf['A'].all().tocsc()
+    b = nmf['b']
+    C = nmf['C']
+    f = nmf['f']
+#    A2 = A.copy()
+#    A2.data **= 2
+#    nA2 = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
+#    rA = A * spdiags(old_div(1, nA2), 0, nr, nr)
+#    rA = rA.todense()
+#    nr = A.shape[1]
+
+    nr = np.shape(A)[-1]
+    nb = b.shape[1]
     
-    A = nmf['A'].all()
-    A2 = A.copy()
-    A2.data **= 2
+    # Keep background as components:
+    Ab = scipy.sparse.hstack((A, b)).tocsc()
+    Cf = np.vstack((C, f))
+
+    A2 = Ab.copy()
+    A2.data **= 2.
     nA2 = np.sqrt(np.array(A2.sum(axis=0))).squeeze()
-    rA = A * spdiags(old_div(1, nA2), 0, nr, nr)
-    rA = rA.todense()
-    nr = A.shape[1]
+    
+    # normalize by each pixel's contribution to spatial component:
+    rA = Ab * spdiags(old_div(1., nA2), 0., nr+nb, nr+nb)
+    AB = rA.todense()
     
     # Get center of mass for each ROI:
     coors = get_contours(A, dims, thr=0.9)
     roi_idxs = np.arange(0, nr)
-    all_rois = [roi['neuron_id'] for roi in coors]
-    print all_rois[0:5], roi_idxs[0:5]
 
     # Create masks:
     if is_3D:
-        masks = np.reshape(np.array(rA), (d1, d2, d3, nr), order='F')
+        masks = np.reshape(np.array(AB), (d1, d2, d3, nr+nb), order='F')
     else:
-        masks = np.reshape(np.array(rA), (d1, d2, nr), order='F')
+        masks = np.reshape(np.array(AB), (d1, d2, nr+nb), order='F')
         
     # Filter coors and masks:
     if roiparams['keep_good_rois'] is True:
-        if kept_rois is None:
-            kept_rois = nmf['idx_components']
-        coors = [coors[i] for i in kept_rois]
-        if is_3D:
-            masks = masks[:,:,:,kept_rois]
-        else:
-            masks = masks[:,:,kept_rois]
-        roi_idxs = [all_rois[i] for i in kept_rois]
-    if coreg_rois is not None:
-        coors = [coors[i] for i in coreg_rois]
-        if is_3D:
-            masks = masks[:,:,:,coreg_rois]
-        else:
-            masks = masks[:,:,coreg_rois]
-        if roiparams['keep_good_rois'] is True:
-            roi_idxs = np.array([kept_rois[r] for r in coreg_rois])
-        else:
-            roi_idxs = np.array([all_rois[r] for r in coreg_rois])
-                
+        if pass_rois is None:
+            pass_rois = nmf['idx_components']    # Get idxs of ROIs that "pass" evaluation
+        roi_idxs = roi_idxs[pass_rois]           # Update ROI index list
+        
+    if coreg_rois is not None:                   # coreg_rois = indices into either "pass" rois (if keep_good_rois==True) or just the org src 
+        roi_idxs = roi_idxs[coreg_rois]   
+
+    roi_idxs = np.append(roi_idxs, nr)          # Append the "background component" to the ROI list:
+    
+    # Only return selected masks and coord info:
+    if is_3D:
+        masks = masks[:, :, :, roi_idxs]
+    else:
+        masks = masks[:, :, roi_idxs]
+    coors = [coors[i] for i in roi_idxs if not i==nr]
+    rA = rA[:, roi_idxs]
+    Cf = Cf[roi_idxs, :]
+    
     #cc1 = [[l[0] for l in n['coordinates']] for n in coors]
     #cc2 = [[l[1] for l in n['coordinates']] for n in coors]
     #coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
     #coms = np.array([np.array(n) for n in coords])
     
-    return masks, coors, roi_idxs, is_3D
+    return masks,img, coors, roi_idxs, is_3D, nb, rA, Cf
+
+#%
 
 #%%
 
@@ -224,6 +245,7 @@ mcmetric = options.mcmetric
 ##
 #eval_key = '2018_01_22_18_50_59'
 #mcmetric = 'zproj_corrcoefs'
+#zproj_type = 'mean'
 
 #min_SNR_low = 1.5
 #min_rval_low = 0.6
@@ -271,6 +293,7 @@ roi_type = RID['roi_type']
 rid_hash = RID['rid_hash']
 
 format_roi_output = False
+src_roi_type = None
 t_start = time.time()
 if len(mc_excluded_tiffs) > 0:
     exclude_str = ','.join([int(fn[4:]) for fn in mc_excluded_tiffs])
@@ -358,7 +381,7 @@ elif roi_type == 'coregister':
                         pp.pprint(evaldict[eval_list[eval_select_idx]])
                         confirm_eval = raw_input('Enter <Y> to use this eval set, or <n> to return: ')
                         if confirm_eval == 'Y':
-                            eval_key = eval_list[eval_select_idx].split('evaluation_results_')[-1]
+                            eval_key = eval_list[eval_select_idx].split('evaluation_')[-1]
                             print "Using key: %s" % eval_key
                             break
                 else:
@@ -377,11 +400,12 @@ elif roi_type == 'coregister':
         coreg_opts.extend(['--roipath=%s' % src_eval_filepath])
         
         #%
-        ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
+        ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
 
     print("Found %i common ROIs matching reference." % len(ref_rois))
 
     format_roi_output = True
+    src_roi_type = RID['PARAMS']['options']['source']['roi_type']
     
     #%
 else:
@@ -443,40 +467,45 @@ if format_roi_output is True :
     maskfile.attrs['zproj'] = zproj_type
     
     try:
-        if roi_type == 'caiman2D':
-            nmf_output_dir = os.path.join(rid_dir, 'nmfoutput')
-            all_nmf_fns = sorted([n for n in os.listdir(nmf_output_dir) if n.endswith('npz')], key=natural_keys)
-            nmf_fns = []
-            for f in filenames:
-                nmf_fns.append([m for m in all_nmf_fns if f in m][0])
-            assert len(nmf_fns) == len(filenames), "Unable to find matching nmf file for expected files."
-            
-            for fidx, nmf_fn in enumerate(sorted(nmf_fns, key=natural_keys)):
-                print "Creating ROI masks for %s" % filenames[fidx]
+        if roi_type == 'caiman2D' or (roi_type == 'coregister' and src_roi_type == 'caiman2D'):
+
+            for fidx, nmfpath in enumerate(sorted(roi_source_paths, key=natural_keys)):
+                
+                curr_file = filenames[fidx]
+                print "Creating ROI masks for %s" % curr_file
                 
                 # Create group for current file:
                 filegrp = maskfile.create_group(filenames[fidx])
-                filegrp.attrs['source_file'] = os.path.join(nmf_output_dir, nmf_fn)
+                filegrp.attrs['source_file'] = nmfpath
+
+                # Format NMF output to standard masks:
+                print "Formatting masks..."
+                if roi_type == 'coregister':
+                    # Load coreg results:
+                    coreg_byfile = h5py.File(coreg_results_path, 'r')
                     
-                # Get NMF output info:
-                nmf_filepath = os.path.join(nmf_output_dir, nmf_fn)
-                nmf = np.load(nmf_filepath)
-                if zproj_type == 'mean':
-                    img = nmf['Av']
-                elif zproj_type == 'corr':
-                    img = nmf['Cn']
-                
-                masks, coord_info, roi_idxs, is_3D= format_rois_nmf(nmf_filepath, roiparams)
+                    # Get masks:
+                    masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams, 
+                                                                         pass_rois=coreg_byfile[curr_file]['roi_idxs'], 
+                                                                         coreg_rois=coreg_byfile[curr_file]['universal_matches'])
+                else:
+                    masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams, zproj_type=zproj_type)
                 maskfile.attrs['is_3D'] = is_3D
-                #kept_idxs = nmf['idx_components']
+                
+                roi_names = ["roi%04d" % int(ridx+1) for ridx in range(len(roi_idxs) - nb)]
                 
                 # Save masks for current file (TODO: separate slices?)
                 print('Mask array:', masks.shape)
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
-                currmasks.attrs['nrois'] = len(roi_idxs)
-                currmasks.attrs['src_ro_idxs'] = roi_idxs
+                currmasks.attrs['src_roi_idxs'] = roi_idxs
+                currmasks.attrs['nrois'] = len(roi_idxs) - nb
+                currmasks.attrs['background'] = nb
                 
+                # Save spatial and temporal comps:
+                save_sparse_hdf5(Ab, '%s/Ab' % curr_file, mask_filepath)
+                save_sparse_hdf5(scipy.sparse.csc_matrix(Cf, dtype=Cf.dtype), '%s/Cf' % curr_file, mask_filepath)
+
                 # Save CoM for each ROI:
                 coms = np.array([r['CoM'] for r in coord_info])
                 currcoms = filegrp.create_dataset('coms', coms.shape, coms.dtype)
@@ -484,19 +513,22 @@ if format_roi_output is True :
                 
                 # Save coords for each ROI:
                 for ridx, roi in enumerate(coord_info):
-                    roi_name = 'roi%05d' % ridx
-                    curr_roi = filegrp.create_dataset('/'.join(['coords', roi_name]), roi['coordinates'].shape, roi['coordinates'].dtype)
+                    curr_roi = filegrp.create_dataset('/'.join(['coords', roi_names[ridx]]), roi['coordinates'].shape, roi['coordinates'].dtype)
                     curr_roi[...] = roi['coordinates']
-                    curr_roi.attrs['roi_source'] = nmf_filepath
+                    curr_roi.attrs['roi_source'] = nmfpath
+                    curr_roi.attrs['id_in_set'] = roi_names[ridx]
                     curr_roi.attrs['id_in_src'] = roi['neuron_id']
-                    curr_roi.attrs['id_in_set'] = roi_name
-                    
+                    curr_roi.attrs['idx_in_src'] = roi_idxs[ridx]
+                    if roi_type == 'coregister':
+                        curr_roi.attrs['idx_in_coreg'] = coreg_byfile[curr_file]['universal_matches']
+                
                 # Save zproj image:
                 zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
                 zproj[...] = img
                 zproj.attrs['zproj_type'] = zproj_type
 
                 # Plot figure with ROI masks: (1-indexed for naming)
+                print "Plotting final ROIs..."
                 vmax = np.percentile(img, 98)
                 pl.figure()
                 pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
@@ -517,93 +549,6 @@ if format_roi_output is True :
                 pl.savefig(os.path.join(rid_figdir, imname))
                 pl.close()
                 
-        elif roi_type == 'coregister':
-                
-            roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
-            roi_source_dir = RID['PARAMS']['options']['source']['roi_dir']
-            
-            if roi_ref_type == 'caiman2D':
-                src_nmf_dir = os.path.join(roi_source_dir, 'nmfoutput')
-                source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
-                # Load coregistration info for each file:
-                coreg_info = h5py.File(coreg_outpath, 'r')
-                filenames = [str(i) for i in coreg_info.keys()]
-                filenames = sorted(filenames, key=natural_keys)
-                
-                # Load universal match info:
-                coreg_output_dir = os.path.split(coreg_outpath)[0]
-                matchedrois_fn_base = 'coregistered_r%s' % str(params_thr['ref_filename'])
-                with open(os.path.join(coreg_output_dir, '%s.json' % matchedrois_fn_base), 'r') as f:
-                    matchedROIs = json.load(f)
-                
-                idxs_to_keep = dict()
-                for curr_file in filenames:
-                    
-                    idxs_to_keep[curr_file] = coreg_info[curr_file]['roi_idxs']
-                    nmf_filepath = [n for n in source_nmf_paths if curr_file in n][0]
-                    nmf = np.load(nmf_filepath)
-                    img = nmf['Av']
-                    
-                    print "Creating ROI masks for %s" % curr_file
-                    
-                    # Create group for current file:
-                    filegrp = maskfile.create_group(curr_file)
-                    filegrp.attrs['source_file'] = os.path.join(src_nmf_dir, nmf_filepath)
-                
-                    # Get masks:
-                    masks, coord_info, roi_idxs, is_3D = format_rois_nmf(nmf_filepath, roiparams, 
-                                                                         kept_rois=idxs_to_keep[curr_file], 
-                                                                         coreg_rois=matchedROIs[curr_file])
-                    maskfile.attrs['is_3D'] = is_3D
-                    
-                    print('Mask array:', masks.shape)
-                    currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
-                    currmasks[...] = masks
-                    currmasks.attrs['nrois'] = len(roi_idxs) #len(kept_idxs)
-                    currmasks.attrs['src_roi_idxs'] = roi_idxs
-                    
-                    
-                    print "Saving coms..."
-                    coms = np.array([r['CoM'] for r in coord_info])
-                    currcoms = filegrp.create_dataset('coms', coms.shape, coms.dtype)
-                    currcoms[...] = coms
-                    
-                    print "Saving ROI info..."
-                    for ridx, roi in enumerate(coord_info):
-                        roi_name = 'roi%05d' % int(ridx+1)
-                        curr_roi = filegrp.create_dataset('/'.join(['coords', roi_name]), roi['coordinates'].shape, roi['coordinates'].dtype)
-                        curr_roi[...] = roi['coordinates']
-                        curr_roi.attrs['roi_source'] = nmf_filepath
-                        curr_roi.attrs['id_in_src'] = roi['neuron_id']
-                        curr_roi.attrs['id_in_set'] = roi_name
-                        curr_roi.attrs['idx_in_src'] = roi_idxs[ridx]
-                        curr_roi.attrs['idx_in_kept'] = idxs_to_keep[curr_file][ridx]
-                        curr_roi.attrs['idx_in_coreg'] = matchedROIs[curr_file][ridx]
-                        
-                    zproj = filegrp.create_dataset('zproj_img', img.shape, img.dtype)
-                    zproj[...] = img
-                    zproj.attrs['zproj_type'] = zproj_type
-
-                    # Plot figure with ROI masks:
-                    vmax = np.percentile(img, 98)
-                    pl.figure()
-                    pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-                    for ridx in range(len(roi_idxs)):
-                        masktmp = masks[:,:,ridx]
-                        msk = masktmp.copy() 
-                        msk[msk==0] = np.nan
-                        pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
-                        [ys, xs] = np.where(masktmp>0)
-                        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
-                        pl.axis('off')
-                    pl.colorbar()
-                    pl.tight_layout()
-                    
-                    # Save image:
-                    imname = '%s_%s_%s_masks.png' % (roi_id, rid_hash, curr_file)
-                    print(imname) 
-                    pl.savefig(os.path.join(rid_figdir, imname))
-                    pl.close()
         else:
             # do sth ?
             print "Formatting for roi_type %s unknown..." % roi_type
