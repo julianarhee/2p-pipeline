@@ -44,9 +44,9 @@ def load_sparse_mat(prefix, fname):
         pars = []
         for par in ('data', 'indices', 'indptr', 'shape'):
             key = '%s_%s'%(prefix,par)
-            print key
+            #print key
             print f[key]
-            pars.append(f[key].value)
+            #pars.append(f[key].value)
             #pars.append(getattr(f, '%s_%s' % (prefix, par)).read())
             #pars.append(f['/'.join([prefix, par])prefix, par))
     m = scipy.sparse.csc_matrix(tuple(pars[:3]), shape=pars[3])
