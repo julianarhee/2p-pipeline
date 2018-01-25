@@ -216,14 +216,23 @@ h5writeatt(mask_fn, sprintf('/%s', curr_filename), 'source', slice_sourcedir)
 
 h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
 h5writeatt(mask_fn,  '/', 'roi_type', roi_type);
-h5writeatt(mask_fn,  '/', 'roi_hash', roi_hash);
 h5writeatt(mask_fn,  '/', 'roi_id', roi_id);
+h5writeatt(mask_fn,  '/', 'roi_hash', roi_hash);
 h5writeatt(mask_fn,  '/', 'animal', animalid);
 h5writeatt(mask_fn,  '/', 'session', session);
+h5writeatt(mask_fn,  '/', 'ref_file', ref_file);
+h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
+
+h5writeatt(mask_fn,  '/', 'keep_good_rois', false);
+h5writeatt(mask_fn,  '/', 'ntiffs_in_set', 1); % shoudl this be n actual tiffs? 1 since only using a ref file
+h5writeatt(mask_fn,  '/', 'zproj', zproj_type);
+
+
+
 %h5writeatt(mask_fn,  sprintf('/masks'), 'acquisition', acquisition);
 %h5writeatt(mask_fn,  sprintf('/masks'), 'run', run);
 %h5writeatt(mask_fn,  sprintf('/masks'), 'zproj', zproj_type);
-h5writeatt(mask_fn,  '/', 'ref_file', ref_file);
+%h5writeatt(mask_fn,  '/', 'ref_file', ref_file);
 %h5writeatt(mask_fn,  sprintf('/masks'), 'ref_channel', ref_channel);
 if is_3D
     is3D_val = 'True';
