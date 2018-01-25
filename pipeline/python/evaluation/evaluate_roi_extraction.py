@@ -420,12 +420,14 @@ def run_evaluation(options):
             evaldict = json.load(fr)
     else:
         evaldict = dict()
-    eval_filename = str(os.path.splitext(os.path.basename(eval_filepath))[0]) 
-    if eval_filename not in evaldict.keys():
-        evaldict[eval_filename] = evalinfo
+    eval_key = os.path.split(os.path.split(eval_filepath)[0])[1]
+    print "Saving new eval key: %s" % eval_key
+    #eval_filename = str(os.path.splitext(os.path.basename(eval_filepath))[0]) 
+    if eval_key not in evaldict.keys():
+        evaldict[eval_key] = evalinfo
     with open(eval_info_path, 'w') as fw:
         json.dump(evaldict, fw, sort_keys=True, indent=4)
-    print "Updated eval info dict with entry: %s\nSaved update to %s." % (eval_filename, eval_info_path)    
+    print "Updated eval info dict with entry: %s\nSaved update to %s." % (eval_key, eval_info_path)    
     
     return eval_filepath, max_good_rois, min_good_rois
 
