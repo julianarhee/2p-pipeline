@@ -69,22 +69,22 @@ import traceback
 import tifffile as tf
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, hash_file
+from pipeline.python.utils import natural_keys, hash_file, write_dict_to_json, load_sparse_mat, save_sparse_hdf5
 from pipeline.python.set_trace_params import post_tid_cleanup
 
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'CE059' #'JR063'
-#session = '20171009_CE059' #'20171202_JR063'
-#acquisition = 'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-#run = 'gratings_phasemod' #'scenes'
-#slurm = False
-#
-#trace_id = 'traces001'
-#auto = False
+rootdir = '/nas/volume1/2photon/data'
+animalid = 'JR063' #'CE059' #'JR063'
+session = '20171128_JR063' #'20171009_CE059' #'20171202_JR063'
+acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+run = 'gratings_static' #'gratings_phasemod' #'scenes'
+slurm = False
+
+trace_id = 'traces001'
+auto = False
 #
 #if slurm is True:
 #    if 'coxfs01' not in rootdir:
@@ -121,6 +121,12 @@ auto = options.default
 if slurm is True:
     if 'coxfs01' not in rootdir:
         rootdir = '/n/coxfs01/2p-data'
+
+# NOTE:  caiman2D ROIs are already "normalized" or weighted (see format_rois_nmf in get_rois.py).
+# These masks can be directly applied to tiff movies, or can be applied to temporal component mat from NMF results (.npz)
+
+normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'opencv_blob_detector']
+
 
 #%%
 # =============================================================================
@@ -244,9 +250,15 @@ else:
 
 #%% For each specified SLICE in this ROI set, create 2D mask array:
 print "======================================================================="
-
 print "TID %s -- Getting mask info..." % trace_hash
 
+# Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
+normalize_rois = False
+if RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] in normalize_roi_types:
+    normalize_rois = True
+elif RID['roi_type'] in normalize_roi_types:
+    normalize_rois = True
+    
 MASKS = dict()
 for fidx, curr_file in enumerate(filenames):
     MASKS[curr_file] = dict()
@@ -265,29 +277,40 @@ for fidx, curr_file in enumerate(filenames):
             avg = maskfile[curr_file]['zproj_img']
             MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
             #roinames = maskfile[curr_file]['coords'].keys()
-            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file'] #maskfile[curr_file]['coords'][roinames[0]].attrs['roi_source'] #maskfile[curr_file].attrs['source_file']
+            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file']
             MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'].attrs['src_roi_idxs']
 
         d1,d2 = avg.shape
         d = d1*d2
 
         # Plot labeled ROIs on avg img:
-        pl.figure()
-        pl.imshow(avg)
         if slice_masks:
-            curr_rois = ["roi%05" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs'])]
-            print curr_rois
+            #curr_rois = ["roi%05" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs'])]
+            curr_rois = ["roi%05" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']))]
         else:
-            curr_rois = ["roi%05d" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'].attrs['src_roi_idxs'])]
-            print curr_rois
-            
-        # Create maskarray:
-        print "Plotting ROIs:", curr_rois
+            #curr_rois = ["roi%05d" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'].attrs['src_roi_idxs'])]
+            curr_rois = ["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'].attrs['src_roi_idxs']))]
+        
+        # Check if extra backround:
+        if 'background' in maskfile[curr_file]['masks'].attrs.keys():
+            nb = maskfile[curr_file]['masks'].attrs['background']
+            #curr_rois = curr_rois[0:-1*nb]
+        else:
+            nb = 0
         nrois = len(curr_rois)
+        MASKS[curr_file][curr_slice]['nb'] = nb
+        MASKS[curr_file][curr_slice]['nr'] = nrois - nb
+        print curr_rois
+        
+        fig = pl.figure()
+        ax = fig.add_subplot(1,1,1)
+        ax.imshow(avg, cmap='gray')
+        # Create maskarray and plot on img:
+        print "Plotting %i ROIs" % len(curr_rois)
         maskarray = np.empty((d, nrois))
-        maskarray_roi_ids = np.empty((nrois,)) 
+        maskarray_roi_ids = []
+        bgidx = 0
         for ridx, roi in enumerate(curr_rois):
-            roi_id = int(roi[3:])-1
             if slice_masks: 
                 masktmp = np.array(maskfile[curr_file]['masks'][curr_slice]).T[:,:,ridx] # T is needed for MATLAB masks... (TODO: check roi_blobs)
             else:
@@ -295,23 +318,37 @@ for fidx, curr_file in enumerate(filenames):
                     masktmp = maskfile[curr_file]['masks'][:,:,sidx,ridx]
                 else:
                     masktmp = maskfile[curr_file]['masks'][:,:,ridx]
- 
+                    
             msk = masktmp.copy()
             msk[msk==0] = np.nan
-            pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
-            [ys, xs] = np.where(masktmp>0)
-            pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
-            pl.axis('off')
+            
+            if (nb > 0) and (ridx >= (nrois-nb)):
+                bgidx += 1
+                bgfig = pl.figure()
+                bgax = bgfig.add_subplot(1,1,1)
+                bgax.imshow(avg, cmap='gray')
+                bgax.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+                pl.title('background %i' % bgidx)
+                pl.savefig(os.path.join(trace_figdir, 'bg%i_%s_%s_%s_%s.png' % (bgidx, curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
+                pl.close()
+            else:
+                ax.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+                [ys, xs] = np.where(masktmp>0)
+                ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
+            ax.axis('off')
             
             # Normalize by size:
             masktmp = np.reshape(masktmp, (d,), order='C')
-            npixels = len(np.nonzero(masktmp)[0])
-            maskarray[:,ridx] = masktmp/npixels
-            maskarray_roi_ids[ridx] = roi_id
+            if normalize_rois is True:
+                npixels = len(np.nonzero(masktmp)[0])
+                maskarray[:, ridx] = masktmp/npixels
+            else:
+                maskarray[:, ridx] = masktmp
+            maskarray_roi_ids.append(roi)
         
         MASKS[curr_file][curr_slice]['mask_array'] = maskarray
             
-        pl.savefig(os.path.join(trace_figdir, '%s_%s_%s.png' % (curr_slice, RID['roi_id'], RID['rid_hash'])))
+        pl.savefig(os.path.join(trace_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
         pl.close()
 
 
@@ -377,7 +414,7 @@ for tfn in tiff_files:
         for sl in range(len(roi_slices)):
     
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
-            print curr_slice
+            print "Extracting ROI time course from %s" % curr_slice
             maskarray = MASKS[mask_key][roi_slices[sl]]['mask_array']
 
             # Get frame tstamps:
@@ -400,7 +437,8 @@ for tfn in tiff_files:
             mset.attrs['roi_id'] = str(RID['roi_id'])
             mset.attrs['rid_hash'] = str(RID['rid_hash'])
             mset.attrs['roi_type'] = str(RID['roi_type'])
-            mset.attrs['nrois'] = maskarray.shape[1]
+            mset.attrs['nr'] = MASKS[mask_key][curr_slice]['nr']
+            mset.attrs['nb'] = MASKS[mask_key][curr_slice]['nb']
             mset.attrs['src_roi_idxs'] = MASKS[mask_key][curr_slice]['src_roi_idxs']
                         
             # Save zproj img:
@@ -412,7 +450,7 @@ for tfn in tiff_files:
 
             # Save fluor trace:
             if 'rawtraces' not in slice_grp.keys():
-                tset = slice_grp.create_dataset('rawtraces', tracemat.shape, tracemat.dtype)
+                tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
             tset[...] = tracemat
             tset.attrs['nframes'] = tracemat.shape[0]
             tset.attrs['dims'] = dims
@@ -421,6 +459,17 @@ for tfn in tiff_files:
             if 'frames_tsec' not in slice_grp.keys():
                 fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
             fset[...] = curr_tstamps
+            
+            # CHeck if have nmf traces:
+            if 'Ab_data' in maskfile[curr_file].keys():
+                Ab = load_sparse_mat('%s/Ab' % curr_file, mask_path).todense()
+                Cf = load_sparse_mat('%s/Cf' % curr_file, mask_path).todense()
+                extracted_traces = Ab.T.dot(Ab.dot(Cf))
+                extracted_traces = np.array(extracted_traces.T) # trans to get same format as other traces (NR x Tpoints)
+                ext = slice_grp.create_dataset('/'.join(['traces', 'denoised_nmf']), extracted_traces.shape, extracted_traces.dtype)
+                ext[...] = extracted_traces
+                ext.attrs['nb'] = maskfile[curr_file]['masks'].attrs['background']
+                ext.attrs['nr'] = maskfile[curr_file]['masks'].attrs['nrois']
     
         # Create hash of current raw tracemat:
         rawfile_hash = hash_file(trace_outfile_path)
@@ -433,6 +482,7 @@ for tfn in tiff_files:
     
     finally:
         file_grp.close()
+ 
     
 with open(os.path.join(trace_outdir, 'fileinfo_%s.json' % TID['trace_hash']), 'w') as f:
     json.dump(file_hashdict, f, indent=4, sort_keys=True)
@@ -473,7 +523,7 @@ vol_idxs = [int(v) for v in vol_idxs]
 trace_fn = 'roi_timecourses.hdf5'
 trace_outfile_path = os.path.join(traceid_dir, trace_fn)
 
-roi_outfile = h5py.File(trace_outfile_path, 'w')
+roi_outfile = h5py.File(trace_outfile_path, 'a')
 roi_outfile.attrs['tiff_source'] = TID['SRC']
 roi_outfile.attrs['trace_id'] = TID['trace_id']
 roi_outfile.attrs['trace_hash'] = TID['trace_hash']
@@ -489,7 +539,8 @@ roi_outfile.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d 
 # Concatenate time courses across all files to create single time-source for RUN:
 # -----------------------------------------------------------------------------
 tmp_tracestruct = h5py.File(os.path.join(trace_source_dir, tracestruct_fns[0]), 'r')
-total_nframes_in_run = tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
+dims = tmp_tracestruct.attrs['dims']
+total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
 tmp_tracestruct.close(); del tmp_tracestruct
 
 nframes_in_file = runinfo['nvolumes']
@@ -504,40 +555,64 @@ try:
             for currslice in sorted(tracefile.keys(), key=natural_keys):
                 print "Loading slice:", currslice
                 maskarray = tracefile[currslice]['masks']
-                d1, d2 = tracefile[currslice]['rawtraces'].attrs['dims'][0:-1]
-                T = tracefile[currslice]['rawtraces'].attrs['nframes']
+                d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
+                T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
                 src_roi_idxs = tracefile[currslice]['masks'].attrs['src_roi_idxs']
-                nrois = maskarray.shape[1]
-                masks = np.reshape(maskarray, (d1, d2, nrois), order='C')
-        
+                nr = tracefile[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
+                nb = tracefile[currslice]['masks'].attrs['nb']
+                masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
+                
+                bgidx = 0
                 for ridx, roi in enumerate(src_roi_idxs):
-                    roi_counter += 1
-                    roiname = 'roi%05d' % int(roi_counter)
-        
-                    if roiname not in roi_outfile.keys():
-                        roi_grp = roi_outfile.create_group(roiname)
-                        roi_grp.attrs['slice'] = currslice
-                        roi_grp.attrs['roi_img_path'] = tracefile[currslice]['zproj'].attrs['img_source']
+                    if (nb > 0) and (ridx >= (nr-nb)):
+                        bgidx += 1
+                        is_background = True
+                        roiname = 'bg%02d' % bgidx
                     else:
-                        roi_grp = roi_outfile[roiname]
+                        is_background = False
+                        roi_counter += 1
+                        roiname = 'roi%05d' % int(roi_counter)
+                    
+                    # Create unique ROI group:
+                    #if roiname not in roi_outfile.keys():
+                    roi_grp = roi_outfile.create_group(roiname)
+                    roi_grp.attrs['slice'] = currslice
+                    roi_grp.attrs['roi_img_path'] = tracefile[currslice]['zproj'].attrs['img_source']
+                    #else:
+                    #    roi_grp = roi_outfile[roiname]
         
-                    if 'mask' not in roi_grp.keys():
-                        roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
-                        roi_mask[...] = masks[:,:,ridx]
-                        roi_grp.attrs['id_in_set'] = roi_counter #roi
-                        roi_grp.attrs['id_in_src'] = roi #ridx
-                        roi_grp.attrs['idx_in_slice'] = ridx
-                        roi_mask.attrs['slice'] = currslice
-        
-                    if 'timecourse' not in roi_grp.keys():
-                        roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracefile[currslice]['rawtraces'][:, ridx].dtype)
-                    else:
-                        roi_tcourse = roi_outfile[roiname]['timecourse']
-        
-                    roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = tracefile[currslice]['rawtraces'][:, ridx]
-                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
-        
+                    #if 'mask' not in roi_grp.keys():
+                    roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
+                    roi_mask[...] = masks[:,:,ridx]
+                    roi_grp.attrs['id_in_set'] = roi_counter #roi
+                    roi_grp.attrs['id_in_src'] = roi #ridx
+                    roi_grp.attrs['idx_in_slice'] = ridx
+                    roi_mask.attrs['slice'] = currslice
+                    roi_mask.attrs['is_background'] = is_background
+                    
+                    # Add time courses:
+                    trace_types = tracefile[currslice]['traces'].keys()
+                    for trace_type in trace_types:
+                        curr_t = tracefile[currslice]['traces'][trace_type][:, ridx]
+                        curr_key = '/'.join(['timecourse', trace_type])
+                        if curr_key not in roi_grp.keys():
+                            roi_tcourse = roi_grp.create_dataset(curr_key, (total_nframes_in_run,), curr_t.dtype)
+                        else:
+                            roi_tcourse = roi_outfile[roiname][curr_key]
+                        roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_t
+                        roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
+                        
             curr_frame_idx += nframes_in_file
+            
+#                    if 'timecourse' not in roi_grp.keys():
+#                        roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracefile[currslice]['rawtraces'][:, ridx].dtype)
+#                    else:
+##                        roi_tcourse = roi_outfile[roiname]['timecourse']
+#        
+#                    roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = tracefile[currslice]['rawtraces'][:, ridx]
+#                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
+        
+#            curr_frame_idx += nframes_in_file
         except Exception as e:
             print "--- ERROR splitting tracefile for ROIs. --- %s" % tracefile
             traceback.print_exc()
