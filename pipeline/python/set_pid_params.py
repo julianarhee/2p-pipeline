@@ -8,48 +8,21 @@ Created on Fri Nov  3 17:19:12 2017
 import os
 import json
 import pprint
-import re
 import pkg_resources
-import pandas as pd
 import optparse
 import sys
 import hashlib
 import copy
-from pipeline.python.utils import write_dict_to_json
-
+import shutil
+from pipeline.python.utils import natural_keys, write_dict_to_json, change_permissions_recursive, get_file_size 
 from checksumdir import dirhash
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-import shutil
-
 
 pp = pprint.PrettyPrinter(indent=4)
 
-# GENERAL METHODS:
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [atoi(c) for c in re.split('(\d+)', text)]
-
-def convert_bytes(num):
-    """
-    this function will convert bytes to MB.... GB... etc
-    """
-    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
-        if num < 1024.0:
-            return "%3.1f %s" % (num, x)
-        num /= 1024.0
-
-def get_file_size(file_path):
-    """
-    this function will return the file size
-    """
-    if os.path.isfile(file_path):
-        file_info = os.stat(file_path)
-        return convert_bytes(file_info.st_size)
-
 def post_pid_cleanup(acquisition_dir, run, pid_hash):
 
+    # Load current tmp PID file:
     processed_dir = os.path.join(acquisition_dir, run, 'processed')
     print "Cleaning up PID info: %s" % pid_hash
     tmp_pid_dir = os.path.join(processed_dir, 'tmp_pids')
@@ -57,36 +30,25 @@ def post_pid_cleanup(acquisition_dir, run, pid_hash):
     pid_path = os.path.join(tmp_pid_dir, tmp_pid_fn)
     with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
         PID = json.load(f)
-
+    
+    # Load PID dictionary and update:
     processdict_fn = 'pids_%s.json' % run
-    # UPDATE PID entry in dict:
     with open(os.path.join(processed_dir, processdict_fn), 'r') as f:
         processdict = json.load(f)
     process_id = [p for p in processdict.keys() if processdict[p]['pid_hash'] == pid_hash][0]
-#    process_id_basename = PID['process_id']
-#    new_process_id_key = '_'.join((process_id_basename, pid_hash))
-#    processdict[new_process_id_key] = processdict.pop(PID['process_id'])
-#    print "Updated main process dict, with key: %s" % new_process_id_key
     processdict[process_id] = PID
 
     # Save updated PID dict:
     path_to_processdict = os.path.join(processed_dir, processdict_fn)
     write_dict_to_json(processdict, path_to_processdict)
 
+    # Clean up tmp PID files:
     finished_dir = os.path.join(tmp_pid_dir, 'completed')
     if not os.path.exists(finished_dir):
         os.mkdir(finished_dir)
     dest_fname = os.path.join(finished_dir, os.path.basename(pid_path)) 
     shutil.move(pid_path, dest_fname)
     print "Moved tmp pid file to completed:", dest_fname
-
-
-def change_permissions_recursive(path, mode):
-    for root, dirs, files in os.walk(path, topdown=False):
-        #for dir in [os.path.join(root,d) for d in dirs]:
-            #os.chmod(dir, mode)
-        for file in [os.path.join(root, f) for f in files]:
-            os.chmod(file, mode)
 
 def write_hash_readonly(write_dir, PID=None, step='', label=''):
 

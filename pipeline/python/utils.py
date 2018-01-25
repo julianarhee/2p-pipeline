@@ -6,12 +6,54 @@ import shutil
 import hashlib
 import scipy
 import h5py
+import time
 import numpy as np
 import tifffile as tf
 from skimage import exposure
 from skimage import img_as_ubyte
 import scipy.io as spio
 import numpy as np
+from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
+
+# -----------------------------------------------------------------------------
+# Commonly used, generic methods:
+# -----------------------------------------------------------------------------
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
+def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
+    fn_base = 'Slice%02d_Channel%02d_File%03d' % (slicenum, channelnum, filenum)
+    if run is not None:
+        fn_base = '%s_%s' % (run, fn_base)
+    if acq is not None:
+        fn_base = '%s_%s' % (acq, fn_base)
+    return fn_base
+
+def print_elapsed_time(t_start):
+    hours, rem = divmod(time.time() - t_start, 3600)
+    minutes, seconds = divmod(rem, 60)
+    print "Duration: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
+
+# -----------------------------------------------------------------------------
+# Data-saving and -formatting methods:
+# -----------------------------------------------------------------------------
+def jsonify_array(curropts):
+    jsontypes = (list, tuple, str, int, float, bool, unicode, long)
+    for pkey in curropts.keys():
+        if isinstance(curropts[pkey], dict):
+            for subkey in curropts[pkey].keys():
+                if curropts[pkey][subkey] is not None and not isinstance(curropts[pkey][subkey], jsontypes) and len(curropts[pkey][subkey].shape) > 1:
+                    curropts[pkey][subkey] = curropts[pkey][subkey].tolist()
+    return curropts
+
+def write_dict_to_json(pydict, writepath):
+    jstring = json.dumps(pydict, indent=4, allow_nan=True, sort_keys=True)
+    f = open(writepath, 'w')
+    print >> f, jstring
+    f.close()
 
 def save_sparse_hdf5(matrix, prefix, fname):
     """ matrix: sparse matrix
@@ -38,7 +80,6 @@ def save_sparse_hdf5(matrix, prefix, fname):
         val = matrix.__class__.__name__
         f.attrs[key] = np.string_(val) 
 
-#%
 def load_sparse_mat(prefix, fname):
     with h5py.File(fname, mode='r') as f:
         pars = []
@@ -52,7 +93,6 @@ def load_sparse_mat(prefix, fname):
     m = scipy.sparse.csc_matrix(tuple(pars[:3]), shape=pars[3])
     return m
 
-
 def loadmat(filename):
     '''
     this function should be called instead of direct spio.loadmat
@@ -64,7 +104,6 @@ def loadmat(filename):
 
     return _check_keys(data)
 
-
 def _check_keys(dict):
     '''
     checks if entries in dictionary are mat-objects. If yes
@@ -75,7 +114,6 @@ def _check_keys(dict):
             dict[key] = _todict(dict[key])
 
     return dict
-
 
 def _todict(matobj):
     '''
@@ -92,7 +130,6 @@ def _todict(matobj):
             dict[strg] = elem
 
     return dict
-
 
 def _tolist(ndarray):
     '''
@@ -111,23 +148,9 @@ def _tolist(ndarray):
 
     return elem_list
 
-
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
-
-def default_filename(slicenum, channelnum, filenum, acq=None, run=None):
-    fn_base = 'Slice%02d_Channel%02d_File%03d' % (slicenum, channelnum, filenum)
-    if run is not None:
-        fn_base = '%s_%s' % (run, fn_base)
-    if acq is not None:
-        fn_base = '%s_%s' % (acq, fn_base)
-
-    return fn_base
-
-
+# -----------------------------------------------------------------------------
+# Methods for accessing or changing datafiles and their sources:
+# -----------------------------------------------------------------------------
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
 
     tiffpaths = []
@@ -202,6 +225,40 @@ def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', 
 
     return tiffpaths
 
+def convert_bytes(num):
+    """
+    this function will convert bytes to MB.... GB... etc
+    """
+    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+        if num < 1024.0:
+            return "%3.1f %s" % (num, x)
+        num /= 1024.0
+
+def get_file_size(file_path):
+    """
+    this function will return the file size
+    """
+    if os.path.isfile(file_path):
+        file_info = os.stat(file_path)
+        return convert_bytes(file_info.st_size)
+
+def change_permissions_recursive(path, mode):
+    for root, dirs, files in os.walk(path, topdown=False):
+        #for dir in [os.path.join(root,d) for d in dirs]:
+            #os.chmod(dir, mode)
+        for file in [os.path.join(root, f) for f in files]:
+            os.chmod(file, mode)
+            
+def hash_file_read_only(fpath, hashtype='sha1'):
+    hashid = hash_file(fpath, hashtype=hashtype)
+    hashed_fpath = "%s_%s%s" % (os.path.splitext(fpath)[0], hashid, os.path.splitext(fpath)[1])
+    shutil.move(fpath, hashed_fpath)
+    print "Hashed file: %s" % hashed_fpath
+    
+    change_permissions_recursive(hashed_fpath, S_IREAD|S_IRGRP|S_IROTH)
+    print "Set READ-ONLY."
+    
+    return hashed_fpath
 
 def hash_file(fpath, hashtype='sha1'):
 
@@ -217,26 +274,12 @@ def hash_file(fpath, hashtype='sha1'):
             hasher.update(buf)
             buf = afile.read(BLOCKSIZE)
 
-    #print(hasher.hexdigest())
-
     return hasher.hexdigest()[0:6]
 
 
-def jsonify_array(curropts):
-    jsontypes = (list, tuple, str, int, float, bool, unicode, long)
-    for pkey in curropts.keys():
-        if isinstance(curropts[pkey], dict):
-            for subkey in curropts[pkey].keys():
-                if curropts[pkey][subkey] is not None and not isinstance(curropts[pkey][subkey], jsontypes) and len(curropts[pkey][subkey].shape) > 1:
-                    curropts[pkey][subkey] = curropts[pkey][subkey].tolist()
-    return curropts
-
-def write_dict_to_json(pydict, writepath):
-    jstring = json.dumps(pydict, indent=4, allow_nan=True, sort_keys=True)
-    f = open(writepath, 'w')
-    print >> f, jstring
-    f.close()
-
+# -----------------------------------------------------------------------------
+# General TIFF processing methods:
+# -----------------------------------------------------------------------------
 def interleave_tiffs(source_dir, write_dir, runinfo_path):
     '''
     source_dir (str) : path to folder containing tiffs to interleave
@@ -317,7 +360,6 @@ def deinterleave_tiffs(source_dir, write_dir, runinfo_path):
                     print "nslices:", len(slice_indices)
                     curr_slice_fn = "{basename}_{currslice}_{currchannel}_{currfile}.tif".format(basename=basename, currslice=curr_slice, currchannel=curr_channel, currfile=curr_file)
                     tf.imsave(os.path.join(write_dir, curr_slice_fn), stack[slice_indices, :, :])
-
 
 def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     '''
