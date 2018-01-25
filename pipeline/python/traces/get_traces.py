@@ -69,22 +69,22 @@ import traceback
 import tifffile as tf
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, hash_file, write_dict_to_json, load_sparse_mat, save_sparse_hdf5
+from pipeline.python.utils import natural_keys, hash_file_read_only, write_dict_to_json, load_sparse_mat, save_sparse_hdf5, print_elapsed_time
 from pipeline.python.set_trace_params import post_tid_cleanup
 
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
-
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063' #'CE059' #'JR063'
-session = '20171128_JR063' #'20171009_CE059' #'20171202_JR063'
-acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-run = 'gratings_static' #'gratings_phasemod' #'scenes'
-slurm = False
-
-trace_id = 'traces001'
-auto = False
+#
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR063' #'CE059' #'JR063'
+#session = '20171128_JR063' #'20171009_CE059' #'20171202_JR063'
+#acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+#run = 'gratings_static' #'gratings_phasemod' #'scenes'
+#slurm = False
+#
+#trace_id = 'traces001'
+#auto = False
 #
 #if slurm is True:
 #    if 'coxfs01' not in rootdir:
@@ -127,6 +127,9 @@ if slurm is True:
 
 normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'opencv_blob_detector']
 
+print "======================================================================="
+print "TID %s -- Starting trace extraction...
+t_start = time.time()
 
 #%%
 # =============================================================================
@@ -200,15 +203,15 @@ ntiffs = runinfo['ntiffs']
 # =============================================================================
 
 traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-trace_outdir = os.path.join(traceid_dir, 'files')
-if not os.path.exists(trace_outdir):
-    os.makedirs(trace_outdir)
+filetrace_dir = os.path.join(traceid_dir, 'files')
+if not os.path.exists(filetrace_dir):
+    os.makedirs(filetrace_dir)
 
 trace_figdir = os.path.join(traceid_dir, 'figures')
 if not os.path.exists(trace_figdir):
     os.makedirs(trace_figdir)
 
-trace_fn_base = 'rawtraces_%s' % TID['trace_hash']
+filetrace_fn_base = 'rawtraces_%s' % TID['trace_hash']
 
 
 #%%
@@ -225,14 +228,14 @@ RID = roidict[TID['PARAMS']['roi_id']]
 rid_hash = RID['rid_hash']
 
 # Load mask file:
-#mask_path = os.path.join(RID['DST'], 'masks', 'masks_%s.h5' % rid_hash)
 mask_path = os.path.join(RID['DST'], 'masks.hdf5')
 maskfile = h5py.File(mask_path, "r")
 is_3D = bool(maskfile.attrs['is_3D'])
 
+# Get files for which there are ROIs in this set:
 filenames = maskfile.keys()
 
-# Check if masks are split up by slices:
+# Check if masks are split up by slices: (Matlab, manual2D methods are diff)
 if type(maskfile[filenames[0]]['masks']) == h5py.Dataset:
     slice_masks = False
 else:
@@ -242,15 +245,16 @@ else:
     else:
         slice_masks = False
 
-#%
+# Get slices for which there are ROIs in this set:
 if slice_masks:
     roi_slices = sorted([str(s) for s in maskfile[filenames[0]]['masks'].keys()], key=natural_keys)
 else:
     roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
 
 #%% For each specified SLICE in this ROI set, create 2D mask array:
-print "======================================================================="
+print "-----------------------------------------------------------------------"
 print "TID %s -- Getting mask info..." % trace_hash
+t_mask = time.time()
 
 # Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
 normalize_rois = False
@@ -351,6 +355,9 @@ for fidx, curr_file in enumerate(filenames):
         pl.savefig(os.path.join(trace_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
         pl.close()
 
+print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
+print_elapsed_time(t_mask, time.time())
+print "-----------------------------------------------------------------------"
 
 #%%
 # ================================================================================
@@ -371,20 +378,20 @@ frames_tsec = runinfo['frame_tstamps_sec']
 # =============================================================================
 
 print "TID %s -- Applying masks to traces..." % trace_hash
+t_extract = time.time()
 
 signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
-
 file_hashdict = dict()
-for tfn in tiff_files:
-
-    curr_file = str(re.search(r"File\d{3}", tfn).group())
-    print "Extracting traces: %s" % curr_file
-
-    try:
+try:
+    for tfn in tiff_files:
+    
+        curr_file = str(re.search(r"File\d{3}", tfn).group())
+        print "Extracting traces: %s" % curr_file
+    
         # Create outfile:
-        trace_fn = '%s_%s.hdf5' % (curr_file, trace_fn_base)
-        trace_outfile_path = os.path.join(trace_outdir, trace_fn)
-
+        filetrace_fn = '%s_%s.hdf5' % (curr_file, filetrace_fn_base)
+        filetrace_filepath = os.path.join(filetrace_dir, filetrace_fn)
+    
         # Load input tiff file:
         print "Reading tiff..."
         currtiff_path = os.path.join(tiff_dir, tfn)
@@ -395,14 +402,14 @@ for tfn in tiff_files:
     
         # First get signal channel only:
         tiffR = tiffR[signal_channel_idx::nchannels,:]
-
+    
         # Apply masks to each slice:
-        file_grp = h5py.File(trace_outfile_path, 'w')
+        file_grp = h5py.File(filetrace_filepath, 'w')
         file_grp.attrs['source_file'] = currtiff_path
         file_grp.attrs['file_id'] = curr_file
         file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
         file_grp.attrs['mask_sourcefile'] = mask_path
-
+    
         # Get curr file's masks, or use reference:
         if curr_file in MASKS.keys():
             single_ref = False
@@ -410,13 +417,13 @@ for tfn in tiff_files:
         else:
             single_ref = True
             mask_key = MASKS.keys()[0]
-
+    
         for sl in range(len(roi_slices)):
     
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
             print "Extracting ROI time course from %s" % curr_slice
             maskarray = MASKS[mask_key][roi_slices[sl]]['mask_array']
-
+    
             # Get frame tstamps:
             curr_tstamps = np.array(frames_tsec[sl::nslices])
             
@@ -447,7 +454,7 @@ for tfn in tiff_files:
                 zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
             zset[...] = zproj
             zset.attrs['img_source'] = MASKS[mask_key][curr_slice]['zproj_source']
-
+    
             # Save fluor trace:
             if 'rawtraces' not in slice_grp.keys():
                 tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
@@ -472,38 +479,24 @@ for tfn in tiff_files:
                 ext.attrs['nr'] = maskfile[curr_file]['masks'].attrs['nrois']
     
         # Create hash of current raw tracemat:
-        rawfile_hash = hash_file(trace_outfile_path)
-        file_hashdict[os.path.splitext(trace_fn)[0]] = rawfile_hash
-
-    except Exception as e:
-        print "--- Error extracting traces from file %s ---" % curr_file
-        traceback.print_exc()
-        print "---------------------------------------------------------------"
+        rawfile_hash = hash_file(filetrace_filepath)
+        file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
+except Exception as e:
+    print "--- TID %s: Error extracting traces from file %s ---" % (trace_hash, curr_file)
+    traceback.print_exc()
+    print "---------------------------------------------------------------"
+finally:
+    file_grp.close()
     
-    finally:
-        file_grp.close()
- 
-    
-with open(os.path.join(trace_outdir, 'fileinfo_%s.json' % TID['trace_hash']), 'w') as f:
+with open(os.path.join(filetrace_dir, 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
     json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
+#%
+print "TID %s -- Finished compiling trace arrays across files" % tid_hash
+print_elapsed_time(t_extract)
+print "---------------------------------------------------------------"
 
 #%%
-# =============================================================================
-# Create time courses for ROIs:
-# =============================================================================
-
-print "TID %s -- sorting traces by ROI..." % trace_hash
-
-#% Load raw traces:
-try:
-    tracestruct_fns = [f for f in os.listdir(trace_outdir) if f.endswith('hdf5') and 'rawtraces' in f]
-    print "Found tracestructs for %i tifs in dir: %s" % (len(tracestruct_fns), trace_outdir)
-    trace_source_dir = trace_outdir
-except Exception as e:
-    print "Unable to find extracted tracestructs from trace set: %s" % trace_id
-    print "Aborting with error:"
-    traceback.print_exc()
 
 # Get VOLUME indices to align to frame indices:
 # -----------------------------------------------------------------------------
@@ -518,12 +511,32 @@ for v in range(nvolumes):
     vcounter += nslices_full
 vol_idxs = [int(v) for v in vol_idxs]
 
+#%%
+# =============================================================================
+# Create time courses for ROIs:
+# =============================================================================
+
+print "TID %s -- sorting traces by ROI..." % trace_hash
+t_roi = time.time()
+
+#% Load raw traces:
+try:
+    filetrace_fns = [f for f in os.listdir(trace_outdir) if f.endswith('hdf5') and 'rawtraces' in f]
+    print "Found traces by file for %i tifs in dir: %s" % (len(filetrace_fns), trace_outdir)
+    trace_source_dir = trace_outdir
+except Exception as e:
+    print "Unable to find extracted tracestructs from trace set: %s" % trace_id
+    print "Aborting with error:"
+    traceback.print_exc()
+
 # Create output file for parsed traces:
 # -----------------------------------------------------------------------------
-trace_fn = 'roi_timecourses.hdf5'
-trace_outfile_path = os.path.join(traceid_dir, trace_fn)
+tstamp = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
 
-roi_outfile = h5py.File(trace_outfile_path, 'a')
+roi_tcourse_fn = 'roi_timecourses_%s.hdf5' % tstamp
+roi_tcourse_filepath = os.path.join(traceid_dir, roi_tcourse_fn)
+
+roi_outfile = h5py.File(roi_tcourse_filepath, 'w')
 roi_outfile.attrs['tiff_source'] = TID['SRC']
 roi_outfile.attrs['trace_id'] = TID['trace_id']
 roi_outfile.attrs['trace_hash'] = TID['trace_hash']
@@ -534,75 +547,81 @@ roi_outfile.attrs['run'] = run
 roi_outfile.attrs['session'] = session
 roi_outfile.attrs['acquisition'] = acquisition
 roi_outfile.attrs['animalid'] = animalid
-roi_outfile.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+roi_outfile.attrs['creation_time'] = tstamp #datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Concatenate time courses across all files to create single time-source for RUN:
 # -----------------------------------------------------------------------------
-tmp_tracestruct = h5py.File(os.path.join(trace_source_dir, tracestruct_fns[0]), 'r')
+tmp_tracestruct = h5py.File(os.path.join(trace_source_dir, filetrace_fns[0]), 'r')
 dims = tmp_tracestruct.attrs['dims']
 total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
 tmp_tracestruct.close(); del tmp_tracestruct
 
 nframes_in_file = runinfo['nvolumes']
 curr_frame_idx = 0
+file_start_idx = []
 try:
-    for trace_fn in sorted(tracestruct_fns, key=natural_keys):
-        try:
-            print "Loading file:", trace_fn
-            tracefile = h5py.File(os.path.join(trace_source_dir, trace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
-        
-            roi_counter = 0
-            for currslice in sorted(tracefile.keys(), key=natural_keys):
-                print "Loading slice:", currslice
-                maskarray = tracefile[currslice]['masks']
-                d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
-                T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
-                src_roi_idxs = tracefile[currslice]['masks'].attrs['src_roi_idxs']
-                nr = tracefile[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
-                nb = tracefile[currslice]['masks'].attrs['nb']
-                masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
+    for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
+        print "Loading file:", filetrace_fn
+        filetrace = h5py.File(os.path.join(trace_source_dir, filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
+    
+        roi_counter = 0
+        for currslice in sorted(filetrace.keys(), key=natural_keys):
+            print "Loading slice:", currslice
+            maskarray = filetrace[currslice]['masks']
+            d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
+            T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
+            src_roi_idxs = filetrace[currslice]['masks'].attrs['src_roi_idxs']
+            nr = filetrace[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
+            nb = filetrace[currslice]['masks'].attrs['nb']
+            masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
+            
+            bgidx = 0
+            for ridx in range(nr): #, roi in enumerate(src_roi_idxs):
+                if (nb > 0) and (ridx >= (nr-nb)):
+                    bgidx += 1
+                    is_background = True
+                    roiname = 'bg%02d' % bgidx
+                else:
+                    is_background = False
+                    roi_counter += 1
+                    roiname = 'roi%05d' % int(roi_counter)
                 
-                bgidx = 0
-                for ridx, roi in enumerate(src_roi_idxs):
-                    if (nb > 0) and (ridx >= (nr-nb)):
-                        bgidx += 1
-                        is_background = True
-                        roiname = 'bg%02d' % bgidx
-                    else:
-                        is_background = False
-                        roi_counter += 1
-                        roiname = 'roi%05d' % int(roi_counter)
-                    
-                    # Create unique ROI group:
-                    #if roiname not in roi_outfile.keys():
+                # Create unique ROI group:
+                if roiname not in roi_outfile.keys():
                     roi_grp = roi_outfile.create_group(roiname)
                     roi_grp.attrs['slice'] = currslice
-                    roi_grp.attrs['roi_img_path'] = tracefile[currslice]['zproj'].attrs['img_source']
-                    #else:
-                    #    roi_grp = roi_outfile[roiname]
-        
-                    #if 'mask' not in roi_grp.keys():
+                    roi_grp.attrs['roi_img_path'] = filetrace[currslice]['zproj'].attrs['img_source']
+                else:
+                    roi_grp = roi_outfile[roiname]
+    
+                if 'mask' not in roi_grp.keys():
                     roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
                     roi_mask[...] = masks[:,:,ridx]
                     roi_grp.attrs['id_in_set'] = roi_counter #roi
-                    roi_grp.attrs['id_in_src'] = roi #ridx
+                    roi_grp.attrs['id_in_src'] = src_roi_idxs[ridx] #ridx
                     roi_grp.attrs['idx_in_slice'] = ridx
                     roi_mask.attrs['slice'] = currslice
                     roi_mask.attrs['is_background'] = is_background
+                
+                # Add time courses:
+                trace_types = filetrace[currslice]['traces'].keys()
+                if 'timecourse' not in roi_grp.keys():
+                    tcourse_grp = roi_grp.create_group('timecourse')
+                else:
+                    tcourse_grp = roi_grp['timecourse']
                     
-                    # Add time courses:
-                    trace_types = tracefile[currslice]['traces'].keys()
-                    for trace_type in trace_types:
-                        curr_t = tracefile[currslice]['traces'][trace_type][:, ridx]
-                        curr_key = '/'.join(['timecourse', trace_type])
-                        if curr_key not in roi_grp.keys():
-                            roi_tcourse = roi_grp.create_dataset(curr_key, (total_nframes_in_run,), curr_t.dtype)
-                        else:
-                            roi_tcourse = roi_outfile[roiname][curr_key]
-                        roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_t
-                        roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
-                        
-            curr_frame_idx += nframes_in_file
+                for trace_type in trace_types:
+                    curr_tcourse = filetrace[currslice]['traces'][trace_type][:, ridx]
+                    if trace_type not in tcourse_grp.keys():
+                        roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_t.dtype)
+                    else:
+                        roi_tcourse = tcourse_grp[trace_type]
+                    roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
+                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
+                
+                print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
+        file_start_idx.append(curr_frame_idx)
+        curr_frame_idx += nframes_in_file
             
 #                    if 'timecourse' not in roi_grp.keys():
 #                        roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracefile[currslice]['rawtraces'][:, ridx].dtype)
@@ -613,17 +632,12 @@ try:
 #                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
         
 #            curr_frame_idx += nframes_in_file
-        except Exception as e:
-            print "--- ERROR splitting tracefile for ROIs. --- %s" % tracefile
-            traceback.print_exc()
-        finally:
-            tracefile.close()
 except Exception as e:
-    print "--- ERROR processing tracefile %s ---" % tracefile
+    print "--- TID %s: ERROR extracting trcaes from file %s..." % (trace_hash, filetrace_fn)
     traceback.print_exc()
 finally:
     roi_outfile.close()
-    
+
 ## Rename FRAME file with hash:
 #roi_outfile.close()
 
@@ -631,9 +645,12 @@ finally:
 #new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
 #os.rename(trace_outfile_path, new_filename)
 
-print "======================================================================="
+roi_tcourse_filepath = hash_file_read_only(roi_tcourse_filepath)
+
 print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, run)
-print "Saved ROI TIME COURSE file to:", trace_outfile_path
+print_elapsed_time(t_start)
+print "Saved ROI TIME COURSE file to:", roi_tcourse_filepath
+print "---------------------------------------------------------------"
 
 #%% move tmp file:
 tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
@@ -644,4 +661,11 @@ if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
     os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
 
 print "Cleaned up tmp tid files."
+
+#%%
+total_dur = timer(t_start, time.time())
+hours, rem = divmod(roi_extract_dur, 3600)
+minutes, seconds = divmod(rem, 60)
+print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
+print "TOTAL duration: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
 print "======================================================================="
