@@ -573,7 +573,7 @@ except Exception as e:
     print configname, trial, roi
     traceback.print_exc()
     print "-------------------------------------------------------------"
-#finally:
+finally:
     roi_trials.close()
 
 
@@ -693,9 +693,15 @@ try:
                 else:
                     trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
                 #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
-    
-                baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
-                df = (trialmat[tidx,:] - baseline) / baseline
+                
+                try:
+                    baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                    df = (trialmat[tidx,:] - baseline) / baseline
+                except RuntimeWarning as e:
+                    print e
+                    df = np.zeros(trialmat[tidx,:].shape)
+                    baseline = 0
+                    pass
     
                 ax_curr.plot(tsecs, df, 'k', alpha=0.2, linewidth=0.5)
                 ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
