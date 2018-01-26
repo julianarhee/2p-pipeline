@@ -228,25 +228,25 @@ mcmetric = options.mcmetric
 
 #%%
 
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063' #'JR063'
-session = '20171128_JR063' #'20171128_JR063'
-roi_id = 'rois002'
-slurm = False
-auto = False
-#
-keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
-#
-## COREG-SPECIFIC opts:
-use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
-dist_maxthr = 0.1
-dist_exp = 0.1
-dist_thr = 0.5
-dist_overlap_thr = 0.8
-#
-eval_key = '2018_01_22_18_50_59'
-mcmetric = 'zproj_corrcoefs'
-zproj_type = 'mean'
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR063' #'JR063'
+#session = '20171128_JR063' #'20171128_JR063'
+#roi_id = 'rois002'
+#slurm = False
+#auto = False
+##
+#keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
+##
+### COREG-SPECIFIC opts:
+#use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
+#dist_maxthr = 0.1
+#dist_exp = 0.1
+#dist_thr = 0.5
+#dist_overlap_thr = 0.8
+##
+#eval_key = '2018_01_22_18_50_59'
+#mcmetric = 'zproj_corrcoefs'
+#zproj_type = 'mean'
 
 
 
