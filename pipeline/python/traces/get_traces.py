@@ -493,7 +493,7 @@ with open(os.path.join(filetrace_dir, 'filetrace_info_%s.json' % TID['trace_hash
     json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
 #%
-print "TID %s -- Finished compiling trace arrays across files" % tid_hash
+print "TID %s -- Finished compiling trace arrays across files" % trace_hash
 print_elapsed_time(t_extract)
 print "---------------------------------------------------------------"
 
@@ -522,9 +522,8 @@ t_roi = time.time()
 
 #% Load raw traces:
 try:
-    filetrace_fns = [f for f in os.listdir(trace_outdir) if f.endswith('hdf5') and 'rawtraces' in f]
-    print "Found traces by file for %i tifs in dir: %s" % (len(filetrace_fns), trace_outdir)
-    trace_source_dir = trace_outdir
+    filetrace_fns = [f for f in os.listdir(filetrace_dir) if f.endswith('hdf5') and 'rawtraces' in f]
+    print "Found traces by file for %i tifs in dir: %s" % (len(filetrace_fns), filetrace_dir)
 except Exception as e:
     print "Unable to find extracted tracestructs from trace set: %s" % trace_id
     print "Aborting with error:"
@@ -552,7 +551,7 @@ roi_outfile.attrs['creation_time'] = tstamp #datetime.datetime.now().strftime("%
 
 # Concatenate time courses across all files to create single time-source for RUN:
 # -----------------------------------------------------------------------------
-tmp_tracestruct = h5py.File(os.path.join(trace_source_dir, filetrace_fns[0]), 'r')
+tmp_tracestruct = h5py.File(os.path.join(filetrace_dir, filetrace_fns[0]), 'r')
 dims = tmp_tracestruct.attrs['dims']
 total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
 tmp_tracestruct.close(); del tmp_tracestruct
@@ -563,7 +562,7 @@ file_start_idx = []
 try:
     for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
         print "Loading file:", filetrace_fn
-        filetrace = h5py.File(os.path.join(trace_source_dir, filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
+        filetrace = h5py.File(os.path.join(filetrace_dir, filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
     
         roi_counter = 0
         for currslice in sorted(filetrace.keys(), key=natural_keys):
@@ -618,7 +617,7 @@ try:
                     else:
                         roi_tcourse = tcourse_grp[trace_type]
                     roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
-                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
+                    roi_tcourse.attrs['source_file'] = os.path.join(filetrace_dir, trace_fn)
                 
                 print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
         file_start_idx.append(curr_frame_idx)
