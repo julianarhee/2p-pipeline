@@ -11,14 +11,14 @@ PROCESS SESSION DATA.
 
 python set_pid_params.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x -rscenes -sraw -traw --bidi --motion -f4
 
-python set_pid_params.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x -rgratings_static -sraw -traw --bidi --motion -f2
+python set_pid_params.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x -Rgratings_static -sraw -traw --bidi --motion -f2
 
 python set_pid_params.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x_volume -rgratings_static -sraw -traw --bidi --motion -f5
 
 ----------------------------------------------------------------------
 NOTE:  Once params are created for a given run, that run can be processed on its own with:
 
-python preprocessing/process_raw.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x -rscenes -p123456, 
+python preprocessing/process_raw.py -iJR063 -S20171128_JR063 -AFOV2_zoom1x -Rscenes -p123456, 
     where 123456 is the 6-char hash assigned to the processing parameter set.
 ----------------------------------------------------------------------
 

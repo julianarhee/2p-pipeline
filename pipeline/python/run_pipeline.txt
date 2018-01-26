@@ -5,7 +5,7 @@ Example steps to run each step of the pipeline sequentially. A single run is pro
 # ----------------------------------------------------------------------------
 # 1. Get ScanImage metadata from raw tiffs:
 # ----------------------------------------------------------------------------
-$ python preprocessing/get_scanimage_data.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME>
+$ python preprocessing/get_scanimage_data.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME>
 
 # NOTES:
 # This step will create .json containing acquisition info and tiff-page info for each file (.tif) in specified run.
@@ -28,9 +28,9 @@ d) process_raw.py
 
 Since a processing parameter set assumes options provided for each of these 3 processing steps (flyback correction, bidirectional scan correction, motion correction), script (d) is the main processing script that should be called for any given PID, especially if multiple preprocessing steps will be run.
  
-$ python set_pid_params.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -sraw -traw --bidi --flyback -F<NFLYBACKFRAMES> --motion -M<MCMETHOD> -a<MCALGORITHM>
+$ python set_pid_params.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME> -sraw -traw --bidi --flyback -F<NFLYBACKFRAMES> --motion -M<MCMETHOD> -a<MCALGORITHM>
 
-$ python preprocessing/process_raw.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<PIDHASH> --zproject
+$ python preprocessing/process_raw.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME> -p<PIDHASH> --zproject
 
 
 NOTES:
@@ -47,7 +47,7 @@ For sub-steps (2.a)-(2.c), if a PID is provided, parameters specified there take
 # ----------------------------------------------------------------------------
 # 2.a. Do flyback correction on raw data to extract data-only frames from raw:
 # ----------------------------------------------------------------------------
-$ python preprocessing/correct_flyback.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> --flyback -F<N flyback frames to remvove from top of volume>
+$ python preprocessing/correct_flyback.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME> --flyback -F<N flyback frames to remvove from top of volume>
 
 NOTES:
 - Blank frames specified during acquisition by SI will automatically be removed.. Use -h for details.
@@ -56,7 +56,7 @@ NOTES:
 # ----------------------------------------------------------------------------
 # 2.b. Do bidirectional-scan phase correction:
 # ----------------------------------------------------------------------------
-$ python preprocessing/correct_bidirscan.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> --bidi
+$ python preprocessing/correct_bidirscan.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME> --bidi
 
 NOTES:
 - Since bidi can be performed on a "raw" (raw acquisitions) or "processed" tiff (e.g., flyback-corrected "raw" tiffs, motion-correction tiffs), you should specify (if not providing PID):
@@ -68,7 +68,7 @@ NOTES:
 # ----------------------------------------------------------------------------
 # 2.c. Do motion correction:
 # ----------------------------------------------------------------------------
-$ python preprocessing/correct_motion.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -r<RUNNAME> -p<PIDHASH> 
+$ python preprocessing/correct_motion.py -i<ANIMALID> -S<SESSIONID> -A<ACQUISITION> -R<RUNNAME> -p<PIDHASH> 
 
 - NOTES:
 - Since bidi can be performed on a "raw" (raw acquisitions) or "processed" tiff (e.g., flyback-corrected "raw" tiffs, motion-correction tiffs), you should specify (if not providing PID):

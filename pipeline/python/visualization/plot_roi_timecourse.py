@@ -168,10 +168,15 @@ DATA = pd.concat(trace_dfs, axis=0)
 TRIALS = pd.concat(trial_dfs, axis=0)
 
 
-#%%
+#%% Make output dir:
+    
 tcourse_figdir = os.path.join(traceid_dir, 'figures', 'timecourses')
 if not os.path.exists(tcourse_figdir):
     os.makedirs(tcourse_figdir)
+
+curr_roi_figdir = os.path.join(tcourse_figdir, selected_roi)
+if not os.path.exists(curr_roi_figdir):
+    os.makedirs(curr_roi_figdir)
     
 #%%
 #roi_idx = 4  # This var matters
@@ -256,10 +261,14 @@ for selected_file in fnames:
                 
             sns.despine(trim=True, offset=1)
 
-            fname = '%s_%s_%s_timecourse_%s.png' % (selected_roi, selected_slice, selected_file, config_key)
+            curr_save_dir = os.path.join(curr_roi_figdir, config_key, trace_type)
+            if not os.path.exists(curr_save_dir):
+                os.makedirs(curr_save_dir)
+            fname = '%s_%s_%s_timecourse.png' % (selected_roi, selected_slice, selected_file)
             pl.savefig(os.path.join(curr_save_dir, fname), bbox_inches='tight')
             pl.close()
-   
+            print "Saved timecourse plots to: %s" % curr_save_dir
+            
 #%% Plot traces, sublots are files:
     
 #grid = sns.FacetGrid(roi_df, row="file", sharex=True, margin_titles=False)

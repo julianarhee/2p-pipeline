@@ -26,11 +26,11 @@ def natural_keys(text):
 
 parser = optparse.OptionParser() 
 # PATH opts:
-parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
+parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='source dir (root project dir containing all expts) [default: /nas/volume1/2photon/data]')
 parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
-parser.add_option('-r', '--run', action='store', dest='run', default='', help='name of run to process') 
+parser.add_option('-R', '--run', action='store', dest='run', default='', help='name of run to process') 
 
 parser.add_option('-s', '--source', action='store', dest='source_dir', default=None, help="folder from which to create z-projected slice images")
 parser.add_option('-o', '--outdir', action='store', dest='write_dir', default=None, help="path to save averaged slices [default appends <sourcedir>_<zprojtype>_slices/")
