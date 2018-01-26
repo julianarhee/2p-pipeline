@@ -218,7 +218,7 @@ for slidx = 1:length(sourcepaths)
     h5write(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice), masks)
     h5writeatt(mask_fn,  sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'source_file', sourcepaths{slidx})
     h5writeatt(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'nrois', nrois{slidx})
-    h5writeatt(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'roi_idxs', [1:nrois{slidx}])
+    h5writeatt(mask_fn, sprintf('/%s/masks/Slice%02d', curr_filename, curr_slice) ,'src_roi_idxs', [1:nrois{slidx}])
     
     h5create(mask_fn, sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice), size(zproj_imgs{slidx}))
     h5write(mask_fn, sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice), zproj_imgs{slidx})
