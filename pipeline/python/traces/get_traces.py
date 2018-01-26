@@ -70,7 +70,7 @@ import time
 import tifffile as tf
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, hash_file_read_only, write_dict_to_json, load_sparse_mat, save_sparse_hdf5, print_elapsed_time
+from pipeline.python.utils import natural_keys, hash_file_read_only, write_dict_to_json, load_sparse_mat, save_sparse_hdf5, print_elapsed_time, hash_file
 from pipeline.python.set_trace_params import post_tid_cleanup
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -613,7 +613,7 @@ try:
                 for trace_type in trace_types:
                     curr_tcourse = filetrace[currslice]['traces'][trace_type][:, ridx]
                     if trace_type not in tcourse_grp.keys():
-                        roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_t.dtype)
+                        roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_tcourse.dtype)
                     else:
                         roi_tcourse = tcourse_grp[trace_type]
                     roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
@@ -663,9 +663,6 @@ if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
 print "Cleaned up tmp tid files."
 
 #%%
-total_dur = timer(t_start, time.time())
-hours, rem = divmod(roi_extract_dur, 3600)
-minutes, seconds = divmod(rem, 60)
 print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
-print "TOTAL duration: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
+print_elapsed_time(t_start)
 print "======================================================================="
