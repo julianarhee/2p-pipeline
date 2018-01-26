@@ -116,6 +116,8 @@ ylim_min = float(options.ylim_min) #-1.0
 ylim_max = float(options.ylim_max) #3.0
 
 trace_type = options.trace_type
+print "Plotting PSTH for %s timecourses." % trace_type
+
 #%%
 #rootdir = '/nas/volume1/2photon/data'
 #animalid = 'JR063'
@@ -547,10 +549,10 @@ try:
                 else:
                     trial_grp = roi_grp[currtrial]
                 
-                trace_types = roi_timecourses[roi]['timecourse'].keys()
-                for trace_type in trace_types:
-                    tcourse = roi_timecourses[roi]['timecourse'][trace_type][trial_idxs]
-                    tset = trial_grp.create_dataset(trace_type, tcourse.shape, tcourse.dtype)
+                timecourse_opts = roi_timecourses[roi]['timecourse'].keys()
+                for tc in timecourse_opts:
+                    tcourse = roi_timecourses[roi]['timecourse'][tc][trial_idxs]
+                    tset = trial_grp.create_dataset(tc, tcourse.shape, tcourse.dtype)
                     tset[...] = tcourse
                     
 #                tcourse_raw = roi_timecourses[roi]['timecourse']['raw'][trial_idxs]
@@ -694,14 +696,11 @@ try:
                     trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
                 #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
                 
-                try:
-                    baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                if baseline == 0 or baseline == np.nan:
+                    df = np.ones(trialmat[tidx,:].shape) * np.nan
+                else:
                     df = (trialmat[tidx,:] - baseline) / baseline
-                except RuntimeWarning as e:
-                    print e
-                    df = np.zeros(trialmat[tidx,:].shape)
-                    baseline = 0
-                    pass
     
                 ax_curr.plot(tsecs, df, 'k', alpha=0.2, linewidth=0.5)
                 ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
@@ -719,8 +718,10 @@ try:
     
         sns.despine(offset=2, trim=True)
         #%
-        pl.savefig(os.path.join(roi_psth_dir, '%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type)))
+        psth_fig_fn = '%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type)
+        pl.savefig(os.path.join(roi_psth_dir, psth_fig_fn))
         pl.close()
+        print psth_fig_fn
 except Exception as e:
     print "--- Error plotting PSTH ---------------------------------"
     print roi, config, trial
