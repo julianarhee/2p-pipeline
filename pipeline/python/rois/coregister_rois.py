@@ -280,7 +280,7 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
             nr = nmf['A'].all().shape[1]
             A2 = nmf['A'].all()
             if params_thr['keep_good_rois'] is True:
-                if pass_roi_idxs is None:
+                if pass_rois_dict is None:
                     pass_roi_idxs = nmf['idx_components']
                 else:
                     pass_roi_idxs = pass_rois_dict[curr_file]
