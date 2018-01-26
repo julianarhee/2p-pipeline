@@ -5,7 +5,7 @@ clc; clear all;
 rootdir = '/nas/volume1/2photon/data';
 animalid = 'JR063'; %'JR063';
 session = '20171128_JR063'; %'20171202_JR063';
-roi_id = 'rois005'; %'e4893c';
+roi_id = 'rois007'; %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -111,7 +111,11 @@ zproj_imgs = {};
 
 % Go through slices and load images
 for slidx = roi_slices
-    curr_slice = roi_slices(slidx)
+    if max(size(roi_slices)) == 1
+        curr_slice = roi_slices;
+    else
+        curr_slice = roi_slices(slidx)
+    end
     
     % define slice name
     curr_slice_fn = slice_tiffs{curr_slice}; %sprintf('%s_Slice%02d_Channel%02d_File%03d.tif', acquisition, curr_slice, ref_channel, ref_file)
@@ -198,7 +202,15 @@ end
 curr_filename = sprintf('File%03d', ref_file);
 
 mask_fn = fullfile(roi_base_dir, 'masks.hdf5');
-   
+% 
+% fcpl = H5P.create('H5P_FILE_CREATE');
+% fapl = H5P.create('H5P_FILE_ACCESS');
+% fid = H5F.create(mask_fn,'H5F_ACC_TRUNC',fcpl,fapl);
+
+%plist = 'H5P_DEFAULT';
+%fgroup = H5G.create(mask_fn, sprint('/%s', curr_filename), plist, plist, plist);
+%mgroup = H5G.create(fgroup, 'masks', plist, plist, plist);
+%zgroup = H5G.create(fgroup, 'zproj_img', plist, plist, plist);
 for slidx = 1:length(sourcepaths)
     masks = allmasks{slidx};
     curr_slice = roi_slices(slidx);
@@ -212,7 +224,9 @@ for slidx = 1:length(sourcepaths)
     h5write(mask_fn, sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice), zproj_imgs{slidx})
     h5writeatt(mask_fn,  sprintf('/%s/zproj_img/Slice%02d', curr_filename, curr_slice) ,'source_file', sourcepaths{slidx})
 end
-h5writeatt(mask_fn, sprintf('/%s', curr_filename), 'source', slice_sourcedir)
+h5disp(mask_fn)
+h5writeatt(mask_fn, sprintf('/%s/masks', curr_filename), 'source', slice_sourcedir)
+%h5writeatt(mask_fn,  '/', 'source', slice_sourcedir);
 
 h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
 h5writeatt(mask_fn,  '/', 'roi_type', roi_type);
@@ -223,7 +237,7 @@ h5writeatt(mask_fn,  '/', 'session', session);
 h5writeatt(mask_fn,  '/', 'ref_file', ref_file);
 h5writeatt(mask_fn,  '/', 'creation_date', datestr(now));
 
-h5writeatt(mask_fn,  '/', 'keep_good_rois', false);
+h5writeatt(mask_fn,  '/', 'keep_good_rois', 0);
 h5writeatt(mask_fn,  '/', 'ntiffs_in_set', 1); % shoudl this be n actual tiffs? 1 since only using a ref file
 h5writeatt(mask_fn,  '/', 'zproj', zproj_type);
 
