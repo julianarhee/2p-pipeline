@@ -66,6 +66,7 @@ import datetime
 import optparse
 import pprint
 import traceback
+import time
 import tifffile as tf
 import pylab as pl
 import numpy as np
@@ -128,7 +129,7 @@ if slurm is True:
 normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'opencv_blob_detector']
 
 print "======================================================================="
-print "TID %s -- Starting trace extraction...
+print "Trace Set: %s -- Starting trace extraction..." % trace_id
 t_start = time.time()
 
 #%%
@@ -356,7 +357,7 @@ for fidx, curr_file in enumerate(filenames):
         pl.close()
 
 print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
-print_elapsed_time(t_mask, time.time())
+print_elapsed_time(t_mask)
 print "-----------------------------------------------------------------------"
 
 #%%
