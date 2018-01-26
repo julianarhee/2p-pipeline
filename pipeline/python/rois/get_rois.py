@@ -147,7 +147,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     if coreg_rois is not None:                   # coreg_rois = indices into either "pass" rois (if keep_good_rois==True) or just the org src 
         roi_idxs = roi_idxs[coreg_rois]   
 
-    roi_idxs = np.append(roi_idxs, nr)          # Append the "background component" to the ROI list:
+    roi_idxs = np.append(roi_idxs, nr)           # Append the "background component" to the ROI list:
     
     # Only return selected masks and coord info:
     if is_3D:
@@ -227,29 +227,27 @@ eval_key = options.eval_key
 mcmetric = options.mcmetric
 
 #%%
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'JR063' #'JR063'
-#session = '20171128_JR063' #'20171128_JR063'
-#roi_id = 'rois002'
-#slurm = False
-#auto = False
-##
-#keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
-##
-### COREG-SPECIFIC opts:
-#use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
-#dist_maxthr = 0.1
-#dist_exp = 0.1
-#dist_thr = 0.5
-#dist_overlap_thr = 0.8
-##
-#eval_key = '2018_01_22_18_50_59'
-#mcmetric = 'zproj_corrcoefs'
-#zproj_type = 'mean'
 
-#min_SNR_low = 1.5
-#min_rval_low = 0.6
-#evaluate_rois=True
+rootdir = '/nas/volume1/2photon/data'
+animalid = 'JR063' #'JR063'
+session = '20171128_JR063' #'20171128_JR063'
+roi_id = 'rois002'
+slurm = False
+auto = False
+#
+keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
+#
+## COREG-SPECIFIC opts:
+use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
+dist_maxthr = 0.1
+dist_exp = 0.1
+dist_thr = 0.5
+dist_overlap_thr = 0.8
+#
+eval_key = '2018_01_22_18_50_59'
+mcmetric = 'zproj_corrcoefs'
+zproj_type = 'mean'
+
 
 
 #%%
@@ -331,7 +329,7 @@ elif roi_type == 'coregister':
     src_roi_dir = RID['PARAMS']['options']['source']['roi_dir']
     
     #% Set COREG opts:
-    coreg_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-r', roi_id,
+    coreg_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-r', roi_id,
                   '-t', dist_maxthr,
                   '-n', dist_exp,
                   '-d', dist_thr,
@@ -488,16 +486,20 @@ if format_roi_output is True :
                                                                          coreg_rois=coreg_byfile[curr_file]['universal_matches'])
                 else:
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams, zproj_type=zproj_type)
+                
                 maskfile.attrs['is_3D'] = is_3D
-                
-                roi_names = ["roi%04d" % int(ridx+1) for ridx in range(len(roi_idxs) - nb)]
-                
+
+                sorted_roi_idxs = np.argsort(roi_idxs) # background comp(s) will always be last anyway
+                masks = masks[:,:,sorted_roi_idxs]                
+                roi_names = sorted(["roi%04d" % int(ridx+1) for ridx in range(len(coord_info))], key=natural_keys) # BG not included for coordinate list
+
                 # Save masks for current file (TODO: separate slices?)
                 print('Mask array:', masks.shape)
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
                 currmasks.attrs['src_roi_idxs'] = roi_idxs
-                currmasks.attrs['nrois'] = len(roi_idxs) - nb
+                currmasks.attrs['roi_idxs'] = sorted_roi_idxs
+                currmasks.attrs['nrois'] = len(roi_names) #len(roi_idxs) - nb
                 currmasks.attrs['background'] = nb
                 
                 # Save spatial and temporal comps:
@@ -526,26 +528,43 @@ if format_roi_output is True :
                 zproj.attrs['zproj_type'] = zproj_type
 
                 # Plot figure with ROI masks: (1-indexed for naming)
+                p2, p98 = np.percentile(img, (2, 99.98))
+                avgimg = skimage.exposure.rescale_intensity(img, in_range=(p2, p98)) #avg *= (1.0/avg.max())
                 print "Plotting final ROIs..."
-                vmax = np.percentile(img, 98)
                 pl.figure()
-                pl.imshow(img, interpolation='None', cmap=pl.cm.gray, vmax=vmax)
-                for ridx in range(len(roi_idxs)):
+                pl.imshow(avgimg, interpolation='None', cmap=pl.cm.gray)
+                for ridx in range(len(roi_names)):
                     masktmp = masks[:,:,ridx]
                     msk = masktmp.copy() 
                     msk[msk==0] = np.nan
                     pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
                     [ys, xs] = np.where(masktmp>0)
-                    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
+                    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='light', fontsize=8)
                     pl.axis('off')
                 pl.colorbar()
                 pl.tight_layout()
-                
-                # Save image:
-                imname = '%s_%s_%s_masks.png' % (roi_id, rid_hash, filenames[fidx])
+                #imname = '%s_%s_%s_masks.png' % (roi_id, rid_hash, filenames[fidx])
+                imname = 'rois_%s_masks.png' % filenames[fidx]
                 print(imname) 
                 pl.savefig(os.path.join(rid_figdir, imname))
                 pl.close()
+                
+                # Also plot BG, if relevant -- for nb background comps, they will also be the last nb idxs of roi_idxs
+                if not len(roi_names) == masks.shape[-1]:
+                    print "Plotting background componbents for tiff."
+                    n_bg_comps = masks.shape[-1] - len(roi_names)
+                    bg_names = ['bg%02d' % int(b+1) for b in range(n_bg_comps)]
+                    for bidx, bg in enumerate(bg_names):
+                        bgtmp = masks[:,:,(len(roi_idxs)-1+bidx)]
+                        bgtmp[bgtmp==0] = np.nan
+                        pl.figure()
+                        #pl.imshow(avgimg, cmap=pl.cm.gray, alpha=0)
+                        pl.imshow(bgtmp, alpha=1, cmap=pl.cm.hot); pl.axis('off'); pl.colorbar()
+                        pl.title(bg_names[bidx])
+                        imname = '%s_%s_masks.png' % (bg_names[bidx], filenames[fidx])
+                        print imname
+                        pl.savefig(os.path.join(rid_figdir, imname))
+                        pl.close()
                 
         else:
             # do sth ?
