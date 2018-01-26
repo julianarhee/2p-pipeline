@@ -18,6 +18,7 @@ import pandas as pd
 import numpy as np
 from pipeline.python.utils import natural_keys
 
+#%%
 rootdir = '/nas/volume1/2photon/data'
 animalid = 'JR063'
 session = '20171128_JR063'
@@ -25,12 +26,16 @@ acquisition = 'FOV2_zoom1x'
 run = 'gratings_static'
 trace_id = 'traces001'
 
+roi_idx = 4  # This var matters
+slice_idx = 1 # This one, too, if nslices > 1
+min_val = 2000 # Make this flex
+
 #%%
 
-roi_idx = 1
-slice_idx = 1
-file_idx = 1
-min_val = 2000
+#roi_idx = 1
+#slice_idx = 1
+#file_idx = 1
+#min_val = 2000
 
 #%%
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
@@ -68,13 +73,15 @@ except Exception as e:
 #curr_save_dir = os.path.join(traceid_dir, 'figures', 'roi%04d' % roi_idx)
 #if not os.path.exists(curr_save_dir):
 #    os.makedirs(curr_save_dir)
+trace_type = 'raw'
 
 trace_dfs = []
 trial_dfs = []
 for fidx, filepair in enumerate(file_list):
     curr_file = file_names[fidx]
+    
+    # Load parsed TRIAL info from behavior parsing:
     paradigm_fn = filepair[0]
-    trace_fn = filepair[1]
     with open(os.path.join(paradigm_dir, 'files', paradigm_fn), 'r') as fp:
         trials = json.load(fp)
     for idx, trial in enumerate(sorted(trials.keys(), key=natural_keys)):
@@ -96,25 +103,27 @@ for fidx, filepair in enumerate(file_list):
                                            'img': int(trials[trial]['stimuli']['name'])},
                                            index=[idx]
                                            ))  
-    
+            
+    # Load extrated TRACES from extracted timecourse mats [T,nrois]:
+    trace_fn = filepair[1]
     traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
-        
     for sidx, curr_slice in enumerate(traces.keys()):
+        nrois = traces[curr_slice]['masks'].attrs['nr'] + traces[curr_slice]['masks'].attrs['nb']
         
-        roi_list = ['roi%05d' % int(ridx) for ridx in traces[curr_slice]['masks'].attrs['roi_idxs']]
+        roi_list = ['roi%05d' % int(ridx+1) for ridx in range(nrois)] #traces[curr_slice]['masks'].attrs['roi_idxs']]
 
         for ridx, roi in enumerate(roi_list):
             if len(traces.keys()) > 1:
                 trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'],
                                          'file': curr_file,
                                          'slice': curr_slice,
-                                         'values': traces[curr_slice]['rawtraces'][:, ridx],
+                                         'values': traces[curr_slice]['traces'][trace_type][:, ridx],
                                          'roi': roi_list[ridx]
                                          }))
             else:
                 trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'],
                                          'file': curr_file,
-                                         'values': traces[curr_slice]['rawtraces'][:, ridx],
+                                         'values': traces[curr_slice]['traces'][trace_type][:, ridx],
                                          'roi': roi_list[ridx]
                                          }))
 
@@ -130,6 +139,11 @@ if not os.path.exists(tcourse_figdir):
     os.makedirs(tcourse_figdir)
     
 #%%
+#roi_idx = 4  # This var matters
+#slice_idx = 1 # This one, too, if nslices > 1
+
+
+file_idx = 1
 
 selected_roi = 'roi%05d' % int(roi_idx)
 selected_slice = 'Slice%02d' % int(slice_idx)
@@ -143,29 +157,6 @@ roi_df = DATA.loc[DATA['roi'] == selected_roi]
 file_df = roi_df.loc[roi_df['file'] == selected_file]
 
 #%%
-# Look at trials of a specific stimulus type:
-#if trials[trials.keys()[0]]['stimuli']['type'] == 'drifting_grating':
-#    curr_rot = 45
-#    curr_freq = 0.05
-#    stimconfig = 'Ori: %.0f, SF: %.2f' % (curr_rot, curr_freq)
-#    print "Specified:", stimconfig
-#else:
-#    curr_img_idx = 0
-#    stimconfig = 'Img %i' % curr_img_idx
-#print "Specified:", stimconfig
-#
-#key_trials = []
-#for fidx, filepair in enumerate(file_list):
-#    curr_file = filepair[0]
-#    paradigm_fn = filepair[0]
-#    with open(os.path.join(paradigm_dir, 'files', paradigm_fn), 'r') as fp:
-#        trials = json.load(fp)        
-#    key_trials.append([t for t in trials.keys() if trials[t]['stimuli']['rotation']==curr_rot and trials[t]['stimuli']['frequency']==curr_freq])
-#
-
-
-#%% Plot traces, single file:
-
 # GET STIM CONFIG dict:
 curr_trials_df = TRIALS.loc[TRIALS['file'] == selected_file]
 if trials[trials.keys()[0]]['stimuli']['type'] == 'drifting_grating':
@@ -187,8 +178,9 @@ else:
         stimconfig = 'Img: %i' % img
         configs['config%03d' % int(config_idx)] = stimconfig
         config_idx += 1
-
-# Plot time course of each file, highlight EACH stim config:
+        
+#%%
+# Plot time course of EACG file, highlight EACH stim config for specfied ROI:
 fnames = roi_df.file.unique()
 sns.set_style("darkgrid", {"axes.facecolor": ".9"})
 
@@ -234,23 +226,23 @@ for selected_file in fnames:
    
 #%% Plot traces, sublots are files:
     
-grid = sns.FacetGrid(roi_df, row="file", sharex=True, margin_titles=False)
-#grid.map(pl.plot, "tsec", "values")
-g = (grid.map(pl.plot, "tsec", "values", linewidth=0.5).fig.subplots_adjust(wspace=.001, hspace=.001))
-
-file_counter = 0
-for ax in grid.axes.flat:
-    
-    for trial in trials.keys():
-        if trial in key_trials[file_counter]:
-            color = 'r'
-        else:
-            color = 'k'
-        ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, color)
-    
-    file_counter += 1
-    
-sns.despine(trim=True)
+#grid = sns.FacetGrid(roi_df, row="file", sharex=True, margin_titles=False)
+##grid.map(pl.plot, "tsec", "values")
+#g = (grid.map(pl.plot, "tsec", "values", linewidth=0.5).fig.subplots_adjust(wspace=.001, hspace=.001))
+#
+#file_counter = 0
+#for ax in grid.axes.flat:
+#    
+#    for trial in trials.keys():
+#        if trial in key_trials[file_counter]:
+#            color = 'r'
+#        else:
+#            color = 'k'
+#        ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, color)
+#    
+#    file_counter += 1
+#    
+#sns.despine(trim=True)
 
 #%%
 
