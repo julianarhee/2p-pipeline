@@ -10,6 +10,7 @@ import os
 import json
 import traceback
 import h5py
+import optparse
 import matplotlib
 matplotlib.use('Agg')
 import pylab as pl
@@ -19,23 +20,57 @@ import numpy as np
 from pipeline.python.utils import natural_keys
 
 #%%
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063'
-session = '20171128_JR063'
-acquisition = 'FOV2_zoom1x'
-run = 'gratings_static'
-trace_id = 'traces001'
-
-roi_idx = 4  # This var matters
-slice_idx = 1 # This one, too, if nslices > 1
-min_val = 2000 # Make this flex
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR063'
+#session = '20171128_JR063'
+#acquisition = 'FOV2_zoom1x'
+#run = 'gratings_static'
+#trace_id = 'traces001'
+#
+#roi_id = 4  # This var matters
+#slice_id = 1 # This one, too, if nslices > 1
+#trial_type = 'raw'
 
 #%%
 
-#roi_idx = 1
-#slice_idx = 1
-#file_idx = 1
-#min_val = 2000
+choices_tracetype = ('raw', 'denoised_nmf')
+default_tracetype = 'raw'
+
+parser = optparse.OptionParser()
+
+parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+# Set specific session/run for current animal:
+parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
+
+parser.add_option('-s', '--slice', action='store', dest='slice_id', default=1, help="Slice num of ROI to plot [default: 1]")
+parser.add_option('-r', '--roi', action='store', dest='roi_id', default=1, help="ROI num to plot [default: 1]")
+
+(options, args) = parser.parse_args()
+
+# Set USER INPUT options:
+rootdir = options.rootdir
+animalid = options.animalid
+session = options.session
+acquisition = options.acquisition
+run = options.run
+
+trace_id = options.trace_id
+trace_type = options.trace_type
+
+roi_id = int(options.roi_id)
+slice_id = int(options.slice_id)
+
+selected_roi = 'roi%05d' % int(roi_id)
+selected_slice = 'Slice%02d' % int(slice_id)
+
+print "Plotting %s PSTHs for roi %i, slice %i." % (trace_type, roi_id, slice_id)
 
 #%%
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
@@ -73,7 +108,7 @@ except Exception as e:
 #curr_save_dir = os.path.join(traceid_dir, 'figures', 'roi%04d' % roi_idx)
 #if not os.path.exists(curr_save_dir):
 #    os.makedirs(curr_save_dir)
-trace_type = 'raw'
+#trace_type = 'raw'
 
 trace_dfs = []
 trial_dfs = []
@@ -142,12 +177,11 @@ if not os.path.exists(tcourse_figdir):
 #roi_idx = 4  # This var matters
 #slice_idx = 1 # This one, too, if nslices > 1
 
+file_id = 1 # this is tmp 
 
-file_idx = 1
-
-selected_roi = 'roi%05d' % int(roi_idx)
-selected_slice = 'Slice%02d' % int(slice_idx)
-selected_file = 'File%03d' % int(file_idx)
+#selected_roi = 'roi%05d' % int(roi_id)
+#selected_slice = 'Slice%02d' % int(slice_id)
+selected_file = 'File%03d' % int(file_id)
 
 curr_save_dir = os.path.join(tcourse_figdir, selected_roi)
 if not os.path.exists(curr_save_dir):
@@ -188,6 +222,8 @@ for selected_file in fnames:
     file_df = roi_df.loc[roi_df['file'] == selected_file]
     curr_trials_df = TRIALS.loc[TRIALS['file'] == selected_file]
     
+    stim_bar_loc = file_df['values'].min() - 500
+    
     oris = curr_trials_df.ori.unique()
     sfs = curr_trials_df.sf.unique()
     
@@ -209,12 +245,12 @@ for selected_file in fnames:
                 for trial in trials.keys():
                     if trial in [k for k in key_trials]: #[int(file_idx-1)]:
                         if got_legend is False:
-                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=stimconfig)
+                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*stim_bar_loc, 'r', label=stimconfig)
                         else:
-                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'r', label=None)
+                            ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*stim_bar_loc, 'r', label=None)
                         got_legend = True
                     else:
-                        ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*min_val, 'k', label=None)
+                        ax.plot([trials[trial]['stim_on_times']/1E3, trials[trial]['stim_off_times']/1E3], np.array([1,1])*stim_bar_loc, 'k', label=None)
                 
                 ax.legend() #{stimconfig})        
                 
