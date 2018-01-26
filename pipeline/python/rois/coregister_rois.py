@@ -671,7 +671,7 @@ def run_coregistration(options):
     # =========================================================================
     # Load ROI evaluation results, if relevant:
     # =========================================================================
-    if len(roipath) == 0:
+    if len(roi_eval_path) == 0:
         pass_rois_dict = None
         nrois_total = None
         evalparams = None
