@@ -493,7 +493,7 @@ with open(os.path.join(filetrace_dir, 'filetrace_info_%s.json' % TID['trace_hash
     json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
 #%
-print "TID %s -- Finished compiling trace arrays across files" % tid_hash
+print "TID %s -- Finished compiling trace arrays across files" % trace_hash
 print_elapsed_time(t_extract)
 print "---------------------------------------------------------------"
 
