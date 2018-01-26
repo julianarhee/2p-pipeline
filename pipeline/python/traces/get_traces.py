@@ -617,7 +617,7 @@ try:
                     else:
                         roi_tcourse = tcourse_grp[trace_type]
                     roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
-                    roi_tcourse.attrs['source_file'] = os.path.join(filetrace_dir, trace_fn)
+                    roi_tcourse.attrs['source_file'] = os.path.join(filetrace_dir, filetrace_fn)
                 
                 print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
         file_start_idx.append(curr_frame_idx)
