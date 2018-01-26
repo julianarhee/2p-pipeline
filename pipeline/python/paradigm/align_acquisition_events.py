@@ -117,17 +117,17 @@ ylim_max = float(options.ylim_max) #3.0
 
 trace_type = options.trace_type
 #%%
-rootdir = '/nas/volume1/2photon/data'
-animalid = 'JR063'
-session = '20171128_JR063'
-acquisition = 'FOV2_zoom1x'
-run = 'gratings_static'
-trace_id = 'traces001'
-custom_mw = False
-same_order = False
-ylim_min = -1.0
-ylim_max = 2.0
-iti_pre = 1.0
+#rootdir = '/nas/volume1/2photon/data'
+#animalid = 'JR063'
+#session = '20171128_JR063'
+#acquisition = 'FOV2_zoom1x'
+#run = 'gratings_static'
+#trace_id = 'traces001'
+#custom_mw = False
+#same_order = False
+#ylim_min = -1.0
+#ylim_max = 2.0
+#iti_pre = 1.0
 
 #%%
 
