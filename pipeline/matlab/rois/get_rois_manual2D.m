@@ -137,6 +137,10 @@ for slidx = roi_slices
         otherwise
             % some default thing
     end
+    
+    %% Check that there are no empty masks:
+    non_empty = arrayfun(@(i) length(find(masks(:,:,i))) > 0, 1:size(masks,3));
+    masks = masks(:,:,non_empty);
 
     %% Save masks
 
@@ -158,6 +162,7 @@ for slidx = roi_slices
        fig_filename = sprintf('%s_%s_Slice%02d_Channel%02d_File%03d_masks.tif', roi_id, roi_hash, curr_slice, ref_channel, ref_file);
     %* check if file exists
     if exist(fullfile(fig_dir,fig_filename),'file')==2
+        answer = input('Found existing mask figure. Overwrite? Press <Y> or <N>: ', 's');
         if strcmpi(answer,'Y')%replace file
             imwrite(uint16(RGBimg*(2^16)),fullfile(fig_dir,fig_filename),'TIFF');
         elseif strcmpi(answer,'N')%write file with extra id appended
@@ -256,7 +261,7 @@ end
 h5writeatt(mask_fn,  '/', 'is_3D', is3D_val);
 
 
-%% h5disp(mask_fn)
+% h5disp(mask_fn)
 info = hdf5info(mask_fn);
 
 %
