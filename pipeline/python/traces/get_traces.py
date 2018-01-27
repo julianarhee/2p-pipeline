@@ -67,10 +67,11 @@ import optparse
 import pprint
 import traceback
 import time
+import skimage
 import tifffile as tf
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, hash_file_read_only, write_dict_to_json, load_sparse_mat, save_sparse_hdf5, print_elapsed_time, hash_file
+from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file
 from pipeline.python.set_trace_params import post_tid_cleanup
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -84,7 +85,7 @@ pp = pprint.PrettyPrinter(indent=4)
 #run = 'gratings_static' #'gratings_phasemod' #'scenes'
 #slurm = False
 #
-#trace_id = 'traces001'
+#trace_id = 'traces004'
 #auto = False
 #
 #if slurm is True:
@@ -200,7 +201,7 @@ ntiffs = runinfo['ntiffs']
 
 #%%
 # =============================================================================
-# Create mask array and save mask images for quick reference:
+# Create output dirs and files:
 # =============================================================================
 
 traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
@@ -274,7 +275,7 @@ for fidx, curr_file in enumerate(filenames):
     
         # Get average image:
         if slice_masks:
-            avg =np.array( maskfile[curr_file]['zproj_img'][curr_slice]).T # T is needed for MATLAB masks... (TODO: check roi_blobs)
+            avg =np.array(maskfile[curr_file]['zproj_img'][curr_slice]).T # T is needed for MATLAB masks... (TODO: check roi_blobs)
             MASKS[curr_file][curr_slice]['zproj_img'] =  avg #maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
             MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
             MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']
@@ -291,10 +292,10 @@ for fidx, curr_file in enumerate(filenames):
         # Plot labeled ROIs on avg img:
         if slice_masks:
             #curr_rois = ["roi%05" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs'])]
-            curr_rois = ["roi%05" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']))]
+            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']))], key=natural_keys)
         else:
             #curr_rois = ["roi%05d" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'].attrs['src_roi_idxs'])]
-            curr_rois = ["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'].attrs['src_roi_idxs']))]
+            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'].attrs['src_roi_idxs']))], key=natural_keys)
         
         # Check if extra backround:
         if 'background' in maskfile[curr_file]['masks'].attrs.keys():
@@ -306,11 +307,14 @@ for fidx, curr_file in enumerate(filenames):
         MASKS[curr_file][curr_slice]['nb'] = nb
         MASKS[curr_file][curr_slice]['nr'] = nrois - nb
         print curr_rois
-        
+
+        # Create maskarray and plot on img:        
         fig = pl.figure()
         ax = fig.add_subplot(1,1,1)
-        ax.imshow(avg, cmap='gray')
-        # Create maskarray and plot on img:
+        p2, p98 = np.percentile(avg, (2, 99.98))
+        avgimg = skimage.exposure.rescale_intensity(avg, in_range=(p2, p98)) #avg *= (1.0/avg.max())
+        ax.imshow(avgimg, cmap='gray')
+        
         print "Plotting %i ROIs" % len(curr_rois)
         maskarray = np.empty((d, nrois))
         maskarray_roi_ids = []
@@ -337,9 +341,12 @@ for fidx, curr_file in enumerate(filenames):
                 pl.savefig(os.path.join(trace_figdir, 'bg%i_%s_%s_%s_%s.png' % (bgidx, curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
                 pl.close()
             else:
-                ax.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
+                if 'caiman' in RID['roi_type'] or (RID['roi_type']=='coregister' and 'caiman' in RID['PARAMS']['options']['source']['roi_type']):
+                    ax.imshow(msk, interpolation='None', alpha=0.2, cmap=pl.cm.hot)
+                else:
+                    ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
                 [ys, xs] = np.where(masktmp>0)
-                ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='bold')
+                ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
             ax.axis('off')
             
             # Normalize by size:
@@ -664,5 +671,5 @@ print "Cleaned up tmp tid files."
 
 #%%
 print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
-print_elapsed_time(t_start)
+#print_elapsed_time(t_start)
 print "======================================================================="

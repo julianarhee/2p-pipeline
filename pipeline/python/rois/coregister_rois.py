@@ -473,11 +473,16 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
         coreg_info = h5py.File(coreg_results_path, 'a')
         for fn in coreg_info.keys():
             if fn == params_thr['ref_filename']:
-                curr_match_idxs = np.array([i for i in ref_rois])
+                curr_match_idxs = np.array([int(i) for i in ref_rois])
             else:
                 match_idxs = np.array([[m[0] for m in coreg_info[fn]['matches_to_ref']].index(refroi) for refroi in ref_rois])
-                curr_match_idxs = np.array([m[1] for m in coreg_info[fn]['matches_to_ref'][sorted(match_idxs),:]])
-            umatches = coreg_info[fn].create_dataset('universal_matches', curr_match_idxs.shape, curr_match_idxs.dtype)
+                curr_match_idxs = np.empty((len(match_idxs,)), dtype=int)
+                for m in range(len(match_idxs)):
+                    curr_match_idxs[m] = int(coreg_info[fn]['matches_to_ref'][match_idxs[m], 1]) #np.array([m[1] for m in coreg_info[fn]['matches_to_ref'][match_idxs,:]])
+            if 'universal_matches' in coreg_info[fn].keys():
+                umatches = coreg_info[fn]['universal_matches']
+            else:
+                umatches = coreg_info[fn].create_dataset('universal_matches', curr_match_idxs.shape, curr_match_idxs.dtype)
             umatches[...] = curr_match_idxs
             coregistered_rois[fn] = curr_match_idxs.tolist()
             
@@ -494,12 +499,11 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
     print("Saving coregistered ROIs to: %s" % os.path.join(coreg_output_dir, coregistered_rois_fn))
     with open(os.path.join(coreg_output_dir, coregistered_rois_fn), 'w') as f:
         json.dump(coregistered_rois, f, indent=4, sort_keys=True)
-        
 
     return ref_rois, coregistered_rois, coreg_results_path
 
 #%%            
-def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pass_rois_dict=None, cmap='jet', plot_by_file=True):
+def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_dir, pass_rois_dict=None, cmap='jet', plot_by_file=True):
     
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -513,11 +517,11 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
     refimg = ref['Av']
     
     colormap = pl.get_cmap(cmap)
-    ref_rois = matchedROIs[params_thr['ref_filename']]
+    ref_rois = coregistered_rois[params_thr['ref_filename']]
     nrois = len(ref_rois)
     print "Plotting %i coregistered ROIs from each file..." % nrois
     
-    file_names = matchedROIs.keys();
+    file_names = coregistered_rois.keys();
     if plot_by_file is True:
         plot_type = 'byfile'
         colorvals = colormap(np.linspace(0, 1, len(file_names))) #get_spaced_colors(nrois)
@@ -537,7 +541,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
     pl.axis('equal')
     pl.axis('off')
     
-    for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
+    for fidx,curr_file in enumerate(sorted(coregistered_rois.keys(), key=natural_keys)):
         
         src_path = [f for f in src_filepaths if curr_file in f][0]
         nmf = np.load(src_path)
@@ -557,7 +561,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
             A = A[:, pass_rois_idxs]
             nr = A.shape[-1]
       
-        curr_rois = matchedROIs[curr_file]
+        curr_rois = coregistered_rois[curr_file]
         A = np.array(A.todense()) 
         
         for ridx, roi in enumerate(curr_rois):
@@ -574,7 +578,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
             else:
                 cs = pl.contour(y, x, Bmat, [0.9], colors=[colorvals[ridx]]) #, cmap=colormap)
 
-    nfiles = len(matchedROIs.keys())
+    nfiles = len(coregistered_rois.keys())
     nrois = len(ref_rois)
     print "N files:", nfiles
     print "N rois:", nrois
@@ -584,7 +588,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
     ax2 = pl.subplot(gs[1])
     if plot_by_file is True:
         interval = np.arange(0., 1., 1./nfiles)
-        for fidx,curr_file in enumerate(sorted(matchedROIs.keys(), key=natural_keys)):
+        for fidx,curr_file in enumerate(sorted(coregistered_rois.keys(), key=natural_keys)):
             ax2.plot(1, interval[fidx], c=colorvals[fidx], marker='.', markersize=20)
             pl.text(1.1, interval[fidx], str(curr_file), fontsize=12)
             pl.xlim([0.95, 2])
@@ -592,7 +596,7 @@ def plot_coregistered_rois(matchedROIs, params_thr, src_filepaths, save_dir, pas
         interval = np.arange(0., 1., 1./nrois)
         for ridx, roi in enumerate(ref_rois):
             ax2.plot(1, interval[ridx], c=colorvals[ridx], marker='.', markersize=20)
-            pl.text(1.1, interval[ridx], str(roi), fontsize=12)
+            pl.text(1.1, interval[ridx], "%s_%s" % ('roi%05d' % int(ridx+1), str(roi)), fontsize=12)
             pl.xlim([0.95, 2])
     pl.axis('equal')
     pl.axis('off')

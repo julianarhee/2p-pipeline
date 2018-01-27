@@ -145,25 +145,42 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
         roi_idxs = roi_idxs[pass_rois]           # Update ROI index list
         
     if coreg_rois is not None:                   # coreg_rois = indices into either "pass" rois (if keep_good_rois==True) or just the org src 
+        if not isinstance(coreg_rois[0], int):
+            coreg_rois = [int(c) for c in coreg_rois]
         roi_idxs = roi_idxs[coreg_rois]   
 
     roi_idxs = np.append(roi_idxs, nr)           # Append the "background component" to the ROI list:
     
     # Only return selected masks and coord info:
-    if is_3D:
-        masks = masks[:, :, :, roi_idxs]
+    if is_3D: 
+        final_masks = np.empty((d1, d2, d3, len(roi_idxs)))
     else:
-        masks = masks[:, :, roi_idxs]
+        final_masks = np.empty((d1, d2, len(roi_idxs)))
+    final_rA = scipy.sparse.csc_matrix((rA.shape[0], len(roi_idxs)), dtype=rA.dtype)
+    final_Cf = np.empty((len(roi_idxs), Cf.shape[1]), dtype=Cf.dtype)
+    for ridx in range(len(roi_idxs)):
+        if is_3D:
+            final_masks[:,:,:,ridx] = masks[:,:,:,roi_idxs[ridx]]
+        else:
+            final_masks[:,:,ridx] = masks[:,:,roi_idxs[ridx]]
+            
+        final_rA[:, ridx] = rA[:, roi_idxs[ridx]] #.toarray().squeeze()
+        final_Cf[ridx, :] = Cf[roi_idxs[ridx], :]
+    
+#    if is_3D:
+#        masks = masks[:, :, :, roi_idxs]
+#    else:
+#        masks = masks[:, :, roi_idxs]
     coors = [coors[i] for i in roi_idxs if not i==nr]
-    rA = rA[:, roi_idxs]
-    Cf = Cf[roi_idxs, :]
+#    rA = rA[:, roi_idxs]
+#    Cf = Cf[roi_idxs, :]
     
     #cc1 = [[l[0] for l in n['coordinates']] for n in coors]
     #cc2 = [[l[1] for l in n['coordinates']] for n in coors]
     #coords = [[(x,y) for x,y in zip(cc1[n], cc2[n])] for n in range(len(cc1))]
     #coms = np.array([np.array(n) for n in coords])
     
-    return masks,img, coors, roi_idxs, is_3D, nb, rA, Cf
+    return final_masks, img, coors, roi_idxs, is_3D, nb, final_rA, final_Cf
 
 #%
 
@@ -489,8 +506,8 @@ if format_roi_output is True :
                 
                 maskfile.attrs['is_3D'] = is_3D
 
-                sorted_roi_idxs = np.argsort(roi_idxs) # background comp(s) will always be last anyway
-                masks = masks[:,:,sorted_roi_idxs]                
+                #sorted_roi_idxs = np.argsort(roi_idxs) # background comp(s) will always be last anyway
+                #masks = masks[:,:,sorted_roi_idxs]                
                 roi_names = sorted(["roi%04d" % int(ridx+1) for ridx in range(len(coord_info))], key=natural_keys) # BG not included for coordinate list
 
                 # Save masks for current file (TODO: separate slices?)
@@ -498,7 +515,7 @@ if format_roi_output is True :
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
                 currmasks.attrs['src_roi_idxs'] = roi_idxs
-                currmasks.attrs['roi_idxs'] = sorted_roi_idxs
+                #currmasks.attrs['roi_idxs'] = sorted_roi_idxs
                 currmasks.attrs['nrois'] = len(roi_names) #len(roi_idxs) - nb
                 currmasks.attrs['background'] = nb
                 
@@ -539,7 +556,7 @@ if format_roi_output is True :
                     msk[msk==0] = np.nan
                     pl.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
                     [ys, xs] = np.where(masktmp>0)
-                    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='light', fontsize=8)
+                    pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), weight='light', fontsize=8, color='w')
                     pl.axis('off')
                 pl.colorbar()
                 pl.tight_layout()
