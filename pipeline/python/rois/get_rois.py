@@ -490,7 +490,7 @@ if format_roi_output is True :
                 
                 # Create group for current file:
                 filegrp = maskfile.create_group(filenames[fidx])
-                filegrp.attrs['source_file'] = nmfpath
+                filegrp.attrs['source'] = os.path.split(nmfpath)[0]
 
                 # Format NMF output to standard masks:
                 print "Formatting masks..."

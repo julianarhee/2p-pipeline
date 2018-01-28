@@ -78,16 +78,16 @@ pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 #
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'JR063' #'CE059' #'JR063'
-#session = '20171128_JR063' #'20171009_CE059' #'20171202_JR063'
-#acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-#run = 'gratings_static' #'gratings_phasemod' #'scenes'
-#slurm = False
-#
-#trace_id = 'traces001'
-#auto = False
-#create_new = False
+rootdir = '/nas/volume1/2photon/data'
+animalid = 'JR063' #'CE059' #'JR063'
+session = '20171128_JR063' #'20171009_CE059' #'20171202_JR063'
+acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+run = 'gratings_static' #'gratings_phasemod' #'scenes'
+slurm = False
+
+trace_id = 'traces002'
+auto = False
+create_new = True
 
 #if slurm is True:
 #    if 'coxfs01' not in rootdir:
@@ -241,13 +241,22 @@ maskfile = h5py.File(mask_path, "r")
 is_3D = bool(maskfile.attrs['is_3D'])
 
 # Get files for which there are ROIs in this set:
-filenames = maskfile.keys()
-
+maskfiles = maskfile.keys()
+if len(maskfiles) == 1:
+    filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
+    ref_file = maskfiles[0]
+    print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
+    single_reference = True
+else:
+    filenames = maskfile.keys()
+    single_reference = False
+    ref_file = None #RID['PARAMS']['options']['ref_file']
+    
 # Check if masks are split up by slices: (Matlab, manual2D methods are diff)
-if type(maskfile[filenames[0]]['masks']) == h5py.Dataset:
+if type(maskfile[maskfiles[0]]['masks']) == h5py.Dataset:
     slice_masks = False
 else:
-    slice_keys = [s for s in maskfile[filenames[0]]['masks'].keys() if 'Slice' in s]
+    slice_keys = [s for s in maskfile[maskfiles[0]]['masks'].keys() if 'Slice' in s]
     if len(slice_keys) > 0:
         slice_masks = True
     else:
@@ -255,7 +264,7 @@ else:
 
 # Get slices for which there are ROIs in this set:
 if slice_masks:
-    roi_slices = sorted([str(s) for s in maskfile[filenames[0]]['masks'].keys()], key=natural_keys)
+    roi_slices = sorted([str(s) for s in maskfile[maskfiles[0]]['masks'].keys()], key=natural_keys)
 else:
     roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
 
@@ -275,22 +284,40 @@ MASKS = dict()
 for fidx, curr_file in enumerate(filenames):
     MASKS[curr_file] = dict()
     
+    if single_reference is True:  # Load current file zproj image to draw ROIs 
+        maskfile_key = ref_file
+        zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
+        zproj_dir = os.path.join(zproj_source_dir, curr_file)
+    else:
+        maskfile_key = curr_file
+   
     for sidx, curr_slice in enumerate(roi_slices):
 
         MASKS[curr_file][curr_slice] = dict()
     
         # Get average image:
-        if slice_masks:
-            avg =np.array(maskfile[curr_file]['zproj_img'][curr_slice]).T # T is needed for MATLAB masks... (TODO: check roi_blobs)
-            MASKS[curr_file][curr_slice]['zproj_img'] =  avg #maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
-            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file]['zproj_img'][curr_slice].attrs['source_file']
-            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']
+        if single_reference is True:
+            if curr_file == maskfile_key and slice_masks:
+                avg = np.array(maskfile[maskfile_key]['zproj_img'][curr_slice]).T
+                MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key]['zproj_img'][curr_slice].attrs['source_file']
+            else:
+                zproj_img_fn = [m for m in os.listdir(zproj_dir) if curr_slice in m][0]
+                zproj_img_path = os.path.join(zproj_dir, zproj_img_fn)
+                avg = tf.imread(zproj_img_path)
+                MASKS[curr_file][curr_slice]['zproj_source'] = zproj_img_path
         else:
-            avg = maskfile[curr_file]['zproj_img']
-            MASKS[curr_file][curr_slice]['zproj_img'] = avg #maskfile[curr_file].attrs['source_file']
-            #roinames = maskfile[curr_file]['coords'].keys()
-            MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[curr_file].attrs['source_file']
-            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[curr_file]['masks'].attrs['src_roi_idxs']
+            if slice_masks:
+                avg = np.array(maskfile[maskfile_key]['zproj_img'][curr_slice]).T
+                MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key]['zproj_img'][curr_slice].attrs['source_file']
+            else:
+                avg = np.array(maskfile[maskfile_key]['zproj_img'])
+                MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key].attrs['source_file']
+            
+        MASKS[curr_file][curr_slice]['zproj_img'] =  avg
+        if slice_masks:
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[maskfile_key]['masks'][curr_slice].attrs['src_roi_idxs']
+        else:
+            MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[maskfile_key]['masks'].attrs['src_roi_idxs']
 
         d1,d2 = avg.shape
         d = d1*d2
@@ -298,14 +325,14 @@ for fidx, curr_file in enumerate(filenames):
         # Plot labeled ROIs on avg img:
         if slice_masks:
             #curr_rois = ["roi%05" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs'])]
-            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'][curr_slice].attrs['src_roi_idxs']))], key=natural_keys)
+            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[maskfile_key]['masks'][curr_slice].attrs['src_roi_idxs']))], key=natural_keys)
         else:
             #curr_rois = ["roi%05d" % int(ridx+1) for ridx,roi in enumerate(maskfile[curr_file]['masks'].attrs['src_roi_idxs'])]
-            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[curr_file]['masks'].attrs['src_roi_idxs']))], key=natural_keys)
+            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(maskfile[maskfile_key]['masks'].attrs['src_roi_idxs']))], key=natural_keys)
         
         # Check if extra backround:
-        if 'background' in maskfile[curr_file]['masks'].attrs.keys():
-            nb = maskfile[curr_file]['masks'].attrs['background']
+        if 'background' in maskfile[maskfile_key]['masks'].attrs.keys():
+            nb = maskfile[maskfile_key]['masks'].attrs['background']
             #curr_rois = curr_rois[0:-1*nb]
         else:
             nb = 0
@@ -321,18 +348,18 @@ for fidx, curr_file in enumerate(filenames):
         avgimg = skimage.exposure.rescale_intensity(avg, in_range=(p2, p98)) #avg *= (1.0/avg.max())
         ax.imshow(avgimg, cmap='gray')
         
-        print "Plotting %i ROIs" % len(curr_rois)
+        print "Plotting %i ROIs on %s, %s" % (len(curr_rois), curr_file, curr_slice)
         maskarray = np.empty((d, nrois))
         maskarray_roi_ids = []
         bgidx = 0
         for ridx, roi in enumerate(curr_rois):
             if slice_masks: 
-                masktmp = np.array(maskfile[curr_file]['masks'][curr_slice]).T[:,:,ridx] # T is needed for MATLAB masks... (TODO: check roi_blobs)
+                masktmp = np.array(maskfile[maskfile_key]['masks'][curr_slice]).T[:,:,ridx] # T is needed for MATLAB masks... (TODO: check roi_blobs)
             else:
                 if len(roi_slices) > 1:
-                    masktmp = maskfile[curr_file]['masks'][:,:,sidx,ridx]
+                    masktmp = maskfile[maskfile_key]['masks'][:,:,sidx,ridx]
                 else:
-                    masktmp = maskfile[curr_file]['masks'][:,:,ridx]
+                    masktmp = maskfile[maskfile_key]['masks'][:,:,ridx]
                     
             msk = masktmp.copy()
             msk[msk==0] = np.nan
@@ -425,18 +452,18 @@ try:
         file_grp.attrs['mask_sourcefile'] = mask_path
     
         # Get curr file's masks, or use reference:
-        if curr_file in MASKS.keys():
-            single_ref = False
-            mask_key = curr_file
-        else:
-            single_ref = True
-            mask_key = MASKS.keys()[0]
+#        if F in MASKS.keys():
+#            single_ref = False
+#            mask_key = curr_file
+#        else:
+#            single_ref = True
+#            mask_key = MASKS.keys()[0]
     
         for sl in range(len(roi_slices)):
     
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
             print "Extracting ROI time course from %s" % curr_slice
-            maskarray = MASKS[mask_key][roi_slices[sl]]['mask_array']
+            maskarray = MASKS[curr_file][roi_slices[sl]]['mask_array']
     
             # Get frame tstamps:
             curr_tstamps = np.array(frames_tsec[sl::nslices])
@@ -458,16 +485,16 @@ try:
             mset.attrs['roi_id'] = str(RID['roi_id'])
             mset.attrs['rid_hash'] = str(RID['rid_hash'])
             mset.attrs['roi_type'] = str(RID['roi_type'])
-            mset.attrs['nr'] = MASKS[mask_key][curr_slice]['nr']
-            mset.attrs['nb'] = MASKS[mask_key][curr_slice]['nb']
-            mset.attrs['src_roi_idxs'] = MASKS[mask_key][curr_slice]['src_roi_idxs']
+            mset.attrs['nr'] = MASKS[curr_file][curr_slice]['nr']
+            mset.attrs['nb'] = MASKS[curr_file][curr_slice]['nb']
+            mset.attrs['src_roi_idxs'] = MASKS[curr_file][curr_slice]['src_roi_idxs']
                         
             # Save zproj img:
-            zproj = MASKS[mask_key][curr_slice]['zproj_img']
+            zproj = MASKS[curr_file][curr_slice]['zproj_img']
             if 'zproj' not in slice_grp.keys():
                 zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
             zset[...] = zproj
-            zset.attrs['img_source'] = MASKS[mask_key][curr_slice]['zproj_source']
+            zset.attrs['img_source'] = MASKS[curr_file][curr_slice]['zproj_source']
     
             # Save fluor trace:
             if 'rawtraces' not in slice_grp.keys():
@@ -596,7 +623,7 @@ else:
                 
                 bgidx = 0
                 for ridx in range(ncomps): #, roi in enumerate(src_roi_idxs):
-                    if (nb > 0) and (ridx >= (nr-nb)):
+                    if (nb > 0) and (ridx >= nr):
                         bgidx += 1
                         is_background = True
                         roiname = 'bg%02d' % bgidx
