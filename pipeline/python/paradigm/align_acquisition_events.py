@@ -456,22 +456,23 @@ trace_hash = TID['trace_hash']
 # Load timecourses for specified trace set:
 # =============================================================================
 print "-----------------------------------------------------------------------"
-print "Loading time courses from trace set: %s"%  trace_id
+print "Loading time courses for run %s, from trace set: %s" % (run, trace_id)
 
 try:
     # Since roi_timecourses are datestamped and hashed, sort all found files and use the most recent file:
-    tcourse_fn = sorted([t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t], key=natural_keys)[0]
+    tcourse_fn = sorted([t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t], key=natural_keys)[-1]
     roi_timecourses = h5py.File(os.path.join(traceid_dir, tcourse_fn), 'r')
     roi_list = sorted(roi_timecourses.keys(), key=natural_keys)
     #roi_list = sorted([r for r in roi_timecourses.keys() if 'roi' in r], key=natural_keys)
     #bg_list = sorted([b for b in roi_timecourses.keys() if 'bg' in r], key=natural_keys)
-    print "Loaded time-courses for run %s. Found %i ROIs total." % (run, len(roi_list))
+    print "Loaded time-courses file: %s" % tcourse_fn
+    print "Found %i ROIs total." % len(roi_list)
 except Exception as e:
     print "-------------------------------------------------------------------"
     print "Unable to load time courses for current trace set: %s" % trace_id
     print "File not found in dir: %s" % traceid_dir
+    traceback.print_exc()
     print "Aborting with error:"
-    print e
     print "-------------------------------------------------------------------"
 try:
     curr_slices = sorted(list(set([roi_timecourses[roi].attrs['slice'] for roi in roi_list])), key=natural_keys)
@@ -480,7 +481,7 @@ try:
 except Exception as e:
     print "-------------------------------------------------------------------"
     print "Unable to load slices..."
-    print e
+    traceback.print_exc()
     print "-------------------------------------------------------------------"
 
 print "-----------------------------------------------------------------------"
