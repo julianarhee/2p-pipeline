@@ -20,16 +20,17 @@ import numpy as np
 from pipeline.python.utils import natural_keys
 
 #%%
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'JR063'
-#session = '20171128_JR063'
-#acquisition = 'FOV2_zoom1x'
-#run = 'gratings_static'
-#trace_id = 'traces001'
-#
-#roi_id = 4  # This var matters
-#slice_id = 1 # This one, too, if nslices > 1
-#trial_type = 'raw'
+rootdir = '/nas/volume1/2photon/data'
+animalid = 'JR063'
+session = '20171128_JR063'
+acquisition = 'FOV2_zoom1x'
+run = 'gratings_static'
+trace_id = 'traces001'
+
+roi_id = 5  # This var matters
+slice_id = 1 # This one, too, if nslices > 1
+trial_type = 'raw'
+is_background = False
 
 #%%
 
@@ -51,6 +52,7 @@ parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype
 
 parser.add_option('-s', '--slice', action='store', dest='slice_id', default=1, help="Slice num of ROI to plot [default: 1]")
 parser.add_option('-r', '--roi', action='store', dest='roi_id', default=1, help="ROI num to plot [default: 1]")
+parser.add_option('--background', action='store_true', dest='is_background', default=False, help="set if ROI selected is a background component")
 
 (options, args) = parser.parse_args()
 
@@ -67,7 +69,13 @@ trace_type = options.trace_type
 roi_id = int(options.roi_id)
 slice_id = int(options.slice_id)
 
-selected_roi = 'roi%05d' % int(roi_id)
+is_background = options.is_background
+
+if is_background is True:
+    selected_roi = 'bg%02d' % int(roi_id)
+else:
+    selected_roi = 'roi%05d' % int(roi_id)
+    
 selected_slice = 'Slice%02d' % int(slice_id)
 
 print "Plotting %s PSTHs for roi %i, slice %i." % (trace_type, roi_id, slice_id)
@@ -143,10 +151,12 @@ for fidx, filepair in enumerate(file_list):
     trace_fn = filepair[1]
     traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
     for sidx, curr_slice in enumerate(traces.keys()):
-        nrois = traces[curr_slice]['masks'].attrs['nr'] + traces[curr_slice]['masks'].attrs['nb']
+        nr = traces[curr_slice]['masks'].attrs['nr']
+        nb = traces[curr_slice]['masks'].attrs['nb']
         
-        roi_list = ['roi%05d' % int(ridx+1) for ridx in range(nrois)] #traces[curr_slice]['masks'].attrs['roi_idxs']]
-
+        roi_list = ['roi%05d' % int(ridx+1) for ridx in range(nr)] #traces[curr_slice]['masks'].attrs['roi_idxs']]
+        roi_list.extend(['bg%02d' % int(bidx+1) for bidx in range(nb)]) # Make sure background comps are at END Of list, since indexing thru:
+                
         for ridx, roi in enumerate(roi_list):
             if len(traces.keys()) > 1:
                 trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'],
