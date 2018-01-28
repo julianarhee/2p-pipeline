@@ -591,10 +591,11 @@ else:
                 src_roi_idxs = filetrace[currslice]['masks'].attrs['src_roi_idxs']
                 nr = filetrace[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
                 nb = filetrace[currslice]['masks'].attrs['nb']
+                ncomps = nr + nb
                 masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
                 
                 bgidx = 0
-                for ridx in range(nr): #, roi in enumerate(src_roi_idxs):
+                for ridx in range(ncomps): #, roi in enumerate(src_roi_idxs):
                     if (nb > 0) and (ridx >= (nr-nb)):
                         bgidx += 1
                         is_background = True

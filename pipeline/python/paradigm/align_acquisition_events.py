@@ -463,6 +463,8 @@ try:
     tcourse_fn = sorted([t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t], key=natural_keys)[0]
     roi_timecourses = h5py.File(os.path.join(traceid_dir, tcourse_fn), 'r')
     roi_list = sorted(roi_timecourses.keys(), key=natural_keys)
+    #roi_list = sorted([r for r in roi_timecourses.keys() if 'roi' in r], key=natural_keys)
+    #bg_list = sorted([b for b in roi_timecourses.keys() if 'bg' in r], key=natural_keys)
     print "Loaded time-courses for run %s. Found %i ROIs total." % (run, len(roi_list))
 except Exception as e:
     print "-------------------------------------------------------------------"
