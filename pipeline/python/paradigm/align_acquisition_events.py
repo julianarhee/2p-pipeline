@@ -140,13 +140,13 @@ print "Plotting PSTH for %s timecourses." % trace_type
 create_new = options.create_new
 
 #%%
-
+#
 #rootdir = '/nas/volume1/2photon/data'
 #animalid = 'JR063'
 #session = '20171128_JR063'
 #acquisition = 'FOV2_zoom1x'
 #run = 'gratings_static'
-#trace_id = 'traces001'
+#trace_id = 'traces004'
 #custom_mw = False
 #same_order = False
 #
@@ -565,13 +565,21 @@ if len(existing_roi_trial_fns) > 0 and create_new is False:
     roi_trials_by_stim_path = os.path.join(traceid_dir, existing_roi_trial_fns[-1])
     print "TID %s -- Loaded ROI timecourses for run %s." % (trace_hash, run)
     print "ROI trial file path is: %s" % roi_trials_by_stim_path
-else:
+    
+    # CHeck file to make sure it is complete:
+    roi_trials = h5py.File(roi_trials_by_stim_path, 'r')
+    if not len(roi_trials.keys()) == len(configs.keys()):
+        print "Incomplete stim-config list found in loaded roi-trials file."
+        print "Found %i out of %i stim configs." % (len(roi_trials.keys()), len(configs.keys()))
+        print "Creating new...!"
+        create_new = True
+if create_new is True:
     tstamp = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
     roi_trials_by_stim_path = os.path.join(traceid_dir, 'roi_trials_%s.hdf5' % tstamp)
     roi_trials = h5py.File(roi_trials_by_stim_path, 'w')
 
     try:
-        print "TID %s -- Creating NEW ROI timecourses file, tstamp: %s" % tstamp
+        print "TID %s -- Creating NEW ROI timecourses file, tstamp: %s" % (trace_hash, tstamp)
         for configname in sorted(configs.keys(), key=natural_keys):
         
             currconfig = configs[configname]
