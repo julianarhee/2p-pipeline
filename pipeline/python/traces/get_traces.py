@@ -85,7 +85,7 @@ acquisition = 'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
 run = 'gratings_static' #'gratings_phasemod' #'scenes'
 slurm = False
 
-trace_id = 'traces002'
+trace_id = 'traces004'
 auto = False
 create_new = True
 
@@ -269,6 +269,9 @@ else:
     roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
 
 #%% For each specified SLICE in this ROI set, create 2D mask array:
+# TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
+# as python-based methods... if-checks hacked for now...
+
 print "-----------------------------------------------------------------------"
 print "TID %s -- Getting mask info..." % trace_hash
 t_mask = time.time()
@@ -286,7 +289,10 @@ for fidx, curr_file in enumerate(filenames):
     
     if single_reference is True:  # Load current file zproj image to draw ROIs 
         maskfile_key = ref_file
-        zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
+        if 'source' not in maskfile[maskfile_key].attrs.keys():
+            zproj_source_dir = os.path.split(maskfile[maskfile_key]['masks'].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
+        else:
+            zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]
         zproj_dir = os.path.join(zproj_source_dir, curr_file)
     else:
         maskfile_key = curr_file
@@ -572,9 +578,9 @@ except Exception as e:
 # Create output file for parsed traces:
 # -----------------------------------------------------------------------------
 # Check if time courses file already exists:
-existing_tcourse_fns = [t for t in os.listdir(traceid_dir) if 'roi_timecourses' in t and t.endswith('hdf5')]
+existing_tcourse_fns = sorted([t for t in os.listdir(traceid_dir) if 'roi_timecourses' in t and t.endswith('hdf5')], key=natural_keys)
 if len(existing_tcourse_fns) > 0 and create_new is False:
-    roi_tcourse_filepath = os.path.join(traceid_dir, existing_tcourse_fns[0])
+    roi_tcourse_filepath = os.path.join(traceid_dir, existing_tcourse_fns[-1])
     print "Loaded existing ROI time courses file: %s" % roi_tcourse_filepath
 else:
     tstamp = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
