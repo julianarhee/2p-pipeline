@@ -241,7 +241,7 @@ stimorder_files = True
 # ================================================================================
 # MW trial extraction:
 # ================================================================================
-mwopts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-t', trigger_varname]
+mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname]
 if slurm is True:
     mwopts.extend(['--slurm'])
 if retinobar is True:

@@ -3,14 +3,36 @@
 This script assigns frame indices to trial epochs for each trial in the specified run.
 The baseline period (period before stimulus onset) is specified by input opt ITI_PRE ('-b' or '--baseline').
 
-It requries a .json file that contains trial details across the entire run:
-    - Created by extract_stimulus_events.py, saved to:  <run_dir>/paradigm/trials_<trialdict_hash>.json
-    - The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['aux_file_idx']
+Inputs required:
+    Paradigm info
+    <run_dir>/paradigm/trials_<filehash>.json
+        All trials in run with relevant stimulus info and times.
+        Created by extract_stimulus_events.py, saved to:  <run_dir>/paradigm/trials_<trialdict_hash>.json
+        The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['aux_file_idx']
+    
+    Timecourse info
+    <traceid_dir>/roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5 
+        Output file from traces/get_traces.py (all traces are combined across tiff files)
 
-It outputs a .hdf5 file that contains a dataset for each trial in the run (ntrials-per-file * nfiles-in-run)
-with the frame indices of the associate .tif file
-    - Output file is saved to:  <run_dir>/paradigm/frames_by_file_<framedict_hash>.hdf5
-    - Frame indices are with respect to the entire file, so volume-parsing should be done (see: files_to_trials.py) if nslices > 1.
+Outputs:
+    <run_dir>/paradigm/stimulus_configs.json
+        Configuration for each unique stimulus (stim id, position, size, etc.)
+        
+    <run_dir>/paradigm/parsed_frames_<filehash>.hdf5
+        Assigns all frame indices to trial epochs for all trials in run.
+        Contains a dataset for each trial in the run (ntrials-per-file * nfiles-in-run)
+        Frame indices are with respect to the entire file, so volume-parsing should be done (see: files_to_trials.py) if nslices > 1.
+
+    <traceid_dir>/roi_trials_YYYYMMDD_HH_mm_SS.hdf5'
+        [stimconfig]/
+            attrs: direction, frequency, phase, position_x, position_y, rotation, scale, size_x, size_y, etc.
+            [roi_name]/
+                attrs: id_in_set, id_in_src, idx_in_slice, slice
+                [trial_name]/
+                    attrs: volume_stim_on, frame_idxs
+                    'raw' - dataset
+                    'denoise_nmf' - dataset
+                    ...etc.
 
 This output info for the run can then be used as indices into extracted traces.
 '''
@@ -18,25 +40,19 @@ import matplotlib
 matplotlib.use('Agg')
 import os
 import json
-import re
 import optparse
 import operator
 import h5py
 import pprint
 import itertools
+import time
 import datetime
 import traceback
 import seaborn as sns
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import hash_file
+from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time
 pp = pprint.PrettyPrinter(indent=4)
-
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
 
 class StimInfo:
     def __init__(self):
@@ -94,7 +110,10 @@ parser.add_option('-Y', '--ylim_max', action="store",
                   dest="ylim_max", default=1.0, help="max lim for Y axis, df/f plots [default: 1.0]")
 
 parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
- 
+
+parser.add_option('--new', action="store_true",
+                  dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
+                  
 (options, args) = parser.parse_args()
 
 
@@ -118,7 +137,10 @@ ylim_max = float(options.ylim_max) #3.0
 trace_type = options.trace_type
 print "Plotting PSTH for %s timecourses." % trace_type
 
+create_new = options.create_new
+
 #%%
+
 #rootdir = '/nas/volume1/2photon/data'
 #animalid = 'JR063'
 #session = '20171128_JR063'
@@ -127,14 +149,19 @@ print "Plotting PSTH for %s timecourses." % trace_type
 #trace_id = 'traces001'
 #custom_mw = False
 #same_order = False
+#
 #ylim_min = -1.0
 #ylim_max = 2.0
 #iti_pre = 1.0
+#trace_type = 'raw'
+#create_new = False
 
-#%%
+#%% 
+# =============================================================================
+# Get meta info for RUN:
+# =============================================================================
 
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-paradigm_dir = os.path.join(run_dir, 'paradigm')
 
 # -------------------------------------------------------------------------
 # Load reference info:
@@ -164,10 +191,14 @@ nslices = int(len(runinfo['slices']))
 nchannels = runinfo['nchannels']
 
 #%%
-# =========================================================================
-# This section takes care of custom (non-MW) stim presentation protocols:
-# =========================================================================
+# =============================================================================
+# Get paradigm info:
+# =============================================================================
+paradigm_dir = os.path.join(run_dir, 'paradigm')
+
 if custom_mw is True:
+    # Get trial info if custom (non-MW) stim presentation protocols:
+    # -------------------------------------------------------------------------
     try:
         stim_on_sec = float(options.stim_on_sec) #2. # 0.5
         first_stimulus_volume_num = int(options.first_stim_volume_num) #50
@@ -185,12 +216,11 @@ if custom_mw is True:
         print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * volumerate
         print "==============================================================="
 
-        ### Get stim-order files:
+        # Get stim-order files:
         stimorder_fns = sorted([f for f in os.listdir(paradigm_dir) if 'stimorder' in f and f.endswith('txt')], key=natural_keys)
         print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), nfiles)
         if len(stimorder_fns) < ntiffs:
-            if same_order:
-                # Same stimulus order for each file (complete set)
+            if same_order: # Same stimulus order for each file (complete set)
                 stimorder_fns = np.tile(stimorder_fns, [ntiffs,])
 
     except Exception as e:
@@ -209,6 +239,7 @@ if custom_mw is True:
 
 else:
     ### Get PARADIGM INFO if using standard MW:
+    # -------------------------------------------------------------------------
     try:
         trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')][0]
 
@@ -247,119 +278,139 @@ nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
 nframes_per_file = nslices_full * nvolumes
 
 #%%
-
 # =============================================================================
-# Get frame indices for specified trial epochs:
+# Assign frame indices for specified trial epochs:
 # =============================================================================
-parsed_frames_filepath = os.path.join(paradigm_dir, 'parsed_frames.hdf5')
+print "-----------------------------------------------------------------------"
+print "Getting frame indices for trial epochs..."
 
-# 1. Create HDF5 file to store ALL trials in run with stimulus info and frame info:
-run_grp = h5py.File(parsed_frames_filepath, 'w')
-run_grp.attrs['framerate'] = framerate
-run_grp.attrs['volumerate'] = volumerate
-run_grp.attrs['baseline_dur'] = iti_pre
-#run_grp.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-#%
-# 1. Get stimulus preseentation order for each TIFF found:
-
-trial_counter = 0
-for tiffnum in range(ntiffs):
-    trial_in_file = 0
-    currfile= "File%03d" % int(tiffnum+1)
-    #frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
-
-    if custom_mw is True:
-        stim_fn = stimorder_fns[tiffnum]
-        with open(os.path.join(paradigm_dir, stimorder_fns[tiffnum])) as f:
-            stimorder_data = f.readlines()
-        stimorder = [l.strip() for l in stimorder]
-    else:
-        stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
-                         if trialdict[t]['aux_file_idx'] == tiffnum]
-        trials_in_run = sorted([t for t in trial_list if trialdict[t]['aux_file_idx'] == tiffnum], key=natural_keys)
-
-    unique_stims = sorted(set(stimorder), key=natural_keys)
-
-    for trialidx,trialstim in enumerate(sorted(stimorder, key=natural_keys)):
-        trial_counter += 1
-        trial_in_file += 1
-        currtrial_in_file = 'trial%03d' % int(trial_in_file)
-
-        if custom_mw is True:
-            if trialidx==0:
-                first_frame_on = first_stimulus_volume_num
+# First check if parsed frame file already exists:
+existing_parsed_frames_fns = [t for t in os.listdir(paradigm_dir) if 'parsed_frames' in t and t.endswith('hdf5')]
+if len(existing_parsed_frames_fns) > 0 and create_new is False:
+    parsed_frames_filepath = os.path.join(paradigm_dir, existing_parsed_frames_fns[0])
+    print "Got existing parsed-frames file:", parsed_frames_filepath
+else:
+    parsed_frames_filepath = os.path.join(paradigm_dir, 'parsed_frames.hdf5')
+    
+    # 1. Create HDF5 file to store ALL trials in run with stimulus info and frame info:
+    parsed_frames = h5py.File(parsed_frames_filepath, 'w')
+    parsed_frames.attrs['framerate'] = framerate
+    parsed_frames.attrs['volumerate'] = volumerate
+    parsed_frames.attrs['baseline_dur'] = iti_pre
+    #run_grp.attrs['creation_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    #%
+    # 1. Get stimulus preseentation order for each TIFF found:
+    try:
+        trial_counter = 0
+        for tiffnum in range(ntiffs):
+            trial_in_file = 0
+            currfile= "File%03d" % int(tiffnum+1)
+            #frames_tsecs = np.arange(0, nvolumes)*(1/volumerate)
+        
+            if custom_mw is True:
+                stim_fn = stimorder_fns[tiffnum]
+                with open(os.path.join(paradigm_dir, stimorder_fns[tiffnum])) as f:
+                    stimorder_data = f.readlines()
+                stimorder = [l.strip() for l in stimorder]
             else:
-                first_frame_on += vols_per_trial
-            currtrial_in_run = 'trial%05d' % int(trial_counter)
-        else:
-            currtrial_in_run = trials_in_run[trialidx]
-            #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
-            no_frame_match = False
-            first_frame_on = int(trialdict[currtrial_in_run]['frame_stim_on'])
-#            try:
-#                first_frame_on = frame_idxs.index(first_frame_on)
-#            except Exception as e:
-#                print "------------------------------------------------------------------"
-#                print "Found first frame on from serialdata file NOT found in frame_idxs."
-#                print "Trying 1 frame before / after..."
-#                try:
-#                    if first_frame_on+1 in frame_idxs:
-#                        first_frame_on = frame_idxs.index(first_frame_on+1)
-#                    else:
-#                        # Try first_frame_on-1 in frame_idxs:
-#                        first_frame_on = frame_idxs.index(first_frame_on-1)
-#                except Exception as e:
-#                    print "------------------------------------------------------------------"
-#                    print "NO match found for FIRST frame ON:", first_frame_on
-#                    print "File: %s, Trial %s, Stim: %s." % (currfile, currtrial_in_run, trialstim)
-#                    print e
-#                    print "------------------------------------------------------------------"
-#                    no_frame_match = True
-#                if no_frame_match is True:
-#                    print "Aborting."
-#                    print "------------------------------------------------------------------"
+                stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
+                                 if trialdict[t]['aux_file_idx'] == tiffnum]
+                trials_in_run = sorted([t for t in trial_list if trialdict[t]['aux_file_idx'] == tiffnum], key=natural_keys)
+        
+            unique_stims = sorted(set(stimorder), key=natural_keys)
+        
+            for trialidx,trialstim in enumerate(sorted(stimorder, key=natural_keys)):
+                trial_counter += 1
+                trial_in_file += 1
+                currtrial_in_file = 'trial%03d' % int(trial_in_file)
+        
+                if custom_mw is True:
+                    if trialidx==0:
+                        first_frame_on = first_stimulus_volume_num
+                    else:
+                        first_frame_on += vols_per_trial
+                    currtrial_in_run = 'trial%05d' % int(trial_counter)
+                else:
+                    currtrial_in_run = trials_in_run[trialidx]
+                    #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
+                    no_frame_match = False
+                    first_frame_on = int(trialdict[currtrial_in_run]['frame_stim_on'])
+        #            try:
+        #                first_frame_on = frame_idxs.index(first_frame_on)
+        #            except Exception as e:
+        #                print "------------------------------------------------------------------"
+        #                print "Found first frame on from serialdata file NOT found in frame_idxs."
+        #                print "Trying 1 frame before / after..."
+        #                try:
+        #                    if first_frame_on+1 in frame_idxs:
+        #                        first_frame_on = frame_idxs.index(first_frame_on+1)
+        #                    else:
+        #                        # Try first_frame_on-1 in frame_idxs:
+        #                        first_frame_on = frame_idxs.index(first_frame_on-1)
+        #                except Exception as e:
+        #                    print "------------------------------------------------------------------"
+        #                    print "NO match found for FIRST frame ON:", first_frame_on
+        #                    print "File: %s, Trial %s, Stim: %s." % (currfile, currtrial_in_run, trialstim)
+        #                    print e
+        #                    print "------------------------------------------------------------------"
+        #                    no_frame_match = True
+        #                if no_frame_match is True:
+        #                    print "Aborting."
+        #                    print "------------------------------------------------------------------"
+        
+                preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
+                postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+        
+                framenums = [preframes, [first_frame_on], postframes]
+                framenums = reduce(operator.add, framenums)
+                #print "POST FRAMES:", len(framenums)
+                diffs = np.diff(framenums)
+                consec = [i for i in np.diff(diffs) if not i==0]
+                assert len(consec)==0, "Bad frame parsing in %s, %s, frames: %s " % (currtrial_in_run, trialstim, str(framenums))
+        
+                # Create dataset for current trial with frame indices:
+                #print "nframes", len(framenums)
+                #print "on idx", framenums.index(first_frame_on)
+        
+                fridxs_in_file = parsed_frames.create_dataset('/'.join((currtrial_in_run, 'frames_in_file')), np.array(framenums).shape, np.array(framenums).dtype)
+                fridxs_in_file[...] = np.array(framenums)
+                fridxs_in_file.attrs['trial'] = currtrial_in_file
+                fridxs_in_file.attrs['aux_file_idx'] = tiffnum
+                fridxs_in_file.attrs['stim_on_idx'] = first_frame_on
+        
+        
+                framenums_in_run = np.array(framenums) + (nframes_per_file*tiffnum)
+                fridxs = parsed_frames.create_dataset('/'.join((currtrial_in_run, 'frames_in_run')), np.array(framenums_in_run).shape, np.array(framenums_in_run).dtype)
+                fridxs[...] = np.array(framenums_in_run)
+                fridxs.attrs['trial'] = currtrial_in_run
+                fridxs.attrs['aux_file_idx'] = tiffnum
+                fridxs.attrs['stim_on_idx'] = first_frame_on + (nframes_per_file*tiffnum)
+                fridxs.attrs['stim_dur_sec'] = stim_on_sec
+                fridxs.attrs['iti_dur_sec'] = iti_full
+                fridxs.attrs['baseline_dur_sec'] = iti_pre
+    except Exception as e:
+        print "Error parsing frames into trials: current file - %s" % currfile
+        print "%s in tiff file %s (%i trial out of total in run)." % (currtrial_in_file, currfile, trial_counter)
+        traceback.print_exc()
+        print "-------------------------------------------------------------------"
+    finally:
+        parsed_frames.close()
+    
+    parsed_frames_filepath = hash_file_read_only(parsed_frames_filepath)
+    
+    print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
+    print "Saved parsed frame info to file:", parsed_frames_filepath
 
-        preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
-        postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+print "-----------------------------------------------------------------------"
 
-        framenums = [preframes, [first_frame_on], postframes]
-        framenums = reduce(operator.add, framenums)
-        #print "POST FRAMES:", len(framenums)
-        diffs = np.diff(framenums)
-        consec = [i for i in np.diff(diffs) if not i==0]
-        assert len(consec)==0, "Bad frame parsing in %s, %s, frames: %s " % (currtrial_in_run, trialstim, str(framenums))
+#% Rename FRAME file with hash:
+#frame_file_hashid = hash_file(parsed_frames_filepath)
+#framestruct_path = '%s_%s.hdf5' % (os.path.splitext(parsed_frames_filepath)[0], frame_file_hashid)
+#os.rename(parsed_frames_filepath, framestruct_path)
 
-        # Create dataset for current trial with frame indices:
-        #print "nframes", len(framenums)
-        #print "on idx", framenums.index(first_frame_on)
-
-        fridxs_in_file = run_grp.create_dataset('/'.join((currtrial_in_run, 'frames_in_file')), np.array(framenums).shape, np.array(framenums).dtype)
-        fridxs_in_file[...] = np.array(framenums)
-        fridxs_in_file.attrs['trial'] = currtrial_in_file
-        fridxs_in_file.attrs['aux_file_idx'] = tiffnum
-        fridxs_in_file.attrs['stim_on_idx'] = first_frame_on
-
-
-        framenums_in_run = np.array(framenums) + (nframes_per_file*tiffnum)
-        fridxs = run_grp.create_dataset('/'.join((currtrial_in_run, 'frames_in_run')), np.array(framenums_in_run).shape, np.array(framenums_in_run).dtype)
-        fridxs[...] = np.array(framenums_in_run)
-        fridxs.attrs['trial'] = currtrial_in_run
-        fridxs.attrs['aux_file_idx'] = tiffnum
-        fridxs.attrs['stim_on_idx'] = first_frame_on + (nframes_per_file*tiffnum)
-        fridxs.attrs['stim_dur_sec'] = stim_on_sec
-        fridxs.attrs['iti_dur_sec'] = iti_full
-        fridxs.attrs['baseline_dur_sec'] = iti_pre
-
-run_grp.close()
-
-#%% Rename FRAME file with hash:
-frame_file_hashid = hash_file(parsed_frames_filepath)
-framestruct_path = '%s_%s.hdf5' % (os.path.splitext(parsed_frames_filepath)[0], frame_file_hashid)
-os.rename(parsed_frames_filepath, framestruct_path)
-
-print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
-print "Saved frame file to:", framestruct_path
+#print "Finished assigning frame idxs across all tiffs to trials in run %s." % run
+#print "Saved frame file to:", framestruct_path
 
 
 #%%
@@ -377,7 +428,6 @@ vol_idxs_file = [int(v) for v in vol_idxs_file]
 vol_idxs = []
 vol_idxs.extend(np.array(vol_idxs_file) + nvolumes*tiffnum for tiffnum in range(nfiles))
 vol_idxs = np.array(sorted(np.concatenate(vol_idxs).ravel()))
-
 
 #%%
 # =============================================================================
@@ -399,17 +449,18 @@ except Exception as e:
     print e
 
 traceid_dir = TID['DST']
+trace_hash = TID['trace_hash']
 
 #%%
 # =============================================================================
 # Load timecourses for specified trace set:
 # =============================================================================
-print "================================================="
+print "-----------------------------------------------------------------------"
 print "Loading time courses from trace set: %s"%  trace_id
-print "================================================="
 
 try:
-    tcourse_fn = [t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t][0]
+    # Since roi_timecourses are datestamped and hashed, sort all found files and use the most recent file:
+    tcourse_fn = sorted([t for t in os.listdir(traceid_dir) if t.endswith('hdf5') and 'roi_timecourses' in t], key=natural_keys)[0]
     roi_timecourses = h5py.File(os.path.join(traceid_dir, tcourse_fn), 'r')
     roi_list = sorted(roi_timecourses.keys(), key=natural_keys)
     print "Loaded time-courses for run %s. Found %i ROIs total." % (run, len(roi_list))
@@ -420,7 +471,6 @@ except Exception as e:
     print "Aborting with error:"
     print e
     print "-------------------------------------------------------------------"
-
 try:
     curr_slices = sorted(list(set([roi_timecourses[roi].attrs['slice'] for roi in roi_list])), key=natural_keys)
     print "ROIs are distributed across %i slices:" % len(curr_slices)
@@ -431,19 +481,16 @@ except Exception as e:
     print e
     print "-------------------------------------------------------------------"
 
-
-#%%
-
-# TODO: fix this so that specific frame dict is loaded...
-framestruct_fn = [f for f in os.listdir(paradigm_dir) if 'frames_' in f and f.endswith('hdf5')][0]
-
-framestruct_path = os.path.join(paradigm_dir, framestruct_fn)
-framestruct = h5py.File(framestruct_path, 'r')
+print "-----------------------------------------------------------------------"
 
 #%%
 # =============================================================================
 # Get all unique stimulus configurations:
 # =============================================================================
+
+print "-----------------------------------------------------------------------"
+print "Getting stimulus configs..."
+
 trial_list = sorted(trialdict.keys(), key=natural_keys)
 #stimids = sorted(list(set([trialdict[t]['stimuli']['stimulus'] for t in trial_list])), key=natural_keys)
 stimtype = trialdict[trial_list[0]]['stimuli']['type']
@@ -464,10 +511,8 @@ for param in stimparams:
     #allparams.append(list(set(currvals)))
     allparams.append([i for i in list(set(currvals))])
 
-
 transform_combos = list(itertools.product(*allparams))
 ncombinations = len(transform_combos)
-
 
 configs = dict()
 for configidx in range(ncombinations):
@@ -478,7 +523,6 @@ for configidx in range(ncombinations):
             configs[configname][param] = [transform_combos[configidx][pidx][0], transform_combos[configidx][pidx][1]]
         else:
             configs[configname][param] = transform_combos[configidx][pidx]
-
 
 if stimtype=='image':
     stimids = sorted(list(set([trialdict[t]['stimuli']['stimulus'] for t in trial_list])), key=natural_keys)
@@ -492,92 +536,122 @@ if stimtype=='image':
     assert len(stimhash_combos) == len(stimids), "Bad stim ID - stim file hash combo..."
     stimhash = dict((stimid, hashval) for stimid, hashval in zip([v[0] for v in stimhash_combos], [v[1] for v in stimhash_combos]))
 
-
-#%%
-
+# Save config info to file:
+config_filename = 'stimulus_configs.json'
+with open(os.path.join(paradigm_dir, config_filename), 'w') as f:
+    json.dump(configs, f, sort_keys=True, indent=4)
 
 #%%
 # =============================================================================
 # Group ROI time-courses for each trial by stimulus config:
 # =============================================================================
+print "-----------------------------------------------------------------------"
+print "Getting ROI timecourses by trial and stim config"
+
+parsed_frames = h5py.File(parsed_frames_filepath, 'r')  # Load PARSED FRAMES output file:
 
 sliceids = dict((curr_slices[s], s) for s in range(len(curr_slices)))
 
 # Create OUTFILE to save each ROI's time course for each trial, sorted by stimulus config
-roi_stimdict_path = os.path.join(traceid_dir, 'roi_trials.hdf5')
-roi_trials = h5py.File(roi_stimdict_path, 'w')
+# First check if ROI_TRIALS exist:
+t_roitrials = time.time()
+existing_roi_trial_fns = [t for t in os.listdir(traceid_dir) if 'roi_trials' in t and t.endswith('hdf5')]
+print len(existing_roi_trial_fns)
+if len(existing_roi_trial_fns) > 0 and create_new is False:
+    roi_trials_by_stim_path = os.path.join(traceid_dir, existing_roi_trial_fns[0])
+    print "TID %s -- Loaded ROI timecourses for run %s." % (trace_hash, run)
+    print "ROI trial file path is: %s" % roi_trials_by_stim_path
+else:
+    tstamp = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+    roi_trials_by_stim_path = os.path.join(traceid_dir, 'roi_trials_%s.hdf5' % tstamp)
+    roi_trials = h5py.File(roi_trials_by_stim_path, 'w')
 
-try:
-    for configname in sorted(configs.keys(), key=natural_keys):
-    
-        currconfig = configs[configname]
-        #pp.pprint(currconfig)
-        curr_trials = [trial for trial in trial_list
-                       if all(trialdict[trial]['stimuli'][param] == currconfig[param] for param in currconfig.keys())]
-    
-        if configname not in roi_trials.keys():
-            config_grp = roi_trials.create_group(configname)
-        else:
-            config_grp = roi_trials[configname]
-    
-        tracemat = []
-        for tidx, trial in enumerate(sorted(curr_trials, key=natural_keys)):
-            currtrial = 'trial%03d' % int(tidx + 1)
-            
-            curr_trial_volume_idxs = [vol_idxs[int(i)] for i in framestruct[trial]['frames_in_run']]
-    #            slicenum = sliceids[tracestruct['roi00003'].attrs['slice']]
-    #            slice_idxs = vol_idxs[3::nslices_full]
-    #            tcourse_indices = [s for s in slice_idxs if s in curr_trial_volume_idxs]
-    #            tcourse_indices = sorted(list(set(np.array(tcourse_indices))))
-    #            if len(tcourse_indices)==30:
-    #                print curr_stim, trial
-            stim_on_frame_idx = framestruct[trial]['frames_in_run'].attrs['stim_on_idx']
-            stim_on_volume_idx = vol_idxs[stim_on_frame_idx]
-            trial_idxs = sorted(list(set(curr_trial_volume_idxs)))
-            #print trial_idxs.index(stim_on_volume_idx)
-            
-            for roi in roi_list:
-                if roi not in config_grp.keys():
-                    roi_grp = config_grp.create_group(roi)
-                else:
-                    roi_grp = config_grp[roi]
+    try:
+        for configname in sorted(configs.keys(), key=natural_keys):
+        
+            currconfig = configs[configname]
+            #pp.pprint(currconfig)
+            curr_trials = [trial for trial in trial_list
+                           if all(trialdict[trial]['stimuli'][param] == currconfig[param] for param in currconfig.keys())]
+        
+            if configname not in roi_trials.keys():
+                config_grp = roi_trials.create_group(configname)
+                for attr_key in configs[configname].keys():
+                    if isinstance(configs[configname][attr_key], int) or isinstance(configs[configname][attr_key], float):
+                        config_grp.attrs[attr_key] = configs[configname][attr_key]
+                    else:
+                        attr_key_x = '%s_x' % attr_key
+                        attr_key_y = '%s_y' % attr_key
+                        config_grp.attrs[attr_key_x] = configs[configname][attr_key][0]
+                        config_grp.attrs[attr_key_y] = configs[configname][attr_key][1]
+            else:
+                config_grp = roi_trials[configname]
+        
+            tracemat = []
+            for tidx, trial in enumerate(sorted(curr_trials, key=natural_keys)):
+                currtrial = 'trial%03d' % int(tidx + 1)
                 
-                if currtrial not in roi_grp.keys():
-                    trial_grp = roi_grp.create_group(currtrial)
-                    trial_grp.attrs['volume_stim_on'] = stim_on_volume_idx
-                    trial_grp.attrs['frame_idxs'] = trial_idxs
-                else:
-                    trial_grp = roi_grp[currtrial]
+                curr_trial_volume_idxs = [vol_idxs[int(i)] for i in parsed_frames[trial]['frames_in_run']]
+        #            slicenum = sliceids[tracestruct['roi00003'].attrs['slice']]
+        #            slice_idxs = vol_idxs[3::nslices_full]
+        #            tcourse_indices = [s for s in slice_idxs if s in curr_trial_volume_idxs]
+        #            tcourse_indices = sorted(list(set(np.array(tcourse_indices))))
+        #            if len(tcourse_indices)==30:
+        #                print curr_stim, trial
+                stim_on_frame_idx = parsed_frames[trial]['frames_in_run'].attrs['stim_on_idx']
+                stim_on_volume_idx = vol_idxs[stim_on_frame_idx]
+                trial_idxs = sorted(list(set(curr_trial_volume_idxs)))
+                #print trial_idxs.index(stim_on_volume_idx)
                 
-                timecourse_opts = roi_timecourses[roi]['timecourse'].keys()
-                for tc in timecourse_opts:
-                    tcourse = roi_timecourses[roi]['timecourse'][tc][trial_idxs]
-                    tset = trial_grp.create_dataset(tc, tcourse.shape, tcourse.dtype)
-                    tset[...] = tcourse
+                for roi in roi_list:
+                    if roi not in config_grp.keys():
+                        roi_grp = config_grp.create_group(roi)
+                    else:
+                        roi_grp = config_grp[roi]
                     
-#                tcourse_raw = roi_timecourses[roi]['timecourse']['raw'][trial_idxs]
-#                
-#                tset = config_grp.create_dataset('/'.join((roi, currtrial)), tcourse_raw.shape, tcourse_raw.dtype)
-#                tset[...] = tcourse_raw
-#                tset.attrs['frame_on'] = stim_on_volume_idx #framestruct[trial]['frames_in_run'].attrs['stim_on_idx']
-#                tset.attrs['frame_idxs'] = trial_idxs
-                
-                config_grp[roi].attrs['id_in_set'] = roi_timecourses[roi].attrs['id_in_set']
-                config_grp[roi].attrs['id_in_src'] = roi_timecourses[roi].attrs['id_in_src']
-                config_grp[roi].attrs['idx_in_slice'] = roi_timecourses[roi].attrs['idx_in_slice']
-                config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
-                            
-                #tset.attrs['slice'] = roi_timecourses[roi].attrs['slice']
-                #tset.attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
-                #tset.attrs['stim_dur_sec'] = framestruct[trial]['frames_in_run'].attrs['stim_dur_sec']
-except Exception as e:
-    print "--- ERROR in parsing ROI time courses by stimulus config. ---"
-    print configname, trial, roi
-    traceback.print_exc()
-    print "-------------------------------------------------------------"
-finally:
-    roi_trials.close()
+                    if currtrial not in roi_grp.keys():
+                        trial_grp = roi_grp.create_group(currtrial)
+                        trial_grp.attrs['volume_stim_on'] = stim_on_volume_idx
+                        trial_grp.attrs['frame_idxs'] = trial_idxs
+                    else:
+                        trial_grp = roi_grp[currtrial]
+                    
+                    timecourse_opts = roi_timecourses[roi]['timecourse'].keys()
+                    for tc in timecourse_opts:
+                        tcourse = roi_timecourses[roi]['timecourse'][tc][trial_idxs]
+                        tset = trial_grp.create_dataset(tc, tcourse.shape, tcourse.dtype)
+                        tset[...] = tcourse
+                        
+    #                tcourse_raw = roi_timecourses[roi]['timecourse']['raw'][trial_idxs]
+    #                
+    #                tset = config_grp.create_dataset('/'.join((roi, currtrial)), tcourse_raw.shape, tcourse_raw.dtype)
+    #                tset[...] = tcourse_raw
+    #                tset.attrs['frame_on'] = stim_on_volume_idx #framestruct[trial]['frames_in_run'].attrs['stim_on_idx']
+    #                tset.attrs['frame_idxs'] = trial_idxs
+                    
+                    config_grp[roi].attrs['id_in_set'] = roi_timecourses[roi].attrs['id_in_set']
+                    config_grp[roi].attrs['id_in_src'] = roi_timecourses[roi].attrs['id_in_src']
+                    config_grp[roi].attrs['idx_in_slice'] = roi_timecourses[roi].attrs['idx_in_slice']
+                    config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
+                                
+                    #tset.attrs['slice'] = roi_timecourses[roi].attrs['slice']
+                    #tset.attrs['roi_slice_id'] = roi_timecourses[roi].attrs['id_in_slice']
+                    #tset.attrs['stim_dur_sec'] = framestruct[trial]['frames_in_run'].attrs['stim_dur_sec']
+    except Exception as e:
+        print "--- ERROR in parsing ROI time courses by stimulus config. ---"
+        print configname, trial, roi
+        traceback.print_exc()
+        print "-------------------------------------------------------------"
+    finally:
+        roi_trials.close()
 
+    roi_trials_by_stim_path = hash_file_read_only(roi_trials_by_stim_path)
+
+    print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, run)
+    print_elapsed_time(t_roitrials)
+    print "Saved ROI TIME COURSE file to:", roi_trials_by_stim_path
+
+print "-----------------------------------------------------------------------"
 
 #%%
 # =============================================================================
@@ -621,15 +695,14 @@ bottom_margin = 0.05 # in percentage of the figure height
 figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
 
 
-
-#%%
-roi_trials_filepath = os.path.join(traceid_dir, 'roi_trials.hdf5')
-roi_trials = h5py.File(roi_trials_filepath, 'r')
-
-#%%
-roi_psth_dir = os.path.join(os.path.split(roi_trials_filepath)[0], 'figures', 'psths', trace_type)
+#%% For each ROI, plot PSTH for all stim configs:
+    
+roi_psth_dir = os.path.join(traceid_dir, 'figures', 'psths', trace_type)
 if not os.path.exists(roi_psth_dir):
     os.makedirs(roi_psth_dir)
+print "Saving PSTH plots to: %s" % roi_psth_dir
+
+roi_trials = h5py.File(roi_trials_by_stim_path, 'r')   # Load ROI TRIALS file
 
 try:
     for roi in roi_list:
@@ -652,15 +725,15 @@ try:
         col=0
         plotidx = 0
     
-        nframes_on = framestruct['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+        nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
         stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
         iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
         tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
     
         #roi = 'roi00003'
-        for config in subplot_stimlist:
-            curr_slice = roi_trials[config][roi].attrs['slice']
-            roi_in_slice = roi_trials[config][roi].attrs['idx_in_slice']
+        for configname in subplot_stimlist:
+            curr_slice = roi_trials[configname][roi].attrs['slice']
+            roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
             
             if col==(ncols) and nrows>1:
                 row += 1
@@ -670,25 +743,25 @@ try:
             else:
                 ax_curr = axs[col]
     
-            stim_trials = sorted([t for t in roi_trials[config][roi].keys()], key=natural_keys)
-            nvols = max([roi_trials[config][roi][t][trace_type].shape[0] for t in stim_trials])
+            stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+            nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
             ntrials = len(stim_trials)
             trialmat = np.ones((ntrials, nvols)) * np.nan
             dfmat = []
     
-            first_on = int(min([[i for i in roi_trials[config][roi][t].attrs['frame_idxs']].index(roi_trials[config][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+            first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
             tsecs = (np.arange(0, nvols) - first_on ) / volumerate
     
             if 'grating' in stimtype:
-                stimname = 'Ori %.0f, SF: %.2f' % (configs[config]['rotation'], configs[config]['frequency'])
+                stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
             else:
-                stimname = configs[config]['stimulus']
+                stimname = configs[configname]['stimulus']
     
             ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
     
             for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
-                trial_timecourse = roi_trials[config][roi][trial][trace_type]
-                curr_on = int([i for i in roi_trials[config][roi][trial].attrs['frame_idxs']].index(int(roi_trials[config][roi][trial].attrs['volume_stim_on'])))
+                trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
                 trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
                 if first_on < curr_on:
                     trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
@@ -724,12 +797,13 @@ try:
         print psth_fig_fn
 except Exception as e:
     print "--- Error plotting PSTH ---------------------------------"
-    print roi, config, trial
+    print roi, configname, trial
     traceback.print_exc()
     print "---------------------------------------------------------"
 finally:
     roi_trials.close()
-
+    parsed_frames.close()
+    
 #%%
 #
 #for trial in trial_list:
