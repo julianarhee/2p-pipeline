@@ -345,7 +345,7 @@ for fidx, curr_file in enumerate(filenames):
         nrois = len(curr_rois)
         MASKS[curr_file][curr_slice]['nb'] = nb
         MASKS[curr_file][curr_slice]['nr'] = nrois - nb
-        print curr_rois
+        #print curr_rois
 
         # Create maskarray and plot on img:        
         fig = pl.figure()
