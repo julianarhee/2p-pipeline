@@ -285,9 +285,10 @@ print "-----------------------------------------------------------------------"
 print "Getting frame indices for trial epochs..."
 
 # First check if parsed frame file already exists:
-existing_parsed_frames_fns = [t for t in os.listdir(paradigm_dir) if 'parsed_frames' in t and t.endswith('hdf5')]
+existing_parsed_frames_fns = sorted([t for t in os.listdir(paradigm_dir) if 'parsed_frames' in t and t.endswith('hdf5')], key=natural_keys)
+existing_parsed_frames_fns.sort(key=lambda x: os.stat(os.path.join(paradigm_dir, x)).st_mtime) # Sort by date modified
 if len(existing_parsed_frames_fns) > 0 and create_new is False:
-    parsed_frames_filepath = os.path.join(paradigm_dir, existing_parsed_frames_fns[0])
+    parsed_frames_filepath = os.path.join(paradigm_dir, existing_parsed_frames_fns[-1]) # Get most recently modified file
     print "Got existing parsed-frames file:", parsed_frames_filepath
 else:
     parsed_frames_filepath = os.path.join(paradigm_dir, 'parsed_frames.hdf5')
@@ -558,10 +559,10 @@ sliceids = dict((curr_slices[s], s) for s in range(len(curr_slices)))
 # Create OUTFILE to save each ROI's time course for each trial, sorted by stimulus config
 # First check if ROI_TRIALS exist:
 t_roitrials = time.time()
-existing_roi_trial_fns = [t for t in os.listdir(traceid_dir) if 'roi_trials' in t and t.endswith('hdf5')]
+existing_roi_trial_fns = sorted([t for t in os.listdir(traceid_dir) if 'roi_trials' in t and t.endswith('hdf5')], key=natural_keys)
 print len(existing_roi_trial_fns)
 if len(existing_roi_trial_fns) > 0 and create_new is False:
-    roi_trials_by_stim_path = os.path.join(traceid_dir, existing_roi_trial_fns[0])
+    roi_trials_by_stim_path = os.path.join(traceid_dir, existing_roi_trial_fns[-1])
     print "TID %s -- Loaded ROI timecourses for run %s." % (trace_hash, run)
     print "ROI trial file path is: %s" % roi_trials_by_stim_path
 else:
@@ -570,6 +571,7 @@ else:
     roi_trials = h5py.File(roi_trials_by_stim_path, 'w')
 
     try:
+        print "TID %s -- Creating NEW ROI timecourses file, tstamp: %s" % tstamp
         for configname in sorted(configs.keys(), key=natural_keys):
         
             currconfig = configs[configname]
