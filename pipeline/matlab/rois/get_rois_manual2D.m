@@ -175,7 +175,7 @@ for slidx = roi_slices
     
     %keep track of info to save to roiparams
      nrois{slidx} = size(masks,3);
-     sourcepaths{slidx} = fullfile(average_images_dir, curr_slice_fn);
+     sourcepaths{slidx} = fullfile(slice_sourcedir, curr_slice_fn); %fullfile(average_images_dir, curr_slice_fn);
 %     maskpaths{slidx} = fullfile(mask_dir,mask_filename);
      allmasks{slidx} = masks;
 
