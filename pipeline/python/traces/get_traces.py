@@ -451,14 +451,6 @@ try:
         file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
         file_grp.attrs['mask_sourcefile'] = mask_path
     
-        # Get curr file's masks, or use reference:
-#        if F in MASKS.keys():
-#            single_ref = False
-#            mask_key = curr_file
-#        else:
-#            single_ref = True
-#            mask_key = MASKS.keys()[0]
-    
         for sl in range(len(roi_slices)):
     
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
@@ -507,9 +499,17 @@ try:
             if 'frames_tsec' not in slice_grp.keys():
                 fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
             fset[...] = curr_tstamps
-            
+
+            # Get curr file's masks, or use reference:
+            if curr_file in maskfile.keys():
+                single_ref = False
+                mask_key = curr_file
+            else:
+                single_ref = True
+                mask_key = maskfile.keys()[0]
+
             # CHeck if have nmf traces:
-            if 'Ab_data' in maskfile[curr_file].keys():
+            if 'Ab_data' in maskfile[mask_key].keys():
                 Ab = load_sparse_mat('%s/Ab' % curr_file, mask_path).todense()
                 Cf = load_sparse_mat('%s/Cf' % curr_file, mask_path).todense()
                 extracted_traces = Ab.T.dot(Ab.dot(Cf))
