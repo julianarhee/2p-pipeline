@@ -248,7 +248,8 @@ def set_preprocessing_params(correct_flyback=False,
     return preprocess_params
 
 
-def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype='raw',
+def set_params(rootdir='', homedir='', notnative=False,
+               animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype='raw',
                correct_bidir=False, correct_flyback=False, nflyback_frames=None,
                split_channels=False, correct_motion=False, ref_file=1, ref_channel=1,
                mc_method=None, mc_algorithm=None, auto=False):
@@ -309,8 +310,12 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     PARAMS = dict()
     PARAMS['source'] = dict()
 
-    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    print acquisition_dir
+    if notnative is True:
+        acquisition_dir = os.path.join(homedir, animalid, session, acquisition)
+        print "WARNING: Creating PID set from a different root than processing script."
+        print "User specified rootdir: %s" % homedir
+    else:
+        acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     # Check tiffs to see if should split-channels for Matlab-based MC:
     if correct_motion is True or correct_bidir is True:
@@ -332,19 +337,19 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
     PARAMS['source']['session'] = session
     PARAMS['source']['acquisition'] = acquisition
     PARAMS['source']['run'] = run
-
+    
+    rundir = os.path.join(acquisition_dir, run)
+    
+    # Create 'processed' dir if first processing step:
     if not os.path.exists(os.path.join(acquisition_dir, run, 'processed')):
         os.makedirs(os.path.join(acquisition_dir, run, 'processed'))
-
-    rundir = os.path.join(acquisition_dir, run)
-
+    
+    # Check whether there are existing process ID dirs:
     processed_dirs = sorted([p for p in os.listdir(os.path.join(rundir, 'processed'))
                               if 'processed' in p], key=natural_keys)
-
     process_dict = load_processdict(acquisition_dir, run)
 
     rawdir_name = [r for r in os.listdir(rundir) if 'raw' in r and os.path.isdir(os.path.join(rundir, r))]
-
     if tiffsource is None or len(tiffsource) == 0:
         while True:
             if auto is True:
@@ -398,7 +403,10 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
             tiffsource = rawdir_name[0]
         tiffsource_for_run = tiffsource
 
-    PARAMS['source']['tiffsource'] = tiffsource_for_run
+    if notnative is True:
+        PARAMS['source']['tiffsource'] = tiffsource_for_run.replace(homedir, rootdir)
+    else:
+        PARAMS['source']['tiffsource'] = tiffsource_for_run
 
     # ----------------------------------------------------------
     # Get preprocessing opts:
@@ -423,7 +431,7 @@ def set_params(rootdir='', animalid='', session='', acquisition='', run='', tiff
 
     return PARAMS
 
-def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
+def initialize_pid(PARAMS, acquisition_dir, run, auto=False, rootdir='', homedir='', notnative=False):
 
     print "************************"
     print "Initialize PID."
@@ -436,6 +444,10 @@ def initialize_pid(PARAMS, acquisition_dir, run, auto=False):
     pid['version'] = version
     pid['process_id'] = process_id
     pid['PARAMS'] = PARAMS
+    
+    if notnative is True:
+        acquisition_dir = acquisition_dir.replace(homedir, rootdir)
+        
     pid['SRC'] = os.path.join(acquisition_dir, run, PARAMS['source']['tiffsource']) #source_dir
     pid['DST'] = os.path.join(acquisition_dir, run, 'processed', process_id)
 
@@ -533,7 +545,8 @@ def get_process_id(PARAMS, acquisition_dir, run, auto=False):
     return process_id
 
 
-def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
+def get_default_pid(rootdir='', homedir='', notnative=False,
+                    animalid='', session='', acquisition='', run='',
                     correct_flyback=None, nflyback_frames=0):
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -547,7 +560,7 @@ def get_default_pid(rootdir='', animalid='', session='', acquisition='', run='',
                          correct_flyback=correct_flyback, nflyback_frames=nflyback_frames)
 
     # Generate new process_id based on input params:
-    pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True)
+    pid = initialize_pid(DEFPARAMS, acquisition_dir, run, auto=True, rootdir=rootdir, homedir=homedir, notnative=notnative)
 
     # UPDATE RECORDS:
     update_pid_records(pid, acquisition_dir, run)
@@ -588,16 +601,19 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_reader', default='~/Downloads/ScanImageTiffReader-1.1-Linux/share/python', help='path to dir containing ScanImageTiffReader.py')
+#    parser.add_option('-P', '--sipath', action='store', dest='path_to_si_reader', default='~/Downloads/ScanImageTiffReader-1.1-Linux/share/python', help='path to dir containing ScanImageTiffReader.py')
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+    parser.add_option('-H', '--home', action='store', dest='homedir', default='/nas/volume1/2photon/data', help='current data root dir (if creating params with path-root different than what will be used for actually doing the processing.')
+    parser.add_option('--notnative', action='store_true', dest='notnative', default=False, help="Set flag if not setting params on same system as processing.")
 
     # Set specific session/run for current animal:
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+    parser.add_option('--default', action='store_true', dest='default', default=False, help="Use all DEFAULT params, for params not specified by user (no interactive)")
 
+    # Set specific tif source dirs:
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
@@ -619,8 +635,8 @@ def extract_options(options):
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
-        if 'coxfs01' not in options.path_to_si_reader:
-            options.path_to_si_reader = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux/share/python'
+#        if 'coxfs01' not in options.path_to_si_reader:
+#            options.path_to_si_reader = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux/share/python'
 
     return options
 
@@ -629,6 +645,9 @@ def create_pid(options):
     options = extract_options(options)
 
     rootdir = options.rootdir
+    homedir = options.homedir
+    notnative = options.notnative
+    
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
@@ -660,16 +679,22 @@ def create_pid(options):
     # -------------------------------------------------------------
 
     # Create config of PARAMS:
-    PARAMS = set_params(rootdir=rootdir, animalid=animalid, session=session,
-                            acquisition=acquisition, run=run, tiffsource=tiffsource, sourcetype=sourcetype,
+    PARAMS = set_params(rootdir=rootdir, homedir=homedir, notnative=notnative,
+                            animalid=animalid, session=session,
+                            acquisition=acquisition, run=run, 
+                            tiffsource=tiffsource, sourcetype=sourcetype,
                             correct_bidir=correct_bidir, correct_flyback=correct_flyback, nflyback_frames=nflyback_frames,
                             correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel,
                             mc_method=mc_method, mc_algorithm=mc_algorithm, auto=auto)
 
     # Generate new process_id based on input params:
-    acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    print "ACQ DIR:", acquisition_dir
-    pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto)
+    if notnative is True:
+        acquisition_dir = os.path.join(homedir, animalid, session, acquisition)
+        print "NON-NATIVE acquisition dir::", acquisition_dir
+    else:
+        acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+        
+    pid = initialize_pid(PARAMS, acquisition_dir, run, auto=auto, rootdir=rootdir, homedir=homedir, notnative=notnative)
 
     # UPDATE RECORDS:
     update_pid_records(pid, acquisition_dir, run)
