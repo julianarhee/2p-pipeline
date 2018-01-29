@@ -74,6 +74,7 @@ def fake_process_run(options):
     # -------------------------------------------------------------
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    print acquisition_dir
 
     # ===========================================================================
     # If PID specified, that takes priority:
@@ -94,28 +95,22 @@ def fake_process_run(options):
 
     return pid_hash
     
-def process_run(pid_filepath):
+def process_run_pid(pid_filepath):
     
     with open(pid_filepath, 'r') as f:
         pidinfo = json.load(f)
+       
+    popts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid'], '--slurm']
+    print popts
     
-    # Load current PID info from tmp file:
-#    tmp_pid_fpath = os.path.join(pidinfo['rootdir'], pidinfo['animalid'],
-#                                 pidinfo['session'], pidinfo['run'],
-#                                 'processed', 'tmp_pids', 'tmp_pid_%s.json' % pidinfo['pid'])
-#    with open(tm_pid_fpath, 'r') as f:
-#        pid = json.load(f)
-    
-    popts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid']]
-    
-    pidhash = fake_process_run(popts)
+    pidhash = fake_process_pid(popts)
         
     return pidhash
 
 def main():
     
     pid_filepath = sys.argv[1]
-    pidhash = process_run(pid_filepath)
+    pidhash = process_run_pid(pid_filepath)
     
     print "FINISHED PROCESSING PID %s." % pidhash
     
