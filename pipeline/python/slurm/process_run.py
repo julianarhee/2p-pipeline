@@ -12,6 +12,7 @@ import json
 import optparse
 
 from pipeline.python.preprocessing.process_raw import process_pid
+import logging
 
 def fake_process_run(options):
     parser = optparse.OptionParser()
@@ -91,26 +92,39 @@ def fake_process_run(options):
         execute_motion = PID['PARAMS']['motion']['correct_motion']
     print "PID %s -- Flyback: %s" % (pid_hash, str(execute_flyback))
     print "PID %s -- Bidir: %s" % (pid_hash, str(execute_bidi))
-    print "PID %s -- Motion:" % (pid_hash, str(execute_motion))
+    print "PID %s -- Motion: %s" % (pid_hash, str(execute_motion))
 
     return pid_hash
     
 def process_run_pid(pid_filepath):
-    
+
+ 
     with open(pid_filepath, 'r') as f:
-        pidinfo = json.load(f)
+        pinfo = json.load(f)
        
-    popts = ['-R', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-r', pinfo['run'], '-p', pinfo['pid'], '--slurm']
-    print popts
+    popts = ['-D', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-R', pinfo['run'], '-p', pinfo['pid']] #, '--slurm']
+
     
-    pidhash = fake_process_pid(popts)
+    pidhash = fake_process_run(popts)
         
     return pidhash
 
-def main():
-    
-    pid_filepath = sys.argv[1]
+def main(pid_filepath):
+
+    logging.info(pid_filepath)
+
     pidhash = process_run_pid(pid_filepath)
+ 
+    logging.info("FINISHED PROCESSING PID %s." % pidhash)
+
+if __name__ == "__main__":
+    pid_path = sys.argv[1]
+    pid_id = os.path.splitext(os.path.split(pid_path)[-1])[0].split('_')[-1]
+
+    logging.basicConfig(level=logging.DEBUG, filename="logfile_%s" % pid_id, filemode="a+",
+                        format="%(asctime)-15s %(levelname)-8s %(message)s")
+    logging.info("starting...")
     
-    print "FINISHED PROCESSING PID %s." % pidhash
+    main(pid_path)
     
+    logging.info('done.')
