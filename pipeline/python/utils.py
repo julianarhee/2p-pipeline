@@ -399,7 +399,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     if not len(all_tiffs) == expected_ntiffs:
         print "**WARNING*********************"
         print "Mismatch in tiffs found (%i) and expected n tiffs (%i)." % (len(all_tiffs), expected_ntiffs)
-        good_to_go = False
+        #good_to_go = False # sometimes we do a subset of session files
     else:
         print "Found %i TIFFs in source:" % len(all_tiffs), source_dir
         print "Expected n tiffs:", expected_ntiffs
