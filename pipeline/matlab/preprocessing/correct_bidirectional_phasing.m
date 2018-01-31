@@ -2,7 +2,8 @@ function [M,col_shift] = correct_bidirectional_phasing(Y,us)
 
 if ~exist('us','var'); us = 10; end
 
-sizY = size(Y);
+fprintf('Correcting bidi scan phase offset...\n')
+sizY = size(Y)
 Y = single(Y);
 Y = reshape(Y,[sizY(1:2),prod(sizY(3:end))]);
 mY = mean(Y,3);

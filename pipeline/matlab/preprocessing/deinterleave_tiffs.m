@@ -29,7 +29,7 @@ for sl = slices %1:nslices
 
         % Create movie fileName and save to default format
         % TODO: set this to work with other mc methods....
-        mov_filename = feval(namingFunction,base_filename, sl, ch, fid);
+        mov_filename = feval(namingFunction, base_filename, sl, ch, fid);
         try
             tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         catch
