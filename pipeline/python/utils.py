@@ -342,8 +342,9 @@ def deinterleave_tiffs(source_dir, write_dir, runinfo_path):
     tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
     good_to_go = True
     if not len(tiffs) == nfiles:
+        print "**WARNING*********************"
         print "Mismatch in num tiffs. Expected %i files, found %i tiffs in dir:\n%s" % (ntiffs, len(tiffs), source_dir)
-        good_to_go = False
+        #good_to_go = False
     if good_to_go:
         # Load in each TIFF and deinterleave:
         for fidx,filename in enumerate(sorted(tiffs, key=natural_keys)):
@@ -450,19 +451,23 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
 
     tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
     print tiffs
-    filenames = ['File%03d' % int(i+1) for i in range(nfiles)]
+    filenames = ['File%03d' % int(i+1) for i in range(len(tiffs))] #nfiles)]
     for fi, (tfn, fname) in enumerate(zip(sorted(tiffs, key=natural_keys), sorted(filenames, key=natural_keys))):
         filenum = int(fi + 1)
+	print fi, fname, tfn
         #tiff_fns = [t for t in tiffs if fname in t]
         #tfn = tiff_fns[0]
         currtiff = tf.imread(os.path.join(source_dir, tfn))
-        if currtiff.shape[0] == nchannels*nslices*nvolumes:
+        nslices_actual = currtiff.shape[0]/(nchannels*nvolumes)
+	ndiscard = nslices_actual - nslices
+        if currtiff.shape[0] == nchannels*(nslices+ndiscard)*nvolumes:
             for ch in range(nchannels):
                 channelnum = int(ch+1)
                 ch_tiff = currtiff[ch::nchannels]
                 for sl in range(nslices):
                     slicenum = int(sl+1)
-                    sl_tiff = ch_tiff[sl::nslices]
+                    sl_tiff = ch_tiff[sl::(nslices+ndiscard)]
+		    print "Slice tiff shape:", sl_tiff.shape
                     if zproj_type == 'mean' or zproj_type == 'average':
                         zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
                     elif zproj_type == 'std':
@@ -476,7 +481,9 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
                     tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
 
                     print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
-
+        else:
+            print "Loaded tiff shape does not match dims expected:", os.path.join(source_dir, tfn)
+            print "nchannels: %i, nslices: %i, ndiscard: %i, nvolumes: %i" % (nchannels, nslices, ndiscard, nvolumes)
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
     #sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)
