@@ -67,7 +67,8 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
     if write_hash not in write_dir:
         newwrite_dir = write_dir + '_%s' % write_hash
         print "New output dir:", newwrite_dir
-        os.rename(write_dir, newwrite_dir)
+	if not os.path.exists(newwrite_dir):
+            os.rename(write_dir, newwrite_dir)
     else:
         newwrite_dir = write_dir
 
