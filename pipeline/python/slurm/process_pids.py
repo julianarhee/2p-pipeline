@@ -23,21 +23,10 @@ def fake_process_run(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help='name of run to process') 
-    parser.add_option('-P', '--repo', action='store', dest='repo_path', default='', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
-
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
-    #parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
-
-    parser.add_option('--flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
-    parser.add_option('-F', '--nflyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
-    parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
-    parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
-    parser.add_option('--zproject', action='store_true', dest='get_zproj', default='store_false', help="Set flag to create z-projection slices for processed tiffs.")
-    parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
-
     tiffsource = 'raw'
 
     (options, args) = parser.parse_args(options) 
@@ -55,24 +44,6 @@ def fake_process_run(options):
     run = options.run
     pid_hash = options.pid_hash
     repo_path = options.repo_path
-    #source_hash = options.source_hash
-
-    execute_flyback = options.do_fyback_correction 
-    nflyback = int(options.flyback)
-
-    slurm = options.slurm
-    default = options.default
-    
-    get_zproj = options.get_zproj
-    zproj_type = options.zproj_type
-
-    # -------------------------------------------------------------
-    # Set basename for files created containing meta/reference info:
-    # -------------------------------------------------------------
-    raw_simeta_basename = 'SI_%s' % run #functional_dir
-    run_info_basename = '%s' % run #functional_dir
-    pid_info_basename = 'pids_%s' % run
-    # -------------------------------------------------------------
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     print acquisition_dir
@@ -80,6 +51,7 @@ def fake_process_run(options):
     # ===========================================================================
     # If PID specified, that takes priority:
     # ===========================================================================
+    execute_flyback = False
     execute_bidi = False
     execute_motion = False
     if len(pid_hash) > 0:
@@ -98,33 +70,50 @@ def fake_process_run(options):
     
 def process_run_pid(pid_filepath):
 
- 
-    with open(pid_filepath, 'r') as f:
-        pinfo = json.load(f)
-       
-    popts = ['-D', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-R', pinfo['run'], '-p', pinfo['pid']] #, '--slurm']
-
+    if 'tmp_spids' in pid_filepath:  # This means create_session_pids.py was run to format to set of run PIDs in current session 
+        with open(pid_filepath, 'r') as f:
+            pinfo = json.load(f)
+    else:
+        with open(pid_filepath, 'r') as f:
+            tmppid = json.load(f)
+        pinfo = tmppid['PARAMS']['source']
+        pinfo['pid'] = tmppid['pid_hash']       
     
-    pidhash = fake_process_run(popts)
+    logging.info('PID opts:')
+    logging.info(pinfo)
+       
+    popts = ['-D', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-R', pinfo['run'], '-p', pinfo['pid'], '--slurm', '--zproject'] 
+    pidhash = process_pid(popts)
         
     return pidhash
 
 def main(pid_filepath):
 
     logging.info(pid_filepath)
-
     pidhash = process_run_pid(pid_filepath)
- 
+
     logging.info("FINISHED PROCESSING PID %s." % pidhash)
 
 if __name__ == "__main__":
+
     pid_path = sys.argv[1]
     pid_id = os.path.splitext(os.path.split(pid_path)[-1])[0].split('_')[-1]
 
     logging.basicConfig(level=logging.DEBUG, filename="logfile_%s" % pid_id, filemode="a+",
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
-    logging.info("starting...")
+    logging.info("PID %s -- starting..." % pid_id)
     
     main(pid_path)
     
-    logging.info('done.')
+    # Clean up session info dict:
+    tmp_session_info_dir = os.path.split(pid_path)[0]
+    completed_session_info_dir = os.path.join(tmp_session_info_dir, 'completed')
+    if not os.path.exists(completed_session_info_dir):
+        os.makedirs(completed_session_info_dir)
+
+    completed_pinfo_path = os.path.join(completed_session_info_dir, os.path.split(pid_path)[-1])
+    if os.path.exists(pid_path):
+        os.rename(pid_path, completed_pinfo_path)
+        logging.info("Cleaned up session info file: %s" % completed_pinfo_path)
+    
+    logging.info("PID %s -- done!" % pid_id)
