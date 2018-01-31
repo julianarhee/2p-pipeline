@@ -29,19 +29,19 @@ import correct_motion as mc
 import time
 from functools import wraps
  
-def fn_timer(function):
-    @wraps(function)
-    def function_timer(*args, **kwargs):
-        t0 = time.time()
-        result = function(*args, **kwargs)
-        t1 = time.time()
-        print ("Total time running %s: %s seconds" %
-               (function.func_name, str(t1-t0))
-               )
-        return result
-    return function_timer
-
-@fn_timer
+#def fn_timer(function):
+#    @wraps(function)
+#    def function_timer(*args, **kwargs):
+#        t0 = time.time()
+#        result = function(*args, **kwargs)
+#        t1 = time.time()
+#        print ("Total time running %s: %s seconds" %
+#               (function.func_name, str(t1-t0))
+#               )
+#        return result
+#    return function_timer
+#
+#@fn_timer
 def process_pid(options):
 
     parser = optparse.OptionParser()
@@ -53,20 +53,24 @@ def process_pid(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help='name of run to process') 
     parser.add_option('-P', '--repo', action='store', dest='repo_path', default='', help='Path to 2p-pipeline repo. [default: ~/Repositories/2p-pipeline. If --slurm, default: /n/coxfs01/2p-pipeline/repos/2p-pipeline]')
+    parser.add_option('-C', '--cvx', action='store', dest='cvx_path', default='~/MATLAB/cvx', help='Path to cvx install dir [default: ~/MATLAB/cvx. If --slurm, default: /n/coxfs01/2p-pipeline/pkgs/cvx]')
 
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
+    # PROCESSING PARAMS:
     parser.add_option('-p', '--pid', action='store', dest='pid_hash', default='', help="PID hash of current processing run (6 char), default will create new if set_pid_params.py not run")
 
-    #parser.add_option('-H', '--hash', action='store', dest='source_hash', default='', help="hash of source dir (8 char). default uses output of get_scanimage_data()")
-
+    # PID always takes precedent, but without PID, can still run processing script as main():
     parser.add_option('--flyback', action='store_true', dest='do_fyback_correction', default=False, help="Correct incorrect flyback frames (remove from top of stack). [default: false]")
     parser.add_option('-F', '--nflyback', action='store', dest='flyback', default=0, help="Num extra frames to remove from top of each volume to correct flyback [default: 0]")
     parser.add_option('--notiffs', action='store_false', dest='save_tiffs', default=True, help="Set if not to write TIFFs after flyback-correction.")
+
     parser.add_option('--rerun', action='store_false', dest='new_acquisition', default=True, help="set if re-running to get metadata for previously-processed acquisition")
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--zproject', action='store_true', dest='get_zproj', default='store_false', help="Set flag to create z-projection slices for processed tiffs.")
     parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+ 
     tiffsource = 'raw'
 
     (options, args) = parser.parse_args(options) 
@@ -94,6 +98,19 @@ def process_pid(options):
     
     get_zproj = options.get_zproj
     zproj_type = options.zproj_type
+
+    if slurm is True:
+        if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/2p-data'
+        sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
+	repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline'
+	cvx_path = '/n/coxfs01/2p-pipeline/pkgs/cvx'
+        print "SI path: %s" % sireader_path
+	print "REPO path: %s" % repo_path
+	print "CVX path: %s" % cvx_path
+    else:
+        cvx_path = options.cvx_path
+
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -125,13 +142,7 @@ def process_pid(options):
     # ===========================================================================
     # 1.  Get SI meta data from raw tiffs:
     # ===========================================================================
-    if slurm is True:
-        if 'coxfs01' not in rootdir:
-            rootdir = '/n/coxfs01/2p-data'
-        sireader_path = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
-        print sireader_path
-
-    simeta_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run]
+    simeta_options = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run]
 
     print "Getting SI meta data"
     if new_acquisition is False:
@@ -169,7 +180,7 @@ def process_pid(options):
     print "N channels: {nchannels}, N slices: {nslices}, N volumes: {nvolumes}".format(nchannels=nchannels, nslices=nslices, nvolumes=nvolumes)
     print "Num discarded frames for flyback:", ndiscard
 
-    flyback_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
+    flyback_options = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run,
                       '-z', nslices, '-c', nchannels, '-v', nvolumes]
     if len(pid_hash) > 0:
         flyback_options.extend(['-p', pid_hash])
@@ -184,6 +195,10 @@ def process_pid(options):
     if slurm is True:
         flyback_options.extend(['--slurm'])
 
+#    if len(repo_path) > 0:
+#        flyback_options.extend(['-P', repo_path])
+#
+
     flyback_hash, pid_hash = fb.do_flyback_correction(flyback_options)
     #pid_hash = PID['pid_hash']
     print "Flyback hash: %s" % flyback_hash
@@ -193,15 +208,16 @@ def process_pid(options):
     # 3.  Correct bidir scanning, if needed:
     # ===========================================================================
     import correct_bidirscan as bd
-    bidir_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+    bidir_options = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', pid_hash]
     if default is True:
         bidir_otions.extend(['--default'])
     if slurm is True:
-        bidir_options.extend(['--slurm'])
+        bidir_options.extend(['--slurm', '-C', cvx_path])
     if execute_bidi is True:
         bidir_options.extend(['--bidi'])
     if len(repo_path) > 0:
-        bidir_options.extend(['-P', repo_path])
+        bidir_options.extend(['-P', repo_path]) 
+
     print bidir_options
 
     bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
@@ -227,11 +243,11 @@ def process_pid(options):
     # ===========================================================================
     # 4.  Correct motion, if needed:
     # ===========================================================================
-    mc_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', pid_hash]
+    mc_options = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', pid_hash]
     if default is True:
         mc_options.extend(['--default'])
     if slurm is True:
-        mc_options.extend(['--slurm'])
+        bidir_options.extend(['--slurm', '-C', cvx_path]) #, '-P', repo_path])
     if execute_motion is True:
         mc_options.extend(['--motion'])
     if len(repo_path) > 0:
