@@ -714,7 +714,9 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
 
 #%%
 def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
-
+    nmfopts_hash = None
+    ngood_rois = 0
+    
     RID = load_RID(tmp_rid_path)
     
     tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
@@ -724,7 +726,7 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
     print "Getting mmapped files."
     mmap_paths = mmap_tiffs(tmp_rid_path)
     print "DONE MEMMAPPING! There are %i mmap files for current run." % len(mmap_paths)
-
+    
     try:
         tiffmatches = [t for t in tiffpaths if currfile in t]
         assert len(tiffmatches) == 1, "Unable to find correct tiff match for specified filenum: %s" % currfile
