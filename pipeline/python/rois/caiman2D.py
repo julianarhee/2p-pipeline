@@ -713,7 +713,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
 
     RID = load_RID(tmp_rid_path)
     
@@ -745,7 +745,12 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12):
 def main():
     filenum = sys.argv[2]
     tmp_rid_path = sys.argv[1]
-    nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum)
+    nproc = sys.argv[3]
+    if len(nproc) == 0:
+        nproc = None
+    else:
+        nproc = int(nproc)
+    nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc)
     
 if __name__ == '__main__':
     main()
