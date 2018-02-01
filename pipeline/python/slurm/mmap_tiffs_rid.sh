@@ -27,6 +27,6 @@ if [ $ZBNUMFILES -ge 0 ]; then
     for i in ${!FILES[*]};do export FILES_$i="${FILES[$i]}";done	
      
     # submit to slurm
-    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/mmap_tiffs.sbatch    
+    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/mmap_tiffs_rid.sbatch    
 fi
 
