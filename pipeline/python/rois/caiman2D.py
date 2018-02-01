@@ -292,30 +292,16 @@ def mmap_tiffs(tmp_rid_path):
     
     if RID is not None:
         params = RID['PARAMS']['options']
-        nmovies = params['info']['nmovies']
-        nchannels = params['info']['nchannels']
-        signal_channel = params['info']['signal_channel']
-        volumerate = params['info']['volumerate']
         is_3D = params['info']['is_3D']
         border_pix = params['info']['max_shifts']
-        frate = params['eval']['final_frate']          # imaging rate in frames per second
-        movie_files = params['display']['movie_files']
-    
-        display_average = params['display']['use_average']
-        inspect_components = False
-        save_movies = params['display']['save_movies']
-        remove_bad = False
 
         # Get TIFF paths, and create memmapped files, if needed:
         # =========================================================================
         tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
         print "RID %s -- Checking mmap files for each tif (%i tifs total)." % (rid_hash, len(tiffpaths))
-#        for t in tiffpaths:
-#            print t
         mmap_dir = RID['PARAMS']['mmap_source']
         expected_filenames, mmap_paths = check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D, border_pix=border_pix)
     
-        #%
         # Update mmap dir with hashed mmap files, update RID:
         # =========================================================================
         check_mmap_hash = False
@@ -341,9 +327,11 @@ def mmap_tiffs(tmp_rid_path):
     
         print "******************************"
         print "Done MEMMAPPING tiffs:"
+        print "Output saved to: %s" % mmap_dir
         print "******************************"
-        for m in mmap_paths:
-            print m
+        
+#        for m in mmap_paths:
+#            print m
          
     return mmap_paths
 
@@ -478,14 +466,14 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
     #% Set NMF options from ROI params:
     params = RID['PARAMS']['options']
 
-    nmovies = params['info']['nmovies']
-    nchannels = params['info']['nchannels']
-    signal_channel = params['info']['signal_channel']
-    volumerate = params['info']['volumerate']
+    #nmovies = params['info']['nmovies']
+    #nchannels = params['info']['nchannels']
+    #signal_channel = params['info']['signal_channel']
+    #volumerate = params['info']['volumerate']
     is_3D = params['info']['is_3D']
-    border_pix = params['info']['max_shifts']
-    frate = params['eval']['final_frate']          # imaging rate in frames per second
-    movie_files = params['display']['movie_files']
+    #border_pix = params['info']['max_shifts']
+    #frate = params['eval']['final_frate']          # imaging rate in frames per second
+    #movie_files = params['display']['movie_files']
 
     display_average = params['display']['use_average']
     inspect_components = False
@@ -722,20 +710,20 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
     for log_file in log_files:
         os.remove(log_file)
     
-    return nmfopts_hash, rid_hash
+    return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def run_nmf_extraction(filenum, tmp_pid_path):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12):
 
-    RID = load_RID(tmp_pid_path)
+    RID = load_RID(tmp_rid_path)
     
     tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
     
-    currfile = 'File%03d' % int(filenum)
+    currfile = 'File%03d' % int(file_num)
     
     print "Getting mmapped files."
-    mmap_paths = mmap_tiffs(tmp_pid_path)
-    print "DONE MEMMAPPING!"
+    mmap_paths = mmap_tiffs(tmp_rid_path)
+    print "DONE MEMMAPPING! There are %i mmap files for current run." % len(mmap_paths)
 
     try:
         tiffmatches = [t for t in tiffpaths if currfile in t]
@@ -743,19 +731,21 @@ def run_nmf_extraction(filenum, tmp_pid_path):
         tiffpath =  tiffmatches[0]
         
         print "EXTRACTING ROIS"
-        nmfopts_hash, rid_hash = run_nmf_on_file(tiffpath, tmp_pid_path, nproc=None)
+        nmfopts_hash, ngood_rois, rid_hash = run_nmf_on_file(tiffpath, tmp_rid_path, nproc=nproc)
     
         print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmfopts_hash)
+        print "%s-- Initialial evalation found %i ROIs that pass." % (currfile, ngood_rois)
         
     except Exception as e:
         print "Failed while extracting cnmf ROIs for %s" % currfile
         traceback.print_exc()
 
+    return nmfopts_hash, ngood_rois
 
 def main():
     filenum = sys.argv[2]
-    tmp_pid_path = sys.argv[1]
-    run_nmf_extraction(filenum, tmp_pid_path)
+    tmp_rid_path = sys.argv[1]
+    nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum)
     
 if __name__ == '__main__':
     main()
