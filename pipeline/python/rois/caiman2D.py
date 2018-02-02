@@ -49,7 +49,113 @@ def timer(start,end):
     minutes, seconds = divmod(rem, 60)
     formatted_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
     return formatted_time
-   
+
+#%%
+def extract_options(options):
+
+    # PATH opts:
+    choices_sourcetype = ('raw', 'mcorrected', 'bidi')
+    default_sourcetype = 'mcorrected'
+
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+
+    parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
+    parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
+
+    parser.add_option('-p', '--rid', action='store', dest='rid_hash', default='', help="RID hash of current ROI extraction (6 char), default will create new if set_roi_params.py not run")
+
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
+    parser.add_option('-x', '--exclude', action="store",
+                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
+    parser.add_option('-n', '--nproc', action="store",
+                  dest="nproc", default=12, help="N cores [default: 12]")
+    
+    (options, args) = parser.parse_args(options) 
+    
+    return options
+
+#%%
+def extract_cnmf_rois(options):
+    t_serial = time.time()
+    
+    options = extract_options(options)
+    
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+
+    tiffsource = options.tiffsource
+    sourcetype = options.sourcetype
+    rid_hash = options.rid_hash
+    slurm = options.slurm
+    exclude_str = options.excluded_tiffs
+    nproc = int(options.nproc)
+    
+    if slurm is True:
+        if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/2p-data'
+            
+    if len(exclude_str) > 0:
+        excluded_fids = exclude_str.split(',')
+        excluded_tiffs = ['File%03d' % int(f) for f in excluded_fids]
+    else:
+        excluded_tiffs = []
+    
+    print "Excluding files:", excluded_tiffs
+
+    # Set dirs:    
+    session_dir = os.path.join(rootdir, animalid, session)
+    roi_basedir = os.path.join(session_dir, 'ROIs')
+    if not os.path.exists(roi_basedir):
+        os.makedirs(roi_basedir)
+        
+    # GET RID and RID path:
+    if len(rid_hash) == 0:
+        print "Creating new RID..."
+        rid_options = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run,
+                           '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
+        if slurm is True:
+            rid_options.extend(['--slurm'])
+        RID = create_rid(rid_options)
+        rid_hash = RID['rid_hash']
+        tmp_rid_path = os.path.join(roi_basedir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+    else:
+        print "RID %s -- Loading params..." % rid_hash
+        tmp_rid_path = os.path.join(roi_basedir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
+        RID = load_RID(tmp_rid_path, infostr='initialization')
+
+    # Memmap tiffs, get mmapped tiff paths:
+    print "Getting mmapped files."
+    mmap_paths = par_mmap_tiffs(tmp_rid_path)
+    print "DONE MEMMAPPING! There are %i mmap files for current run." % len(mmap_paths)       
+    
+    files_to_run = sorted([str(re.search('File(\d{3})', m).group(0)) for m in mmap_paths], key=natural_keys)
+    
+    for fidx, filename in enumerate(files_to_run):
+        filenum = int(fidx + 1)
+        print "Extracting from FILE %i..." % filenum
+        nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc)
+        print "Finished FILE %i. Found %i components that pass initial evaluation." % (filenum, ngood_rois)
+    
+    print "DONE PROCESSING ALL FILES (serial)!"
+    print "Total duration..."
+    print_elapsed_time(t_serial)
+    
+    return nmfopts_hash, rid_hash
+
 #%%
 
 def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0, idx_xy=None,
@@ -229,37 +335,6 @@ def check_memmapped_tiffs(tiffpaths, mmap_dir, is_3D, border_pix=0):
     return expected_filenames, mmap_paths
 
 #%%
-#def extract_options(options):
-#    # PATH opts:
-#    choices_sourcetype = ('raw', 'mcorrected', 'bidi')
-#    default_sourcetype = 'mcorrected'
-#
-#    parser = optparse.OptionParser()
-#
-#    # PATH opts:
-#    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-#    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-#
-#    # Set specific session/run for current animal:
-#    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-#    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-#    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-#    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
-#
-#    parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
-#    parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
-#
-#    parser.add_option('-p', '--rid', action='store', dest='rid_hash', default='', help="RID hash of current ROI extraction (6 char), default will create new if set_roi_params.py not run")
-#
-#    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-#
-#    parser.add_option('-x', '--exclude', action="store",
-#                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
-#
-#    (options, args) = parser.parse_args(options) 
-#    
-#    return options
-
 def load_RID(tmp_rid_path, infostr='placeholder'):
     
     RID = None
@@ -275,7 +350,7 @@ def load_RID(tmp_rid_path, infostr='placeholder'):
     return RID
 
 #%%
-def mmap_tiffs(tmp_rid_path):
+def par_mmap_tiffs(tmp_rid_path):
     
     mmap_paths = []
     
@@ -465,16 +540,8 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
         
     #% Set NMF options from ROI params:
     params = RID['PARAMS']['options']
-
-    #nmovies = params['info']['nmovies']
-    #nchannels = params['info']['nchannels']
-    #signal_channel = params['info']['signal_channel']
-    #volumerate = params['info']['volumerate']
+    border_to_0 = RID['PARAMS']['border_pix']
     is_3D = params['info']['is_3D']
-    #border_pix = params['info']['max_shifts']
-    #frate = params['eval']['final_frate']          # imaging rate in frames per second
-    #movie_files = params['display']['movie_files']
-
     display_average = params['display']['use_average']
     inspect_components = False
     save_movies = params['display']['save_movies']
@@ -489,10 +556,17 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
         assert len(mmap_fn_matches) == 1, "Unable to find .MMAP file match for %s." % curr_filename
         mmap_path = os.path.join(mmap_dir, mmap_fn_matches[0])
     except Exception as e:
-        print "Problem getting MMAP'ed file."
         traceback.print_exc()
-        print "Aborting. Check MMAP files."
-        print "---------------------------------------------------------------"
+        try:
+            print "Attempting to create memmap file for tiff." 
+            print "Writing to dir: %s" % mmap_dir
+            mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
+        except Exception as e:
+            print "Unable to create memmap file for tiff:\n%s" % tiffpath
+            traceback.print_exc()
+            print "Problem getting MMAP'ed file."
+            print "Aborting. Check MMAP files."
+            print "---------------------------------------------------------------"
     
     if mmap_path is not None:
         t_start = time.time()
@@ -723,9 +797,9 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
     
     currfile = 'File%03d' % int(file_num)
     
-    print "Getting mmapped files."
-    mmap_paths = mmap_tiffs(tmp_rid_path)
-    print "DONE MEMMAPPING! There are %i mmap files for current run." % len(mmap_paths)
+#    print "Getting mmapped files."
+#    mmap_paths = mmap_tiffs(tmp_rid_path)
+#    print "DONE MEMMAPPING! There are %i mmap files for current run." % len(mmap_paths)
     
     try:
         tiffmatches = [t for t in tiffpaths if currfile in t]
@@ -743,16 +817,11 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
         traceback.print_exc()
 
     return nmfopts_hash, ngood_rois
+    
+def main(options):
 
-def main():
-    filenum = sys.argv[2]
-    tmp_rid_path = sys.argv[1]
-    nproc = sys.argv[3]
-    if len(nproc) == 0:
-        nproc = None
-    else:
-        nproc = int(nproc)
-    nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc)
+    nmf_hash, rid_hash = extract_cnmf_rois(options)
+    print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmf_hash)
     
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:]) 
