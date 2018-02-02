@@ -18,8 +18,12 @@ def main():
 
     pid_path = sys.argv[1]
     pid_id = os.path.splitext(os.path.split(pid_path)[-1])[0].split('_')[-1]
+    logdir = os.path.join(os.path.split(pid_path)[0], "logging_%s" % pid_id)
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+    print "Logging to: %s" % logdir
 
-    logging.basicConfig(level=logging.DEBUG, filename="logfile_%s" % pid_id, filemode="a+",
+    logging.basicConfig(level=logging.DEBUG, filename="%s/logfile_%s_pid" % (logdir, pid_id), filemode="a+",
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
     logging.info("PID %s -- starting..." % pid_id)
  

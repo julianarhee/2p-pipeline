@@ -19,7 +19,7 @@ echo "p info: ${PARAMSPATH}"
 
 # create logging dir
 BASEDIR="$(dirname "$PARAMSPATH")"
-OUTDIR="${BASEDIR}/logging"
+OUTDIR="${BASEDIR}/logging_$RIDHASH"
 echo ${OUTDIR}
 
 # make and move into new directory, and run:

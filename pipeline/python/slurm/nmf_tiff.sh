@@ -28,7 +28,7 @@ if [ $ZBNUMFILES == 0 ]; then
     
     for TIFFNUM in $(seq 1 $NUMFILES); do
     echo "RID ${RIDHASH}, File ${TIFFNUM}"    
-    export PARAMSPATH TIFFNUM
+    export PARAMSPATH TIFFNUM RIDHASH
     
     # submit to slurm
     sbatch -o out_r${RIDHASH}_f${TIFFNUM}.out -e out_r${RIDHASH}_f${TIFFNUM}.err --job-name=nmf_${RIDHASH}_f${TIFFNUM} /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff.sbatch 

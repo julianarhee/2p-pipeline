@@ -22,7 +22,7 @@ echo "roi info: ${RIDPATH}"
 
 # create logging dir
 BASEDIR="$(dirname "$RIDPATH")"
-OUTDIR="${BASEDIR}/logging_$RIDHASH_eval"
+OUTDIR="${BASEDIR}/logging_$RIDHASH"
 echo ${OUTDIR}
 
 # make and move into new directory, and run:
