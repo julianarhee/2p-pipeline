@@ -2,7 +2,7 @@
 Several portions of the pipeline can be run much faster and in parallel if using the cluster. For example, running multiple parameter sets of the same .tif sources, extracting ROIs from individual .tif files, etc. These are a few example scripts to get started.
 
 ### TIFF processing.
-1 As always, create the parameter set for all runs to be processed:
+1. As always, create the parameter set for all runs to be processed:
 ```
 python set_pid_params.py --notnative -H /nas/volume1/2photon/data -D /n/coxfs01/2p-data -i <ANIMALID> -S <SESSION> -A <ACQUISITION> -R <RUN> -s raw -t raw --bidi --motion -f 5 --default --slurm
 ```
@@ -11,10 +11,10 @@ Here, we specifiy --notnative if not creating the param set on Odyssey. This is 
 If there is more than one PID set to process for this session or run, create a tmp file that tracks all PIDs to run:
 ```
 python create_session_pids.py -i <ANIMALID>  -S <SESSION> --slurm --indie
-``
-Set --notnative, -D, and -H, if relevant. This creates a set of tmp files in `SESSIONDIR/tmp_spids/.json` for each PID set in the session.
+```
+Set --notnative, -D, and -H, if relevant. This creates a set of tmp files in `<ROOTDIR>/<ANIMALID>/<SESSION>/tmp_spids/*.json` for each PID set in the session.
 
-2. After logging into RC, and creating a job output dir and run the shell script to process all PIDs associated with the session:
+2. Log into RC and run the shell script to process all PIDs associated with the session:
 ```
 bash /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/batch_process_pids.sh <ANIMALID> <SESSION> [<ACQUISITION> <RUN> <PIDHASH>]
 ```
@@ -36,6 +36,6 @@ bash /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_arr
 ```
 The last two args are optional. If LASTFILENUM is not provided, default value is 1 (same for FIRSTFILENUM). This allows you to extract ROIs from File001.tif through File006.tif, or File002.tif through File005.tif.
 
-This creates a .out and .err file for each processed file. The main python script called by the sbatch script will also create log files in /tmp_rids/logging/ dir.
+This creates a .out and .err file for each processed file. The main python script called by the sbatch script will also create log files in `/tmp_rids/logging/` dir.
 
 
