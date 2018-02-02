@@ -1,14 +1,14 @@
 #!/bin/bash
-
 ANIMALID="$1"
 SESSION="$2"
 RIDHASH="$3"
 RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids"
-echo "Requested single ROI ID for nmf extraction - ${RIDHASH}."
+#echo $RIDPATH
+echo "Requested single ROI ID to memmap - ${RIDHASH}."
 
 if [ "$#" -gt 3 ]; then
     NTIFFS="$4"
-    echo "Running NMF on ${NTIFFS} tiff files."
+    echo "Requesting NMF extraction on ${NTIFFS} tiff files."
 else
     NTIFFS=1
 fi
@@ -24,11 +24,12 @@ ZBNUMFILES=$(($NUMFILES - 1))
 
 if [ $ZBNUMFILES == 0 ]; then
     PARAMSPATH=${FILES[0]}
-    echo "Params path: ${PARAMSPATH}"
+    echo "Params path: $PARAMSPATH"
+ 
     export PARAMSPATH
 
     # submit to slurm
-    sbatch --array=1-$NTIFFS /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
+    sbatch --array=1-$NTIFFS /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array_tmp.sbatch
 
 fi
 

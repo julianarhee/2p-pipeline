@@ -1,5 +1,4 @@
 #!/bin/bash
-
 ANIMALID="$1"
 SESSION="$2"
 RIDHASH="$3"
@@ -16,7 +15,7 @@ fi
 echo "N tiffs: ${NTIFFS}"
 
 FILES=($RIDPATH/*$RIDHASH.json)
-
+echo $FILES
 # get size of array
 NUMFILES=${#FILES[@]}
 

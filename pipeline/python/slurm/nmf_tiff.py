@@ -32,7 +32,7 @@ def main():
     
     nmfopts_hash, ngood_rois = extract_nmf_from_rid(rid_path, file_num, nproc=nproc)
     
-    logging.info("FINISHED cNMF roi extraction for File %i:\n%s" % (roi_hash, file_num))
+    logging.info("FINISHED cNMF roi extraction for File %i:\n%s" % (file_num, roi_hash))
     logging.info("Found %i ROIs that pass initial evaluation." % ngood_rois)
     
     logging.info("RID %s -- extraction done!" % roi_hash)
