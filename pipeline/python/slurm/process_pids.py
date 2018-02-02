@@ -23,8 +23,8 @@ def main():
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
     logging.info("PID %s -- starting..." % pid_id)
  
-    logging.info(pid_filepath)
-    pidhash = process_run_pid(pid_filepath)
+    logging.info(pid_path)
+    pidhash = process_run_pid(pid_path)
 
     logging.info("FINISHED PROCESSING PID %s." % pidhash)
 
