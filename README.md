@@ -27,30 +27,21 @@ Also need to install the CaImAn package to pipeline env (see github for install 
 ```
 NOTE:  The pipeline assumes a standard file-tree:
 ```
-/ROOTDIR/
-└── ANIMALID
-    └── SESSION
-        └── ACQUISITION01
-            └── RUN001
-                └── raw
+/ROOTDIR/                                       # rootdir of all data [/nas/volume1/2photon/data]
+└── ANIMALID                                    # animal name [JR016]
+    └── SESSION                                 # session id with format YYYYMMDD [20170130]
+        └── ACQUISITION01                       # FOV, imaging params, etc. [FOV1_zoom1x_volume] 
+            └── RUN001                          # experiment run or protocol. [gratings_static_run1] 
+                └── raw                         # raw .tif files acquired (SI 2016)
                     ├── file_00001.tif
                     ├── file_00002.tif
                     ├── file_00003.tif
                     ├── file_00004.tif
-                    └── paradigm_files
+                    └── paradigm_files          # raw behavior/stimulus-related files
                         ├── protocol_output.mwk
                         └── serial_data.txt
 ```
-this is a test
-```
-<ROOTDIR>: base directory of all the data [/nas/volume1/2photon/data]
--- <ANIMALID>:  animal name [JR016]
--- -- <SESSION>: session id with format YYYYMMDD [20170130]
--- -- -- <ACQUISITION>: unique FOV, acquisition params, etc. [FOV1_zoom1x_volume]
--- -- -- -- <RUNID>: name of experiment run or protocol. [gratings_static]
--- -- -- -- -- raw: raw .tif files acquired (SI 2016)
--- -- -- -- -- -- paradigm_files: raw behavior or stimulus related files.
-```
+
 ## Code Example
 Basic workflow currently uses both Python and Matlab, until we choose a smaller subset of methods to use.
 
