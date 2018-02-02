@@ -52,7 +52,9 @@ def post_rid_cleanup(session_dir, rid_hash):
     finished_dir = os.path.join(tmp_rid_dir, 'completed')
     if not os.path.exists(finished_dir):
         os.makedirs(finished_dir)
-    shutil.move(rid_path, os.path.join(finished_dir, tmp_rid_fn))
+    if os.path.exists(rid_path):
+        os.rename(rid_path, os.path.join(finished_dir, tmp_rid_fn))
+    #shutil.move(rid_path, os.path.join(finished_dir, tmp_rid_fn))
     print "Moved tmp rid file to completed."
 
 

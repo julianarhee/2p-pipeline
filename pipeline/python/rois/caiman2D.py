@@ -30,7 +30,7 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
 from caiman.source_extraction.cnmf.utilities import extract_DF_F
 
-from pipeline.python.set_roi_params import create_rid, update_roi_records # get_tiff_paths, set_params, initialize_rid, update_roi_records
+from pipeline.python.set_roi_params import create_rid, update_roi_records, post_rid_cleanup # get_tiff_paths, set_params, initialize_rid, update_roi_records
 from pipeline.python.utils import write_dict_to_json, jsonify_array, natural_keys, print_elapsed_time
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -812,6 +812,10 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
         print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmfopts_hash)
         print "%s-- Initialial evalation found %i ROIs that pass." % (currfile, ngood_rois)
         
+        print "Cleaning up tmp files..."
+        session_dir = os.path.split(os.path.split(tmp_rid_path)[0])[0]
+        post_rid_cleanup(session_dir, rid_hash)
+        
     except Exception as e:
         print "Failed while extracting cnmf ROIs for %s" % currfile
         traceback.print_exc()
@@ -822,6 +826,6 @@ def main(options):
 
     nmf_hash, rid_hash = extract_cnmf_rois(options)
     print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmf_hash)
-    
+        
 if __name__ == '__main__':
     main(sys.argv[1:]) 

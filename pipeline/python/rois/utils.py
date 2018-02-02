@@ -70,7 +70,7 @@ def load_RID(session_dir, roi_id, auto=False):
     return RID
 
 #%%
-def get_source_paths(session_dir, RID, check_motion=True, mcmetric='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', acquisition='', run='', process_id=''):
     '''
     Get fullpaths to ROI source files, original tiff/mmap files, filter by MC-evaluation for excluded tiffs.
     Provide acquisition, run, process_id if source is NOT motion-corrected (default reference file and channel = 1).
@@ -108,7 +108,8 @@ def get_source_paths(session_dir, RID, check_motion=True, mcmetric='zproj_corrco
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
             
     # Get filenames for matches between roi source and tiff source:
-    assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
+    if subset is False:
+        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
     filenames = []
     for roi_src in roi_source_paths:
         # Get filename base
@@ -179,9 +180,12 @@ def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisit
         filenames =[f for f in filenames if int(f[4:]) not in [int(x) for x in exclude_str.split(',')]]
         excluded_tiffs = ['File%03d' % int(fidx) for fidx in exclude_str.split(',')]
     
-    print "Motion-correction info:"
+    print "-------------------------------------------------------------------"
+    print "Motion-correction info :"
     print "MC reference is %s, %s." % (mc_ref_file, mc_ref_channel)
     print "Found %i tiff files to exclude based on MC EVAL: %s." % (len(excluded_tiffs), mcmetric_type)
+    print "-------------------------------------------------------------------"
+
     #print "======================================================================="
     
     return sorted(filenames, key=natural_keys), excluded_tiffs, mcmetrics_filepath

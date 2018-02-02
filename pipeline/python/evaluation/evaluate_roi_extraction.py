@@ -32,54 +32,6 @@ pp = pprint.PrettyPrinter(indent=4)
 
 
 #%%
-               
-#%%
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'JR063' #'JR063'
-#session = '20171128_JR063' #'20171128_JR063'
-#roi_id = 'rois001'
-#slurm = False
-#auto = False
-#session_dir = os.path.join(rootdir, animalid, session)
-#
-## Eval params (specific for NMF)
-#min_SNR = 1.5
-#rval_thr = 0.6
-#use_cnn = False
-#cnn_thr = 0.8
-#decay_time = 1.0
-#frame_rate = 44.6828
-#Nsamples = 5
-#Npeaks = 5
-
-
-#%%
-# =============================================================================
-# Load specified ROI-ID parameter set:
-# =============================================================================
-#session_dir = os.path.join(rootdir, animalid, session)
-#roi_base_dir = os.path.join(session_dir, 'ROIs') #acquisition, run)
-#tmp_rid_dir = os.path.join(roi_base_dir, 'tmp_rids')
-    
-#%% Load specified ROI set:
-#rid_hash = RID['rid_hash']
-#tiff_dir = RID['SRC']
-#roi_id = RID['roi_id']
-#roi_type = RID['roi_type']
-#tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
-#print "Found %i tiffs in dir %s.\nEvaluating %s ROIs...." % (len(tiff_files), tiff_dir, roi_type)
-#
-#acquisition = tiff_dir.split(session)[1].split('/')[1]
-#run = tiff_dir.split(session)[1].split('/')[2]
-#process_id = tiff_dir.split(session)[1].split('/')[4]
-#
-#filenames = ['File%03d' % int(ti+1) for ti, t in enumerate(os.listdir(tiff_dir)) if t.endswith('tif')]
-#print "Source tiffs:"
-#for f in filenames:
-#    print f
-
-
-#%%
 def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=False):
     """
     Uses component quality evaluation from caiman.
@@ -240,7 +192,7 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     
     return resultdict
 
-
+#%%
 def set_evalparams_nmf(RID, frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):
     evalparams = {}
     evalparams['min_SNR'] = min_SNR
@@ -277,7 +229,7 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12):
     roi_source_dir = RID['DST']
     
     # Get ROI and TIFF source paths:
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID)
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, subset=True)
     
     # Create output dir and OUTFILE:
     try: 
@@ -308,6 +260,7 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12):
     print "-----------------------------------------------------------"
 
     #%
+    t_par = time.time()
     try:
         evalfile = h5py.File(eval_filepath, 'a')
         for k in evalparams.keys():
@@ -340,9 +293,10 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12):
         print "Aborting evaluation..."
     finally:
         evalfile.close()
-        
+    
     print "Finished ROI evaluation step. ROI eval info saved to:"
     print eval_filepath
+    print_elapsed_time(t_par)
     
     roi_source_basedir = os.path.split(roi_source_paths[0])[0]
     tiff_source_basedir = os.path.split(tiff_source_paths[0])[0]
@@ -524,24 +478,24 @@ def run_evaluation(options):
     multiproc = options.multiproc
     
     #%% OPTPARSE:
-#    rootdir = '/nas/volume1/2photon/data'
-#    animalid = 'JR063' #'JR063'
-#    session = '20171128_JR063' #'20171128_JR063'
-#    roi_id = 'rois008'
-#    slurm = False
-#    auto = False
-#    multiproc = True
-#
-#    # Eval params (specific for NMF)
-#    min_SNR = 1.5
-#    rval_thr = 0.6
-#    use_cnn = False
-#    cnn_thr = 0.8
-#    decay_time = 1.0
-#    frame_rate = 44.6828
-#    Nsamples = 5
-#    Npeaks = 5
-#    
+    rootdir = '/nas/volume1/2photon/data'
+    animalid = 'JR063' #'JR063'
+    session = '20171128_JR063' #'20171128_JR063'
+    roi_id = 'rois008'
+    slurm = False
+    auto = False
+    multiproc = True
+
+    # Eval params (specific for NMF)
+    min_SNR = 1.5
+    rval_thr = 0.6
+    use_cnn = False
+    cnn_thr = 0.8
+    decay_time = 1.0
+    frame_rate = 44.6828
+    Nsamples = 5
+    Npeaks = 5
+    
     #%%
     session_dir = os.path.join(rootdir, animalid, session)
     
