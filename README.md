@@ -25,7 +25,23 @@ $ python setup.py build --build-base='/tmp' install --prefix='/path/to/conda/env
 
 Also need to install the CaImAn package to pipeline env (see github for install details).
 ```
-NOTE:  The pipeline assumes a standard file-tree.i
+NOTE:  The pipeline assumes a standard file-tree:
+```
+/ROOTDIR/
+└── ANIMALID
+    └── SESSION
+        └── ACQUISITION01
+            └── RUN001
+                └── raw
+                    ├── file_00001.tif
+                    ├── file_00002.tif
+                    ├── file_00003.tif
+                    ├── file_00004.tif
+                    └── paradigm_files
+                        ├── protocol_output.mwk
+                        └── serial_data.txt
+```
+this is a test
 ```
 <ROOTDIR>: base directory of all the data [/nas/volume1/2photon/data]
 -- <ANIMALID>:  animal name [JR016]
