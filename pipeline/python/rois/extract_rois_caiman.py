@@ -32,7 +32,7 @@ from caiman.components_evaluation import evaluate_components, estimate_component
 from caiman.source_extraction.cnmf.utilities import extract_DF_F
 
 from pipeline.python.set_roi_params import create_rid, update_roi_records # get_tiff_paths, set_params, initialize_rid, update_roi_records
-from pipeline.python.utils import write_dict_to_json, jsonify_array
+from pipeline.python.utils import write_dict_to_json, jsonify_array, natural_keys
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -45,12 +45,6 @@ pp = pprint.PrettyPrinter(indent=4)
 #        ('**** Setting the stride to 10% of 2*rf automatically:' + str(self.stride)))
 
 #%%
-def atoi(text):
-    return int(text) if text.isdigit() else text
-
-def natural_keys(text):
-    return [ atoi(c) for c in re.split('(\d+)', text) ]
-
 def timer(start,end):
     hours, rem = divmod(end-start, 3600)
     minutes, seconds = divmod(rem, 60)
@@ -320,10 +314,9 @@ def extract_cnmf_rois(options):
                            '-s', tiffsource, '-t', sourcetype, '-o', 'caiman2D']
         if slurm is True:
             rid_options.extend(['--slurm'])
-        RID = create_rid(rootdir)
+        RID = create_rid(rid_options)
         rid_hash = RID['rid_hash']
         tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
-        
     else:
         print "RID %s -- Loading params..." % rid_hash
         tmp_rid_path = os.path.join(roi_dir, 'tmp_rids', 'tmp_rid_%s.json' % rid_hash)
