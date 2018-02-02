@@ -25,7 +25,7 @@ echo "File: ${FILENAME}"
 
 # create logging dir
 BASEDIR="$(dirname "$FILENAME")"
-OUTDIR="${BASEDIR}/logging"
+OUTDIR="${BASEDIR}/logging_pid$PIDHASH"
 echo ${OUTDIR}
 
 # make and move into new directory, and run:

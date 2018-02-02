@@ -16,13 +16,16 @@ import traceback
 import json
 import pprint
 import optparse
+import math
+import time
 import caiman as cm
 import pylab as pl
 import numpy as np
+import multiprocessing as mp
 from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
 from pipeline.python.rois.utils import load_RID, get_source_paths
 from caiman.utils.visualization import get_contours, plot_contours
-from pipeline.python.utils import natural_keys
+from pipeline.python.utils import natural_keys, print_elapsed_time
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -77,7 +80,7 @@ pp = pprint.PrettyPrinter(indent=4)
 
 
 #%%
-def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
+def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=False):
     """
     Uses component quality evaluation from caiman.
     mmap_path : (str)
@@ -130,7 +133,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
         Yr, dims, T = cm.load_memmap(mmap_path)
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
     
-        idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = \
+        pass_comps, fail_comps, snr_vals, r_vals, cnn_preds = \
             estimate_components_quality_auto(images, nmf['A'].all(), nmf['C'], 
                                              nmf['b'], nmf['f'], nmf['YrA'],
                                              evalparams['frame_rate'],
@@ -144,16 +147,16 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
                                              use_cnn=evalparams['use_cnn'])
         
         print "%s: evalulation results..." % curr_file
-        print(('Should keep ' + str(len(idx_components)) +
-           ' and discard  ' + str(len(idx_components_bad))))
+        print(('Should keep ' + str(len(pass_comps)) +
+           ' and discard  ' + str(len(fail_comps))))
         
         #% PLOT: Visualize Spatial and Temporal component evaluation ----------
         print "Plotting evaluation output..."
         pl.figure(figsize=(5,15))
         pl.subplot(2,1,1); pl.title('r values (spatial)'); 
-        pl.plot(r_values); pl.plot(range(len(r_values)), np.ones(r_values.shape)*evalparams['rval_thr'], 'r')
+        pl.plot(r_vals); pl.plot(range(len(r_vals)), np.ones(r_vals.shape)*evalparams['rval_thr'], 'r')
         pl.subplot(2,1,2); pl.title('SNR_comp'); 
-        pl.plot(SNR_comp); pl.plot(range(len(SNR_comp)), np.ones(r_values.shape)*evalparams['min_SNR'], 'r')
+        pl.plot(snr_vals); pl.plot(range(len(snr_vals)), np.ones(r_vals.shape)*evalparams['min_SNR'], 'r')
         pl.xlabel('roi')
         pl.suptitle(curr_file)
         pl.savefig(os.path.join(eval_outdir_figs, 'eval_metrics_%s.png' % curr_file))
@@ -166,7 +169,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
         pl.figure();
         #pl.subplot(1,2,1); 
         pl.title('pass'); 
-        plot_contours(nmf['A'].all()[:, idx_components], nmf['Av'], thr=0.85); pl.axis('off')
+        plot_contours(nmf['A'].all()[:, pass_comps], nmf['Av'], thr=0.85); pl.axis('off')
         #pl.subplot(1,2,2); pl.title('fail'); 
         #plot_contours(nmf['A'].all()[:, idx_components_bad], nmf['Av'], thr=0.85); pl.axis('off')
         pl.savefig(os.path.join(eval_outdir_figs, 'eval_contours_%s.png' % curr_file))
@@ -182,10 +185,169 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir):
             dview.terminate() # stop it if it was running
         except:
             pass
+    
+    if asdict is True:
+        evalresults = dict()
+        evalresults['pass_rois'] = pass_comps
+        evalresults['fail_rois'] = fail_comps
+        evalresults['snr_vals'] = snr_vals
+        evalresults['r_vals'] = r_vals
+        evalresults['cnn_preds'] = cnn_preds
+        return evalresults
+    else:
+        return pass_comps, fail_comps, snr_vals, r_vals, cnn_preds
+
+#%%
+def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
+    
+    t_eval_mp = time.time()
+    
+    filenames = sorted(srcfiles.keys(), key=natural_keys)
+    def worker(filenames, out_q):
+        """
+        Worker function is invoked in a process. 'filenames' is a list of 
+        filenames to evaluate [File001, File002, etc.]. The results are placed
+        in a dict that is pushed to a queue.
+        """
+        outdict = {}
+        for fn in filenames:
+            outdict[fn] = evaluate_rois_nmf(srcfiles[fn][0], srcfiles[fn][1], evalparams, roi_eval_dir, asdict=True)
+        out_q.put(outdict)
+    
+    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    out_q = mp.Queue()
+    chunksize = int(math.ceil(len(filenames) / float(nprocs)))
+    procs = []
+    
+    for i in range(nprocs):
+        p = mp.Process(target=worker,
+                       args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       out_q))
+        procs.append(p)
+        p.start()
+    
+    # Collect all results into single results dict. We should know how many dicts to expect:
+    resultdict = {}
+    for i in range(nprocs):
+        resultdict.update(out_q.get())
+    
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+    
+    print_elapsed_time(t_eval_mp)
+    
+    return resultdict
+
+
+def set_evalparams_nmf(RID, frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):
+    evalparams = {}
+    evalparams['min_SNR'] = min_SNR
+    evalparams['rval_thr'] = rval_thr
+    evalparams['decay_time'] = decay_time
+    evalparams['frame_rate'] = frame_rate
+    evalparams['Nsamples'] = Nsamples
+    evalparams['Npeaks'] = Npeaks
+    evalparams['use_cnn'] = use_cnn
+    evalparams['cnn_thr'] = cnn_thr
+
+    if RID['roi_type'] == 'caiman2D':
+        evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
+        if frame_rate is None:
+            evalparams['frame_rate'] = RID['PARAMS']['options']['eval']['final_frate']
+    else:
+        session_dir = os.path.split(os.path.split(RID['DST'])[0])[0]
+        session = os.path.split(session_dir)[-1]
+        with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
+            roidict = json.load(f)
+        src_rid = RID['PARAMS']['options']['source']['roi_id']
+        evalparams['gSig'] = roidict[src_rid]['PARAMS']['options']['extraction']['gSig']
+        if frame_rate is None:
+            evalparams['frame_rate'] = roidict[src_rid]['PARAMS']['options']['eval']['final_frate']
         
-    return idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds
+    return evalparams
 
+#%%
+def par_evaluate_rois(RID, evalparams=None, nprocs=12):
+    
+    session_dir = RID['DST'].split('/ROIs')[0]
+    roi_type = RID['roi_type']
+    roi_id = RID['roi_id']
+    roi_source_dir = RID['DST']
+    
+    # Get ROI and TIFF source paths:
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID)
+    
+    # Create output dir and OUTFILE:
+    try: 
+        tstamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        roi_eval_dir = os.path.join(roi_source_dir, 'evaluation', 'evaluation_%s' % tstamp)
+        if not os.path.exists(roi_eval_dir):
+            os.makedirs(roi_eval_dir)
+        eval_filename = 'evaluation_results_{tstamp}.hdf5'.format(tstamp=tstamp)
+        eval_filepath = os.path.join(roi_eval_dir, eval_filename)
+        print "Saving roi evaluation results to file: %s" % eval_filepath
+    except Exception as e:
+        print "-- ERROR: Unable to create ROI evaluation dir for source:\n%s" % roi_source_dir
+        traceback.print_exc()
+        print "---------------------------------------------------------------"
+    
+    # Get file-matched list of ROI and TIFF paths:
+    srcfiles = {}
+    for fn in filenames:
+        match_nmf = [f for f in roi_source_paths if fn in f][0]
+        match_mmap = [f for f in tiff_source_paths if fn in f][0]
+        srcfiles[fn] = ((match_mmap, match_nmf))
 
+    print "-----------------------------------------------------------"
+    print "Evalating ROIS from set: %s" % roi_id
+    print "EVAL parameters:"
+    for k in evalparams.keys():
+        print k, ':', evalparams[k]
+    print "-----------------------------------------------------------"
+
+    #%
+    try:
+        evalfile = h5py.File(eval_filepath, 'a')
+        for k in evalparams.keys():
+            print k, evalparams[k]
+            evalfile.attrs[k] = evalparams[k]
+        evalfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if roi_type == 'caiman2D':
+            RESULTS = mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=nprocs)
+        
+        for fn in RESULTS.keys():
+            filegrp = evalfile.create_group(fn)
+            filegrp.attrs['tiff_source'] = srcfiles[fn][1]
+            filegrp.attrs['roi_source'] = srcfiles[fn][0]
+            
+            good_dset = filegrp.create_dataset('pass_rois', RESULTS[fn]['pass_rois'].shape, RESULTS[fn]['pass_rois'].dtype)
+            good_dset[...] = RESULTS[fn]['pass_rois']
+            bad_dset = filegrp.create_dataset('fail_rois', RESULTS[fn]['fail_rois'].shape, RESULTS[fn]['fail_rois'].dtype)
+            bad_dset[...] = RESULTS[fn]['fail_rois']
+            snr_dset = filegrp.create_dataset('snr_values', RESULTS[fn]['snr_vals'].shape, RESULTS[fn]['snr_vals'].dtype)
+            snr_dset[...] = RESULTS[fn]['snr_vals']
+            snr_dset.attrs['min_SNR'] = evalparams['min_SNR']
+            rcorr_dset = filegrp.create_dataset('rcorr_values', RESULTS[fn]['r_vals'].shape, RESULTS[fn]['r_vals'].dtype)
+            rcorr_dset[...] = RESULTS[fn]['r_vals']
+            rcorr_dset.attrs['min_rval'] = evalparams['rval_thr']
+            
+    except Exception as e:
+        print "MP evaluator bugged out."
+        traceback.print_exc()
+        print "Aborting evaluation..."
+    finally:
+        evalfile.close()
+        
+    print "Finished ROI evaluation step. ROI eval info saved to:"
+    print eval_filepath
+    
+    roi_source_basedir = os.path.split(roi_source_paths[0])[0]
+    tiff_source_basedir = os.path.split(tiff_source_paths[0])[0]
+    
+    return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%%
 def evaluate_roi_set(RID, evalparams=None):
@@ -193,8 +355,6 @@ def evaluate_roi_set(RID, evalparams=None):
     session_dir = RID['DST'].split('/ROIs')[0]
     roi_id = RID['roi_id']
     
-    session = os.path.split(session_dir)[1]
-
     # Create output dir:
     try: 
         roi_type = RID['roi_type']
@@ -285,7 +445,35 @@ def evaluate_roi_set(RID, evalparams=None):
     tiff_source_basedir = os.path.split(tiff_source_paths[0])[0]
     
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
+
+#%% 
+def run_rid_eval(rid_filepath, nprocs=12):
+    roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
+    tmp_rid_dir = None
+    try:
+        if 'completed' in rid_filepath:
+            tmp_rid_dir = os.path.split(os.path.split(rid_filepath)[0])[0]
+            if not os.path.exists(rid_filepath):
+                # Check parent dir, may not be in 'completed':
+                tmp_rid_path = os.path.join(tmp_rid_dir, os.path.split(rid_filepath)[-1])
+                assert os.path.exists(tmp_rid_path), "No tmp RID file [%s] exists. Check dir %s" % (roi_hash, tmp_rid_dir)
+        else:
+            tmp_rid_dir = os.path.split(rid_filepath)
+    except Exception as e:
+        print "Unable to find specified RID file: %s" % rid_filepath
+        traceback.print_exc()
+        print "Aborting evaluation..."
+        print "---------------------------------------------------------------"
     
+    if tmp_rid_dir is not None:
+        with open(rid_filepath, 'r') as f:
+            RID = json.load(f)
+        
+        evalparams = set_evalparams_nmf(RID)
+        eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs)
+        
+    return eval_filepath
+
 #%%
 def run_evaluation(options):
     # PATH opts:
@@ -297,6 +485,8 @@ def run_evaluation(options):
     
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if parallel proc eval on files")
+
     parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
     
     # Evluation params:
@@ -316,6 +506,7 @@ def run_evaluation(options):
     animalid = options.animalid
     session = options.session
     roi_id = options.roi_id
+    
     slurm = options.slurm
     auto = options.default
     if options.slurm is True:
@@ -330,14 +521,17 @@ def run_evaluation(options):
     use_cnn = options.use_cnn
     cnn_thr = float(options.cnn_thr)
     
+    multiproc = options.multiproc
+    
     #%% OPTPARSE:
 #    rootdir = '/nas/volume1/2photon/data'
 #    animalid = 'JR063' #'JR063'
 #    session = '20171128_JR063' #'20171128_JR063'
-#    roi_id = 'rois001'
+#    roi_id = 'rois008'
 #    slurm = False
 #    auto = False
-#    
+#    multiproc = True
+#
 #    # Eval params (specific for NMF)
 #    min_SNR = 1.5
 #    rval_thr = 0.6
@@ -347,7 +541,7 @@ def run_evaluation(options):
 #    frame_rate = 44.6828
 #    Nsamples = 5
 #    Npeaks = 5
-    
+#    
     #%%
     session_dir = os.path.join(rootdir, animalid, session)
     
@@ -369,27 +563,16 @@ def run_evaluation(options):
         runinfo = json.load(f)
     frame_rate = runinfo['volume_rate'] # Use volume rate since this will be the correct sample rate for planar or volumetric
 
-    #% Define params dict:
-    evalparams = dict()
+    #% Get evalparams and evaluate:
     if RID['roi_type'] == 'caiman2D' or (RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] == 'caiman2D'):
-        evalparams['min_SNR'] = min_SNR
-        evalparams['rval_thr'] = rval_thr
-        evalparams['decay_time'] = decay_time
-        evalparams['frame_rate'] = frame_rate
-        evalparams['Nsamples'] = Nsamples
-        evalparams['Npeaks'] = Npeaks
-        evalparams['use_cnn'] = use_cnn
-        evalparams['cnn_thr'] = cnn_thr
-        if RID['roi_type'] == 'caiman2D':
-            evalparams['gSig'] = RID['PARAMS']['options']['extraction']['gSig']
-        else:
-            with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
-                roidict = json.load(f)
-            src_rid = RID['PARAMS']['options']['source']['roi_id']
-            evalparams['gSig'] = roidict[src_rid]['PARAMS']['options']['extraction']['gSig']
-            
-    eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
+        evalparams = set_evalparams_nmf(RID, frame_rate=frame_rate, min_SNR=min_SNR, rval_thr=rval_thr, decay_time=decay_time,
+                                        Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
     
+        if multiproc is True:
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams)
+        else:
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
+        
     #% Save Eval info to dict:
     evalinfo = dict()
     evalinfo['output_path'] = eval_filepath
@@ -407,8 +590,7 @@ def run_evaluation(options):
         print "%s: %i rois" % (fn, curr_nrois)
     evalfile_read.close()
     evalinfo['excluded_files'] = excluded_tiffs
-    
-            
+   
     min_good_rois = min(evalinfo['nrois'])
     max_good_rois = max(evalinfo['nrois'])
     

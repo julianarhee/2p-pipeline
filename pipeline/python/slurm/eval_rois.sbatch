@@ -18,12 +18,11 @@ module load Anaconda/5.0.1-fasrc01
 source activate /n/coxfs01/2p-pipeline/envs/pipeline
 
 # grab filename from array exported from 'parent' shell:
-echo "p info: ${PARAMSPATH}"
-echo "SLURM ID: ${SLURM_ARRAY_TASK_ID}"
+echo "roi info: ${RIDPATH}"
 
 # create logging dir
-BASEDIR="$(dirname "$PARAMSPATH")"
-OUTDIR="${BASEDIR}/logging_$RIDHASH"
+BASEDIR="$(dirname "$RIDPATH")"
+OUTDIR="${BASEDIR}/logging_$RIDHASH_eval"
 echo ${OUTDIR}
 
 # make and move into new directory, and run:
@@ -33,5 +32,5 @@ fi
 cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID 12
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/eval_rois.py $RIDPATH 12
 

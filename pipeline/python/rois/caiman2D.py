@@ -540,7 +540,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
         
     #% Set NMF options from ROI params:
     params = RID['PARAMS']['options']
-    border_to_0 = RID['PARAMS']['border_pix']
+    border_to_0 = params['info']['max_shifts']
     is_3D = params['info']['is_3D']
     display_average = params['display']['use_average']
     inspect_components = False

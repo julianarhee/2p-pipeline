@@ -36,7 +36,9 @@ echo "N files: $ZBNUMFILES"
 if [ $ZBNUMFILES -ge 0 ]; then
     # export filenames individually
     for i in ${!FILES[*]};do export FILES_$i="${FILES[$i]}";done	
-     
+
+    export PIDHASH
+ 
     # submit to slurm
     sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_runs.sbatch    
 fi

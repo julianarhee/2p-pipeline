@@ -26,10 +26,10 @@ if [ $ZBNUMFILES == 0 ]; then
     PARAMSPATH=${FILES[0]}
     echo "Params path: $PARAMSPATH"
  
-    export PARAMSPATH
+    export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch --array=1-$NTIFFS /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array_tmp.sbatch
+    sbatch --array=1-$NTIFFS /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
 
 fi
 
