@@ -9,7 +9,7 @@ Created on Wed Jan 31 16:49:35 2018
 import os
 import sys
 import logging
-from pipeline.python.rois.caiman2D import mmap_tiffs
+from pipeline.python.rois.caiman2D import par_mmap_tiffs
 
 def main():
     
@@ -20,11 +20,11 @@ def main():
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
     
     logging.info("RID %s -- starting memmapping ..." % roi_hash) 
-    logging.info(pid_filepath)
+    logging.info(pid_path)
     
-    mmap_paths = mmap_tiffs(pid_filepath)
+    mmap_paths = par_mmap_tiffs(pid_path)
     
-    logging.info("FINISHED memmapping tiffs from RID:\n%s" % pid_filepath)
+    logging.info("FINISHED memmapping tiffs from RID:\n%s" % pid_path)
     logging.info("Created %i .mmap files." % len(mmap_paths))
     logging.info("RID %s -- memmapping done!" % roi_hash)
 
