@@ -38,7 +38,8 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
             
         pinfo = PID['PARAMS']['source']
         pinfo['process_id'] = PID['process_id']       
-        
+        pinfo['pid'] = PID['pid_hash']
+ 
     #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
         
     eval_opts = ['-D', pinfo['rootdir'],
@@ -58,7 +59,7 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
     print "Saved output to:"
     print eval_outfile
     print "----------------------------------------------------------------"
-    return eval_outfile, pid_hash
+    return eval_outfile, pinfo['pid']
 
 
 def main():
@@ -84,9 +85,10 @@ def main():
     logging.info("PID %s -- starting..." % pid_id)
     logging.info(pid_path)
     
-    pidhash = evaluate_motion_pid(pid_path, zproj=zproj, nprocs=nprocs)
+    outfilepath, pidhash = evaluate_motion_pid(pid_path, zproj=zproj, nprocs=nprocs)
 
-    logging.info("FINISHED PROCESSING PID %s." % pidhash)
+    logging.info("FINISHED evaluating MOTION for PID %s." % pidhash)
+    logging.info("MC evaluation results saved to: %s" % outfilepath)
 
      # Clean up session info dict:
     tmp_session_info_dir = os.path.split(pid_path)[0]
