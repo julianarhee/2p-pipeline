@@ -22,8 +22,7 @@ import caiman as cm
 import pylab as pl
 import numpy as np
 import multiprocessing as mp
-from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
-from pipeline.python.rois.utils import load_RID, get_source_paths
+from pipeline.python.rois.utils import load_RID, get_source_paths, get_source_info
 from caiman.utils.visualization import get_contours, plot_contours
 from pipeline.python.utils import natural_keys, print_elapsed_time
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
@@ -403,23 +402,14 @@ def evaluate_roi_set(RID, evalparams=None):
 #%% 
 def run_rid_eval(rid_filepath, nprocs=12):
     roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
-    tmp_rid_dir = None
-    try:
-        if 'completed' in rid_filepath:
-            tmp_rid_dir = os.path.split(os.path.split(rid_filepath)[0])[0]
-            if not os.path.exists(rid_filepath):
-                # Check parent dir, may not be in 'completed':
-                tmp_rid_path = os.path.join(tmp_rid_dir, os.path.split(rid_filepath)[-1])
-                assert os.path.exists(tmp_rid_path), "No tmp RID file [%s] exists. Check dir %s" % (roi_hash, tmp_rid_dir)
-        else:
-            tmp_rid_dir = os.path.split(rid_filepath)
-    except Exception as e:
-        print "Unable to find specified RID file: %s" % rid_filepath
-        traceback.print_exc()
-        print "Aborting evaluation..."
-        print "---------------------------------------------------------------"
-    
-    if tmp_rid_dir is not None:
+    tmp_rid_dir = os.path.split(rid_filepath)[0]
+    if not os.path.exists(rid_filepath):
+        rid_fn = os.path.split(rid_filepath)[1]
+        completed_path = os.path.join(tmp_rid_dir, 'completed', rid_fn)
+        assert os.path.exists(os.path.join(completed_path)), "No such RID file exists in either %s or %s." % (rid_filepath, completed_path)
+        rid_filepath = completed_path
+   
+    if os.path.exists(rid_filepath):
         with open(rid_filepath, 'r') as f:
             RID = json.load(f)
         
