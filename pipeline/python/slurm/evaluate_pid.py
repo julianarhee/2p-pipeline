@@ -17,6 +17,13 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
     if 'tmp_spids' in pid_filepath:  # This means create_session_pids.py was run to format to set of run PIDs in current session 
         with open(pid_filepath, 'r') as f:
             pinfo = json.load(f)
+        # Get process ID NAME:
+        rundir = os.path.join(pinfo['rootidr'], pinfo['animalid'], pinfo['session'], pinfo['acquisition'], pinfo['run'])
+        with open(os.path.join(rundir, 'processed', 'pids_%s.json' % pinfo['run']), 'r') as f:
+            pdict = json.load(f)
+        pkey = [k for k in pdict.keys() if pdict[p]['pid_hash'] == pinfo['pid']][0]
+        pinfo['process_id'] = pkey
+        del pdict
     else:
         tmp_rid_dir = os.path.split(pid_filepath)[0]
         if not os.path.exists(pid_filepath):
@@ -43,17 +50,24 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
                  '--zproj=%s' % zproj,
                  '--par',
                  '-n', nprocs]
-        
-    eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_motion(eval_opts)
-        
-    return eval_filepath
+         
+    eval_outfile = evaluate_motion(eval_opts)
+
+    print "----------------------------------------------------------------"
+    print "Finished evulation motion-correction."
+    print "Saved output to:"
+    print eval_outfile
+    print "----------------------------------------------------------------"
+    return eval_outfile, pid_hash
 
 
 def main():
 
     pid_path = sys.argv[1]
     if len(sys.argv) > 2:
-        zproj = sys.argv[2]
+        zproj = str(sys.argv[2])
+    else:
+        zproj = 'mean'
     if len(sys.argv) > 3:
         nprocs = int(sys.argv[3])
     else:
