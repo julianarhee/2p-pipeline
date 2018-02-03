@@ -12,6 +12,7 @@ import time
 import datetime
 import optparse
 import math
+import re
 import multiprocessing as mp
 import matplotlib
 matplotlib.use('Agg')
