@@ -151,6 +151,62 @@ def _tolist(ndarray):
 # -----------------------------------------------------------------------------
 # Methods for accessing or changing datafiles and their sources:
 # -----------------------------------------------------------------------------
+def get_source_info(acquisition_dir, run, process_id):
+    info = dict()
+    
+    # Set basename for files created containing meta/reference info:
+    # -------------------------------------------------------------
+    run_info_basename = '%s' % run #functional_dir
+    pid_info_basename = 'pids_%s' % run
+
+    # Set paths:
+    # -------------------------------------------------------------
+    #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+    pidinfo_path = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
+    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+    
+    # Load run meta info:
+    # -------------------------------------------------------------
+    with open(runmeta_path, 'r') as r:
+        runmeta = json.load(r)
+    
+    # Load PID:
+    # -------------------------------------------------------------
+    with open(pidinfo_path, 'r') as f:
+        pdict = json.load(f)
+
+    if len(process_id) == 0 and len(pdict.keys()) > 0:
+        process_id = pdict.keys()[0]
+    
+    PID = pdict[process_id]
+
+    mc_sourcedir = PID['PARAMS']['motion']['destdir']
+    mc_evaldir = '%s_evaluation' % mc_sourcedir
+    if not os.path.exists(mc_evaldir):
+        os.makedirs(mc_evaldir)
+        
+    # Get correlation of MEAN image (mean slice across time) to reference:
+    if PID['PARAMS']['motion']['correct_motion'] is True:
+        ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
+        ref_channel = 'Channel%02d' % PID['PARAMS']['motion']['ref_channel']
+    else:
+        ref_filename = 'File001'
+        ref_channel = 'Channel01'
+        
+    # Create dict to pass around to methods
+    info['process_dir'] = PID['DST']
+    info['source_dir'] = mc_sourcedir
+    info['output_dir'] = mc_evaldir
+    info['ref_filename'] = ref_filename
+    info['ref_channel'] = ref_channel
+    info['d1'] = runmeta['lines_per_frame']
+    info['d2'] = runmeta['pixels_per_line']
+    info['d3'] = len(runmeta['slices'])
+    info['T'] = runmeta['nvolumes']
+    info['ntiffs'] = runmeta['ntiffs']
+    
+    return info
+
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
 
     tiffpaths = []

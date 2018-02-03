@@ -154,7 +154,7 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     t_eval_mp = time.time()
     
     filenames = sorted(srcfiles.keys(), key=natural_keys)
-    def worker(filenames, out_q):
+    def worker(filenames, srcfiles, evalparams, roi_eval_dir, out_q):
         """
         Worker function is invoked in a process. 'filenames' is a list of 
         filenames to evaluate [File001, File002, etc.]. The results are placed
@@ -173,6 +173,9 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     for i in range(nprocs):
         p = mp.Process(target=worker,
                        args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       srcfiles,
+                                       evalparams,
+                                       roi_eval_dir,
                                        out_q))
         procs.append(p)
         p.start()
