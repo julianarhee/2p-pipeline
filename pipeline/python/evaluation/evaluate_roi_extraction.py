@@ -433,6 +433,7 @@ def run_evaluation(options):
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if parallel proc eval on files")
+    parser.add_option('-n', '--nprocs', action='store', dest='nprocs', default=12, help="n cores for parallel processing [default: 12]")
 
     parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
     
@@ -469,6 +470,7 @@ def run_evaluation(options):
     cnn_thr = float(options.cnn_thr)
     
     multiproc = options.multiproc
+    nprocs = options.nprocs
     
     #%% OPTPARSE:
     rootdir = '/nas/volume1/2photon/data'
@@ -516,7 +518,7 @@ def run_evaluation(options):
                                         Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
     
         if multiproc is True:
-            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams)
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs)
         else:
             eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
         
