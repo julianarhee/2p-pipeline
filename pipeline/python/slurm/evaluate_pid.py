@@ -41,7 +41,7 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
                  '-R', pinfo['run'],
                  '-P', pinfo['process_id'],
                  '--zproj=%s' % zproj,
-                 '--multiproc',
+                 '--par',
                  '-n', nprocs]
         
     eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_motion(eval_opts)
