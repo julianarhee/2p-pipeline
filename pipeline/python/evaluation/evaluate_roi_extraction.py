@@ -22,8 +22,7 @@ import caiman as cm
 import pylab as pl
 import numpy as np
 import multiprocessing as mp
-from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
-from pipeline.python.rois.utils import load_RID, get_source_paths
+from pipeline.python.rois.utils import load_RID, get_source_paths, get_source_info
 from caiman.utils.visualization import get_contours, plot_contours
 from pipeline.python.utils import natural_keys, print_elapsed_time
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
@@ -155,7 +154,7 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     t_eval_mp = time.time()
     
     filenames = sorted(srcfiles.keys(), key=natural_keys)
-    def worker(filenames, out_q):
+    def worker(filenames, srcfiles, evalparams, roi_eval_dir, out_q):
         """
         Worker function is invoked in a process. 'filenames' is a list of 
         filenames to evaluate [File001, File002, etc.]. The results are placed
@@ -174,6 +173,9 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     for i in range(nprocs):
         p = mp.Process(target=worker,
                        args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       srcfiles,
+                                       evalparams,
+                                       roi_eval_dir,
                                        out_q))
         procs.append(p)
         p.start()

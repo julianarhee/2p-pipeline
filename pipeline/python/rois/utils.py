@@ -18,8 +18,7 @@ import traceback
 import re
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys
-from pipeline.python.evaluation.evaluate_motion_correction import get_source_info
+from pipeline.python.utils import natural_keys, get_source_info
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
