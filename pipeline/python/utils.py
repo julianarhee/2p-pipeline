@@ -182,6 +182,7 @@ def get_source_info(acquisition_dir, run, process_id):
 
     mc_sourcedir = PID['PARAMS']['motion']['destdir']
     mc_evaldir = '%s_evaluation' % mc_sourcedir
+    print "Writing MC EVAL results to: %s" % mc_evaldir
     if not os.path.exists(mc_evaldir):
         os.makedirs(mc_evaldir)
         

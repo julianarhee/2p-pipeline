@@ -11,6 +11,8 @@ import json
 import time
 import datetime
 import optparse
+import math
+import multiprocessing as mp
 import matplotlib
 matplotlib.use('Agg')
 import pylab as pl
@@ -19,67 +21,79 @@ import numpy as np
 import seaborn as sns
 import pandas as pd
 
-from pipeline.python.utils import natural_keys
+from pipeline.python.utils import natural_keys, get_source_info, print_elapsed_time
 
-#%%
-def get_source_info(acquisition_dir, run, process_id):
-    info = dict()
+#%%      
     
-    # Set basename for files created containing meta/reference info:
-    # -------------------------------------------------------------
-    run_info_basename = '%s' % run #functional_dir
-    pid_info_basename = 'pids_%s' % run
+def zproj_corr_file(filename, ref_image, info, ref_channel_dir, asdict=False):
 
-    # Set paths:
-    # -------------------------------------------------------------
-    #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    pidinfo_path = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
-    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+    file_corrvals = []
+    slice_files = sorted([t for t in os.listdir(os.path.join(ref_channel_dir, filename)) if t.endswith('tif')], key=natural_keys)
+    for slice_idx, slice_file in enumerate(sorted(slice_files, key=natural_keys)):
+        slice_img = tf.imread(os.path.join(ref_channel_dir, filename, slice_file))
+        corr = np.corrcoef(ref_image[:,:,slice_idx].flat, slice_img.flat)
+        file_corrvals.append(corr[0,1])
+    file_corrvals = np.array(file_corrvals)
     
-    # Load run meta info:
-    # -------------------------------------------------------------
-    with open(runmeta_path, 'r') as r:
-        runmeta = json.load(r)
-    
-    # Load PID:
-    # -------------------------------------------------------------
-    with open(pidinfo_path, 'r') as f:
-        pdict = json.load(f)
-
-    if len(process_id) == 0 and len(pdict.keys()) > 0:
-        process_id = pdict.keys()[0]
-    
-    PID = pdict[process_id]
-
-    mc_sourcedir = PID['PARAMS']['motion']['destdir']
-    mc_evaldir = '%s_evaluation' % mc_sourcedir
-    if not os.path.exists(mc_evaldir):
-        os.makedirs(mc_evaldir)
-        
-    # Get correlation of MEAN image (mean slice across time) to reference:
-    if PID['PARAMS']['motion']['correct_motion'] is True:
-        ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
-        ref_channel = 'Channel%02d' % PID['PARAMS']['motion']['ref_channel']
+    if asdict is True:
+        zproj = dict()
+        zproj['source_images'] = os.path.join(ref_channel_dir, filename)
+        zproj['slice_corrcoefs'] = file_corrvals
+        zproj['nslices'] = len(slice_files)
+        return zproj
     else:
-        ref_filename = 'File001'
-        ref_channel = 'Channel01'
-        
-    # Create dict to pass around to methods
-    info['process_dir'] = PID['DST']
-    info['source_dir'] = mc_sourcedir
-    info['output_dir'] = mc_evaldir
-    info['ref_filename'] = ref_filename
-    info['ref_channel'] = ref_channel
-    info['d1'] = runmeta['lines_per_frame']
-    info['d2'] = runmeta['pixels_per_line']
-    info['d3'] = len(runmeta['slices'])
-    info['T'] = runmeta['nvolumes']
-    info['ntiffs'] = runmeta['ntiffs']
+        source_img_path = os.path.join(ref_channel_dir, filename)
+        slice_corrcoefs = file_corrvals
+        nslices = len(slice_files)
+        return source_img_path, slice_corrcoefs, nslices
     
-    return info
+    
+def mp_zproj_corr(filenames, ref_image, info, ref_channel_dir, nprocs=12):
+    
+    t_eval_mp = time.time()
+    
+    def worker(filenames, ref_image, info, ref_channel_dir, out_q):
+        """
+        Worker function is invoked in a process. 'filenames' is a list of 
+        filenames to evaluate [File001, File002, etc.]. The results are placed
+        in a dict that is pushed to a queue.
+        """
+        outdict = {}
+        for fn in filenames:
+            outdict[fn] = zproj_corr_file(fn, ref_image, info, ref_channel_dir, asdict=True)
+        out_q.put(outdict)
+    
+    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    out_q = mp.Queue()
+    chunksize = int(math.ceil(len(filenames) / float(nprocs)))
+    procs = []
+    
+    for i in range(nprocs):
+        p = mp.Process(target=worker,
+                       args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       ref_image,
+                                       info,
+                                       ref_channel_dir,
+                                       out_q))
+        procs.append(p)
+        p.start()
+    
+    # Collect all results into single results dict. We should know how many dicts to expect:
+    resultdict = {}
+    for i in range(nprocs):
+        resultdict.update(out_q.get())
+    
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+    
+    print_elapsed_time(t_eval_mp)
+    
+    return resultdict
 
 #%%
-def get_zproj_correlations(info, nstds=2, zproj='mean'):
+def get_zproj_correlations(info, zproj='mean', multiproc=True, nprocs=12):
     
     zproj_results = dict()
     
@@ -87,8 +101,8 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
     ref_channel = info['ref_channel']
     ref_filename = info['ref_filename']
     d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
-    mc_evaldir = info['output_dir']
 
+    # Get zproj slices:
     mean_slice_dirs = [m for m in os.listdir(process_dir) if zproj in m and 'mcorrected' in m and os.path.isdir(os.path.join(process_dir, m))]
     try:
         assert len(mean_slice_dirs)==1, "No zproj dirs for type %s found." % zproj
@@ -103,6 +117,7 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
         print e
         print "Aborting."
 
+    # Get corrs to reference zproj img:
     try:
         print "Loading REFERENCE file image..."
         ref_slices = sorted([t for t in os.listdir(os.path.join(ref_channel_dir, ref_filename)) if t.endswith('tif')], key=natural_keys)
@@ -113,30 +128,33 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
             ref_img_tmp = tf.imread(os.path.join(ref_channel_dir, ref_filename, sfn))
             ref_image[:, :, sidx] = ref_img_tmp #np.ravel(ref_img_tmp, order='C')
         
-        zproj_results['files'] = dict((fname, dict()) for fname in sorted(filenames, key=natural_keys) if not fname==ref_filename)
-        for filename in filenames:
-            print filename
-            if filename == ref_filename:
-                continue
-            file_corrvals = []
-            slice_files = sorted([t for t in os.listdir(os.path.join(ref_channel_dir, filename)) if t.endswith('tif')], key=natural_keys)
-            for slice_idx, slice_file in enumerate(sorted(slice_files, key=natural_keys)):
-                slice_img = tf.imread(os.path.join(ref_channel_dir, filename, slice_file))
-                corr = np.corrcoef(ref_image[:,:,slice_idx].flat, slice_img.flat)
-                file_corrvals.append(corr[0,1])
-            file_corrvals = np.array(file_corrvals)
+        files_to_corr = sorted([f for f in filenames if not f == ref_filename], key=natural_keys)
+        
+        if multiproc is True:
+            zproj_results['files'] = mp_zproj_corr(files_to_corr, ref_image, info, ref_channel_dir, nprocs=nprocs)
+        else:
+            zproj_results['files'] = dict((fname, dict()) for fname in sorted(filenames, key=natural_keys) if not fname==ref_filename)
+            for filename in files_to_corr:
+                print filename
+                if filename == ref_filename:
+                    continue
+                zproj_results['files'][filename] = zproj_corr_file(filename, ref_image, info, ref_channel_dir, asdict=True)
+    
+        assert len(zproj_results['files'].keys()) == len(filenames)-1, "Incomplete zproj for each files."
 
-            zproj_results['files'][filename]['source_images'] = os.path.join(ref_channel_dir, filename)
-            zproj_results['files'][filename]['slice_corrcoefs'] = file_corrvals
-            zproj_results['files'][filename]['nslices'] = len(slice_files)
-            
     except Exception as e:
         print e
         print "Error calculating corrcoefs for each slice to reference."
         print "Aborting"
     
+    return zproj_results
+
+def plot_zproj_results(zproj_results, info, zproj='mean'):
+    ref_filename = info['ref_filename']
+    mc_evaldir = info['output_dir']
+    
+    # Plot zproj corr results:
     try:
-        assert len(zproj_results['files'].keys()) == len(filenames)-1, "Incomplete zproj for each files."
         # PLOT:  for each file, plot each slice's correlation to reference slice
         df = pd.DataFrame(dict((k, zproj_results['files'][k]['slice_corrcoefs']) for k in zproj_results['files'].keys()))
         sns.set(style="whitegrid", color_codes=True)
@@ -148,7 +166,17 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
     except Exception as e:
         print e
         print "Unable to plot per-slice zproj correlations for each file."
-        
+
+def evaluate_zproj(zproj_results, info, nstds=2, zproj='mean'):
+    ref_filename = info['ref_filename']
+    d3 = info['d3']
+    mc_evaldir = info['output_dir']
+    
+    print "Identifying bad files using zproj method, nstds = %i" % nstds
+    
+    df = pd.DataFrame(dict((k, zproj_results['files'][k]['slice_corrcoefs']) for k in zproj_results['files'].keys()))
+    
+    # Identify "bad" tiffs:    
     try:
         # Use some metric to determine while TIFFs might be "bad":
         bad_files = [(df.columns[i], sl) for sl in range(df.values.shape[0]) for i,d in enumerate(df.values[sl,:]) if abs(d-np.mean(df.values[sl,:])) >= np.std(df.values[sl,:])*nstds]
@@ -190,50 +218,128 @@ def get_zproj_correlations(info, nstds=2, zproj='mean'):
     return zproj_results
     
 #%%
-def get_frame_correlations(info, nstds=4, ref_frame=0):
+def frame_corr_file(tiffpath, info, ref_frame=0, asdict=True):
+                    
+    T = info['T']
+    d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
+        
+    mov = tf.imread(tiffpath)
+    curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
+    
+    
+    print "Loaded %s. Mov size:" % curr_filename, mov.shape      # T*d3, d1, d2 (d1 = lines/fr, d2 = pix/lin)
+    mov = np.squeeze(np.reshape(mov, [T, d3, d1, d2], order='C'))  # Reshape so that slices in vol are grouped together
+    movR = np.reshape(mov, [T, d1*d2*d3], order='C')
+    df = pd.DataFrame(movR)
+    fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
+    corrcoefs = np.array([df.T[ref_frame].corr(df.T[fr]) for fr in fr_idxs])
+        
+    if asdict is True:
+        framecorr = dict()
+        framecorr['frame_corrcoefs'] = corrcoefs
+        framecorr['file_source'] = tiffpath
+        framecorr['dims'] = mov.shape
+        return framecorr
+    else:
+        return corrcoefs, tiffpath, mov.shape
 
-    framecorr_results = dict()
+####
+def mp_frame_corr(filepaths, info, ref_frame=0, nprocs=12):
+    """filepaths is a dict: key=File001, val=path/to/tiff
+    """
+    t_eval_mp = time.time()
+    
+    filenames = sorted(filepaths.keys(), key=natural_keys)
+    
+    def worker(filenames, filepaths, info, ref_frame, out_q):
+        """
+        Worker function is invoked in a process. 'filenames' is a list of 
+        filenames to evaluate [File001, File002, etc.]. The results are placed
+        in a dict that is pushed to a queue.
+        """
+        outdict = {}
+        for fn in filenames:
+            outdict[fn] = frame_corr_file(filepaths[fn], info, ref_frame=ref_frame, asdict=True)
+        out_q.put(outdict)
+    
+    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    out_q = mp.Queue()
+    chunksize = int(math.ceil(len(filenames) / float(nprocs)))
+    procs = []
+    
+    for i in range(nprocs):
+        p = mp.Process(target=worker,
+                       args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       filepaths,
+                                       info,
+                                       ref_frame,
+                                       out_q))
+        procs.append(p)
+        p.start()
+    
+    # Collect all results into single results dict. We should know how many dicts to expect:
+    resultdict = {}
+    for i in range(nprocs):
+        resultdict.update(out_q.get())
+    
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+    
+    print_elapsed_time(t_eval_mp)
+    
+    return resultdict
+####
+
+def evaluate_frame_corrs(corrcoefs, currfile="placeholder", nstds=4, ref_frame=0, mc_evaldir='/tmp'):
+    
+    T = len(corrcoefs)
+    fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
+    print "fr_idxs: %i, corrcoefs: %i" % (len(fr_idxs), len(corrcoefs))
+    bad_frames = [idx for idx,val in zip(fr_idxs, corrcoefs) if abs(val - np.mean(corrcoefs)) > (np.std(corrcoefs)*nstds)]
+    metric = '%i stds' % nstds
+
+    pl.figure()
+    pl.plot(corrcoefs)
+    if len(bad_frames) > 0:
+        print "%s: Found %i frames >= %s from mean correlation val." % (currfile, len(bad_frames), metric)
+        pl.plot(bad_frames, [corrcoefs[b] for b in bad_frames], 'r*')
+    pl.title("%s: correlation to first frame" % currfile)
+    figname = 'corr_to_frame1_%s.png' % currfile
+    pl.savefig(os.path.join(mc_evaldir, figname))
+    pl.close()
+    
+    return bad_frames, metric
+    
+def get_frame_correlations(info, ref_frame=0, nstds=4, multiproc=True, nprocs=12):
+
     
     mc_sourcedir = info['source_dir']
     mc_evaldir = info['output_dir']
     nexpected_tiffs = info['ntiffs']
-    T = info['T']
-    d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
 
     tiff_fns = sorted([t for t in os.listdir(mc_sourcedir) if 'File' in t and t.endswith('tif')], key=natural_keys)
     assert len(tiff_fns) == info['ntiffs'], "Expected %i tiffs, found %i in dir\n%s" % (nexpected_tiffs, len(tiff_fns), mc_sourcedir)
-    tiff_paths = [os.path.join(mc_sourcedir, f) for f in tiff_fns] # if filename in f for filename in filenames]
-    filenames = ['File%03d' % int(i+1) for i in range(len(tiff_fns))]
+    tiff_paths = sorted([os.path.join(mc_sourcedir, f) for f in tiff_fns], key=natural_keys) # if filename in f for filename in filenames]
+    filenames = sorted([str(re.search('File(\d{3})', m).group(0)) for m in tiff_paths], key=natural_keys)
     #%
     
+    
     t = time.time()
-    for fidx,fn in enumerate(sorted(tiff_paths, key=natural_keys)):
-        mov = tf.imread(fn)
-        curr_filename = filenames[fidx]
-        framecorr_results[curr_filename] = dict()
-        print "Loaded %s. Mov size:" % curr_filename, mov.shape      # T*d3, d1, d2 (d1 = lines/fr, d2 = pix/lin)
-        mov = np.squeeze(np.reshape(mov, [T, d3, d1, d2], order='C'))  # Reshape so that slices in vol are grouped together
-        movR = np.reshape(mov, [T, d1*d2*d3], order='C')
-        df = pd.DataFrame(movR)
-        fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
-        corrcoefs = np.array([df.T[ref_frame].corr(df.T[fr]) for fr in fr_idxs])
-        bad_frames = [idx for idx,val in zip(fr_idxs, corrcoefs) if abs(val - np.mean(corrcoefs)) > (np.std(corrcoefs)*nstds)]
-        
-        framecorr_results[curr_filename]['frame_corrcoefs'] = corrcoefs
-        framecorr_results[curr_filename]['file_source'] = fn
-        framecorr_results[curr_filename]['dims'] = mov.shape
-        framecorr_results[curr_filename]['metric'] = '%i stds' % nstds
-        framecorr_results[curr_filename]['bad_frames'] = bad_frames
-                
-        pl.figure()
-        pl.plot(corrcoefs)
-        if len(bad_frames) > 0:
-            print "%s: Found %i frames >= %i stds from mean correlation val." % (filenames[fidx], len(bad_frames), nstds)
-            pl.plot(bad_frames, [corrcoefs[b] for b in bad_frames], 'r*')
-        pl.title("%s: correlation to first frame" % filenames[fidx])
-        figname = 'corr_to_frame1_%s.png' % filenames[fidx]
-        pl.savefig(os.path.join(mc_evaldir, figname))
-        pl.close()
+    if multiproc is True:
+        tiffpath_dict = dict((k, v) for k, v in zip(filenames, tiff_paths))
+        framecorr_results = mp_frame_corr(tiffpath_dict, info, ref_frame=ref_frame, nprocs=nprocs)
+    else:
+        framecorr_results = dict()
+        for fidx,fn in enumerate(sorted(tiff_paths, key=natural_keys)):
+            curr_filename = str(re.search('File(\d{3})', fn.group(0)))
+            framecorr = frame_corr_file(fn, info, ref_frame=ref_frame, asdict=True)
+            bad_frames, metric = evaluate_frame_corrs(framecorr['corrcoefs'], currfile=curr_filename, nstds=nstds, ref_frame=ref_frame, mc_evaldir=mc_evaldir)
+            framecorr['metric'] = metric
+            framecorr['bad_frames'] = bad_frames
+            
+            framecorr_results[curr_filename] = framecorr
         
     elapsed = time.time() - t
     print "Time elapsed:", elapsed
@@ -257,6 +363,11 @@ def parse_options(options):
     parser.add_option('-P', '--process-id', action='store', dest='process_id', default='', help="Process ID (for ex: processed001, or processed005, etc.")
     parser.add_option('-Z', '--zproj', action='store', dest='zproj', default='mean', help="Z-projection across time for comparing slice images for each file to reference [default: mean]")
     parser.add_option('-f', '--ref-frame', action='store', dest='ref_frame', default=0, help="Frame within tiff to use as reference for frame-to-frame correlations [default: 0]")
+    parser.add_option('--stds-zp', action='store', dest='nstds_zproj', default=2.0, help="Num stds over which zproj-corr to ref is considered a failure [default: 2]")
+    parser.add_option('--stds-fr', action='store', dest='nstds_frames', default=4.0, help="Num stds over frame-to-frame corr is considered a failure [default: 4]")
+
+    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if parallel proc eval on files")
+    parser.add_option('-n', '--nprocs', action='store', dest='nprocs', default=12, help="n cores for parallel processing [default: 12]")
     
     (options, args) = parser.parse_args(options)
     
@@ -266,7 +377,7 @@ def parse_options(options):
             
     return options
 
-#%%
+    
 def evaluate_motion(options):
     #%%
     options = parse_options(options)
@@ -290,6 +401,11 @@ def evaluate_motion(options):
     process_id = options.process_id
     zproj = options.zproj
     ref_frame = options.ref_frame
+    nstds_zproj = options.nstds_zproj
+    nstds_frames = options.nstds_frames
+    
+    multiproc = options.multiproc
+    nprocs = options.nprocs
     
     #%% Get info about MC to evaluate:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -308,10 +424,12 @@ def evaluate_motion(options):
     # -------------------------------------------------------------------------
     # 1. Check zproj across time for each slice. Plot corrcoefs to reference.
     # -------------------------------------------------------------------------
-    nstds = 2
-    zproj_results = get_zproj_correlations(info, nstds=nstds, zproj=zproj)
+    zproj_results = get_zproj_correlations(info, zproj=zproj, multiproc=multiproc, nprocs=nprocs)
+    plot_zproj_results(zproj_results, info, zproj=zproj)
+    zproj_results = evaluate_zproj(zproj_results, info, nstds=nstds_zproj, zproj=zproj)
+
     
-    #%%
+    #% Save results:
     if 'zproj_corrcoefs' not in metrics.keys():
         zproj_corr_grp = metrics.create_group('zproj_corrcoefs')
         zproj_corr_grp.attrs['nslices'] = list(set([zproj_results['files'][k]['nslices'] for k in zproj_results['files'].keys()]))
@@ -342,8 +460,7 @@ def evaluate_motion(options):
     # -------------------------------------------------------------------------
     # 2. Within each movie, check frame-to-frame corr. Plot corrvals across time.
     # -------------------------------------------------------------------------
-    nstds_frames = 4
-    framecorr_results = get_frame_correlations(info, nstds=nstds_frames, ref_frame=ref_frame)
+    framecorr_results = get_frame_correlations(info, nstds=nstds_frames, ref_frame=ref_frame, multiproc=multiproc, nprocs=nprocs)
 
     #%%
     if 'within_file' not in metrics.keys():

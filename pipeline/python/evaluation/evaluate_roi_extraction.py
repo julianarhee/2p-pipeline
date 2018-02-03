@@ -404,7 +404,7 @@ def evaluate_roi_set(RID, evalparams=None):
 
 #%% 
 def run_rid_eval(rid_filepath, nprocs=12):
-    roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
+    #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
     tmp_rid_dir = os.path.split(rid_filepath)[0]
     if not os.path.exists(rid_filepath):
         rid_fn = os.path.split(rid_filepath)[1]
