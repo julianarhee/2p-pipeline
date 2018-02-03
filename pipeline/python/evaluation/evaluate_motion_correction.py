@@ -219,11 +219,12 @@ def evaluate_zproj(zproj_results, info, nstds=2, zproj='mean'):
     return zproj_results
     
 #%%
-def frame_corr_file(tiffpath, info, ref_frame=0, asdict=True):
+def frame_corr_file(tiffpath, info, nstds=4, ref_frame=0, asdict=True):
                     
     T = info['T']
     d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
-        
+    mc_evaldir = info['output_dir']
+ 
     mov = tf.imread(tiffpath)
     curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
     
@@ -234,25 +235,28 @@ def frame_corr_file(tiffpath, info, ref_frame=0, asdict=True):
     df = pd.DataFrame(movR)
     fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
     corrcoefs = np.array([df.T[ref_frame].corr(df.T[fr]) for fr in fr_idxs])
-        
+    bad_frames, metric = evaluate_frame_corrs(corrcoefs, currfile=curr_filename, nstds=nstds, ref_frame=ref_frame, mc_evaldir=mc_evaldir)
+ 
     if asdict is True:
         framecorr = dict()
         framecorr['frame_corrcoefs'] = corrcoefs
         framecorr['file_source'] = tiffpath
         framecorr['dims'] = mov.shape
+        framecorr['metric'] = metric
+        framecorr['bad_frames'] = bad_frames
         return framecorr
     else:
-        return corrcoefs, tiffpath, mov.shape
+        return corrcoefs, tiffpath, mov.shape, metric, bad_frames
 
 ####
-def mp_frame_corr(filepaths, info, ref_frame=0, nprocs=12):
+def mp_frame_corr(filepaths, info, nstds=4, ref_frame=0, nprocs=12):
     """filepaths is a dict: key=File001, val=path/to/tiff
     """
     t_eval_mp = time.time()
     
     filenames = sorted(filepaths.keys(), key=natural_keys)
     
-    def worker(filenames, filepaths, info, ref_frame, out_q):
+    def worker(filenames, filepaths, info, nstds, ref_frame, out_q):
         """
         Worker function is invoked in a process. 'filenames' is a list of 
         filenames to evaluate [File001, File002, etc.]. The results are placed
@@ -260,7 +264,7 @@ def mp_frame_corr(filepaths, info, ref_frame=0, nprocs=12):
         """
         outdict = {}
         for fn in filenames:
-            outdict[fn] = frame_corr_file(filepaths[fn], info, ref_frame=ref_frame, asdict=True)
+            outdict[fn] = frame_corr_file(filepaths[fn], info, nstds=nstds, ref_frame=ref_frame, asdict=True)
         out_q.put(outdict)
     
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -273,6 +277,7 @@ def mp_frame_corr(filepaths, info, ref_frame=0, nprocs=12):
                        args=(filenames[chunksize * i:chunksize * (i + 1)],
                                        filepaths,
                                        info,
+                                       nstds, 
                                        ref_frame,
                                        out_q))
         procs.append(p)
@@ -330,16 +335,16 @@ def get_frame_correlations(info, ref_frame=0, nstds=4, multiproc=True, nprocs=12
     t = time.time()
     if multiproc is True:
         tiffpath_dict = dict((k, v) for k, v in zip(filenames, tiff_paths))
-        framecorr_results = mp_frame_corr(tiffpath_dict, info, ref_frame=ref_frame, nprocs=nprocs)
+        framecorr_results = mp_frame_corr(tiffpath_dict, info, nstds=nstds, ref_frame=ref_frame, nprocs=nprocs)
     else:
         framecorr_results = dict()
         for fidx,fn in enumerate(sorted(tiff_paths, key=natural_keys)):
             curr_filename = str(re.search('File(\d{3})', fn.group(0)))
-            framecorr = frame_corr_file(fn, info, ref_frame=ref_frame, asdict=True)
-            bad_frames, metric = evaluate_frame_corrs(framecorr['corrcoefs'], currfile=curr_filename, nstds=nstds, ref_frame=ref_frame, mc_evaldir=mc_evaldir)
-            framecorr['metric'] = metric
-            framecorr['bad_frames'] = bad_frames
-            
+            framecorr = frame_corr_file(fn, info, nstds=nstds, ref_frame=ref_frame, asdict=True)
+#            bad_frames, metric = evaluate_frame_corrs(framecorr['corrcoefs'], currfile=curr_filename, nstds=nstds, ref_frame=ref_frame, mc_evaldir=mc_evaldir)
+#            framecorr['metric'] = metric
+#            framecorr['bad_frames'] = bad_frames
+#            
             framecorr_results[curr_filename] = framecorr
         
     elapsed = time.time() - t
