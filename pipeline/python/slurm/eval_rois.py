@@ -21,7 +21,7 @@ def main():
         nproc = int(nproc)
         
     roi_hash = os.path.splitext(os.path.split(rid_path)[-1])[0].split('_')[-1]
-    logdir = os.path.join(os.path.split(rid_path)[0], "logging_%s" roi_hash)
+    logdir = os.path.join(os.path.split(rid_path)[0], 'logging_%s' % roi_hash)
     if not os.path.exists(logdir):
         os.makedirs(logdir)
     print "Logging to dir: %s" % logdir

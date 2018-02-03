@@ -35,5 +35,5 @@ fi
 cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_pids.py $FILENAME
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_pid.py $FILENAME
 

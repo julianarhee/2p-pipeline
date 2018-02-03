@@ -74,7 +74,15 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     Get fullpaths to ROI source files, original tiff/mmap files, filter by MC-evaluation for excluded tiffs.
     Provide acquisition, run, process_id if source is NOT motion-corrected (default reference file and channel = 1).
     '''
-    
+    if acquisition=='' or run=='' or process_id=='':
+        tiff_sourcedir = RID['SRC']
+        path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
+        acquisition = path_parts[1]
+        run = path_parts[2]
+        process_dirname = path_parts[4]
+        process_id = process_dirname.split('_')[0]
+    print "Getting source paths: %s, %s, %s..." % (acquisition, run, process_id)
+ 
     roi_source_dir = RID['DST']
     roi_type = RID['roi_type']
     #roi_id = RID['roi_id']
@@ -117,7 +125,7 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     filenames = sorted(filenames, key=natural_keys)
     
     if check_motion is True:
-        filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evlatuion(RID, filenames, mcmetric_type=mcmetric, 
+        filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
                                                        acquisition=acquisition, run=run, process_id=process_id)
         if len(excluded_tiffs) > 0:
             bad_roi_fns = []
@@ -131,12 +139,13 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath
 
 #%% If motion-corrected (standard), check evaluation:
-def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisition='', run='', process_id=''):
     
     #print "Loading Motion-Correction Info...======================================="
     mcmetrics_filepath = None
     mcmetric_type = None
     excluded_tiffs = []
+    mc_evaluated = False
     if 'mcorrected' in RID['SRC']:
         try:
             mceval_dir = '%s_evaluation' % RID['SRC']
@@ -146,10 +155,12 @@ def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisit
             print "Loaded MC eval file. Found metric types:"
             for ki, k in enumerate(mcmetrics):
                 print ki, k
+            mc_evaluated = True
         except Exception as e:
             print e
             print "Unable to load motion-correction evaluation info."
-            
+    
+    if mc_evaluated is True: 
         # Use zprojection corrs to find bad files:
         bad_files = mcmetrics['zproj_corrcoefs'].attrs['bad_files']
         if len(bad_files) > 0:
@@ -168,11 +179,13 @@ def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisit
         mc_ref_channel = mcmetrics.attrs['ref_channel']
         mc_ref_file = mcmetrics.attrs['ref_file']
     else:
-        session_dir = RID['DST'].split('/ROIs')      
+        session_dir = RID['DST'].split('/ROIs')[0]
         acquisition_dir = os.path.join(session_dir, acquisition)
         info = get_source_info(acquisition_dir, run, process_id)
+        pp.pprint(info)
         mc_ref_channel = info['ref_channel']
-        mc_ref_file = info['ref_file']
+        mc_ref_file = info['ref_filename']
+        exclude_str = ''
         del info
     
     if len(exclude_str) > 0:
@@ -181,6 +194,8 @@ def check_mc_evlatuion(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisit
     
     print "-------------------------------------------------------------------"
     print "Motion-correction info :"
+    if mc_evaluated is False:
+        print "No MC evaluation found. Using MC INFO for reference."
     print "MC reference is %s, %s." % (mc_ref_file, mc_ref_channel)
     print "Found %i tiff files to exclude based on MC EVAL: %s." % (len(excluded_tiffs), mcmetric_type)
     print "-------------------------------------------------------------------"

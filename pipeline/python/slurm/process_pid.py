@@ -13,6 +13,24 @@ import optparse
 import logging
 from pipeline.python.preprocessing.process_raw import process_pid
 
+def process_pid_from_file(pid_filepath):
+
+    if 'tmp_spids' in pid_filepath:  # This means create_session_pids.py was run to format to set of run PIDs in current session 
+        with open(pid_filepath, 'r') as f:
+            pinfo = json.load(f)
+    else:
+        with open(pid_filepath, 'r') as f:
+            tmppid = json.load(f)
+        pinfo = tmppid['PARAMS']['source']
+        pinfo['pid'] = tmppid['pid_hash']       
+    
+    logging.info('PID opts:')
+    logging.info(pinfo)
+       
+    popts = ['-D', pinfo['rootdir'], '-i', pinfo['animalid'], '-S', pinfo['session'], '-A', pinfo['acquisition'], '-R', pinfo['run'], '-p', pinfo['pid'], '--slurm', '--zproject'] 
+    pidhash = process_pid(popts)
+        
+    return pidhash
 
 def main():
 
@@ -28,7 +46,7 @@ def main():
     logging.info("PID %s -- starting..." % pid_id)
  
     logging.info(pid_path)
-    pidhash = process_run_pid(pid_path)
+    pidhash = process_pid_from_file(pid_path)
 
     logging.info("FINISHED PROCESSING PID %s." % pidhash)
 

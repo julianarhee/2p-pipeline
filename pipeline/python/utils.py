@@ -163,7 +163,7 @@ def get_source_info(acquisition_dir, run, process_id):
     # -------------------------------------------------------------
     #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     pidinfo_path = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
-    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
+    runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run)
     
     # Load run meta info:
     # -------------------------------------------------------------

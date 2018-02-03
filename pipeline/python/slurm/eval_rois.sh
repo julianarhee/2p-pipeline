@@ -14,7 +14,7 @@ fi
 echo "N tiffs: ${NTIFFS}"
 
 
-RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids/completed/tmp_rid_${RIDHASH}.json"
+RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids/tmp_rid_${RIDHASH}.json"
 
 echo "Params path: $RIDPATH"
 export RIDPATH RIDHASH
