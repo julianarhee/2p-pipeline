@@ -80,6 +80,8 @@ def extract_options(options):
                   dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
     parser.add_option('-n', '--nproc', action="store",
                   dest="nproc", default=12, help="N cores [default: 12]")
+    parser.add_option('--par', action="store_true",
+                  dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
     
     (options, args) = parser.parse_args(options) 
     
@@ -103,6 +105,8 @@ def extract_cnmf_rois(options):
     slurm = options.slurm
     exclude_str = options.excluded_tiffs
     nproc = int(options.nproc)
+    multiproc = options.multiproc
+    
     
     if slurm is True:
         if 'coxfs01' not in rootdir:
@@ -144,6 +148,11 @@ def extract_cnmf_rois(options):
     
     files_to_run = sorted([str(re.search('File(\d{3})', m).group(0)) for m in mmap_paths], key=natural_keys)
     
+    if multiproc is True:
+        nmf_output_dict = mp_extract_nmf(files_to_run, tmp_rid_path, nproc=nproc)
+        for f in nmf_output_dict.keys():
+            print f, nmf_output_dict[f]['ngood_rois']
+            
     for fidx, filename in enumerate(files_to_run):
         filenum = int(fidx + 1)
         print "Extracting from FILE %i..." % filenum
@@ -153,8 +162,54 @@ def extract_cnmf_rois(options):
     print "DONE PROCESSING ALL FILES (serial)!"
     print "Total duration..."
     print_elapsed_time(t_serial)
-    
+           
     return nmfopts_hash, rid_hash
+
+
+#%%
+def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12):
+    
+    t_eval_mp = time.time()
+    
+    def worker(files_to_run, tmp_rid_path, out_q):
+        """
+        Worker function is invoked in a process. 'filenames' is a list of 
+        filenames to evaluate [File001, File002, etc.]. The results are placed
+        in a dict that is pushed to a queue.
+        """
+        outdict = {}
+        for fn in files_to_run:
+            outdict[fn] = extract_nmf_from_rid(tmp_rid_path, int(fn[4:]), asdict=True)
+        out_q.put(outdict)
+    
+    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    out_q = mp.Queue()
+    chunksize = int(math.ceil(len(filenames) / float(nprocs)))
+    procs = []
+    
+    for i in range(nprocs):
+        p = mp.Process(target=worker,
+                       args=(filenames[chunksize * i:chunksize * (i + 1)],
+                                       srcfiles,
+                                       evalparams,
+                                       roi_eval_dir,
+                                       out_q))
+        procs.append(p)
+        p.start()
+    
+    # Collect all results into single results dict. We should know how many dicts to expect:
+    resultdict = {}
+    for i in range(nprocs):
+        resultdict.update(out_q.get())
+    
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+    
+    print_elapsed_time(t_eval_mp)
+    
+    return resultdict
 
 #%%
 
@@ -787,7 +842,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, asdict=False):
     nmfopts_hash = None
     ngood_rois = 0
     
@@ -820,7 +875,14 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None):
         print "Failed while extracting cnmf ROIs for %s" % currfile
         traceback.print_exc()
 
-    return nmfopts_hash, ngood_rois
+    if asdict is True:
+        nmf_file_output = dict()
+        nmf_file_output['nmfopts_hash'] = nmfopts_hash
+        nmf_file_output['rid_hash'] = ngood_rois
+        return nmf_file_output
+    else:
+        return nmfopts_hash, ngood_rois
+    
     
 def main(options):
 

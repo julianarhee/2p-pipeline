@@ -268,6 +268,9 @@ parser.add_option('-E', '--eval', action="store",
 parser.add_option('-M', '--mcmetric', action="store",
                   dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
 
+parser.add_option('--par', action="store_true",
+                  dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
+
 (options, args) = parser.parse_args()
 
 # Set USER INPUT options:
@@ -294,6 +297,8 @@ zproj_type= options.zproj_type
 
 eval_key = options.eval_key
 mcmetric = options.mcmetric
+
+multiproc = options.multiproc
 
 #%%
 
@@ -367,11 +372,14 @@ if len(mc_excluded_tiffs) > 0:
     
 if roi_type == 'caiman2D':
     #%
-    roi_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-p', rid_hash]
+    roi_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', rid_hash]
     if slurm is True:
         roi_opts.extend(['--slurm'])
     if len(exclude_str) > 0:
         roi_opts.extend(['-x', exclude_str])
+    if multiproc is True:
+        roi_opts.extend(['--par'])
+        
         
     nmf_hash, rid_hash = rcm.extract_cnmf_rois(roi_opts)
     
