@@ -36,6 +36,7 @@ pp = pprint.PrettyPrinter(indent=4)
 
 import traceback
 import re
+import math
 
 #%%
 #if self.stride is None:
@@ -56,7 +57,9 @@ def extract_options(options):
     # PATH opts:
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
-
+    choices_cluster_backend = ('local', 'multiprocessing', 'SLURM', 'ipyparallel')
+    default_cluster_backend = 'local'
+    
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -83,6 +86,10 @@ def extract_options(options):
     parser.add_option('--par', action="store_true",
                   dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
     
+    parser.add_option('-C', '--cluster', type='choice', choices=choices_cluster_backend, action='store', 
+                      dest='cluster_backend', default=default_cluster_backend, 
+                      help="Which cluster backend to use. Valid choices: %s [default: %s]" % (choices_cluster_backend, default_cluster_backend))
+    
     (options, args) = parser.parse_args(options) 
     
     return options
@@ -107,10 +114,12 @@ def extract_cnmf_rois(options):
     nproc = int(options.nproc)
     multiproc = options.multiproc
     
+    cluster_backend = options.cluster_backend
     
     if slurm is True:
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
+        cluster_backend = 'SLURM'
             
     if len(exclude_str) > 0:
         excluded_fids = exclude_str.split(',')
@@ -149,14 +158,14 @@ def extract_cnmf_rois(options):
     files_to_run = sorted([str(re.search('File(\d{3})', m).group(0)) for m in mmap_paths], key=natural_keys)
     
     if multiproc is True:
-        nmf_output_dict = mp_extract_nmf(files_to_run, tmp_rid_path, nproc=nproc)
+        nmf_output_dict = mp_extract_nmf(files_to_run, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend)
         for f in nmf_output_dict.keys():
             print f, nmf_output_dict[f]['ngood_rois']
             
     for fidx, filename in enumerate(files_to_run):
         filenum = int(fidx + 1)
         print "Extracting from FILE %i..." % filenum
-        nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc)
+        nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc, cluster_backend=cluster_backend)
         print "Finished FILE %i. Found %i components that pass initial evaluation." % (filenum, ngood_rois)
     
     print "DONE PROCESSING ALL FILES (serial)!"
@@ -167,11 +176,12 @@ def extract_cnmf_rois(options):
 
 
 #%%
-def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12):
+    
+def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'):
     
     t_eval_mp = time.time()
     
-    def worker(files_to_run, tmp_rid_path, out_q):
+    def worker(files_to_run, tmp_rid_path, cluster_backend, out_q):
         """
         Worker function is invoked in a process. 'filenames' is a list of 
         filenames to evaluate [File001, File002, etc.]. The results are placed
@@ -179,27 +189,26 @@ def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12):
         """
         outdict = {}
         for fn in files_to_run:
-            outdict[fn] = extract_nmf_from_rid(tmp_rid_path, int(fn[4:]), asdict=True)
+            outdict[fn] = extract_nmf_from_rid(tmp_rid_path, int(fn[4:]), cluster_backend=cluster_backend, asdict=True)
         out_q.put(outdict)
     
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
     out_q = mp.Queue()
-    chunksize = int(math.ceil(len(filenames) / float(nprocs)))
+    chunksize = int(math.ceil(len(files_to_run) / float(nproc)))
     procs = []
     
-    for i in range(nprocs):
+    for i in range(nproc):
         p = mp.Process(target=worker,
-                       args=(filenames[chunksize * i:chunksize * (i + 1)],
-                                       srcfiles,
-                                       evalparams,
-                                       roi_eval_dir,
+                       args=(files_to_run[chunksize * i:chunksize * (i + 1)],
+                                       tmp_rid_path,
+                                       cluster_backend,
                                        out_q))
         procs.append(p)
         p.start()
     
     # Collect all results into single results dict. We should know how many dicts to expect:
     resultdict = {}
-    for i in range(nprocs):
+    for i in range(nproc):
         resultdict.update(out_q.get())
     
     # Wait for all worker processes to finish
@@ -575,7 +584,7 @@ def evaluate_cnm(images, cnm, params, dims, iteration=1, img=None, curr_filename
     return idx_components, idx_components_bad, SNR_comp, r_values
         
 #%%
-def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
+def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None, cluster_backend='local'):
 
     curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
     RID = load_RID(tmp_rid_path, infostr='nmf')
@@ -642,7 +651,8 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
         except:
             pass
         
-        c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
+        
+        c, dview, n_processes = cm.cluster.setup_cluster(backend=cluster_backend, # use this one
                                                          n_processes=nproc,  # number of process to use, reduce if out of mem
                                                          single_thread = False)
         
@@ -842,7 +852,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None):
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, asdict=False):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, cluster_backend='local', asdict=False):
     nmfopts_hash = None
     ngood_rois = 0
     
@@ -862,7 +872,7 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, asdict=False):
         tiffpath =  tiffmatches[0]
         
         print "EXTRACTING ROIS"
-        nmfopts_hash, ngood_rois, rid_hash = run_nmf_on_file(tiffpath, tmp_rid_path, nproc=nproc)
+        nmfopts_hash, ngood_rois, rid_hash = run_nmf_on_file(tiffpath, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend)
     
         print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmfopts_hash)
         print "%s-- Initialial evalation found %i ROIs that pass." % (currfile, ngood_rois)
