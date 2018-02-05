@@ -125,17 +125,20 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     filenames = sorted(filenames, key=natural_keys)
     
     if check_motion is True:
+        print "Checking MC eval, metric: %s" % mcmetric
         filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
                                                        acquisition=acquisition, run=run, process_id=process_id)
         if len(excluded_tiffs) > 0:
             bad_roi_fns = []
             bad_tiff_fns = []
             for badfn in excluded_tiffs:
-                bad_roi_fns.append([r for r in roi_source_paths if badfn in r][0])
-                bad_tiff_fns.append([r for r in tiff_source_paths if badfn in r][0])
+                if len([r for r in roi_source_paths if badfn in r]) > 0:
+                    bad_roi_fns.append([r for r in roi_source_paths if badfn in r][0])
+                if len([r for r in tiff_source_paths if badfn in r]) > 0:
+                    bad_tiff_fns.append([r for r in tiff_source_paths if badfn in r][0])
             roi_source_paths = sorted([r for r in roi_source_paths if r not in bad_roi_fns], key=natural_keys)
             tiff_source_paths = sorted([r for r in tiff_source_paths if r not in bad_tiff_fns], key=natural_keys)
-    
+    print "%i MC-fail tiffs found. Returning %i roi source paths, with %i corresponding tiff sources." % (len(excluded_tiffs), len(roi_source_paths), len(tiff_source_paths)) 
     return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath
 
 #%% If motion-corrected (standard), check evaluation:
@@ -143,7 +146,6 @@ def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisi
     
     #print "Loading Motion-Correction Info...======================================="
     mcmetrics_filepath = None
-    mcmetric_type = None
     excluded_tiffs = []
     mc_evaluated = False
     if 'mcorrected' in RID['SRC']:
