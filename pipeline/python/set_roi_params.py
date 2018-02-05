@@ -69,6 +69,9 @@ def extract_options(options):
 
     # PATH opts:
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-H', '--home', action='store', dest='homedir', default='/nas/volume1/2photon/data', help='current data root dir (if creating params with path-root different than what will be used for actually doing the processing.')
+    parser.add_option('--notnative', action='store_true', dest='notnative', default=False, help="Set flag if not setting params on same system as processing. MUST rsync data sources.")
+
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
     # Set specific session/run for current animal:
@@ -106,6 +109,8 @@ def extract_options(options):
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
+    if options.notnative is False:
+        options.homedir = options.rootdir
 
     return options
 
@@ -115,6 +120,9 @@ def create_rid(options):
 
     # Set USER INPUT options:
     rootdir = options.rootdir
+    homedir = options.homedir
+    notnative = options.notnative
+    
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
@@ -123,23 +131,6 @@ def create_rid(options):
     tiffsource = options.tiffsource
     sourcetype = options.sourcetype
     roi_type = options.roi_type
-    
-    # manual options:
-    ref_file = int(options.ref_file)
-    ref_channel = int(options.ref_channel)
-    zproj_type = options.zproj_type
-    slices_str = options.slices
-    if not roi_type=='coregister':
-        if len(slices_str)==0:
-            # Use all slices
-            runmeta_path = os.path.join(rootdir, animalid, session, acquisition, run, '%s.json' % run)
-            with open(runmeta_path, 'r') as f:
-                runinfo = json.load(f)
-            slices = runinfo['slices']
-        else:
-            slices = slices_str.split(',')
-            slices = [int(s) for s in slices]
-    
     auto = options.default
 
     # cNMF-specific opts:
@@ -155,26 +146,46 @@ def create_rid(options):
     # COREG specific opts:
     roi_source_id = options.roi_source_id
     
+    # manual options:
+    ref_file = int(options.ref_file)
+    ref_channel = int(options.ref_channel)
+    zproj_type = options.zproj_type
+    slices_str = options.slices
+    if not roi_type=='coregister':
+        if len(slices_str)==0:
+            # Use all slices
+            runmeta_path = os.path.join(homedir, animalid, session, acquisition, run, '%s.json' % run)
+            with open(runmeta_path, 'r') as f:
+                runinfo = json.load(f)
+            slices = runinfo['slices']
+        else:
+            slices = slices_str.split(',')
+            slices = [int(s) for s in slices]
+    
 
-    session_dir = os.path.join(rootdir, animalid, session)
+
+    session_dir = os.path.join(homedir, animalid, session)
+        
     roi_dir = os.path.join(session_dir, 'ROIs')
     if not os.path.exists(roi_dir):
         os.makedirs(roi_dir)
 
     # Get paths to tiffs from which to create ROIs:
     if not roi_type == 'coregister':
-        tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
+        tiffpaths = get_tiff_paths(rootdir=homedir, 
+                                   animalid=animalid, session=session,
                                    acquisition=acquisition, run=run,
                                    tiffsource=tiffsource, sourcetype=sourcetype,
                                    auto=auto)
         tiff_sourcedir = os.path.split(tiffpaths[0])[0]
+        
         print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
         
     # Get roi-type specific options:
     if roi_type == 'caiman2D':
         print "Creating param set for caiman2D ROIs."
         movie_idxs = []
-        roi_options = set_options_cnmf(rootdir=rootdir, animalid=animalid, session=session,
+        roi_options = set_options_cnmf(rootdir=homedir, animalid=animalid, session=session,
                                        acquisition=acquisition, run=run,
                                        movie_idxs=movie_idxs,
                                        method_deconv=nmf_deconv,
@@ -185,7 +196,7 @@ def create_rid(options):
                                        p=nmf_p,
                                        border_pix=border_pix)
     elif 'manual' in roi_type:
-        roi_options = set_options_manual(rootdir=rootdir, animalid=animalid, session=session,
+        roi_options = set_options_manual(rootdir=homedir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
                                          roi_type=roi_type,
                                          zproj_type=zproj_type,
@@ -193,17 +204,20 @@ def create_rid(options):
                                          ref_channel=ref_channel,
                                          slices=slices)
     elif roi_type == 'coregister':
-        roi_options = set_options_coregister(rootdir=rootdir, animalid=animalid, session=session,
+        roi_options = set_options_coregister(rootdir=homedir, animalid=animalid, session=session,
                                          roi_source=roi_source_id,
                                          roi_type=roi_type)
+        
         tiff_sourcedir = roi_options['source']['tiff_dir']
         
         
     # Create roi-params dict with source and roi-options:
-    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_new=mmap_new, mmap_dir=None, check_hash=False, auto=auto)
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_new=mmap_new, 
+                             mmap_dir=None, check_hash=False, auto=auto,
+                             notnative=notnative, rootdir=rootdir, homedir=homedir)
 
     # Create ROI ID (RID):
-    RID = initialize_rid(PARAMS, session_dir)
+    RID = initialize_rid(PARAMS, session_dir, notnative=notnative, rootdir=rootdir, homedir=homedir)
 
     # Create ROI output directory:
     roi_name = '_'.join((RID['roi_id'], RID['rid_hash']))
@@ -361,7 +375,10 @@ def set_options_coregister(rootdir='', animalid='', session='',
 
     return params
 
-def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_new=False, mmap_dir=None, check_hash=False, auto=False):
+def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
+                    mmap_new=False, mmap_dir=None, 
+                    notnative=False, rootdir='', homedir='',
+                    check_hash=False, auto=False):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
@@ -405,6 +422,11 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='', mmap_new=False, mm
         else:
             PARAMS['mmap_source'] = mmap_dir
 
+    if notnative is True:
+        PARAMS['tiff_sourcedir'] = PARAMS['tiff_sourcedir'].replace(homedir, rootdir)
+        PARAMS['mmap_source'] = PARAMS['mmap_source'] .replace(homedir, rootdir)
+        
+        
     PARAMS['options'] = roi_options
     PARAMS['roi_type'] = roi_type
 
@@ -471,7 +493,7 @@ def get_roi_id(PARAMS, session_dir, auto=False):
     return roi_id
 
 
-def initialize_rid(PARAMS, session_dir, auto=False):
+def initialize_rid(PARAMS, session_dir, notnative=False, rootdir='', homedir='', auto=False):
 
     print "************************"
     print "Initialize ROI ID."
@@ -483,6 +505,12 @@ def initialize_rid(PARAMS, session_dir, auto=False):
 
     rid['version'] = version
     rid['roi_id'] = roi_id
+    if notnative is True:
+        if rootdir not in PARAMS['tiff_sourcedir']:
+            PARAMS['tiff_sourcedir'] = PARAMS['tiff_sourcedir'].replace(homedir, rootdir)
+        if rootdir not in session_dir:
+            session_dir = session_dir.replace(homedir, rootdir)
+            
     rid['SRC'] = PARAMS['tiff_sourcedir'] #source_dir
     rid['DST'] = os.path.join(session_dir, 'ROIs', roi_id)
     rid['roi_type'] = PARAMS['roi_type']
