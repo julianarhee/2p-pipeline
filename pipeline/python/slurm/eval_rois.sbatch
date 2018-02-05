@@ -5,8 +5,8 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-2:00 # Running time of 3 hours
-#SBATCH --mem 131072  # Memory request of 12 GB 
+#SBATCH -t 0-1:00 # Running time of 3 hours
+#SBATCH --mem-per-cpu 4000  # Memory request of 4 GB 
 #SBATCH -o evalroi_%A_f%a.out # Standard output
 #SBATCH -e evalroi_%A_f%a.err # Standard error
 
