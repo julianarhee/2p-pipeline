@@ -13,6 +13,7 @@ import datetime
 import optparse
 import math
 import re
+import traceback
 import multiprocessing as mp
 import matplotlib
 matplotlib.use('Agg')
@@ -140,11 +141,13 @@ def get_zproj_correlations(info, zproj='mean', multiproc=True, nprocs=12):
                 if filename == ref_filename:
                     continue
                 zproj_results['files'][filename] = zproj_corr_file(filename, ref_image, info, ref_channel_dir, asdict=True)
-    
-        assert len(zproj_results['files'].keys()) == len(filenames)-1, "Incomplete zproj for each files."
+        print "ZPROJ files:"
+        for f in zproj_results['files'].keys():
+            print f 
+        assert len(zproj_results['files'].keys()) == len(filenames)-1, "Incomplete zproj for each file."
 
     except Exception as e:
-        print e
+        traceback.print_exc()
         print "Error calculating corrcoefs for each slice to reference."
         print "Aborting"
     
@@ -170,7 +173,7 @@ def plot_zproj_results(zproj_results, info, zproj='mean'):
 
 def evaluate_zproj(zproj_results, info, nstds=2, zproj='mean'):
     ref_filename = info['ref_filename']
-    d3 = info['d3']
+    d3 = int(info['d3'])
     mc_evaldir = info['output_dir']
     
     print "Identifying bad files using zproj method, nstds = %i" % nstds
@@ -411,7 +414,7 @@ def evaluate_motion(options):
     nstds_frames = options.nstds_frames
     
     multiproc = options.multiproc
-    nprocs = options.nprocs
+    nprocs = int(options.nprocs)
     
     #%% Get info about MC to evaluate:
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
