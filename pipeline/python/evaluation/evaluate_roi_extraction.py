@@ -165,6 +165,7 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
             outdict[fn] = evaluate_rois_nmf(srcfiles[fn][0], srcfiles[fn][1], evalparams, roi_eval_dir, asdict=True)
             print "Worker: Done with %s" % fn
         out_q.put(outdict)
+        return
     
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
     out_q = mp.Queue()
@@ -183,8 +184,8 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
         
     # Wait for all worker processes to finish
     for p in procs:
-        print "Finished:", p
         p.join()
+        print "Finished:", p
         
     # Collect all results into single results dict. We should know how many dicts to expect:
     resultdict = {}
