@@ -14,7 +14,6 @@ import pkg_resources
 import optparse
 import sys
 import hashlib
-import shutil
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 import numpy as np
 from checksumdir import dirhash
@@ -144,7 +143,9 @@ def create_rid(options):
     mmap_new = options.mmap_new
     
     # COREG specific opts:
-    roi_source_id = options.roi_source_id
+    roi_source_str = options.roi_source_id
+    if len(roi_source_str) > 0:
+        roi_source_ids = ['rois%03d' % int(r) for r in roi_source_str.split(',')]
     
     # manual options:
     ref_file = int(options.ref_file)
@@ -162,10 +163,8 @@ def create_rid(options):
             slices = slices_str.split(',')
             slices = [int(s) for s in slices]
     
-
-
+    # Create ROI output dir:
     session_dir = os.path.join(homedir, animalid, session)
-        
     roi_dir = os.path.join(session_dir, 'ROIs')
     if not os.path.exists(roi_dir):
         os.makedirs(roi_dir)
@@ -178,7 +177,6 @@ def create_rid(options):
                                    tiffsource=tiffsource, sourcetype=sourcetype,
                                    auto=auto)
         tiff_sourcedir = os.path.split(tiffpaths[0])[0]
-        
         print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
         
     # Get roi-type specific options:
@@ -195,6 +193,7 @@ def create_rid(options):
                                        stride=nmf_stride,
                                        p=nmf_p,
                                        border_pix=border_pix)
+        src_roi_type = roi_type
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=homedir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
@@ -203,18 +202,23 @@ def create_rid(options):
                                          ref_file=ref_file,
                                          ref_channel=ref_channel,
                                          slices=slices)
+        src_roi_type = roi_type
     elif roi_type == 'coregister':
         roi_options = set_options_coregister(rootdir=homedir, animalid=animalid, session=session,
-                                         roi_source=roi_source_id,
+                                         roi_source=roi_source_ids,
                                          roi_type=roi_type)
-        
-        tiff_sourcedir = roi_options['source']['tiff_dir']
+        if len(roi_source_ids) > 1:
+            tiff_sourcedir = sorted([roi_options['source'][k]['tiff_dir'] for k in roi_options['source'].keys()], key=natural_keys)
+            src_roi_type = roi_options['source'][0]['roi_type']
+        else:
+            tiff_sourcedir = roi_options['source']['tiff_dir']
+            src_roi_type = roi_options['source']['roi_type']
         
         
     # Create roi-params dict with source and roi-options:
-    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type, mmap_new=mmap_new, 
-                             mmap_dir=None, check_hash=False, auto=auto,
-                             notnative=notnative, rootdir=rootdir, homedir=homedir)
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type, 
+                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
+                             mmap_new=mmap_new, check_hash=False)
 
     # Create ROI ID (RID):
     RID = initialize_rid(PARAMS, session_dir, notnative=notnative, rootdir=rootdir, homedir=homedir)
@@ -365,76 +369,111 @@ def set_options_coregister(rootdir='', animalid='', session='',
     rid_info_path = os.path.join(rootdir, animalid, session, 'ROIs', 'rids_%s.json' % session)
     with open(rid_info_path, 'r') as f:
         rdict = json.load(f)
-    src_rid = rdict[roi_source]
     params['source'] = dict()
-    params['source']['roi_dir'] = src_rid['DST']
-    params['source']['tiff_dir'] = src_rid['SRC']
-    params['source']['rid_hash'] = src_rid['rid_hash']
-    params['source']['roi_id'] = src_rid['roi_id']
-    params['source']['roi_type'] = src_rid['roi_type']
+    for ridx,roi_source_id in enumerate(roi_source):
+        src_rid = rdict[roi_source_id]
+        params['source'][ridx] = dict()
+        params['source'][ridx]['roi_dir'] = src_rid['DST']
+        params['source'][ridx]['tiff_dir'] = src_rid['SRC']
+        params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
+        params['source'][ridx]['roi_id'] = src_rid['roi_id']
+        params['source'][ridx]['roi_type'] = src_rid['roi_type']
 
+    if len(roi_source) == 1:
+        params['source'] = params['source'][0]
+        
     return params
 
 def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
-                    mmap_new=False, mmap_dir=None, 
-                    notnative=False, rootdir='', homedir='',
-                    check_hash=False, auto=False):
+                    notnative=False, rootdir='', homedir='', auto=False,
+                    mmap_new=False, check_hash=False):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
 
     PARAMS = dict()
-
-    PARAMS['tiff_sourcedir'] = tiff_sourcedir
-
-    if mmap_dir is None and 'caiman' in roi_type:
-        tiffparent = os.path.split(tiff_sourcedir)[0]
-        mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
-        if len(mmap_dirs) == 1 and mmap_new is False:
-            mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
-            mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
-        elif len(mmap_dirs) > 1 and mmap_new is False:
-            if auto is True:
-                mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
-                mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
-            else:
-                print "Found multiple mmap dirs in source: %s" % tiffparent
-                for midx, mdir in enumerate(mmap_dirs):
-                    print midx, mdir
-                user_selected = input("Select IDX of mmap dir to use: ")
-                mmap_dir = os.path.join(tiffparent, mmap_dirs[user_selected])
-                mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
-        else:
-            mmap_dir = tiff_sourcedir + '_mmap'
-            check_hash = True
-
-        if check_hash is True:
-            if os.path.isdir(mmap_dir): # Get hash for mmap files to rename mmap dir
-                excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
-                mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
-            else:
-                mmap_hash = None
-
-        if mmap_hash is not None and mmap_hash not in mmap_dir:
-            PARAMS['mmap_source'] = mmap_dir + '_' + mmap_hash
-            os.rename(mmap_dir, PARAMS['mmap_source'])
-            print "Renamed mmap with hash:", PARAMS['mmap_source']
-        else:
+    if isinstance(tiff_sourcedir, list): # > 1: 
+        # Multiple sources (roi_type==coregister), so store each src's info:
+        PARAMS['tiff_sourcedir'] = {}
+        if roi_type == 'caiman2D':
+            PARAMS['mmap_source'] = {}
+        for tidx, tiff_source in enumerate(sorted(tiff_sourcedir, key=natural_keys)):
+            PARAMS['tiff_sourcedir'][tidx] = tiff_source
+            if roi_type=='caiman2D':
+                mmap_dir = get_mmap_dirname(tiff_source, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
+                PARAMS['mmap_source'][tidx] = mmap_dir
+    else:
+        # Single source, don't store as dict:
+        if isinstance(tiff_sourcedir, list):
+            tiff_sourcedir = tiff_sourcedir[0]
+        PARAMS['tiff_sourcedir'] = tiff_sourcedir
+        if roi_type == 'caiman2D':
+            mmap_dir = get_mmap_dirname(tiff_sourcedir, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
             PARAMS['mmap_source'] = mmap_dir
-
+    
+    # Replace PARAM paths with processing-machine paths:
     if notnative is True:
-        PARAMS['tiff_sourcedir'] = PARAMS['tiff_sourcedir'].replace(homedir, rootdir)
-        PARAMS['mmap_source'] = PARAMS['mmap_source'] .replace(homedir, rootdir)
-        
-        
+        for dirtype in PARAMS.keys():
+            if isinstance(PARAMS[dirtype], dict):
+                for k in PARAMS[dirtype]:
+                    PARAMS[dirtype][k] = PARAMS[dirtype][k].replace(homedir, rootdir)
+            else:
+                PARAMS[dirtype] = PARAMS[dirtype].replace(homedir, rootdir)
+                        
     PARAMS['options'] = roi_options
     PARAMS['roi_type'] = roi_type
-
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
     print "PARAMS hashid is:", PARAMS['hashid']
 
     return PARAMS
 
+def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=False):
+    mmap_dir = None
+    
+    # First check if mmap-ed dir exists:
+    tiffparent = os.path.split(tiff_sourcedir)[0]
+    mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
+    if len(mmap_dirs) == 1 and mmap_new is False:
+        mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
+        mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+        check_hash = False
+    elif len(mmap_dirs) > 1 and mmap_new is False:
+        if auto is True:
+            mmap_dir =  os.path.join(tiffparent, mmap_dirs[0])
+            mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+            check_hash = False
+        else:
+            print "Found multiple mmap dirs in source: %s" % tiffparent
+            for midx, mdir in enumerate(mmap_dirs):
+                print midx, mdir
+            user_selected = raw_input("Select IDX of mmap dir to use, or press <N> to make new memmap dir: ")
+            if user_selected == 'N':
+                mmap_new = True
+                check_hash = True
+            else:
+                mmap_dir = os.path.join(tiffparent, mmap_dirs[int(user_selected)])
+                mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
+                check_hash = False
+                
+    if mmap_dir is None or mmap_new is True:
+        mmap_dir = tiff_sourcedir + '_mmap'
+        check_hash = True
+
+    if check_hash is True:
+        if os.path.isdir(mmap_dir): # Get hash for mmap files to rename mmap dir
+            excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
+            mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
+        else:
+            mmap_hash = None
+
+    if mmap_hash is not None and mmap_hash not in mmap_dir:
+        mmap_source = mmap_dir + '_' + mmap_hash
+        os.rename(mmap_dir, mmap_source)
+        print "Renamed mmap with hash:", mmap_source
+    else:
+        mmap_source = mmap_dir
+
+    return mmap_source
 
 def get_roi_id(PARAMS, session_dir, auto=False):
 

@@ -61,7 +61,7 @@ import scipy
 import skimage
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, write_dict_to_json, load_sparse_mat, save_sparse_hdf5, print_elapsed_time
+from pipeline.python.utils import natural_keys, write_dict_to_json, save_sparse_hdf5, print_elapsed_time
 #from pipeline.python.rois import extract_rois_caiman as rcm
 from pipeline.python.rois import caiman2D as rcm
 
