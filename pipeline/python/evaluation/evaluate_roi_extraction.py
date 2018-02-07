@@ -31,7 +31,7 @@ pp = pprint.PrettyPrinter(indent=4)
 
 
 #%%
-def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=False):
+def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=False, cluster_backend='local', nprocs=12):
     """
     Uses component quality evaluation from caiman.
     mmap_path : (str)
@@ -77,7 +77,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=Fa
     except:
         pass
     
-    c, dview, n_processes = cm.cluster.setup_cluster(backend='local', # use this one
+    c, dview, n_processes = cm.cluster.setup_cluster(backend=cluster_backend, # use this one
                                                      n_processes=None,  # number of process to use, reduce if out of mem
                                                      single_thread = False)
     try:
@@ -149,12 +149,12 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=Fa
         return pass_comps, fail_comps, snr_vals, r_vals, cnn_preds
 
 #%%
-def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
+def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, cluster_backend='local', nprocs=12):
     
     t_eval_mp = time.time()
     
     filenames = sorted(srcfiles.keys(), key=natural_keys)
-    def worker(filenames, srcfiles, evalparams, roi_eval_dir, out_q):
+    def worker(out_q, filenames, srcfiles, evalparams, roi_eval_dir, cluster_backend, nprocs):
         """
         Worker function is invoked in a process. 'filenames' is a list of 
         filenames to evaluate [File001, File002, etc.]. The results are placed
@@ -162,9 +162,11 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
         """
         outdict = {}
         for fn in filenames:
-            outdict[fn] = evaluate_rois_nmf(srcfiles[fn][0], srcfiles[fn][1], evalparams, roi_eval_dir, asdict=True)
+            outdict[fn] = evaluate_rois_nmf(srcfiles[fn][0], srcfiles[fn][1], evalparams, roi_eval_dir, cluster_backend=cluster_backend, nprocs=nprocs, asdict=True)
             print "Worker: Done with %s" % fn
         out_q.put(outdict)
+        out_q.put(None)
+        print "Worker is done."
         return
     
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -174,28 +176,41 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=12):
     
     for i in range(nprocs):
         p = mp.Process(target=worker,
-                       args=(filenames[chunksize * i:chunksize * (i + 1)],
-                                       srcfiles,
-                                       evalparams,
-                                       roi_eval_dir,
-                                       out_q))
+                       args=(out_q, 
+                             filenames[chunksize * i:chunksize * (i + 1)],
+                             srcfiles,
+                             evalparams,
+                             roi_eval_dir,
+                             cluster_backend,
+                             nprocs))
         procs.append(p)
         p.start()
-        
+
+    # Collate worker results
+    resultdict = {}
+    n_proc_end = 0
+    while not n_proc_end == nprocs:
+        res = out_q.get()
+        if res is None:
+            n_proc_end += 1
+        else:
+            resultdict.update(res)
+
     # Wait for all worker processes to finish
     for p in procs:
         p.join()
         print "Finished:", p
         
-    # Collect all results into single results dict. We should know how many dicts to expect:
-    resultdict = {}
-    for i in range(nprocs):
-        resultdict.update(out_q.get())
+#    # Collect all results into single results dict. We should know how many dicts to expect:
+#    resultdict = {}
+#    for i in range(nprocs):
+#        resultdict.update(out_q.get())
     
-#    # Wait for all worker processes to finish
-#    for p in procs:
-#        print "Finished:", p
-#        p.join()
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+    print "Done joining."
 #    
     print_elapsed_time(t_eval_mp)
     
@@ -230,7 +245,7 @@ def set_evalparams_nmf(RID, frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_t
     return evalparams
 
 #%%
-def par_evaluate_rois(RID, evalparams=None, nprocs=12):
+def par_evaluate_rois(RID, evalparams=None, nprocs=12, cluster_backend='local'):
     
     session_dir = RID['DST'].split('/ROIs')[0]
     roi_type = RID['roi_type']
@@ -278,7 +293,7 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12):
         evalfile.attrs['creation_date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         if roi_type == 'caiman2D':
-            RESULTS = mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=nprocs)
+            RESULTS = mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, nprocs=nprocs, cluster_backend=cluster_backend)
         
         for fn in RESULTS.keys():
             filegrp = evalfile.create_group(fn)
@@ -313,7 +328,7 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12):
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%%
-def evaluate_roi_set(RID, evalparams=None):
+def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local'):
     
     session_dir = RID['DST'].split('/ROIs')[0]
     roi_id = RID['roi_id']
@@ -378,7 +393,7 @@ def evaluate_roi_set(RID, evalparams=None):
                     filegrp.attrs['tiff_source'] = curr_mmap_path
                     filegrp.attrs['roi_source'] = curr_nmfout_path
             
-                good, bad, snr_vals, r_vals, cnn_preds = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, evalparams, roi_eval_dir)
+                good, bad, snr_vals, r_vals, cnn_preds = evaluate_rois_nmf(curr_mmap_path, curr_nmfout_path, evalparams, roi_eval_dir, cluster_backend=cluster_backend, nprocs=nprocs)
     
                 # Save Eval function output to file:
                 good_dset = filegrp.create_dataset('pass_rois', good.shape, good.dtype)
@@ -410,7 +425,7 @@ def evaluate_roi_set(RID, evalparams=None):
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%% 
-def run_rid_eval(rid_filepath, nprocs=12):
+def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local'):
     #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
     tmp_rid_dir = os.path.split(rid_filepath)[0]
     if not os.path.exists(rid_filepath):
@@ -424,7 +439,7 @@ def run_rid_eval(rid_filepath, nprocs=12):
             RID = json.load(f)
         
         evalparams = set_evalparams_nmf(RID)
-        eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs)
+        eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend)
         
     return eval_filepath
 
@@ -525,7 +540,7 @@ def run_evaluation(options):
                                         Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
     
         if multiproc is True:
-            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs)
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend)
         else:
             eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
         
