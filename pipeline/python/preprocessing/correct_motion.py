@@ -199,11 +199,19 @@ def do_motion(options):
         print "================================================="
         print "Doing MOTION correction."
         print "================================================="
-        eng = matlab.engine.start_matlab()
-        eng.cd(repo_path_matlab, nargout=0)
-        eng.add_repo_paths(cvx_path, repo_prefix, nargout=0)
-        eng.do_motion_correction(paramspath, nargout=0)
-        eng.quit()
+        completed_mc = False
+        try:
+            eng = matlab.engine.start_matlab()
+            eng.cd(repo_path_matlab, nargout=0)
+            eng.add_repo_paths(cvx_path, repo_prefix, nargout=0)
+            eng.do_motion_correction(paramspath, nargout=0)
+            completed_mc = True
+            eng.quit()
+        except SystemError as e:
+            print "ERROR terminating... -----------------------"
+            print "MC step did not exit cleanly."
+            if completed_mc is True:
+                print "MC completed, but unable to quit engine."
 
     # -------------------------------------------------------------
     # Check for Interleaving/Deinterleaving:
