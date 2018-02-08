@@ -241,7 +241,7 @@ def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'
     
     # Wait for tasks to finish:
     print "Waiting for submitted tasks to complete..."
-    #request_queue.join()
+    request_queue.join()
 
     # Collate worker results
     print "Collating worker results..."
