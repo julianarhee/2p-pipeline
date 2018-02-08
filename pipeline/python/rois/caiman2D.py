@@ -174,51 +174,149 @@ def extract_cnmf_rois(options):
            
     return nmfopts_hash, rid_hash
 
-
 #%%
+class nmfworker(mp.Process):
+    def __init__(self, in_q, out_q, cluster_backend, nproc):
+        super(nmfworker, self).__init__()
+        self.in_q = in_q
+        self.out_q = out_q
+        self.cluster_backend = cluster_backend
+        self.nproc = nproc
     
-def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'):
-    
-    t_eval_mp = time.time()
-    
-    def worker(files_to_run, tmp_rid_path, cluster_backend, out_q):
-        """
-        Worker function is invoked in a process. 'filenames' is a list of 
-        filenames to evaluate [File001, File002, etc.]. The results are placed
-        in a dict that is pushed to a queue.
-        """
-        outdict = {}
-        for fn in files_to_run:
-            outdict[fn] = extract_nmf_from_rid(tmp_rid_path, int(fn[4:]), cluster_backend=cluster_backend, asdict=True)
-        out_q.put(outdict)
-    
-    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    def run(self):
+        proc_name = self.name
+        print "Starting NMF worker: %s" % proc_name
+        
+        print 'Computing things!'
+        print "Worker resources: %s, nprocs %i" % (self.cluster_backend, self.nproc)
+        outdict= {}
+        while True:
+            task = self.in_q.get()
+            if task is None:
+                # Poison pill to shutdown:
+                print "%s: Exiting. Task done." % proc_name
+                self.in_q.task_done()
+                break
+            print '%s: extracting %s.' % (proc_name, task[0])
+            rid_path = task[1]
+            fn = task[0]
+            outdict[fn] = extract_nmf_from_rid(rid_path, int(fn[4:]), cluster_backend=self.cluster_backend, nproc=self.nproc, asdict=True)
+            print "Worker: Extracted %s." % fn
+            self.in_q.task_done()
+            self.out_q.put(outdict)
+            self.out_q.put(None)
+        print "Worker: Finished %s." % fn
+#        return
+#        for fnkey in iter( self.in_q.get, None ):
+#            # Use data
+#            rid_path = fnkey[1]
+#            fn = fnkey[0]
+#            outdict[fn] = extract_nmf_from_rid(rid_path, int(fn[4:]), nproc=4, asdict=True)
+#        
+#        self.out_q.put(outdict)
+        
+#%%
+def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'): #, cluster_backend='local'):
+    t_nmf = time.time()
+        
+    request_queue = mp.JoinableQueue()
     out_q = mp.Queue()
-    chunksize = int(math.ceil(len(files_to_run) / float(nproc)))
-    procs = []
     
-    for i in range(nproc):
-        p = mp.Process(target=worker,
-                       args=(files_to_run[chunksize * i:chunksize * (i + 1)],
-                                       tmp_rid_path,
-                                       cluster_backend,
-                                       out_q))
-        procs.append(p)
-        p.start()
+    # Start workers:
+    arglist = [(fn, tmp_rid_path) for fn in files_to_run]
+    nworkers = len(arglist)
+    print "Creating %i workers..." % nworkers
+    workers = [ nmfworker(request_queue, out_q, cluster_backend, nproc) for i in xrange(nworkers) ]
+    for w in workers:
+        w.start()
+        
+    # Queue jobs
+    nworkers = len(arglist)
+    for fnkey in arglist:
+        request_queue.put(fnkey)
+        
+    # Poison pill to allow clean shutdown (1 per worker):
+    for i in xrange(nworkers):
+        request_queue.put(None)
     
-    # Collect all results into single results dict. We should know how many dicts to expect:
+    # Wait for tasks to finish:
+    print "Waiting for submitted tasks to complete..."
+    #request_queue.join()
+
+    # Collate worker results
+    print "Collating worker results..."
     resultdict = {}
-    for i in range(nproc):
-        resultdict.update(out_q.get())
-    
+    n_proc_end = 0
+    while not n_proc_end == nworkers:
+        res = out_q.get()
+        if res is None:
+            n_proc_end += 1
+        else:
+            resultdict.update(res)
+            
     # Wait for all worker processes to finish
-    for p in procs:
-        print "Finished:", p
-        p.join()
+    for w in workers:
+        w.join()
+        print "Finished:", w
+    print "Done joining."
     
-    print_elapsed_time(t_eval_mp)
+#    
+    print_elapsed_time(t_nmf)
     
     return resultdict
+
+
+#    for i in range(4):
+#        nmfworker( request_queue, out_q ).start()
+#    arglist = [(fn, tmp_rid_path) for fn in files_to_run]
+#    for fnkey in arglist:
+#        request_queue.put( fnkey )
+#    # Sentinel objects to allow clean shutdown: 1 per worker.
+#    for i in range(4):
+#        request_queue.put( None ) 
+        
+#def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'):
+#    
+#    t_eval_mp = time.time()
+#    
+#    def worker(files_to_run, tmp_rid_path, cluster_backend, out_q):
+#        """
+#        Worker function is invoked in a process. 'filenames' is a list of 
+#        filenames to evaluate [File001, File002, etc.]. The results are placed
+#        in a dict that is pushed to a queue.
+#        """
+#        outdict = {}
+#        for fn in files_to_run:
+#            outdict[fn] = extract_nmf_from_rid(tmp_rid_path, int(fn[4:]), nproc=len(files_to_run), cluster_backend=cluster_backend, asdict=True)
+#        out_q.put(outdict)
+#    
+#    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+#    out_q = mp.Queue()
+#    chunksize = int(math.ceil(len(files_to_run) / float(nproc)))
+#    procs = []
+#    
+#    for i in range(nproc):
+#        p = mp.Process(target=worker,
+#                       args=(files_to_run[chunksize * i:chunksize * (i + 1)],
+#                                       tmp_rid_path,
+#                                       cluster_backend,
+#                                       out_q))
+#        procs.append(p)
+#        p.start()
+#    
+#    # Collect all results into single results dict. We should know how many dicts to expect:
+#    resultdict = {}
+#    for i in range(nproc):
+#        resultdict.update(out_q.get())
+#    
+#    # Wait for all worker processes to finish
+#    for p in procs:
+#        print "Finished:", p
+#        p.join()
+#    
+#    print_elapsed_time(t_eval_mp)
+#    
+#    return resultdict
 
 #%%
 
@@ -507,7 +605,7 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
     # adjust opts:
     cnm.options['temporal_params']['memory_efficient'] = True
     cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
-    cnm.options['temporal_params']['verbosity'] = True
+    cnm.options['temporal_params']['verbosity'] = False #True
     
     return cnm
 
@@ -584,7 +682,7 @@ def evaluate_cnm(images, cnm, params, dims, iteration=1, img=None, curr_filename
     return idx_components, idx_components_bad, SNR_comp, r_values
         
 #%%
-def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None, cluster_backend='local'):
+def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
 
     curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
     RID = load_RID(tmp_rid_path, infostr='nmf')
@@ -852,7 +950,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=None, cluster_backend='local')
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, cluster_backend='local', asdict=False):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False):
     nmfopts_hash = None
     ngood_rois = 0
     
@@ -888,7 +986,7 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=None, cluster_backend='lo
     if asdict is True:
         nmf_file_output = dict()
         nmf_file_output['nmfopts_hash'] = nmfopts_hash
-        nmf_file_output['rid_hash'] = ngood_rois
+        nmf_file_output['ngood_rois'] = ngood_rois
         return nmf_file_output
     else:
         return nmfopts_hash, ngood_rois

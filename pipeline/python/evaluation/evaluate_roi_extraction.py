@@ -78,7 +78,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=Fa
         pass
     
     c, dview, n_processes = cm.cluster.setup_cluster(backend=cluster_backend, # use this one
-                                                     n_processes=None,  # number of process to use, reduce if out of mem
+                                                     n_processes=nprocs,  # number of process to use, reduce if out of mem
                                                      single_thread = False)
     try:
         Yr, dims, T = cm.load_memmap(mmap_path)
@@ -200,11 +200,6 @@ def mp_evaluator_nmf(srcfiles, evalparams, roi_eval_dir, cluster_backend='local'
     for p in procs:
         p.join()
         print "Finished:", p
-        
-#    # Collect all results into single results dict. We should know how many dicts to expect:
-#    resultdict = {}
-#    for i in range(nprocs):
-#        resultdict.update(out_q.get())
     
     # Wait for all worker processes to finish
     for p in procs:
@@ -479,10 +474,13 @@ def run_evaluation(options):
     
     slurm = options.slurm
     auto = options.default
-    if options.slurm is True:
-        if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/2p-data'
-            
+    if slurm is True:
+        if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/2p-data'
+        cluster_backend = 'SLURM'
+    else:
+        cluster_backend = 'local'
+        
     min_SNR = float(options.min_SNR)
     rval_thr = float(options.rval_thr)
     Nsamples = int(options.Nsamples)
@@ -495,23 +493,23 @@ def run_evaluation(options):
     nprocs = options.nprocs
     
     #%% OPTPARSE:
-    rootdir = '/nas/volume1/2photon/data'
-    animalid = 'JR063' #'JR063'
-    session = '20171128_JR063' #'20171128_JR063'
-    roi_id = 'rois008'
-    slurm = False
-    auto = False
-    multiproc = True
-
-    # Eval params (specific for NMF)
-    min_SNR = 1.5
-    rval_thr = 0.6
-    use_cnn = False
-    cnn_thr = 0.8
-    decay_time = 1.0
-    frame_rate = 44.6828
-    Nsamples = 5
-    Npeaks = 5
+#    rootdir = '/nas/volume1/2photon/data'
+#    animalid = 'JR063' #'JR063'
+#    session = '20171128_JR063' #'20171128_JR063'
+#    roi_id = 'rois008'
+#    slurm = False
+#    auto = False
+#    multiproc = True
+#
+#    # Eval params (specific for NMF)
+#    min_SNR = 1.5
+#    rval_thr = 0.6
+#    use_cnn = False
+#    cnn_thr = 0.8
+#    decay_time = 1.0
+#    frame_rate = 44.6828
+#    Nsamples = 5
+#    Npeaks = 5
     
     #%%
     session_dir = os.path.join(rootdir, animalid, session)

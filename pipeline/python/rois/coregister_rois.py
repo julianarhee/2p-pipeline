@@ -604,7 +604,41 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
     #%
     pl.savefig(os.path.join(save_dir, 'contours_%s_r%s.png' % (plot_type,  str(params_thr['ref_filename'])))) #matchedrois_fn_base))
     pl.close()
-   
+
+#%%
+def load_roi_eval(roi_eval_path):
+    pass_rois_dict = dict()
+    nrois_total = dict()
+    evalparams = dict()
+    try:
+        print "Loading ROI info for files:",
+        src_eval = h5py.File(roi_eval_path, 'r')
+        for f in src_eval.keys():
+            pass_rois_dict[str(f)] = np.array(src_eval[f]['pass_rois'])
+            nrois_total[str(f)] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
+            print "%s: %i out of %i rois passed evaluation." % (f, pass_rois_dict[str(f)], nrois_total[str(f)])
+            
+        for eparam in src_eval.attrs.keys():
+            if eparam == 'creation_date':
+                continue
+            if isinstance(src_eval.attrs[eparam], np.ndarray):
+                evalparams[eparam] = src_eval.attrs[eparam].tolist()
+            else:
+                evalparams[eparam] = src_eval.attrs[eparam].item()
+            #print eparam, src_eval.attrs[eparam], src_eval.attrs[eparam].dtype
+            evalparams[eparam] = src_eval.attrs[eparam].tolist()
+    except Exception as e:
+        print "ERROR LOADING ROI idxs ------------------------------------"
+        print traceback.print_exc()
+        print "User provided ROI idx path:"
+        print roi_eval_path
+        print "-----------------------------------------------------------"
+    finally:
+        src_eval.close()
+    
+    return pass_rois_dict, nrois_total, evalparams
+            
+    
 #%%
 def run_coregistration(options):
 
@@ -671,49 +705,7 @@ def run_coregistration(options):
     roi_eval_path = options.roipath
     mcmetric = options.mcmetric
     
-    #%%
-    # =========================================================================
-    # Load ROI evaluation results, if relevant:
-    # =========================================================================
-    if len(roi_eval_path) == 0:
-        pass_rois_dict = None
-        nrois_total = None
-        evalparams = None
-    else:
-        try:
-            pass_rois_dict = dict()
-            nrois_total = dict()
-            evalparams = dict()
-            print "Loaded ROI info for files:",
-            print roi_eval_path
-            src_eval = h5py.File(roi_eval_path, 'r')
-            for f in src_eval.keys():
-                print "%s: %i rois" % (f, len(src_eval[f]['pass_rois']))
-                pass_rois_dict[str(f)] = np.array(src_eval[f]['pass_rois'])
-                nrois_total[str(f)] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
-                print "idxs:", pass_rois_dict[str(f)]
-                print "ntotal:", nrois_total[str(f)]
-                
-            for eparam in src_eval.attrs.keys():
-                if eparam == 'creation_date':
-                    continue
-                if isinstance(src_eval.attrs[eparam], np.ndarray):
-                    evalparams[eparam] = src_eval.attrs[eparam].tolist()
-                else:
-                    evalparams[eparam] = src_eval.attrs[eparam].item()
-                #print eparam, src_eval.attrs[eparam], src_eval.attrs[eparam].dtype
-                evalparams[eparam] = src_eval.attrs[eparam].tolist()
-        except Exception as e:
-            print "ERROR LOADING ROI idxs ------------------------------------"
-            print traceback.print_exc()
-            print "User provided ROI idx path:"
-            print roi_eval_path
-            print "-----------------------------------------------------------"
-        finally:
-            src_eval.close()
-            
-    coreg_output_dir = options.coreg_output_dir
-    
+    coreg_output_dir = options.coreg_output_dir    
     coreg_fidx = int(options.coreg_fidx) - 1
     reference_filename = "File%03d" % int(options.coreg_fidx)
     
@@ -754,7 +746,7 @@ def run_coregistration(options):
     
     #%%
     # =========================================================================
-    # Get info for ROI source files and TIFF/mmapped source files:
+    # Get ROI source(s) info:
     # =========================================================================
     tiff_sourcedir = RID['SRC']
     path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
@@ -762,43 +754,51 @@ def run_coregistration(options):
     run = path_parts[2]
     process_dirname = path_parts[4]
     process_id = process_dirname.split('_')[0]
+    roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
+    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir'] 
     
+    # Get ROI source files and their sources (.tif, .mmap) -- use MC evaluation 
+    # results, if relevant.
     roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True, 
                                                                                                       mcmetric=mcmetric,
                                                                                                       acquisition=acquisition,
                                                                                                       run=run,
                                                                                                       process_id=process_id)
+    # Get list of .tif files to exclude (from MC-eval fail or user-choice):
     if len(exclude_manual) > 0:
         excluded_tiffs.extend(exclude_manual)
-        
-    print "Additionally excluding manully-selected tiffs."
+        print "Additionally excluding manully-selected tiffs."
     print "Excluded:", excluded_tiffs
-    
     params_thr['excluded_tiffs'] = excluded_tiffs
     
-    roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
-    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir'] 
 
-    # =========================================================================
-    # Create output dir:
-    # =========================================================================
+    # Create dir for coregistration output:
     if coreg_output_dir is None:
         coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')            
     print "Saving COREG results to:", coreg_output_dir
     if not os.path.exists(coreg_output_dir):
         os.makedirs(coreg_output_dir)
-        
+    
+    
+    # Load ROI evaluation results, if relevant:
+    if len(roi_eval_path) == 0:
+        pass_rois_dict = None
+        nrois_total = None
+        evalparams = None
+    else:
+        pass_rois_dict, nrois_total, evalparams = load_roi_eval(roi_eval_path)
+
     #%%
     # =========================================================================
-    # Determine which file should be used as "reference" for coregistering ROIs:
+    # Determine which file or ROI-subset should be used as the reference for COREG.
     # =========================================================================
     
     if pass_rois_dict is not None:
+        # Use user-specified ROI evaluation to get N-pass, N-total for each relevant tiff file:
         src_nrois = [(str(fkey), nrois_total[fkey], len(pass_rois_dict[fkey])) for fkey in sorted(pass_rois_dict.keys(), key=natural_keys)]    
-        
     else:
         if roi_ref_type == 'caiman2D':
-            # Go through all files to select the one that has the MOST number of ROIs:
+            # Create a list of N-pass, N-total for each tiff in set:
             src_nrois = []
             for roi_source in roi_source_paths:
                 snmf = np.load(roi_source)
@@ -841,13 +841,9 @@ def run_coregistration(options):
         for eparam in evalparams.keys():
             print eparam, evalparams[eparam]
         print "-----------------------------------------------------------"
-    
     params_thr['eval'] = evalparams
     
-    #%%
-    # =========================================================================
     # Save coreg params info to current coreg dir:
-    # =========================================================================
     pp.pprint(params_thr)
     with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
         json.dump(params_thr, f, indent=4, sort_keys=True)
@@ -858,9 +854,7 @@ def run_coregistration(options):
     # =========================================================================
     ref_rois, coregistered_rois, coreg_results_path = coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=excluded_tiffs, pass_rois_dict=pass_rois_dict)
     print("Found %i common ROIs matching reference." % len(ref_rois))
-
-    #%%
-    # =========================================================================
+    
     # Save plots of universal matches:
     # =========================================================================
     coreg_fig_dir = os.path.join(coreg_output_dir, 'figures')
