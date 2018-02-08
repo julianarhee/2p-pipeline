@@ -193,6 +193,7 @@ class nmfworker(mp.Process):
         while True:
             task = self.in_q.get()
             if task is None:
+                # Poison pill to shutdown:
                 print "%s: Exiting. Task done." % proc_name
                 self.in_q.task_done()
                 break
@@ -201,6 +202,7 @@ class nmfworker(mp.Process):
             fn = task[0]
             outdict[fn] = extract_nmf_from_rid(rid_path, int(fn[4:]), cluster_backend=self.cluster_backend, nproc=self.nproc, asdict=True)
             print "Worker: Extracted %s." % fn
+            self.in_q.task_done()
             self.out_q.put(outdict)
             self.out_q.put(None)
         print "Worker: Finished %s." % fn
@@ -217,7 +219,7 @@ class nmfworker(mp.Process):
 def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'): #, cluster_backend='local'):
     t_nmf = time.time()
         
-    request_queue = mp.Queue()
+    request_queue = mp.JoinableQueue()
     out_q = mp.Queue()
     
     # Start workers:
@@ -984,7 +986,7 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
     if asdict is True:
         nmf_file_output = dict()
         nmf_file_output['nmfopts_hash'] = nmfopts_hash
-        nmf_file_output['rid_hash'] = ngood_rois
+        nmf_file_output['ngood_rois'] = ngood_rois
         return nmf_file_output
     else:
         return nmfopts_hash, ngood_rois
