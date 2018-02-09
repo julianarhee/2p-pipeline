@@ -715,24 +715,33 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
     #% Get corresponding MMAP file:
     mmap_dir = RID['PARAMS']['mmap_source']
     mmap_path = None
-    try:
-        assert os.path.isdir(mmap_dir), "Specified MMAP dir does not exist,\n%s" % mmap_dir
+    if not os.path.isdir(mmap_dir):
+        print "Attempting to create memmap file for tiff." 
+        print "Writing to dir: %s" % mmap_dir
+        mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
+    else:
         mmap_fn_matches = [m for m in os.listdir(mmap_dir) if m.endswith('mmap') and curr_filename in m]
         assert len(mmap_fn_matches) == 1, "Unable to find .MMAP file match for %s." % curr_filename
         mmap_path = os.path.join(mmap_dir, mmap_fn_matches[0])
-    except Exception as e:
-        traceback.print_exc()
-        try:
-            print "Attempting to create memmap file for tiff." 
-            print "Writing to dir: %s" % mmap_dir
-            mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
-        except Exception as e:
-            print "Unable to create memmap file for tiff:\n%s" % tiffpath
-            traceback.print_exc()
-            print "Problem getting MMAP'ed file."
-            print "Aborting. Check MMAP files."
-            print "---------------------------------------------------------------"
     
+#    try:
+#        assert os.path.isdir(mmap_dir), "Specified MMAP dir does not exist,\n%s" % mmap_dir
+#        mmap_fn_matches = [m for m in os.listdir(mmap_dir) if m.endswith('mmap') and curr_filename in m]
+#        assert len(mmap_fn_matches) == 1, "Unable to find .MMAP file match for %s." % curr_filename
+#        mmap_path = os.path.join(mmap_dir, mmap_fn_matches[0])
+#    except Exception as e:
+#        traceback.print_exc()
+#        try:
+#            print "Attempting to create memmap file for tiff." 
+#            print "Writing to dir: %s" % mmap_dir
+#            mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
+#        except Exception as e:
+#            print "Unable to create memmap file for tiff:\n%s" % tiffpath
+#            traceback.print_exc()
+#            print "Problem getting MMAP'ed file."
+#            print "Aborting. Check MMAP files."
+#            print "---------------------------------------------------------------"
+
     if mmap_path is not None:
         t_start = time.time()
         
