@@ -18,10 +18,10 @@ def evaluate_motion_pid(pid_filepath, zproj='mean', nprocs=12):
         with open(pid_filepath, 'r') as f:
             pinfo = json.load(f)
         # Get process ID NAME:
-        rundir = os.path.join(pinfo['rootidr'], pinfo['animalid'], pinfo['session'], pinfo['acquisition'], pinfo['run'])
+        rundir = os.path.join(pinfo['rootdir'], pinfo['animalid'], pinfo['session'], pinfo['acquisition'], pinfo['run'])
         with open(os.path.join(rundir, 'processed', 'pids_%s.json' % pinfo['run']), 'r') as f:
             pdict = json.load(f)
-        pkey = [k for k in pdict.keys() if pdict[p]['pid_hash'] == pinfo['pid']][0]
+        pkey = [k for k in pdict.keys() if pdict[k]['pid_hash'] == pinfo['pid']][0]
         pinfo['process_id'] = pkey
         del pdict
     else:

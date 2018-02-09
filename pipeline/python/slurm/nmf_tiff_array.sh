@@ -6,14 +6,27 @@ RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids"
 #echo $RIDPATH
 echo "Requested single ROI ID to memmap - ${RIDHASH}."
 
-if [ "$#" -gt 3 ]; then
-    NTIFFS="$4"
-    echo "Requesting NMF extraction on ${NTIFFS} tiff files."
+if [ "$#" == 5 ]; then
+    FIRSTTIFF="$4"
+    LASTTIFF="$5"
 else
-    NTIFFS=1
+    FIRSTTIFF=1
+    if [ "$#" == 4 ]; then
+        LASTTIFF="$4"
+    else
+        LASTTIFF=1
+    fi
 fi
-echo "N tiffs: ${NTIFFS}"
+echo "NMF-ROI extraction from File ${FIRSTTIFF} to ${LASTTIFF}."
 
+#if [ "$#" -gt 3 ]; then
+#    NTIFFS="$4"
+#    echo "Requesting NMF extraction on ${NTIFFS} tiff files."
+#else
+#    NTIFFS=1
+#fi
+#echo "N tiffs: ${NTIFFS}"
+#
 FILES=($RIDPATH/*$RIDHASH.json)
 
 # get size of array
@@ -29,7 +42,7 @@ if [ $ZBNUMFILES == 0 ]; then
     export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch --array=1-$NTIFFS /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
+    sbatch --array=1-${LASTTIFF} /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
 
 fi
 

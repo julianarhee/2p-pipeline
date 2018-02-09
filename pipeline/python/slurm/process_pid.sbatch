@@ -5,7 +5,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-2:00 # Running time of 3 hours
+#SBATCH -t 0-6:00 # Running time of 4 hours
 #SBATCH --mem 98304 # Memory request of 12 GB 
 #SBATCH -o processpid_%A_%a.out # Standard output
 #SBATCH -e processpid_%A_%a.err # Standard error
