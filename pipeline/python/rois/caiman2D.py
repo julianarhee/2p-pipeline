@@ -168,7 +168,10 @@ def extract_cnmf_rois(options):
         nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc, cluster_backend=cluster_backend)
         print "Finished FILE %i. Found %i components that pass initial evaluation." % (filenum, ngood_rois)
     
-    print "DONE PROCESSING ALL FILES (serial)!"
+    if multiproc is True:
+        print "DONE PROCESSING ALL FILES (par)!"
+    else:
+        print "DONE PROCESSING ALL FILES (serial)!"
     print "Total duration..."
     print_elapsed_time(t_serial)
            
