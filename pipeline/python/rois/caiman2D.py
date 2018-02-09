@@ -718,7 +718,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
     #% Get corresponding MMAP file:
     mmap_dir = RID['PARAMS']['mmap_source']
     mmap_path = None
-    if not os.path.isdir(mmap_dir):
+    if not os.path.isdir(mmap_dir) or len(os.listdir(mmap_dir)) == 0:
         print "Attempting to create memmap file for tiff." 
         print "Writing to dir: %s" % mmap_dir
         mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
