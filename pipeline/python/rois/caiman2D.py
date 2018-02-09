@@ -434,7 +434,7 @@ def save_memmap2(filenames, base_name='Yr', resize_fact=(1, 1, 1), remove_init=0
 #%%
 def memmap_tiff(filepath, outpath, is_3D, border_to_0, basename='Yr'):
     
-    if not.os.path.exists(outpath):
+    if not os.path.exists(outpath):
         os.makedirs(outpath)
         
     #border_to_0 = 0
