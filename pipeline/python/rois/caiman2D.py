@@ -119,7 +119,7 @@ def extract_cnmf_rois(options):
     if slurm is True:
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
-        cluster_backend = 'SLURM'
+        #cluster_backend = 'SLURM'
             
     if len(exclude_str) > 0:
         excluded_fids = exclude_str.split(',')
@@ -722,8 +722,10 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         print "Attempting to create memmap file for tiff." 
         print "Writing to dir: %s" % mmap_dir
         mmap_path = memmap_tiff(tiffpath, mmap_dir, is_3D, border_to_0, basename='Yr')
-    else:
+    
+    if mmap_path is None:
         mmap_fn_matches = [m for m in os.listdir(mmap_dir) if m.endswith('mmap') and curr_filename in m]
+        print mmap_fn_matches
         assert len(mmap_fn_matches) == 1, "Unable to find .MMAP file match for %s." % curr_filename
         mmap_path = os.path.join(mmap_dir, mmap_fn_matches[0])
     
