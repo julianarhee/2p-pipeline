@@ -992,9 +992,10 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
         print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmfopts_hash)
         print "%s-- Initialial evalation found %i ROIs that pass." % (currfile, ngood_rois)
         
-        print "Cleaning up tmp files..."
-        session_dir = os.path.split(os.path.split(tmp_rid_path)[0])[0]
-        post_rid_cleanup(session_dir, rid_hash)
+        if os.path.exists(tmp_rid_path): 
+            print "Cleaning up tmp files..."
+            session_dir = os.path.split(os.path.split(tmp_rid_path)[0])[0]
+            post_rid_cleanup(session_dir, rid_hash)
         
     except Exception as e:
         print "Failed while extracting cnmf ROIs for %s" % currfile
