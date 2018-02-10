@@ -3,7 +3,7 @@
 ANIMALID="$1"
 SESSION="$2"
 RIDHASH="$3"
-echo "Requested single ROI ID to memmap - $RIDHASH."
+echo "Requested single ROI ID to evaluate - $RIDHASH."
 
 #if [ "$#" -gt 3 ]; then
 #    NTIFFS="$4"
