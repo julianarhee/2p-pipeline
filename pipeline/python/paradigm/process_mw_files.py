@@ -204,22 +204,25 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
             first_on_ev = trigg_evs[first_on_idx]
             getout=1
 
-    if verbose is True:
-        #print "first_on_idx: ", first_on_idx
-        print "first SI-trigger ON event received: ", first_on_ev
-        #print "first_off_idx: ", first_off_idx
-        print "first SI-trigger OFF event received: ", first_off_ev
+#    if verbose is True:
+#        #print "first_on_idx: ", first_on_idx
+#        print "first SI-trigger ON event received: ", first_on_ev
+#        #print "first_off_idx: ", first_off_idx
+#        print "first SI-trigger OFF event received: ", first_off_ev
 
-        # Now, get all "trigger" boundaries that demarcate each "run" after first run:
-        print "Incrementally searching to find each pair of ON/OFF trigger events..."
+    # Now, get all "trigger" boundaries that demarcate each "run" after first run:
+    print "Incrementally searching to find each pair of ON/OFF trigger events..."
 
     found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
+    chunkidx = 0
+    print "Chunk %i: dur (s): %.2f" % (chunkidx, (first_off_ev.time-first_on_ev.time)/1E6)
     start_idx = copy.copy(first_off_idx)
     #print trigg_evs
     if start_idx<len(trigg_evs)-1:
         while start_idx < len(trigg_evs)-1:
             #print start_idx
             try:
+                chunkidx += 1
                 found_new_start = False
                 early_abort = False
                 curr_chunk = trigg_evs[start_idx+1:] # Look for next OFF event after last off event
@@ -229,12 +232,17 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
                 curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
                 curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
                 curr_start_ev = trigg_evs[curr_start_idx]
-                found_new_start = True
-
+                if curr_start_ev.value==0:
+                    found_new_start = True
+                    found_trigger_evs.append([curr_start_ev, curr_off_ev])
+                    print "Chunk %i: dur (s): %.2f" % (chunkidx, (curr_off_ev.time - curr_start_ev.time)/1E6)
+                else:
+                    found_new_start = False
+                
                 last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
-                found_trigger_evs.append([curr_start_ev, curr_off_ev])
                 start_idx = last_found_idx #start_idx + found_idx
                 #print start_idx
+                
             except StopIteration:
                 check_new_starts = [i for i in curr_chunk if i['value']==0]
                 if len(check_new_starts) > 0:
@@ -244,18 +252,19 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
                     found_new_start = False
                 if verbose is True:
                     print "Got to STOP."
-
-            if found_new_start is True:
-                early_abort = True
-                break
+    
+                if found_new_start is True:
+                    early_abort = True
+                    break
 
         # If no proper off-event found for a given start event (remember, we always look for the next OFF event), just use the end of the session as t-end.
         # Since we look for the next OFF event (rather than the next start), if we break out of the loop, we haven't cycled through all the trigg_evs.
         # This likely means that there is another frame-ON event, but not corresponding OFF event.
         if early_abort is True:
             if found_new_start is True:
+                print "Missing final frame-off event, just appending last frame-trigg event to go with found START ev."
                 last_on_ev = curr_chunk[0]
-                print last_on_ev
+                #print last_on_ev
                 last_ev = trigg_evs[-1]
                 found_trigger_evs.append([last_on_ev, last_ev])
             else:
@@ -401,7 +410,7 @@ def get_stimulus_events(dfn, phasemod=False, triggername='frame_trigger', pixelc
         if pixelclock:
             num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
             # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
-            pixelclock_evs = get_pixelclock_events(df, boundary) #, trigger_times=trigg_times)
+            pixelclock_evs = get_pixelclock_events(df, boundary) # trigger_times=trigg_times) #, trigger_times=trigg_times)
         else:
             num_non_stimuli = 2 # background + image
 
@@ -666,7 +675,7 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
         print "Found %i stimulus on events." % len(stimevents)
         if retinobar is False:
             	print "Found %i trial epoch (stim ON + ITI) events." % len(trialevents)
-        print "Found %i runs (i.e., trigger boundary events)." % len(trigger_times)
+        #print "Found %i runs (i.e., trigger boundary events)." % len(trigger_times)
 
     # on FLASH protocols, first real iamge event is 41
     print "Found %i trials, corresponding to %i TIFFs." % (len(stimevents), len(trigger_times))
@@ -678,7 +687,7 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
     # -------------------------------------------------------------------------
     if retinobar is True:
 
-        nexpected_pixelevents = int(round((1/session_info['target_freq']) * session_info['ncycles'] * refresh_rate * len(trigger_times)))
+        nexpected_pixelevents = int(round((1/session_info['target_freq']) * session_info['ncycles'] * refresh_rate)) # * len(trigger_times)))
         print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-len(pixelevents))
 
         stimnames = ['left', 'right', 'top', 'bottom']
@@ -831,9 +840,9 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
         print idx, (t[1] - t[0])/1E6
 
 	# Check stimulus durations:
-	print len(stimevents)
+	#print len(stimevents)
 	iti_events = trialevents[2::2]
-	print len(iti_events)
+	#print len(iti_events)
 
 	stim_durs = []
 	off_syncs = []
@@ -845,8 +854,8 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
 
 	# PLOT stim durations:
 	print "N stim ONs:", len(stim_durs)
-	print "min (s):", min(stim_durs)/1E6
-	print "max (s):", max(stim_durs)/1E6
+	print "min stim dur (s):", min(stim_durs)/1E6
+	print "max stim dur(s):", max(stim_durs)/1E6
 
 
 

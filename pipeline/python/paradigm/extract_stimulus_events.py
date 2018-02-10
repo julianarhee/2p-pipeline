@@ -91,9 +91,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
     frame_on_idxs.append(0)
     frame_on_idxs = sorted(frame_on_idxs)
-    print "Found %i frame-triggers:" % len(frame_on_idxs)
+    # Check that no frame triggers were skipped/missed:
+    diffs = np.diff(frame_on_idxs)
+    nreads_per_frame = max(set(diffs), key=list(diffs).count)
+    print "Found %i frame-triggers." % len(frame_on_idxs)
 
-    ### Get arduino-processed bitcodes for each frame:
+
+    ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
     frame_bitcodes = dict()
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
@@ -125,8 +129,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
     first_frame = first_stim_frame
 
 
-    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)):
-
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:46]):
+        #print trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
 
@@ -142,11 +146,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
         	    # Skip a good number of frames from the last "found" index of previous trial.
         	    # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
         	    # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
-        	    nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 5)
+        	    nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3)
         	    #print 'skipping iti...', nframes_to_skip
         	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
-        first_found_frame = []
+        first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
         minframes = 4
         for bitcode in mwtrials[trial]['all_bitcodes']:
             looking = True
@@ -235,7 +239,7 @@ retinobar = options.retinobar
 phasemod = options.phasemod
 trigger_varname = options.frametrigger_varname
 
-stimorder_files = True
+stimorder_files = False #True
 
 #%%
 # ================================================================================
@@ -292,7 +296,7 @@ RUN = dict()
 trialnum = 0
 for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
-    framerate = float(runinfo['frame_rate'])
+    framerate = 44.68 #float(runinfo['frame_rate'])
 
     currfile = "File%03d" % int(fid+1)
 
@@ -310,6 +314,7 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
     sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
     sorted_stim_frames = [(trialevents[t]['stim_on_idx'], trialevents[t]['stim_off_idx']) for t in sorted_trials_in_run]
 
+    trialnum = 0
     for trialhash in sorted_trials_in_run:
         trialnum += 1
         trialname = 'trial%05d' % int(trialnum)
