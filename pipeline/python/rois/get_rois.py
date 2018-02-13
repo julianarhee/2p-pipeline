@@ -237,7 +237,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     return final_masks, img, coors, roi_idxs, is_3D, nb, final_rA, final_Cf
 
 #%
-def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None):
+def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
     RID = load_RID(session_dir, roi_id, auto=auto)
     rid_dir = RID['DST']
     roi_type = RID['roi_type']
@@ -247,12 +247,18 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetri
     rid_figdir = os.path.join(rid_dir, 'figures')
     if not os.path.exists(rid_figdir):
         os.makedirs(rid_figdir)
-    
-    roiparams_path = os.path.join(rid_dir, 'roiparams.json')
-    with open(roiparams_path, 'r') as f:
-        roiparams = json.load(f)
-        
+
+       
     roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, mcmetric='zproj_corrcoefs')
+ 
+    roiparams_path = os.path.join(rid_dir, 'roiparams.json')
+    if not os.path.exists(roiparams_path):
+        if roi_type == 'caiman2D':
+            evalparams = RID['PARAMS']['options']['eval']
+        roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, mc_excluded_tiffs=mc_excluded_tiffs)
+    else:
+        with open(roiparams_path, 'r') as f:
+            roiparams = json.load(f)
         
     mask_filepath = os.path.join(rid_dir, 'masks.hdf5')
     maskfile = h5py.File(mask_filepath, 'w')
@@ -611,25 +617,12 @@ def do_roi_extraction(options):
         
     # TODO: Include ROI eval info for other methods?
     # TODO: If using NMF eval methods, make func to do evaluation at post-extraction step (since extract_rois_caiman.py keeps all when saving anyway)
-    roiparams = dict()
-    rid_dir = RID['DST']
-    
     if roi_type == 'caiman2D':
-        roiparams['eval'] = RID['PARAMS']['options']['eval']
+        evalparams = RID['PARAMS']['options']['eval']
     elif roi_type == 'coregister':
-        roiparams['eval'] = params_thr['eval']
-        
-    roiparams['keep_good_rois'] = keep_good_rois
-    roiparams['excluded_tiffs'] = mc_excluded_tiffs
-    roiparams['roi_type'] = roi_type
-    roiparams['roi_id'] = roi_id
-    roiparams['rid_hash'] = rid_hash
-    
-    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
-    with open(roiparams_filepath, 'w') as f:
-        write_dict_to_json(roiparams, roiparams_filepath)
-    
-    print "Saved ROI params to: %s" % roiparams_filepath
+        evalparams = params_thr['eval']
+ 
+    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, mc_excluded_tiffs=mc_excluded_tiffs)
     
     #%%
     # =============================================================================
@@ -641,6 +634,25 @@ def do_roi_extraction(options):
         print "Standardized ROIs, mask file saved to: %s" % mask_filepath
     
     return session_dir, rid_hash
+
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, mc_excluded_tiffs=[]):
+    roiparams = dict()
+    rid_dir = RID['DST']
+    
+    roiparams['eval'] = evalparams       
+    roiparams['keep_good_rois'] = keep_good_rois
+    roiparams['excluded_tiffs'] = mc_excluded_tiffs
+    roiparams['roi_type'] = RID['roi_type']
+    roiparams['roi_id'] = RID['roi_id']
+    roiparams['rid_hash'] = RID['rid_hash']
+    
+    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
+    with open(roiparams_filepath, 'w') as f:
+        write_dict_to_json(roiparams, roiparams_filepath)
+    
+    print "Saved ROI params to: %s" % roiparams_filepath
+    
+    return roiparams 
 
 def main(options):
     
