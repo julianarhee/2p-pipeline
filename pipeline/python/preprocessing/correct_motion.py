@@ -124,7 +124,7 @@ def do_motion(options):
     if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
         # NO VALID PID, create default with input opts:
         print "Creating default PID with specified MCORRECTION input opts:"
-        mc_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-t', tiffsource, '-s', sourcetype]
+        mc_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', tiffsource, '-s', sourcetype]
         if default is True:
             mc_opts.extend(['--default'])
         if do_mc is True:
