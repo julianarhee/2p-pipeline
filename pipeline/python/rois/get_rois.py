@@ -50,6 +50,7 @@ Created on Thu Jan  4 11:54:38 2018
 import matplotlib
 matplotlib.use('Agg')
 import os
+import re
 import sys
 import h5py
 import json
@@ -66,7 +67,7 @@ from pipeline.python.utils import natural_keys, write_dict_to_json, save_sparse_
 from pipeline.python.rois import caiman2D as rcm
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
-from pipeline.python.rois.utils import load_RID, get_source_paths
+from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation
 from scipy.sparse import spdiags
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -451,7 +452,12 @@ def extract_options(options):
     
     parser.add_option('--par', action="store_true",
                       dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
-    
+    parser.add_option('--mc', action="store_true",
+                      dest='check_motion', default=False, help="Check MC evaluation for bad tiffs.")
+
+    parser.add_option('-x', '--exclude', action="store",
+                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -507,7 +513,8 @@ def do_roi_extraction(options):
     mcmetric = options.mcmetric
     
     multiproc = options.multiproc
-
+    check_motion = options.check_motion
+    exclude_str = options.excluded_tiffs
     #%%
     session_dir = os.path.join(rootdir, animalid, session)
     
@@ -534,12 +541,15 @@ def do_roi_extraction(options):
     process_dirname = path_parts[4]
     process_id = process_dirname.split('_')[0]
     
-    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=True, 
-                                                                                                             mcmetric=mcmetric, 
-                                                                                                             acquisition=acquisition,
-                                                                                                             run=run,
-                                                                                                             process_id=process_id)
-
+    tiffs = sorted([t for t in os.listdir(tiff_sourcedir) if t.endswith('tif')], key=natural_keys) 
+    filenames = sorted([str(re.search('File(\d{3})', tf).group(0)) for tf in tiffs], key=natural_keys)
+    print "FILES:", filenames
+    if check_motion is True: 
+        filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
+                                                       acquisition=acquisition, run=run, process_id=process_id)
+    else:
+        mc_excluded_tiffs = []
+   
     #%%
     # =============================================================================
     # Extract ROIs using specified method:
@@ -547,7 +557,7 @@ def do_roi_extraction(options):
     print "Extracting ROIs...====================================================="
     roi_type = RID['roi_type']
     rid_hash = RID['rid_hash']
-    
+ 
     format_roi_output = False
     #src_roi_type = None
     t_start = time.time()
@@ -582,6 +592,13 @@ def do_roi_extraction(options):
         format_roi_output = False
     
     elif roi_type == 'coregister':
+        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=True, 
+                                                                                                             mcmetric=mcmetric, 
+                                                                                                             acquisition=acquisition,
+                                                                                                             run=run,
+                                                                                                             process_id=process_id)
+
+
         #%
         src_roi_id = RID['PARAMS']['options']['source']['roi_id']
         src_roi_dir = RID['PARAMS']['options']['source']['roi_dir']
