@@ -137,7 +137,7 @@ def create_rid(options):
     
     check_motion = options.check_motion
     mcmetric = options.mcmetric
-    excluded_str = options.excluded_tiffs
+    exclude_str = options.excluded_tiffs
 
     # cNMF-specific opts:
     nmf_deconv = options.nmf_deconv
@@ -226,7 +226,7 @@ def create_rid(options):
     PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type, 
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
                              mmap_new=mmap_new, check_hash=False,
-                             check_motion=check_motion, mcmetric=mcmetric, excluded=exclude_str)
+                             check_motion=check_motion, mcmetric=mcmetric, exclude_str=exclude_str)
 
     # Create ROI ID (RID):
     RID = initialize_rid(PARAMS, session_dir, notnative=notnative, rootdir=rootdir, homedir=homedir)
@@ -395,7 +395,7 @@ def set_options_coregister(rootdir='', animalid='', session='',
 def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
                     notnative=False, rootdir='', homedir='', auto=False,
                     mmap_new=False, check_hash=False,
-                    check_motion=False, mcmetric='zproj_corrcoef', excluded=''):
+                    check_motion=False, mcmetric='zproj_corrcoef', exclude_str=''):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''

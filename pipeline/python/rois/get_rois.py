@@ -251,16 +251,23 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', coreg_r
 
     check_motion = RID['PARAMS']['eval']['check_motion']
     mcmetric = RID['PARAMS']['eval']['mcmetric']
-    
+    manual_excluded = RID['PARAMS']['eval']['manual_excluded'] 
+
     roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric)   
     if mcmetrics_filepath is None:
         mcmetrics_filepath = "None"
- 
+    excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
+
+    # Make sure ROI and TIFF source paths don't still contain non-mc-rejected files:
+    roi_source_paths = sorted([r for r in roi_source_paths if str(re.search('File(\d{3})', tf).group(0)) not in excluded_tiffs], key=natural_keys)
+    tiff_source_paths = sorted([r for r in tiff_source_paths if str(re.search('File(\d{3})', tf).group(0)) not in excluded_tiffs], key=natural_keys)
+    filenames = sorted([f for f in filenames if f not in excluded_tiffs], key=natural_keys) 
+
     roiparams_path = os.path.join(rid_dir, 'roiparams.json')
     if not os.path.exists(roiparams_path):
         if roi_type == 'caiman2D':
             evalparams = RID['PARAMS']['options']['eval']
-        roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, mc_excluded_tiffs=mc_excluded_tiffs)
+        roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
     else:
         with open(roiparams_path, 'r') as f:
             roiparams = json.load(f)
@@ -406,13 +413,13 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', coreg_r
 
     return mask_filepath
 
-def save_roi_params(RID, evalparams=None, keep_good_rois=True, mc_excluded_tiffs=[]):
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[]):
     roiparams = dict()
     rid_dir = RID['DST']
     
     roiparams['eval'] = evalparams       
     roiparams['keep_good_rois'] = keep_good_rois
-    roiparams['excluded_tiffs'] = mc_excluded_tiffs
+    roiparams['excluded_tiffs'] = excluded_tiffs
     roiparams['roi_type'] = RID['roi_type']
     roiparams['roi_id'] = RID['roi_id']
     roiparams['rid_hash'] = RID['rid_hash']
@@ -589,6 +596,7 @@ def do_roi_extraction(options):
     
     check_motion = RID['PARAMS']['eval']['check_motion'] 
     mcmetric = RID['PARAMS']['eval']['mcmetric']
+    manual_excluded = RID['PARAMS']['eval']['manual_excluded']
  
     if check_motion is True: 
         filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
@@ -596,7 +604,10 @@ def do_roi_extraction(options):
     else:
         mc_excluded_tiffs = []
     
-     
+    excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
+    exclude_str = ','.join([str(int(fn[4:])) for fn in excluded_tiffs]) 
+    print "TIFFS EXCLUDED:", excluded_tiffs
+
     #%%
     # =============================================================================
     # Extract ROIs using specified method:
@@ -605,14 +616,10 @@ def do_roi_extraction(options):
     roi_type = RID['roi_type']
     rid_hash = RID['rid_hash']
     
-    exclude_str = ','.join([int(fn[4:]) for fn in RID['PARAMS']['eval']['manual_excluded']
- 
     format_roi_output = False
     #src_roi_type = None
     t_start = time.time()
-    if len(mc_excluded_tiffs) > 0:
-        exclude_str = ','.join([int(fn[4:]) for fn in mc_excluded_tiffs])
-     
+             
     if roi_type == 'caiman2D':
         #%
         roi_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', rid_hash]
@@ -640,17 +647,17 @@ def do_roi_extraction(options):
         format_roi_output = False
     
     elif roi_type == 'coregister':
-        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, 
-                                                                                                             mcmetric=mcmetric, 
-                                                                                                             acquisition=acquisition,
-                                                                                                             run=run,
-                                                                                                             process_id=process_id)
-
+#        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, 
+#                                                                                                             mcmetric=mcmetric, 
+#                                                                                                             acquisition=acquisition,
+#                                                                                                             run=run,
+#                                                                                                             process_id=process_id)
+#
 
         #%
         src_roi_id = RID['PARAMS']['options']['source']['roi_id']
         src_roi_dir = RID['PARAMS']['options']['source']['roi_dir']
-        
+             
         #% Set COREG opts:
         coreg_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-r', roi_id,
                       '-t', dist_maxthr,
@@ -662,7 +669,9 @@ def do_roi_extraction(options):
             coreg_opts.extend(['--max'])
         if keep_good_rois is True:
             coreg_opts.extend(['--good'])
-        
+         if len(exclude_str) > 0:
+            coreg_opts.extend(['-x', exclude_str])
+       
         #% RUN COREGISTRATION
         print "==========================================================="
         print "RID %s -- Running coregistration..." % rid_hash
@@ -699,7 +708,7 @@ def do_roi_extraction(options):
     elif roi_type == 'coregister':
         evalparams = params_thr['eval']
  
-    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, mc_excluded_tiffs=mc_excluded_tiffs)
+    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=mc_excluded_tiffs)
     
     #%%
     # =============================================================================
