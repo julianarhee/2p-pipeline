@@ -236,7 +236,9 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     return final_masks, img, coors, roi_idxs, is_3D, nb, final_rA, final_Cf
 
 #%
-def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
+#def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
+def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', coreg_results_path=None, keep_good_rois=True):
+
     RID = load_RID(session_dir, roi_id, auto=auto)
     rid_dir = RID['DST']
     roi_type = RID['roi_type']
@@ -247,6 +249,9 @@ def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_t
     if not os.path.exists(rid_figdir):
         os.makedirs(rid_figdir)
 
+    check_motion = RID['PARAMS']['eval']['check_motion']
+    mcmetric = RID['PARAMS']['eval']['mcmetric']
+    
     roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric)   
     if mcmetrics_filepath is None:
         mcmetrics_filepath = "None"
@@ -353,6 +358,7 @@ def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_t
                 pl.figure()
                 pl.imshow(avgimg, interpolation='None', cmap=pl.cm.gray)
                 for ridx in range(len(roi_names)):
+                    print "plot roi: %i" % int(ridx+1)
                     masktmp = masks[:,:,ridx]
                     msk = masktmp.copy() 
                     msk[msk==0] = np.nan
@@ -451,13 +457,13 @@ def extract_options(options):
     parser.add_option('-C', '--coreg-path', action="store",
                       dest="coreg_results_path", default=None, help="Path to coreg results if standardizing ROIs only")
 
-    parser.add_option('-M', '--mcmetric', action="store",
-                      dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
-    
+#    parser.add_option('-M', '--mcmetric', action="store",
+#                      dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
+#    
     parser.add_option('--par', action="store_true",
                       dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
-    parser.add_option('--mc', action="store_true",
-                      dest='check_motion', default=False, help="Check MC evaluation for bad tiffs.")
+#    parser.add_option('--mc', action="store_true",
+#                      dest='check_motion', default=False, help="Check MC evaluation for bad tiffs.")
 
     parser.add_option('-x', '--exclude', action="store",
                   dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
@@ -507,12 +513,14 @@ def just_format_rois(options):
     auto = options.default
     
     zproj_type= options.zproj_type
-    mcmetric = options.mcmetric
+    #mcmetric = options.mcmetric
     coreg_results_path = options.coreg_results_path
-    check_motion = options.check_motion
+    #check_motion = options.check_motion
  
     session_dir = os.path.join(rootdir, animalid, session)
-    mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, check_motion=check_motion, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
+    #mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, check_motion=check_motion, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
+    mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, zproj_type=zproj_type, coreg_results_path=coreg_results_path)
+
 
     print "Standardized ROIs, mask file saved to: %s" % mask_filepath
 
@@ -541,10 +549,10 @@ def do_roi_extraction(options):
     zproj_type= options.zproj_type
     
     eval_key = options.eval_key
-    mcmetric = options.mcmetric
+    #mcmetric = options.mcmetric
     
     multiproc = options.multiproc
-    check_motion = options.check_motion
+    #check_motion = options.check_motion
     exclude_str = options.excluded_tiffs
     coreg_results_path = options.coreg_results_path
  
@@ -578,6 +586,10 @@ def do_roi_extraction(options):
     tiffs = sorted([t for t in os.listdir(tiff_sourcedir) if t.endswith('tif')], key=natural_keys) 
     filenames = sorted([str(re.search('File(\d{3})', tf).group(0)) for tf in tiffs], key=natural_keys)
     print "FILES:", filenames
+    
+    check_motion = RID['PARAMS']['eval']['check_motion'] 
+    mcmetric = RID['PARAMS']['eval']['mcmetric']
+ 
     if check_motion is True: 
         filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
                                                        acquisition=acquisition, run=run, process_id=process_id)
@@ -598,7 +610,6 @@ def do_roi_extraction(options):
     t_start = time.time()
     if len(mc_excluded_tiffs) > 0:
         exclude_str = ','.join([int(fn[4:]) for fn in mc_excluded_tiffs])
-    
      
     if roi_type == 'caiman2D':
         #%

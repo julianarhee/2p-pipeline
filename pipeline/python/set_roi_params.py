@@ -83,6 +83,8 @@ def extract_options(options):
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
+    parser.add_option('--mc', action='store_true', dest='check_motion', default=False, help="Exclude tiffs that fail motion-correction evaluation metric.")
+    parser.add_option('--mcmetric', action='store', dest='mcmetric', default='zproj_corrcoef', help='Motion-correction metric to determine tiffs to exclude [default: zproj_corrcoef]')
 
     # MANUAL OPTS:
     parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="[man]: File NUM of tiff to use as reference, if applicable [default: 1]")
@@ -131,6 +133,9 @@ def create_rid(options):
     sourcetype = options.sourcetype
     roi_type = options.roi_type
     auto = options.default
+    
+    check_motion = options.check_motion
+    mcmetric = options.mcmetric
 
     # cNMF-specific opts:
     nmf_deconv = options.nmf_deconv
@@ -218,7 +223,8 @@ def create_rid(options):
     # Create roi-params dict with source and roi-options:
     PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type, 
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
-                             mmap_new=mmap_new, check_hash=False)
+                             mmap_new=mmap_new, check_hash=False,
+                             check_motion=check_motion, mcmetric=mcmetric)
 
     # Create ROI ID (RID):
     RID = initialize_rid(PARAMS, session_dir, notnative=notnative, rootdir=rootdir, homedir=homedir)
@@ -386,7 +392,7 @@ def set_options_coregister(rootdir='', animalid='', session='',
 
 def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
                     notnative=False, rootdir='', homedir='', auto=False,
-                    mmap_new=False, check_hash=False):
+                    mmap_new=False, check_hash=False, check_motion=False, mcmetric='zproj_corrcoef'):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
@@ -421,6 +427,9 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
                 PARAMS[dirtype] = PARAMS[dirtype].replace(homedir, rootdir)
                         
     PARAMS['options'] = roi_options
+    PARAMS['eval'] = dict()
+    PARAMS['eval']['check_motion'] = check_motion
+    PARAMS['eval']['mcmetric'] = mcmetric
     PARAMS['roi_type'] = roi_type
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
     print "PARAMS hashid is:", PARAMS['hashid']
