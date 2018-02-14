@@ -50,6 +50,7 @@ Created on Thu Jan  4 11:54:38 2018
 import matplotlib
 matplotlib.use('Agg')
 import os
+import sys
 import h5py
 import json
 import datetime
@@ -62,13 +63,10 @@ import skimage
 import pylab as pl
 import numpy as np
 from pipeline.python.utils import natural_keys, write_dict_to_json, save_sparse_hdf5, print_elapsed_time
-#from pipeline.python.rois import extract_rois_caiman as rcm
 from pipeline.python.rois import caiman2D as rcm
-
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
 from pipeline.python.rois.utils import load_RID, get_source_paths
-
 from scipy.sparse import spdiags
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -125,7 +123,7 @@ def load_eval_results(src_roi_dir, eval_key, auto=False):
             src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
             src_eval = h5py.File(src_eval_filepath, 'r')
         except Exception as e:
-            print "RID %s -- ERROR: Can't load source evaluation file..." % rid_hash
+            print "ERROR: Can't load source evaluation file - %s" % eval_key
             traceback.print_exc()
             print "Aborting..."
             print "-----------------------------------------------------------"
@@ -400,6 +398,24 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetri
 
     return mask_filepath
 
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, mc_excluded_tiffs=[]):
+    roiparams = dict()
+    rid_dir = RID['DST']
+    
+    roiparams['eval'] = evalparams       
+    roiparams['keep_good_rois'] = keep_good_rois
+    roiparams['excluded_tiffs'] = mc_excluded_tiffs
+    roiparams['roi_type'] = RID['roi_type']
+    roiparams['roi_id'] = RID['roi_id']
+    roiparams['rid_hash'] = RID['rid_hash']
+    
+    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
+    write_dict_to_json(roiparams, roiparams_filepath)
+    
+    print "Saved ROI params to: %s" % roiparams_filepath
+    
+    return roiparams 
+
 #%%
 
 def extract_options(options):
@@ -439,7 +455,29 @@ def extract_options(options):
     (options, args) = parser.parse_args(options)
 
     return options
-
+    #%%
+    
+    #rootdir = '/nas/volume1/2photon/data'
+    #animalid = 'JR063' #'JR063'
+    #session = '20171128_JR063' #'20171128_JR063'
+    #roi_id = 'rois002'
+    #slurm = False
+    #auto = False
+    ##
+    #keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
+    ##
+    ### COREG-SPECIFIC opts:
+    #use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
+    #dist_maxthr = 0.1
+    #dist_exp = 0.1
+    #dist_thr = 0.5
+    #dist_overlap_thr = 0.8
+    ##
+    #eval_key = '2018_01_22_18_50_59'
+    #mcmetric = 'zproj_corrcoefs'
+    #zproj_type = 'mean'
+    
+#%%
 def do_roi_extraction(options):
     options = extract_options(options)
         
@@ -469,30 +507,6 @@ def do_roi_extraction(options):
     mcmetric = options.mcmetric
     
     multiproc = options.multiproc
-
-    #%%
-    
-    #rootdir = '/nas/volume1/2photon/data'
-    #animalid = 'JR063' #'JR063'
-    #session = '20171128_JR063' #'20171128_JR063'
-    #roi_id = 'rois002'
-    #slurm = False
-    #auto = False
-    ##
-    #keep_good_rois = True       # Only keep "good" ROIs from a given set (TODO:  add eval for ROIs -- right now, only have eval for NMF and coregister)
-    ##
-    ### COREG-SPECIFIC opts:
-    #use_max_nrois = True        # Use file which has the max N ROIs as reference (alternative is to use reference file)
-    #dist_maxthr = 0.1
-    #dist_exp = 0.1
-    #dist_thr = 0.5
-    #dist_overlap_thr = 0.8
-    ##
-    #eval_key = '2018_01_22_18_50_59'
-    #mcmetric = 'zproj_corrcoefs'
-    #zproj_type = 'mean'
-    
-    
 
     #%%
     session_dir = os.path.join(rootdir, animalid, session)
@@ -535,7 +549,7 @@ def do_roi_extraction(options):
     rid_hash = RID['rid_hash']
     
     format_roi_output = False
-    src_roi_type = None
+    #src_roi_type = None
     t_start = time.time()
     if len(mc_excluded_tiffs) > 0:
         exclude_str = ','.join([int(fn[4:]) for fn in mc_excluded_tiffs])
@@ -595,15 +609,13 @@ def do_roi_extraction(options):
         else:
             # Load ROI info for "good" rois to include:
             src_eval, src_eval_filepath = load_eval_results(src_roi_dir, eval_key, auto=False)
-            #%
-            coreg_opts.extend(['--roipath=%s' % src_eval_filepath])
-            
+            coreg_opts.extend(['--roipath=%s' % src_eval_filepath])            
             #%
             ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
     
         print("Found %i common ROIs matching reference." % len(ref_rois))
         format_roi_output = True
-        src_roi_type = RID['PARAMS']['options']['source']['roi_type']
+        #src_roi_type = RID['PARAMS']['options']['source']['roi_type']
         #%
     else:
         print "ERROR: %s -- roi type not known..." % roi_type
@@ -634,25 +646,6 @@ def do_roi_extraction(options):
         print "Standardized ROIs, mask file saved to: %s" % mask_filepath
     
     return session_dir, rid_hash
-
-def save_roi_params(RID, evalparams=None, keep_good_rois=True, mc_excluded_tiffs=[]):
-    roiparams = dict()
-    rid_dir = RID['DST']
-    
-    roiparams['eval'] = evalparams       
-    roiparams['keep_good_rois'] = keep_good_rois
-    roiparams['excluded_tiffs'] = mc_excluded_tiffs
-    roiparams['roi_type'] = RID['roi_type']
-    roiparams['roi_id'] = RID['roi_id']
-    roiparams['rid_hash'] = RID['rid_hash']
-    
-    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
-    with open(roiparams_filepath, 'w') as f:
-        write_dict_to_json(roiparams, roiparams_filepath)
-    
-    print "Saved ROI params to: %s" % roiparams_filepath
-    
-    return roiparams 
 
 def main(options):
     
