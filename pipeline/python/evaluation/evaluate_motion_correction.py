@@ -195,7 +195,7 @@ def evaluate_zproj(zproj_results, info, nstds=2, zproj='mean'):
         pl.title('mean corr across %s-projected slices (reference: %s)' % (zproj, ref_filename))        
         if len(bad_files) > 0:
             for f in range(len(bad_files)):
-                print "%s: %s slice img is %i stds >= mean correlation" % (bad_files[f][0], zproj, nstds)
+                print "|ZPROJ-CORRCOEF| %s: %s slice img is %i stds >= mean correlation" % (bad_files[f][0], zproj, nstds)
                 dfidx = list(df.columns).index(bad_files[f][0])
                 pl.plot(dfidx, df[bad_files[f][0]][bad_files[f][1]], 'r*', label='%i stds' % nstds)
         pl.legend()
@@ -305,14 +305,14 @@ def evaluate_frame_corrs(corrcoefs, currfile="placeholder", nstds=4, ref_frame=0
     
     T = len(corrcoefs)
     fr_idxs = [fr for fr in np.arange(0, T) if not fr==ref_frame]
-    print "fr_idxs: %i, corrcoefs: %i" % (len(fr_idxs), len(corrcoefs))
+    #print "fr_idxs: %i, corrcoefs: %i" % (len(fr_idxs), len(corrcoefs))
     bad_frames = [idx for idx,val in zip(fr_idxs, corrcoefs) if abs(val - np.mean(corrcoefs)) > (np.std(corrcoefs)*nstds)]
     metric = '%i stds' % nstds
 
     pl.figure()
     pl.plot(corrcoefs)
     if len(bad_frames) > 0:
-        print "%s: Found %i frames >= %s from mean correlation val." % (currfile, len(bad_frames), metric)
+        print "|FRAME-CORR| %s: Found %i frames >= %s from mean correlation val." % (currfile, len(bad_frames), metric)
         pl.plot(bad_frames, [corrcoefs[b] for b in bad_frames], 'r*')
     pl.title("%s: correlation to first frame" % currfile)
     figname = 'corr_to_frame1_%s.png' % currfile
