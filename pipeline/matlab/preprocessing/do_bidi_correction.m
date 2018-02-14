@@ -18,6 +18,14 @@ dest = params.PARAMS.preprocessing.destdir;
 [processdir, childdir, ~] = fileparts(params.PARAMS.preprocessing.sourcedir);
 simeta_fn = sprintf('SI_%s.json', params.PARAMS.source.run);
 fprintf('SI: %s\n', fullfile(source, simeta_fn));
+if ~exist(fullfile(source, simeta_fn), 'file')  % SI meta info is in raw, and we're trying to look in a processed dir...
+    pparts = strsplit(source, '/processed');
+    run_dir = pparts{1};
+    raw_dirs = dir(fullfile(run_dir, 'raw*'));
+    raw_dir = raw_dirs(1).name;    
+    source = fullfile(run_dir, raw_dir);
+    fprintf('Getting SI meta info from raw, path: %s', source);
+end
 simeta = loadjson(fullfile(source, simeta_fn));
 %simeta = loadjson(A.raw_simeta_path);
 
