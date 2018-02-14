@@ -87,6 +87,7 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     roi_type = RID['roi_type']
     #roi_id = RID['roi_id']
     excluded_tiffs = []
+    mcmetrics_filepath = None
     
     if roi_type == 'caiman2D':
         # Get ROI source paths:
@@ -138,7 +139,10 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
                     bad_tiff_fns.append([r for r in tiff_source_paths if badfn in r][0])
             roi_source_paths = sorted([r for r in roi_source_paths if r not in bad_roi_fns], key=natural_keys)
             tiff_source_paths = sorted([r for r in tiff_source_paths if r not in bad_tiff_fns], key=natural_keys)
-    print "%i MC-fail tiffs found. Returning %i roi source paths, with %i corresponding tiff sources." % (len(excluded_tiffs), len(roi_source_paths), len(tiff_source_paths)) 
+        print "%i MC-fail tiffs found. Returning %i roi source paths, with %i corresponding tiff sources." % (len(excluded_tiffs), len(roi_source_paths), len(tiff_source_paths)) 
+    else:
+        print "You told me not to check motion-correction evaluation. Only returning found roi and tiff source paths..."
+    
     return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath
 
 #%% If motion-corrected (standard), check evaluation:

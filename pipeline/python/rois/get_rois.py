@@ -236,7 +236,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     return final_masks, img, coors, roi_idxs, is_3D, nb, final_rA, final_Cf
 
 #%
-def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
+def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
     RID = load_RID(session_dir, roi_id, auto=auto)
     rid_dir = RID['DST']
     roi_type = RID['roi_type']
@@ -247,8 +247,9 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', mcmetri
     if not os.path.exists(rid_figdir):
         os.makedirs(rid_figdir)
 
-       
-    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, mcmetric='zproj_corrcoefs')
+    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric)   
+    if mcmetrics_filepath is None:
+        mcmetrics_filepath = "None"
  
     roiparams_path = os.path.join(rid_dir, 'roiparams.json')
     if not os.path.exists(roiparams_path):
@@ -445,8 +446,11 @@ def extract_options(options):
     parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
     parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
     
-    parser.add_option('-E', '--eval', action="store",
-                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation")
+    parser.add_option('-E', '--eval-key', action="store",
+                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
+    parser.add_option('-C', '--coreg-path', action="store",
+                      dest="coreg_results_path", default=None, help="Path to coreg results if standardizing ROIs only")
+
     parser.add_option('-M', '--mcmetric', action="store",
                       dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
     
@@ -458,8 +462,15 @@ def extract_options(options):
     parser.add_option('-x', '--exclude', action="store",
                   dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
 
-    (options, args) = parser.parse_args(options)
+    parser.add_option('--format', action="store_true",
+                      dest='format_only', default=False, help="Only format ROIs to standard (already extracted).")
 
+    (options, args) = parser.parse_args(options)
+    
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/2p-data'
+ 
     return options
     #%%
     
@@ -484,8 +495,32 @@ def extract_options(options):
     #zproj_type = 'mean'
     
 #%%
+
+def just_format_rois(options):
+    #options = extract_options(options)
+
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    roi_id = options.roi_id
+    slurm = options.slurm
+    auto = options.default
+    
+    zproj_type= options.zproj_type
+    mcmetric = options.mcmetric
+    coreg_results_path = options.coreg_results_path
+    check_motion = options.check_motion
+ 
+    session_dir = os.path.join(rootdir, animalid, session)
+    mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, check_motion=check_motion, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
+
+    print "Standardized ROIs, mask file saved to: %s" % mask_filepath
+
+    return session_dir, mask_filepath 
+
+     
 def do_roi_extraction(options):
-    options = extract_options(options)
+    #options = extract_options(options)
         
     # Set USER INPUT options:
     rootdir = options.rootdir
@@ -494,10 +529,6 @@ def do_roi_extraction(options):
     roi_id = options.roi_id
     slurm = options.slurm
     auto = options.default
-    
-    if slurm is True:
-        if 'coxfs01' not in rootdir:
-            rootdir = '/n/coxfs01/2p-data'
     
     keep_good_rois = options.keep_good_rois
     use_max_nrois = options.use_max_nrois
@@ -515,6 +546,9 @@ def do_roi_extraction(options):
     multiproc = options.multiproc
     check_motion = options.check_motion
     exclude_str = options.excluded_tiffs
+    coreg_results_path = options.coreg_results_path
+ 
+
     #%%
     session_dir = os.path.join(rootdir, animalid, session)
     
@@ -549,7 +583,8 @@ def do_roi_extraction(options):
                                                        acquisition=acquisition, run=run, process_id=process_id)
     else:
         mc_excluded_tiffs = []
-   
+    
+     
     #%%
     # =============================================================================
     # Extract ROIs using specified method:
@@ -563,7 +598,8 @@ def do_roi_extraction(options):
     t_start = time.time()
     if len(mc_excluded_tiffs) > 0:
         exclude_str = ','.join([int(fn[4:]) for fn in mc_excluded_tiffs])
-        
+    
+     
     if roi_type == 'caiman2D':
         #%
         roi_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', rid_hash]
@@ -578,7 +614,6 @@ def do_roi_extraction(options):
         
         # Clean up tmp RID files:
         session_dir = os.path.join(rootdir, animalid, session)
-        post_rid_cleanup(session_dir, rid_hash)
         format_roi_output = True
         #%
     elif roi_type == 'blob_detector':
@@ -592,7 +627,7 @@ def do_roi_extraction(options):
         format_roi_output = False
     
     elif roi_type == 'coregister':
-        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=True, 
+        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, 
                                                                                                              mcmetric=mcmetric, 
                                                                                                              acquisition=acquisition,
                                                                                                              run=run,
@@ -658,22 +693,44 @@ def do_roi_extraction(options):
     # Format ROI output to standard, if applicable:
     # =============================================================================
         
-    if format_roi_output is True :
-        mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
+    if format_roi_output is True:
+        mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, check_motion=check_motion, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
         print "Standardized ROIs, mask file saved to: %s" % mask_filepath
     
     return session_dir, rid_hash
 
+def select_roi_action(options):
+    options = extract_options(options)
+    
+    mask_filepath = None
+    rid_hash = None
+    if options.format_only is True:
+        session_dir, mask_filepath = just_format_rois(options)
+    else: 
+        session_dir, rid_hash = do_roi_extraction(options)
+    
+    if mask_filepath is not None and rid_hash is None:
+        formatting_only = True
+        optargout = mask_filepath
+    else:
+        formatting_only = False
+        optargout = rid_hash
+    
+    return session_dir, optargout, formatting_only 
+
 def main(options):
+    session_dir, optargout, formatting_only = select_roi_action(options) 
     
-    session_dir, rid_hash = do_roi_extraction(options)
-    print "RID %s -- Finished formatting ROI output to standard." % rid_hash
-    post_rid_cleanup(session_dir, rid_hash)
-    print "Cleaned up tmp rid files."
-    
-    print "*************************************************"
-    print "FINISHED EXTRACTING ROIs!"
-    print "*************************************************"
+    #session_dir, rid_hash = do_roi_extraction(options)
+    if formatting_only is True:
+        print "Formatted ROIs! Masks saved to:\n%s" % optargout
+    else:
+        print "RID %s -- Finished formatting ROI output to standard." % optargout 
+        post_rid_cleanup(session_dir, rid_hash)
+        print "Cleaned up tmp rid files." 
+        print "*************************************************"
+        print "FINISHED EXTRACTING ROIs!"
+        print "*************************************************"
 
 #%%
 
