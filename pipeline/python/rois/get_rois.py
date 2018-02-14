@@ -465,9 +465,9 @@ def extract_options(options):
 #    parser.add_option('--mc', action="store_true",
 #                      dest='check_motion', default=False, help="Check MC evaluation for bad tiffs.")
 
-    parser.add_option('-x', '--exclude', action="store",
-                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
-
+#    parser.add_option('-x', '--exclude', action="store",
+#                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
+#
     parser.add_option('--format', action="store_true",
                       dest='format_only', default=False, help="Only format ROIs to standard (already extracted).")
 
@@ -553,7 +553,7 @@ def do_roi_extraction(options):
     
     multiproc = options.multiproc
     #check_motion = options.check_motion
-    exclude_str = options.excluded_tiffs
+    #exclude_str = options.excluded_tiffs
     coreg_results_path = options.coreg_results_path
  
 
@@ -591,7 +591,7 @@ def do_roi_extraction(options):
     mcmetric = RID['PARAMS']['eval']['mcmetric']
  
     if check_motion is True: 
-        filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
+        filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric, 
                                                        acquisition=acquisition, run=run, process_id=process_id)
     else:
         mc_excluded_tiffs = []
@@ -604,6 +604,8 @@ def do_roi_extraction(options):
     print "Extracting ROIs...====================================================="
     roi_type = RID['roi_type']
     rid_hash = RID['rid_hash']
+    
+    exclude_str = ','.join([int(fn[4:]) for fn in RID['PARAMS']['eval']['manual_excluded']
  
     format_roi_output = False
     #src_roi_type = None

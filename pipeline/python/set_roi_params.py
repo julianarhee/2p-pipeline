@@ -85,6 +85,7 @@ def extract_options(options):
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
     parser.add_option('--mc', action='store_true', dest='check_motion', default=False, help="Exclude tiffs that fail motion-correction evaluation metric.")
     parser.add_option('--mcmetric', action='store', dest='mcmetric', default='zproj_corrcoef', help='Motion-correction metric to determine tiffs to exclude [default: zproj_corrcoef]')
+    parser.add_option('-x', '--exclude', action="store", dest="excluded_tiffs", default='', help="User-selected tiff numbers to exclude (comma-separated) - 1 indexed")
 
     # MANUAL OPTS:
     parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="[man]: File NUM of tiff to use as reference, if applicable [default: 1]")
@@ -136,6 +137,7 @@ def create_rid(options):
     
     check_motion = options.check_motion
     mcmetric = options.mcmetric
+    excluded_str = options.excluded_tiffs
 
     # cNMF-specific opts:
     nmf_deconv = options.nmf_deconv
@@ -224,7 +226,7 @@ def create_rid(options):
     PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type, 
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
                              mmap_new=mmap_new, check_hash=False,
-                             check_motion=check_motion, mcmetric=mcmetric)
+                             check_motion=check_motion, mcmetric=mcmetric, excluded=exclude_str)
 
     # Create ROI ID (RID):
     RID = initialize_rid(PARAMS, session_dir, notnative=notnative, rootdir=rootdir, homedir=homedir)
@@ -392,7 +394,8 @@ def set_options_coregister(rootdir='', animalid='', session='',
 
 def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
                     notnative=False, rootdir='', homedir='', auto=False,
-                    mmap_new=False, check_hash=False, check_motion=False, mcmetric='zproj_corrcoef'):
+                    mmap_new=False, check_hash=False,
+                    check_motion=False, mcmetric='zproj_corrcoef', excluded=''):
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
@@ -430,6 +433,10 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
     PARAMS['eval'] = dict()
     PARAMS['eval']['check_motion'] = check_motion
     PARAMS['eval']['mcmetric'] = mcmetric
+    if len(exclude_str) > 0:
+        PARAMS['eval']['manual_excluded'] = ['File%03d' % int(x) for x in exclude_str.split(',')]
+    else:
+        PARAMS['eval']['manual_excluded'] = []
     PARAMS['roi_type'] = roi_type
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
     print "PARAMS hashid is:", PARAMS['hashid']
