@@ -114,7 +114,7 @@ def do_bidir_correction(options):
     if len(pid_hash) == 0 or (len(pid_hash) > 0 and len([j for j in os.listdir(tmp_pid_dir) if pid_hash in j]) == 0):
         # NO VALID PID, create default with input opts:
         print "Creating default PID with specified BIDIR input opts:"
-        bidir_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-r', run, '-t', tiffsource, '-s', sourcetype]
+        bidir_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', tiffsource, '-s', sourcetype]
         if default is True:
             bidir_opts.extend([ '--default'])
         if do_bidi is True:
