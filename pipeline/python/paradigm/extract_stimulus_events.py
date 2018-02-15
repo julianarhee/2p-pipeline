@@ -7,7 +7,7 @@ Input:
     - Assumes .mwk files for behavior events and csv-saved .txt file that samples the acquisition rig at 1kHz
 
 Steps:
-    
+
 1.  Creates a parsed .json for EACH behavior file (.mwk) that contains relevant info for each trial in that file.
     - function uses process_mw_files.py
     - trial_<behavior_file_name>.json files are created with process_mw_files.py
@@ -54,7 +54,7 @@ import json
 import re
 import hashlib
 import optparse
-
+import shutil
 import numpy as np
 import pandas as pd
 import cPickle as pkl
@@ -242,6 +242,18 @@ trigger_varname = options.frametrigger_varname
 stimorder_files = False #True
 
 #%%
+rootdir = '/mnt/odyssey'
+animalid = 'CE074'
+session = '20180213'
+acquisition = 'FOV1_zoom1x'
+run = 'blobs'
+slurm = False
+retinobar = False
+phasemod = False
+trigger_varname = 'frame_trigger'
+stimorder_files = False
+
+#%%
 # ================================================================================
 # MW trial extraction:
 # ================================================================================
@@ -286,12 +298,18 @@ paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files'
 serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
 print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
 
+if len(serialdata_fns) < nfiles:
+    one_to_one = False
+else:
+    one_to_one = True
+
 # Load MW info:
 mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
 print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
 #%%
+
 RUN = dict()
 trialnum = 0
 for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
@@ -321,7 +339,11 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
         RUN[trialname] = dict()
         RUN[trialname]['trial_hash'] = trialhash
-        RUN[trialname]['aux_file_idx'] = fid
+        RUN[trialname]['block_idx'] = trialevents[trialhash]['mw_trial']['block_idx']
+        if one_to_one is True:
+            RUN[trialname]['ntiffs_per_auxfile'] = 1
+        else:
+            RUN[trialname]['ntiffs_per_auxfile'] = nfiles
         RUN[trialname]['behavior_data_path'] = mwtrial_path
         RUN[trialname]['serial_data_path'] = serialfn_path
 
@@ -337,7 +359,18 @@ for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
         RUN[trialname]['trial_in_run'] = trialnum
 
 
+# Get unique hash for current RUN dict:
 run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
+
+existing_files = [f for f in os.listdir(outdir) if 'trials_' in f and f.endswith('json') and run_trial_hash not in f]
+if len(existing_files) > 0:
+    old = os.path.join(os.path.split(outdir)[0], 'paradigm', 'old')
+    if not os.path.exists(old):
+        os.makedirs(old)
+
+    for f in existing_files:
+        shutil.move(os.path.join(outdir, f), os.path.join(old, f))
+
 with open(os.path.join(outdir, 'trials_%s.json' % run_trial_hash), 'w') as f:
     json.dump(RUN, f, sort_keys=True, indent=4)
 
