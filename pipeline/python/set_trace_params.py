@@ -73,7 +73,7 @@ def create_tid(options):
     roi_name = options.roi_name
 
     auto = options.default
-    
+
     signal_channel = options.signal_channel
 
     # Get paths to tiffs from which to create ROIs:
@@ -129,6 +129,10 @@ def create_tid(options):
 def get_params_dict(signal_channel, tiff_sourcedir, RID):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
+    # Load ROI PARAMS info to get total excluded tiffs (RID only includes manual):
+    with open(os.path.join(RID['DST'], 'roiparams.json'), 'r') as f:
+        roiparams = json.load(f)
+    PARAMS['excluded_tiffs'] = roiparams['excluded_tiffs']
     PARAMS['signal_channel'] = signal_channel
     PARAMS['roi_id'] = RID['roi_id']
     PARAMS['rid_hash'] = RID['rid_hash']
@@ -282,7 +286,7 @@ def post_tid_cleanup(run_dir, trace_hash):
         os.makedirs(finished_dir)
     shutil.move(tid_path, os.path.join(finished_dir, tmp_tid_fn))
     print "Moved tmp tid file to completed."
-    
+
 def main(options):
 
     tid = create_tid(options)
