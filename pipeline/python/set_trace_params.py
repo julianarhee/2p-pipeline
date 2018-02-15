@@ -95,7 +95,20 @@ def create_tid(options):
 
     # Create trace-params dict with source and ROI set:
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
-    PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID)
+    # Check if there are any TIFFs to exclude:
+    orig_roi_dst = RID['DST']
+    if rootdir not in orig_roi_dst:
+        orig_root = orig_roi_dst.split('/%s/%s' % (animalid, session))[0]
+        print "ORIG root:", orig_root
+        rparams_dir = orig_roi_dst.replace(orig_root, rootdir)
+    else:
+        rparams_dir = orig_roi_dst
+    print "Loading PARAM info... Looking in ROI dst dir: %s" % rparams_dir
+    with open(os.path.join(rparams_dir, 'roiparams.json'), 'r') as f:
+        roiparams = json.load(f)
+    excluded_tiffs = roiparams['excluded_tiffs']
+    
+    PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs)
 
     # Create TRACE ID (TID):
     TID = initialize_tid(PARAMS, run_dir, auto=auto)
@@ -126,13 +139,10 @@ def create_tid(options):
     return TID
 
 
-def get_params_dict(signal_channel, tiff_sourcedir, RID):
+def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[]):
     PARAMS = dict()
-    PARAMS['tiff_source'] = tiff_sourcedir
-    # Load ROI PARAMS info to get total excluded tiffs (RID only includes manual):
-    with open(os.path.join(RID['DST'], 'roiparams.json'), 'r') as f:
-        roiparams = json.load(f)
-    PARAMS['excluded_tiffs'] = roiparams['excluded_tiffs']
+    PARAMS['tiff_source'] = tiff_sourcedir 
+    PARAMS['excluded_tiffs'] = excluded_tiffs
     PARAMS['signal_channel'] = signal_channel
     PARAMS['roi_id'] = RID['roi_id']
     PARAMS['rid_hash'] = RID['rid_hash']

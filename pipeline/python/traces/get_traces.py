@@ -152,8 +152,8 @@ def get_mask_info(mask_path):
         traceback.print_exc()
         print "Error loading mask info..."
         print "Mask path was: %s" % mask_path
-    finally:
-        maskfile.close()
+    #finally:
+        #maskfile.close()
 
     maskinfo['filenames'] = filenames
     maskinfo['ref_file'] = ref_file
@@ -166,7 +166,7 @@ def get_mask_info(mask_path):
     return maskinfo
 
 
-def get_masks(maskinfo, RID, normalize_rois=False):
+def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', animalid='', session=''):
     MASKS = dict()
 
     maskfile = h5py.File(mask_path, "r")
@@ -182,7 +182,12 @@ def get_masks(maskinfo, RID, normalize_rois=False):
             zproj_dir = os.path.join(zproj_source_dir, curr_file)
         else:
             maskfile_key = curr_file
+        
+        if notnative is True and rootdir not in zproj_dir:
+            orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
+            zproj_dir = zproj_dir.replace(orig_root, rootdir)
 
+             
         for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
 
             MASKS[curr_file][curr_slice] = dict()
@@ -306,17 +311,17 @@ def plot_roi_masks(MASKS, curr_rois, RID):
 
 #%%
 #
-rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
-animalid = 'CE074' #'JR063' #'CE059' #'JR063'
-session = '20180213' #'20171128_JR063' #'20171009_CE059' #'20171202_JR063'
-acquisition = 'FOV1_zoom1x' #'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-run = 'blobs' #'gratings_static' #'gratings_phasemod' #'scenes'
-slurm = False
-
-trace_id = 'traces001'
-auto = False
-create_new = True
-
+#rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
+#animalid = 'CE074' #'JR063' #'CE059' #'JR063'
+#session = '20180213' #'20171128_JR063' #'20171009_CE059' #'20171202_JR063'
+#acquisition = 'FOV1_zoom1x' #'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+#run = 'blobs' #'gratings_static' #'gratings_phasemod' #'scenes'
+#slurm = False
+#
+#trace_id = 'traces001'
+#auto = False
+#create_new = True
+#
 #if slurm is True:
 #    if 'coxfs01' not in rootdir:
 #        rootdir = '/n/coxfs01/2p-data'
@@ -370,7 +375,7 @@ t_start = time.time()
 #% Get meta info for run:
 # =============================================================================
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-
+print 'RUN:', run_dir
 runmeta_path = os.path.join(run_dir, '%s.json' % run)
 with open(runmeta_path, 'r') as r:
     runinfo = json.load(r)
@@ -448,7 +453,16 @@ rid_hash = RID['rid_hash']
 # as python-based methods... if-checks hacked for now...
 
 # Load mask file:
-mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+if rootdir not in RID['DST']:
+    orig_root = RID['DST'].split('/%s/%s' % (animalid, session))[0]
+    print "Orig-root:", orig_root
+    rid_dst = RID['DST'].replace(orig_root, rootdir)
+    notnative = True
+else:
+    rid_dst = RID['DST']
+    notnative = False
+
+mask_path = os.path.join(rid_dst, 'masks.hdf5')
 
 print "-----------------------------------------------------------------------"
 print "TID %s -- Getting mask info..." % trace_hash
@@ -462,7 +476,7 @@ elif RID['roi_type'] in normalize_roi_types:
     normalize_rois = True
 
 maskinfo = get_mask_info(mask_path)
-MASKS, curr_rois = get_masks(maskinfo, RID, normalize_rois=normalize_rois)
+MASKS, curr_rois = get_masks(maskinfo, RID, normalize_rois=normalize_rois, notnative=notnative, rootdir=rootdir, animalid=animalid, session=session)
 plot_roi_masks(MASKS, curr_rois, RID)
 
 print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
