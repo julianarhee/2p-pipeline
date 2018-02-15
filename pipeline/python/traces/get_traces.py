@@ -182,12 +182,12 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
             zproj_dir = os.path.join(zproj_source_dir, curr_file)
         else:
             maskfile_key = curr_file
-        
+
         if notnative is True and rootdir not in zproj_dir:
             orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
             zproj_dir = zproj_dir.replace(orig_root, rootdir)
 
-             
+
         for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
 
             MASKS[curr_file][curr_slice] = dict()
@@ -633,7 +633,7 @@ filetrace_dir = apply_masks_to_movies(TID, RID, output_filedir=filetrace_dir)
 # Create time courses for ROIs:
 # =============================================================================
 
-def get_roi_timecourses(TID, input_filedir='/tmp'):
+def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
     traceid_dir = TID['DST']
 
     print "-----------------------------------------------------------------------"
@@ -683,9 +683,15 @@ def get_roi_timecourses(TID, input_filedir='/tmp'):
 
         nframes_in_file = runinfo['nvolumes']
         curr_frame_idx = 0
-        file_start_idx = []
+        tiff_start_fridxs = []
+        for fi in range(ntiffs):
+            tiff_start_fridxs.append(fi * nframes_in_file)
+
+        #file_start_idx = []
         try:
             for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
+                fidx_in_run = int(filetrace_fn[4:]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
+                curr_frame_idx = tiff_start_fridxs[fidx_in_run]
                 print "Loading file:", filetrace_fn
                 filetrace = h5py.File(os.path.join(filetrace_dir, filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
 
@@ -746,8 +752,8 @@ def get_roi_timecourses(TID, input_filedir='/tmp'):
                             roi_tcourse.attrs['source_file'] = os.path.join(filetrace_dir, filetrace_fn)
 
                         print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
-                file_start_idx.append(curr_frame_idx)
-                curr_frame_idx += nframes_in_file
+                #file_start_idx.append(curr_frame_idx)
+                #curr_frame_idx += nframes_in_file
 
         #                    if 'timecourse' not in roi_grp.keys():
         #                        roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracefile[currslice]['rawtraces'][:, ridx].dtype)
@@ -759,7 +765,7 @@ def get_roi_timecourses(TID, input_filedir='/tmp'):
 
         #            curr_frame_idx += nframes_in_file
         except Exception as e:
-            print "--- TID %s: ERROR extracting trcaes from file %s..." % (trace_hash, filetrace_fn)
+            print "--- TID %s: ERROR extracting traces from file %s..." % (trace_hash, filetrace_fn)
             traceback.print_exc()
         finally:
             roi_outfile.close()
