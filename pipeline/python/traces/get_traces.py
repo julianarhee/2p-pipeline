@@ -786,7 +786,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
     return roi_tcourse_filepath
 
 #%%
-roi_tcourse_filepath = get_roi_timecourses(TID, input_filedir=filetrace_dir)
+roi_tcourse_filepath = get_roi_timecourses(TID, ntiffs, input_filedir=filetrace_dir)
 
 print "-----------------------------------------------------------------------"
 
