@@ -34,6 +34,10 @@ def post_rid_cleanup(session_dir, rid_hash):
     tmp_rid_dir = os.path.join(roi_dir, 'tmp_rids')
     tmp_rid_fn = 'tmp_rid_%s.json' % rid_hash
     rid_path = os.path.join(tmp_rid_dir, tmp_rid_fn)
+    if not os.path.exists(rid_path):
+        print "No files to cleanup!"
+        return
+
     with open(rid_path, 'r') as f:
         RID = json.load(f)
 

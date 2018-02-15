@@ -669,7 +669,7 @@ def do_roi_extraction(options):
             coreg_opts.extend(['--max'])
         if keep_good_rois is True:
             coreg_opts.extend(['--good'])
-         if len(exclude_str) > 0:
+        if len(exclude_str) > 0:
             coreg_opts.extend(['-x', exclude_str])
        
         #% RUN COREGISTRATION
@@ -707,8 +707,9 @@ def do_roi_extraction(options):
         evalparams = RID['PARAMS']['options']['eval']
     elif roi_type == 'coregister':
         evalparams = params_thr['eval']
- 
-    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=mc_excluded_tiffs)
+    else:
+        evalparams = {} 
+    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
     
     #%%
     # =============================================================================
@@ -748,7 +749,7 @@ def main(options):
         print "Formatted ROIs! Masks saved to:\n%s" % optargout
     else:
         print "RID %s -- Finished formatting ROI output to standard." % optargout 
-        post_rid_cleanup(session_dir, rid_hash)
+        post_rid_cleanup(session_dir, optargout)
         print "Cleaned up tmp rid files." 
         print "*************************************************"
         print "FINISHED EXTRACTING ROIs!"
