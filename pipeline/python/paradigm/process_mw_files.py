@@ -238,11 +238,11 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
                     print "Chunk %i: dur (s): %.2f" % (chunkidx, (curr_off_ev.time - curr_start_ev.time)/1E6)
                 else:
                     found_new_start = False
-                
+
                 last_found_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
                 start_idx = last_found_idx #start_idx + found_idx
                 #print start_idx
-                
+
             except StopIteration:
                 check_new_starts = [i for i in curr_chunk if i['value']==0]
                 if len(check_new_starts) > 0:
@@ -252,7 +252,7 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
                     found_new_start = False
                 if verbose is True:
                     print "Got to STOP."
-    
+
                 if found_new_start is True:
                     early_abort = True
                     break
@@ -707,7 +707,6 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimevents[mvname].states[0][1], 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round(stimevents[mvname].states[0][0]/1E3)
             trial[trialnum]['stim_off_times'] = round(stimevents[mvname].states[-1][0]/1E3)
-
     else:
 
         ntrials = len(stimevents)
@@ -829,7 +828,7 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialname]['stim_bitcode'] = stim.value[-1]['bit_code']
             trial[trialname]['iti_bitcode'] = iti.value[-1]['bit_code']
             trial[trialname]['iti_duration'] = session_info['ITI']
-
+            trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
 
     # -------------------------------------------------------------------------
     # Do some checks:
