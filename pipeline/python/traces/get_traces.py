@@ -67,6 +67,7 @@ import pprint
 import traceback
 import time
 import skimage
+import shutil
 import tifffile as tf
 import pylab as pl
 import numpy as np
@@ -690,7 +691,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
         #file_start_idx = []
         try:
             for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
-                fidx_in_run = int(filetrace_fn[4:]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
+                fidx_in_run = int(filetrace_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
                 curr_frame_idx = tiff_start_fridxs[fidx_in_run]
                 print "Loading file:", filetrace_fn
                 filetrace = h5py.File(os.path.join(filetrace_dir, filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
@@ -773,9 +774,19 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
         ## Rename FRAME file with hash:
         #roi_outfile.close()
 
-        #roi_tcourse_filehash = hash_file(trace_outfile_path)
+        roi_tcourse_filehash = hash_file(roi_tcourse_filepath)
         #new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
         #os.rename(trace_outfile_path, new_filename)
+        
+        # Check if existing files:
+        outdir = os.path.split(roi_tcourse_filepath)[0]
+        existing_files = [f for f in os.listdir(outdir) if 'roi_timecourses_' in f and f.endswith('hdf5') and roi_tcourse_filehash not in f and tstamp not in f]
+        if len(existing_files) > 0:
+            old = os.path.join(outdir, 'old')
+            if not os.path.exists(old):
+                os.makedirs(old)
+            for f in existing_files:
+                shutil.move(os.path.join(outdir, f), os.path.join(old, f))
 
         roi_tcourse_filepath = hash_file_read_only(roi_tcourse_filepath)
 
