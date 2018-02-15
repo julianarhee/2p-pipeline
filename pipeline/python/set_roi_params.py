@@ -112,6 +112,7 @@ def extract_options(options):
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
     if options.notnative is False:
+        print "NATIVE~~"
         options.homedir = options.rootdir
 
     return options
@@ -124,7 +125,8 @@ def create_rid(options):
     rootdir = options.rootdir
     homedir = options.homedir
     notnative = options.notnative
-    
+    print "ROOT:", rootdir
+    print "HOME:", homedir
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition

@@ -2,10 +2,15 @@
 clc; clear all;
 % 
 %% Set info manually:
-rootdir = '/nas/volume1/2photon/data';
-animalid = 'JR063'; %'JR063';
-session = '20171128_JR063'; %'20171202_JR063';
-roi_id = 'rois007'; %'e4893c';
+% rootdir = '/nas/volume1/2photon/data';
+% animalid = 'JR063'; %'JR063';
+% session = '20171128_JR063'; %'20171202_JR063';
+% roi_id = 'rois007'; %'e4893c';
+
+rootdir = '/mnt/odyssey'
+animalid = 'CE074' %'JR063';
+session = '20180213' %'20171202_JR063';
+roi_id = 'rois003' %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
