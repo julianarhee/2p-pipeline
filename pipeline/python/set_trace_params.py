@@ -36,6 +36,9 @@ def extract_options(options):
 
     # PATH opts:
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-H', '--home', action='store', dest='homedir', default='/nas/volume1/2photon/data', help='current data root dir (if creating params with path-root different than what will be used for actually doing the processing.')
+    parser.add_option('--notnative', action='store_true', dest='notnative', default=False, help="Set flag if not setting params on same system as processing. MUST rsync data sources.")
+
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
@@ -53,6 +56,9 @@ def extract_options(options):
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
+    if options.notnative is False:
+        print "NATIVE~~"
+        options.homedir = options.rootdir
 
     return options
 
@@ -63,6 +69,11 @@ def create_tid(options):
 
     # Set USER INPUT options:
     rootdir = options.rootdir
+    homedir = options.homedir
+    notnative = options.notnative
+    print "ROOT:", rootdir
+    print "HOME:", homedir
+
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
@@ -77,12 +88,12 @@ def create_tid(options):
     signal_channel = options.signal_channel
 
     # Get paths to tiffs from which to create ROIs:
-    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
+    tiffpaths = get_tiff_paths(rootdir=homedir, animalid=animalid, session=session,
                                acquisition=acquisition, run=run,
                                tiffsource=tiffsource, sourcetype=sourcetype, auto=auto)
 
     # Load specified ROI set (stored in session dir):
-    session_dir = os.path.join(rootdir, animalid, session)
+    session_dir = os.path.join(homedir, animalid, session)
     with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
         roidict = json.load(f)
     RID = roidict[roi_name]
@@ -97,21 +108,22 @@ def create_tid(options):
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
     # Check if there are any TIFFs to exclude:
     orig_roi_dst = RID['DST']
-    if rootdir not in orig_roi_dst:
+    if homedir not in orig_roi_dst:
         orig_root = orig_roi_dst.split('/%s/%s' % (animalid, session))[0]
         print "ORIG root:", orig_root
-        rparams_dir = orig_roi_dst.replace(orig_root, rootdir)
+        rparams_dir = orig_roi_dst.replace(orig_root, homedir)
     else:
         rparams_dir = orig_roi_dst
     print "Loading PARAM info... Looking in ROI dst dir: %s" % rparams_dir
     with open(os.path.join(rparams_dir, 'roiparams.json'), 'r') as f:
         roiparams = json.load(f)
     excluded_tiffs = roiparams['excluded_tiffs']
-    
-    PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs)
+
+    PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs,
+                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
 
     # Create TRACE ID (TID):
-    TID = initialize_tid(PARAMS, run_dir, auto=auto)
+    TID = initialize_tid(PARAMS, run_dir, notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
 
     # Create TRACE output directory:
     trace_name = '_'.join((TID['trace_id'], TID['trace_hash']))
@@ -139,20 +151,26 @@ def create_tid(options):
     return TID
 
 
-def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[]):
+def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[],
+                    notnative=False, rootdir='', homedir='', auto=False):
     PARAMS = dict()
-    PARAMS['tiff_source'] = tiff_sourcedir 
+    PARAMS['tiff_source'] = tiff_sourcedir
     PARAMS['excluded_tiffs'] = excluded_tiffs
     PARAMS['signal_channel'] = signal_channel
     PARAMS['roi_id'] = RID['roi_id']
     PARAMS['rid_hash'] = RID['rid_hash']
     PARAMS['roi_type'] = RID['roi_type']
+
+    # Replace PARAM paths with processing-machine paths:
+    if notnative is True:
+        PARAMS['tiff_source'] = PARAMS['tiff_source'].replace(homedir, rootdir)
+
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
 
     return PARAMS
 
 
-def initialize_tid(PARAMS, run_dir, auto=False):
+def initialize_tid(PARAMS, run_dir, notnative=False, rootdir='', homedir='', auto=False):
 
     print "************************"
     print "Initializing trace ID."
@@ -164,6 +182,12 @@ def initialize_tid(PARAMS, run_dir, auto=False):
 
     tid['version'] = version
     tid['trace_id'] = trace_id
+    if notnative is True:
+        if rootdir not in PARAMS['tiff_source']:
+            PARAMS['tiff_source'] = PARAMS['tiff_source'].replace(homedir, rootdir)
+        if rootdir not in run_dir:
+            run_dir = run_dir.replace(homedir, rootdir)
+
     tid['PARAMS'] = PARAMS
     tid['SRC'] = PARAMS['tiff_source']
     tid['DST'] = os.path.join(run_dir, 'traces', trace_id)
