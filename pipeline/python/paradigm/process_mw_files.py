@@ -410,7 +410,7 @@ def get_stimulus_events(dfn, phasemod=False, triggername='frame_trigger', pixelc
         if pixelclock:
             num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
             # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
-            pixelclock_evs = get_pixelclock_events(df, boundary) # trigger_times=trigg_times) #, trigger_times=trigg_times)
+            pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times) #, trigger_times=trigg_times)
         else:
             num_non_stimuli = 2 # background + image
 

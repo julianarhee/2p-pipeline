@@ -244,8 +244,8 @@ stimorder_files = False #True
 #%%
 rootdir = '/mnt/odyssey'
 animalid = 'CE074'
-session = '20180213'
-acquisition = 'FOV1_zoom1x'
+session = '20180215'
+acquisition = 'FOV2_zoom1x_LI'
 run = 'blobs'
 slurm = False
 retinobar = False
