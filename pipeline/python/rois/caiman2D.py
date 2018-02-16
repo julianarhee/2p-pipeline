@@ -978,7 +978,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
 
 #%%
 def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False):
-    nmfopts_hash = None
+    nmfopts_hash = "None"
     ngood_rois = 0
 
     RID = load_RID(tmp_rid_path)
