@@ -59,7 +59,7 @@ def create_runmeta(rootdir, animalid, session, acquisition, run, rawdir, run_inf
     runmeta['slices'] = range(1, specified_nslices+1) 
     runmeta['ntiffs'] = len(rawtiffs)
     if isinstance(scanimage_metadata['File001']['SI']['hChannels']['channelSave'], int):
-        runmeta['nchannels'] =  scanimage_metadata['File001']['SI']['hChannels']['channelSave']
+        runmeta['nchannels'] =  1 #scanimage_metadata['File001']['SI']['hChannels']['channelSave']
     else:
         runmeta['nchannels'] = len(scanimage_metadata['File001']['SI']['hChannels']['channelSave']) # if i.isdigit()])
     runmeta['nvolumes'] = int(scanimage_metadata['File001']['SI']['hFastZ']['numVolumes'])
