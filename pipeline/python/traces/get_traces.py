@@ -77,6 +77,13 @@ from pipeline.python.set_trace_params import post_tid_cleanup
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
+def replace_root(origdir, rootdir, animalid, session):
+    orig = origdir.split('/%s/%s' % (animalid, session))[0]
+    origdir = origdir.replace(orig, rootdir)
+    print "ORIG ROOT: %s" % origdir
+    print "NEW ROOT: %s" % origdir
+    return origdir
+
 def load_TID(run_dir, trace_id, auto=False):
     trace_dir = os.path.join(run_dir, 'traces')
     tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
@@ -185,8 +192,9 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
             maskfile_key = curr_file
 
         if notnative is True and rootdir not in zproj_dir:
-            orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
-            zproj_dir = zproj_dir.replace(orig_root, rootdir)
+            zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
+            #orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
+            #zproj_dir = zproj_dir.replace(orig_root, rootdir)
 
 
         for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
@@ -415,6 +423,9 @@ trace_hash = TID['trace_hash']
 
 tiff_dir = TID['SRC']
 roi_name = TID['PARAMS']['roi_id']
+if rootdir not in tiff_dir:
+    tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
 tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
@@ -455,9 +466,10 @@ rid_hash = RID['rid_hash']
 
 # Load mask file:
 if rootdir not in RID['DST']:
-    orig_root = RID['DST'].split('/%s/%s' % (animalid, session))[0]
-    print "Orig-root:", orig_root
-    rid_dst = RID['DST'].replace(orig_root, rootdir)
+    rid_dst = replace_root(RID['DST'], rootdir, animalid, session)
+    #orig_root = RID['DST'].split('/%s/%s' % (animalid, session))[0]
+    #print "Orig-root:", orig_root
+    #rid_dst = RID['DST'].replace(orig_root, rootdir)
     notnative = True
 else:
     rid_dst = RID['DST']
@@ -628,14 +640,15 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp'):
 filetrace_dir = apply_masks_to_movies(TID, RID, output_filedir=filetrace_dir)
 
 #%%
-
 #%%
 # =============================================================================
 # Create time courses for ROIs:
 # =============================================================================
 
-def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
+def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir='', animalid='', session=''):
     traceid_dir = TID['DST']
+    if rootdir not in traceid_dir:
+        traceid_dir = replace_root(traceid_dir, rootdir)
 
     print "-----------------------------------------------------------------------"
     print "TID %s -- sorting traces by ROI..." % trace_hash
@@ -777,7 +790,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
         roi_tcourse_filehash = hash_file(roi_tcourse_filepath)
         #new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
         #os.rename(trace_outfile_path, new_filename)
-        
+
         # Check if existing files:
         outdir = os.path.split(roi_tcourse_filepath)[0]
         existing_files = [f for f in os.listdir(outdir) if 'roi_timecourses_' in f and f.endswith('hdf5') and roi_tcourse_filehash not in f and tstamp not in f]
@@ -797,7 +810,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp'):
     return roi_tcourse_filepath
 
 #%%
-roi_tcourse_filepath = get_roi_timecourses(TID, ntiffs, input_filedir=filetrace_dir)
+roi_tcourse_filepath = get_roi_timecourses(TID, ntiffs, input_filedir=filetrace_dir, rootdir=rootdir, animalid=animalid, session=session)
 
 print "-----------------------------------------------------------------------"
 
