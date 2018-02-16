@@ -88,7 +88,7 @@ def extract_options(options):
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
     parser.add_option('--mc', action='store_true', dest='check_motion', default=False, help="Exclude tiffs that fail motion-correction evaluation metric.")
-    parser.add_option('--mcmetric', action='store', dest='mcmetric', default='zproj_corrcoef', help='Motion-correction metric to determine tiffs to exclude [default: zproj_corrcoef]')
+    parser.add_option('--mcmetric', action='store', dest='mcmetric', default='zproj_corrcoefs', help='Motion-correction metric to determine tiffs to exclude [default: zproj_corrcoefs]')
     parser.add_option('-x', '--exclude', action="store", dest="excluded_tiffs", default='', help="User-selected tiff numbers to exclude (comma-separated) - 1 indexed")
 
     # MANUAL OPTS:
