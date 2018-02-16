@@ -620,7 +620,7 @@ def get_bar_events(dfn, triggername='', remove_orphans=True):
         stimulusevents.append(stimevents)
         triggertimes.append(trigg_times)
 
-        session_info = get_session_info(df, boundary, stimulus_type='retinobar')
+        session_info = get_session_info(df, stimulus_type='retinobar')
         session_info['tboundary'] = boundary
 
         info.append(session_info)
@@ -830,6 +830,23 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialname]['iti_duration'] = session_info['ITI']
             trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
 
+        # Check stimulus durations:
+        #print len(stimevents)
+        iti_events = trialevents[2::2]
+        #print len(iti_events)
+
+        stim_durs = []
+        off_syncs = []
+        for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
+            stim_durs.append(iti.time - stim.time)
+            if (iti.time - stim.time)<0:
+                off_syncs.append(idx)
+        print "%i bad sync-ing between stim-onsets and ITIs." % len(off_syncs)
+
+        # PLOT stim durations:
+        print "N stim ONs:", len(stim_durs)
+        print "min stim dur (s):", min(stim_durs)/1E6
+        print "max stim dur(s):", max(stim_durs)/1E6
     # -------------------------------------------------------------------------
     # Do some checks:
     # -------------------------------------------------------------------------
@@ -838,23 +855,6 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
     for idx,t in enumerate(trigger_times):
         print idx, (t[1] - t[0])/1E6
 
-	# Check stimulus durations:
-	#print len(stimevents)
-	iti_events = trialevents[2::2]
-	#print len(iti_events)
-
-	stim_durs = []
-	off_syncs = []
-	for idx,(stim,iti) in enumerate(zip(stimevents, iti_events)):
-	    stim_durs.append(iti.time - stim.time)
-	    if (iti.time - stim.time)<0:
-	        off_syncs.append(idx)
-	print "%i bad sync-ing between stim-onsets and ITIs." % len(off_syncs)
-
-	# PLOT stim durations:
-	print "N stim ONs:", len(stim_durs)
-	print "min stim dur (s):", min(stim_durs)/1E6
-	print "max stim dur(s):", max(stim_durs)/1E6
 
 
 
