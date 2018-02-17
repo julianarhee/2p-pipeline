@@ -648,7 +648,7 @@ filetrace_dir = apply_masks_to_movies(TID, RID, output_filedir=filetrace_dir)
 def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir='', animalid='', session=''):
     traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
-        traceid_dir = replace_root(traceid_dir, rootdir)
+        traceid_dir = replace_root(traceid_dir, rootdir, animalid, session)
 
     print "-----------------------------------------------------------------------"
     print "TID %s -- sorting traces by ROI..." % trace_hash
