@@ -142,11 +142,11 @@ create_new = options.create_new
 
 #%%
 #
-#rootdir = '/nas/volume1/2photon/data'
-#animalid = 'JR063'
-#session = '20171128_JR063'
-#acquisition = 'FOV2_zoom1x'
-#run = 'gratings_static'
+rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
+animalid = 'CE074'
+session = '20180215'
+acquisition = 'FOV1_zoom1x_V1'
+run = 'blobs'
 trace_id = 'traces001'
 custom_mw = False
 same_order = False
@@ -155,7 +155,7 @@ ylim_min = -1.0
 ylim_max = 2.0
 iti_pre = 1.0
 trace_type = 'raw'
-create_new = False
+create_new = True
 
 #%%
 # =============================================================================
@@ -673,6 +673,7 @@ if create_new is True:
                         trial_grp = roi_grp.create_group(currtrial)
                         trial_grp.attrs['volume_stim_on'] = stim_on_volume_idx
                         trial_grp.attrs['frame_idxs'] = trial_idxs
+                        trial_grp.attrs['aux_file_idx'] = parsed_frames[trial]['frames_in_run'].attrs['aux_file_idx']
                     else:
                         trial_grp = roi_grp[currtrial]
 
@@ -742,9 +743,10 @@ with open(os.path.join(paradigm_dir, config_filename), 'w') as f:
 # =============================================================================
 
 # Change config filepath for plotting:
-configparams = configs[configs.keys()[0]].keys()
-for config in configs.keys():
-    configs[config]['filename'] = os.path.split(configs[config]['filepath'])[1]
+if 'grating' not in stimtype:
+    configparams = configs[configs.keys()[0]].keys()
+    for config in configs.keys():
+        configs[config]['filename'] = os.path.split(configs[config]['filepath'])[1]
 
 if 'grating' in stimtype:
     sfs = list(set([configs[c]['frequency'] for c in configs.keys()]))

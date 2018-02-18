@@ -828,7 +828,12 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialname]['stim_bitcode'] = stim.value[-1]['bit_code']
             trial[trialname]['iti_bitcode'] = iti.value[-1]['bit_code']
             trial[trialname]['iti_duration'] = session_info['ITI']
+            trial[trialname]['run_start_time'] = run_start_time
             trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
+            trial[trialname]['block_start'] = [tval[0] for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
+            trial[trialname]['block_end'] = [tval[1] for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
+            trial[trialname]['stim_on_time_block'] = round((stim.time - trial[trialname]['block_start'])/1E3)
+            trial[trialname]['stim_off_time_block'] = round((iti.time - trial[trialname]['block_start'])/1E3)
 
         # Check stimulus durations:
         #print len(stimevents)
