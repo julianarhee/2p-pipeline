@@ -71,18 +71,18 @@ import shutil
 import tifffile as tf
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file
+from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root
 from pipeline.python.set_trace_params import post_tid_cleanup
 
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
-def replace_root(origdir, rootdir, animalid, session):
-    orig = origdir.split('/%s/%s' % (animalid, session))[0]
-    origdir = origdir.replace(orig, rootdir)
-    print "ORIG ROOT: %s" % origdir
-    print "NEW ROOT: %s" % origdir
-    return origdir
+#def replace_root(origdir, rootdir, animalid, session):
+#    orig = origdir.split('/%s/%s' % (animalid, session))[0]
+#    origdir = origdir.replace(orig, rootdir)
+#    print "ORIG ROOT: %s" % origdir
+#    print "NEW ROOT: %s" % origdir
+#    return origdir
 
 def load_TID(run_dir, trace_id, auto=False):
     trace_dir = os.path.join(run_dir, 'traces')
