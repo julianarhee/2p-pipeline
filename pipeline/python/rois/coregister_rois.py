@@ -229,6 +229,210 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
     return D
 
 #%%
+import time
+
+def setup_coreg_params(RID, rootdir=''):
+
+    # =========================================================================
+    # Set Coregistration parameters:
+    # =========================================================================
+    keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
+    use_max_nrois = RID['PARAMS']['options']['use_max_nrois']
+
+
+    params_thr = dict()
+    # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
+    # dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+    # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
+    # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+    params_thr['dist_maxthr'] = RID['PARAMS']['options']['dist_maxthr'] #options.dist_maxthr #0.1
+    params_thr['dist_exp'] = RID['PARAMS']['options']['dist_exp'] #options.dist_exp # 1
+    params_thr['dist_thr'] = RID['PARAMS']['options']['dist_thr'] #options.dist_thr #0.5
+    params_thr['dist_overlap_thr'] = RID['PARAMS']['options']['dist_overlap_thr'] #options.dist_overlap_thr #0.8
+    params_thr['keep_good_rois'] = keep_good_rois
+    if use_max_nrois is True:
+        params_thr['filter_type'] = 'max'
+    else:
+        params_thr['filter_type'] = 'ref'
+
+    exclude_manual = RID['PARAMS']['eval']['manual_excluded']
+    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir']
+    session_dir = roi_source_dir.split('/ROIs')
+
+    # Get ROI source files and their sources (.tif, .mmap) -- use MC evaluation
+    # results, if relevant.
+    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True, rootdir=rootdir)
+
+    # Get list of .tif files to exclude (from MC-eval fail or user-choice):
+    excluded_tiffs = list(set(exclude_manual + mc_excluded_tiffs))
+    print "Additionally excluding manully-selected tiffs:", mc_excluded_tiffs
+    print "Excluded:", excluded_tiffs
+    params_thr['excluded_tiffs'] = excluded_tiffs
+
+    # Get list of NROIS (all, and "pass" rois) from roi sources:
+    src_nrois, evalparams, pass_rois_dict = get_evaluated_roi_list(RID, roi_source_paths)
+
+    # Filter source roi list by MAX num or selected REFERENCE:
+    if use_max_nrois is True:
+        # Either select the file that has the MAX number of "good" ROIs:
+        if keep_good_rois is True:
+            nmax_idx = [s[2] for s in src_nrois].index(max([s[2] for s in src_nrois]))
+            nrois_max = src_nrois[nmax_idx][2]
+        else:
+            # ... or, select file that has the MAX number of ROIs total:
+            nmax_idx = [s[1] for s in src_nrois].index(max([s[1] for s in src_nrois]))
+            nrois_max = src_nrois[nmax_idx][1]
+        params_thr['ref_filename'] = native(src_nrois[nmax_idx][0])
+        params_thr['ref_filepath'] = roi_source_paths[nmax_idx]
+    else:
+        # Use a reference file (either MC reference or default, File001):
+        reference_filename = RID['PARAMS']['options']['reference_filename']
+        coreg_fidx = int(RID['PARAMS']['options']['coreg_ridx'])
+        print "Using reference: %s" % reference_filename
+        params_thr['ref_filename'] = reference_filename
+        params_thr['ref_filepath'] = roi_source_paths[coreg_fidx]
+        if keep_good_rois is True:
+            nrois_max = src_nrois[coreg_fidx][2]
+        else:
+            nrois_max = src_nrois[coreg_fidx][1]
+    print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
+
+    # Show evaluation params, if filtered:
+    if keep_good_rois is True and evalparams is None:
+        with open(os.path.join(roi_source_dir, 'roiparams.json'), 'r') as f:
+            src_roiparams = json.load(f)
+        evalparams = src_roiparams['eval']
+        print "-----------------------------------------------------------"
+        print "Coregistering ROIS from source..."
+        print "Source ROIs were filtered with the following eval params:"
+        for eparam in evalparams.keys():
+            print eparam, evalparams[eparam]
+        print "-----------------------------------------------------------"
+    params_thr['eval'] = evalparams
+
+    return params_thr, pass_rois_dict, roi_source_paths
+
+
+def get_evaluated_roi_list(RID, roi_source_paths):
+    roi_eval_path = RID['PARAMS']['options']['source']['roi_eval_path']
+    if len(roi_eval_path) == 0:
+        pass_rois_dict = None
+        nrois_total = None
+        evalparams = None
+    else:
+        pass_rois_dict, nrois_total, evalparams = load_roi_eval(roi_eval_path)
+    print "Loaded EVALPARAMS from roi-eval file: %s" % roi_eval_path
+    pp.pprint(evalparams)
+
+    #%
+    # =========================================================================
+    # Determine which file or ROI-subset should be used as the reference for COREG.
+    # =========================================================================
+    roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
+    if pass_rois_dict is not None:
+        # Use user-specified ROI evaluation to get N-pass, N-total for each relevant tiff file:
+        src_nrois = [(str(fkey), nrois_total[fkey], len(pass_rois_dict[fkey])) for fkey in sorted(pass_rois_dict.keys(), key=natural_keys)]
+    else:
+        if roi_ref_type == 'caiman2D':
+            # Create a list of N-pass, N-total for each tiff in set:
+            src_nrois = []
+            for roi_source in roi_source_paths:
+                snmf = np.load(roi_source)
+                fname = re.search('File(\d{3})', roi_source).group(0)
+                nall = snmf['A'].all().shape[1]
+                npass = len(snmf['idx_components'])
+                src_nrois.append((str(fname), nall, npass))
+
+    return src_nrois, evalparams, pass_rois_dict
+
+
+def coregister_single_file(tmp_rid_path, filenum=1, nprocs=12, rootdir=''):
+
+    # Load tmp rid file for coreg:
+    with open(tmp_rid_path, 'r') as f:
+        RID = json.load(f)
+
+    # Create dir for coregistration output:
+    coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')
+    print "Saving COREG results to:", coreg_output_dir
+    if not os.path.exists(coreg_output_dir):
+        os.makedirs(coreg_output_dir)
+
+    # =========================================================================
+    # Set Coregistration parameters:
+    # =========================================================================
+    params_thr, pass_rois_dict, roi_source_paths = setup_coreg_params(RID, rootdir=rootdir)
+
+    # Save coreg params info to current coreg dir:
+    pp.pprint(params_thr)
+    with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
+        json.dump(params_thr, f, indent=4, sort_keys=True)
+
+
+    curr_file = 'File%03d' % filenum
+    curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
+    results = match_against_ref(curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, nprocs=nprocs, asdict=True)
+
+
+def match_against_ref(file_path, params_thr, pass_rois_dict=None, nprocs=12, asdict=True):
+    # First get reference file info:
+    ref = np.load(params_thr['ref_filepath'])
+    nr = ref['A'].all().shape[1]
+    A1 = ref['A'].all()
+    dims = ref['dims']
+    if params_thr['keep_good_rois'] is True:
+        if pass_rois_dict is None:
+            ref_pass_rois = ref['idx_components']
+        else:
+            ref_pass_rois = pass_rois_dict[params_thr['ref_filename']]
+        A1 = A1[:, ref_pass_rois]
+        nr = A1.shape[-1]
+
+    curr_file = str(re.search('File(\d{3})', file_path).group(0))
+    print "*****CURR FILE: %s*****" % curr_file
+
+    if file_path == os.path.basename(params_thr['ref_filepath']):
+        print "Skipping REFERENCE."
+        pass_roi_idxs = np.array(ref_pass_rois)
+        D = []
+
+    # Load file to match:
+    nmf = np.load(file_path)
+    print "Loaded %s..." % curr_file
+    nr = nmf['A'].all().shape[1]
+    A2 = nmf['A'].all()
+    if params_thr['keep_good_rois'] is True:
+        if pass_rois_dict is None:
+            pass_roi_idxs = nmf['idx_components']
+        else:
+            pass_roi_idxs = pass_rois_dict[curr_file]
+        print("Keeping %i out of %i components." % (len(pass_roi_idxs), nr))
+        A2 = A2[:,  pass_roi_idxs]
+        nr = A2.shape[-1]
+
+    # Calculate distance matrix between ref and all other files:
+    print "%s: Calculating DISTANCE MATRIX." % curr_file
+    D = get_distance_matrix(A1, A2, dims,
+                            dist_maxthr=params_thr['dist_maxthr'],
+                            dist_exp=params_thr['dist_exp'],
+                            dist_overlap_thr=params_thr['dist_overlap_thr'])
+    #fullD = D.copy()
+
+    # Set illegal matches (distance vals greater than dist_thr):
+    D[D>params_thr['dist_thr']] = np.inf #1E100 #np.nan #1E9
+
+    if asdict is True:
+        results = dict()
+        results['source'] = file_path
+        results['pass_roi_idxs'] = pass_roi_idxs
+        #results['distance'] = fullD
+        results['distance_thr'] = D
+        return results
+    else:
+        return D
+
+
+#%%
 def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
      # TODO:  Add 3D compatibility...
     coreg_outpath = None
@@ -659,10 +863,10 @@ def run_coregistration(options):
 
     parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
 
-    parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="threshold for turning spatial components into binary masks [default: 0.1]")
-    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
-    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
-    parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
+#    parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="threshold for turning spatial components into binary masks [default: 0.1]")
+#    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
+#    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
+#    parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
 
 
     parser.add_option('-x', '--exclude', action="store",
@@ -679,9 +883,6 @@ def run_coregistration(options):
 
     parser.add_option('-O', '--outdir', action="store",
                       dest="coreg_output_dir", default=None, help="Output dir to save coreg results to. Default uses curr ROI dir + 'coreg_results'")
-
-    parser.add_option('-f', '--ref', action="store",
-                      dest="coreg_fidx", default=1, help="Reference file for coregistration if use_max_nrois==False [default: 1]")
 
     (options, args) = parser.parse_args(options)
 
@@ -753,6 +954,7 @@ def run_coregistration(options):
         params_thr['filter_type'] = 'max'
     else:
         params_thr['filter_type'] = 'ref'
+
     #%%
     # =========================================================================
     # Get ROI source(s) info:
@@ -768,15 +970,11 @@ def run_coregistration(options):
 
     # Get ROI source files and their sources (.tif, .mmap) -- use MC evaluation
     # results, if relevant.
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True,
-                                                                                                      mcmetric=mcmetric,
-                                                                                                      acquisition=acquisition,
-                                                                                                      run=run,
-                                                                                                      process_id=process_id)
+    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True,
+                                                                                                      mcmetric=mcmetric, rootdir=rootdir)
     # Get list of .tif files to exclude (from MC-eval fail or user-choice):
-    if len(exclude_manual) > 0:
-        excluded_tiffs.extend(exclude_manual)
-        print "Additionally excluding manully-selected tiffs."
+    excluded_tiffs = list(set(exclude_manual + mc_excluded_tiffs))
+    print "Additionally excluding manully-selected tiffs:", mc_excluded_tiffs
     print "Excluded:", excluded_tiffs
     params_thr['excluded_tiffs'] = excluded_tiffs
 
