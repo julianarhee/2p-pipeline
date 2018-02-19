@@ -195,7 +195,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     if roiparams['keep_good_rois'] is True:
         if pass_rois is None:
             pass_rois = nmf['idx_components']    # Get idxs of ROIs that "pass" evaluation
-        print "Keeping %i out of %i ROIs." % (len(pass_rois), nr) 
+        print "Keeping %i out of %i ROIs." % (len(pass_rois), nr)
         roi_idxs = roi_idxs[pass_rois]           # Update ROI index list
 
     if coreg_rois is not None:                   # coreg_rois = indices into either "pass" rois (if keep_good_rois==True) or just the org src
@@ -468,9 +468,9 @@ def extract_options(options):
     parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
     parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
     parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
-
-    parser.add_option('-E', '--eval-key', action="store",
-                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
+#
+#    parser.add_option('-E', '--eval-key', action="store",
+#                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
     parser.add_option('-C', '--coreg-path', action="store",
                       dest="coreg_results_path", default=None, help="Path to coreg results if standardizing ROIs only")
 
@@ -556,8 +556,8 @@ def do_roi_extraction(options):
     slurm = options.slurm
     auto = options.default
 
-    keep_good_rois = options.keep_good_rois
-    use_max_nrois = options.use_max_nrois
+    #keep_good_rois = options.keep_good_rois
+    #use_max_nrois = options.use_max_nrois
 
     dist_maxthr = options.dist_maxthr
     dist_exp = options.dist_exp
@@ -566,7 +566,7 @@ def do_roi_extraction(options):
 
     zproj_type= options.zproj_type
 
-    eval_key = options.eval_key
+    #eval_key = options.eval_key
     #mcmetric = options.mcmetric
 
     multiproc = options.multiproc
@@ -675,11 +675,11 @@ def do_roi_extraction(options):
                       '-n', dist_exp,
                       '-d', dist_thr,
                       '-o', dist_overlap_thr]
-
-        if use_max_nrois is True: # == 'max':
-            coreg_opts.extend(['--max'])
-        if keep_good_rois is True:
-            coreg_opts.extend(['--good'])
+#
+#        if use_max_nrois is True: # == 'max':
+#            coreg_opts.extend(['--max'])
+#        if keep_good_rois is True:
+#            coreg_opts.extend(['--good'])
         if len(exclude_str) > 0:
             coreg_opts.extend(['-x', exclude_str])
 
@@ -687,16 +687,16 @@ def do_roi_extraction(options):
         print "==========================================================="
         print "RID %s -- Running coregistration..." % rid_hash
         print "RID %s -- Source ROI set is: %s" % (rid_hash, src_roi_id)
-        if eval_key is None and keep_good_rois is False:
-            # Just run coregistration on default (if nmf rois, will use source eval-params if "keep_good_rois" is True)
-            ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
-            src_eval_filepath = None
-        else:
+#        if eval_key is None: # and keep_good_rois is False:
+#            # Just run coregistration on default (if nmf rois, will use source eval-params if "keep_good_rois" is True)
+#            ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
+#            src_eval_filepath = None
+#        else:
             # Load ROI info for "good" rois to include:
-            src_eval, src_eval_filepath = load_eval_results(src_roi_dir, eval_key, auto=False)
-            coreg_opts.extend(['--roipath=%s' % src_eval_filepath])
+#            src_eval, src_eval_filepath = load_eval_results(src_roi_dir, eval_key, auto=False)
+#            coreg_opts.extend(['--roipath=%s' % src_eval_filepath])
             #%
-            ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
+        ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
 
         print("Found %i common ROIs matching reference." % len(ref_rois))
         format_roi_output = True

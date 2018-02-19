@@ -110,9 +110,11 @@ def extract_options(options):
     # COREG OPTS:
     parser.add_option('-u', '--roi-source', action='store', dest='roi_source_id', default='', help='[coreg]: Name of ROI ID that is the source of coregsitered ROIs (TODO: allow for multiple sources)')
     parser.add_option('--good', action="store_true",
-                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+                      dest="keep_good_rois", default=False, help="[coreg]: Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
     parser.add_option('--max', action="store_true",
-                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
+                      dest="use_max_nrois", default=False, help="[coreg]: Set flag to use file with max N components (instead of reference file) [default uses reference]")
+    parser.add_option('-E', '--eval-key', action="store",
+                      dest="eval_key", default=None, help="[coreg]: Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
 
     (options, args) = parser.parse_args(options)
 
@@ -124,6 +126,57 @@ def extract_options(options):
         options.homedir = options.rootdir
 
     return options
+
+
+def load_eval_results(src_roi_dir, eval_key, auto=False):
+    src_eval_filepath = None
+    src_eval = None
+    try:
+        print "-----------------------------------------------------------"
+        print "Loading evaluation results for src roi set"
+        # Load eval info:
+        src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+        assert os.path.exists(src_eval_filepath), "Specfied EVAL src file does not exist!\n%s" % src_eval_filepath
+        src_eval = h5py.File(src_eval_filepath, 'r')
+    except Exception as e:
+        print "Error loading specified eval file:\n%s" % src_eval_filepath
+        traceback.print_exc()
+        print "-----------------------------------------------------------"
+        try:
+            evaldict_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_info.json')
+            with open(evaldict_filepath, 'r') as f:
+                evaldict = json.load(f)
+            eval_list = sorted(evaldict.keys(), key=natural_keys)
+            print "Found evaluation keys:"
+            if auto is False:
+                while True:
+                    if len(eval_list) > 1:
+                        for eidx, ekey in enumerate(eval_list):
+                            print eidx, ekey
+                            eval_select_idx = input('Select IDX of evaluation key to view: ')
+                    else:
+                        eval_select_idx = 0
+                        print "Only 1 evaluation set found: %s" % eval_list[eval_select_idx]
+                    pp.pprint(evaldict[eval_list[eval_select_idx]])
+                    confirm_eval = raw_input('Enter <Y> to use this eval set, or <n> to return: ')
+                    if confirm_eval == 'Y':
+                        eval_key = eval_list[eval_select_idx].split('evaluation_')[-1]
+                        print "Using key: %s" % eval_key
+                        break
+            else:
+                print "Auto is ON, using most recent evaluation set: %s" % eval_key
+                eval_key = eval_list[-1].split('evaluation_')[-1]
+                pp.pprint(evaldict[eval_list[-1]])
+
+            src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+            src_eval = h5py.File(src_eval_filepath, 'r')
+        except Exception as e:
+            print "ERROR: Can't load source evaluation file - %s" % eval_key
+            traceback.print_exc()
+            print "Aborting..."
+            print "-----------------------------------------------------------"
+
+    return src_eval, src_eval_filepath
 
 def create_rid(options):
 
@@ -165,6 +218,8 @@ def create_rid(options):
         roi_source_ids = ['rois%03d' % int(r) for r in roi_source_str.split(',')]
     keep_good_rois = options.keep_good_rois
     use_max_nrois = options.use_max_nrois
+    eval_key = options.eval_key
+
 
     # manual options:
     ref_file = int(options.ref_file)
@@ -227,7 +282,9 @@ def create_rid(options):
                                          roi_source=roi_source_ids,
                                          roi_type=roi_type,
                                          keep_good_rois=keep_good_rois,
-                                         use_max_nrois=use_max_nrois)
+                                         use_max_nrois=use_max_nrois,
+                                         eval_key=eval_key,
+                                         auto=auto)
         if len(roi_source_ids) > 1:
             tiff_sourcedir = sorted([roi_options['source'][k]['tiff_dir'] for k in roi_options['source'].keys()], key=natural_keys)
             src_roi_type = roi_options['source'][0]['roi_type']
@@ -377,9 +434,9 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
     return params
 
-def set_options_coregister(rootdir='', animalid='', session='',
+def set_options_coregister(rootdir='', animalid='', session='', autp=False,
                            roi_source='', roi_type='',
-                           use_max_nrois=True, keep_good_rois=True):
+                           use_max_nrois=True, keep_good_rois=True, eval_key=""):
 
     # TODO:  Allow multiple ROI sets from 1 session to be coregistered
     # TODO:  Allow multiple sessions to be coregistered...
@@ -401,12 +458,15 @@ def set_options_coregister(rootdir='', animalid='', session='',
         params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
         params['source'][ridx]['roi_id'] = src_rid['roi_id']
         params['source'][ridx]['roi_type'] = src_rid['roi_type']
+        evalresults, evalpath = load_eval_results(src_rid['DST'], eval_key, auto=auto)
+        params['source'][ridx]['roi_type'] = evalpath
 
     if len(roi_source) == 1:
         params['source'] = params['source'][0]
 
     params['keep_good_rois'] = keep_good_rois
     params['use_max_nrois'] = use_max_nrois
+
 
     return params
 
