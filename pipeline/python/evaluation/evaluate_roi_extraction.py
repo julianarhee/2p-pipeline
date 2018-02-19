@@ -427,6 +427,28 @@ def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local', r
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%%
+def update_evaluation_dict(eval_filepath, evalinfo):
+
+    roi_eval_dir = os.path.split(eval_filepath)[0]
+    eval_base_dir = os.path.split(roi_eval_dir)[0]
+    evaldict_path = os.path.join(eval_base_dir, 'evaluation_info.json')
+    if os.path.exists(evaldict_path):
+        with open(evaldict_path, 'r') as fr:
+            evaldict = json.load(fr)
+    else:
+        evaldict = dict()
+    eval_key = os.path.split(os.path.split(eval_filepath)[0])[1]
+    print "--- Saving new eval key: %s" % eval_key
+    #eval_filename = str(os.path.splitext(os.path.basename(eval_filepath))[0])
+    if eval_key not in evaldict.keys():
+        evaldict[eval_key] = evalinfo
+    with open(evaldict_path, 'w') as fw:
+        json.dump(evaldict, fw, sort_keys=True, indent=4)
+    print "--- Updated eval info dict with entry: %s\n---Saved update to %s." % (eval_key, evaldict_path)
+
+    return evaldict_path
+
+
 def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local', rootdir='',
                     frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):
     #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
@@ -467,25 +489,10 @@ def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local', rootdir='',
     min_good_rois = min(evalinfo['nrois'])
     max_good_rois = max(evalinfo['nrois'])
 
-    roi_eval_dir = os.path.split(eval_filepath)[0]
-    eval_base_dir = os.path.split(roi_eval_dir)[0]
-    eval_info_path = os.path.join(eval_base_dir, 'evaluation_info.json')
-    if os.path.exists(eval_info_path):
-        with open(eval_info_path, 'r') as fr:
-            evaldict = json.load(fr)
-    else:
-        evaldict = dict()
-    eval_key = os.path.split(os.path.split(eval_filepath)[0])[1]
-    print "Saving new eval key: %s" % eval_key
-    #eval_filename = str(os.path.splitext(os.path.basename(eval_filepath))[0])
-    if eval_key not in evaldict.keys():
-        evaldict[eval_key] = evalinfo
-    with open(eval_info_path, 'w') as fw:
-        json.dump(evaldict, fw, sort_keys=True, indent=4)
-    print "Updated eval info dict with entry: %s\nSaved update to %s." % (eval_key, eval_info_path)
+    evaldict_path = update_evaluation_dict(eval_filepath, evalinfo)
 
     print "----------------------------------------------------------------"
-    print "Finished ROI evaluation."
+    print "Finished ROI evaluation. Results updated to: %s" % evaldict_path
     print "Fewest N rois: %i" % min_good_rois
     print "Most N rois: %i" % max_good_rois
     print "Saved output to:"
@@ -620,22 +627,11 @@ def run_evaluation(options):
     min_good_rois = min(evalinfo['nrois'])
     max_good_rois = max(evalinfo['nrois'])
 
-    roi_eval_dir = os.path.split(eval_filepath)[0]
-    eval_base_dir = os.path.split(roi_eval_dir)[0]
-    eval_info_path = os.path.join(eval_base_dir, 'evaluation_info.json')
-    if os.path.exists(eval_info_path):
-        with open(eval_info_path, 'r') as fr:
-            evaldict = json.load(fr)
-    else:
-        evaldict = dict()
-    eval_key = os.path.split(os.path.split(eval_filepath)[0])[1]
-    print "Saving new eval key: %s" % eval_key
-    #eval_filename = str(os.path.splitext(os.path.basename(eval_filepath))[0])
-    if eval_key not in evaldict.keys():
-        evaldict[eval_key] = evalinfo
-    with open(eval_info_path, 'w') as fw:
-        json.dump(evaldict, fw, sort_keys=True, indent=4)
-    print "Updated eval info dict with entry: %s\nSaved update to %s." % (eval_key, eval_info_path)
+
+    evaldict_path = update_evaluation_dict(eval_filepath, evalinfo)
+
+    print "----------------------------------------------------------------"
+    print "Finished ROI evaluation. Results updated to: %s" % evaldict_path
 
     return eval_filepath, max_good_rois, min_good_rois
 
@@ -644,8 +640,6 @@ def main(options):
 
     eval_filepath, max_good_rois, min_good_rois = run_evaluation(options)
 
-    print "----------------------------------------------------------------"
-    print "Finished ROI evaluation."
     print "Fewest N rois: %i" % min_good_rois
     print "Most N rois: %i" % max_good_rois
     print "Saved output to:"

@@ -24,6 +24,55 @@ pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 
+def get_roi_eval_path(src_roi_dir, eval_key, auto=False):
+    src_eval_filepath = None
+    src_eval = None
+    try:
+        print "-----------------------------------------------------------"
+        print "Loading evaluation results for src roi set"
+        # Load eval info:
+        src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+        assert os.path.exists(src_eval_filepath), "Specfied EVAL src file does not exist!\n%s" % src_eval_filepath
+        src_eval = h5py.File(src_eval_filepath, 'r')
+    except Exception as e:
+        print "Error loading specified eval file:\n%s" % src_eval_filepath
+        traceback.print_exc()
+        print "-----------------------------------------------------------"
+        try:
+            evaldict_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_info.json')
+            with open(evaldict_filepath, 'r') as f:
+                evaldict = json.load(f)
+            eval_list = sorted(evaldict.keys(), key=natural_keys)
+            print "Found evaluation keys:"
+            if auto is False:
+                while True:
+                    if len(eval_list) > 1:
+                        for eidx, ekey in enumerate(eval_list):
+                            print eidx, ekey
+                            eval_select_idx = input('Select IDX of evaluation key to view: ')
+                    else:
+                        eval_select_idx = 0
+                        print "Only 1 evaluation set found: %s" % eval_list[eval_select_idx]
+                    pp.pprint(evaldict[eval_list[eval_select_idx]])
+                    confirm_eval = raw_input('Enter <Y> to use this eval set, or <n> to return: ')
+                    if confirm_eval == 'Y':
+                        eval_key = eval_list[eval_select_idx].split('evaluation_')[-1]
+                        print "Using key: %s" % eval_key
+                        break
+            else:
+                print "Auto is ON, using most recent evaluation set: %s" % eval_key
+                eval_key = eval_list[-1].split('evaluation_')[-1]
+                pp.pprint(evaldict[eval_list[-1]])
+
+            src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+            src_eval = h5py.File(src_eval_filepath, 'r')
+        except Exception as e:
+            print "ERROR: Can't load source evaluation file - %s" % eval_key
+            traceback.print_exc()
+            print "Aborting..."
+            print "-----------------------------------------------------------"
+
+    return src_eval_filepath
 
 def load_RID(session_dir, roi_id, auto=False):
 
@@ -81,7 +130,8 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     run = path_parts[2]
     process_dirname = path_parts[4]
     process_id = process_dirname.split('_')[0]
-    print "Getting source paths: %s, %s, %s..." % (acquisition, run, process_id)
+    print "Getting source paths:
+    print "ACQUISITION: %s | RUN: %s | PROCESS-ID: %s..." % (acquisition, run, process_id)
 
     session = os.path.split(session_dir)[-1]
     animalid = os.path.split(os.path.split(session_dir)[0])[-1]

@@ -73,6 +73,7 @@ matplotlib.use('TkAgg')
 #from builtins import map
 #from builtins import range
 import datetime
+import time
 import traceback
 import numpy as np
 import os
@@ -172,7 +173,13 @@ def minimumWeightMatching(costSet):
 
 #%%
 def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overlap_thr=0.8):
-
+    """
+        params_thr (dict)
+            'dist_maxthr'      :  (float) threshold for turning spatial components into binary masks (default: 0.1)
+            'dist_exp'         :  (float) power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+            'dist_thr'         :  (float) threshold for setting a distance to infinity, i.e., illegal matches (default: 0.5)
+            'dist_overlap_thr' :  (float) overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+    """
     d1 = dims[0]
     d2 = dims[1]
 
@@ -229,10 +236,31 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
     return D
 
 #%%
-import time
 
 def setup_coreg_params(RID, rootdir=''):
+    """
+    All parameters for coregistration are collated here:
 
+    Returns:
+
+        params_thr (dict)
+            'dist_maxthr'      :  (float) threshold for turning spatial components into binary masks (default: 0.1)
+            'dist_exp'         :  (float) power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+            'dist_thr'         :  (float) threshold for setting a distance to infinity, i.e., illegal matches (default: 0.5)
+            'dist_overlap_thr' :  (float) overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+            'filter_type'      :  (str) options are 'max' (use file with most nrois as reference) or 'ref' (use user-specified reference file, or MC reference file)
+            'keep_good_rois'   :  (bool) first filter all ROIs from each file using some evaluation criteria
+            'excluded_tiffs'   :  (list) files/tiffs to exclude, includes MC-excluded tiffs and user-selected tiffs to exclude [File001, File002, etc.]
+            'ref_filename'     :  (str) file to use as reference (e.g., 'File003')
+            'ref_filepath'     :  (str) path to roi source file that will be used as the reference for coreg
+            'eval'             :  (dict) evaluation parameters if keep_good_rois = True
+
+        pass_rois_dict (dict)
+            key:  FileXXX,  val:  indices of ROIs in file that pass evaluation
+
+        roi_source_paths (list)
+            paths to roi source files
+    """
     # =========================================================================
     # Set Coregistration parameters:
     # =========================================================================
@@ -314,6 +342,23 @@ def setup_coreg_params(RID, rootdir=''):
 
 
 def get_evaluated_roi_list(RID, roi_source_paths):
+    """
+    This method is currently limited to roi_type='coregister'.
+    For a specified RID parameter set that uses an existing ROI set as its source,
+    returns a summary list of ROIs that pass the user-specified evaluation criteria.
+
+    Returns:
+
+        src_nrois (list)
+            Format is (FileXXX, NTOTAL, NPASS) for each file in ROI source set.
+
+        evalparams (dict)
+            key, val pairs are all criteria used in original evaluation.
+
+        pass_rois_dict (dict)
+            key: FileXXX, val: indices of ROIs that pass evaluation.
+
+    """
     roi_eval_path = RID['PARAMS']['options']['source']['roi_eval_path']
     if len(roi_eval_path) == 0:
         pass_rois_dict = None
@@ -368,58 +413,76 @@ def coregister_single_file(tmp_rid_path, filenum=1, nprocs=12, rootdir=''):
     with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
         json.dump(params_thr, f, indent=4, sort_keys=True)
 
+    # First, load REFERNCE:
+    if pass_rois_dict is not None:
+        pass_rois = pass_rois_dict[params_thr['ref_filename']]
+    else:
+        pass_rois=None
+    A1, dims, ref_pass_rois = load_source_rois(params_thr['ref_filepath'], keep_good_rois=params_thr['keep_good_rois'], pass_rois=pass_rois)
+    REF = dict()
+    REF['mat'] = A1
+    REF['roi_idxs'] = ref_pass_rois
+    REF['dims'] = dims
 
+    # Then, get matches to sample:
     curr_file = 'File%03d' % filenum
     curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
-    results = match_against_ref(curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, nprocs=nprocs, asdict=True)
+    results = match_against_ref(REF, curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, nprocs=nprocs, asdict=True)
 
 
-def match_against_ref(file_path, params_thr, pass_rois_dict=None, nprocs=12, asdict=True):
+def load_source_rois(roi_filepath, keep_good_rois=True, pass_rois=None):
+
     # First get reference file info:
-    ref = np.load(params_thr['ref_filepath'])
+    ref = np.load(roi_filepath) # np.load(params_thr['ref_filepath'])
     nr = ref['A'].all().shape[1]
     A1 = ref['A'].all()
     dims = ref['dims']
-    if params_thr['keep_good_rois'] is True:
-        if pass_rois_dict is None:
-            ref_pass_rois = ref['idx_components']
-        else:
-            ref_pass_rois = pass_rois_dict[params_thr['ref_filename']]
-        A1 = A1[:, ref_pass_rois]
-        nr = A1.shape[-1]
+    if keep_good_rois is True:
+        if pass_rois is None:
+            pass_rois = ref['idx_components']
+        A1 = A1[:, pass_rois]
+        print "Loaded SRC rois. Keeping %i out of %i components." % (nr, len(pass_rois))
 
+    return A1, dims, pass_rois
+
+def match_against_ref(REF, file_path, params_thr, pass_rois_dict=None, nprocs=12, asdict=True):
+
+    # Then, get comparison file:
     curr_file = str(re.search('File(\d{3})', file_path).group(0))
     print "*****CURR FILE: %s*****" % curr_file
 
     if file_path == os.path.basename(params_thr['ref_filepath']):
         print "Skipping REFERENCE."
-        pass_roi_idxs = np.array(ref_pass_rois)
+        pass_roi_idxs = np.array(REF['roi_idxs'])
         D = []
+    else:
+        # Assign reference:
+        A1 = REF['mat']
+        dims = REF['dims']
 
-    # Load file to match:
-    nmf = np.load(file_path)
-    print "Loaded %s..." % curr_file
-    nr = nmf['A'].all().shape[1]
-    A2 = nmf['A'].all()
-    if params_thr['keep_good_rois'] is True:
-        if pass_rois_dict is None:
-            pass_roi_idxs = nmf['idx_components']
-        else:
-            pass_roi_idxs = pass_rois_dict[curr_file]
-        print("Keeping %i out of %i components." % (len(pass_roi_idxs), nr))
-        A2 = A2[:,  pass_roi_idxs]
-        nr = A2.shape[-1]
+        # Load file to match:
+        nmf = np.load(file_path)
+        print "Loaded %s..." % os.path.split(file_path)[-1]
+        nr = nmf['A'].all().shape[1]
+        A2 = nmf['A'].all()
+        if params_thr['keep_good_rois'] is True:
+            if pass_rois_dict is None:
+                pass_roi_idxs = nmf['idx_components']
+            else:
+                pass_roi_idxs = pass_rois_dict[curr_file]
+            print("Keeping %i out of %i components." % (len(pass_roi_idxs), nr))
+            A2 = A2[:,  pass_roi_idxs]
+            nr = A2.shape[-1]
 
-    # Calculate distance matrix between ref and all other files:
-    print "%s: Calculating DISTANCE MATRIX." % curr_file
-    D = get_distance_matrix(A1, A2, dims,
-                            dist_maxthr=params_thr['dist_maxthr'],
-                            dist_exp=params_thr['dist_exp'],
-                            dist_overlap_thr=params_thr['dist_overlap_thr'])
-    #fullD = D.copy()
+        # Calculate distance matrix between ref and all other files:
+        print "%s: Calculating DISTANCE MATRIX." % curr_file
+        D = get_distance_matrix(A1, A2, dims,
+                                dist_maxthr=params_thr['dist_maxthr'],
+                                dist_exp=params_thr['dist_exp'],
+                                dist_overlap_thr=params_thr['dist_overlap_thr'])
 
-    # Set illegal matches (distance vals greater than dist_thr):
-    D[D>params_thr['dist_thr']] = np.inf #1E100 #np.nan #1E9
+        # Set illegal matches (distance vals greater than dist_thr):
+        D[D>params_thr['dist_thr']] = np.inf #1E100 #np.nan #1E9
 
     if asdict is True:
         results = dict()
@@ -818,6 +881,19 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
 
 #%%
 def load_roi_eval(roi_eval_path):
+    """
+    Loads hdf5 file specified in input roi_eval_path (str).
+
+    Returns:
+        pass_rois_dict (dict)
+            key: FileXXX, val: indices of ROIs that pass evaluation
+
+        nrois_total (dict)
+            key: FileXXX, val: nrois that pass + nrois that fail
+
+        evalparams (dict)
+            key, value pairs are all criteria used for evaluation.
+    """
     pass_rois_dict = dict()
     nrois_total = dict()
     evalparams = dict()
