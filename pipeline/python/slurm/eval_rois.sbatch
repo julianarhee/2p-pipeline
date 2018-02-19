@@ -6,7 +6,7 @@
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-1:00 # Running time of 3 hours
-#SBATCH --mem-per-cpu 16384  # Memory request of 4 GB 
+#SBATCH --mem-per-cpu 18432 #20480 #18432  # Memory request of 4 GB 
 #SBATCH -o evalroi_%A_f%a.out # Standard output
 #SBATCH -e evalroi_%A_f%a.err # Standard error
 

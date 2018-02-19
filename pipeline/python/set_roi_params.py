@@ -115,6 +115,9 @@ def extract_options(options):
                       dest="keep_good_rois", default=False, help="[coreg]: Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
     parser.add_option('--max', action="store_true",
                       dest="use_max_nrois", default=False, help="[coreg]: Set flag to use file with max N components (instead of reference file) [default uses reference]")
+    parser.add_option('-f', '--ref', action="store",
+                      dest="coreg_fidx", default=None, help="Reference file for coregistration if use_max_nrois==False")
+
     parser.add_option('-E', '--eval-key', action="store",
                       dest="eval_key", default=None, help="[coreg]: Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
     parser.add_option('-b', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
@@ -225,6 +228,13 @@ def create_rid(options):
     print "ROI SOURCES:", roi_source_ids
     keep_good_rois = options.keep_good_rois
     use_max_nrois = options.use_max_nrois
+
+    if use_max_nrois is False:
+        coreg_fidx = int(options.coreg_fidx) - 1
+        reference_filename = "File%03d" % int(options.coreg_fidx)
+    else:
+        reference_filename = None
+
     eval_key = options.eval_key
 
     dist_maxthr = options.dist_maxthr
@@ -295,6 +305,8 @@ def create_rid(options):
                                          roi_type=roi_type,
                                          keep_good_rois=keep_good_rois,
                                          use_max_nrois=use_max_nrois,
+                                         coreg_fidx=coreg_fidx,
+                                         reference_filename=reference_filename,
                                          eval_key=eval_key,
                                          dist_maxthr=dist_maxthr,
                                          dist_exp=dist_exp,
@@ -452,7 +464,8 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
 def set_options_coregister(rootdir='', animalid='', session='', auto=False,
                            roi_source='', roi_type='',
-                           use_max_nrois=True, keep_good_rois=True, eval_key="",
+                           use_max_nrois=True, keep_good_rois=True, coreg_fidx=None, reference_filename=None,
+                           eval_key="",
                            dist_maxthr=0.1, dist_exp=0.1, dist_thr=0.5, dist_overlap_thr=0.8):
 
     # TODO:  Allow multiple ROI sets from 1 session to be coregistered
@@ -483,10 +496,14 @@ def set_options_coregister(rootdir='', animalid='', session='', auto=False,
 
     params['keep_good_rois'] = keep_good_rois
     params['use_max_nrois'] = use_max_nrois
+    params['ref_filename'] = reference_filename
+    params['coreg_fidx'] = coreg_fidx
+
     params['dist_maxthr'] = dist_maxthr
     params['dist_exp'] = dist_exp
     params['dist_thr'] = dist_thr
     params['dist_overlap_thr'] = dist_overlap_thr
+
 
     return params
 
@@ -513,7 +530,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
             PARAMS['mmap_source'] = {}
         for tidx, tiff_source in enumerate(sorted(tiff_sourcedir, key=natural_keys)):
             PARAMS['tiff_sourcedir'][tidx] = tiff_source
-            if roi_type=='caiman2D' or (roi_type=='coregister' and roi_src_type=='caiman2D'): 
+            if roi_type=='caiman2D' or (roi_type=='coregister' and roi_src_type=='caiman2D'):
                 mmap_dir = get_mmap_dirname(tiff_source, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
                 PARAMS['mmap_source'][tidx] = mmap_dir
     else:

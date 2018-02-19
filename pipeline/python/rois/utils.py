@@ -18,7 +18,7 @@ import traceback
 import re
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, get_source_info
+from pipeline.python.utils import natural_keys, get_source_info, replace_root
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -69,21 +69,31 @@ def load_RID(session_dir, roi_id, auto=False):
     return RID
 
 #%%
-def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', rootdir=''): #, acquisition='', run='', process_id=''):
     '''
     Get fullpaths to ROI source files, original tiff/mmap files, filter by MC-evaluation for excluded tiffs.
     Provide acquisition, run, process_id if source is NOT motion-corrected (default reference file and channel = 1).
     '''
-    if acquisition=='' or run=='' or process_id=='':
-        tiff_sourcedir = RID['SRC']
-        path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
-        acquisition = path_parts[1]
-        run = path_parts[2]
-        process_dirname = path_parts[4]
-        process_id = process_dirname.split('_')[0]
+    #if acquisition=='' or run=='' or process_id=='':
+    tiff_sourcedir = RID['SRC']
+    path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
+    acquisition = path_parts[1]
+    run = path_parts[2]
+    process_dirname = path_parts[4]
+    process_id = process_dirname.split('_')[0]
     print "Getting source paths: %s, %s, %s..." % (acquisition, run, process_id)
 
+    session = os.path.split(session_dir)[-1]
+    animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+    print "SESSION:", session
+    print "ANIMALID:", animalid
+    rootdir = rootdir
+
     roi_source_dir = RID['DST']
+    if rootdir not in roi_source_dir:
+        print "ORIG:", roi_source_dir
+        roi_source_dir = replace_root(roi_source_dir, rootdir, animalid, session)
+        print "NEW:", roi_source_dir
     roi_type = RID['roi_type']
     #roi_id = RID['roi_id']
     excluded_tiffs = []
@@ -95,10 +105,16 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
         roi_source_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
         # Get TIFF/mmap source from which ROIs were extracted:
         src_mmap_dir = RID['PARAMS']['mmap_source']
+        if rootdir not in src_mmap_dir:
+            src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
+            print "***SRC MMAP:", src_mmap_dir
         tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
 
     elif roi_type == 'coregister':
         src_rid_dir = RID['PARAMS']['options']['source']['roi_dir']
+        if rootdir not in src_rid_dir:
+            src_rid_dir = replace_root(src_rid_dir, rootdir, animalid, session)
+            print "***SRC RID:", src_rid_dir
         src_roi_id = RID['PARAMS']['options']['source']['roi_id']
         src_roi_type = RID['PARAMS']['options']['source']['roi_type']
 
@@ -113,6 +129,9 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
             roi_source_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys)
             # Get TIFF/mmap source from which ROIs were extracted:
             src_mmap_dir = src_roidict[src_roi_id]['PARAMS']['mmap_source']
+            if rootdir not in src_mmap_dir:
+                src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
+                print "***SRC MMAP:", src_mmap_dir
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
 
     # Get filenames for matches between roi source and tiff source:
@@ -124,11 +143,13 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
         # filenames = sorted([str(re.search('File(\d{3})', nmffile).group(0)) for nmffile in roi_source_paths], key=natural_keys)
         filenames.append(str(re.search('File(\d{3})', roi_src).group(0)))
     filenames = sorted(filenames, key=natural_keys)
+    print "Found %i ROI SOURCE files." % len(roi_source_paths)
 
     if check_motion is True:
         print "Checking MC eval, metric: %s" % mcmetric
         filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric,
-                                                       acquisition=acquisition, run=run, process_id=process_id)
+                                                       acquisition=acquisition, run=run, process_id=process_id,
+                                                       rootdir=rootdir, animalid=animalid, session=session)
         if len(excluded_tiffs) > 0:
             bad_roi_fns = []
             bad_tiff_fns = []
@@ -146,7 +167,8 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath
 
 #%% If motion-corrected (standard), check evaluation:
-def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs',
+                            acquisition='', run='', process_id='', rootdir='', animalid='', session=''):
 
     # TODO:  Make this include other eval types?
     mcmetric_options = ['zproj_corrcoefs', 'within_file']
@@ -155,13 +177,17 @@ def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisi
         print "Unknown MC METRIC type specified: %s. Using default..." % mcmetric_type
         mcmetric_type='zproj_corrcoefs'
 
+    roi_src_dir = RID['SRC']
+    if rootdir not in roi_src_dir:
+        roi_src_dir = replace_root(roi_src_dir, rootdir, animalid, session)
+
     #print "Loading Motion-Correction Info...======================================="
     mcmetrics_filepath = None
     excluded_tiffs = []
     mc_evaluated = False
     if 'mcorrected' in RID['SRC']:
         try:
-            mceval_dir = '%s_evaluation' % RID['SRC']
+            mceval_dir = '%s_evaluation' % roi_src_dir
             assert 'mc_metrics.hdf5' in os.listdir(mceval_dir), "MC output file not found!"
             mcmetrics_filepath = os.path.join(mceval_dir, 'mc_metrics.hdf5')
             mcmetrics = h5py.File(mcmetrics_filepath, 'r')

@@ -24,7 +24,7 @@ import numpy as np
 import multiprocessing as mp
 from pipeline.python.rois.utils import load_RID, get_source_paths, get_source_info
 from caiman.utils.visualization import get_contours, plot_contours
-from pipeline.python.utils import natural_keys, print_elapsed_time
+from pipeline.python.utils import natural_keys, print_elapsed_time, replace_root
 from caiman.components_evaluation import evaluate_components, estimate_components_quality_auto
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -56,7 +56,7 @@ def evaluate_rois_nmf(mmap_path, nmfout_path, evalparams, eval_outdir, asdict=Fa
         SNR_comp :  SNR val for each comp
         r_values :  spatial corr values for each comp
     """
-
+    pass_comps=None; fail_comps=None; snr_vals=None; r_vals=None; cnn_preds=None
     eval_outdir_figs = os.path.join(eval_outdir, 'figures')
     if not os.path.exists(eval_outdir_figs):
         os.makedirs(eval_outdir_figs)
@@ -241,15 +241,21 @@ def set_evalparams_nmf(RID, frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_t
     return evalparams
 
 #%%
-def par_evaluate_rois(RID, evalparams=None, nprocs=12, cluster_backend='local'):
+def par_evaluate_rois(RID, evalparams=None, nprocs=12, cluster_backend='local', rootdir=''):
 
     session_dir = RID['DST'].split('/ROIs')[0]
     roi_type = RID['roi_type']
     roi_id = RID['roi_id']
-    roi_source_dir = RID['DST']
+
 
     # Get ROI and TIFF source paths:
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, subset=True)
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, subset=True, rootdir=rootdir)
+
+    roi_source_dir = RID['DST']
+    if rootdir not in roi_source_dir:
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        roi_source_dir = replace_root(roi_source_dir, rootdir, session, animalid)
 
     # Create output dir and OUTFILE:
     try:
@@ -324,7 +330,7 @@ def par_evaluate_rois(RID, evalparams=None, nprocs=12, cluster_backend='local'):
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%%
-def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local'):
+def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local', rootdir=''):
 
     session_dir = RID['DST'].split('/ROIs')[0]
     roi_id = RID['roi_id']
@@ -345,7 +351,7 @@ def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local'):
         traceback.print_exc()
         print "---------------------------------------------------------------"
 
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID)
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, rootdir=rootdir)
 
     # Set up output file:
     eval_filename = 'evaluation_results_{tstamp}.hdf5'.format(tstamp=tstamp)
@@ -421,7 +427,7 @@ def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local'):
     return eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs
 
 #%%
-def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local',
+def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local', rootdir='',
                     frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):):
     #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
     tmp_rid_dir = os.path.split(rid_filepath)[0]
@@ -439,7 +445,7 @@ def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local',
                                         Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
 
 )
-        eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend)
+        eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend, rootdir=rootdir)
 
     #% Save Eval info to dict:
     evalinfo = dict()
@@ -576,8 +582,9 @@ def run_evaluation(options):
 
     # Get frame rate from runmeta info from tiff source:
     tiff_sourcedir = RID['SRC']
-    acquisition = tiff_sourcedir.split(session_dir)[-1].split('/')[1]
-    run = tiff_sourcedir.split(session_dir)[-1].split('/')[2]
+    acquisition = tiff_sourcedir.split(session)[-1].split('/')[1]
+    run = tiff_sourcedir.split(session)[-1].split('/')[2]
+    print "ACQ: %s | RUN %s" % (acquisition, run)
     runinfo_filepath = os.path.join(session_dir, acquisition, run, '%s.json' % run)
     with open(runinfo_filepath, 'r') as f:
         runinfo = json.load(f)
@@ -589,9 +596,9 @@ def run_evaluation(options):
                                         Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
 
         if multiproc is True:
-            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend)
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend, rootdir=rootdir)
         else:
-            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams)
+            eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = evaluate_roi_set(RID, evalparams=evalparams, rootdir=rootdir)
 
     #% Save Eval info to dict:
     evalinfo = dict()

@@ -562,7 +562,8 @@ def do_roi_extraction(options):
 
     if check_motion is True:
         filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric,
-                                                       acquisition=acquisition, run=run, process_id=process_id)
+                                                       acquisition=acquisition, run=run, process_id=process_id,
+                                                       rootdir=rootdir, animalid=animalid, session=session)
     else:
         mc_excluded_tiffs = []
 
@@ -672,6 +673,12 @@ def do_roi_extraction(options):
         evalparams = params_thr['eval']
     else:
         evalparams = {}
+
+    if roi_type == 'coregister':
+        keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
+    else:
+        keep_good_rois = True
+
     roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
 
     #%%
