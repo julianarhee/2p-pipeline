@@ -189,7 +189,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
 
 #%
 #def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_type='mean', mcmetric='zproj_corrfcoefs', coreg_results_path=None, keep_good_rois=True):
-def standardize_rois(session_dir, roi_id, auto=False, check_motion=True, zproj_type='mean', coreg_results_path=None, keep_good_rois=True, rootdir='', animalid='', session=''):
+def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_motion=True, mcmetric='zproj_corrcoefs', oreg_results_path=None, keep_good_rois=True, rootdir='', animalid='', session=''):
 
     if rootdir not in session_dir:
         session_dir = replace_root(session_dir, rootdir, animalid, session)
