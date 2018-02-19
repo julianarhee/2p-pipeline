@@ -428,7 +428,7 @@ def evaluate_roi_set(RID, evalparams=None, nprocs=12, cluster_backend='local', r
 
 #%%
 def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local', rootdir='',
-                    frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):):
+                    frame_rate=None, decay_time=1.0, min_SNR=1.5, rval_thr=0.6, Nsamples=10, Npeaks=5, use_cnn=False, cnn_thr=0.8):
     #roi_hash = os.path.splitext(os.path.split(rid_filepath)[-1])[0].split('_')[-1]
     tmp_rid_dir = os.path.split(rid_filepath)[0]
     if not os.path.exists(rid_filepath):
@@ -444,7 +444,6 @@ def run_rid_eval(rid_filepath, nprocs=12, cluster_backend='local', rootdir='',
         evalparams = set_evalparams_nmf(RID, frame_rate=frame_rate, min_SNR=min_SNR, rval_thr=rval_thr, decay_time=decay_time,
                                         Nsamples=Nsamples, Npeaks=Npeaks, use_cnn=use_cnn, cnn_thr=cnn_thr)
 
-)
         eval_filepath, roi_source_basedir, tiff_source_basedir, excluded_tiffs = par_evaluate_rois(RID, evalparams=evalparams, nprocs=nprocs, cluster_backend=cluster_backend, rootdir=rootdir)
 
     #% Save Eval info to dict:
