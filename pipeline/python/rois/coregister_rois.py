@@ -914,9 +914,9 @@ def run_coregistration(options):
     mcmetric = options.mcmetric
 
     coreg_output_dir = options.coreg_output_dir
-    coreg_fidx = int(options.coreg_fidx) - 1
-    reference_filename = "File%03d" % int(options.coreg_fidx)
-
+#    coreg_fidx = int(options.ref_file) - 1
+#    reference_filename = "File%03d" % int(options.ref_file)
+#
     #%%
     # =========================================================================
     # Load specified ROI-ID parameter set:
