@@ -189,10 +189,10 @@ def create_rid(options):
 
     eval_key = options.eval_key
 
-    dist_maxthr = options.dist_maxthr
-    dist_exp = options.dist_exp
-    dist_thr = options.dist_thr
-    dist_overlap_thr = options.dist_overlap_thr
+    dist_maxthr = float(options.dist_maxthr)
+    dist_exp = float(options.dist_exp)
+    dist_thr = float(options.dist_thr)
+    dist_overlap_thr = float(options.dist_overlap_thr)
 
 
     # manual options:
