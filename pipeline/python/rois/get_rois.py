@@ -195,6 +195,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
     if roiparams['keep_good_rois'] is True:
         if pass_rois is None:
             pass_rois = nmf['idx_components']    # Get idxs of ROIs that "pass" evaluation
+        print "Keeping %i out of %i ROIs." % (len(pass_rois), nr) 
         roi_idxs = roi_idxs[pass_rois]           # Update ROI index list
 
     if coreg_rois is not None:                   # coreg_rois = indices into either "pass" rois (if keep_good_rois==True) or just the org src
@@ -268,8 +269,8 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', coreg_r
     excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
 
     # Make sure ROI and TIFF source paths don't still contain non-mc-rejected files:
-    roi_source_paths = sorted([r for r in roi_source_paths if str(re.search('File(\d{3})', tf).group(0)) not in excluded_tiffs], key=natural_keys)
-    tiff_source_paths = sorted([r for r in tiff_source_paths if str(re.search('File(\d{3})', tf).group(0)) not in excluded_tiffs], key=natural_keys)
+    roi_source_paths = sorted([r for r in roi_source_paths if str(re.search('File(\d{3})', r).group(0)) not in excluded_tiffs], key=natural_keys)
+    tiff_source_paths = sorted([r for r in tiff_source_paths if str(re.search('File(\d{3})', r).group(0)) not in excluded_tiffs], key=natural_keys)
     filenames = sorted([f for f in filenames if f not in excluded_tiffs], key=natural_keys)
 
     roiparams_path = os.path.join(rid_dir, 'roiparams.json')

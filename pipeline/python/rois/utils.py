@@ -116,8 +116,8 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
 
     # Get filenames for matches between roi source and tiff source:
-    if subset is False:
-        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
+#    if subset is False:
+#        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
     filenames = []
     for roi_src in roi_source_paths:
         # Get filename base
