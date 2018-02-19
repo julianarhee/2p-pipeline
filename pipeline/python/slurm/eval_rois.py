@@ -36,7 +36,7 @@ def main():
     logging.info("RID %s -- starting memmapping ..." % roi_hash) 
     logging.info(rid_path)
     
-    eval_filepath = run_rid_eval(rid_path, nprocs=nproc, cluster_backend='local')
+    eval_filepath = run_rid_eval(rid_path, nprocs=nproc, cluster_backend='local', min_SNR=1.8, rval_thr=0.8)
     
     logging.info("FINISHED evaluating ROIs from RID:\n%s" % roi_hash)
     logging.info("Saved eval results to: %s" % eval_filepath)

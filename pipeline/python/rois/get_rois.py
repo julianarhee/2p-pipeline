@@ -569,7 +569,8 @@ def do_roi_extraction(options):
     excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
     exclude_str = ','.join([str(int(fn[4:])) for fn in excluded_tiffs])
     print "TIFFS EXCLUDED:", excluded_tiffs
-
+    
+    keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
     #%%
     # =============================================================================
     # Extract ROIs using specified method:
