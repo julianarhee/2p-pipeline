@@ -23,7 +23,7 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
 # 4.  Identify file to be used as coregistration reference.
 
 # 5.  Save coregistration parameters to output dir:
-	- params_thr saved to: 
+	- params_thr saved to:
 	<rid_dir>/coreg_results/coreg_params.json
 
 # 6.  Run coregistration (coregister_rois_nmf)
@@ -123,31 +123,31 @@ def minimumWeightMatching(costSet):
 
     costSet:
     An (m x n)-matrix of real values, where costSet[i, j]
-    is the cost of matching the i:th vertex in A to the j:th 
-    vertex of B. A value of numpy.inf is allowed, and is 
+    is the cost of matching the i:th vertex in A to the j:th
+    vertex of B. A value of numpy.inf is allowed, and is
     interpreted as missing the (i, j)-edge.
 
     returns:
-    A minimum-weight matching given as a list of pairs (i, j), 
-    denoting that the i:th vertex of A be paired with the j:th 
+    A minimum-weight matching given as a list of pairs (i, j),
+    denoting that the i:th vertex of A be paired with the j:th
     vertex of B.
     '''
 
     m, n = costSet.shape
     nMax = max(m, n)
 
-    # Since the choice of infinity blocks later choices for that index, 
+    # Since the choice of infinity blocks later choices for that index,
     # it is important that the cost matrix is square, so there
-    # is enough space to shift the choices for infinity to the unused 
+    # is enough space to shift the choices for infinity to the unused
     # part of the cost-matrix.
     costSet_ = np.full((nMax, nMax), np.inf)
     costSet_[0 : m, 0 : n] = costSet
     assert costSet_.shape[0] == costSet_.shape[1]
 
     # We allow a cost to be infinity. Since scipy does not
-    # support this, we use a workaround. We represent infinity 
-    # by M = 2 * maximum cost + 1. The point is to choose a distinct 
-    # value, greater than any other cost, so that choosing an 
+    # support this, we use a workaround. We represent infinity
+    # by M = 2 * maximum cost + 1. The point is to choose a distinct
+    # value, greater than any other cost, so that choosing an
     # infinity-pair is the last resort. The 2 times is for large
     # values for which x + 1 == x in floating point. The plus 1
     # is for zero, for which 2 x == x.
@@ -166,18 +166,18 @@ def minimumWeightMatching(costSet):
     assert len(iSet) == len(jSet)
 
     # Return only pairs with finite cost.
-    return [(iSet[k], jSet[k]) 
-        for k in range(len(iSet)) 
+    return [(iSet[k], jSet[k])
+        for k in range(len(iSet))
         if costSet_[iSet[k], jSet[k]] != practicalInfinity]
 
 #%%
 def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overlap_thr=0.8):
-    
+
     d1 = dims[0]
     d2 = dims[1]
-    
+
     #% first transform A1 and A2 into binary masks
-    M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()        
+    M1 = np.zeros(A1.shape).astype('bool') #A1.astype('bool').toarray()
     M2 = np.zeros(A2.shape).astype('bool') #A2.astype('bool').toarray()
 
     K1 = A1.shape[-1]
@@ -189,8 +189,8 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
             A_temp = A1.toarray()[:,i]
             M1[A_temp>dist_maxthr*max(A_temp),i] = True
             labeled, nr_objects = ndimage.label(np.reshape(M1[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
-            sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
-            maxp = np.where(sizes==sizes.max())[0] + 1 
+            sizes = ndimage.sum(np.reshape(M1[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1))
+            maxp = np.where(sizes==sizes.max())[0] + 1
             max_index = np.zeros(nr_objects + 1, np.uint8)
             max_index[maxp] = 1
             BW = max_index[labeled]
@@ -199,8 +199,8 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
             A_temp = A2.toarray()[:,i];
             M2[A_temp>dist_maxthr*max(A_temp),i] = True
             labeled, nr_objects = ndimage.label(np.reshape(M2[:,i], (d1,d2), order='F'), s)  # keep only the largest connected component
-            sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1)) 
-            maxp = np.where(sizes==sizes.max())[0] + 1 
+            sizes = ndimage.sum(np.reshape(M2[:,i], (d1,d2), order='F'), labeled, range(1,nr_objects+1))
+            maxp = np.where(sizes==sizes.max())[0] + 1
             max_index = np.zeros(nr_objects + 1, np.uint8)
             max_index[maxp] = 1
             BW = max_index[labeled]
@@ -210,27 +210,27 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
     D = np.zeros((K1,K2));
     for i in np.arange(0, K1):
         for j in np.arange(0, K2):
-            
+
             overlap = float(np.count_nonzero(M1[:,i] & M2[:,j]))
             #print overlap
             totalarea = float(np.count_nonzero(M1[:,i] | M2[:,j]))
             #print totalarea
             smallestROI = min(np.count_nonzero(M1[:,i]),np.count_nonzero(M2[:,j]));
             #print smallestROI
-                
+
             D[i,j] = 1 - (overlap/totalarea)**dist_exp
-    
+
             if overlap >= dist_overlap_thr*smallestROI:
                 #print('Too small!')
-                D[i,j] = 0   
-                
+                D[i,j] = 0
+
     return D
 
 #%%
 def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
      # TODO:  Add 3D compatibility...
     coreg_outpath = None
-    
+
     # Create outfile:
     coreg_outpath = os.path.join(output_dir, 'coreg_results_{}.hdf5'.format(datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))
     coreg_outfile = h5py.File(coreg_outpath, 'w')
@@ -244,7 +244,7 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
     output_dir_figs = os.path.join(output_dir, 'figures', 'files')
     if not os.path.exists(output_dir_figs):
         os.makedirs(output_dir_figs)
-    
+
     # For each file, find matches to reference ROIs:
     all_matches = dict()
     ref_file = str(params_thr['ref_filename'])
@@ -252,7 +252,7 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
         # First get reference file info:
         ref = np.load(params_thr['ref_filepath'])
         nr = ref['A'].all().shape[1]
-        dims = ref['dims']   
+        dims = ref['dims']
         A1 = ref['A'].all()
         if params_thr['keep_good_rois'] is True:
             if pass_rois_dict is None:
@@ -261,12 +261,12 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
                 ref_pass_rois = pass_rois_dict[ref_file]
             A1 = A1[:, ref_pass_rois]
             nr = A1.shape[-1]
-            
+
         # For every other file, find best matching ROIs to reference:
         nmf_src_dir = os.path.split(params_thr['ref_filepath'])[0]
         nmf_fns = [n for n in os.listdir(nmf_src_dir) if n.endswith('npz')]
         for nmf_fn in nmf_fns:
-            
+
             curr_file = str(re.search('File(\d{3})', nmf_fn).group(0))
 
             if nmf_fn == os.path.basename(params_thr['ref_filepath']):
@@ -287,11 +287,11 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
                 print("Keeping %i out of %i components." % (len(pass_roi_idxs), nr))
                 A2 = A2[:,  pass_roi_idxs]
                 nr = A2.shape[-1]
-            
+
             # Calculate distance matrix between ref and all other files:
-            D = get_distance_matrix(A1, A2, dims, 
-                                    dist_maxthr=params_thr['dist_maxthr'], 
-                                    dist_exp=params_thr['dist_exp'], 
+            D = get_distance_matrix(A1, A2, dims,
+                                    dist_maxthr=params_thr['dist_maxthr'],
+                                    dist_exp=params_thr['dist_exp'],
                                     dist_overlap_thr=params_thr['dist_overlap_thr'])
 
             # Save distance matrix (pre-threshold):
@@ -305,15 +305,15 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
             if len(dims) > 2:
                 d.attrs['d3'] = dims[2]
             d.attrs['source'] = os.path.join(nmf_src_dir, nmf_fn)
-                
+
             # Set illegal matches (distance vals greater than dist_thr):
             D[D>params_thr['dist_thr']] = np.inf #1E100 #np.nan #1E9
-            
+
             # Save thresholded distance matrix:
             dthr = coreg_outfile.create_dataset('/'.join([curr_file, 'distance_thr']), D.shape, D.dtype)
             dthr[...] = D
             dthr.attrs['dist_thr'] = params_thr['dist_thr']
-                
+
             # Plot distance mat curr file:
             pl.figure()
             pl.imshow(D); pl.colorbar();
@@ -324,12 +324,12 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
             #% Get matches using thresholds on distance matrix:
             matches = minimumWeightMatching(D)  # Use modified linear_sum_assignment to allow np.inf
             print("Found %i ROI matches in %s" % (len(matches), curr_file))
-            
+
             # Save matches to reference for current file:
             matches = np.array(matches)
             match = coreg_outfile.create_dataset('/'.join([curr_file, 'matches_to_ref']), matches.shape, matches.dtype)
             match[...] = matches
-                
+
             if not isinstance(matches, list):
                 all_matches[curr_file] = matches.tolist()
 
@@ -337,7 +337,7 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
         match_fn_base = 'matches_byfile_r%s' % str(params_thr['ref_filename'])
         with open(os.path.join(output_dir, '%s.json' % match_fn_base), 'w') as f:
             json.dump(all_matches, f, indent=4, sort_keys=True)
-         
+
     except Exception as e:
         print "-- ERROR: in finding matches to ref. --------------------------"
         traceback.print_exc()
@@ -352,10 +352,10 @@ def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, pass_rois_di
     # TODO:  Add 3D compatibility...
     if not os.path.exists(savefig_dir):
         os.makedirs(savefig_dir)
-    
+
     src_nmf_dir = os.path.split(params_thr['ref_filepath'])[0]
     source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
-        
+
     # Load reference:
     ref_file = str(params_thr['ref_filename'])
     ref = np.load(params_thr['ref_filepath'])
@@ -380,7 +380,7 @@ def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, pass_rois_di
     masks = np.reshape(np.array(A1.todense()), (d1, d2, nr), order='F')
     print "Loaded reference masks with shape:", masks.shape
     img = ref['Av']
-        
+
     for curr_file in all_matches.keys():
         if curr_file==params_thr['ref_filename']:
             continue
@@ -388,7 +388,7 @@ def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, pass_rois_di
         nmf = np.load(os.path.join(nmf_path))
         A2 = nmf['A'].all()
         nr = A2.shape[-1]
- 
+
         #% Save overlap of REF with curr-file matches:
         if params_thr['keep_good_rois'] is True:
             if pass_rois_dict is None:
@@ -403,14 +403,14 @@ def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, pass_rois_di
         # Plot contours overlaid on reference image:
         pl.figure()
         pl.imshow(img, cmap='gray')
-            
-        if issparse(A1): 
-            A1 = np.array(A1.todense()) 
+
+        if issparse(A1):
+            A1 = np.array(A1.todense())
         A2 = np.array(A2.todense())
         matches = all_matches[curr_file]
         for ridx,match in enumerate(matches):
             roi1=match[0]; roi2=match[1] # roi1 = reference ROI index, roi2 = current file ROI index
-                
+
             # Draw contours for REFERENCE:
             x, y = np.mgrid[0:d1:1, 0:d2:1]
             indx = np.argsort(A1[:,roi1], axis=None)[::-1]
@@ -436,21 +436,21 @@ def plot_matched_rois_by_file(all_matches, params_thr, savefig_dir, pass_rois_di
             pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi1), color='b') #, weight='bold')
             [ys, xs] = np.where(masktmp2>0)
             pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi2), color='r') #, weight='bold')
-                    
+
         pl.savefig(os.path.join(savefig_dir, 'matches_%s_%s.png' % (str(ref_file), str(curr_file))))
         pl.close()
 
 #%%
 def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_rois_dict=None):
-    
+
     ref_rois = []
-    
+
     if not os.path.exists(coreg_output_dir):
         os.makedirs(coreg_output_dir)
-    
+
     # Get matches:
     all_matches, coreg_results_path = find_matches_nmf(params_thr, coreg_output_dir, pass_rois_dict=pass_rois_dict)
-    
+
     # Plot matches over reference:
     coreg_figdir = os.path.join(coreg_output_dir, 'figures', 'files')
     plot_matched_rois_by_file(all_matches, params_thr, coreg_figdir, pass_rois_dict=pass_rois_dict)
@@ -462,12 +462,12 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
 
     ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in excluded_tiffs]
     print "REF idxs:", len(ref_idxs)
-    
+
     ref_rois = set(ref_idxs[0])
     for s in ref_idxs[1:]:
         ref_rois.intersection_update(s)
     ref_rois = list(ref_rois)
-    
+
     try:
         coregistered_rois = dict()
         coreg_info = h5py.File(coreg_results_path, 'a')
@@ -485,7 +485,7 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
                 umatches = coreg_info[fn].create_dataset('universal_matches', curr_match_idxs.shape, curr_match_idxs.dtype)
             umatches[...] = curr_match_idxs
             coregistered_rois[fn] = curr_match_idxs.tolist()
-            
+
     except Exception as e:
         print "---------------------------------------"
         print "Error saving universal matches, %s" % fn
@@ -502,25 +502,25 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
 
     return ref_rois, coregistered_rois, coreg_results_path
 
-#%%            
+#%%
 def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_dir, pass_rois_dict=None, cmap='jet', plot_by_file=True):
-    
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-        
+
     src_nmf_dir = os.path.split(params_thr['ref_filepath'])[0]
     source_nmf_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
-        
+
     # Load ref img:
     ref_fn = [f for f in source_nmf_paths if str(params_thr['ref_filename']) in f and f.endswith('npz')][0]
     ref = np.load(ref_fn)
     refimg = ref['Av']
-    
+
     colormap = pl.get_cmap(cmap)
     ref_rois = coregistered_rois[params_thr['ref_filename']]
     nrois = len(ref_rois)
     print "Plotting %i coregistered ROIs from each file..." % nrois
-    
+
     file_names = coregistered_rois.keys();
     if plot_by_file is True:
         plot_type = 'byfile'
@@ -532,17 +532,17 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
         print "Plotting coregistered by ROI. Found %i rois." % len(ref_rois)
 
     colorvals[:,3] *= 0.5
-    pl.figure(figsize=(12, 10)) 
-    gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1]) 
+    pl.figure(figsize=(12, 10))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1])
     gs.update(wspace=0.05, hspace=0.05)
     ax1 = pl.subplot(gs[0])
-    
+
     ax1.imshow(refimg, cmap='gray')
     pl.axis('equal')
     pl.axis('off')
-    
+
     for fidx,curr_file in enumerate(sorted(coregistered_rois.keys(), key=natural_keys)):
-        
+
         src_path = [f for f in src_filepaths if curr_file in f][0]
         nmf = np.load(src_path)
         nr = nmf['A'].all().shape[1]
@@ -552,7 +552,7 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
         x, y = np.mgrid[0:d1:1, 0:d2:1]
         A = nmf['A'].all()
         nr = A.shape[-1]
-        
+
         if params_thr['keep_good_rois'] is True:
             if pass_rois_dict is None:
                 pass_rois_idxs = nmf['idx_components']
@@ -560,12 +560,12 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
                 pass_rois_idxs = pass_rois_dict[curr_file]
             A = A[:, pass_rois_idxs]
             nr = A.shape[-1]
-      
+
         curr_rois = coregistered_rois[curr_file]
-        A = np.array(A.todense()) 
-        
+        A = np.array(A.todense())
+
         for ridx, roi in enumerate(curr_rois):
-            # compute the cumulative sum of the energy of the Ath component that 
+            # compute the cumulative sum of the energy of the Ath component that
             # has been ordered from least to highest:
             indx = np.argsort(A[:,roi], axis=None)[::-1]
             cumEn = np.cumsum(A[:,roi].flatten()[indx]**2)
@@ -600,7 +600,7 @@ def plot_coregistered_rois(coregistered_rois, params_thr, src_filepaths, save_di
             pl.xlim([0.95, 2])
     pl.axis('equal')
     pl.axis('off')
-    
+
     #%
     pl.savefig(os.path.join(save_dir, 'contours_%s_r%s.png' % (plot_type,  str(params_thr['ref_filename'])))) #matchedrois_fn_base))
     pl.close()
@@ -617,7 +617,7 @@ def load_roi_eval(roi_eval_path):
             pass_rois_dict[str(f)] = np.array(src_eval[f]['pass_rois'])
             nrois_total[str(f)] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
             print "%s: %i out of %i rois passed evaluation." % (f, pass_rois_dict[str(f)], nrois_total[str(f)])
-            
+
         for eparam in src_eval.attrs.keys():
             if eparam == 'creation_date':
                 continue
@@ -635,53 +635,53 @@ def load_roi_eval(roi_eval_path):
         print "-----------------------------------------------------------"
     finally:
         src_eval.close()
-    
+
     return pass_rois_dict, nrois_total, evalparams
-            
-    
+
+
 #%%
 def run_coregistration(options):
 
     parser = optparse.OptionParser()
-    
+
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
-    
+
     parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
-    
+
     parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="threshold for turning spatial components into binary masks [default: 0.1]")
     parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
     parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
     parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
-    
-    
+
+
     parser.add_option('-x', '--exclude', action="store",
                       dest="exclude_file_ids", default='', help="comma-separated list of files to exclude")
     parser.add_option('-M', '--mcmetric', action="store",
                   dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
 
-    parser.add_option('--good', action="store_true",
-                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
-    parser.add_option('--max', action="store_true",
-                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
+#    parser.add_option('--good', action="store_true",
+#                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+#    parser.add_option('--max', action="store_true",
+#                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
     parser.add_option('--roipath', action="store",
                       dest="roipath", default="", help="If keep_good_rois is True, path to .json with ROI idxs for each file (if using cNMF). Default uses nmf-extraction ROIs.")
     parser.add_option('-O', '--outdir', action="store",
                       dest="coreg_output_dir", default=None, help="Output dir to save coreg results to. Default uses curr ROI dir + 'coreg_results'")
-    
+
     parser.add_option('-f', '--ref', action="store",
                       dest="coreg_fidx", default=1, help="Reference file for coregistration if use_max_nrois==False [default: 1]")
 
 
     (options, args) = parser.parse_args(options)
-    
+
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
-    
+
     # Set USER INPUT options:
     rootdir = options.rootdir
     animalid = options.animalid
@@ -698,39 +698,18 @@ def run_coregistration(options):
         exclude_files = [int(f) for f in exclude_files]
         exclude_manual = ['File%03d' % f for f in exclude_files]
     print("Excluding files: ", exclude_manual)
-    
-    keep_good_rois = options.keep_good_rois
-    use_max_nrois = options.use_max_nrois
-    
+
+    #keep_good_rois = options.keep_good_rois
+    #use_max_nrois = options.use_max_nrois
+
     roi_eval_path = options.roipath
     mcmetric = options.mcmetric
-    
-    coreg_output_dir = options.coreg_output_dir    
+
+    coreg_output_dir = options.coreg_output_dir
     coreg_fidx = int(options.coreg_fidx) - 1
     reference_filename = "File%03d" % int(options.coreg_fidx)
-    
+
     #%%
-    # =========================================================================
-    # Set Coregistration parameters:
-    # =========================================================================   
-    params_thr = dict()
-    
-    # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
-    # dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
-    # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
-    # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
-        
-    params_thr['dist_maxthr'] = options.dist_maxthr #0.1
-    params_thr['dist_exp'] = options.dist_exp # 1
-    params_thr['dist_thr'] = options.dist_thr #0.5
-    params_thr['dist_overlap_thr'] = options.dist_overlap_thr #0.8
-    params_thr['keep_good_rois'] = keep_good_rois
-    if use_max_nrois is True:
-        params_thr['filter_type'] = 'max'
-    else:
-        params_thr['filter_type'] = 'ref'
-    
-    #%%    
     # =========================================================================
     # Load specified ROI-ID parameter set:
     # =========================================================================
@@ -743,7 +722,30 @@ def run_coregistration(options):
         print "-- ERROR: unable to open source ROI dict. ---------------------"
         traceback.print_exc()
         print "---------------------------------------------------------------"
-    
+
+    #%%
+    # =========================================================================
+    # Set Coregistration parameters:
+    # =========================================================================
+    keep_good_rois = RID['PARAMS']['keep_good_rois']
+    use_max_nrois = RID['PARAMS']['use_max_nrois']
+
+    params_thr = dict()
+
+    # dist_maxthr:      threshold for turning spatial components into binary masks (default: 0.1)
+    # dist_exp:         power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n (default: 1)
+    # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
+    # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
+
+    params_thr['dist_maxthr'] = options.dist_maxthr #0.1
+    params_thr['dist_exp'] = options.dist_exp # 1
+    params_thr['dist_thr'] = options.dist_thr #0.5
+    params_thr['dist_overlap_thr'] = options.dist_overlap_thr #0.8
+    params_thr['keep_good_rois'] = keep_good_rois
+    if use_max_nrois is True:
+        params_thr['filter_type'] = 'max'
+    else:
+        params_thr['filter_type'] = 'ref'
     #%%
     # =========================================================================
     # Get ROI source(s) info:
@@ -755,11 +757,11 @@ def run_coregistration(options):
     process_dirname = path_parts[4]
     process_id = process_dirname.split('_')[0]
     roi_ref_type = RID['PARAMS']['options']['source']['roi_type']
-    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir'] 
-    
-    # Get ROI source files and their sources (.tif, .mmap) -- use MC evaluation 
+    roi_source_dir = RID['PARAMS']['options']['source']['roi_dir']
+
+    # Get ROI source files and their sources (.tif, .mmap) -- use MC evaluation
     # results, if relevant.
-    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True, 
+    roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_path = get_source_paths(session_dir, RID, check_motion=True,
                                                                                                       mcmetric=mcmetric,
                                                                                                       acquisition=acquisition,
                                                                                                       run=run,
@@ -770,16 +772,16 @@ def run_coregistration(options):
         print "Additionally excluding manully-selected tiffs."
     print "Excluded:", excluded_tiffs
     params_thr['excluded_tiffs'] = excluded_tiffs
-    
+
 
     # Create dir for coregistration output:
     if coreg_output_dir is None:
-        coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')            
+        coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')
     print "Saving COREG results to:", coreg_output_dir
     if not os.path.exists(coreg_output_dir):
         os.makedirs(coreg_output_dir)
-    
-    
+
+
     # Load ROI evaluation results, if relevant:
     if len(roi_eval_path) == 0:
         pass_rois_dict = None
@@ -792,10 +794,10 @@ def run_coregistration(options):
     # =========================================================================
     # Determine which file or ROI-subset should be used as the reference for COREG.
     # =========================================================================
-    
+
     if pass_rois_dict is not None:
         # Use user-specified ROI evaluation to get N-pass, N-total for each relevant tiff file:
-        src_nrois = [(str(fkey), nrois_total[fkey], len(pass_rois_dict[fkey])) for fkey in sorted(pass_rois_dict.keys(), key=natural_keys)]    
+        src_nrois = [(str(fkey), nrois_total[fkey], len(pass_rois_dict[fkey])) for fkey in sorted(pass_rois_dict.keys(), key=natural_keys)]
     else:
         if roi_ref_type == 'caiman2D':
             # Create a list of N-pass, N-total for each tiff in set:
@@ -806,7 +808,7 @@ def run_coregistration(options):
                 nall = snmf['A'].all().shape[1]
                 npass = len(snmf['idx_components'])
                 src_nrois.append((str(fname), nall, npass))
-    
+
     if use_max_nrois is True:
         # Either select the file that has the MAX number of "good" ROIs:
         if keep_good_rois is True:
@@ -828,7 +830,7 @@ def run_coregistration(options):
         else:
             nrois_max = src_nrois[coreg_fidx][1]
     print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
-    
+
     # Show evaluation params, if filtered:
     if keep_good_rois is True:
         if evalparams is None:
@@ -842,28 +844,28 @@ def run_coregistration(options):
             print eparam, evalparams[eparam]
         print "-----------------------------------------------------------"
     params_thr['eval'] = evalparams
-    
+
     # Save coreg params info to current coreg dir:
     pp.pprint(params_thr)
     with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
         json.dump(params_thr, f, indent=4, sort_keys=True)
-        
+
     #%%
     # =========================================================================
     # COREGISTER ROIs:
     # =========================================================================
     ref_rois, coregistered_rois, coreg_results_path = coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=excluded_tiffs, pass_rois_dict=pass_rois_dict)
     print("Found %i common ROIs matching reference." % len(ref_rois))
-    
+
     # Save plots of universal matches:
     # =========================================================================
     coreg_fig_dir = os.path.join(coreg_output_dir, 'figures')
     if len(ref_rois) > 0:
         plot_coregistered_rois(coregistered_rois, params_thr, roi_source_paths, coreg_fig_dir, pass_rois_dict=pass_rois_dict, plot_by_file=True)
         plot_coregistered_rois(coregistered_rois, params_thr, roi_source_paths, coreg_fig_dir, pass_rois_dict=pass_rois_dict, plot_by_file=False)
-    
+
     return ref_rois, params_thr, coreg_results_path
-        
+
 #%%
 def main(options):
 

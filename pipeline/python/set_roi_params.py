@@ -83,7 +83,7 @@ def extract_options(options):
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
-    
+
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
     parser.add_option('-o', '--roi-type', type='choice', choices=choices_roi, action='store', dest='roi_type', default=default_roitype, help="Roi type. Valid choices: %s [default: %s]" % (choices_roi, default_roitype))
@@ -96,7 +96,7 @@ def extract_options(options):
     parser.add_option('-c', '--ref-channel', action='store', dest='ref_channel', default=1, help="[man]: Channel NUM of tiff to use as reference, if applicable [default: 1]")
     parser.add_option('-z', '--slices', action='store', dest='slices', default='', help="[man]: Comma-separated list of slice numbers (1-indexed) for ROI extraction [default: all slices in run tiffs]")
     parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="[man]: Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
-    
+
     # cNMF OPTS:
     parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='[nmf]: method deconvolution if using cNMF [default: oasis]')
     parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons if using cNMF [default: 8]')
@@ -106,10 +106,14 @@ def extract_options(options):
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system if using cNMF [default: 2]')
     parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
     parser.add_option('--mmap', action='store_true', dest='mmap_new', default=False, help="[nmf]: set if want to make new mmap set")
-    
+
     # COREG OPTS:
     parser.add_option('-u', '--roi-source', action='store', dest='roi_source_id', default='', help='[coreg]: Name of ROI ID that is the source of coregsitered ROIs (TODO: allow for multiple sources)')
-    
+    parser.add_option('--good', action="store_true",
+                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+    parser.add_option('--max', action="store_true",
+                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
+
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True:
@@ -140,7 +144,7 @@ def create_rid(options):
     sourcetype = options.sourcetype
     roi_type = options.roi_type
     auto = options.default
-    
+
     check_motion = options.check_motion
     mcmetric = options.mcmetric
     exclude_str = options.excluded_tiffs
@@ -154,12 +158,14 @@ def create_rid(options):
     nmf_p = int(options.nmf_p)
     border_pix = int(options.border_pix)
     mmap_new = options.mmap_new
-    
+
     # COREG specific opts:
     roi_source_str = options.roi_source_id
     if len(roi_source_str) > 0:
         roi_source_ids = ['rois%03d' % int(r) for r in roi_source_str.split(',')]
-    
+    keep_good_rois = options.keep_good_rois
+    use_max_nrois = options.use_max_nrois
+
     # manual options:
     ref_file = int(options.ref_file)
     ref_channel = int(options.ref_channel)
@@ -175,7 +181,7 @@ def create_rid(options):
         else:
             slices = slices_str.split(',')
             slices = [int(s) for s in slices]
-    
+
     # Create ROI output dir:
     session_dir = os.path.join(homedir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
@@ -184,14 +190,14 @@ def create_rid(options):
 
     # Get paths to tiffs from which to create ROIs:
     if not roi_type == 'coregister':
-        tiffpaths = get_tiff_paths(rootdir=homedir, 
+        tiffpaths = get_tiff_paths(rootdir=homedir,
                                    animalid=animalid, session=session,
                                    acquisition=acquisition, run=run,
                                    tiffsource=tiffsource, sourcetype=sourcetype,
                                    auto=auto)
         tiff_sourcedir = os.path.split(tiffpaths[0])[0]
         print "SRC: %s, found %i tiffs." % (tiff_sourcedir, len(tiffpaths))
-        
+
     # Get roi-type specific options:
     if roi_type == 'caiman2D':
         print "Creating param set for caiman2D ROIs."
@@ -219,17 +225,19 @@ def create_rid(options):
     elif roi_type == 'coregister':
         roi_options = set_options_coregister(rootdir=homedir, animalid=animalid, session=session,
                                          roi_source=roi_source_ids,
-                                         roi_type=roi_type)
+                                         roi_type=roi_type,
+                                         keep_good_rois=keep_good_rois,
+                                         use_max_nrois=use_max_nrois)
         if len(roi_source_ids) > 1:
             tiff_sourcedir = sorted([roi_options['source'][k]['tiff_dir'] for k in roi_options['source'].keys()], key=natural_keys)
             src_roi_type = roi_options['source'][0]['roi_type']
         else:
             tiff_sourcedir = roi_options['source']['tiff_dir']
             src_roi_type = roi_options['source']['roi_type']
-        
-        
+
+
     # Create roi-params dict with source and roi-options:
-    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type, 
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type,
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
                              mmap_new=mmap_new, check_hash=False,
                              check_motion=check_motion, mcmetric=mcmetric, exclude_str=exclude_str)
@@ -370,15 +378,16 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
     return params
 
 def set_options_coregister(rootdir='', animalid='', session='',
-                           roi_source='', roi_type=''):
+                           roi_source='', roi_type='',
+                           use_max_nrois=True, keep_good_rois=True):
 
     # TODO:  Allow multiple ROI sets from 1 session to be coregistered
     # TODO:  Allow multiple sessions to be coregistered...
-    
+
     params = dict()
     params['roi_type'] = roi_type
     params['roi_source'] = roi_source
-    
+
     # Load ROI info from source set:
     rid_info_path = os.path.join(rootdir, animalid, session, 'ROIs', 'rids_%s.json' % session)
     with open(rid_info_path, 'r') as f:
@@ -395,10 +404,13 @@ def set_options_coregister(rootdir='', animalid='', session='',
 
     if len(roi_source) == 1:
         params['source'] = params['source'][0]
-        
+
+    params['keep_good_rois'] = keep_good_rois
+    params['use_max_nrois'] = use_max_nrois
+
     return params
 
-def get_params_dict(tiff_sourcedir, roi_options, roi_type='', 
+def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
                     notnative=False, rootdir='', homedir='', auto=False,
                     mmap_new=False, check_hash=False,
                     check_motion=False, mcmetric='zproj_corrcoef', exclude_str=''):
@@ -407,7 +419,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
     '''
 
     PARAMS = dict()
-    if isinstance(tiff_sourcedir, list): # > 1: 
+    if isinstance(tiff_sourcedir, list): # > 1:
         # Multiple sources (roi_type==coregister), so store each src's info:
         PARAMS['tiff_sourcedir'] = {}
         if roi_type == 'caiman2D':
@@ -425,7 +437,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
         if roi_type == 'caiman2D':
             mmap_dir = get_mmap_dirname(tiff_sourcedir, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
             PARAMS['mmap_source'] = mmap_dir
-    
+
     # Replace PARAM paths with processing-machine paths:
     if notnative is True:
         for dirtype in PARAMS.keys():
@@ -434,7 +446,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
                     PARAMS[dirtype][k] = PARAMS[dirtype][k].replace(homedir, rootdir)
             else:
                 PARAMS[dirtype] = PARAMS[dirtype].replace(homedir, rootdir)
-                        
+
     PARAMS['options'] = roi_options
     PARAMS['eval'] = dict()
     PARAMS['eval']['check_motion'] = check_motion
@@ -451,7 +463,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
 
 def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=False):
     mmap_dir = None
-    
+
     # First check if mmap-ed dir exists:
     tiffparent = os.path.split(tiff_sourcedir)[0]
     mmap_dirs = [m for m in os.listdir(tiffparent) if '_mmap' in m]
@@ -476,7 +488,7 @@ def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=Fals
                 mmap_dir = os.path.join(tiffparent, mmap_dirs[int(user_selected)])
                 mmap_hash = os.path.split(mmap_dir)[1].split('_')[-1]
                 check_hash = False
-                
+
     if mmap_dir is None or mmap_new is True:
         mmap_dir = tiff_sourcedir + '_mmap'
         check_hash = True
@@ -571,7 +583,7 @@ def initialize_rid(PARAMS, session_dir, notnative=False, rootdir='', homedir='',
             PARAMS['tiff_sourcedir'] = PARAMS['tiff_sourcedir'].replace(homedir, rootdir)
         if rootdir not in session_dir:
             session_dir = session_dir.replace(homedir, rootdir)
-            
+
     rid['SRC'] = PARAMS['tiff_sourcedir'] #source_dir
     rid['DST'] = os.path.join(session_dir, 'ROIs', roi_id)
     rid['roi_type'] = PARAMS['roi_type']
