@@ -14,6 +14,7 @@ import pkg_resources
 import optparse
 import sys
 import hashlib
+import traceback
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 import numpy as np
 from checksumdir import dirhash
@@ -216,6 +217,7 @@ def create_rid(options):
     roi_source_str = options.roi_source_id
     if len(roi_source_str) > 0:
         roi_source_ids = ['rois%03d' % int(r) for r in roi_source_str.split(',')]
+    print "ROI SOURCES:", roi_source_ids
     keep_good_rois = options.keep_good_rois
     use_max_nrois = options.use_max_nrois
     eval_key = options.eval_key
@@ -434,7 +436,7 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
     return params
 
-def set_options_coregister(rootdir='', animalid='', session='', autp=False,
+def set_options_coregister(rootdir='', animalid='', session='', auto=False,
                            roi_source='', roi_type='',
                            use_max_nrois=True, keep_good_rois=True, eval_key=""):
 
