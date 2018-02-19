@@ -94,7 +94,7 @@ def extract_options(options):
     parser.add_option('-x', '--exclude', action="store", dest="excluded_tiffs", default='', help="User-selected tiff numbers to exclude (comma-separated) - 1 indexed")
 
     # MANUAL OPTS:
-    parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="[man]: File NUM of tiff to use as reference, if applicable [default: 1]")
+    parser.add_option('-f', '--ref-file', action='store', dest='ref_file', default=1, help="[man/coreg]: File NUM of tiff to use as reference, if applicable. If COREG, use_max_nrois is False [default: 1]")
     parser.add_option('-c', '--ref-channel', action='store', dest='ref_channel', default=1, help="[man]: Channel NUM of tiff to use as reference, if applicable [default: 1]")
     parser.add_option('-z', '--slices', action='store', dest='slices', default='', help="[man]: Comma-separated list of slice numbers (1-indexed) for ROI extraction [default: all slices in run tiffs]")
     parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="[man]: Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
@@ -114,9 +114,7 @@ def extract_options(options):
     parser.add_option('--good', action="store_true",
                       dest="keep_good_rois", default=False, help="[coreg]: Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
     parser.add_option('--max', action="store_true",
-                      dest="use_max_nrois", default=False, help="[coreg]: Set flag to use file with max N components (instead of reference file) [default uses reference]")
-    parser.add_option('-f', '--ref', action="store",
-                      dest="coreg_fidx", default=None, help="Reference file for coregistration if use_max_nrois==False")
+                      dest="use_max_nrois", default=False, help="[coreg]: Set flag to use file with max N components (instead of reference file) [default uses tif file with max nrois]")
 
     parser.add_option('-E', '--eval-key', action="store",
                       dest="eval_key", default=None, help="[coreg]: Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
@@ -230,10 +228,11 @@ def create_rid(options):
     use_max_nrois = options.use_max_nrois
 
     if use_max_nrois is False:
-        coreg_fidx = int(options.coreg_fidx) - 1
-        reference_filename = "File%03d" % int(options.coreg_fidx)
+        coreg_fidx = int(options.ref_file) - 1
+        reference_filename = "File%03d" % int(options.ref_file)
     else:
         reference_filename = None
+        coreg_fidx = None
 
     eval_key = options.eval_key
 
