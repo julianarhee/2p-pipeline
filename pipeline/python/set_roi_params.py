@@ -128,7 +128,7 @@ def extract_options(options):
     return options
 
 
-def load_eval_results(src_roi_dir, eval_key, auto=False):
+def get_roi_eval_path(src_roi_dir, eval_key, auto=False):
     src_eval_filepath = None
     src_eval = None
     try:
@@ -176,7 +176,7 @@ def load_eval_results(src_roi_dir, eval_key, auto=False):
             print "Aborting..."
             print "-----------------------------------------------------------"
 
-    return src_eval, src_eval_filepath
+    return src_eval_filepath
 
 def create_rid(options):
 
@@ -458,8 +458,8 @@ def set_options_coregister(rootdir='', animalid='', session='', autp=False,
         params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
         params['source'][ridx]['roi_id'] = src_rid['roi_id']
         params['source'][ridx]['roi_type'] = src_rid['roi_type']
-        evalresults, evalpath = load_eval_results(src_rid['DST'], eval_key, auto=auto)
-        params['source'][ridx]['roi_type'] = evalpath
+        evalpath = get_roi_eval_path(src_rid['DST'], eval_key, auto=auto)
+        params['source'][ridx]['roi_eval_path'] = evalpath
 
     if len(roi_source) == 1:
         params['source'] = params['source'][0]

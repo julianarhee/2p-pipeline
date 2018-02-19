@@ -667,8 +667,8 @@ def run_coregistration(options):
 #                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
 #    parser.add_option('--max', action="store_true",
 #                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
-    parser.add_option('--roipath', action="store",
-                      dest="roipath", default="", help="If keep_good_rois is True, path to .json with ROI idxs for each file (if using cNMF). Default uses nmf-extraction ROIs.")
+#    parser.add_option('--roipath', action="store",
+#                      dest="roipath", default="", help="If keep_good_rois is True, path to .json with ROI idxs for each file (if using cNMF). Default uses nmf-extraction ROIs.")
 
     parser.add_option('-O', '--outdir', action="store",
                       dest="coreg_output_dir", default=None, help="Output dir to save coreg results to. Default uses curr ROI dir + 'coreg_results'")
@@ -783,7 +783,7 @@ def run_coregistration(options):
 
 
     # Load ROI evaluation results, if relevant:
-    roi_eval_path = RID['PARAMS']['options']['roi_eval_path']
+    roi_eval_path = RID['PARAMS']['options']['source']['roi_eval_path']
     if len(roi_eval_path) == 0:
         pass_rois_dict = None
         nrois_total = None
