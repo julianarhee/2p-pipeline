@@ -130,7 +130,7 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     run = path_parts[2]
     process_dirname = path_parts[4]
     process_id = process_dirname.split('_')[0]
-    print "Getting source paths:
+    print "Getting source paths:"
     print "ACQUISITION: %s | RUN: %s | PROCESS-ID: %s..." % (acquisition, run, process_id)
 
     session = os.path.split(session_dir)[-1]
