@@ -15,6 +15,7 @@ import optparse
 import sys
 import hashlib
 import traceback
+import h5py
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 import numpy as np
 from checksumdir import dirhash
@@ -103,7 +104,7 @@ def extract_options(options):
     parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons if using cNMF [default: 8]')
     parser.add_option('--K', action='store', dest='nmf_K', default=10, help='[nmf]: N expected components per patch [default: 10]')
     parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch if using cNMF [default: 30]')
-    parser.add_option('--overlap', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap if using cNMF [default: 5]')
+    parser.add_option('--stride', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap if using cNMF [default: 5]')
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system if using cNMF [default: 2]')
     parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
     parser.add_option('--mmap', action='store_true', dest='mmap_new', default=False, help="[nmf]: set if want to make new mmap set")
@@ -116,6 +117,10 @@ def extract_options(options):
                       dest="use_max_nrois", default=False, help="[coreg]: Set flag to use file with max N components (instead of reference file) [default uses reference]")
     parser.add_option('-E', '--eval-key', action="store",
                       dest="eval_key", default=None, help="[coreg]: Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
+    parser.add_option('-b', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
+    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
+    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
+    parser.add_option('-v', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
 
     (options, args) = parser.parse_args(options)
 
@@ -222,6 +227,11 @@ def create_rid(options):
     use_max_nrois = options.use_max_nrois
     eval_key = options.eval_key
 
+    dist_maxthr = options.dist_maxthr
+    dist_exp = options.dist_exp
+    dist_thr = options.dist_thr
+    dist_overlap_thr = options.dist_overlap_thr
+
 
     # manual options:
     ref_file = int(options.ref_file)
@@ -286,6 +296,10 @@ def create_rid(options):
                                          keep_good_rois=keep_good_rois,
                                          use_max_nrois=use_max_nrois,
                                          eval_key=eval_key,
+                                         dist_maxthr=dist_maxthr,
+                                         dist_exp=dist_exp,
+                                         dist_thr=dist_thr,
+                                         dist_overlap_thr=dist_overlap_thr,
                                          auto=auto)
         if len(roi_source_ids) > 1:
             tiff_sourcedir = sorted([roi_options['source'][k]['tiff_dir'] for k in roi_options['source'].keys()], key=natural_keys)
@@ -296,7 +310,7 @@ def create_rid(options):
 
 
     # Create roi-params dict with source and roi-options:
-    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=src_roi_type,
+    PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type,
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
                              mmap_new=mmap_new, check_hash=False,
                              check_motion=check_motion, mcmetric=mcmetric, exclude_str=exclude_str)
@@ -438,7 +452,8 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
 def set_options_coregister(rootdir='', animalid='', session='', auto=False,
                            roi_source='', roi_type='',
-                           use_max_nrois=True, keep_good_rois=True, eval_key=""):
+                           use_max_nrois=True, keep_good_rois=True, eval_key="",
+                           dist_maxthr=0.1, dist_exp=0.1, dist_thr=0.5, dist_overlap_thr=0.8):
 
     # TODO:  Allow multiple ROI sets from 1 session to be coregistered
     # TODO:  Allow multiple sessions to be coregistered...
@@ -468,7 +483,10 @@ def set_options_coregister(rootdir='', animalid='', session='', auto=False,
 
     params['keep_good_rois'] = keep_good_rois
     params['use_max_nrois'] = use_max_nrois
-
+    params['dist_maxthr'] = dist_maxthr
+    params['dist_exp'] = dist_exp
+    params['dist_thr'] = dist_thr
+    params['dist_overlap_thr'] = dist_overlap_thr
 
     return params
 
@@ -479,6 +497,13 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
 
     '''mmap_dir: <rundir>/processed/<processID_processHASH>/mcorrected_<subprocessHASH>_mmap_<mmapHASH>/*.mmap
     '''
+    if roi_type == 'coregister':
+        if 'roi_type' not in roi_options['source'].keys():
+            roi_src_type = roi_options['source'][0]['roi_type']
+        else:
+            roi_src_type = roi_options['source']['roi_type']
+    else:
+        roi_src_type = None
 
     PARAMS = dict()
     if isinstance(tiff_sourcedir, list): # > 1:
@@ -488,7 +513,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
             PARAMS['mmap_source'] = {}
         for tidx, tiff_source in enumerate(sorted(tiff_sourcedir, key=natural_keys)):
             PARAMS['tiff_sourcedir'][tidx] = tiff_source
-            if roi_type=='caiman2D':
+            if roi_type=='caiman2D' or (roi_type=='coregister' and roi_src_type=='caiman2D'): 
                 mmap_dir = get_mmap_dirname(tiff_source, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
                 PARAMS['mmap_source'][tidx] = mmap_dir
     else:
@@ -496,7 +521,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
         if isinstance(tiff_sourcedir, list):
             tiff_sourcedir = tiff_sourcedir[0]
         PARAMS['tiff_sourcedir'] = tiff_sourcedir
-        if roi_type == 'caiman2D':
+        if roi_type == 'caiman2D'  or (roi_type=='coregister' and roi_src_type=='caiman2D'):
             mmap_dir = get_mmap_dirname(tiff_sourcedir, mmap_new=mmap_new, check_hash=check_hash, auto=auto)
             PARAMS['mmap_source'] = mmap_dir
 

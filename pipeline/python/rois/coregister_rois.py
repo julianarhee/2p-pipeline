@@ -184,6 +184,7 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
     K2 = A2.shape[-1]
 
     s = ndimage.generate_binary_structure(2,2)
+    print "Generating binary structure..."
     for i in np.arange(0, max(K1,K2)):
         if i < K1:
             A_temp = A1.toarray()[:,i]
@@ -207,6 +208,7 @@ def get_distance_matrix(A1, A2, dims, dist_maxthr=0.1, dist_exp=0.1, dist_overla
             M2[:,i] = np.reshape(BW, M2[:,i].shape, order='F')
 
     #% determine distance matrix between M1 and M2
+    print "Determining distance between REF and FILE"
     D = np.zeros((K1,K2));
     for i in np.arange(0, K1):
         for j in np.arange(0, K2):
@@ -264,12 +266,14 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
 
         # For every other file, find best matching ROIs to reference:
         nmf_src_dir = os.path.split(params_thr['ref_filepath'])[0]
-        nmf_fns = [n for n in os.listdir(nmf_src_dir) if n.endswith('npz')]
+        nmf_fns = sorted([n for n in os.listdir(nmf_src_dir) if n.endswith('npz')], key=natural_keys)
         for nmf_fn in nmf_fns:
 
             curr_file = str(re.search('File(\d{3})', nmf_fn).group(0))
+            print "*****CURR FILE: %s*****" % curr_file
 
             if nmf_fn == os.path.basename(params_thr['ref_filepath']):
+                print "Skipping REFERENCE."
                 pass_roi_idxs = np.array(ref_pass_rois)
                 kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'roi_idxs']), pass_roi_idxs.shape, pass_roi_idxs.dtype)
                 kpt[...] = pass_roi_idxs
@@ -289,6 +293,7 @@ def find_matches_nmf(params_thr, output_dir, pass_rois_dict=None):
                 nr = A2.shape[-1]
 
             # Calculate distance matrix between ref and all other files:
+            print "%s: Calculating DISTANCE MATRIX." % curr_file
             D = get_distance_matrix(A1, A2, dims,
                                     dist_maxthr=params_thr['dist_maxthr'],
                                     dist_exp=params_thr['dist_exp'],
@@ -449,9 +454,11 @@ def coregister_rois_nmf(params_thr, coreg_output_dir, excluded_tiffs=[], pass_ro
         os.makedirs(coreg_output_dir)
 
     # Get matches:
+    print "FINDING MATCHES...."
     all_matches, coreg_results_path = find_matches_nmf(params_thr, coreg_output_dir, pass_rois_dict=pass_rois_dict)
 
     # Plot matches over reference:
+    print "Plotting ROI matches."
     coreg_figdir = os.path.join(coreg_output_dir, 'figures', 'files')
     plot_matched_rois_by_file(all_matches, params_thr, coreg_figdir, pass_rois_dict=pass_rois_dict)
 
@@ -611,12 +618,12 @@ def load_roi_eval(roi_eval_path):
     nrois_total = dict()
     evalparams = dict()
     try:
-        print "Loading ROI info for files:",
+        print "Loading ROI info for files:\n",
         src_eval = h5py.File(roi_eval_path, 'r')
         for f in src_eval.keys():
-            pass_rois_dict[str(f)] = np.array(src_eval[f]['pass_rois'])
-            nrois_total[str(f)] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
-            print "%s: %i out of %i rois passed evaluation." % (f, pass_rois_dict[str(f)], nrois_total[str(f)])
+            pass_rois_dict[f] = np.array(src_eval[f]['pass_rois'])
+            nrois_total[f] = int(len(src_eval[f]['pass_rois']) + len(src_eval[f]['fail_rois']))
+            print "%s: %i out of %i rois passed evaluation." % (f, len(pass_rois_dict[f]), nrois_total[f])
 
         for eparam in src_eval.attrs.keys():
             if eparam == 'creation_date':
@@ -737,10 +744,10 @@ def run_coregistration(options):
     # dist_thr:         threshold for setting a distance to infinity. (default: 0.5)
     # dist_overlap_thr: overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
 
-    params_thr['dist_maxthr'] = options.dist_maxthr #0.1
-    params_thr['dist_exp'] = options.dist_exp # 1
-    params_thr['dist_thr'] = options.dist_thr #0.5
-    params_thr['dist_overlap_thr'] = options.dist_overlap_thr #0.8
+    params_thr['dist_maxthr'] = RID['PARAMS']['options']['dist_maxthr'] #options.dist_maxthr #0.1
+    params_thr['dist_exp'] = RID['PARAMS']['options']['dist_exp'] #options.dist_exp # 1
+    params_thr['dist_thr'] = RID['PARAMS']['options']['dist_thr'] #options.dist_thr #0.5
+    params_thr['dist_overlap_thr'] = RID['PARAMS']['options']['dist_overlap_thr'] #options.dist_overlap_thr #0.8
     params_thr['keep_good_rois'] = keep_good_rois
     if use_max_nrois is True:
         params_thr['filter_type'] = 'max'
@@ -790,6 +797,8 @@ def run_coregistration(options):
         evalparams = None
     else:
         pass_rois_dict, nrois_total, evalparams = load_roi_eval(roi_eval_path)
+    print "Loaded EVALPARAMS from roi-eval file: %s" % roi_eval_path
+    pp.pprint(evalparams)
 
     #%%
     # =========================================================================
@@ -833,11 +842,10 @@ def run_coregistration(options):
     print "Using source %s as reference. Max N rois: %i" % (params_thr['ref_filename'], nrois_max)
 
     # Show evaluation params, if filtered:
-    if keep_good_rois is True:
-        if evalparams is None:
-            with open(os.path.join(roi_source_dir, 'roiparams.json'), 'r') as f:
-                src_roiparams = json.load(f)
-            evalparams = src_roiparams['eval']
+    if keep_good_rois is True and evalparams is None:
+        with open(os.path.join(roi_source_dir, 'roiparams.json'), 'r') as f:
+            src_roiparams = json.load(f)
+        evalparams = src_roiparams['eval']
         print "-----------------------------------------------------------"
         print "Coregistering ROIS from source..."
         print "Source ROIs were filtered with the following eval params:"

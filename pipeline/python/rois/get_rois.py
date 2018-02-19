@@ -409,17 +409,17 @@ def extract_options(options):
     parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default="mean", help="zproj to use for display [default: mean]")
 
     # Eval opts:
-    parser.add_option('--good', action="store_true",
-                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
-    parser.add_option('--max', action="store_true",
-                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
-
-    # Coregistration options:
-    parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
-    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
-    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
-    parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
+#    parser.add_option('--good', action="store_true",
+#                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
+#    parser.add_option('--max', action="store_true",
+#                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
 #
+    # Coregistration options:
+#    parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
+#    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
+#    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
+#    parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
+##
 #    parser.add_option('-E', '--eval-key', action="store",
 #                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
     parser.add_option('-C', '--coreg-path', action="store",
@@ -510,11 +510,11 @@ def do_roi_extraction(options):
     #keep_good_rois = options.keep_good_rois
     #use_max_nrois = options.use_max_nrois
 
-    dist_maxthr = options.dist_maxthr
-    dist_exp = options.dist_exp
-    dist_thr = options.dist_thr
-    dist_overlap_thr = options.dist_overlap_thr
-
+#    dist_maxthr = options.dist_maxthr
+#    dist_exp = options.dist_exp
+#    dist_thr = options.dist_thr
+#    dist_overlap_thr = options.dist_overlap_thr
+#
     zproj_type= options.zproj_type
 
     #eval_key = options.eval_key
@@ -621,12 +621,12 @@ def do_roi_extraction(options):
         src_roi_dir = RID['PARAMS']['options']['source']['roi_dir']
 
         #% Set COREG opts:
-        coreg_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-r', roi_id,
-                      '-t', dist_maxthr,
-                      '-n', dist_exp,
-                      '-d', dist_thr,
-                      '-o', dist_overlap_thr]
-#
+        coreg_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-r', roi_id]
+#                      '-t', dist_maxthr,
+#                      '-n', dist_exp,
+#                      '-d', dist_thr,
+#                      '-o', dist_overlap_thr]
+##
 #        if use_max_nrois is True: # == 'max':
 #            coreg_opts.extend(['--max'])
 #        if keep_good_rois is True:
