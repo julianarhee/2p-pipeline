@@ -17,7 +17,7 @@ import hashlib
 import traceback
 import h5py
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
-from pipeline.python.rois.utils import get_roi_eval_path
+from pipeline.python.rois.utils import get_roi_eval_path, replace_root
 import numpy as np
 from checksumdir import dirhash
 
@@ -273,6 +273,9 @@ def create_rid(options):
             src_roi_type = roi_options['source']['roi_type']
 
 
+    if rootdir not in tiff_sourcedir and notnative is False:
+        tiff_sourcedir = replace_root(tiff_sourcedir, rootdir, animalid, session)
+        print "NEW ROOT SRC:", tiff_sourcedir
     # Create roi-params dict with source and roi-options:
     PARAMS = get_params_dict(tiff_sourcedir, roi_options, roi_type=roi_type,
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto,
@@ -517,7 +520,7 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
 
     return PARAMS
 
-def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=False):
+def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=False, rootdir=''):
     mmap_dir = None
 
     # First check if mmap-ed dir exists:

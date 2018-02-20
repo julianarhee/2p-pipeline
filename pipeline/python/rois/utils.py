@@ -170,7 +170,7 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
 
         src_session_dir = os.path.split(os.path.split(src_rid_dir)[0])[0]
         src_session = os.path.split(src_session_dir)[1]
-        src_roidict_filepath = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % src_session)
+        src_roidict_filepath = os.path.join(src_session_dir, 'ROIs', 'rids_%s.json' % src_session)
         with open(src_roidict_filepath, 'r') as f:
             src_roidict = json.load(f)
         if src_roi_type == 'caiman2D':

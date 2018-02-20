@@ -570,7 +570,7 @@ def do_roi_extraction(options):
     excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
     exclude_str = ','.join([str(int(fn[4:])) for fn in excluded_tiffs])
     print "TIFFS EXCLUDED:", excluded_tiffs
-    
+
     keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
     #%%
     # =============================================================================
@@ -633,8 +633,8 @@ def do_roi_extraction(options):
 #            coreg_opts.extend(['--max'])
 #        if keep_good_rois is True:
 #            coreg_opts.extend(['--good'])
-        if len(exclude_str) > 0:
-            coreg_opts.extend(['-x', exclude_str])
+#        if len(exclude_str) > 0:
+#            coreg_opts.extend(['-x', exclude_str])
 
         #% RUN COREGISTRATION
         print "==========================================================="
