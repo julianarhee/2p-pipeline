@@ -217,7 +217,7 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
                     MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key]['zproj_img'][curr_slice].attrs['source_file']
                 else:
                     avg = np.array(maskfile[maskfile_key]['zproj_img'])
-                    MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key].attrs['source_file']
+                    MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key].attrs['source']
 
             MASKS[curr_file][curr_slice]['zproj_img'] =  avg
             if maskinfo['is_slice_format']: #slice_masks:
