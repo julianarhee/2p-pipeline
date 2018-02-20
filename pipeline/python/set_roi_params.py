@@ -120,7 +120,7 @@ def extract_options(options):
     parser.add_option('-E', '--eval-key', action="store",
                       dest="eval_key", default=None, help="[coreg]: Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
     parser.add_option('-b', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
-    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
+    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
     parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
     parser.add_option('-v', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
 
@@ -421,7 +421,7 @@ def set_options_coregister(rootdir='', animalid='', session='', auto=False,
                            roi_source='', roi_type='',
                            use_max_nrois=True, keep_good_rois=True, coreg_fidx=None, reference_filename=None,
                            eval_key="",
-                           dist_maxthr=0.1, dist_exp=0.1, dist_thr=0.5, dist_overlap_thr=0.8):
+                           dist_maxthr=0.1, dist_exp=1, dist_thr=0.5, dist_overlap_thr=0.8):
 
     # TODO:  Allow multiple ROI sets from 1 session to be coregistered
     # TODO:  Allow multiple sessions to be coregistered...
