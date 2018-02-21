@@ -200,7 +200,7 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
         rid_dir = replace_root(rid_dir, rootdir, animalid, session)
 
     if coreg_results_path is not None and rootdir not in coreg_results_path:
-        coreg_results_path = replace_root(rid_dir, animalid, session)
+        coreg_results_path = replace_root(coreg_results_path, rootdir, animalid, session)
 
     roi_type = RID['roi_type']
     if roi_type == 'coregister':
@@ -228,6 +228,12 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
     if not os.path.exists(roiparams_path):
         if roi_type == 'caiman2D':
             evalparams = RID['PARAMS']['options']['eval']
+        elif roi_type == 'coregister':
+            coreg_params_path = os.path.join(RID['DST'], 'coreg_results', 'coreg_params.json')
+            with open(coreg_params_path, 'r') as f:
+                coreg_params = json.load(f)
+                evalparams = coreg_params['eval']
+
         roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
     else:
         with open(roiparams_path, 'r') as f:
