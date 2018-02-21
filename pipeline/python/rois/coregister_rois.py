@@ -713,8 +713,8 @@ def plot_roi_contours(roi_list, roi_mat, dims, color=['b']):
     d2 = dims[1]
     nr = roi_mat.shape[-1]
     masks = np.reshape(np.array(roi_mat), (d1, d2, nr), order='F')
-    if len(color) == 1 and not len(color) == len(roi_list):
-        color = np.tile(color, [len(roi_list), 1])
+#    if not len(color) == len(roi_list):
+#        color = np.tile(color, [len(roi_list), 1])
 
     for ridx,roi in enumerate(roi_list):
         x, y = np.mgrid[0:d1:1, 0:d2:1]
@@ -724,12 +724,12 @@ def plot_roi_contours(roi_list, roi_mat, dims, color=['b']):
         Bvec = np.zeros(d1*d2)
         Bvec[indx] = cumEn
         Bmat = np.reshape(Bvec, (d1,d2), order='F')
-        cs = pl.contour(y, x, Bmat, [0.9], colors=color[ridx]) #[colorvals[fidx]]) #, cmap=colormap)
+        cs = pl.contour(y, x, Bmat, [0.9], colors=[color[ridx]]) #[colorvals[ridx]]) #, cmap=colormap)
 
         # Label it:
         masktmp = masks[:,:,roi]
         [ys, xs] = np.where(masktmp>0)
-        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), color=color) #, weight='bold')
+        pl.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(roi), color=color[ridx]) #, weight='bold')
 
 #%%
 #coreg_results_path = coreg_outpath
@@ -780,11 +780,11 @@ def plot_matched_rois_by_file(all_matches, coreg_results_path):
         matches = [m[1] for m  in all_matches[curr_file]]
 
         if curr_file == ref_file:
-            plot_roi_contours(np.arange(0, nr), A1, dims, color='b')
+            plot_roi_contours(np.arange(0, nr), A1, dims, color=['b' for r in range(nr)])
             pl.title('REFERENCE: %s' % ref_file)
         else:
-            plot_roi_contours(ref_rois, A1, dims, color='b')
-            plot_roi_contours(matches, roi_mat, dims, color='r')
+            plot_roi_contours(ref_rois, A1, dims, color=['b' for r in range(nr)])
+            plot_roi_contours(matches, roi_mat, dims, color=['r' for r in range(nr)])
             pl.title('%s coreg to %s' % (curr_file, ref_file))
 
         pl.axis('off')
@@ -852,7 +852,7 @@ def plot_coregistered_rois(coregistered_rois, coreg_results_path, cmap='jet', pl
         if plot_by_file is True:
             colorlist = np.tile(colorvals[fidx], [len(curr_rois,),1])
         else:
-            colorlist = [colorvals[ridx] for ridx in range(len(curr_rois))]
+            colorlist = colorvals.copy() #[colorvals[ridx] for ridx in range(len(curr_rois))]
 
         plot_roi_contours(curr_rois, roi_mat, dims, color=colorlist)
 
@@ -1066,7 +1066,7 @@ def find_universal_matches(coreg_results_path, all_matches):
     if len(params_thr['excluded_tiffs']) > 0:
         params_thr['excluded_tiffs'] = [str(f) for f in params_thr['excluded_tiffs']]
 
-    ref_file = str(params_thr['ref_file'])
+    ref_file = str(params_thr['ref_filename'])
     #% Find intersection of all matches with reference (aka, "universal matches"):
     filenames = all_matches.keys()
     filenames.extend([str(params_thr['ref_filename'])])
