@@ -604,7 +604,7 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
     
     k=params['extraction']['K']
     gSig=params['extraction']['gSig']
-    gSiz = (3 * gSig[0]) + 1
+    gSiz = (int((3 * gSig[0]) + 1), int((3 * gSig[0]) + 1))
     p=params['extraction']['p']
     merge_thresh=params['extraction']['merge_thresh']
     memory_fact=1
@@ -621,7 +621,7 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
     	gSig=gSig,                                  # half size of neuron
     	gSiz=gSiz,                                  # in general 3*gSig+1
     	Ain=A,
-    	C=C,
+    	Cin=C,
     	f_in=f, 
     	merge_thresh=merge_thresh,                  # threshold for merging
     	p=p,                                        # order of autoregressive process to fit
@@ -1048,7 +1048,8 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
 
     if currfile in excluded_tiffs:
         print "***Skipping EXCLUDED TIFF: %s" % currfile
-        return
+        return nmfopts_hash, ngood_rois
+
 
 #    print "Getting mmapped files."
 #    mmap_paths = mmap_tiffs(tmp_rid_path)
@@ -1075,11 +1076,13 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
         traceback.print_exc()
 
     if asdict is True:
+        print "Returning as dict."
         nmf_file_output = dict()
         nmf_file_output['nmfopts_hash'] = nmfopts_hash
         nmf_file_output['ngood_rois'] = ngood_rois
         return nmf_file_output
     else:
+        print "nmf hash: %s, ngood rois: %i" % (nmfopts_hash, ngood_rois)
         return nmfopts_hash, ngood_rois
 
 
