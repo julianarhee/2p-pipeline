@@ -797,7 +797,7 @@ def plot_coregistered_rois(coregistered_rois, coreg_results_path, cmap='jet', pl
 
     # Create output dir for figures:
     coreg_output_dir = os.path.split(coreg_results_path)[0]
-    coreg_fig_dir = os.path.join(coreg_output_dir, 'files')
+    coreg_fig_dir = os.path.join(coreg_output_dir, 'figures')
     if not os.path.exists(coreg_fig_dir):
         os.makedirs(coreg_fig_dir)
 
@@ -943,7 +943,7 @@ def collate_slurm_output(tmp_rid_path, rootdir=''):
 
     # Save plots of universal matches:
     # =========================================================================
-    if len(ncoreg_rois) > 0:
+    if ncoreg_rois > 0:
         plot_coregistered_rois(coregistered_rois, coreg_results_path, plot_by_file=True)
         plot_coregistered_rois(coregistered_rois, coreg_results_path, plot_by_file=False)
 
