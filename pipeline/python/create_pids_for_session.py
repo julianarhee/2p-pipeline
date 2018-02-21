@@ -85,8 +85,8 @@ acquisitions = [a for a in os.listdir(session_dir) if os.path.isdir(os.path.join
 session_dict = dict((acq, []) for acq in acquisitions)
 for acq in session_dict.keys():
     session_dict[acq] = dict((r, []) for r in os.listdir(os.path.join(session_dir, acq))\
-                                    if os.path.isdir(os.path.join(session_dir, acq, r))\
-                                    and 'anat' not in r)
+                                    if os.path.isdir(os.path.join(session_dir, acq, r)))\
+                                    #and 'anat' not in r)
 pp.pprint(session_dict)
 
 #base_opts = ['-R', rootdir, '-i', animalid, '-S', session, '-t', tiffsource, '--default']
