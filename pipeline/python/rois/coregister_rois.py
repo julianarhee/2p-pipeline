@@ -909,7 +909,7 @@ def plot_coregistered_rois(coregistered_rois, coreg_results_path, cmap='jet', pl
 #    tmp_fpath = coregister_file_by_rid(tmp_rid_path, filenum=fn, nprocs=12, rootdir=rootdir)
 #    tmp_results_paths.append(tmp_fpath)
 
-coreg_results_path = collate_slurm_output(tmp_rid_path, rootdir='')
+#coreg_results_path = collate_slurm_output(tmp_rid_path, rootdir='')
 
 
 #%% SLURM SCRIPT:
