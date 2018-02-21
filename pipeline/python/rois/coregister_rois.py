@@ -769,7 +769,7 @@ def plot_matched_rois_by_file(all_matches, coreg_results_path):
 
         roi_mat = np.array(results['%s/roimat' % curr_file])
         img = results['%s/img' % curr_file]
-        print roi_mat.dtype, img.dtype
+        #print roi_mat.dtype, img.dtype
 #        masks2 = np.reshape(A2, (d1,d2,nr), order='F') #np.reshape(np.array(A2.todense()), (d1, d2, nr), order='F')
 
         # Plot contours overlaid on reference image:
@@ -788,7 +788,7 @@ def plot_matched_rois_by_file(all_matches, coreg_results_path):
             pl.title('%s coreg to %s' % (curr_file, ref_file))
 
         pl.axis('off')
-        print ref_file, curr_file, coreg_fig_dir
+        #print ref_file, curr_file, coreg_fig_dir
         pl.savefig(os.path.join(coreg_fig_dir, 'matches_%s_%s.png' % (ref_file, curr_file)))
         pl.close()
 
