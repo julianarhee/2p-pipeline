@@ -120,6 +120,9 @@ parser.add_option('--new', action="store_true",
 
 # Set USER INPUT options:
 rootdir = options.rootdir
+slurm = options.slurm
+if slurm is True and 'coxfs01' not in rootdir:
+    rootdir = '/n/coxfs01/2p-data'
 animalid = options.animalid
 session = options.session
 acquisition = options.acquisition
@@ -142,21 +145,21 @@ create_new = options.create_new
 
 #%%
 #
-rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
-animalid = 'CE074'
-session = '20180215'
-acquisition = 'FOV1_zoom1x_V1'
-run = 'blobs'
-trace_id = 'traces001'
-custom_mw = False
-same_order = False
-
-ylim_min = -1.0
-ylim_max = 2.0
-iti_pre = 1.0
-trace_type = 'raw'
-create_new = True
-
+#rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
+#animalid = 'CE074'
+#session = '20180215'
+#acquisition = 'FOV1_zoom1x_V1'
+#run = 'blobs'
+#trace_id = 'traces001'
+#custom_mw = False
+#same_order = False
+#
+#ylim_min = -1.0
+#ylim_max = 2.0
+#iti_pre = 1.0
+#trace_type = 'raw'
+#create_new = True
+#
 #%%
 # =============================================================================
 # Get meta info for RUN:
