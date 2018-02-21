@@ -593,33 +593,81 @@ def par_mmap_tiffs(tmp_rid_path):
 #%%
 def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_processes=None):
     if patch is True:
-        cnm = cnmf.CNMF(k=params['extraction']['K'],
-                        gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'],
-                        merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['patch']['rf'],
-                        stride=params['patch']['stride'],
-                        method_init=params['patch']['init_method'],
-                        only_init_patch=params['patch']['only_init_patch'],
-                        gnb=params['extraction']['gnb'],
-                        low_rank_background=params['extraction']['low_rank_background'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        border_pix=params['info']['max_shifts'])                #deconv_flag = True)
+        rf=params['patch']['rf']
+        stride=params['patch']['stride']
+        method_init=params['patch']['init_method']
+        only_init_patch=params['patch']['only_init_patch']
     else:
-        cnm = cnmf.CNMF(k=A.shape,
-                        gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'],
-                        merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['full']['rf'],
-                        stride=params['full']['stride'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        Ain=A,
-                        Cin=C,
-                        f_in=f,
-                        border_pix=params['info']['max_shifts'])
+        rf=params['full']['rf']
+        stride=params['full']['stride']
+        only_init_patch = False
+    
+    k=params['extraction']['K']
+    gSig=params['extraction']['gSig']
+    gSiz = (3 * gSig[0]) + 1
+    p=params['extraction']['p']
+    merge_thresh=params['extraction']['merge_thresh']
+    memory_fact=1
+    gnb=params['extraction']['gnb']
+    low_rank_background=params['extraction']['low_rank_background']
+    method_deconvolution=params['extraction']['method_deconv']
+    border_pix=params['info']['max_shifts']                #deconv_flag = True)
+    update_bg = True
+    method_deconvolution = params['extraction']['method_deconv']
+    
+    cnm = cnmf.CNMF(
+    	n_processes=n_processes, 
+    	k=k,                                        # neurons per patch
+    	gSig=gSig,                                  # half size of neuron
+    	gSiz=gSiz,                                  # in general 3*gSig+1
+    	Ain=A,
+    	C=C,
+    	f_in=f, 
+    	merge_thresh=merge_thresh,                  # threshold for merging
+    	p=p,                                        # order of autoregressive process to fit
+    	dview=dview,                                # if None it will run on a single thread
+    	tsub=2,                                     # downsampling factor in time for initialization, increase if you have memory problems             
+    	ssub=2,                                     # downsampling factor in space for initialization, increase if you have memory problems
+    	rf=rf,                                      # half size of the patch (final patch will be 100x100)
+    	stride=stride,                              # overlap among patches (keep it at least large as 4 times the neuron size)
+    	only_init_patch=only_init_patch,            # just leave it as is
+    	gnb=gnb,                                    # number of background components
+    	nb_patch=gnb,                               # number of background components per patch
+    	method_deconvolution=method_deconvolution,  # could use 'cvxpy' alternatively
+    	low_rank_background=low_rank_background,    #leave as is
+    	update_background_components=update_bg,     # sometimes setting to False improve the results
+    	del_duplicates=True,                        # whether to remove duplicates from initialization
+    	deconv_flag=True
+        )
 
+#    if patch is True:
+#        cnm = cnmf.CNMF(k=params['extraction']['K'],
+#                        gSig=params['extraction']['gSig'],
+#                        p=params['extraction']['p'],
+#                        merge_thresh=params['extraction']['merge_thresh'],
+#                        dview=dview, n_processes=n_processes, memory_fact=1,
+#                        rf=params['patch']['rf'],
+#                        stride=params['patch']['stride'],
+#                        method_init=params['patch']['init_method'],
+#                        only_init_patch=params['patch']['only_init_patch'],
+#                        gnb=params['extraction']['gnb'],
+#                        low_rank_background=params['extraction']['low_rank_background'],
+#                        method_deconvolution=params['extraction']['method_deconv'],
+#                        border_pix=params['info']['max_shifts'])                #deconv_flag = True)
+#    else:
+#        cnm = cnmf.CNMF(k=A.shape,
+#                        gSig=params['extraction']['gSig'],
+#                        p=params['extraction']['p'],
+#                        merge_thresh=params['extraction']['merge_thresh'],
+#                        dview=dview, n_processes=n_processes, memory_fact=1,
+#                        rf=params['full']['rf'],
+#                        stride=params['full']['stride'],
+#                        method_deconvolution=params['extraction']['method_deconv'],
+#                        Ain=A,
+#                        Cin=C,
+#                        f_in=f,
+#                        border_pix=params['info']['max_shifts'])
+#
     # adjust opts:
     cnm.options['temporal_params']['memory_efficient'] = True
     cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']

@@ -101,12 +101,13 @@ def extract_options(options):
     parser.add_option('-g', '--zproj', action='store', dest='zproj_type', default='mean', help="[man]: Type of z-projection to use as image for ROI extraction, if applicable [default: mean]")
 
     # cNMF OPTS:
-    parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='[nmf]: method deconvolution if using cNMF [default: oasis]')
-    parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons if using cNMF [default: 8]')
+    parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='[nmf]: method deconvolution [default: oasis]')
+    parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons [default: 8]')
     parser.add_option('--K', action='store', dest='nmf_K', default=10, help='[nmf]: N expected components per patch [default: 10]')
-    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch if using cNMF [default: 30]')
-    parser.add_option('--stride', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap if using cNMF [default: 5]')
-    parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system if using cNMF [default: 2]')
+    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch [default: 30]')
+    parser.add_option('--stride', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap (keep it at least large as 4 times the neuron size) [default: 5]')
+    parser.add_option('--bg', action='store', dest='nmf_gnb', default=1, help='[nmf]: Number of background components [default: 1]')
+    parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system [default: 2]')
     parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
     parser.add_option('--mmap', action='store_true', dest='mmap_new', default=False, help="[nmf]: set if want to make new mmap set")
 
@@ -170,13 +171,19 @@ def create_rid(options):
     nmf_stride = int(options.nmf_stride)
     nmf_p = int(options.nmf_p)
     border_pix = int(options.border_pix)
+    nmf_gnb = int(options.nmf_gnb)
     mmap_new = options.mmap_new
 
     # COREG specific opts:
     roi_source_str = options.roi_source_id
+    roi_source_ids = []
     if len(roi_source_str) > 0:
         roi_source_ids = ['rois%03d' % int(r) for r in roi_source_str.split(',')]
-    print "ROI SOURCES:", roi_source_ids
+    if roi_type == 'coregister':
+        if len(roi_source_ids) == 0:
+            print "***WARNING*** Specified COREGISTER, but no source ROI sets specified!"
+        else: 
+            print "ROI SOURCES:", roi_source_ids
     keep_good_rois = options.keep_good_rois
     use_max_nrois = options.use_max_nrois
 
@@ -239,6 +246,7 @@ def create_rid(options):
                                        gSig=nmf_gsig,
                                        rf=nmf_rf,
                                        stride=nmf_stride,
+                                       gnb=nmf_gnb,
                                        p=nmf_p,
                                        border_pix=border_pix)
         src_roi_type = roi_type
