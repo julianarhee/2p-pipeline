@@ -133,6 +133,12 @@ def plot_movie_timecourse(roi_df, TRIALS, configs, curr_roi_figdir='/tmp'): #, r
                 ypos = configs[config_key]['position'][1]
                 size = configs[config_key]['scale'][0]
                 stimconfig = 'Ori: %.0f, SF: %.2f' % (ori, sf)
+                key_trials = curr_trials_df.loc[(curr_trials_df['ori'] == ori) &
+                                            (curr_trials_df['sf'] == sf) &
+                                            (curr_trials_df['xpos'] == xpos) &
+                                            (curr_trials_df['ypos'] == ypos) &
+                                            (curr_trials_df['size'] == size)
+                                            ]['trial']
             else:
                 currimg = os.path.split(configs[config_key]['filepath'])[1]
                 currxpos = configs[config_key]['position'][0]
@@ -213,6 +219,10 @@ parser.add_option('--background', action='store_true', dest='is_background', def
 
 # Set USER INPUT options:
 rootdir = options.rootdir
+slurm = options.slurm
+if slurm is True and 'coxfs01' not in rootdir:
+    rootdir = '/n/coxfs01/2p-data'
+
 animalid = options.animalid
 session = options.session
 acquisition = options.acquisition
@@ -307,7 +317,10 @@ for fidx, paradigm_fn in enumerate(sorted(paradigm_files, key=natural_keys)):
                                            'stim_on': trials[trial]['stim_on_time_block']/1E3,
                                            'stim_off': trials[trial]['stim_off_time_block']/1E3,
                                            'ori': int(trials[trial]['stimuli']['rotation']),
-                                           'sf': trials[trial]['stimuli']['frequency']},
+                                           'sf': trials[trial]['stimuli']['frequency'],
+                                           'xpos': trials[trial]['stimuli']['position'][0],
+                                           'ypos': trials[trial]['stimuli']['position'][1],
+                                           'size': trials[trial]['stimuli']['scale'][0]},
                                            index=[idx]
                                            ))
         else:
