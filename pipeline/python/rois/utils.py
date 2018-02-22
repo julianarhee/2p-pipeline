@@ -183,7 +183,9 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
                 src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
                 print "***SRC MMAP:", src_mmap_dir
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
-
+#    elif 'manual2D' in roi_type:
+#        roi_source_paths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
+#        tiff_source_paths = roi_source_paths
     # Get filenames for matches between roi source and tiff source:
 #    if subset is False:
 #        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
