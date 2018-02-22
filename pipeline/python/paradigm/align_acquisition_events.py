@@ -808,13 +808,25 @@ else:
     # Create figure(s) based on stim configs:
     position_vals = list(set([tuple(configs[k]['position']) for k in configs.keys()]))
     size_vals = list(set([configs[k]['scale'][0] for k in configs.keys()]))
+    img_vals = list(set([configs[k]['filename'] for k in configs.keys()]))
+    if len(position_vals) > 1 or len(size_vals) > 1:
+        stimid_only = False
+    else:
+        stimid_only = True
 
-
-
-    nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
-    ncols = len(configs.keys()) / nrows
-
-    subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
+    if stimid_only is True:
+        nfigures = 1
+        nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
+        ncols = len(configs.keys()) / nrows
+        subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
+    else:
+        nfigures = len(img_vals)
+        nrows = len(size_vals)
+        ncols = len(position_vals)
+        subplot_stimlist = dict()
+        for img in img_vals:
+            curr_img_configs = [c for c in configs.keys() if configs[c]['filename'] == img]
+            subplot_stimlist[img] = sorted(curr_img_configs, key=lambda x: (configs[x].get('position'), configs[x].get('size')))
 
 # get the tick label font size
 fontsize_pt = 20 #float(plt.rcParams['ytick.labelsize'])
@@ -850,88 +862,97 @@ try:
         else:
             figwidth_multiplier = 1
 
-        fig, axs = pl.subplots(
-    	    nrows=nrows,
-    	    ncols=ncols,
-    	    sharex=True,
-    	    sharey=True,
-    	    figsize=(figure_height*figwidth_multiplier,figure_height),
-    	    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
 
-        row=0
-        col=0
-        plotidx = 0
-
-        nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
-        stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
-        iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
-        tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
-
-        #roi = 'roi00003'
-        for configname in subplot_stimlist:
-            curr_slice = roi_trials[configname][roi].attrs['slice']
-            roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
-
-            if col==(ncols) and nrows>1:
-                row += 1
-                col = 0
-            if len(axs.shape)>1:
-                ax_curr = axs[row, col] #, col]
+        for img in subplot_stimlist.keys():
+            curr_subplots = subplot_stimlist[img]
+            if stimid_only is True:
+                figname = 'all_objects_default_pos_size'
             else:
-                ax_curr = axs[col]
+                figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(position_vals), len(size_vals))
 
-            stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
-            nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
-            ntrials = len(stim_trials)
-            trialmat = np.ones((ntrials, nvols)) * np.nan
-            dfmat = []
+            fig, axs = pl.subplots(
+        	    nrows=nrows,
+        	    ncols=ncols,
+        	    sharex=True,
+        	    sharey=True,
+        	    figsize=(figure_height*figwidth_multiplier,figure_height),
+        	    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
 
-            first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
-            tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+            row=0
+            col=0
+            plotidx = 0
 
-            if 'grating' in stimtype:
-                stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
-            else:
-                stimname = configs[configname]['filename']
+            nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+            stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+            iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+            tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
-            ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+            #roi = 'roi00003'
+            for configname in curr_subplots:
+                curr_slice = roi_trials[configname][roi].attrs['slice']
+                roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
 
-            for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
-                trial_timecourse = roi_trials[configname][roi][trial][trace_type]
-                curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
-                trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
-                if first_on < curr_on:
-                    trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                if col==(ncols) and nrows>1:
+                    row += 1
+                    col = 0
+                if len(axs.shape)>1:
+                    ax_curr = axs[row, col] #, col]
                 else:
-                    trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
-                #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
+                    ax_curr = axs[col]
 
-                baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
-                if baseline == 0 or baseline == np.nan:
-                    df = np.ones(trialmat[tidx,:].shape) * np.nan
+                stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+                nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
+                ntrials = len(stim_trials)
+                trialmat = np.ones((ntrials, nvols)) * np.nan
+                dfmat = []
+
+                first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+                tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                if 'grating' in stimtype:
+                    stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
                 else:
-                    df = (trialmat[tidx,:] - baseline) / baseline
+                    stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
 
-                ax_curr.plot(tsecs, df, 'k', alpha=0.2, linewidth=0.5)
-                ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
+                ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
 
-                dfmat.append(df)
+                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                    trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                    curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
+                    trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                    if first_on < curr_on:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                    else:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                    #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
 
-            ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
+                    baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                    if baseline == 0 or baseline == np.nan:
+                        df = np.ones(trialmat[tidx,:].shape) * np.nan
+                    else:
+                        df = (trialmat[tidx,:] - baseline) / baseline
 
-            ax_curr.set_ylim([ylim_min, ylim_max])
-            ax_curr.set(xticks=tpoints)
-            ax_curr.tick_params(axis='x', which='both',length=0)
+                    ax_curr.plot(tsecs, df, 'k', alpha=0.2, linewidth=0.5)
+                    ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
 
-            col = col + 1
-            plotidx += 1
+                    dfmat.append(df)
 
-        sns.despine(offset=2, trim=True)
-        #%
-        psth_fig_fn = '%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type)
-        pl.savefig(os.path.join(roi_psth_dir, psth_fig_fn))
-        pl.close()
-        print psth_fig_fn
+                ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
+
+                ax_curr.set_ylim([ylim_min, ylim_max])
+                ax_curr.set(xticks=tpoints)
+                ax_curr.tick_params(axis='x', which='both',length=0)
+
+                col = col + 1
+                plotidx += 1
+
+            sns.despine(offset=2, trim=True)
+            pl.title(roi)
+            #%
+            psth_fig_fn = '%s_%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
+            pl.savefig(os.path.join(roi_psth_dir, psth_fig_fn))
+            pl.close()
+            print psth_fig_fn
 except Exception as e:
     print "--- Error plotting PSTH ---------------------------------"
     print roi, configname, trial
