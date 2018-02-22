@@ -233,7 +233,8 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
             with open(coreg_params_path, 'r') as f:
                 coreg_params = json.load(f)
                 evalparams = coreg_params['eval']
-
+        else:
+            evalparams = dict()
         roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
     else:
         with open(roiparams_path, 'r') as f:
