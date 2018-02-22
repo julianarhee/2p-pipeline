@@ -260,7 +260,7 @@ def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs',
                 print b
             fidxs_to_exclude = [int(f[4:]) for f in bad_files]
             if len(fidxs_to_exclude) > 1:
-                exclude_str = ','.join([i for i in fidxs_to_exclude])
+                exclude_str = ','.join([str(i) for i in fidxs_to_exclude])
             else:
                 exclude_str = str(fidxs_to_exclude[0])
         else:
