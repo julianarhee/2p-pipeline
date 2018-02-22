@@ -339,11 +339,7 @@ for fidx, paradigm_fn in enumerate(sorted(paradigm_files, key=natural_keys)):
                                            ))
 TRIALS = pd.concat(trial_dfs, axis=0)
 
-#%%
-#curr_save_dir = os.path.join(traceid_dir, 'figures', 'roi%04d' % roi_idx)
-#if not os.path.exists(curr_save_dir):
-#    os.makedirs(curr_save_dir)
-#trace_type = 'raw'
+#%%  Create TRACES dataframe:
 
 trace_dfs = []
 for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
@@ -376,13 +372,6 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
 #                                         }))
 
     traces.close()
-
-#roi_trials_fn = [f for f in os.listdir(traceid_dir) if 'roi_trials_' in f and f.endswith('hdf5')]
-#if len(roi_trials_fn) > 1:
-#    roi_trials_fn = sorted(roi_trials_fn, key=natural_keys)[-1]
-#else:
-#    roi_trials_fn = roi_trials_fn[0]
-#roi_trials = h5py.File(os.path.join(traceid_dir, roi_trials_fn), 'r')
 
 DATA = pd.concat(trace_dfs, axis=0)
 #TRIALS = pd.concat(trial_dfs, axis=0)
@@ -417,7 +406,10 @@ curr_save_dir = os.path.join(tcourse_figdir, selected_roi)
 if not os.path.exists(curr_save_dir):
     os.makedirs(curr_save_dir)
 
+# Only grab entries for selected ROI:
 roi_df = DATA.loc[DATA['roi'] == selected_roi]
+
+# Only grab a given file, tmp:
 file_df = roi_df.loc[roi_df['file'] == selected_file]
 
 #%%
