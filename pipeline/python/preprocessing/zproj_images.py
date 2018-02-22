@@ -31,6 +31,7 @@ parser.add_option('-i', '--animalid', action='store', dest='animalid', default='
 parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID') 
 parser.add_option('-A', '--acq', action='store', dest='acquisition', default='', help="acquisition folder (ex: 'FOV1_zoom3x')")
 parser.add_option('-R', '--run', action='store', dest='run', default='', help='name of run to process') 
+parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
 parser.add_option('-s', '--source', action='store', dest='source_dir', default=None, help="folder from which to create z-projected slice images")
 parser.add_option('-o', '--outdir', action='store', dest='write_dir', default=None, help="path to save averaged slices [default appends <sourcedir>_<zprojtype>_slices/")
@@ -43,6 +44,9 @@ parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default='m
 # INPUT PARAMS:
 # -------------------------------------------------------------
 rootdir = options.rootdir #'/nas/volume1/2photon/projects'
+slurm = options.slurm
+if slurm is True and 'coxfs01' not in rootdir:
+    rootdir = '/n/coxfs01/2p-data'
 animalid = options.animalid
 session = options.session #'20171003_JW016' #'20170927_CE059'
 acquisition = options.acquisition #'FOV1' #'FOV1_zoom3x'
