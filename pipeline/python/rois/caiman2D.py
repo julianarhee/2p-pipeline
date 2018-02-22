@@ -612,7 +612,7 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
     low_rank_background=params['extraction']['low_rank_background']
     method_deconvolution=params['extraction']['method_deconv']
     border_pix=params['info']['max_shifts']                #deconv_flag = True)
-    update_bg = True
+    update_bg = True 
     method_deconvolution = params['extraction']['method_deconv']
     
     cnm = cnmf.CNMF(
@@ -632,13 +632,13 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
     	stride=stride,                              # overlap among patches (keep it at least large as 4 times the neuron size)
     	only_init_patch=only_init_patch,            # just leave it as is
     	gnb=gnb,                                    # number of background components
-    	nb_patch=gnb,                               # number of background components per patch
+    	#nb_patch=gnb,                               # number of background components per patch
     	method_deconvolution=method_deconvolution,  # could use 'cvxpy' alternatively
-    	low_rank_background=low_rank_background,    #leave as is
-    	update_background_components=update_bg,     # sometimes setting to False improve the results
-    	del_duplicates=True,                        # whether to remove duplicates from initialization
-    	deconv_flag=True
-        )
+    	low_rank_background=low_rank_background) #,    #leave as is
+    	#update_background_components=update_bg,     # sometimes setting to False improve the results
+    	#del_duplicates=True) #,                        # whether to remove duplicates from initialization
+    	#deconv_flag=True
+        #)
 
 #    if patch is True:
 #        cnm = cnmf.CNMF(k=params['extraction']['K'],
