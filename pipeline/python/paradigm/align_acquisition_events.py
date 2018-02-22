@@ -58,6 +58,13 @@ Outputs:
                     'denoise_nmf' -- dataset
                     ...etc.
 
+    c.  PSTHs, if relevant for each ROI:
+
+    <TRACEID_DIR>/figures/psths/<TRACE_TYPE>/roiXXXXX_SliceXX_IDX.png
+    -- trace_type = 'raw' or 'denoised_nmf' for now
+    -- IDX = roi idx in current roi set
+
+
 '''
 import matplotlib
 matplotlib.use('Agg')

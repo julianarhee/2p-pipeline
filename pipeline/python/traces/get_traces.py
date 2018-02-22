@@ -5,10 +5,14 @@ Extracted time courses using a set of trace params (TID) defined with set_trace_
 
 Outputs:
 
-    a.  <TRACEID_DIR>/figures/roi_FILEXXX_SliceXX_<RID_NAME>_<RID_HASH>.png
+    a.  Images of masks for each tif file:
+
+        <TRACEID_DIR>/figures/roi_FILEXXX_SliceXX_<RID_NAME>_<RID_HASH>.png
         -- Masks overlaid on zprojected reference slice img with labeled rois.
 
-    b. <TRACEID_DIR>/files/FileXXX_rawtraces_<TRACEID_HASH>.hdf5
+    b. HDF5 files containing extracted traces from specified ROI set:
+
+        <TRACEID_DIR>/files/FileXXX_rawtraces_<TRACEID_HASH>.hdf5
         -- Extracted raw traces using specified trace params (and specified ROI set)-- this means, .tif files excluded in ROI set are excluded here, too.
         -- File hierarchy is:
 
@@ -53,7 +57,9 @@ Outputs:
                     -- runmeta info is saved to:  <RUN_DIR>/<RUN_NAME>.json
                     -- frame times and indices should be re-indexed based on discard frames/skipped frames
 
-    c. <TRACEID_DIR>/roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5
+    c.  Traces separated for each ROI:
+
+        <TRACEID_DIR>/roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5
         -- Trace arrays split up by ROI.
         -- File hierarchy is:
 
@@ -226,12 +232,12 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
             zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
             #orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
             #zproj_dir = zproj_dir.replace(orig_root, rootdir)
-        
+
         # CHECK ROOT:
         if rootdir not in zproj_dir:
             print "Replacing root..."
             zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
-            
+
 
         for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
 
