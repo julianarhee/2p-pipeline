@@ -226,7 +226,12 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
             zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
             #orig_root = zproj_dir.split('/%s/%s' % (animalid, session))[0]
             #zproj_dir = zproj_dir.replace(orig_root, rootdir)
-
+        
+        # CHECK ROOT:
+        if rootdir not in zproj_dir:
+            print "Replacing root..."
+            zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
+            
 
         for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
 
