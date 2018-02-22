@@ -4,11 +4,9 @@
 This script finds matches between ROIs in a specified reference file and all other files.
 User can choose to coregister only subsets of ROIs by providing a key that identifies which evaluation result set to use.
 
-# 1.  Load ROI evaluation info, if relevant (evalparams).
-- User-provided key specifying a particular evaluation result
-- Evaluation set is keyed with a date-time string (output of evaulate_roi_extraction.py)
+1.  Load ROI set info and get roi/tiff source paths.
 
-# 2.  Populate coregistration params (params_thr).
+    a.  Coregistration parameters -- set in set_roi_params.py
     - dist_maxthr <float>
         	threshold for turning spatial components into binary masks (default: 0.1)
     - dist_exp <float>
@@ -18,42 +16,125 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
     - dist_overlap_thr <float>
         	overlap threshold for detecting if one ROI is a subset of another (default: 0.8)
 
-# 3.  Load ROI set info and get roi/tiff source paths.
+    b.  Evaluation info -- set in set_roi_params.py
+    - User-provided key specifying a particular evaluation result (format:  'evaluation_YYYY_MM_DD_hh_mm_ss')
+    - Evaluation set is keyed with a date-time string (output of evaulate_roi_extraction.py)
 
-# 4.  Identify file to be used as coregistration reference.
+2.  Identify file to be used as coregistration reference.
 
-# 5.  Save coregistration parameters to output dir:
-	- params_thr saved to:
-	<rid_dir>/coreg_results/coreg_params.json
+3.  Save coregistration parameters to output dir for quick-viewing:
 
-# 6.  Run coregistration (coregister_rois_nmf)
+    Output:
+
+        <RID_DIR>/coreg_results/coreg_params.json
+        -- dictionary of all parameters used for coregistration
+
+4.  Run coregistration (coregister_rois_nmf)
 
 	a. Find matches to reference for each file and save results (coreg_results_path):
-	   [outfile]:  <rid_dir>/coreg_results/coreg_results_<datetimestr>.hdf5
-	   --> file groups (File001, File002, etc.) each contain datasets:
-		roi_idxs :  indices of rois (source indices)
-		distance :  distance matrix between ref and current file
-		distance_thr :  thresholded distance matrix (params_thr['dist_thr'])
-		matches :  list of matches between ref rois and current file rois
+
+    Output:
+
+       <RID_DIR>/coreg_results/coreg_results_YYYY_MM_DD_hh_mm_ss.hdf5
+
+    	   -- File hierarchy is:
+       /
+           - attrs:
+                dist_thr          :  (float) coreg param - threshold for setting a distance to infinity, i.e., illegal matches
+                dist_exp          :  (float) coreg param - power n for distance between masked components --> dist = 1 - (and(M1,M2)/or(M1,M2)**n
+                dist_overlap_thr  :  (float) coreg param - overlap threshold for detecting if one ROI is subset of another
+                dist_maxthr       :  (float) coreg param - threshold for turning spatial components into binary masks
+                ref_filename      :  (str) filename for reference (e.g., 'File001')
+                filter_type       :  (str) 'max' of use_max_nrois = True, 'reference' otherwise
+                ref_filepath      :  (str) path to file used for reference
+                keep_good_rois    :  (bool) whether to use specified ROI evaluation set to filter original set
+                excluded_tiffs    :  (list) files excluded manually and from MC-evaluation (e.g., ['File002', 'File005'])
+                creation_date     :  2018-02-22 15:50:27
+
+       /FileXXX - Group
+
+           /distance - dataset
+           (M, N) array : distance matrix calculated betwen reference and curr file (M = ref rois, N = sample rois (if reference file, 2x2 array of zeros))
+           - attrs:
+               d1       :  dim1 (lines per frame)
+               d2       :  dim2 (pix per line)
+               dist_thr :  (same as above) -- dist_thr value used to filter distance matrix
+
+           /matches_to_ref - datatset
+           (N, ) array      :  indices of curr file for which a match was found (N = number of found matches to reference)
+           - attrs:
+               ref_filename :  reference file being matched against (e.g., 'File006')
+               ref_filepath :  path to reference file
+               ref_idxs     :  corresponding indices of reference
+
+           /universal_matches - dataset
+           (N, ) array :  indices of curr file for which a match was found against reference across ALL files (N = number of universal matches)
+           - attrs:
+               --
+
+           /roimat - dataset
+           (D, N) array :  reshaped matrix containing (filtered) ROIs to which all indices refer (D = d1*d2, N = number of ROIs in (filtered) set)
+           - attrs:
+               source   :  path to ROI source (where roimat is from)
+
+           /roi_idxs - dataset
+           (N, ) array  :  indices of ROIs in current set (indices are from source, so if filtered, not necessarily consecutive)
+           - attrs:
+               --
+
+           /img - datatset
+           (M, N) array :  zprojected image used for displaying
+
 
 	b. Plot distance matrix and contour plots for each file's matches to reference:
-	   [outfiles]:  <rid_dir>/coreg_results/figures/files/distancematrix_FileXXX.png
+
+        Output:
+
+            <RID_DIR>/coreg_results/figures/files/distancematrix_FileXXX.png
+            -- shows calculated distance (Hungarian) between reference and curr file for all included ROIs
+            -- colormap indicates distance value (cut-off set by param 'dist_thr')
+            -- Y-axis = reference rois, X-axis = curr file rois
 
 	c. Save matches to json for easy acccess:
-	   [outfile]:  <rid_dir>/coreg_results/matches_byfile_rFileRRR.json,
-	   where rFileRRR is the reference file.
+
+        Output:
+
+            <RID_DIR>/coreg_results/matches_byfile_rFileRRR.json
+            -- key, value = FileXXX, list of match pairs (i.e., [[ref roi1, sample roi1], [ref roi2, sample roi2], ...]
+            -- roi indices refer to the index in the (filtered) ROI set of current file
 
 	d. Plot ROI matches for each file:
-	   [outfiles]:  <rid_dir>/coreg_results/figures/matches_rFileRRR_FileXXX.png
+
+        Output:
+
+            <RID_DIR>/coreg_results/matches_FileRRR_FileXXX.json
+            -- FileXXX = curr file, FileRRR = reference filename
+            -- blue contours = reference, red contours = curr file matches
 
 	e. Identify universal ROIs, i.e., ROI idxs common across all files (ref_rois)
 
-	f. Save univeral ROIs to json file:
-	   [outfile]:  <rid_dir>/coreg_results/coregistered_rFileRRR.json
+        Output:
+
+            (none) -- found universal matches are appended to hdf5 file from Step 4:
+            i.e., <RID_DIR>/coreg_results/coreg_results_YYYY_MM_DD_hh_mm_ss.hdf5
+
+	f. Save univeral ROIs to json file for quick-viewing:
+
+        Output:
+
+            <RID_DIR>/coreg_results/coregistered_rFileRRR.json
+            -- key, value = FileXXX, list of that file's ROI indices for which there is a universal match
+            -- roi indices refer to the index in the (filtered) ROI set of current file
 
 	g. Plot universal ROIs on contour plots:
-	   [outfiles]: <rid_dir>/coreg_results/figures/contours_byfile_rFileRRR.png
-		       <rid_dir>/coreg_results/figures/contours_byroi_rFileRRR.png
+
+        Output:
+
+            <RID_DIR>/coreg_results/figures/contours_byfile_rFileRRR.png
+            -- each color is a file, each overlapping line is an ROI
+
+            <RID_DIR>/coreg_results/figures/contours_byroi_rFileRRR.png
+            -- each color is an ROI, each overlapping line is a file
 
 
 Created on Tue Nov  7 16:31:56 2017
@@ -451,81 +532,6 @@ def load_roi_eval(roi_eval_path):
 
 
 #%%
-def coregister_file_by_rid(tmp_rid_path, filenum=1, nprocs=12, rootdir=''):
-    tmp_filepath = None
-
-    # Load tmp rid file for coreg:
-    with open(tmp_rid_path, 'r') as f:
-        RID = json.load(f)
-
-    # Create dir for coregistration output:
-    coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')
-    print "Saving COREG results to:", coreg_output_dir
-    if not os.path.exists(coreg_output_dir):
-        os.makedirs(coreg_output_dir)
-
-    # =========================================================================
-    # Set Coregistration parameters:
-    # =========================================================================
-    params_thr, pass_rois_dict, roi_source_paths = setup_coreg_params(RID, rootdir=rootdir)
-
-    if RID['roi_type'] == 'caiman2D' and not (roi_source_paths[0].endswith('npz')):
-        nmf_src_dir = os.path.split(params_thr['ref_filepath'])[0]
-        nmf_fns = sorted([n for n in os.listdir(nmf_src_dir) if n.endswith('npz')], key=natural_keys)
-        roi_source_paths = sorted([os.path.join(nmf_src_dir, fn) for fn in nmf_fns], key=natural_keys)
-
-    # Save coreg params info to current coreg dir:
-    pp.pprint(params_thr)
-    with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
-        json.dump(params_thr, f, indent=4, sort_keys=True)
-
-    # Get list of ROIs of keep_good_rois=True and evalulation set used:
-    if pass_rois_dict is None:
-        filenames = [str(re.search('File(\d{3})', fn).group(0)) for fn in roi_source_paths]
-        filenames = sorted([f for f in filenames if f not in params_thr['excluded_tiffs']], key=natural_keys)
-        pass_rois_dict = dict((k, None) for k in filenames)
-
-    pass_rois = pass_rois_dict[params_thr['ref_filename']]
-    A1, dims, ref_pass_rois, img = load_source_rois(params_thr['ref_filepath'], keep_good_rois=params_thr['keep_good_rois'], pass_rois=pass_rois)
-    REF = dict()
-    REF['roimat'] = A1
-    REF['pass_roi_idxs'] = ref_pass_rois
-    REF['dims'] = dims
-    REF['img'] = img
-
-    # Then, get matches to sample:
-    curr_file = 'File%03d' % filenum
-    if curr_file in params_thr['excluded_tiffs']:
-        return None
-
-    curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
-    results = match_file_against_ref(REF, curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, asdict=True)
-
-    # Save tmp results for current file:
-    tmpdir = os.path.join(coreg_output_dir, 'tmp')
-    if not os.path.exists(tmpdir):
-        os.makedirs(tmpdir)
-    tmp_filepath = os.path.join(tmpdir, '%s_matches_to_ref.npz' % curr_file)
-    np.savez(tmp_filepath,
-             distance=results['distance_thr'],
-             source=results['source'],
-             matches_to_ref=results['matches_to_ref'],
-             pass_roi_idxs=results['pass_roi_idxs'],
-             img=results['img'],
-             A=results['A'],
-             dims=results['dims']
-             )
-
-#    tmp = h5py.File(tmp_filepath, 'w')
-#    dist = tmp.create_dataset('distance_thr', results['distance_thr'].shape, results['distance_thr'].dtype)
-#    dist[...] = results['distance_thr']
-#    dist.attrs['source'] = results['source']
-#    dist.attrs['matches'] = results['matches_to_ref']
-#    dist.attrs['pass_roi_idxs'] = results['pass_roi_idxs']
-
-    return tmp_filepath
-
-#%%
 def load_source_rois(roi_filepath, keep_good_rois=True, pass_rois=None):
 
     # First get reference file info:
@@ -914,6 +920,80 @@ def plot_coregistered_rois(coregistered_rois, coreg_results_path, cmap='jet', pl
 
 #coreg_results_path = collate_slurm_output(tmp_rid_path, rootdir='')
 
+#%%
+def coregister_file_by_rid(tmp_rid_path, filenum=1, nprocs=12, rootdir=''):
+    tmp_filepath = None
+
+    # Load tmp rid file for coreg:
+    with open(tmp_rid_path, 'r') as f:
+        RID = json.load(f)
+
+    # Create dir for coregistration output:
+    coreg_output_dir = os.path.join(RID['DST'], 'coreg_results')
+    print "Saving COREG results to:", coreg_output_dir
+    if not os.path.exists(coreg_output_dir):
+        os.makedirs(coreg_output_dir)
+
+    # =========================================================================
+    # Set Coregistration parameters:
+    # =========================================================================
+    params_thr, pass_rois_dict, roi_source_paths = setup_coreg_params(RID, rootdir=rootdir)
+
+    if RID['roi_type'] == 'caiman2D' and not (roi_source_paths[0].endswith('npz')):
+        nmf_src_dir = os.path.split(params_thr['ref_filepath'])[0]
+        nmf_fns = sorted([n for n in os.listdir(nmf_src_dir) if n.endswith('npz')], key=natural_keys)
+        roi_source_paths = sorted([os.path.join(nmf_src_dir, fn) for fn in nmf_fns], key=natural_keys)
+
+    # Save coreg params info to current coreg dir:
+    pp.pprint(params_thr)
+    with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
+        json.dump(params_thr, f, indent=4, sort_keys=True)
+
+    # Get list of ROIs of keep_good_rois=True and evalulation set used:
+    if pass_rois_dict is None:
+        filenames = [str(re.search('File(\d{3})', fn).group(0)) for fn in roi_source_paths]
+        filenames = sorted([f for f in filenames if f not in params_thr['excluded_tiffs']], key=natural_keys)
+        pass_rois_dict = dict((k, None) for k in filenames)
+
+    pass_rois = pass_rois_dict[params_thr['ref_filename']]
+    A1, dims, ref_pass_rois, img = load_source_rois(params_thr['ref_filepath'], keep_good_rois=params_thr['keep_good_rois'], pass_rois=pass_rois)
+    REF = dict()
+    REF['roimat'] = A1
+    REF['pass_roi_idxs'] = ref_pass_rois
+    REF['dims'] = dims
+    REF['img'] = img
+
+    # Then, get matches to sample:
+    curr_file = 'File%03d' % filenum
+    if curr_file in params_thr['excluded_tiffs']:
+        return None
+
+    curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
+    results = match_file_against_ref(REF, curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, asdict=True)
+
+    # Save tmp results for current file:
+    tmpdir = os.path.join(coreg_output_dir, 'tmp')
+    if not os.path.exists(tmpdir):
+        os.makedirs(tmpdir)
+    tmp_filepath = os.path.join(tmpdir, '%s_matches_to_ref.npz' % curr_file)
+    np.savez(tmp_filepath,
+             distance=results['distance_thr'],
+             source=results['source'],
+             matches_to_ref=results['matches_to_ref'],
+             pass_roi_idxs=results['pass_roi_idxs'],
+             img=results['img'],
+             A=results['A'],
+             dims=results['dims']
+             )
+
+#    tmp = h5py.File(tmp_filepath, 'w')
+#    dist = tmp.create_dataset('distance_thr', results['distance_thr'].shape, results['distance_thr'].dtype)
+#    dist[...] = results['distance_thr']
+#    dist.attrs['source'] = results['source']
+#    dist.attrs['matches'] = results['matches_to_ref']
+#    dist.attrs['pass_roi_idxs'] = results['pass_roi_idxs']
+
+    return tmp_filepath
 
 #%% SLURM SCRIPT:
 
@@ -1122,7 +1202,10 @@ def append_universal_matches(coreg_results_path, ref_rois):
 
 #%%
 def coregister_rois_nmf(RID, coreg_output_dir, excluded_tiffs=[], rootdir='', coreg_fig_dir=None):
-
+    """
+    Main coregistration function. Does same behavior as coregister_file_by_rid() + collage_slurm_output()
+    except that plotting of universal matches only is done in run_coregistration(), which calls this function.
+    """
     ref_rois = []
 
     if not os.path.exists(coreg_output_dir):
