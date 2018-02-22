@@ -3,52 +3,83 @@
 """
 Extracted time courses using a set of trace params (TID) defined with set_trace_params.py
 
-Outputs to <traceid_dir>:
-    a) ./figures/SliceXX_roisXX_<rid_hash>.png
-        Masks overlaid on zprojected reference slice img with labeled rois.
+Outputs:
 
-    b) ./files/FileXXX_rawtraces_<traceid_hash>.hdf5
-        Extracted raw traces using specified trace params (and specified ROI set)
-        /FileXXX - group
+    a.  <TRACEID_DIR>/figures/roi_FILEXXX_SliceXX_<RID_NAME>_<RID_HASH>.png
+        -- Masks overlaid on zprojected reference slice img with labeled rois.
+
+    b. <TRACEID_DIR>/files/FileXXX_rawtraces_<TRACEID_HASH>.hdf5
+        -- Extracted raw traces using specified trace params (and specified ROI set)-- this means, .tif files excluded in ROI set are excluded here, too.
+        -- File hierarchy is:
+
+        /FileXXX    - group
+            - attrs:
+                source_file        : TIF file path from which traces were extracted
+                file_id            : filename (i.e., File006, for ex.)
+                dims               : (array) dimension as d1 x d2 x nslices x nframes
+                masks              : <SESSION_DIR>/ROIs/<RID_DIR>/masks.hdf5 <-- standardized mask file (TODO:  make sure this is always produced)
+
             /SliceXX - group
-                /masks - datatset
+                /traces - group
+                    /raw - dataset
+                        [Txnrois] array
+                        - atttrs:
+                            nframes : T (num of frames in file)
+                            dims    : original dimensions of movie for reshaping (d1xd2)
+                    /denoised_nmf - dataset
+                        [Txnrois] array
+                        - attrs:
+                            nb      :  number of background components (relevant only for cNMF)
+                            nr      :  number of rois
+
+                /masks - dataset
                     [d1xd2xnrois] array
                     - attrs:
-                        roi_id: RID name,
-                        rid_hash: RID hash,
-                        roi_type: roi type,
-                        nrois: num rois in set,
-                        roi_idxs:  original indices of rois in set (may be different than count if src is different)
+                        roi_id         : RID name,
+                        rid_hash       : RID hash,
+                        roi_type       : roi type,
+                        nr             : num rois in set,
+                        nb             : num background components, if any
+                        src_roi_idxs   : original indices of rois in set (some ROIs are subsets of some other ROI set)
+
                 /zproj - dataset
                     [d1xd2] zprojected image
                     - attrs:
-                        img_source: file path to zprojected reference image
-                /rawtraces - dataset
-                    [Txnrois] array
-                    - atttrs:
-                        nframes:  T (num of frames in file)
-                        dims: original dimensions of movie for reshaping (d1xd2)
-                /frames_tsec - dataset
-                    corresponding time in secs for each point in timecourse
+                        img_source     : file path to zprojected reference image
 
-    c) ./roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5
-        Trace arrays split up by ROI.
-        /roi00001 - Group
-            (length-5 name of ROI in set, 1-indexed)
+                /frames_tsec - dataset
+                    [T,] array -- corresponding time in secs for each frame in timecourse
+                    --> Note:  this info is extracted from SI META info (preprocessing/get_scanimage_data.py), and saved to run meta info
+                    -- runmeta info is saved to:  <RUN_DIR>/<RUN_NAME>.json
+                    -- frame times and indices should be re-indexed based on discard frames/skipped frames
+
+    c. <TRACEID_DIR>/roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5
+        -- Trace arrays split up by ROI.
+        -- File hierarchy is:
+
+        /roi00001 - Group (length-5 name of ROI in set, 1-indexed; may include background components as 'bg01', 'bg02', etc.)
             - attrs:
-                slice:  slice on which current roi (or com) is
-                roi_img_path: source of zprojected slice image
+                slice        :  slice on which current roi (or com) is
+                roi_img_path :  source of zprojected slice image
+                id_in_set    :  ROI id in current ROI set (should match Group name) -- relative to entire set (across slices, too)
+                id_in_src    :  ROI id in source from which ROI was originally created (can be different than id_in_set)
+                idx_in_slice :  index of ROI in current slice (in case multiple slices exist)
+
             /mask - dataset
                 [d1xd2] array
                 - attrs:
-                    id_in_set:  same as group name (int)
-                    id_in_slice:  id in current slice (if multi-slice, will be different than group name)
-                    idx_in_slice:  index in slice (if id in slice different than count of rois in slice)
-                    slice:  'SliceXX'
-            /timecourse = dataset
-                [T,] timecourse of roi
-                - attrs:
-                    source_file:  path to file from which trace is extracted
+                    slice         :  'SliceXX'
+                    is_background :  (bool) whether mask image is background (really only relevant for cNMF rois)
+
+            /timecourse - Group
+                /raw - dataset
+                    [T,] timecourse of roi
+                    - attrs:
+                        source_file:  path to file from which trace is extracted
+                /denoised_nmf - dataset
+                    [T,] timecourse of roi
+                    - attrs:
+                        source_file:  path to file from which trace is extracted
 
 Created on Tue Dec 12 11:57:24 2017
 

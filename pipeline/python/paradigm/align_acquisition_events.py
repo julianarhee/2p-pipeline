@@ -4,37 +4,60 @@ This script assigns frame indices to trial epochs for each trial in the specifie
 The baseline period (period before stimulus onset) is specified by input opt ITI_PRE ('-b' or '--baseline').
 
 Inputs required:
-    Paradigm info
-    <run_dir>/paradigm/trials_<filehash>.json
-        All trials in run with relevant stimulus info and times.
-        Created by extract_stimulus_events.py, saved to:  <run_dir>/paradigm/trials_<trialdict_hash>.json
-        The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['aux_file_idx']
 
-    Timecourse info
-    <traceid_dir>/roi_timecourses_YYYYMMDD_HH_MM_SS_<filehash>.hdf5
-        Output file from traces/get_traces.py (all traces are combined across tiff files)
+    a.  Paradigm info:
+
+    <RUN_DIR>/paradigm/trials_<TRIALINFO_HASH>.json
+        -- All trials in run with relevant stimulus info and times.
+        -- The specific .tif file in which a given trial occurs in the run is stored in trialdict[trialname]['block_idx']
+        -- (see paradigm/extract_stimulus_events.py, Step 1 for more info)
+
+    b.  Timecourse info:
+
+    <TRACEID_DIR>/roi_timecourses_YYYYMMDD_HH_MM_SS_<FILEHASH>.hdf5
+        -- Output file from traces/get_traces.py (all traces are combined across tiff files)
+        -- We want to use this file since we are interested in the behavior at the level of the ROI
+        -- (see traces/get_traces.py for more info)
+
 
 Outputs:
-    <run_dir>/paradigm/stimulus_configs.json
-        Configuration for each unique stimulus (stim id, position, size, etc.)
 
-    <run_dir>/paradigm/parsed_frames_<filehash>.hdf5
-        Assigns all frame indices to trial epochs for all trials in run.
-        Contains a dataset for each trial in the run (ntrials-per-file * nfiles-in-run)
-        Frame indices are with respect to the entire file, so volume-parsing should be done (see: files_to_trials.py) if nslices > 1.
+    a.  Stim config info:
 
-    <traceid_dir>/roi_trials_YYYYMMDD_HH_mm_SS.hdf5'
+    <RUN_DIR>/paradigm/stimulus_configs.json
+    -- Configuration for each unique stimulus (stim id, position, size, etc.)
+    -- Each config is given an indexed name, for example:
+
+         'config027': {'filename':  name of image file
+                       'filepath':  path to image file on stimulus-presentation computer
+                       'ntrials' :  number of trials found for this stim config in this run
+                       'position':  [xpos, ypos]
+                       'rotation':  (float)
+                       'scale'   : [sizex, sizey]
+                       }
+
+    b.  Parsed frames aligned to stim-onset, with specified baseline period:
+
+    <RUN_DIR>/paradigm/parsed_frames_<filehash>.hdf5
+    -- Assigns all frame indices to trial epochs for all trials in run.
+    -- Contains a dataset for each trial in the run (ntrials-per-file * nfiles-in-run)
+    -- Frame indices are with respect to the entire file, so volume-parsing should be done if nslices > 1
+    -- File hierarchy is:
+
+    <TRACEID_DIR>/roi_trials_YYYYMMDD_HH_mm_SS.hdf5
+
         [stimconfig]/
             attrs: direction, frequency, phase, position_x, position_y, rotation, scale, size_x, size_y, etc.
+
             [roi_name]/
                 attrs: id_in_set, id_in_src, idx_in_slice, slice
+
                 [trial_name]/
                     attrs: volume_stim_on, frame_idxs
-                    'raw' - dataset
-                    'denoise_nmf' - dataset
+                    'raw' -- dataset
+                    'denoise_nmf' -- dataset
                     ...etc.
 
-This output info for the run can then be used as indices into extracted traces.
 '''
 import matplotlib
 matplotlib.use('Agg')
@@ -418,6 +441,11 @@ else:
 
                 preframes = list(np.arange(int(first_frame_on - nframes_iti_pre), first_frame_on, 1))
                 postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + nframes_post_onset))))
+                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
+                if postframes[-1] > len(vol_idxs):
+                    extraframes = [p for p in postframes if p > len(vol_idxs)-1]
+                    postframes = [p for p in postframes if p <= len(vol_idxs)-1]
+                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
 
                 framenums = [preframes, [first_frame_on], postframes]
                 framenums = reduce(operator.add, framenums)
@@ -653,6 +681,7 @@ if create_new is True:
             for tidx, trial in enumerate(sorted(curr_trials, key=natural_keys)):
                 currtrial = trial # 'trial%03d' % int(tidx + 1)
 
+
                 curr_trial_volume_idxs = [vol_idxs[int(i)] for i in parsed_frames[trial]['frames_in_run']]
         #            slicenum = sliceids[tracestruct['roi00003'].attrs['slice']]
         #            slice_idxs = vol_idxs[3::nslices_full]
@@ -769,6 +798,12 @@ if 'grating' in stimtype:
     #print subplot_stimlist
 
 else:
+    # Create figure(s) based on stim configs:
+    position_vals = list(set([tuple(configs[k]['position']) for k in configs.keys()]))
+    size_vals = list(set([configs[k]['scale'][0] for k in configs.keys()]))
+
+
+
     nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
     ncols = len(configs.keys()) / nrows
 
