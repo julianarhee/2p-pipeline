@@ -99,7 +99,7 @@ def extract_options(options):
     (options, args) = parser.parse_args(options) 
     
     if options.slurm is True and 'coxfs01' not in options.rootdir:
-        options.rootdir = '/n/coxfs01/julianarhee/testdata'
+        options.rootdir = '/n/coxfs01/2p-data'
     if '~' in options.rootdir:
         options.rootdir = options.rootdir.replace('~', home)
  

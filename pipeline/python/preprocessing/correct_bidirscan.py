@@ -52,7 +52,7 @@ def extract_options(options):
     
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+            options.rootdir = '/n/coxfs01/2p-data'
         if 'coxfs01' not in options.repo_path:
             options.repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline' 
         if 'coxfs01' not in options.cvx_path:
