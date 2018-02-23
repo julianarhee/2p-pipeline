@@ -118,6 +118,31 @@ def load_RID(session_dir, roi_id, auto=False):
     return RID
 
 #%%
+def get_info_from_tiff_dir(tiff_sourcedir, session_dir):
+    info = dict()
+    #path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
+    session = os.path.split(session_dir)[-1]
+    acquisition = os.path.split(os.path.split(session_dir)[0])[-1]#path_parts[1]
+    if 'processed' in tiff_sourcedir:
+        path_parts = tiff_sourcedir.split('/processed/')
+        process_dirname = os.path.split(path_parts[1])[0]
+        process_id = process_dirname.split('_')[0]
+    else: #raw:
+        path_parts = tiff_sourcedir.split('/raw')[0]
+        suffix = tiff_sourcedir.split(path_parts)[-1]
+        process_dirname = suffix.split('/')[1]
+        process_id = 'raw'
+    run = os.path.split(path_parts[0])[-1] #path_parts[2]
+    acquisition = os.path.split(os.path.split(path_parts[0])[0])[-1]
+
+    info['acquisition'] = acquisition
+    info['run'] = run
+    info['session'] = session
+    info['process_id'] = process_id
+    info['process_dirname'] = process_dirname
+
+    return info
+
 def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', rootdir=''): #, acquisition='', run='', process_id=''):
     '''
     Get fullpaths to ROI source files, original tiff/mmap files, filter by MC-evaluation for excluded tiffs.
@@ -125,11 +150,11 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     '''
     #if acquisition=='' or run=='' or process_id=='':
     tiff_sourcedir = RID['SRC']
-    path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
-    acquisition = path_parts[1]
-    run = path_parts[2]
-    process_dirname = path_parts[4]
-    process_id = process_dirname.split('_')[0]
+    info = get_info_from_tiff_dir(tiff_sourcedir, session_dir)
+    acquisition = info['acquisition']
+    run = info['run']
+    process_id = info['process_id']
+
     print "Getting source paths:"
     print "ACQUISITION: %s | RUN: %s | PROCESS-ID: %s..." % (acquisition, run, process_id)
 
@@ -183,9 +208,15 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
                 src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
                 print "***SRC MMAP:", src_mmap_dir
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
-#    elif 'manual2D' in roi_type:
-#        roi_source_paths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
-#        tiff_source_paths = roi_source_paths
+
+    elif 'manual2D' in roi_type:
+        rid_src_dir = RID['SRC']
+        print "SRC: %s, ROOT: %s" % (rid_src_dir, rootdir)
+        if rootdir not in rid_src_dir:
+            rid_src_dir = replace_root(rid_src_dir, rootdir, animalid, session)
+        roi_source_paths = sorted([os.path.join(rid_src_dir, t) for t in os.listdir(rid_src_dir) if t.endswith('tif')], key=natural_keys)
+        tiff_source_paths = roi_source_paths
+
     # Get filenames for matches between roi source and tiff source:
 #    if subset is False:
 #        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))

@@ -67,7 +67,7 @@ from pipeline.python.utils import natural_keys, write_dict_to_json, save_sparse_
 from pipeline.python.rois import caiman2D as rcm
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
-from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation
+from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation, get_info_from_tiff_dir
 from scipy.sparse import spdiags
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -80,7 +80,6 @@ def timer(start,end):
 
 pp = pprint.PrettyPrinter(indent=4)
 
-#%%
 
 #%%
 def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, coreg_rois=None):
@@ -189,9 +188,13 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
 
 #%
 
-def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_motion=True, mcmetric='zproj_corrcoefs', coreg_results_path=None, keep_good_rois=True, rootdir='', animalid='', session=''):
+def standardize_rois(session_dir, roi_id, auto=False,
+                     zproj_type='mean', check_motion=True, mcmetric='zproj_corrcoefs',  # MC-related options
+                     coreg_results_path=None, keep_good_rois=True,                      # COREG/EVAL-related options
+                     rootdir='', animalid='', session=''):
 
     if rootdir not in session_dir:
+        print "Fixing session root..."
         session_dir = replace_root(session_dir, rootdir, animalid, session)
 
     RID = load_RID(session_dir, roi_id, auto=auto)
@@ -214,7 +217,7 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
     mcmetric = RID['PARAMS']['eval']['mcmetric']
     manual_excluded = RID['PARAMS']['eval']['manual_excluded']
 
-    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric)
+    roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric, rootdir=rootdir)
     if mcmetrics_filepath is None:
         mcmetrics_filepath = "None"
     excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs))
@@ -235,7 +238,7 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
                 evalparams = coreg_params['eval']
         else:
             evalparams = dict()
-        roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
+        roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs, rootdir=rootdir)
     else:
         with open(roiparams_path, 'r') as f:
             roiparams = json.load(f)
@@ -273,12 +276,10 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
                 filegrp = maskfile.create_group(filenames[fidx])
                 filegrp.attrs['source'] = os.path.split(nmfpath)[0]
 
-                # Format NMF output to standard masks:
                 print "Formatting masks..."
                 if roi_type == 'coregister':
                     # Load coreg results:
                     coreg_byfile = h5py.File(coreg_results_path, 'r')
-
                     # Get masks:
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams,
                                                                          pass_rois=coreg_byfile[curr_file]['roi_idxs'],
@@ -288,8 +289,6 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
 
                 maskfile.attrs['is_3D'] = is_3D
 
-                #sorted_roi_idxs = np.argsort(roi_idxs) # background comp(s) will always be last anyway
-                #masks = masks[:,:,sorted_roi_idxs]
                 roi_names = sorted(["roi%04d" % int(ridx+1) for ridx in range(len(coord_info))], key=natural_keys) # BG not included for coordinate list
 
                 # Save masks for current file (TODO: separate slices?)
@@ -297,7 +296,6 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
                 currmasks = filegrp.create_dataset('masks', masks.shape, masks.dtype)
                 currmasks[...] = masks
                 currmasks.attrs['src_roi_idxs'] = roi_idxs
-                #currmasks.attrs['roi_idxs'] = sorted_roi_idxs
                 currmasks.attrs['nrois'] = len(roi_names) #len(roi_idxs) - nb
                 currmasks.attrs['background'] = nb
 
@@ -381,9 +379,15 @@ def standardize_rois(session_dir, roi_id, auto=False, zproj_type='mean', check_m
 
     return mask_filepath
 
-def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[]):
+#%%
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[], rootdir=''):
     roiparams = dict()
     rid_dir = RID['DST']
+    if rootdir not in rid_dir:
+        session_dir = rid_dir.split('/ROIs/')[0]
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        rid_dir = replace_root(rid_dir, rootdir, animalid, session)
 
     roiparams['eval'] = evalparams
     roiparams['keep_good_rois'] = keep_good_rois
@@ -408,41 +412,16 @@ def extract_options(options):
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-
     parser.add_option('--default', action='store_true', dest='default', default=False, help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default='', help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
 
-    parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default="mean", help="zproj to use for display [default: mean]")
 
-    # Eval opts:
-#    parser.add_option('--good', action="store_true",
-#                      dest="keep_good_rois", default=False, help="Set flag to only keep good components (useful for avoiding computing massive ROI sets)")
-#    parser.add_option('--max', action="store_true",
-#                      dest="use_max_nrois", default=False, help="Set flag to use file with max N components (instead of reference file) [default uses reference]")
-#
-    # Coregistration options:
-#    parser.add_option('-t', '--maxthr', action='store', dest='dist_maxthr', default=0.1, help="[coreg]: threshold for turning spatial components into binary masks [default: 0.1]")
-#    parser.add_option('-n', '--power', action='store', dest='dist_exp', default=0.1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
-#    parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
-#    parser.add_option('-o', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
-##
-#    parser.add_option('-E', '--eval-key', action="store",
-#                      dest="eval_key", default=None, help="Evaluation key from ROI source <rid_dir>/evaluation (format: evaluation_YYYY_MM_DD_hh_mm_ss)")
+    parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default="mean", help="zproj to use for display [default: mean]")
     parser.add_option('-C', '--coreg-path', action="store",
                       dest="coreg_results_path", default=None, help="Path to coreg results if standardizing ROIs only")
-
-#    parser.add_option('-M', '--mcmetric', action="store",
-#                      dest="mcmetric", default='zproj_corrcoefs', help="Motion-correction metric to use for identifying tiffs to exclude [default: zproj_corrcoefs]")
-#
     parser.add_option('--par', action="store_true",
                       dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
-#    parser.add_option('--mc', action="store_true",
-#                      dest='check_motion', default=False, help="Check MC evaluation for bad tiffs.")
-
-#    parser.add_option('-x', '--exclude', action="store",
-#                  dest="excluded_tiffs", default='', help="Tiff numbers to exclude (comma-separated)")
-#
     parser.add_option('--format', action="store_true",
                       dest='format_only', default=False, help="Only format ROIs to standard (already extracted).")
 
@@ -485,24 +464,22 @@ def just_format_rois(options):
     session = options.session
     roi_id = options.roi_id
     slurm = options.slurm
+    if slurm is True and 'coxfs01' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
     auto = options.default
 
     zproj_type= options.zproj_type
-    #mcmetric = options.mcmetric
     coreg_results_path = options.coreg_results_path
-    #check_motion = options.check_motion
-
     session_dir = os.path.join(rootdir, animalid, session)
-    #mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, check_motion=check_motion, zproj_type=zproj_type, mcmetric=mcmetric, coreg_results_path=coreg_results_path)
+
     mask_filepath = standardize_rois(session_dir, roi_id, auto=auto, zproj_type=zproj_type, coreg_results_path=coreg_results_path,
                                      rootdir=rootdir, animalid=animalid, session=session)
-
 
     print "Standardized ROIs, mask file saved to: %s" % mask_filepath
 
     return session_dir, mask_filepath
 
-
+#%%
 def do_roi_extraction(options):
     #options = extract_options(options)
 
@@ -514,26 +491,11 @@ def do_roi_extraction(options):
     slurm = options.slurm
     auto = options.default
 
-    #keep_good_rois = options.keep_good_rois
-    #use_max_nrois = options.use_max_nrois
-
-#    dist_maxthr = options.dist_maxthr
-#    dist_exp = options.dist_exp
-#    dist_thr = options.dist_thr
-#    dist_overlap_thr = options.dist_overlap_thr
-#
     zproj_type= options.zproj_type
-
-    #eval_key = options.eval_key
-    #mcmetric = options.mcmetric
-
     multiproc = options.multiproc
-    #check_motion = options.check_motion
-    #exclude_str = options.excluded_tiffs
     coreg_results_path = options.coreg_results_path
 
-
-    #%%
+    #%
     session_dir = os.path.join(rootdir, animalid, session)
 
     # =============================================================================
@@ -542,22 +504,21 @@ def do_roi_extraction(options):
     try:
         RID = load_RID(session_dir, roi_id, auto=auto)
         print "Evaluating ROIs from set: %s" % RID['roi_id']
+        roi_type = RID['roi_type']
+        rid_hash = RID['rid_hash']
     except Exception as e:
         print "-- ERROR: unable to open source ROI dict. ---------------------"
         traceback.print_exc()
         print "---------------------------------------------------------------"
 
-
-    #%%
+    #%
     # =============================================================================
     # Get meta info for current run and source tiffs using trace-ID params:
     # =============================================================================
     tiff_sourcedir = RID['SRC']
-    path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
-    acquisition = path_parts[1]
-    run = path_parts[2]
-    process_dirname = path_parts[4]
-    process_id = process_dirname.split('_')[0]
+    if rootdir not in tiff_sourcedir:
+        tiff_sourcedir = replace_root(tiff_sourcedir, rootdir, animalid, session)
+
 
     tiffs = sorted([t for t in os.listdir(tiff_sourcedir) if t.endswith('tif')], key=natural_keys)
     filenames = sorted([str(re.search('File(\d{3})', tf).group(0)) for tf in tiffs], key=natural_keys)
@@ -568,9 +529,7 @@ def do_roi_extraction(options):
     manual_excluded = RID['PARAMS']['eval']['manual_excluded']
 
     if check_motion is True:
-        filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric,
-                                                       acquisition=acquisition, run=run, process_id=process_id,
-                                                       rootdir=rootdir, animalid=animalid, session=session)
+        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion, mcmetric=mcmetric, rootdir=rootdir)
     else:
         mc_excluded_tiffs = []
 
@@ -578,21 +537,26 @@ def do_roi_extraction(options):
     exclude_str = ','.join([str(int(fn[4:])) for fn in excluded_tiffs])
     print "TIFFS EXCLUDED:", excluded_tiffs
 
-    keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
-    #%%
+    if 'manual2D' not in roi_type:
+        keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
+    else:
+        keep_good_rois = True
+
+    #%
     # =============================================================================
     # Extract ROIs using specified method:
     # =============================================================================
     print "Extracting ROIs...====================================================="
-    roi_type = RID['roi_type']
-    rid_hash = RID['rid_hash']
-
     format_roi_output = False
     #src_roi_type = None
     t_start = time.time()
 
     if roi_type == 'caiman2D':
         #%
+        info = get_info_from_tiff_dir(tiff_sourcedir, session_dir)
+        acquisition = info['acquisition']
+        run = info['run']
+
         roi_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-p', rid_hash]
         if slurm is True:
             roi_opts.extend(['--slurm'])
@@ -618,49 +582,22 @@ def do_roi_extraction(options):
         format_roi_output = False
 
     elif roi_type == 'coregister':
-#        roi_source_paths, tiff_source_paths, filenames, mc_excluded_tiffs, mcmetrics_filepath = get_source_paths(session_dir, RID, check_motion=check_motion,
-#                                                                                                             mcmetric=mcmetric,
-#                                                                                                             acquisition=acquisition,
-#                                                                                                             run=run,
-#                                                                                                             process_id=process_id)
-#
-
         #%
         src_roi_id = RID['PARAMS']['options']['source']['roi_id']
         src_roi_dir = RID['PARAMS']['options']['source']['roi_dir']
 
         #% Set COREG opts:
         coreg_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-r', roi_id]
-#                      '-t', dist_maxthr,
-#                      '-n', dist_exp,
-#                      '-d', dist_thr,
-#                      '-o', dist_overlap_thr]
-##
-#        if use_max_nrois is True: # == 'max':
-#            coreg_opts.extend(['--max'])
-#        if keep_good_rois is True:
-#            coreg_opts.extend(['--good'])
-#        if len(exclude_str) > 0:
-#            coreg_opts.extend(['-x', exclude_str])
+
 
         #% RUN COREGISTRATION
         print "==========================================================="
         print "RID %s -- Running coregistration..." % rid_hash
         print "RID %s -- Source ROI set is: %s" % (rid_hash, src_roi_id)
-#        if eval_key is None: # and keep_good_rois is False:
-#            # Just run coregistration on default (if nmf rois, will use source eval-params if "keep_good_rois" is True)
-#            ref_rois, params_thr, coreg_outpath = reg.run_coregistration(coreg_opts)
-#            src_eval_filepath = None
-#        else:
-            # Load ROI info for "good" rois to include:
-#            src_eval, src_eval_filepath = load_eval_results(src_roi_dir, eval_key, auto=False)
-#            coreg_opts.extend(['--roipath=%s' % src_eval_filepath])
-            #%
         ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
 
         print("Found %i common ROIs matching reference." % len(ref_rois))
         format_roi_output = True
-        #src_roi_type = RID['PARAMS']['options']['source']['roi_type']
         #%
     else:
         print "ERROR: %s -- roi type not known..." % roi_type
@@ -670,25 +607,24 @@ def do_roi_extraction(options):
     print "======================================================================="
 
 
-    #%% Save ROI params info:
+    #% Save ROI params info:
 
     # TODO: Include ROI eval info for other methods?
     # TODO: If using NMF eval methods, make func to do evaluation at post-extraction step (since extract_rois_caiman.py keeps all when saving anyway)
     if roi_type == 'caiman2D':
         evalparams = RID['PARAMS']['options']['eval']
+        keep_good_rois = True # default behavior of caiman is to do a prelim eval after extraction
     elif roi_type == 'coregister':
         evalparams = params_thr['eval']
-    else:
-        evalparams = {}
-
-    if roi_type == 'coregister':
         keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
     else:
         keep_good_rois = True
+        evalparams = dict()
 
-    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs)
+    print "Saving ROI params..."
+    roiparams = save_roi_params(RID, evalparams=evalparams, keep_good_rois=keep_good_rois, excluded_tiffs=excluded_tiffs, rootdir=rootdir)
 
-    #%%
+    #%
     # =============================================================================
     # Format ROI output to standard, if applicable:
     # =============================================================================
@@ -703,6 +639,7 @@ def do_roi_extraction(options):
 
     return session_dir, rid_hash
 
+#%%
 def select_roi_action(options):
     options = extract_options(options)
 
@@ -722,6 +659,7 @@ def select_roi_action(options):
 
     return session_dir, optargout, formatting_only
 
+#%%
 def main(options):
     session_dir, optargout, formatting_only = select_roi_action(options)
 
