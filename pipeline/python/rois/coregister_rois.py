@@ -629,6 +629,16 @@ def find_matches_nmf(RID, coreg_output_dir, rootdir='', nprocs=12):
     with open(os.path.join(coreg_output_dir, 'coreg_params.json'), 'w') as f:
         json.dump(params_thr, f, indent=4, sort_keys=True)
 
+    # Move existing files to 'old' dir:
+    existing_coreg_files = [f for f in os.listdir(coreg_output_dir) if 'coreg_results_' in f and f.endswith('hdf5')]
+    if len(existing_coreg_files) > 0:
+        old_dir = os.path.join(coreg_output_dir, 'old')
+        if not os.path.exists(old_dir):
+            os.makedirs(old_dir)
+        for ex in existing_coreg_files:
+            shutil.move(os.path.join(coreg_output_dir, ex), os.path.join(old_dir, ex))
+        print "Stashed previous coreg results files..."
+
     # Create outfile:
     coreg_outpath = os.path.join(coreg_output_dir, 'coreg_results_{}.hdf5'.format(datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))
     coreg_outfile = h5py.File(coreg_outpath, 'w')
