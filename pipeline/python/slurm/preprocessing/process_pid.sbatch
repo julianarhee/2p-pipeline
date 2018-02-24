@@ -5,8 +5,8 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-6:00 # Running time of 4 hours
-#SBATCH --mem 98304 # Memory request of 12 GB 
+#SBATCH -t 0-4:00 # Running time of 3 hours
+#SBATCH --mem 98304 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o processpid_%A_%a.out # Standard output
 #SBATCH -e processpid_%A_%a.err # Standard error
 
@@ -23,16 +23,16 @@ for v in ${!FILES_*};do FILES[${v#FILES_}]="${!v}"; done
 FILENAME=${FILES[$SLURM_ARRAY_TASK_ID]}
 echo "File: ${FILENAME}"
 
-# create logging dir
-BASEDIR="$(dirname "$FILENAME")"
-OUTDIR="${BASEDIR}/logging_$PIDHASH"
-echo ${OUTDIR}
-
-# make and move into new directory, and run:
-if [ ! -d "$OUTDIR" ]; then
-    mkdir $OUTDIR
-fi
-cd ${OUTDIR}
+## create logging dir
+#BASEDIR="$(dirname "$FILENAME")"
+#OUTDIR="${BASEDIR}/logging_$PIDHASH"
+#echo ${OUTDIR}
+#
+## make and move into new directory, and run:
+#if [ ! -d "$OUTDIR" ]; then
+#    mkdir $OUTDIR
+#fi
+#cd ${OUTDIR}
 
 # run processing on raw data
 python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_pid.py $FILENAME

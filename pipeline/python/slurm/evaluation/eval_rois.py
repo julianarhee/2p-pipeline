@@ -15,11 +15,22 @@ def main():
 
     rid_path = sys.argv[1]
     nproc = sys.argv[2]
+    print "Received %i args in." % len(sys.argv)
+    if len(sys.argv) == 4:
+        snr = float(sys.argv[3])
+    else:
+        snr = 2.0
+    if len(sys.argv) == 5:
+        rcorr = float(sys.argv[4])
+    else:
+        rcorr = 0.8
+
     #cluster_backend = sys.argv[3]
     if len(nproc) == 0:
         nproc = 12
     else:
         nproc = int(nproc)
+
 #    if len(cluster_backend) == 0:
 #        cluster_backend = 'local'
 #
@@ -36,7 +47,7 @@ def main():
     logging.info("RID %s -- starting memmapping ..." % roi_hash)
     logging.info(rid_path)
    
-    eval_filepath = run_rid_eval(rid_path, nprocs=nproc, cluster_backend='local', rootdir='/n/coxfs01/2p-data', min_SNR=1.8, rval_thr=0.8)
+    eval_filepath = run_rid_eval(rid_path, nprocs=nproc, cluster_backend='local', rootdir='/n/coxfs01/2p-data', min_SNR=snr, rval_thr=rcorr)
     
     logging.info("FINISHED evaluating ROIs from RID:\n%s" % roi_hash)
     logging.info("Saved eval results to: %s" % eval_filepath)

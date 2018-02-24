@@ -17,7 +17,7 @@ else
         LASTTIFF="1"
     fi
 fi
-echo "NMF-ROI extraction from File ${FIRSTTIFF} to ${LASTTIFF}."
+echo "ROI COREGISTRATION from File ${FIRSTTIFF} to ${LASTTIFF}."
 
 FILES=($RIDPATH/*$RIDHASH.json)
 
@@ -34,7 +34,7 @@ if [ $ZBNUMFILES == 0 ]; then
     export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/coregister_tiff.sbatch
+    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/coregister_tiff.sbatch $PARAMSPATH
 
 fi
 

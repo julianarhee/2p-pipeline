@@ -109,7 +109,7 @@ for i in $(seq 1 ${#pid_files[@]}); do
         -o "log/$run.mceval.$n.out" \
         -e "log/$run.mceval.$n.err" \
         --dependency=afterok:${pid_jobids[$idx]} \ 
-        evaluate_pid_file.sbatch $FN))
+        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluate_pid_file.sbatch $FN))
 done
 info "MCEVAL calling jobids: ${peak_jobids[@]}"
 

@@ -45,7 +45,7 @@ def format_rois(rid_path, coreg_results_path):
     try:
         with open(rid_path, 'r') as f:
             RID = json.load(f)
-        session_dir = os.path.split(RID['DST'], '/ROIs')
+        session_dir = RID['DST'].split('/ROIs/')[0]
         roi_id = RID['roi_id']
         zproj_type = 'mean'
         auto = True
@@ -75,6 +75,7 @@ def main():
     
     logging.info('Cleaning up tmp RID file...')
     roi_hash = os.path.splitext(os.path.split(rid_path)[-1])[0].split('_')[-1]
+    session_dir = rid_path.split('/ROIs/')[0]
     post_rid_cleanup(session_dir, roi_hash)
     logging.info('****DONE!****')
 

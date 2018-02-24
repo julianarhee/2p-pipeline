@@ -4,7 +4,7 @@ SESSION="$2"
 RIDHASH="$3"
 RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids"
 #echo $RIDPATH
-echo "Requested single ROI ID to memmap - ${RIDHASH}."
+echo "Requested single RID hash for cNMF extraction - ${RIDHASH}."
 
 if [ "$#" == 5 ]; then
     FIRSTTIFF="$4"

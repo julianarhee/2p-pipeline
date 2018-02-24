@@ -14,11 +14,6 @@ def main():
 
     rid_path = sys.argv[1]
     file_num = int(sys.argv[2])
-    nproc = sys.argv[3]
-    if len(nproc) == 0:
-        nproc = 12
-    else:
-        nproc = int(nproc)
 
     roi_hash = os.path.splitext(os.path.split(rid_path)[-1])[0].split('_')[-1]
     logdir = os.path.join(os.path.split(rid_path)[0], "logging_%s" % roi_hash)
@@ -33,7 +28,7 @@ def main():
     logging.info("RID %s -- starting ROI coregistration for File %i" % (roi_hash, file_num))
     logging.info(rid_path)
 
-    tmp_fpath = coregister_file_by_rid(rid_path, filenum=file_num, nprocs=nproc, rootdir='/n/coxfs01/2p-data')
+    tmp_fpath = coregister_file_by_rid(rid_path, filenum=file_num, rootdir='/n/coxfs01/2p-data')
 
     logging.info("FINISHED COREGISRATION for File %i:" % (file_num))
     logging.info("Tmp coreg results for file saved to: %s" % tmp_fpath)
