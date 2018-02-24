@@ -159,6 +159,7 @@ import traceback
 import numpy as np
 import os
 import sys
+import shutil
 from scipy.sparse import issparse
 from matplotlib import gridspec
 from pipeline.python.rois.utils import load_RID, get_source_paths, replace_root
@@ -385,6 +386,11 @@ def setup_coreg_params(RID, rootdir=''):
     # load_roi_eval is called with eval_key:
     src_nrois, evalparams, pass_rois_dict = get_evaluated_roi_list(RID, roi_source_paths, rootdir=rootdir)
 
+    # Make sure candidate reference files are NOT included:
+    src_nrois = [s for s in src_nrois if s[0] not in params_thr['excluded_tiffs']]
+    for s in src_nrois:
+        print s[0]
+
     # Filter source roi list by MAX num or selected REFERENCE:
     if use_max_nrois is True:
         # Either select the file that has the MAX number of "good" ROIs:
@@ -401,7 +407,12 @@ def setup_coreg_params(RID, rootdir=''):
         # Use a reference file (either MC reference or default, File001):
         reference_filename = RID['PARAMS']['options']['reference_filename']
         coreg_fidx = int(RID['PARAMS']['options']['coreg_ridx'])
-        print "Using reference: %s" % reference_filename
+        if reference_filename is None or len( reference_filename) == 0:
+            reference_filename = src_nrois[0][0] #'File001'
+            coreg_fidx = 0
+            print "***WARNING***NO reference file specified! Using %s." % reference_filename
+        else:
+            print "Using reference: %s" % reference_filename
         params_thr['ref_filename'] = reference_filename
         params_thr['ref_filepath'] = roi_source_paths[coreg_fidx]
         if keep_good_rois is True:
@@ -475,12 +486,14 @@ def get_evaluated_roi_list(RID, roi_source_paths, rootdir=''):
         if roi_ref_type == 'caiman2D':
             # Create a list of N-pass, N-total for each tiff in set:
             src_nrois = []
+            pass_rois_dict = dict()
             for roi_source in roi_source_paths:
                 snmf = np.load(roi_source)
                 fname = re.search('File(\d{3})', roi_source).group(0)
                 nall = snmf['A'].all().shape[1]
                 npass = len(snmf['idx_components'])
                 src_nrois.append((str(fname), nall, npass))
+                pass_rois_dict[fname] = snmf['idx_components']
 
     return src_nrois, evalparams, pass_rois_dict
 
@@ -604,7 +617,7 @@ def match_file_against_ref(REF, file_path, params_thr, pass_rois_dict=None, asdi
 
 
 #%%
-def find_matches_nmf(RID, coreg_output_dir, rootdir='', nprocs=12):
+def find_matches_nmf(RID, coreg_output_dir, rootdir=''):
      # TODO:  Add 3D compatibility...
     coreg_outpath = None
 
@@ -752,6 +765,7 @@ def plot_roi_contours(roi_list, roi_mat, dims, color=['b']):
 
 def plot_matched_rois_by_file(all_matches, coreg_results_path):
     # TODO:  Add 3D compatibility...
+    print "PLOTTING matches to reference for each file..."
 
     # Create output dir for figures:
     coreg_output_dir = os.path.split(coreg_results_path)[0]
@@ -760,12 +774,16 @@ def plot_matched_rois_by_file(all_matches, coreg_results_path):
         os.makedirs(coreg_fig_dir)
 
     # Load coreg params info:
+    print "Loading COREG params..."
     coreg_paramspath = os.path.join(os.path.split(coreg_results_path)[0], 'coreg_params.json')
     with open(coreg_paramspath, 'r') as f:
         params_thr = json.load(f)
+    #print params_thr
 
     # Load COREG results:
+    print "Loading COREG RESULTS..."
     results = h5py.File(coreg_results_path, 'r')
+    print results.keys()
 
     # First, get reference:
     A1 = np.array(results['%s/roimat' % params_thr['ref_filename']])
@@ -931,7 +949,7 @@ def plot_coregistered_rois(coregistered_rois, coreg_results_path, cmap='jet', pl
 #coreg_results_path = collate_slurm_output(tmp_rid_path, rootdir='')
 
 #%%
-def coregister_file_by_rid(tmp_rid_path, filenum=1, nprocs=12, rootdir=''):
+def coregister_file_by_rid(tmp_rid_path, filenum=1, rootdir=''):
     tmp_filepath = None
 
     # Load tmp rid file for coreg:
@@ -1070,6 +1088,16 @@ def collate_coreg_results(tmp_rid_path, rootdir=''):
     tmp_results_dir = os.path.join(coreg_output_dir, 'tmp')
     tmp_results_paths = sorted([os.path.join(tmp_results_dir, fn) for fn in os.listdir(tmp_results_dir) if fn.endswith('npz')], key=natural_keys)
 
+    # Move existing files to 'old' dir:
+    existing_coreg_files = [f for f in os.listdir(coreg_output_dir) if 'coreg_results_' in f and f.endswith('hdf5')]
+    if len(existing_coreg_files) > 0:
+        old_dir = os.path.join(coreg_output_dir, 'old')
+        if not os.path.exists(old_dir):
+            os.makedirs(old_dir)
+        for ex in existing_coreg_files:
+            shutil.move(os.path.join(coreg_output_dir, ex), os.path.join(old_dir, ex))
+        print "Stashed previous coreg results files..."
+
     # Create outfile:
     coreg_outpath = os.path.join(coreg_output_dir, 'coreg_results_{}.hdf5'.format(datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))
     coreg_outfile = h5py.File(coreg_outpath, 'w')
@@ -1143,6 +1171,7 @@ def collate_coreg_results(tmp_rid_path, rootdir=''):
     match_fn_base = 'matches_byfile_r%s' % str(params_thr['ref_filename'])
     with open(os.path.join(coreg_output_dir, '%s.json' % match_fn_base), 'w') as f:
         json.dump(all_matches, f, indent=4, sort_keys=True)
+    print "Done collating results!"
 
     return all_matches, coreg_outpath
 

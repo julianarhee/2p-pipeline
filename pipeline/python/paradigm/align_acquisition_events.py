@@ -797,11 +797,14 @@ if 'grating' in stimtype:
     nrows = min([noris, nsfs])
     ncols = (nsfs * noris) / nrows
 
-    subplot_stimlist = []
+    tmp_list = []
     for sf in sorted(sfs):
         for oi in sorted(oris):
             match = [k for k in configs.keys() if configs[k]['rotation']==oi and configs[k]['frequency']==sf][0]
-            subplot_stimlist.append(match)
+            tmp_list.append(match)
+    stimid_only = True
+    subplot_stimlist = dict()
+    subplot_stimlist['defaultgratings'] = tmp_list
     #print subplot_stimlist
 
 else:
@@ -818,7 +821,9 @@ else:
         nfigures = 1
         nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
         ncols = len(configs.keys()) / nrows
-        subplot_stimlist = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
+        img = img_vals[0]
+        subplot_stimlist = dict()
+        subplot_stimlist[img] = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
     else:
         nfigures = len(img_vals)
         nrows = len(size_vals)

@@ -73,11 +73,12 @@ def main():
     mask_filepath = format_rois(rid_path, coreg_results_path)
     logging.info('COMPLETE! Mask file saved to: %s' % mask_filepath)
     
-    logging.info('Cleaning up tmp RID file...')
-    roi_hash = os.path.splitext(os.path.split(rid_path)[-1])[0].split('_')[-1]
-    session_dir = rid_path.split('/ROIs/')[0]
-    post_rid_cleanup(session_dir, roi_hash)
-    logging.info('****DONE!****')
-
+    if coreg_results_path is not None and mask_filepath is not None: 
+        logging.info('Cleaning up tmp RID file...')
+        roi_hash = os.path.splitext(os.path.split(rid_path)[-1])[0].split('_')[-1]
+        session_dir = rid_path.split('/ROIs/')[0]
+        post_rid_cleanup(session_dir, roi_hash)
+        logging.info('****DONE!****')
+    
 if __name__=="__main__":
     main()

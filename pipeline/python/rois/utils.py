@@ -122,7 +122,7 @@ def get_info_from_tiff_dir(tiff_sourcedir, session_dir):
     info = dict()
     #path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
     session = os.path.split(session_dir)[-1]
-    acquisition = os.path.split(os.path.split(session_dir)[0])[-1]#path_parts[1]
+    animalid = os.path.split(os.path.split(session_dir)[0])[-1]#path_parts[1]
     if 'processed' in tiff_sourcedir:
         path_parts = tiff_sourcedir.split('/processed/')
         process_dirname = os.path.split(path_parts[1])[0]
@@ -140,6 +140,7 @@ def get_info_from_tiff_dir(tiff_sourcedir, session_dir):
     info['session'] = session
     info['process_id'] = process_id
     info['process_dirname'] = process_dirname
+    info['animalid'] = animalid
 
     return info
 
