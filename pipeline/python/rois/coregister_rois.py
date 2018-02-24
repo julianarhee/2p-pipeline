@@ -390,7 +390,7 @@ def setup_coreg_params(RID, rootdir=''):
     src_nrois = [s for s in src_nrois if s[0] not in params_thr['excluded_tiffs']]
     for s in src_nrois:
         print s[0]
-    
+
     # Filter source roi list by MAX num or selected REFERENCE:
     if use_max_nrois is True:
         # Either select the file that has the MAX number of "good" ROIs:
@@ -486,12 +486,14 @@ def get_evaluated_roi_list(RID, roi_source_paths, rootdir=''):
         if roi_ref_type == 'caiman2D':
             # Create a list of N-pass, N-total for each tiff in set:
             src_nrois = []
+            pass_rois_dict = dict()
             for roi_source in roi_source_paths:
                 snmf = np.load(roi_source)
                 fname = re.search('File(\d{3})', roi_source).group(0)
                 nall = snmf['A'].all().shape[1]
                 npass = len(snmf['idx_components'])
                 src_nrois.append((str(fname), nall, npass))
+                pass_rois_dict[fname] = snmf['idx_components']
 
     return src_nrois, evalparams, pass_rois_dict
 
@@ -764,7 +766,7 @@ def plot_roi_contours(roi_list, roi_mat, dims, color=['b']):
 def plot_matched_rois_by_file(all_matches, coreg_results_path):
     # TODO:  Add 3D compatibility...
     print "PLOTTING matches to reference for each file..."
-    
+
     # Create output dir for figures:
     coreg_output_dir = os.path.split(coreg_results_path)[0]
     coreg_fig_dir = os.path.join(coreg_output_dir, 'figures', 'files')
@@ -782,7 +784,7 @@ def plot_matched_rois_by_file(all_matches, coreg_results_path):
     print "Loading COREG RESULTS..."
     results = h5py.File(coreg_results_path, 'r')
     print results.keys()
- 
+
     # First, get reference:
     A1 = np.array(results['%s/roimat' % params_thr['ref_filename']])
     d1 = results['%s/distance' % params_thr['ref_filename']].attrs['d1']
