@@ -271,6 +271,7 @@ def extract_options(options):
 
     parser.add_option('-t', '--timefilt', action='store', dest='time_filt_size', default=5, help='Size of median filter to smooth signals over time(integer)')
 
+    parser.add_option('-b', '--baseline', action='store', dest='baseline', default=1, help='Length of baseline period (secs) for trial parsing')
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
@@ -338,7 +339,7 @@ def process_data(options):
     output_fn = os.path.join(output_file_dir,'full_session_eyetracker_data_%s_%s_%s.h5'%(session,animalid,run))
     if os.path.isfile(output_fn):
         #load and continue onto trial parsing
-        print 'already processed'
+        print 'Data already processed....'
     else:
         if make_movie:
             tmp_dir = os.path.join(output_mov_dir, 'tmp')
@@ -683,14 +684,225 @@ def process_data(options):
             fig_file = os.path.join(output_fig_dir,'cr_y_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(cr_df, 'camera time', 'cr position y',stim_on_times,stim_off_times, blink_times, fig_file)
 
+def parse_data(options):
+    options = extract_options(options)
+
+    # # Set USER INPUT options:
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+
+    baseline_time = options.baseline
+
+    #define input directories
+    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+
+    input_root_dir = os.path.join(run_dir,'eyetracker')
+    input_file_dir = os.path.join(input_root_dir,'files')
+
+
+    #paradigm details
+    para_file_dir = os.path.join(run_dir,'paradigm','files')
+    para_file =  [f for f in os.listdir(para_file_dir) if f.endswith('.json')][0]#assuming a single file for all tiffs in run
+
+
+    #make output directories
+    output_root_dir = input_root_dir
+    print 'Output Directory: %s'%(output_root_dir)
+
+    output_file_dir = input_file_dir
+
+    output_fig_dir = os.path.join(output_root_dir,'figures')
+    if not os.path.exists(output_fig_dir):
+        os.makedirs(output_fig_dir)
+
+    #***load and unpack features***
+    input_fn = os.path.join(input_file_dir,'full_session_eyetracker_data_%s_%s_%s.h5'%(session,animalid,run))
+
+    print 'Loading eyetracker feature info from :%s'%(input_fn)
+
+    file_grp = h5py.File(input_fn, 'r')#open file
+
+    frame_rate = float(file_grp.attrs['frame_rate'])
+
+    camera_time = file_grp['camera_time'][:]
+    blink_events = file_grp['blink_events'][:]
+    pupil_radius = file_grp['pupil_radius'][:]
+    pupil_dist = file_grp['pupil_distance'][:]
+
+    file_grp.close()
+
+    #***command-line dialogue to indicate thresholding to use
+    while True:
+        print 'Choose eye feature criteria for trial exclusion'   
+        print '0: pupil radius'
+        print '1: blink events'
+        print '2: pupil distance'
+        print 'hint:'
+        print 'to select multiple criteria:  <0,1,2>'
+        tmp_user_selection = raw_input("Select exclusion criteria, or press <enter> to continue with none:\n")
+        if len(tmp_user_selection)==1 or ',' in tmp_user_selection:
+            user_selection = [int(i) for i in tmp_user_selection.split(',')]
+            if any([i>= 2 for i in user_selection]):
+                print len(user_selection)
+                print "Bad selection, try again."
+                continue
+            else:
+                print '****SELECTED CRITERIA****'
+                for i in user_selection:
+                    print "Criteria option:", i
+                confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
+                if confirm_selection=='':
+                    break
+                else:
+                    continue
+     
+    pupil_rad_thresh = None
+    exclude_blink = False
+    for sel_idx in user_selection:
+        if sel_idx == 0:#pupil_radius
+            while True:
+
+                tmp_thresh = raw_input("Enter pupil radius threshold (pixel minimum):\n")
+                try:
+                    pupil_rad_thresh = int(tmp_thresh)
+                    print 'Pupil Threshold:%d'%(pupil_rad_thresh)
+                    break
+                except:
+                    print 'Invalid value provided for threshold. Try again'
+                    continue
+        if sel_idx ==1:
+            exclude_blink = True
+
+    #****get trial info times***
+    print 'Getting paradigm info from: %s'%(os.path.join(para_file_dir, para_file))
+    with open(os.path.join(para_file_dir, para_file), 'r') as f:
+        trial_info = json.load(f)
+
+
+    baseline_frames = int(baseline_time*frame_rate)
+
+    iti_full_time = trial_info['trial00001']['iti_duration']/1E3#for pasing traces  
+    iti_post_time = iti_full_time - baseline_time
+    iti_post_frames = int(iti_post_time*frame_rate)
+
+    stim_on_time = trial_info['trial00001']['stim_on_times']/1E3#convert to secs
+    stim_off_time = trial_info['trial00001']['stim_off_times']/1E3#convert to sec
+    stim_dur_time = stim_off_time - stim_on_time
+    stim_dur_frames = int(stim_dur_time*frame_rate)
+
+    post_onset_frames = stim_dur_frames+iti_post_frames
+
+    trial_time = np.arange(0,(1.0/frame_rate)*(baseline_frames+stim_dur_frames+iti_post_frames),1/frame_rate) - baseline_time
+
+    #***Parse trace by trial ***
+    eye_info = dict()
+
+    pup_rad_mat = []
+    pup_dist_mat = []
+
+    fig, ax = pl.subplots()
+    fig2, ax2 = pl.subplots()
+
+    for ntrial in range(0, len((trial_info))):
+        if ntrial%100 == 0:
+            print 'Parsing trial %d of %d'%(ntrial,len(eye_info))
+        trial_string = 'trial%05d'%(ntrial+1)
+        
+        #copy some details from paradigm file
+        eye_info[trial_string] = dict()
+        eye_info[trial_string]['stimuli'] = trial_info[trial_string]['stimuli']
+        eye_info[trial_string]['stim_on_times'] = trial_info[trial_string]['stim_on_times']
+        eye_info[trial_string]['stim_off_times'] = trial_info[trial_string]['stim_off_times']
+        eye_info[trial_string]['iti_duration'] = trial_info[trial_string]['iti_duration']
+        
+        #get times and indices of relevent events
+        stim_on_time = trial_info[trial_string]['stim_on_times']/1E3#convert to ms
+        on_idx = np.where(camera_time>=stim_on_time)[0][0]
+        start_idx = on_idx - baseline_frames
+        end_idx = on_idx + post_onset_frames
+        off_idx = on_idx + stim_dur_frames
+
+        eye_info[trial_string]['start_idx'] = start_idx
+        eye_info[trial_string]['on_idx'] = on_idx
+        eye_info[trial_string]['end_idx'] = end_idx
+        eye_info[trial_string]['off_idx'] = off_idx
+
+        #get some feature values for stimulation and baseline periods
+        pupil_sz_baseline = np.mean(pupil_radius[start_idx:on_idx])
+        eye_info[trial_string]['pupil_size_stim'] = np.mean(pupil_radius[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_baseline'] = pupil_sz_baseline
+        
+        pupil_dist_baseline = np.mean(pupil_dist[start_idx:on_idx])
+        eye_info[trial_string]['pupil_dist_stim'] = np.mean(pupil_dist[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_baseline'] = pupil_dist_baseline
+
+        #apply exclusion criteria, if indicated
+        trial_include = True
+        if pupil_rad_thresh is not None:
+            if any(pupil_radius[start_idx:end_idx]<pupil_rad_thresh):
+                trial_include = False
+        if exclude_blink:
+            if any(blink_events[start_idx:end_idx]):
+                trial_include = False
+        eye_info[trial_string]['include_trial'] = trial_include
+     
+        
+        if trial_include:
+            ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'k',alpha =0.1,linewidth = 0.5)
+            pup_rad_mat.append(pupil_radius[start_idx:end_idx]-pupil_sz_baseline)
+            
+            ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'k',alpha =0.1,linewidth = 0.5)
+            pup_dist_mat.append(pupil_dist[start_idx:end_idx]-pupil_dist_baseline) 
+        else:
+            ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'r',alpha =0.1)
+            ax.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'r',alpha =0.1)
+            
+
+
+    print 'Saving figures to: %s' % (output_fig_dir)
+    ax.plot(trial_time, np.nanmean(pup_rad_mat,0),'k',alpha=1)
+    ymin, ymax = ax.get_ylim()
+    ax.axvline(x=0, ymin=ymin, ymax = ymax, linewidth=1, color='k',linestyle='--')
+    ax.set_xlabel('Time ASO',fontsize=16)
+    ax.set_ylabel('Pupil Radius',fontsize=16)
+    sns.despine(offset=2, trim=True)
+
+    fig_file = os.path.join(output_fig_dir,'parsed_pupil_size_%s_%s_%s.png'%(session,animalid,run))
+    fig.savefig(fig_file, bbox_inches='tight')
+    plt.close()
+
+    ax2.plot(trial_time, np.nanmean(pup_dist_mat,0),'k',alpha=1)
+    ymin, ymax = ax2.get_ylim()
+    ax2.axvline(x=0, ymin=ymin, ymax = ymax, linewidth=1, color='k',linestyle='--')
+    ax2.set_xlabel('Time ASO',fontsize=16)
+    ax2.set_xlabel('Pupil Radius',fontsize=16)
+    sns.despine(offset=2, trim=True)
+
+    fig_file = os.path.join(output_fig_dir,'parsed_pupil_distance_%s_%s_%s.png'%(session,animalid,run))
+    fig2.savefig(fig_file, bbox_inches='tight')
+    pl.close()
+
+
+    #save info to file
+    output_fn = 'parsed_eye_%s_%s_%s.json'%(session,animalid,run)
+
+    print 'Saving parsed eye info to: %s' % (os.path.join(output_file_dir,output_fn))
+
+    with open(os.path.join(output_file_dir, output_fn), 'w') as f:
+        trial_info = json.dump(eye_info,f)
 
 #-----------------------------------------------------
 #           MAIN SET OF ACTIONS
 #-----------------------------------------------------
 
 def main(options):
-
+    print 'Processing raw frames'
     process_data(options)
+    print 'Parsing eye features by trial'
+    parse_data(options)
 
 
 if __name__ == '__main__':
