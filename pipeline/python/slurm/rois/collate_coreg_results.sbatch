@@ -5,7 +5,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-0:30 # Running time of 1 hours
+#SBATCH -t 0-1:00 # Running time of 1 hours
 #SBATCH --mem 3000 # Memory request of 4 GB
 #SBATCH -o coreg_collate_%A_f%a.out # Standard output
 #SBATCH -e coreg_collate_%A_f%a.err # Standard error
