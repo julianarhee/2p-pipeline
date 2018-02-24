@@ -22,5 +22,5 @@ PARAMSPATH=${1}
 echo "COREG COLLATE p info: ${PARAMSPATH}"
 
 # Collate coregsitration output
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/collate_coreg_results.py $PARAMSPATH
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/collate_coreg_results.py $PARAMSPATH
 

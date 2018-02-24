@@ -33,6 +33,6 @@ echo "SLURM ID: ${SLURM_ARRAY_TASK_ID}"
 #cd ${OUTDIR}
 #
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID 12
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/nmf_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID 12
 #python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff.py $PARAMSPATH $TIFFNUM 12
 

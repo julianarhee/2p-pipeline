@@ -34,6 +34,6 @@ echo "SLURM ID: ${SLURM_ARRAY_TASK_ID}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/coregister_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/coregister_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID
 #python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/coregister_tiff.py $PARAMSPATH $TIFFNUM 12
 

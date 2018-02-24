@@ -21,7 +21,7 @@ if [ $ZBNUMFILES == 0 ]; then
     export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/collate_coreg_results.sbatch $PARAMSPATH
+    sbatch /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/collate_coreg_results.sbatch $PARAMSPATH
 
 fi
 

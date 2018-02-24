@@ -29,6 +29,6 @@ if [ $ZBNUMFILES -ge 0 ]; then
     export RIDHASH
      
     # submit to slurm
-    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/mmap_tiffs_rid.sbatch    
+    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/mmap_tiffs_rid.sbatch    
 fi
 

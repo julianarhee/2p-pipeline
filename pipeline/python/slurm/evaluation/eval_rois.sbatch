@@ -21,5 +21,5 @@ source activate /n/coxfs01/2p-pipeline/envs/pipeline
 echo "roi info: ${RIDPATH}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/eval_rois.py $RIDPATH 12 $SNR $RCORR
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/eval_rois.py $RIDPATH 12 $SNR $RCORR
 

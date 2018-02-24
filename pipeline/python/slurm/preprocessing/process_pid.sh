@@ -40,6 +40,6 @@ if [ $ZBNUMFILES -ge 0 ]; then
     export PIDHASH
  
     # submit to slurm
-    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_pid.sbatch    
+    sbatch --array=0-$ZBNUMFILES /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/preprocessing/process_pid.sbatch    
 fi
 

@@ -30,5 +30,5 @@ echo "Params path: $RIDPATH"
 export RIDPATH RIDHASH SNR RCORR
 
 # submit to slurm
-sbatch /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/eval_rois.sbatch
+sbatch /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/eval_rois.sbatch
 

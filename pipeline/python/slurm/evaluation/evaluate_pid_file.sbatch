@@ -19,5 +19,5 @@ ZPROJ="mean"
 echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluate_pid.py $FILENAME $ZPROJ 12
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/evaluate_pid.py $FILENAME $ZPROJ 12
 

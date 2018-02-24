@@ -19,5 +19,5 @@ FILENAME="$1"
 echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_pid.py $FILENAME
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/preprocessing/process_pid.py $FILENAME
 

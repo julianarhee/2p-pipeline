@@ -34,7 +34,7 @@ if [ $ZBNUMFILES == 0 ]; then
     export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
+    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/nmf_tiff_array.sbatch
 
 fi
 

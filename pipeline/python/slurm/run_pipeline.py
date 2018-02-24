@@ -39,7 +39,7 @@ piper = str(piper)[0:8]
 if not os.path.exists('log'):
     os.mkdir('log')
 
-sys.stdout = open('log/file.txt', 'w')
+sys.stdout = open('log/pidinfo.txt', 'w')
 
 #####################################################################
 #                          find XID files                           #
@@ -98,13 +98,13 @@ for pid_file in pid_files:
     cmd = "sbatch --job-name={PROCID}.processpid.{PHASH} \
 		-o 'log/{PROCID}.processpid.{PHASH}.out' \
 		-e 'log/{PROCID}.processpid.{PHASH}.err' \
-		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/processing/process_pid_file.sbatch \
+		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/preprocessing/process_pid_file.sbatch \
 		{FILEPATH}".format(PROCID=piper, PHASH=phash, FILEPATH=pid_file)
-    info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
+    #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     pid_jobids[phash] = jobnum
-    info("PROCESSING jobids: %s" % jobnum)
+    info("PROCESSING jobids [%s]: %s" % (phash, jobnum))
 
 
 # STEP2: MC EVALUATION. Each mceval call will start when the corresponding processing 
@@ -126,13 +126,13 @@ for eval_file in eval_files:
                   -o 'log/{PROCID}.mceval.{PHASH}.out' \
                   -e 'log/{PROCID}.mceval.{PHASH}.err' \
                   --depend=afterok:{JOBDEP} \
-                  /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/processing/evaluate_pid_file.sbatch \
+                  /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/evaluate_pid_file.sbatch \
                   {FILEPATH}".format(PROCID=piper, PHASH=phash, FILEPATH=eval_file, JOBDEP=jobdep)
-    info("Submitting MCEVAL job with CMD:\n%s" % cmd)
+    #info("Submitting MCEVAL job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     eval_jobids[phash] = jobnum
-    info("MCEVAL calling jobids: %s" % jobnum)
+    info("MCEVAL calling jobids [%s]: %s" % (phash, jobnum))
 
 
 # STEP3: ROI EXTRACTION: Each nmf call will start when the corresponding alignments
