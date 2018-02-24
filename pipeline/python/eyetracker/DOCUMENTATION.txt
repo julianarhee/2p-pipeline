@@ -1,0 +1,16 @@
+
+1. User defined bounding boxes for pupil and corneal reflection, separately.
+
+from command line, run: eyetracker/get_user_roi.py (e.g.: python eyetracker/get_user_roi.py -i CE074 -S 20180213 -A FOV1_zoom1x -r blobs)
+
+	-GUI Instructions
+ 	1) Click and drag box around pupil. 
+	2) To record pupil bounding box, press 'p'. Otherwise, repeat step 1 to define a new box (record of old one will be erased)
+	3) Clock and drag box around corneal reflection 
+	4) To record corneal reflection bounding box, press 'c'. Otherwise, repeat step 1 to define a new box (record of old one will be erased)
+	5) Save bounding boxed recorded by pressing 's'
+	QUIT AT ANY TIME BY PRESSING 'q', unsaved boxes will be lost
+
+2.process eyetracker data
+
+python eyetracker/process_eyetracker_data.py -i CE074 -S 20180213 -A FOV1_zoom1x -r blobs --movie -p 20
