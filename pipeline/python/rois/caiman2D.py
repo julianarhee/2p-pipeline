@@ -162,20 +162,21 @@ def extract_cnmf_rois(options):
     manual_excluded = RID['PARAMS']['eval']['manual_excluded']
     if RID['PARAMS']['eval']['check_motion'] is True:
         print "Requesting NMF extraction for %i TIFFs. Checking MC evaluation..." % len(files_to_run)
-        files_to_run, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, files_to_run, mcmetric_type=RID['PARAMS']['eval']['mcmetric'])
+        files_to_run, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, files_to_run, mcmetric_type=RID['PARAMS']['eval']['mcmetric'],
+                                                                                      rootdir=rootdir, animalid=animalid, session=session)
         excluded_tiffs = list(set(manual_excluded + mc_excluded_tiffs + excluded_tiffs))
     files_to_run = sorted([f for f in files_to_run if f not in excluded_tiffs])
 
 
     if multiproc is True:
-        nmf_output_dict = mp_extract_nmf(files_to_run, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend)
+        nmf_output_dict = mp_extract_nmf(files_to_run, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend, rootdir=rootdir)
         for f in nmf_output_dict.keys():
             print f, nmf_output_dict[f]['ngood_rois']
     else:
         for fidx, filename in enumerate(files_to_run):
             filenum = int(fidx + 1)
             print "Extracting from FILE %i..." % filenum
-            nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc, cluster_backend=cluster_backend)
+            nmfopts_hash, ngood_rois = extract_nmf_from_rid(tmp_rid_path, filenum, nproc=nproc, cluster_backend=cluster_backend, rootdir=rootdir)
             print "Finished FILE %i. Found %i components that pass initial evaluation." % (filenum, ngood_rois)
 
     if multiproc is True:
@@ -189,12 +190,13 @@ def extract_cnmf_rois(options):
 
 #%%
 class nmfworker(mp.Process):
-    def __init__(self, in_q, out_q, cluster_backend, nproc):
+    def __init__(self, in_q, out_q, cluster_backend, nproc, rootdir):
         super(nmfworker, self).__init__()
         self.in_q = in_q
         self.out_q = out_q
         self.cluster_backend = cluster_backend
         self.nproc = nproc
+        self.rootdir = rootdir
 
     def run(self):
         proc_name = self.name
@@ -213,7 +215,7 @@ class nmfworker(mp.Process):
             print '%s: extracting %s.' % (proc_name, task[0])
             rid_path = task[1]
             fn = task[0]
-            outdict[fn] = extract_nmf_from_rid(rid_path, int(fn[4:]), cluster_backend=self.cluster_backend, nproc=self.nproc, asdict=True)
+            outdict[fn] = extract_nmf_from_rid(rid_path, int(fn[4:]), cluster_backend=self.cluster_backend, nproc=self.nproc, rootdir=self.rootdir, asdict=True)
             print "Worker: Extracted %s." % fn
             self.in_q.task_done()
             self.out_q.put(outdict)
@@ -229,7 +231,7 @@ class nmfworker(mp.Process):
 #        self.out_q.put(outdict)
 
 #%%
-def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'): #, cluster_backend='local'):
+def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local', rootdir=''): #, cluster_backend='local'):
     t_nmf = time.time()
 
     request_queue = mp.JoinableQueue()
@@ -239,7 +241,7 @@ def mp_extract_nmf(files_to_run, tmp_rid_path, nproc=12, cluster_backend='local'
     arglist = [(fn, tmp_rid_path) for fn in files_to_run]
     nworkers = len(arglist)
     print "Creating %i workers..." % nworkers
-    workers = [ nmfworker(request_queue, out_q, cluster_backend, nproc) for i in xrange(nworkers) ]
+    workers = [ nmfworker(request_queue, out_q, cluster_backend, nproc, rootdir) for i in xrange(nworkers) ]
     for w in workers:
         w.start()
 
@@ -591,33 +593,81 @@ def par_mmap_tiffs(tmp_rid_path):
 #%%
 def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_processes=None):
     if patch is True:
-        cnm = cnmf.CNMF(k=params['extraction']['K'],
-                        gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'],
-                        merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['patch']['rf'],
-                        stride=params['patch']['stride'],
-                        method_init=params['patch']['init_method'],
-                        only_init_patch=params['patch']['only_init_patch'],
-                        gnb=params['extraction']['gnb'],
-                        low_rank_background=params['extraction']['low_rank_background'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        border_pix=params['info']['max_shifts'])                #deconv_flag = True)
+        rf=params['patch']['rf']
+        stride=params['patch']['stride']
+        method_init=params['patch']['init_method']
+        only_init_patch=params['patch']['only_init_patch']
     else:
-        cnm = cnmf.CNMF(k=A.shape,
-                        gSig=params['extraction']['gSig'],
-                        p=params['extraction']['p'],
-                        merge_thresh=params['extraction']['merge_thresh'],
-                        dview=dview, n_processes=n_processes, memory_fact=1,
-                        rf=params['full']['rf'],
-                        stride=params['full']['stride'],
-                        method_deconvolution=params['extraction']['method_deconv'],
-                        Ain=A,
-                        Cin=C,
-                        f_in=f,
-                        border_pix=params['info']['max_shifts'])
+        rf=params['full']['rf']
+        stride=params['full']['stride']
+        only_init_patch = False
+    
+    k=params['extraction']['K']
+    gSig=params['extraction']['gSig']
+    gSiz = (int((3 * gSig[0]) + 1), int((3 * gSig[0]) + 1))
+    p=params['extraction']['p']
+    merge_thresh=params['extraction']['merge_thresh']
+    memory_fact=1
+    gnb=params['extraction']['gnb']
+    low_rank_background=params['extraction']['low_rank_background']
+    method_deconvolution=params['extraction']['method_deconv']
+    border_pix=params['info']['max_shifts']                #deconv_flag = True)
+    update_bg = True 
+    method_deconvolution = params['extraction']['method_deconv']
+    
+    cnm = cnmf.CNMF(
+    	n_processes=n_processes, 
+    	k=k,                                        # neurons per patch
+    	gSig=gSig,                                  # half size of neuron
+    	gSiz=gSiz,                                  # in general 3*gSig+1
+    	Ain=A,
+    	Cin=C,
+    	f_in=f, 
+    	merge_thresh=merge_thresh,                  # threshold for merging
+    	p=p,                                        # order of autoregressive process to fit
+    	dview=dview,                                # if None it will run on a single thread
+    	tsub=2,                                     # downsampling factor in time for initialization, increase if you have memory problems             
+    	ssub=2,                                     # downsampling factor in space for initialization, increase if you have memory problems
+    	rf=rf,                                      # half size of the patch (final patch will be 100x100)
+    	stride=stride,                              # overlap among patches (keep it at least large as 4 times the neuron size)
+    	only_init_patch=only_init_patch,            # just leave it as is
+    	gnb=gnb,                                    # number of background components
+    	#nb_patch=gnb,                               # number of background components per patch
+    	method_deconvolution=method_deconvolution,  # could use 'cvxpy' alternatively
+    	low_rank_background=low_rank_background) #,    #leave as is
+    	#update_background_components=update_bg,     # sometimes setting to False improve the results
+    	#del_duplicates=True) #,                        # whether to remove duplicates from initialization
+    	#deconv_flag=True
+        #)
 
+#    if patch is True:
+#        cnm = cnmf.CNMF(k=params['extraction']['K'],
+#                        gSig=params['extraction']['gSig'],
+#                        p=params['extraction']['p'],
+#                        merge_thresh=params['extraction']['merge_thresh'],
+#                        dview=dview, n_processes=n_processes, memory_fact=1,
+#                        rf=params['patch']['rf'],
+#                        stride=params['patch']['stride'],
+#                        method_init=params['patch']['init_method'],
+#                        only_init_patch=params['patch']['only_init_patch'],
+#                        gnb=params['extraction']['gnb'],
+#                        low_rank_background=params['extraction']['low_rank_background'],
+#                        method_deconvolution=params['extraction']['method_deconv'],
+#                        border_pix=params['info']['max_shifts'])                #deconv_flag = True)
+#    else:
+#        cnm = cnmf.CNMF(k=A.shape,
+#                        gSig=params['extraction']['gSig'],
+#                        p=params['extraction']['p'],
+#                        merge_thresh=params['extraction']['merge_thresh'],
+#                        dview=dview, n_processes=n_processes, memory_fact=1,
+#                        rf=params['full']['rf'],
+#                        stride=params['full']['stride'],
+#                        method_deconvolution=params['extraction']['method_deconv'],
+#                        Ain=A,
+#                        Cin=C,
+#                        f_in=f,
+#                        border_pix=params['info']['max_shifts'])
+#
     # adjust opts:
     cnm.options['temporal_params']['memory_efficient'] = True
     cnm.options['temporal_params']['method'] = params['extraction']['method_deconv']
@@ -977,7 +1027,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False, rootdir=''):
     nmfopts_hash = "None"
     ngood_rois = 0
 
@@ -992,12 +1042,14 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
     if RID['PARAMS']['eval']['check_motion'] is True:
         filenames = [os.path.splitext(os.path.split(tpath)[1])[0].split('_')[-1] for tpath in tiffpaths]
         print "Requesting NMF extraction for %i TIFFs. Checking MC evaluation..." % len(filenames)
-        filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=RID['PARAMS']['eval']['mcmetric'])
+        filenames, mc_excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=RID['PARAMS']['eval']['mcmetric'],
+                                                                                   rootdir=rootdir)
         excluded_tiffs = list(set(excluded_tiffs + mc_excluded_tiffs))
 
     if currfile in excluded_tiffs:
         print "***Skipping EXCLUDED TIFF: %s" % currfile
-        return
+        return nmfopts_hash, ngood_rois
+
 
 #    print "Getting mmapped files."
 #    mmap_paths = mmap_tiffs(tmp_rid_path)
@@ -1024,11 +1076,13 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
         traceback.print_exc()
 
     if asdict is True:
+        print "Returning as dict."
         nmf_file_output = dict()
         nmf_file_output['nmfopts_hash'] = nmfopts_hash
         nmf_file_output['ngood_rois'] = ngood_rois
         return nmf_file_output
     else:
+        print "nmf hash: %s, ngood rois: %i" % (nmfopts_hash, ngood_rois)
         return nmfopts_hash, ngood_rois
 
 

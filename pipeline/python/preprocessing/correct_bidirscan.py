@@ -52,7 +52,7 @@ def extract_options(options):
     
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+            options.rootdir = '/n/coxfs01/2p-data'
         if 'coxfs01' not in options.repo_path:
             options.repo_path = '/n/coxfs01/2p-pipeline/repos/2p-pipeline' 
         if 'coxfs01' not in options.cvx_path:
@@ -169,13 +169,12 @@ def do_bidir_correction(options):
     print "DEST:", write_dir
     print "======================================================="
     
-    if not os.path.exists(write_dir):
-        os.makedirs(write_dir)
-
     # -------------------------------------------------------------
     # Do correction:
     # -------------------------------------------------------------
     if do_bidi is True:
+        if not os.path.exists(write_dir):
+            os.makedirs(write_dir)
         print "================================================="
         print "Doing BIDI correction."
         print "================================================="
@@ -186,18 +185,19 @@ def do_bidir_correction(options):
         eng.do_bidi_correction(paramspath, runmeta_path, nargout=0)
         eng.quit()
     
-    print write_dir
+   # print write_dir
     
     # -------------------------------------------------------------
     # Check for Interleaving/Deinterleaving:
     # -------------------------------------------------------------
-    volume_dir = copy.copy(write_dir)
-    slice_dir = volume_dir + '_slices'
-        
-    if multiplanar is True:
-        print "Multiple slices/channels found. Sorting deinterleaved tiffs."
-        sort_deinterleaved_tiffs(slice_dir, runmeta_path)
-
+    if do_bidi is True:
+        volume_dir = copy.copy(write_dir)
+        slice_dir = volume_dir + '_slices'
+            
+        if multiplanar is True:
+            print "Multiple slices/channels found. Sorting deinterleaved tiffs."
+            sort_deinterleaved_tiffs(slice_dir, runmeta_path)
+    
     # ========================================================================================
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================

@@ -4,7 +4,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-0:10 # Running time of 3 hours
+#SBATCH -t 0-0:05 # Running time of 5 min
 #SBATCH --mem 32768 # Memory request of 12 GB 
 
 # load modules
@@ -19,5 +19,5 @@ ZPROJ="mean"
 echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluate_pid.py $FILENAME $ZPROJ 12
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/evaluate_pid.py $FILENAME $ZPROJ 12
 

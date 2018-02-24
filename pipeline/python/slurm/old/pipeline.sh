@@ -94,8 +94,8 @@ done
 
 info "PROCESSING jobids: ${pid_jobid}"
 
-# STEP2: MC EVALUATION. Each mceval call will start when the corresponding alignments
-#        finish sucessfully. Note, if STEP1 fails, all jobs depending on
+# STEP2: MC EVALUATION. Each mceval call will start when the corresponding processing 
+#        call finishes sucessfully. Note, if STEP1 fails, all jobs depending on
 #        it will remain in the queue and need to be canceled explicitly.
 #        An alternative would be to use 'afterany' and make each job check for
 #        the successful execution of the prerequisites.
@@ -109,9 +109,14 @@ for i in $(seq 1 ${#pid_files[@]}); do
         -o "log/$run.mceval.$n.out" \
         -e "log/$run.mceval.$n.err" \
         --dependency=afterok:${pid_jobids[$idx]} \ 
-        evaluate_pid_file.sbatch $FN))
+        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluate_pid_file.sbatch $FN))
 done
 info "MCEVAL calling jobids: ${peak_jobids[@]}"
 
+# STEP3: ROI EXTRACTION: Each nmf call will start when the corresponding alignments
+#        finish sucessfully. Note, if STEP1 fails, all jobs depending on
+#        it will remain in the queue and need to be canceled explicitly.
+#        An alternative would be to use 'afterany' and make each job check for
+#        the successful execution of the prerequisites.
 
 

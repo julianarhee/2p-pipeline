@@ -18,12 +18,61 @@ import traceback
 import re
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, get_source_info
+from pipeline.python.utils import natural_keys, get_source_info, replace_root
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 
+def get_roi_eval_path(src_roi_dir, eval_key, auto=False):
+    src_eval_filepath = None
+    src_eval = None
+    try:
+        print "-----------------------------------------------------------"
+        print "Loading evaluation results for src roi set"
+        # Load eval info:
+        src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+        assert os.path.exists(src_eval_filepath), "Specfied EVAL src file does not exist!\n%s" % src_eval_filepath
+        src_eval = h5py.File(src_eval_filepath, 'r')
+    except Exception as e:
+        print "Error loading specified eval file:\n%s" % src_eval_filepath
+        traceback.print_exc()
+        print "-----------------------------------------------------------"
+        try:
+            evaldict_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_info.json')
+            with open(evaldict_filepath, 'r') as f:
+                evaldict = json.load(f)
+            eval_list = sorted(evaldict.keys(), key=natural_keys)
+            print "Found evaluation keys:"
+            if auto is False:
+                while True:
+                    if len(eval_list) > 1:
+                        for eidx, ekey in enumerate(eval_list):
+                            print eidx, ekey
+                            eval_select_idx = input('Select IDX of evaluation key to view: ')
+                    else:
+                        eval_select_idx = 0
+                        print "Only 1 evaluation set found: %s" % eval_list[eval_select_idx]
+                    pp.pprint(evaldict[eval_list[eval_select_idx]])
+                    confirm_eval = raw_input('Enter <Y> to use this eval set, or <n> to return: ')
+                    if confirm_eval == 'Y':
+                        eval_key = eval_list[eval_select_idx].split('evaluation_')[-1]
+                        print "Using key: %s" % eval_key
+                        break
+            else:
+                print "Auto is ON, using most recent evaluation set: %s" % eval_key
+                eval_key = eval_list[-1].split('evaluation_')[-1]
+                pp.pprint(evaldict[eval_list[-1]])
+
+            src_eval_filepath = os.path.join(src_roi_dir, 'evaluation', 'evaluation_%s' % eval_key, 'evaluation_results_%s.hdf5' % eval_key)
+            src_eval = h5py.File(src_eval_filepath, 'r')
+        except Exception as e:
+            print "ERROR: Can't load source evaluation file - %s" % eval_key
+            traceback.print_exc()
+            print "Aborting..."
+            print "-----------------------------------------------------------"
+
+    return src_eval_filepath
 
 def load_RID(session_dir, roi_id, auto=False):
 
@@ -69,21 +118,57 @@ def load_RID(session_dir, roi_id, auto=False):
     return RID
 
 #%%
-def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def get_info_from_tiff_dir(tiff_sourcedir, session_dir):
+    info = dict()
+    #path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
+    session = os.path.split(session_dir)[-1]
+    acquisition = os.path.split(os.path.split(session_dir)[0])[-1]#path_parts[1]
+    if 'processed' in tiff_sourcedir:
+        path_parts = tiff_sourcedir.split('/processed/')
+        process_dirname = os.path.split(path_parts[1])[0]
+        process_id = process_dirname.split('_')[0]
+    else: #raw:
+        path_parts = tiff_sourcedir.split('/raw')[0]
+        suffix = tiff_sourcedir.split(path_parts)[-1]
+        process_dirname = suffix.split('/')[1]
+        process_id = 'raw'
+    run = os.path.split(path_parts[0])[-1] #path_parts[2]
+    acquisition = os.path.split(os.path.split(path_parts[0])[0])[-1]
+
+    info['acquisition'] = acquisition
+    info['run'] = run
+    info['session'] = session
+    info['process_id'] = process_id
+    info['process_dirname'] = process_dirname
+
+    return info
+
+def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric='zproj_corrcoefs', rootdir=''): #, acquisition='', run='', process_id=''):
     '''
     Get fullpaths to ROI source files, original tiff/mmap files, filter by MC-evaluation for excluded tiffs.
     Provide acquisition, run, process_id if source is NOT motion-corrected (default reference file and channel = 1).
     '''
-    if acquisition=='' or run=='' or process_id=='':
-        tiff_sourcedir = RID['SRC']
-        path_parts = tiff_sourcedir.split(session_dir)[-1].split('/')
-        acquisition = path_parts[1]
-        run = path_parts[2]
-        process_dirname = path_parts[4]
-        process_id = process_dirname.split('_')[0]
-    print "Getting source paths: %s, %s, %s..." % (acquisition, run, process_id)
+    #if acquisition=='' or run=='' or process_id=='':
+    tiff_sourcedir = RID['SRC']
+    info = get_info_from_tiff_dir(tiff_sourcedir, session_dir)
+    acquisition = info['acquisition']
+    run = info['run']
+    process_id = info['process_id']
+
+    print "Getting source paths:"
+    print "ACQUISITION: %s | RUN: %s | PROCESS-ID: %s..." % (acquisition, run, process_id)
+
+    session = os.path.split(session_dir)[-1]
+    animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+    print "SESSION:", session
+    print "ANIMALID:", animalid
+    rootdir = rootdir
 
     roi_source_dir = RID['DST']
+    if rootdir not in roi_source_dir:
+        print "ORIG:", roi_source_dir
+        roi_source_dir = replace_root(roi_source_dir, rootdir, animalid, session)
+        print "NEW:", roi_source_dir
     roi_type = RID['roi_type']
     #roi_id = RID['roi_id']
     excluded_tiffs = []
@@ -95,16 +180,22 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
         roi_source_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys) # Load nmf files
         # Get TIFF/mmap source from which ROIs were extracted:
         src_mmap_dir = RID['PARAMS']['mmap_source']
+        if rootdir not in src_mmap_dir:
+            src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
+            print "***SRC MMAP:", src_mmap_dir
         tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
 
     elif roi_type == 'coregister':
         src_rid_dir = RID['PARAMS']['options']['source']['roi_dir']
+        if rootdir not in src_rid_dir:
+            src_rid_dir = replace_root(src_rid_dir, rootdir, animalid, session)
+            print "***SRC RID:", src_rid_dir
         src_roi_id = RID['PARAMS']['options']['source']['roi_id']
         src_roi_type = RID['PARAMS']['options']['source']['roi_type']
 
         src_session_dir = os.path.split(os.path.split(src_rid_dir)[0])[0]
         src_session = os.path.split(src_session_dir)[1]
-        src_roidict_filepath = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % src_session)
+        src_roidict_filepath = os.path.join(src_session_dir, 'ROIs', 'rids_%s.json' % src_session)
         with open(src_roidict_filepath, 'r') as f:
             src_roidict = json.load(f)
         if src_roi_type == 'caiman2D':
@@ -113,22 +204,35 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
             roi_source_paths = sorted([os.path.join(src_nmf_dir, n) for n in os.listdir(src_nmf_dir) if n.endswith('npz')], key=natural_keys)
             # Get TIFF/mmap source from which ROIs were extracted:
             src_mmap_dir = src_roidict[src_roi_id]['PARAMS']['mmap_source']
+            if rootdir not in src_mmap_dir:
+                src_mmap_dir = replace_root(src_mmap_dir, rootdir, animalid, session)
+                print "***SRC MMAP:", src_mmap_dir
             tiff_source_paths = sorted([os.path.join(src_mmap_dir, f) for f in os.listdir(src_mmap_dir) if f.endswith('mmap')], key=natural_keys)
 
+    elif 'manual2D' in roi_type:
+        rid_src_dir = RID['SRC']
+        print "SRC: %s, ROOT: %s" % (rid_src_dir, rootdir)
+        if rootdir not in rid_src_dir:
+            rid_src_dir = replace_root(rid_src_dir, rootdir, animalid, session)
+        roi_source_paths = sorted([os.path.join(rid_src_dir, t) for t in os.listdir(rid_src_dir) if t.endswith('tif')], key=natural_keys)
+        tiff_source_paths = roi_source_paths
+
     # Get filenames for matches between roi source and tiff source:
-    if subset is False:
-        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
+#    if subset is False:
+#        assert len(roi_source_paths) == len(tiff_source_paths), "Mismatch in N tiffs (%i) and N roi sources (%i)." % (len(roi_source_paths), len(tiff_source_paths))
     filenames = []
     for roi_src in roi_source_paths:
         # Get filename base
         # filenames = sorted([str(re.search('File(\d{3})', nmffile).group(0)) for nmffile in roi_source_paths], key=natural_keys)
         filenames.append(str(re.search('File(\d{3})', roi_src).group(0)))
     filenames = sorted(filenames, key=natural_keys)
+    print "Found %i ROI SOURCE files." % len(roi_source_paths)
 
     if check_motion is True:
         print "Checking MC eval, metric: %s" % mcmetric
         filenames, excluded_tiffs, mcmetrics_filepath = check_mc_evaluation(RID, filenames, mcmetric_type=mcmetric,
-                                                       acquisition=acquisition, run=run, process_id=process_id)
+                                                       acquisition=acquisition, run=run, process_id=process_id,
+                                                       rootdir=rootdir, animalid=animalid, session=session)
         if len(excluded_tiffs) > 0:
             bad_roi_fns = []
             bad_tiff_fns = []
@@ -146,7 +250,8 @@ def get_source_paths(session_dir, RID, check_motion=True, subset=False, mcmetric
     return roi_source_paths, tiff_source_paths, filenames, excluded_tiffs, mcmetrics_filepath
 
 #%% If motion-corrected (standard), check evaluation:
-def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisition='', run='', process_id=''):
+def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs',
+                            acquisition='', run='', process_id='', rootdir='', animalid='', session=''):
 
     # TODO:  Make this include other eval types?
     mcmetric_options = ['zproj_corrcoefs', 'within_file']
@@ -155,13 +260,17 @@ def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisi
         print "Unknown MC METRIC type specified: %s. Using default..." % mcmetric_type
         mcmetric_type='zproj_corrcoefs'
 
+    roi_src_dir = RID['SRC']
+    if rootdir not in roi_src_dir:
+        roi_src_dir = replace_root(roi_src_dir, rootdir, animalid, session)
+
     #print "Loading Motion-Correction Info...======================================="
     mcmetrics_filepath = None
     excluded_tiffs = []
     mc_evaluated = False
     if 'mcorrected' in RID['SRC']:
         try:
-            mceval_dir = '%s_evaluation' % RID['SRC']
+            mceval_dir = '%s_evaluation' % roi_src_dir
             assert 'mc_metrics.hdf5' in os.listdir(mceval_dir), "MC output file not found!"
             mcmetrics_filepath = os.path.join(mceval_dir, 'mc_metrics.hdf5')
             mcmetrics = h5py.File(mcmetrics_filepath, 'r')
@@ -182,7 +291,7 @@ def check_mc_evaluation(RID, filenames, mcmetric_type='zproj_corrcoefs', acquisi
                 print b
             fidxs_to_exclude = [int(f[4:]) for f in bad_files]
             if len(fidxs_to_exclude) > 1:
-                exclude_str = ','.join([i for i in fidxs_to_exclude])
+                exclude_str = ','.join([str(i) for i in fidxs_to_exclude])
             else:
                 exclude_str = str(fidxs_to_exclude[0])
         else:

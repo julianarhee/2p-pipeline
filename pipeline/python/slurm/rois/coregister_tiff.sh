@@ -4,7 +4,7 @@ SESSION="$2"
 RIDHASH="$3"
 RIDPATH="/n/coxfs01/2p-data/${ANIMALID}/${SESSION}/ROIs/tmp_rids"
 #echo $RIDPATH
-echo "Requested single ROI ID to memmap - ${RIDHASH}."
+echo "Requested single RID and file to coregister - ${RIDHASH}."
 
 if [ "$#" == 5 ]; then
     FIRSTTIFF="$4"
@@ -17,7 +17,7 @@ else
         LASTTIFF="1"
     fi
 fi
-echo "NMF-ROI extraction from File ${FIRSTTIFF} to ${LASTTIFF}."
+echo "ROI COREGISTRATION from File ${FIRSTTIFF} to ${LASTTIFF}."
 
 FILES=($RIDPATH/*$RIDHASH.json)
 
@@ -30,11 +30,11 @@ ZBNUMFILES=$(($NUMFILES - 1))
 if [ $ZBNUMFILES == 0 ]; then
     PARAMSPATH=${FILES[0]}
     echo "Params path: $PARAMSPATH"
- 
+
     export PARAMSPATH RIDHASH
 
     # submit to slurm
-    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/nmf_tiff_array.sbatch
+    sbatch --array=$FIRSTTIFF-$LASTTIFF /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/coregister_tiff.sbatch $PARAMSPATH
 
 fi
 

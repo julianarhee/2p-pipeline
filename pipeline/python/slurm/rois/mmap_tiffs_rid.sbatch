@@ -5,8 +5,8 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-1:00 # Running time of 3 hours
-#SBATCH --mem 65536 # Memory request of 12 GB 
+#SBATCH -t 0-0:30 # Running time of 30 min
+#SBATCH --mem 71680 #65536 # Memory request of 12 GB 
 #SBATCH -o mmap_%A_%a.out # Standard output
 #SBATCH -e mmap_%A_%a.err # Standard error
 
@@ -35,5 +35,5 @@ fi
 cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/mmap_tiffs_rid.py $FILENAME
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/mmap_tiffs_rid.py $FILENAME
 

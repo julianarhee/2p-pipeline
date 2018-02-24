@@ -57,10 +57,10 @@ def write_dict_to_json(pydict, writepath):
 
 def save_sparse_hdf5(matrix, prefix, fname):
     """ matrix: sparse matrix
-    prefix: prefix of dataset 
+    prefix: prefix of dataset
     fname : name of h5py file where matrix will be saved
     """
-    assert matrix.__class__==scipy.sparse.csc.csc_matrix,'Expecting csc/csr, got %s' % matrix.__class__ #matrix.__class__==scipy.sparse.csr.csr_matrix or 
+    assert matrix.__class__==scipy.sparse.csc.csc_matrix,'Expecting csc/csr, got %s' % matrix.__class__ #matrix.__class__==scipy.sparse.csr.csr_matrix or
     with h5py.File(fname,mode='a') as f:
         for info in ['data','indices','indptr','shape']:
             key = '%s_%s'%(prefix,info)
@@ -78,7 +78,7 @@ def save_sparse_hdf5(matrix, prefix, fname):
                 f.create_dataset(key, data=data)
         key = prefix+'_type'
         val = matrix.__class__.__name__
-        f.attrs[key] = np.string_(val) 
+        f.attrs[key] = np.string_(val)
 
 def load_sparse_mat(prefix, fname):
     with h5py.File(fname, mode='r') as f:
@@ -133,7 +133,7 @@ def _todict(matobj):
 
 def _tolist(ndarray):
     '''
-    A recursive function which constructs lists from cellarrays 
+    A recursive function which constructs lists from cellarrays
     (which are loaded as numpy ndarrays), recursing into the elements
     if they contain matobjects.
     '''
@@ -151,9 +151,16 @@ def _tolist(ndarray):
 # -----------------------------------------------------------------------------
 # Methods for accessing or changing datafiles and their sources:
 # -----------------------------------------------------------------------------
+def replace_root(origdir, rootdir, animalid, session):
+    orig = origdir.split('/%s/%s' % (animalid, session))[0]
+    origdir = origdir.replace(orig, rootdir)
+    print "ORIG ROOT: %s" % origdir
+    print "NEW ROOT: %s" % origdir
+    return origdir
+
 def get_source_info(acquisition_dir, run, process_id):
     info = dict()
-    
+
     # Set basename for files created containing meta/reference info:
     # -------------------------------------------------------------
     run_info_basename = '%s' % run #functional_dir
@@ -164,12 +171,12 @@ def get_source_info(acquisition_dir, run, process_id):
     #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     pidinfo_path = os.path.join(acquisition_dir, run, 'processed', '%s.json' % pid_info_basename)
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run)
-    
+
     # Load run meta info:
     # -------------------------------------------------------------
     with open(runmeta_path, 'r') as r:
         runmeta = json.load(r)
-    
+
     # Load PID:
     # -------------------------------------------------------------
     with open(pidinfo_path, 'r') as f:
@@ -177,7 +184,7 @@ def get_source_info(acquisition_dir, run, process_id):
 
     if len(process_id) == 0 and len(pdict.keys()) > 0:
         process_id = pdict.keys()[0]
-    
+
     PID = pdict[process_id]
 
     mc_sourcedir = PID['PARAMS']['motion']['destdir']
@@ -185,7 +192,7 @@ def get_source_info(acquisition_dir, run, process_id):
     print "Writing MC EVAL results to: %s" % mc_evaldir
     if not os.path.exists(mc_evaldir):
         os.makedirs(mc_evaldir)
-        
+
     # Get correlation of MEAN image (mean slice across time) to reference:
     if PID['PARAMS']['motion']['correct_motion'] is True:
         ref_filename = 'File%03d' % PID['PARAMS']['motion']['ref_file']
@@ -193,7 +200,7 @@ def get_source_info(acquisition_dir, run, process_id):
     else:
         ref_filename = 'File001'
         ref_channel = 'Channel01'
-        
+
     # Create dict to pass around to methods
     info['process_dir'] = PID['DST']
     info['source_dir'] = mc_sourcedir
@@ -205,7 +212,7 @@ def get_source_info(acquisition_dir, run, process_id):
     info['d3'] = len(runmeta['slices'])
     info['T'] = runmeta['nvolumes']
     info['ntiffs'] = runmeta['ntiffs']
-    
+
     return info
 
 def get_tiff_paths(rootdir='', animalid='', session='', acquisition='', run='', tiffsource=None, sourcetype=None, auto=False):
@@ -305,16 +312,16 @@ def change_permissions_recursive(path, mode):
             #os.chmod(dir, mode)
         for file in [os.path.join(root, f) for f in files]:
             os.chmod(file, mode)
-            
+
 def hash_file_read_only(fpath, hashtype='sha1'):
     hashid = hash_file(fpath, hashtype=hashtype)
     hashed_fpath = "%s_%s%s" % (os.path.splitext(fpath)[0], hashid, os.path.splitext(fpath)[1])
     shutil.move(fpath, hashed_fpath)
     print "Hashed file: %s" % hashed_fpath
-    
+
     change_permissions_recursive(hashed_fpath, S_IREAD|S_IRGRP|S_IROTH)
     print "Set READ-ONLY."
-    
+
     return hashed_fpath
 
 def hash_file(fpath, hashtype='sha1'):

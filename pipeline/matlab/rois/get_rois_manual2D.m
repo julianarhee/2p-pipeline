@@ -9,7 +9,7 @@ clc; clear all;
 
 rootdir = '/mnt/odyssey'
 animalid = 'CE074' %'JR063';
-session = '20180213' %'20171202_JR063';
+session = '20180220' %'20171202_JR063';
 roi_id = 'rois003' %'e4893c';
 
 %% Load RID parameter set:
@@ -95,7 +95,13 @@ end
 
 %% Get AVERAGE SLICE files:
 % average_images_dir = fullfile(tiffsource_path, [sourcetype_dir '_average_slices']);
-average_images_dir = [RID.SRC sprintf('_%s_slices', zproj_type)];
+rid_src_dir = RID.SRC;
+if ~any(strfind(rid_src_dir, rootdir))
+    orig_root = rid_src_dir(1:strfind(rid_src_dir, sprintf('/%s/%s', animalid, session))-1);
+    fprintf('Replacing root dir...\n');
+    rid_src_dir = strrep(rid_src_dir, orig_root, rootdir);
+end
+average_images_dir = [rid_src_dir sprintf('_%s_slices', zproj_type)];
 if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
     slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
 else
@@ -109,6 +115,7 @@ assert(length(slice_tiffs)==length(roi_slices), 'RID %s -- WARNING:  Incorrect n
 %% create empty structure and cells to save roi info
 roiparams = struct;
 nrois = {};
+
 sourcepaths = {};
 % maskpaths = {};
 allmasks = {};
@@ -151,6 +158,11 @@ for slidx = roi_slices
 
     %defining target directories and filepaths
     roi_base_dir = RID.DST;
+    if ~any(strfind(roi_base_dir, rootdir))
+        orig_root = roi_base_dir(1:strfind(roi_base_dir, sprintf('/%s/%s', animalid, session))-1);
+        fprintf('Replacing root dir...\n');
+        roi_base_dir = strrep(roi_base_dir, orig_root, rootdir);
+    end
 
 %     mask_dir = fullfile(roi_base_dir,'masks');
 %     if ~isdir(mask_dir)

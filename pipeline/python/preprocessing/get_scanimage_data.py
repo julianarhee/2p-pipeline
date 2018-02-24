@@ -130,7 +130,7 @@ def extract_options(options):
     (options, args) = parser.parse_args(options) 
     if options.slurm is True:
         if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/julianarhee/testdata'
+            options.rootdir = '/n/coxfs01/2p-data'
         if 'coxfs01' not in options.path_to_si_base:
             options.path_to_si_base = '/n/coxfs01/2p-pipeline/pkgs/ScanImageTiffReader-1.1-Linux'
     if '~' in options.rootdir:
