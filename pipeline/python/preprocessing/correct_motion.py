@@ -189,13 +189,13 @@ def do_motion(options):
     print "SOURCE:", source_dir
     print "DEST:", write_dir
     print "======================================================="
-    if not os.path.exists(write_dir):
-        os.makedirs(write_dir)
 
     # -------------------------------------------------------------
     # Do correction:
     # -------------------------------------------------------------
     if do_mc is True:
+        if not os.path.exists(write_dir):
+            os.makedirs(write_dir)
         print "================================================="
         print "Doing MOTION correction."
         print "================================================="
@@ -216,18 +216,19 @@ def do_motion(options):
     # -------------------------------------------------------------
     # Check for Interleaving/Deinterleaving:
     # -------------------------------------------------------------
-    if interleave_write_tiffs is True:
-        slice_dir = copy.copy(write_dir)
-        volume_dir = slice_dir.split('_slices')[0]
-        interleave_tiffs(slice_dir, volume_dir, runmeta_path)
-    else:
-        volume_dir = copy.copy(write_dir)
-        slice_dir = volume_dir + '_slices'
-        
-    if multiplanar is True:
-        print "Multiple slices/channels found. Sorting deinterleaved tiffs."
-        sort_deinterleaved_tiffs(slice_dir, runmeta_path)
-
+    if do_mc is True:
+        if interleave_write_tiffs is True:
+            slice_dir = copy.copy(write_dir)
+            volume_dir = slice_dir.split('_slices')[0]
+            interleave_tiffs(slice_dir, volume_dir, runmeta_path)
+        else:
+            volume_dir = copy.copy(write_dir)
+            slice_dir = volume_dir + '_slices'
+            
+        if multiplanar is True:
+            print "Multiple slices/channels found. Sorting deinterleaved tiffs."
+            sort_deinterleaved_tiffs(slice_dir, runmeta_path)
+    
     # ========================================================================================
     # UPDATE PREPROCESSING SOURCE/DEST DIRS, if needed:
     # ========================================================================================
