@@ -7,6 +7,7 @@ import os
 import commands
 import traceback
 import json
+import shutil
 
 parser = argparse.ArgumentParser(
     description = '''Look for XID files in session directory.\nFor PID files, run tiff-processing and evaluate.\nFor RID files, wait for PIDs to finish (if applicable) and then extract ROIs and evaluate.\n''',
@@ -76,7 +77,10 @@ if not os.path.exists(RIDDIR):
     fatal("Unknown ANIMALID [%s] or SESSION [%s]... exiting!" % (ANIMALID, SESSION))
 
 rid_files = [os.path.join(RIDDIR, r) for r in os.listdir(RIDDIR) if r.endswith('json')]
-eval_files = [os.path.join(os.path.split(r)[0], 'completed', os.path.split(r)[-1]) for r in rid_files]
+if len(RIDHASH) > 0:
+    rid_files  = [r for r in rid_files if RIDHASH in r]
+
+#eval_files = [os.path.join(os.path.split(r)[0], 'completed', os.path.split(r)[-1]) for r in rid_files]
 #info("Processing %i RID files in dir: %s" % (RIDDIR, len(rid_files))
 
 # make sure there are rids
@@ -91,7 +95,13 @@ for ri,rid_path in enumerate(rid_files):
 ###############################################################################
 #                               run the pipeline                               #
 ################################################################################
- 
+completed_dir = os.path.join(ROOTDIR, ANIMALID, SESSION, 'ROIs', 'tmp_rids', 'completed')
+error_dir = os.path.join(ROOTDIR, ANIMALID, SESSION, 'ROIs', 'tmp_rids', 'error')
+if not os.path.exists(completed_dir):
+    os.makedirs(completed_dir)
+if not os.path.exists(error_dir):
+    os.makedirs(error_dir)
+
 
 # STEP1: MEMMAP TIFFS. All RIDs will be processed in parallel since they don't
 #        have any dependencies
@@ -110,7 +120,7 @@ if mmap_tiffs is True:
         #info("Submitting MEMMAP job with CMD:\n%s" % cmd)
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]
-        mm_jobids[rid_file] = jobnum
+        mm_jobids[rhash] = jobnum
         info("MEMMAP jobids [%s]: %s" % (rhash, jobnum))
     
     
@@ -119,7 +129,7 @@ if mmap_tiffs is True:
 #        it will remain in the queue and need to be canceled explicitly.
 #        An alternative would be to use 'afterany' and make each job check for
 #        the successful execution of the prerequisites.
-do_nmf = True
+do_nmf = True 
 if do_nmf is True:
     info("*********************NMF*************************") 
     rid_jobids = {}
@@ -138,7 +148,7 @@ if do_nmf is True:
             last_tiff = ntiffs
         else:
             last_tiff = int(last_tiff)
-        jobdep = mm_jobids[rid_file]
+        jobdep = mm_jobids[rhash]
         cmd = "sbatch --array={FIRST}-{LAST} \
                        --job-name={PROCID}.nmf.{RHASH} \
                         --depend=afterok:{JOBDEP} \
@@ -147,9 +157,9 @@ if do_nmf is True:
         #info("Submitting NMF job with CMD:\n%s" % cmd)
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]
-        rid_jobids[rid_file] = jobnum
+        rid_jobids[rhash] = jobnum
         info("NMF calling jobids [%s]: %s" % (rhash, jobnum))
-           
+            
 
 # STEP3: ROI EVALUATION: Each evaluation call will start when the corresponding NMF step 
 #        finishes sucessfully. Note, if STEP2 fails, all jobs depending on
@@ -163,18 +173,17 @@ if evaluate_rois is True:
     eval_jobids = {}
     for rid_file in rid_files:
         rhash = os.path.splitext(os.path.split(rid_file)[-1])[0].split('_')[-1]
-        jobdep = rid_jobids[rid_file]
-        cmd = "sbatch --array={FIRST}-{LAST} \
-                --job-name={PROCID}.coreg.{RHASH} \
+        jobdep = rid_jobids[rhash]
+        cmd = "sbatch --job-name={PROCID}.coreg.{RHASH} \
                 --depend=afterok:{JOBDEP} \
     		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/eval_rois.sbatch \
     		{FILEPATH} {SNR} {RCORR}".format(PROCID=piper, RHASH=rhash, FILEPATH=rid_file, FIRST=first_tiff, LAST=last_tiff, JOBDEP=jobdep, SNR=min_snr, RCORR=rval_thr)
         #info("Submitting ROI EVAL job with CMD:\n%s" % cmd)
         status, joboutput = commands.getstatusoutput(cmd)
-        print "JOB INFO:"
-        print joboutput
+        #print "JOB INFO:"
+        #print joboutput
         jobnum = joboutput.split(' ')[-1]
-        eval_jobids[rid_file] = jobnum
+        eval_jobids[rhash] = jobnum
         info("ROI EVAL jobids [%s]: %s" % (rhash, jobnum))
 
  
