@@ -104,8 +104,8 @@ def extract_options(options):
     parser.add_option('--deconv', action='store', dest='nmf_deconv', default='oasis', help='[nmf]: method deconvolution [default: oasis]')
     parser.add_option('--gSig', action='store', dest='nmf_gsig', default=8, help='[nmf]: Half size of neurons [default: 8]')
     parser.add_option('--K', action='store', dest='nmf_K', default=10, help='[nmf]: N expected components per patch [default: 10]')
-    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch [default: 30]')
-    parser.add_option('--stride', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap (keep it at least large as 4 times the neuron size) [default: 5]')
+    parser.add_option('--patch', action='store', dest='nmf_rf', default=30, help='[nmf]: Half size of patch [default: 60]')
+    parser.add_option('--stride', action='store', dest='nmf_stride', default=5, help='[nmf]: Amount of patch overlap (keep it at least large as 4 times the neuron size) [default: 20]')
     parser.add_option('--bg', action='store', dest='nmf_gnb', default=1, help='[nmf]: Number of background components [default: 1]')
     parser.add_option('--nmf-order', action='store', dest='nmf_p', default=2, help='[nmf]: Order of autoregressive system [default: 2]')
     parser.add_option('--border', action='store', dest='border_pix', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
@@ -189,9 +189,9 @@ def create_rid(options):
 
     if use_max_nrois is False:
         coreg_fidx = int(options.ref_file) - 1
-        reference_filename = "File%03d" % int(options.ref_file)
+        ref_filename = "File%03d" % int(options.ref_file)
     else:
-        reference_filename = None
+        ref_filename = None
         coreg_fidx = None
 
     eval_key = options.eval_key
@@ -266,7 +266,7 @@ def create_rid(options):
                                          keep_good_rois=keep_good_rois,
                                          use_max_nrois=use_max_nrois,
                                          coreg_fidx=coreg_fidx,
-                                         reference_filename=reference_filename,
+                                         ref_filename=ref_filename,
                                          eval_key=eval_key,
                                          dist_maxthr=dist_maxthr,
                                          dist_exp=dist_exp,
@@ -337,7 +337,7 @@ def load_roidict(session_dir):
 
 def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run='',
                     movie_idxs=[], fr=None, signal_channel=1,
-                    gSig=[8,8], rf=30, stride=5, K=10, p=2, gnb=1, merge_thr=0.8,
+                    gSig=[8,8], rf=60, stride=10, K=10, p=2, gnb=1, merge_thr=0.8,
                     init_method='greedy_roi', method_deconv='oasis',
                     rval_thr=0.8, min_SNR=2, decay_time=1.0, use_cnn=False, cnn_thr=0.8,
                     use_average=True, save_movies=True, thr_plot=0.8,
@@ -427,7 +427,7 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
 def set_options_coregister(rootdir='', animalid='', session='', auto=False,
                            roi_source='', roi_type='',
-                           use_max_nrois=True, keep_good_rois=True, coreg_fidx=None, reference_filename=None,
+                           use_max_nrois=True, keep_good_rois=True, coreg_fidx=None, ref_filename=None,
                            eval_key="",
                            dist_maxthr=0.1, dist_exp=1, dist_thr=0.5, dist_overlap_thr=0.8):
 
@@ -459,7 +459,7 @@ def set_options_coregister(rootdir='', animalid='', session='', auto=False,
 
     params['keep_good_rois'] = keep_good_rois
     params['use_max_nrois'] = use_max_nrois
-    params['ref_filename'] = reference_filename
+    params['ref_filename'] = ref_filename
     params['coreg_fidx'] = coreg_fidx
 
     params['dist_maxthr'] = dist_maxthr
