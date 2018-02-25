@@ -572,7 +572,8 @@ def par_mmap_tiffs(tmp_rid_path):
 
         if mmap_hash not in mmap_dir:
             mmap_dir_hash =  mmap_dir + '_' + mmap_hash
-            os.rename(mmap_dir, mmap_dir_hash)
+            if not os.path.exists(mmap_dir_hash):
+                os.rename(mmap_dir, mmap_dir_hash)
             RID['PARAMS']['mmap_source'] = mmap_dir_hash
             mmap_dir = mmap_dir_hash
             write_dict_to_json(RID, tmp_rid_path)
