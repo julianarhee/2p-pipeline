@@ -57,29 +57,6 @@ This output is used by align_acquisition_events.py to use the frame_stim_on and 
 combined with a user-specified baseline period (default, 1 sec) to get trial-epoch aligned frame indices.
 '''
 
-
-        RUN[trialname]['trial_hash'] = trialhash
-        RUN[trialname]['block_idx'] = trialevents[trialhash]['mw_trial']['block_idx']
-        if one_to_one is True:
-            RUN[trialname]['ntiffs_per_auxfile'] = 1
-        else:
-            RUN[trialname]['ntiffs_per_auxfile'] = nfiles
-        RUN[trialname]['behavior_data_path'] = mwtrial_path
-        RUN[trialname]['serial_data_path'] = serialfn_path
-
-        RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
-        RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
-        RUN[trialname]['stim_dur_ms'] = trialevents[trialhash]['mw_trial']['stim_off_times']\
-                                                - trialevents[trialhash]['mw_trial']['stim_on_times']
-        RUN[trialname]['iti_dur_ms'] = trialevents[trialhash]['mw_trial']['iti_duration']
-        RUN[trialname]['stimuli'] = trialevents[trialhash]['mw_trial']['stimuli']
-
-        RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
-        RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
-        RUN[trialname]['trial_in_run'] = trialnum
-
-
-
 import os
 import json
 import re
