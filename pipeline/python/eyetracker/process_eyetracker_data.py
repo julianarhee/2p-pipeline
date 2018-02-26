@@ -263,6 +263,8 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--retinobar', action='store_true', dest='retinobar', default=False, help="Boolean flag to indicate this is a retionotopy-style run")
+
 
     parser.add_option('-m', '--movie', action='store_true', dest='make_movie', default='store_true', help='Boolean to indicate whether to make anotated movie of frames')
 
@@ -281,7 +283,6 @@ def extract_options(options):
     return options
 
 def process_data(options):
-    options = extract_options(options)
 
     # # Set USER INPUT options:
     rootdir = options.rootdir
@@ -289,6 +290,7 @@ def process_data(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    retinobar = options.retinobar
 
     make_movie = options.make_movie
 
@@ -308,8 +310,11 @@ def process_data(options):
 
     #****define input directories***
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    raw_folder = [r for r in os.listdir(run_dir) if 'raw' in r and os.path.isdir(os.path.join(run_dir, r))][0]
+    print 'Raw folder: %s'%(raw_folder)
 
-    eye_root_dir = os.path.join(run_dir,'raw','eyetracker_files')
+    eye_root_dir = os.path.join(run_dir,raw_folder,'eyetracker_files')
+
     file_folder = os.listdir(eye_root_dir)[0]
 
     im_dir = os.path.join(eye_root_dir,file_folder,'frames')
@@ -534,10 +539,19 @@ def process_data(options):
 
         stim_on_times = np.zeros((len(trial_info)))
         stim_off_times = np.zeros((len(trial_info)))
-        for ntrial in range(len((trial_info))):
-            trial_string = 'trial%05d'%(ntrial+1)
-            stim_on_times[ntrial]=trial_info[trial_string]['stim_on_times']/1E3#convert to ms
-            stim_off_times[ntrial]=trial_info[trial_string]['stim_off_times']/1E3#convert to ms
+        if retinobar:
+          start_time_abs = trial_info['1']['start_time_ms']
+          for ntrial in range(len((trial_info))):
+                trial_string = '%d'%(ntrial+1)
+                stim_on_times[ntrial]=(trial_info[trial_string]['start_time_ms']-start_time_abs)/1E3#convert to ms
+                stim_off_times[ntrial]=(trial_info[trial_string]['end_time_ms']-start_time_abs)/1E3#convert to ms
+        else:
+            for ntrial in range(len((trial_info))):
+                trial_string = 'trial%05d'%(ntrial+1)
+                stim_on_times[ntrial]=trial_info[trial_string]['stim_on_times']/1E3#convert to ms
+                stim_off_times[ntrial]=trial_info[trial_string]['stim_off_times']/1E3#convert to ms
+
+ 
 
         #***get traces for relevant features**
         print 'Processing traces for extracted features'
@@ -598,13 +612,15 @@ def process_data(options):
             tset = file_grp.create_dataset('camera_time',camera_time.shape, camera_time.dtype)
         tset[...] = camera_time
 
+        
         if 'blink_events' not in file_grp.keys():
             blink_ev_set = file_grp.create_dataset('blink_events',flag_event.shape, flag_event.dtype)
         blink_ev_set[...] = flag_event
 
-        if 'blink_times' not in file_grp.keys():
-            blink_set = file_grp.create_dataset('blink_times',blink_times.shape, blink_times.dtype)
-        blink_set[...] = blink_times
+        if len(blink_times)>0:#deal with empty blink list
+            if 'blink_times' not in file_grp.keys():
+                blink_set = file_grp.create_dataset('blink_times',blink_times.shape, blink_times.dtype)
+            blink_set[...] = blink_times
 
 
         if 'pupil' in user_rect:
@@ -685,7 +701,6 @@ def process_data(options):
             make_variable_plot(cr_df, 'camera time', 'cr position y',stim_on_times,stim_off_times, blink_times, fig_file)
 
 def parse_data(options):
-    options = extract_options(options)
 
     # # Set USER INPUT options:
     rootdir = options.rootdir
@@ -714,7 +729,7 @@ def parse_data(options):
 
     output_file_dir = input_file_dir
 
-    output_fig_dir = os.path.join(output_root_dir,'figures')
+    output_fig_dir = os.path.join(output_root_dir,'figures','parsed')
     if not os.path.exists(output_fig_dir):
         os.makedirs(output_fig_dir)
 
@@ -729,6 +744,8 @@ def parse_data(options):
 
     camera_time = file_grp['camera_time'][:]
     blink_events = file_grp['blink_events'][:]
+    if 'blink_Times' not in file_grp.keys():
+        blink_times = file_grp['blink_times'][:]
     pupil_radius = file_grp['pupil_radius'][:]
     pupil_dist = file_grp['pupil_distance'][:]
 
@@ -806,9 +823,11 @@ def parse_data(options):
     fig, ax = pl.subplots()
     fig2, ax2 = pl.subplots()
 
+    trial_include_count = 0
+
     for ntrial in range(0, len((trial_info))):
         if ntrial%100 == 0:
-            print 'Parsing trial %d of %d'%(ntrial,len(eye_info))
+            print 'Parsing trial %d of %d'%(ntrial,len(trial_info))
         trial_string = 'trial%05d'%(ntrial+1)
         
         #copy some details from paradigm file
@@ -829,6 +848,8 @@ def parse_data(options):
         eye_info[trial_string]['on_idx'] = on_idx
         eye_info[trial_string]['end_idx'] = end_idx
         eye_info[trial_string]['off_idx'] = off_idx
+        eye_info[trial_string]['exclude_blink'] = exclude_blink
+        eye_info[trial_string]['pupil_radius_threshold'] = pupil_rad_thresh
 
         #get some feature values for stimulation and baseline periods
         pupil_sz_baseline = np.mean(pupil_radius[start_idx:on_idx])
@@ -851,6 +872,7 @@ def parse_data(options):
      
         
         if trial_include:
+            trial_include_count = trial_include_count+1
             ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'k',alpha =0.1,linewidth = 0.5)
             pup_rad_mat.append(pupil_radius[start_idx:end_idx]-pupil_sz_baseline)
             
@@ -858,9 +880,10 @@ def parse_data(options):
             pup_dist_mat.append(pupil_dist[start_idx:end_idx]-pupil_dist_baseline) 
         else:
             ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'r',alpha =0.1)
-            ax.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'r',alpha =0.1)
+            ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'r',alpha =0.1)
             
-
+    print('***** FINAL TRIAL COUNT *****')
+    print('%d of %d trials passed NOT excluded')%(trial_include_count,len(trial_info))
 
     print 'Saving figures to: %s' % (output_fig_dir)
     ax.plot(trial_time, np.nanmean(pup_rad_mat,0),'k',alpha=1)
@@ -878,11 +901,38 @@ def parse_data(options):
     ymin, ymax = ax2.get_ylim()
     ax2.axvline(x=0, ymin=ymin, ymax = ymax, linewidth=1, color='k',linestyle='--')
     ax2.set_xlabel('Time ASO',fontsize=16)
-    ax2.set_xlabel('Pupil Radius',fontsize=16)
+    ax2.set_ylabel('Pupil Distance',fontsize=16)
     sns.despine(offset=2, trim=True)
 
     fig_file = os.path.join(output_fig_dir,'parsed_pupil_distance_%s_%s_%s.png'%(session,animalid,run))
     fig2.savefig(fig_file, bbox_inches='tight')
+    pl.close()
+
+    df = pd.DataFrame({'camera time': camera_time,
+                                   'pupil radius': pupil_radius,
+                                   'pupil distance': pupil_dist
+                                   })
+
+    fig_file = os.path.join(output_fig_dir,'pupil_radius_trials_marked_%s_%s_%s.png'%(session,animalid,run))
+    feature = 'pupil radius'
+    stim_bar_loc = df[feature].min() - 1
+    star_loc = df[feature].max() + 1
+
+    grid = sns.FacetGrid(df, aspect=15)
+    grid.map(plt.plot, 'camera time', feature, linewidth=0.5)
+
+    for ax in grid.axes.flat:
+        for ntrial in range(len(eye_info)):
+            trial_string = 'trial%05d'%(ntrial+1)
+            if eye_info[trial_string]['include_trial'] :
+                ax.plot([trial_info[trial_string]['stim_on_times']/1E3,trial_info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'k', label=None)
+            else:
+                ax.plot([trial_info[trial_string]['stim_on_times']/1E3,trial_info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'r', label=None)
+        if len(blink_times)>0:
+            ax.plot(blink_times, np.ones((len(blink_times),))*star_loc,'r*')#start blink events
+
+    sns.despine(trim=True, offset=1)
+    pl.savefig(fig_file, bbox_inches='tight')
     pl.close()
 
 
@@ -899,10 +949,14 @@ def parse_data(options):
 #-----------------------------------------------------
 
 def main(options):
+
+    options = extract_options(options)
     print 'Processing raw frames'
     process_data(options)
-    print 'Parsing eye features by trial'
-    parse_data(options)
+
+    if not options.retinobar:
+        print 'Parsing eye features by trial'
+        parse_data(options)
 
 
 if __name__ == '__main__':
