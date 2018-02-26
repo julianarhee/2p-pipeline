@@ -570,7 +570,7 @@ def match_file_against_ref(REF, file_path, params_thr, pass_rois_dict=None, asdi
 
     if file_path == params_thr['ref_filepath']: #os.path.basename(params_thr['ref_filepath']):
         print "Skipping REFERENCE."
-        pass_roi_idxs = np.array(REF['pass_roi_idxs'])
+        pass_roi_idxs = np.arange(0, len(REF['pass_roi_idxs'])) #np.array(REF['pass_roi_idxs'])
         D = np.zeros((2,2))
         matches = [[v, v] for v in pass_roi_idxs] #pass_roi_idxs.copy()
         A2 = REF['roimat'].copy()
@@ -1188,9 +1188,9 @@ def find_universal_matches(coreg_results_path, all_matches):
     ref_file = str(params_thr['ref_filename'])
     #% Find intersection of all matches with reference (aka, "universal matches"):
     filenames = all_matches.keys()
-    filenames.extend([str(params_thr['ref_filename'])])
+    #filenames.extend([str(params_thr['ref_filename'])])
     filenames = sorted(list(set(filenames)), key=natural_keys)
-    ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in params_thr['excluded_tiffs']]
+    ref_idxs = [[comp[0] for comp in all_matches[f]] for f in all_matches.keys() if f not in params_thr['excluded_tiffs'] and not f == ref_file]
     ref_rois = set(ref_idxs[0])
     for s in ref_idxs[1:]:
         ref_rois.intersection_update(s)
