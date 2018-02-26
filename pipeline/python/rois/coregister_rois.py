@@ -77,7 +77,7 @@ User can choose to coregister only subsets of ROIs by providing a key that ident
            - attrs:
                source   :  path to ROI source (where roimat is from)
 
-           /roi_idxs - dataset
+           /pass_roi_idxs - dataset
            (N, ) array  :  indices of ROIs in current set (indices are from source, so if filtered, not necessarily consecutive)
            - attrs:
                --
@@ -570,9 +570,9 @@ def match_file_against_ref(REF, file_path, params_thr, pass_rois_dict=None, asdi
 
     if file_path == params_thr['ref_filepath']: #os.path.basename(params_thr['ref_filepath']):
         print "Skipping REFERENCE."
-        pass_roi_idxs = np.arange(0, len(REF['pass_roi_idxs'])) #np.array(REF['pass_roi_idxs'])
+        pass_roi_idxs = np.array(REF['pass_roi_idxs']) #np.arange(0, len(REF['pass_roi_idxs'])) #np.array(REF['pass_roi_idxs'])
         D = np.zeros((2,2))
-        matches = [[v, v] for v in pass_roi_idxs] #pass_roi_idxs.copy()
+        matches = [[v, v] for v in range(len(pass_roi_idxs))] #pass_roi_idxs.copy()
         A2 = REF['roimat'].copy()
         img = REF['img'].copy()
         dims = REF['dims']
@@ -694,7 +694,7 @@ def find_matches_nmf(RID, coreg_output_dir, rootdir=''):
             src[...] = results['A'].todense()
             src.attrs['source'] = curr_filepath
 
-            kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'roi_idxs']), results['pass_roi_idxs'].shape, results['pass_roi_idxs'].dtype)
+            kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'pass_roi_idxs']), results['pass_roi_idxs'].shape, results['pass_roi_idxs'].dtype)
             kpt[...] = results['pass_roi_idxs']
 
             dist = coreg_outfile.create_dataset('/'.join([curr_file, 'distance']), results['distance_thr'].shape, results['distance_thr'].dtype)
@@ -1130,7 +1130,7 @@ def collate_coreg_results(tmp_rid_path, rootdir=''):
         src[...] = roimat
         src.attrs['source'] = str(results['source'])
 
-        kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'roi_idxs']), results['pass_roi_idxs'].shape, results['pass_roi_idxs'].dtype)
+        kpt = coreg_outfile.create_dataset('/'.join([curr_file, 'pass_roi_idxs']), results['pass_roi_idxs'].shape, results['pass_roi_idxs'].dtype)
         kpt[...] = results['pass_roi_idxs']
 
         dist = coreg_outfile.create_dataset('/'.join([curr_file, 'distance']), results['distance'].shape, results['distance'].dtype)
