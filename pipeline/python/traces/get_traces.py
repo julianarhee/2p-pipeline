@@ -712,17 +712,17 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
 
 #%%
 #
-rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
-animalid = 'CE074' #'JR063' #'CE059' #'JR063'
-session = '20180215' #'20171128_JR063' #'20171009_CE059' #'20171202_JR063'
-acquisition = 'FOV2_zoom1x_LI' #'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-run = 'gratings_phasemod' #'gratings_static' #'gratings_phasemod' #'scenes'
-slurm = False
-
-trace_id = 'traces001'
-auto = False
-create_new = False
-
+#rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
+#animalid = 'CE074' #'JR063' #'CE059' #'JR063'
+#session = '20180215' #'20171128_JR063' #'20171009_CE059' #'20171202_JR063'
+#acquisition = 'FOV2_zoom1x_LI' #'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
+#run = 'gratings_phasemod' #'gratings_static' #'gratings_phasemod' #'scenes'
+#slurm = False
+#
+#trace_id = 'traces001'
+#auto = False
+#create_new = False
+#
 #if slurm is True:
 #    if 'coxfs01' not in rootdir:
 #        rootdir = '/n/coxfs01/2p-data'
@@ -897,7 +897,7 @@ if create_new is True or not os.path.exists(maskdict_path):
 all_files = ['File%03d' % int(i+1) for i in range(ntiffs)]
 tiffs_in_set = [t for t in all_files if t not in TID['PARAMS']['excluded_tiffs']]
 maskfigs = [i for i in os.listdir(trace_figdir) if 'rois_File' in i and i.endswith('png')]
-if len(maskfigs) == 0 or not len(maskfigs) == len(tiffs_in_set):
+if len(maskfigs) == 0 or not len(maskfigs) == len(tiffs_in_set) or create_new is True:
     plot_roi_masks(TID, RID, trace_figdir=trace_figdir, rootdir=rootdir)
 
 print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
