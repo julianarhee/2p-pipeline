@@ -40,11 +40,23 @@ def main():
         os.makedirs(logdir)
     print "Logging to dir: %s" % logdir
     #print "Cluster backend: %s" % cluster_backend
-
+    
+    # Make sure TMP RID file is in 'completed' dir:
+    if 'completed' not in rid_path:
+        completed_dir = os.path.join(os.path.split(rid_path)[0], 'completed')
+        if not os.path.exists(completed_dir):
+            os.makedirs(completed_dir)
+        tmp_rid_dir = os.path.split(rid_path)[0]
+        rid_fn = os.path.split(rid_path)[-1]
+        if os.path.exists(rid_path):
+            print "Moving completed tmp file to proper dir."
+            shutil.move(os.path.join(tmp_rid_dir, rid_fn), os.path.join(completed_dir, rid_fn))
+            print "Evaluating ROI file at: %s" % os.path.join(completed_dir, rid_fn)
+    
     logging.basicConfig(level=logging.DEBUG, filename="%s/logfile_%s_roieval" % (logdir, roi_hash), filemode="a+",
                         format="%(asctime)-15s %(levelname)-8s %(message)s")
 
-    logging.info("RID %s -- starting memmapping ..." % roi_hash)
+    logging.info("RID %s -- starting ROI EVAL ..." % roi_hash)
     logging.info(rid_path)
    
     eval_filepath = run_rid_eval(rid_path, nprocs=nproc, cluster_backend='local', rootdir='/n/coxfs01/2p-data', min_SNR=snr, rval_thr=rcorr)

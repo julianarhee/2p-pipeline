@@ -1,5 +1,5 @@
 #!/bin/bash
-# process_run.sbatch
+# mmap_tiffs_rid.sbatch
 #
 #SBATCH -J mmap # A single job name for the array
 #SBATCH -p cox # run on cox gpu to use correct env 
@@ -23,17 +23,17 @@ for v in ${!FILES_*};do FILES[${v#FILES_}]="${!v}"; done
 FILENAME=${FILES[$SLURM_ARRAY_TASK_ID]}
 echo "File: ${FILENAME}"
 
-# create logging dir
-BASEDIR="$(dirname "$FILENAME")"
-OUTDIR="${BASEDIR}/logging_$RIDHASH"
-echo ${OUTDIR}
-
-# make and move into new directory, and run:
-if [ ! -d "$OUTDIR" ]; then
-    mkdir $OUTDIR
-fi
-cd ${OUTDIR}
-
+## create logging dir
+#BASEDIR="$(dirname "$FILENAME")"
+#OUTDIR="${BASEDIR}/logging_$RIDHASH"
+#echo ${OUTDIR}
+#
+## make and move into new directory, and run:
+#if [ ! -d "$OUTDIR" ]; then
+#    mkdir $OUTDIR
+#fi
+#cd ${OUTDIR}
+#
 # run processing on raw data
 python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/mmap_tiffs_rid.py $FILENAME
 

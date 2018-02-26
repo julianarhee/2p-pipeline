@@ -405,15 +405,15 @@ def setup_coreg_params(RID, rootdir=''):
         params_thr['ref_filepath'] = roi_source_paths[nmax_idx]
     else:
         # Use a reference file (either MC reference or default, File001):
-        reference_filename = RID['PARAMS']['options']['reference_filename']
-        coreg_fidx = int(RID['PARAMS']['options']['coreg_ridx'])
-        if reference_filename is None or len( reference_filename) == 0:
-            reference_filename = src_nrois[0][0] #'File001'
+        ref_filename = RID['PARAMS']['options']['ref_filename']
+        coreg_fidx = int(RID['PARAMS']['options']['coreg_fidx'])
+        if ref_filename is None or len( ref_filename) == 0:
+            ref_filename = src_nrois[0][0] #'File001'
             coreg_fidx = 0
-            print "***WARNING***NO reference file specified! Using %s." % reference_filename
+            print "***WARNING***NO reference file specified! Using %s." % ref_filename
         else:
-            print "Using reference: %s" % reference_filename
-        params_thr['ref_filename'] = reference_filename
+            print "Using reference: %s" % ref_filename
+        params_thr['ref_filename'] = ref_filename
         params_thr['ref_filepath'] = roi_source_paths[coreg_fidx]
         if keep_good_rois is True:
             nrois_max = src_nrois[coreg_fidx][2]

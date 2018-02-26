@@ -22,18 +22,6 @@ PARAMSPATH=${1}
 echo "p info: ${PARAMSPATH}"
 echo "SLURM ID: ${SLURM_ARRAY_TASK_ID}"
 
-# create logging dir
-#BASEDIR="$(dirname "$PARAMSPATH")"
-#OUTDIR="${BASEDIR}/logging_$RIDHASH"
-#echo ${OUTDIR}
-#
-## make and move into new directory, and run:
-#if [ ! -d "$OUTDIR" ]; then
-#    mkdir $OUTDIR
-#fi
-#cd ${OUTDIR}
-
 # run processing on raw data
 python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/coregister_tiff.py $PARAMSPATH $SLURM_ARRAY_TASK_ID
-#python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/coregister_tiff.py $PARAMSPATH $TIFFNUM 12
 

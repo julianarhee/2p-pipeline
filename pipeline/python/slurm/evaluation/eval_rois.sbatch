@@ -1,5 +1,5 @@
 #!/bin/bash
-# process_run.sbatch
+# eval_rois.sbatch
 #
 #SBATCH -J evalroi # A single job name for the array
 #SBATCH -p cox # run on cox gpu to use correct env 
@@ -18,7 +18,12 @@ module load Anaconda/5.0.1-fasrc01
 source activate /n/coxfs01/2p-pipeline/envs/pipeline
 
 # grab filename from array exported from 'parent' shell:
+RIDPATH=${1}
+SNR=${2}
+RCORR=${3}
+
 echo "roi info: ${RIDPATH}"
+echo "--- eval params -- SNR: ${SNR}, RCORR: ${RCORR}"
 
 # run processing on raw data
 python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/eval_rois.py $RIDPATH 12 $SNR $RCORR
