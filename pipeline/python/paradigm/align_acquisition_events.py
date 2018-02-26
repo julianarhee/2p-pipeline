@@ -144,6 +144,8 @@ parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype
 
 parser.add_option('--new', action="store_true",
                   dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
+parser.add_option('--scale', action="store_true",
+                  dest="universal_scale", default=False, help="Set flag to plot all PSTH plots with same y-axis scale")
 
 (options, args) = parser.parse_args()
 
@@ -172,6 +174,7 @@ trace_type = options.trace_type
 print "Plotting PSTH for %s timecourses." % trace_type
 
 create_new = options.create_new
+universal_scale = options.universal_scale
 
 #%%
 #
@@ -943,8 +946,10 @@ try:
                     dfmat.append(df)
 
                 ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
-
-                ax_curr.set_ylim([ylim_min, ylim_max])
+                if universal_scale is True:
+                    ax_curr.set_ylim([ylim_min, ylim_max])
+#                else:
+#                    ax_curr.set_ylim([ylim_min, 
                 ax_curr.set(xticks=tpoints)
                 ax_curr.tick_params(axis='x', which='both',length=0)
 
