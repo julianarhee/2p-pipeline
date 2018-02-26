@@ -371,7 +371,7 @@ print "-----------------------------------------------------------------------"
 print "Getting frame indices for trial epochs..."
 
 # First check if parsed frame file already exists:
-existing_parsed_frames_fns = sorted([t for t in os.listdir(paradigm_dir) if 'parsed_frames' in t and t.endswith('hdf5')], key=natural_keys)
+existing_parsed_frames_fns = sorted([t for t in os.listdir(paradigm_dir) if 'parsed_frames_' in t and t.endswith('hdf5')], key=natural_keys)
 existing_parsed_frames_fns.sort(key=lambda x: os.stat(os.path.join(paradigm_dir, x)).st_mtime) # Sort by date modified
 if len(existing_parsed_frames_fns) > 0 and create_new is False:
     parsed_frames_filepath = os.path.join(paradigm_dir, existing_parsed_frames_fns[-1]) # Get most recently modified file
