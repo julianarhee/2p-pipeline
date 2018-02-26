@@ -9,6 +9,7 @@ Created on Fri Feb  2 15:09:36 2018
 import os
 import sys
 import logging
+import shutil
 from pipeline.python.evaluation.evaluate_roi_extraction import run_rid_eval
 
 def main():
