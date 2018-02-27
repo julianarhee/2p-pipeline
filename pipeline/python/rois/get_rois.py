@@ -186,7 +186,7 @@ def format_rois_nmf(nmf_filepath, roiparams, zproj_type='mean', pass_rois=None, 
 
     return final_masks, img, coors, roi_idxs, is_3D, nb, final_rA, final_Cf
 
-#%
+#%%
 
 def standardize_rois(session_dir, roi_id, auto=False,
                      zproj_type='mean', check_motion=True, mcmetric='zproj_corrcoefs',  # MC-related options
@@ -282,7 +282,7 @@ def standardize_rois(session_dir, roi_id, auto=False,
                     coreg_byfile = h5py.File(coreg_results_path, 'r')
                     # Get masks:
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams,
-                                                                         pass_rois=coreg_byfile[curr_file]['roi_idxs'],
+                                                                         pass_rois=coreg_byfile[curr_file]['pass_roi_idxs'],
                                                                          coreg_rois=coreg_byfile[curr_file]['universal_matches'])
                 else:
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams, zproj_type=zproj_type)
@@ -594,7 +594,8 @@ def do_roi_extraction(options):
         print "==========================================================="
         print "RID %s -- Running coregistration..." % rid_hash
         print "RID %s -- Source ROI set is: %s" % (rid_hash, src_roi_id)
-        ref_rois, params_thr, coreg_results_path = reg.run_coregistration(coreg_opts)
+        coregistered_rois, coreg_results_path, params_thr = reg.run_coregistration(coreg_opts)
+        ref_rois = coregistered_rois[params_thr['ref_filename']]
 
         print("Found %i common ROIs matching reference." % len(ref_rois))
         format_roi_output = True
@@ -661,6 +662,7 @@ def select_roi_action(options):
 
 #%%
 def main(options):
+    optargout = None
     session_dir, optargout, formatting_only = select_roi_action(options)
 
     #session_dir, rid_hash = do_roi_extraction(options)
@@ -668,6 +670,7 @@ def main(options):
         print "Formatted ROIs! Masks saved to:\n%s" % optargout
     else:
         print "RID %s -- Finished formatting ROI output to standard." % optargout
+    if optargout is not None:
         post_rid_cleanup(session_dir, optargout)
         print "Cleaned up tmp rid files."
         print "*************************************************"
