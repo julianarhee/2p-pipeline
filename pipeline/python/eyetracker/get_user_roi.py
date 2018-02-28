@@ -105,8 +105,10 @@ def click_and_draw(event, x, y, flags, param):
 
 #figure out input directories
 run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+raw_folder = [r for r in os.listdir(run_dir) if 'raw' in r and os.path.isdir(os.path.join(run_dir, r))][0]
+print 'Raw folder: %s'%(raw_folder)
 
-eye_root_dir = os.path.join(run_dir,'raw','eyetracker_files')
+eye_root_dir = os.path.join(run_dir,raw_folder,'eyetracker_files')
 file_folder = os.listdir(eye_root_dir)[0]
 img_folder = os.path.join(eye_root_dir,file_folder,'frames')
 
