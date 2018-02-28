@@ -43,7 +43,7 @@ piper = str(piper)[0:8]
 if not os.path.exists('log'):
     os.mkdir('log')
 
-sys.stdout = open('log/jobsummary.txt', 'w')
+sys.stdout = open('log/coreg_jobsummary.txt', 'w')
 
 #####################################################################
 #                          find XID files                           #
@@ -145,7 +145,7 @@ if coregister is True:
                 --job-name={PROCID}.coreg.{RHASH} \
     		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/coregister_tiff.sbatch \
     		{FILEPATH}".format(PROCID=piper, RHASH=rhash, FILEPATH=RIDPATH, FIRST=first_tiff, LAST=last_tiff)
-    info("Submitting COREGISTRATION job with CMD:\n%s" % cmd)
+    #info("Submitting COREGISTRATION job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     #print "JOB INFO:"
     #print joboutput
@@ -155,7 +155,7 @@ if coregister is True:
     cmd = "sbatch --job-name={PROCID}.collate.{RHASH} \
                   --depend=afterok:{JOBDEP} \
                   /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/rois/collate_coreg_results.sbatch {FILEPATH}".format(PROCID=piper, RHASH=rhash, FILEPATH=RIDPATH, JOBDEP=jobnum)
-    info("Submitted COREG-COLLATE job with CMD:\n%s" % cmd)
+    #info("Submitted COREG-COLLATE job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     info("COREG-COLLATE calling jobids: %s" % jobnum)

@@ -16,6 +16,7 @@ import sys
 import hashlib
 import traceback
 import h5py
+import glob
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 from pipeline.python.rois.utils import get_roi_eval_path, replace_root
 import numpy as np
@@ -530,6 +531,8 @@ def get_params_dict(tiff_sourcedir, roi_options, roi_type='',
 
 def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=False, rootdir=''):
     mmap_dir = None
+    ntiffs = len(glob.glob(tiff_sourcedir + '/*.tif'))
+    print 'Found %i .tifs in src. Checking mmap files...' % ntiffs
 
     # First check if mmap-ed dir exists:
     tiffparent = os.path.split(tiff_sourcedir)[0]
@@ -563,14 +566,33 @@ def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=Fals
     if check_hash is True:
         if os.path.isdir(mmap_dir): # Get hash for mmap files to rename mmap dir
             excluded_files = [f for f in os.listdir(mmap_dir) if not f.endswith('mmap')]
+            print "Getting dir hash for memmap dir: %s" % mmap_dir
+            print "Excluding files: ", excluded_files
             mmap_hash = dirhash(mmap_dir, 'sha1', excluded_files=excluded_files)[0:6]
         else:
             mmap_hash = None
 
     if mmap_hash is not None and mmap_hash not in mmap_dir:
         mmap_source = mmap_dir + '_' + mmap_hash
-        os.rename(mmap_dir, mmap_source)
-        print "Renamed mmap with hash:", mmap_source
+        unknown_mmapped_filepaths = glob.glob(mmap_dir + '/*.mmap')
+        if os.path.exists(mmap_source):
+            hashed_mmapped_filepaths = glob.glob(mmap_source + '/*.mmap')
+            hashed_mmapped_files = [os.path.split(i)[-1] for i in hashed_mmapped_filepaths] 
+            unknown_mmapped_files = [os.path.split(f)[-1] for f in unknown_mmapped_filepaths]
+            print "Already have these:" 
+            for h, hf in enumerate(sorted(hashed_mmapped_files, key=natural_keys)):
+                print h, hf
+            print "Found duplicates:"
+            for u, uf in enumerate(sorted(unknown_mmapped_files, key=natural_keys)):
+                print u, uf
+            if hashed_mmapped_files == unknown_mmapped_files:
+                print "Hashed MMAP dir already exists... Deleting duplicate." 
+                for f in unknown_mmapped_filepaths:
+                    os.remove(f)
+        else:
+            print "Renaming MMAP dir:\n --- %s\n to hashed dir: \n --- %s" % (mmap_dir, mmap_source)
+            os.rename(mmap_dir, mmap_source)
+            print "Renamed mmap with hash:", mmap_source
     else:
         mmap_source = mmap_dir
 
@@ -614,7 +636,8 @@ def get_roi_id(PARAMS, session_dir, auto=False):
                     is_new_rid = True
                     break
                 else:
-                    confirm_reuse = raw_input('Re-use RID %s? Press <Y> to confirm, any key to try again:' % existing_rids[int(check_ridx)])
+                     
+                    confirm_reuse = raw_input('Re-use RID %s? Press <Y> to confirm, any key to try again:' % matching_rids[int(check_ridx)])
                     if confirm_reuse == 'Y':
                         is_new_rid = False
                         break
@@ -627,7 +650,7 @@ def get_roi_id(PARAMS, session_dir, auto=False):
         print "Creating NEW roi ID: %s" % roi_id
     else:
         # Re-using an existing PID:
-        roi_id = existing_rids[int(check_ridx)]
+        roi_id = matching_rids[int(check_ridx)]
         print "Reusing existing rid: %s" % roi_id
 
     return roi_id

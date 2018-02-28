@@ -1000,15 +1000,19 @@ def coregister_file_by_rid(tmp_rid_path, filenum=1, rootdir=''):
     if curr_file in params_thr['excluded_tiffs']:
         return None
 
-    curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
-    results = match_file_against_ref(REF, curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, asdict=True)
+    curr_filepath = None
+    results = None
+    try:
+        curr_filepath = [p for p in roi_source_paths if str(re.search('File(\d{3})', p).group(0)) == curr_file]
+        curr_filepath = curr_filepath[0]
+        results = match_file_against_ref(REF, curr_filepath, params_thr, pass_rois_dict=pass_rois_dict, asdict=True)
 
-    # Save tmp results for current file:
-    tmpdir = os.path.join(coreg_output_dir, 'tmp')
-    if not os.path.exists(tmpdir):
-        os.makedirs(tmpdir)
-    tmp_filepath = os.path.join(tmpdir, '%s_matches_to_ref.npz' % curr_file)
-    np.savez(tmp_filepath,
+        # Save tmp results for current file:
+        tmpdir = os.path.join(coreg_output_dir, 'tmp')
+        if not os.path.exists(tmpdir):
+            os.makedirs(tmpdir)
+        tmp_filepath = os.path.join(tmpdir, '%s_matches_to_ref.npz' % curr_file)
+        np.savez(tmp_filepath,
              distance=results['distance_thr'],
              source=results['source'],
              matches_to_ref=results['matches_to_ref'],
@@ -1017,7 +1021,16 @@ def coregister_file_by_rid(tmp_rid_path, filenum=1, rootdir=''):
              A=results['A'],
              dims=results['dims']
              )
-
+    except Exception as e:
+        if curr_filepath is None:
+            print 'Unable to find roi src path for: %s' % curr_file
+            for r in roi_source_paths:
+                print r
+        if results is None:
+            print "Unable to match curr file %s agains ref..." % curr_file
+            print REF.keys() 
+        traceback.print_exc()
+   
 #    tmp = h5py.File(tmp_filepath, 'w')
 #    dist = tmp.create_dataset('distance_thr', results['distance_thr'].shape, results['distance_thr'].dtype)
 #    dist[...] = results['distance_thr']

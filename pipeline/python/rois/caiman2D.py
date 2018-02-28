@@ -679,13 +679,13 @@ def create_cnm_object(params, patch=True, A=None, C=None, f=None, dview=None, n_
 #%%
 def update_RID_nmf(nmfopts, RID):
 
-    nmf_outdir = os.path.join(RID['DST'], 'nmfoutput')
+    outdir = os.path.join(RID['DST'], 'nmfoutput')
     roi_basedir = os.path.split(RID['DST'])[0]
 
     # Save CNMF options with hash:
     nmfoptions = jsonify_array(nmfopts)
     nmfopts_hashid = hashlib.sha1(json.dumps(nmfoptions, sort_keys=True)).hexdigest()[0:6]
-    write_dict_to_json(nmfoptions, os.path.join(nmf_outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
+    write_dict_to_json(nmfoptions, os.path.join(outdir, 'nmfoptions_%s.json' % nmfopts_hashid))
 
     # Update tmp RID dict:
     RID['PARAMS']['nmf_hashid'] = nmfopts_hashid
@@ -749,23 +749,38 @@ def evaluate_cnm(images, cnm, params, dims, iteration=1, img=None, curr_filename
     return idx_components, idx_components_bad, SNR_comp, r_values
 
 #%%
-def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
+def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local', outdir=None, figdir=None, movdir=None):
 
     curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
     RID = load_RID(tmp_rid_path, infostr='nmf')
     rid_hash = RID['rid_hash']
 
-    #% Set output paths:
-    curr_roi_dir = RID['DST']
-    nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
-    nmf_figdir = os.path.join(nmf_outdir, 'figures')
-    nmf_movdir = os.path.join(nmf_outdir, 'movies')
-    if not os.path.exists(nmf_figdir):
-        os.makedirs(nmf_figdir)
-    if not os.path.exists(nmf_movdir):
-        os.makedirs(nmf_movdir)
-
-    print "RID %s -- writing cNMF output files to %s." % (rid_hash, nmf_outdir)
+    if outdir is None:
+        #% Set output paths:
+        curr_roi_dir = RID['DST']
+        outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+    if figdir is None:
+        figdir = os.path.join(outdir, 'figures')
+        if not os.path.exists(figdir):
+            os.makedirs(figdir)
+    if movdir is None:   
+        movdir = os.path.join(outdir, 'movies')
+        if not os.path.exists(movdir):
+            os.makedirs(movdir)
+ 
+#    #% Set output paths:
+#    curr_roi_dir = RID['DST']
+#    nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+#    nmf_figdir = os.path.join(nmf_outdir, 'figures')
+#    nmf_movdir = os.path.join(nmf_outdir, 'movies')
+#    if not os.path.exists(nmf_figdir):
+#        os.makedirs(nmf_figdir)
+#    if not os.path.exists(nmf_movdir):
+#        os.makedirs(nmf_movdir)
+#
+    print "RID %s -- writing cNMF output files to %s." % (rid_hash, outdir)
 
     #% Set NMF options from ROI params:
     params = RID['PARAMS']['options']
@@ -863,7 +878,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         pl.subplot(1,2,2); pl.title('Corr'); pl.imshow(Cn.max(0) if len(Cn.shape) == 3 else Cn, cmap='gray',
                    vmin=np.percentile(Cn, 1), vmax=np.percentile(Cn, 99)); pl.axis('off')
         pl.suptitle(curr_filename)
-        pl.savefig(os.path.join(nmf_figdir, 'zproj_%s.png' % curr_filename))
+        pl.savefig(os.path.join(figdir, 'zproj_%s.png' % curr_filename))
         pl.close()
         # ---------------------------------------------------------------------
 
@@ -874,7 +889,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         else:
             crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
 
-        pl.savefig(os.path.join(nmf_figdir, 'iter1_contours_%s.png' % curr_filename))
+        pl.savefig(os.path.join(figdir, 'iter1_contours_%s.png' % curr_filename))
         pl.close()
         # ---------------------------------------------------------------------
 
@@ -886,7 +901,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
             pass_components, fail_components, r_values, SNR_comp = evaluate_cnm(images, cnm, params, dims, iteration=1,
                                                                                 img=Av,
                                                                                 curr_filename=curr_filename,
-                                                                                nmf_figdir=nmf_figdir,
+                                                                                nmf_figdir=figdir,
                                                                                 dview=dview)
 
             A_tot = cnm.A[:, pass_components]
@@ -912,7 +927,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
             crd = plot_contours(cnm.A, Av, thr=params['display']['thr_plot'])
         else:
             crd = plot_contours(cnm.A, Cn, thr=params['display']['thr_plot'])
-        pl.savefig(os.path.join(nmf_figdir, 'iter2_contours_%s.png' % curr_filename))
+        pl.savefig(os.path.join(figdir, 'iter2_contours_%s.png' % curr_filename))
         pl.close()
         # ---------------------------------------------------------------------
 
@@ -923,7 +938,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         pass_components, fail_components, r_values, SNR_comp = evaluate_cnm(images, cnm, params, dims, iteration=2,
                                                                             img=Av,
                                                                             curr_filename=curr_filename,
-                                                                            nmf_figdir=nmf_figdir,
+                                                                            nmf_figdir=figdir,
                                                                             dview=dview)
 
         print(('Should keep ' + str(len(pass_components)) +
@@ -942,7 +957,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         #A, C, b, f, YrA, sn, S = cnm.A, cnm.C, cnm.b, cnm.f, cnm.YrA, cnm.sn, cnm.S
 
         #% save results:
-        np.savez(os.path.join(nmf_outdir, os.path.split(mmap_path)[1][:-4] + 'results_analysis.npz'),
+        np.savez(os.path.join(outdir, os.path.split(mmap_path)[1][:-4] + 'results_analysis.npz'),
                  Yr_path=mmap_path, dims=dims, T=T,
                  A=cnm.A, C=cnm.C, b=cnm.b, f=cnm.f, YrA=cnm.YrA, sn=cnm.sn, S=cnm.S, Cdf=Cdf,
                  idx_components=pass_components, idx_components_bad=fail_components,
@@ -990,15 +1005,15 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
             #if curr_filename in movie_files:
             #% save denoised movie:
             currmovie = cm.movie(cnm.A.dot(cnm.C) + cnm.b.dot(cnm.f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-            currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_plusbackground_%s.tif' % curr_filename))
+            currmovie.save(os.path.join(movdir, 'denoisedmov_plusbackground_%s.tif' % curr_filename))
 
             #% background only
             currmovie = cm.movie(cnm.b.dot(cnm.f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-            currmovie.save(os.path.join(nmf_movdir, 'backgroundmov_%s.tif' % curr_filename))
+            currmovie.save(os.path.join(movdir, 'backgroundmov_%s.tif' % curr_filename))
 
             #% reconstruct denoised movie without background
             currmovie = cm.movie(cnm.A.dot(cnm.C)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
-            currmovie.save(os.path.join(nmf_movdir, 'denoisedmov_nobackground_%s.tif' % curr_filename))
+            currmovie.save(os.path.join(movdir, 'denoisedmov_nobackground_%s.tif' % curr_filename))
 
             print "Saved movie for %s" % curr_filename
             print_elapsed_time(t_mov)
@@ -1008,7 +1023,7 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
         #BB.play(gain=2, offset=0, fr=2, magnification=4)
         pl.figure()
         BB.zproject()
-        pl.savefig(os.path.join(nmf_figdir, 'background_zproj_%s.png' % curr_filename))
+        pl.savefig(os.path.join(figdir, 'background_zproj_%s.png' % curr_filename))
         pl.close()
 
         print "FINISHED!"
@@ -1028,12 +1043,27 @@ def run_nmf_on_file(tiffpath, tmp_rid_path, nproc=12, cluster_backend='local'):
     return nmfopts_hash, len(pass_components), rid_hash
 
 #%%
-def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False, rootdir=''):
+def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='local', asdict=False, rootdir='', outdir=None, figdir=None, movdir=None):
     nmfopts_hash = "None"
     ngood_rois = 0
 
     RID = load_RID(tmp_rid_path)
-
+    
+    if outdir is None:
+        #% Set output paths:
+        curr_roi_dir = RID['DST']
+        outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+    if figdir is None:
+        figdir = os.path.join(outdir, 'figures')
+        if not os.path.exists(figdir):
+            os.makedirs(figdir)
+    if movdir is None:   
+        movdir = os.path.join(outdir, 'movies')
+        if not os.path.exists(movdir):
+            os.makedirs(movdir)
+    
     tiffpaths = sorted([os.path.join(RID['SRC'], t) for t in os.listdir(RID['SRC']) if t.endswith('tif')], key=natural_keys)
 
     currfile = 'File%03d' % int(file_num)
@@ -1062,7 +1092,7 @@ def extract_nmf_from_rid(tmp_rid_path, file_num, nproc=12, cluster_backend='loca
         tiffpath =  tiffmatches[0]
 
         print "EXTRACTING ROIS"
-        nmfopts_hash, ngood_rois, rid_hash = run_nmf_on_file(tiffpath, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend)
+        nmfopts_hash, ngood_rois, rid_hash = run_nmf_on_file(tiffpath, tmp_rid_path, nproc=nproc, cluster_backend=cluster_backend, outdir=outdir, figdir=figdir, movdir=movdir)
 
         print "RID %s: Finished cNMF ROI extraction: nmf options were %s" % (rid_hash, nmfopts_hash)
         print "%s-- Initialial evalation found %i ROIs that pass." % (currfile, ngood_rois)

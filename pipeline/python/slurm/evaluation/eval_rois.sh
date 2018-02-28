@@ -8,7 +8,7 @@ echo "Requested single ROI ID to evaluate - $RIDHASH."
 if [ "$#" == 5 ]; then
     SNR="$4"
     RCORR="$5"
-elif [ "$#" == 4]; then
+elif [ "$#" == 4 ]; then
     SNR="$4"
     RCORR="0.8"
 else

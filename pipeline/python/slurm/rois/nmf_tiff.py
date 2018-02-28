@@ -49,11 +49,20 @@ def main():
         mmap_paths = par_mmap_tiffs(rid_path)
         logging.info('RID %s -- Done memmapping!' % roi_hash)
 
+    #% Set output paths:
+    curr_roi_dir = tRID['DST']
+    nmf_outdir = os.path.join(curr_roi_dir, 'nmfoutput')
+    nmf_figdir = os.path.join(nmf_outdir, 'figures')
+    nmf_movdir = os.path.join(nmf_outdir, 'movies')
+    if not os.path.exists(nmf_figdir):
+        os.makedirs(nmf_figdir)
+    if not os.path.exists(nmf_movdir):
+        os.makedirs(nmf_movdir)
 
     logging.info("RID %s -- starting ROI extraction for File %i" % (roi_hash, file_num))
     logging.info(rid_path)
 
-    nmfopts_hash, ngood_rois = extract_nmf_from_rid(rid_path, file_num, nproc=nproc, rootdir='/n/coxfs01/2p-data')
+    nmfopts_hash, ngood_rois = extract_nmf_from_rid(rid_path, file_num, nproc=nproc, rootdir='/n/coxfs01/2p-data', outdir=nmf_outdir, figdir=nmf_figdir, movdir=nmf_movdir)
 
     logging.info("FINISHED cNMF roi extraction for File %i:\n%s" % (file_num, roi_hash))
     logging.info("Found %i ROIs that pass initial evaluation." % ngood_rois)

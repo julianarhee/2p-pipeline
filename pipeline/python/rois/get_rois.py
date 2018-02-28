@@ -281,8 +281,12 @@ def standardize_rois(session_dir, roi_id, auto=False,
                     # Load coreg results:
                     coreg_byfile = h5py.File(coreg_results_path, 'r')
                     # Get masks:
+                    if 'pass_roi_idxs' in coreg_byfile[curr_file].keys():
+                        curr_roi_idxs = coreg_byfile[curr_file]['pass_roi_idxs']
+                    else:
+                        curr_roi_idxs = coreg_byfile[curr_file]['roi_idxs']
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams,
-                                                                         pass_rois=coreg_byfile[curr_file]['pass_roi_idxs'],
+                                                                         pass_rois=curr_roi_idxs,
                                                                          coreg_rois=coreg_byfile[curr_file]['universal_matches'])
                 else:
                     masks, img, coord_info, roi_idxs, is_3D, nb, Ab, Cf = format_rois_nmf(nmfpath, roiparams, zproj_type=zproj_type)
@@ -651,31 +655,39 @@ def select_roi_action(options):
     else:
         session_dir, rid_hash = do_roi_extraction(options)
 
-    if mask_filepath is not None and rid_hash is None:
+    # Get RID hash:
+    session = options.session
+    rid_dict_path = os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session)
+    if os.path.exists(rid_dict_path):
+        with open(rid_dict_path, 'r') as f:
+            riddict = json.load(f)
+    roi_id = options.roi_id
+    rid_hash = riddict[roi_id]['rid_hash']
+
+    if mask_filepath is not None:
         formatting_only = True
-        optargout = mask_filepath
     else:
         formatting_only = False
-        optargout = rid_hash
+        mask_filepath = ""
 
-    return session_dir, optargout, formatting_only
+    return session_dir, rid_hash, formatting_only, mask_filepath
 
 #%%
 def main(options):
     optargout = None
-    session_dir, optargout, formatting_only = select_roi_action(options)
+    session_dir, rid_hash, formatting_only, mask_filepath = select_roi_action(options)
 
     #session_dir, rid_hash = do_roi_extraction(options)
     if formatting_only is True:
-        print "Formatted ROIs! Masks saved to:\n%s" % optargout
+        print "Formatted ROIs! Masks saved to:\n%s" % mask_filepath
     else:
-        print "RID %s -- Finished formatting ROI output to standard." % optargout
-    if optargout is not None:
-        post_rid_cleanup(session_dir, optargout)
-        print "Cleaned up tmp rid files."
-        print "*************************************************"
-        print "FINISHED EXTRACTING ROIs!"
-        print "*************************************************"
+        print "RID %s -- Finished formatting ROI output to standard." % rid_hash
+      
+    post_rid_cleanup(session_dir, rid_hash)
+    print "Cleaned up tmp rid files."
+    print "*************************************************"
+    print "FINISHED EXTRACTING ROIs!"
+    print "*************************************************"
 
 #%%
 

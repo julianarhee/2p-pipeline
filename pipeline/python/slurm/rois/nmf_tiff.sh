@@ -23,6 +23,14 @@ FILES=($RIDPATH/*$RIDHASH.json)
 
 # get size of array
 NUMFILES=${#FILES[@]}
+if [ -f ${FILES[0]} ]; then
+    echo ${FILES}
+else
+    COMPDIR="${RIDPATH}/completed"
+    FILES=($COMPDIR/*$RIDHASH.json)
+    echo "Checking COMPLETED: ${FILES}"
+    NUMFILES=${#FILES[@]} 
+fi
 
 # subtract 1 for 0-indexing
 ZBNUMFILES=$(($NUMFILES - 1))

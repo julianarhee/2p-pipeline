@@ -7,8 +7,8 @@
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-1:00 # Running time of 1 hours
 #SBATCH --mem 3000 # Memory request of 4 GB
-#SBATCH -o coreg_collate_%A_f%a.out # Standard output
-#SBATCH -e coreg_collate_%A_f%a.err # Standard error
+#SBATCH -o log/coreg_collate_%A_f%a.out # Standard output
+#SBATCH -e log/coreg_collate_%A_f%a.err # Standard error
 
 # load modules
 module load matlab/R2015b-fasrc01

@@ -7,8 +7,8 @@
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-3:00 # Running time of 3 hours
 #SBATCH --mem 98304 #6350 #32768 #65536 # Memory request of 12 GB 
-#SBATCH -o nmf_%A_f%a.out # Standard output
-#SBATCH -e nmf_%A_f%a.err # Standard error
+#SBATCH -o log/nmf_%A_f%a.out # Standard output
+#SBATCH -e log/nmf_%A_f%a.err # Standard error
 
 # load modules
 module load matlab/R2015b-fasrc01

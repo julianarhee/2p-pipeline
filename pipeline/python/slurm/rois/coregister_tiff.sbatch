@@ -5,10 +5,10 @@
 #SBATCH -p cox # run on cox gpu to use correct env
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-1:00 # Running time of 3 hours
-#SBATCH --mem 4000 # Memory request of 4 GB
-#SBATCH -o coreg_%A_f%a.out # Standard output
-#SBATCH -e coreg_%A_f%a.err # Standard error
+#SBATCH -t 0-2:00 # Running time of 3 hours
+#SBATCH --mem 5000 # Memory request of 4 GB
+#SBATCH -o log/coreg_%A_f%a.out # Standard output
+#SBATCH -e log/coreg_%A_f%a.err # Standard error
 
 # load modules
 module load matlab/R2015b-fasrc01

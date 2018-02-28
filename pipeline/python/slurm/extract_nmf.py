@@ -49,7 +49,7 @@ piper = str(piper)[0:8]
 if not os.path.exists('log'):
     os.mkdir('log')
 
-sys.stdout = open('log/jobsummary.txt', 'w')
+sys.stdout = open('log/nmf_jobsummary.txt', 'w')
 
 #####################################################################
 #                          find XID files                           #
