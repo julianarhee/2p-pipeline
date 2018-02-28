@@ -121,6 +121,8 @@ parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='
 parser.add_option('-b', '--baseline', action="store",
                   dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
 
+parser.add_option('--eye', action="store_true",
+                  dest="eyetracker", default=False, help="trial inclusion with eyetrackr info")
 
 parser.add_option('--custom', action="store_true",
                   dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
@@ -163,6 +165,8 @@ run = options.run
 trace_id = options.trace_id
 
 iti_pre = float(options.iti_pre)
+
+eyetracker = options.eyetracker
 
 custom_mw = options.custom_mw
 same_order = options.same_order #False #True
@@ -969,6 +973,455 @@ except Exception as e:
     traceback.print_exc()
 #    print "---------------------------------------------------------"
 finally:
+    roi_trials.close()
+    parsed_frames.close()
+
+# =============================================================================
+# Plot included/excluded trials with eyetracker info
+# =============================================================================
+
+if eyetracker:
+    # Get eye featue info:
+    eye_file_dir = os.path.join(run_dir,'eyetracker','files')
+    eye_info_fn = 'parsed_eye_%s_%s_%s.json'%(session,animalid,run)
+
+    print 'Getting eye feature info from: %s'%(os.path.join(eye_file_dir, eye_info_fn))
+    with open(os.path.join(eye_file_dir, eye_info_fn), 'r') as f:
+        eye_info = json.load(f)
+
+    roi_psth_include_dir = os.path.join(traceid_dir, 'figures', 'psths',trace_type, 'eye_include')
+    if not os.path.exists(roi_psth_include_dir):
+        os.makedirs(roi_psth_include_dir)
+    print "Saving included PSTH plots to: %s" % roi_psth_include_dir
+
+    roi_psth_exclude_dir = os.path.join(traceid_dir, 'figures', 'psths',trace_type, 'eye_exclude')
+    if not os.path.exists(roi_psth_exclude_dir):
+        os.makedirs(roi_psth_exclude_dir)
+    print "Saving excluded PSTH plots to: %s" % roi_psth_exclude_dir
+
+
+    roi_trials = h5py.File(roi_trials_by_stim_path, 'r')   # Load ROI TRIALS file
+    parsed_frames = h5py.File(parsed_frames_filepath, 'r')  # Load PARSED FRAMES output file:
+
+    try:
+        for roi in roi_list:
+            #%
+            print roi
+            if nrows==1:
+                figwidth_multiplier = ncols*1
+            else:
+                figwidth_multiplier = 1
+
+
+            for img in subplot_stimlist.keys():
+                curr_subplots = subplot_stimlist[img]
+                if stimid_only is True:
+                    figname = 'all_objects_default_pos_size'
+                else:
+                    figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(position_vals), len(size_vals))
+
+                fig, axs = pl.subplots(
+                    nrows=nrows,
+                    ncols=ncols,
+                    sharex=True,
+                    sharey=True,
+                    figsize=(figure_height*figwidth_multiplier,figure_height),
+                    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
+
+                row=0
+                col=0
+                plotidx = 0
+
+                nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+                stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+                iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+                tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
+
+                #roi = 'roi00003'
+                for configname in curr_subplots:
+                    curr_slice = roi_trials[configname][roi].attrs['slice']
+                    roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
+
+                    if col==(ncols) and nrows>1:
+                        row += 1
+                        col = 0
+                    if len(axs.shape)>1:
+                        ax_curr = axs[row, col] #, col]
+                    else:
+                        ax_curr = axs[col]
+
+                    stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+                    nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
+                    ntrials = len(stim_trials)
+                    trialmat = np.ones((ntrials, nvols)) * np.nan
+                    dfmat = []
+
+                    first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+                    tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                    if 'grating' in stimtype:
+                        stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+                    else:
+                        stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+
+                    ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+
+                    for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                        trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                        curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
+                        if eye_info[trial]['include_trial']:
+                            trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                            if first_on < curr_on:
+                                trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                            else:
+                                trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                            #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
+
+                            baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                            if baseline == 0 or baseline == np.nan:
+                                df = np.ones(trialmat[tidx,:].shape) * np.nan
+                            else:
+                                df = (trialmat[tidx,:] - baseline) / baseline
+
+                            ax_curr.plot(tsecs, df, 'b', alpha=0.2, linewidth=0.5)
+                            ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=1, alpha=0.1)
+
+                            dfmat.append(df)
+
+                    ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'b', alpha=1, linewidth=1)
+                    if universal_scale is True:
+                        ax_curr.set_ylim([ylim_min, ylim_max])
+    #                else:
+    #                    ax_curr.set_ylim([ylim_min, 
+                    ax_curr.set(xticks=tpoints)
+                    ax_curr.tick_params(axis='x', which='both',length=0)
+
+                    col = col + 1
+                    plotidx += 1
+
+                sns.despine(offset=2, trim=True)
+                pl.title(roi)
+                #%
+                psth_fig_fn = '%s_%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
+                pl.savefig(os.path.join(roi_psth_include_dir, psth_fig_fn))
+                pl.close()
+                print psth_fig_fn
+        for roi in roi_list:
+            #%
+            print roi
+            if nrows==1:
+                figwidth_multiplier = ncols*1
+            else:
+                figwidth_multiplier = 1
+
+
+            for img in subplot_stimlist.keys():
+                curr_subplots = subplot_stimlist[img]
+                if stimid_only is True:
+                    figname = 'all_objects_default_pos_size'
+                else:
+                    figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(position_vals), len(size_vals))
+
+                fig, axs = pl.subplots(
+                    nrows=nrows,
+                    ncols=ncols,
+                    sharex=True,
+                    sharey=True,
+                    figsize=(figure_height*figwidth_multiplier,figure_height),
+                    gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin, wspace=0.05, hspace=0.05))
+
+                row=0
+                col=0
+                plotidx = 0
+
+                nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+                stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+                iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+                tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
+
+                #roi = 'roi00003'
+                for configname in curr_subplots:
+                    curr_slice = roi_trials[configname][roi].attrs['slice']
+                    roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
+
+                    if col==(ncols) and nrows>1:
+                        row += 1
+                        col = 0
+                    if len(axs.shape)>1:
+                        ax_curr = axs[row, col] #, col]
+                    else:
+                        ax_curr = axs[col]
+
+                    stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+                    nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
+                    ntrials = len(stim_trials)
+                    trialmat = np.ones((ntrials, nvols)) * np.nan
+                    dfmat = []
+
+                    first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+                    tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                    if 'grating' in stimtype:
+                        stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+                    else:
+                        stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+
+                    ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+
+                    for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                        trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                        curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
+                        if not eye_info[trial]['include_trial']:
+                            trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                            if first_on < curr_on:
+                                trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                            else:
+                                trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                            #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
+
+                            baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                            if baseline == 0 or baseline == np.nan:
+                                df = np.ones(trialmat[tidx,:].shape) * np.nan
+                            else:
+                                df = (trialmat[tidx,:] - baseline) / baseline
+
+                            ax_curr.plot(tsecs, df, 'r', alpha=0.2, linewidth=0.5)
+                            ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'k', linewidth=1, alpha=0.1)
+
+                            dfmat.append(df)
+
+                    ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'r', alpha=1, linewidth=1)
+                    if universal_scale is True:
+                        ax_curr.set_ylim([ylim_min, ylim_max])
+    #                else:
+    #                    ax_curr.set_ylim([ylim_min, 
+                    ax_curr.set(xticks=tpoints)
+                    ax_curr.tick_params(axis='x', which='both',length=0)
+
+                    col = col + 1
+                    plotidx += 1
+
+                sns.despine(offset=2, trim=True)
+                pl.title(roi)
+                #%
+                psth_fig_fn = '%s_%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
+                pl.savefig(os.path.join(roi_psth_exclude_dir, psth_fig_fn))
+                pl.close()
+                print psth_fig_fn
+    except Exception as e:
+        print "--- Error plotting PSTH ---------------------------------"
+        print roi, configname, trial
+        traceback.print_exc()
+    #    print "---------------------------------------------------------"
+    finally:
+        roi_trials.close()
+        parsed_frames.close()
+
+    #%%
+# =============================================================================
+# Make and save scatterplots of trial response vs. eye features:
+# =============================================================================
+
+    sns.set_style("darkgrid", {"axes.facecolor": ".9"})
+    roi_trials = h5py.File(roi_trials_by_stim_path, 'r')   # Load ROI TRIALS file
+    parsed_frames = h5py.File(parsed_frames_filepath, 'r')  # Load PARSED FRAMES output file:
+
+    roi_scatter_stim_dir = os.path.join(traceid_dir, 'figures', 'eye_scatterplots','stimulation')
+    if not os.path.exists(roi_scatter_stim_dir):
+        os.makedirs(roi_scatter_stim_dir)
+    print "Saving scatter plots to: %s" % roi_scatter_stim_dir
+
+
+    for roi in roi_list:
+        #%
+        print roi
+        if nrows==1:
+            figwidth_multiplier = ncols*1
+        else:
+            figwidth_multiplier = 3
+
+
+        for img in subplot_stimlist.keys():
+            curr_subplots = subplot_stimlist[img]
+            if stimid_only is True:
+                figname = 'all_objects_default_pos_size'
+            else:
+                figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(position_vals), len(size_vals))
+
+            fig, axs = pl.subplots(
+                nrows=nrows,
+                ncols=ncols,
+                sharex=True,
+                sharey=True,
+                figsize=(figure_height*figwidth_multiplier,figure_height))
+
+            row=0
+            col=0
+            plotidx = 0
+
+            nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+            stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+            iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+            tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
+
+            #roi = 'roi00003'
+            for configname in curr_subplots:
+                df_values = []
+                pupil_rad = []
+                curr_slice = roi_trials[configname][roi].attrs['slice']
+                roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
+
+                if col==(ncols) and nrows>1:
+                    row += 1
+                    col = 0
+                if len(axs.shape)>1:
+                    ax_curr = axs[row, col] #, col]
+                else:
+                    ax_curr = axs[col]
+
+                stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+                nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
+                ntrials = len(stim_trials)
+                trialmat = np.ones((ntrials, nvols)) * np.nan
+                dfmat = []
+
+                first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+                tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                if 'grating' in stimtype:
+                    stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+                else:
+                    stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+
+                ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+
+                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                    trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                    curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
+                    trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                    if first_on < curr_on:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                    else:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                    #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
+
+                    baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                    if baseline == 0 or baseline == np.nan:
+                        df = np.ones(trialmat[tidx,:].shape) * np.nan
+                    else:
+                        df = (trialmat[tidx,:] - baseline) / baseline
+
+                    df_values.append(np.nanmean(df[first_on:first_on+int(nframes_on)]))
+                    pupil_rad.append(float(eye_info[trial]['pupil_size_stim']))
+
+                ax_curr.plot(pupil_rad,df_values,'ob')
+                col = col + 1
+                plotidx += 1
+
+        fig_fn = '%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type)
+        figure_file = os.path.join(roi_scatter_stim_dir,fig_fn)
+
+        pl.savefig(figure_file, bbox_inches='tight')
+        pl.close()
+
+
+
+    roi_scatter_base_dir = os.path.join(traceid_dir, 'figures', 'eye_scatterplots','baseline')
+    if not os.path.exists(roi_scatter_base_dir):
+        os.makedirs(roi_scatter_base_dir)
+    print "Saving scatter plots to: %s" % roi_scatter_base_dir
+
+    for roi in roi_list:
+        #%
+        print roi
+        if nrows==1:
+            figwidth_multiplier = ncols*1
+        else:
+            figwidth_multiplier = 1
+
+
+        for img in subplot_stimlist.keys():
+            curr_subplots = subplot_stimlist[img]
+            if stimid_only is True:
+                figname = 'all_objects_default_pos_size'
+            else:
+                figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(position_vals), len(size_vals))
+
+            fig, axs = pl.subplots(
+                nrows=nrows,
+                ncols=ncols,
+                sharex=True,
+                sharey=True,
+                figsize=(figure_height*2,figure_height))
+
+            row=0
+            col=0
+            plotidx = 0
+
+            nframes_on = parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+            stim_dur = trialdict['trial00001']['stim_dur_ms']/1E3
+            iti_dur = trialdict['trial00001']['iti_dur_ms']/1E3
+            tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
+
+            #roi = 'roi00003'
+            for configname in curr_subplots:
+                df_values = []
+                pupil_rad = []
+                curr_slice = roi_trials[configname][roi].attrs['slice']
+                roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
+
+                if col==(ncols) and nrows>1:
+                    row += 1
+                    col = 0
+                if len(axs.shape)>1:
+                    ax_curr = axs[row, col] #, col]
+                else:
+                    ax_curr = axs[col]
+
+                stim_trials = sorted([t for t in roi_trials[configname][roi].keys()], key=natural_keys)
+                nvols = max([roi_trials[configname][roi][t][trace_type].shape[0] for t in stim_trials])
+                ntrials = len(stim_trials)
+                trialmat = np.ones((ntrials, nvols)) * np.nan
+                dfmat = []
+
+                first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
+                tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                if 'grating' in stimtype:
+                    stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+                else:
+                    stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+
+                ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+
+                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                    trial_timecourse = roi_trials[configname][roi][trial][trace_type]
+                    curr_on = int([i for i in roi_trials[configname][roi][trial].attrs['frame_idxs']].index(int(roi_trials[configname][roi][trial].attrs['volume_stim_on'])))
+                    trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                    if first_on < curr_on:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                    else:
+                        trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                    #trialmat[tidx, first_on-curr_on:first_on] = trace[0:curr_on]
+
+                    baseline = np.nanmean(trialmat[tidx, 0:first_on]) #[0:on_idx])
+                    if baseline == 0 or baseline == np.nan:
+                        df = np.ones(trialmat[tidx,:].shape) * np.nan
+                    else:
+                        df = (trialmat[tidx,:] - baseline) / baseline
+
+                    df_values.append(np.nanmean(df[first_on:first_on+int(nframes_on)]))
+                    pupil_rad.append(float(eye_info[trial]['pupil_size_baseline']))
+
+                ax_curr.plot(pupil_rad,df_values,'ob')
+                col = col + 1
+                plotidx += 1
+
+        fig_fn = '%s_%s_%s_%s.png' % (roi, curr_slice, roi_in_slice, trace_type)
+        figure_file = os.path.join(roi_scatter_base_dir,fig_fn)
+
+        pl.savefig(figure_file, bbox_inches='tight')
+        pl.close()
     roi_trials.close()
     parsed_frames.close()
 

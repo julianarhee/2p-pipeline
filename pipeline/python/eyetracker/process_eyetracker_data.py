@@ -21,7 +21,7 @@ import pylab as pl
 import seaborn as sns
 import pandas as pd
 import h5py
-
+sns.set_style("darkgrid", {"axes.facecolor": ".9"})
 #-----------------------------------------------------
 #          SOME FUNCTIONS FOR VARIOUS PARTS
 #-----------------------------------------------------
@@ -251,6 +251,33 @@ def make_variable_plot(df, time, feature, stim_on_times, stim_off_times, blink_t
     pl.savefig(figure_file, bbox_inches='tight')
     pl.close()
 
+
+def make_excluded_variable_plot(df, time, feature, info, blink_times, figure_file, line_width = 0.5):
+    stim_bar_loc = df[feature].min() - 1
+    star_loc = df[feature].max() + 1
+
+    grid = sns.FacetGrid(df, aspect=15)
+    grid.map(plt.plot, time, feature, linewidth=line_width)
+
+    for ax in grid.axes.flat:
+        for ntrial in range(len(info)):
+            trial_string = 'trial%05d'%(ntrial+1)
+            if info[trial_string]['include_trial'] :
+                ax.plot([info[trial_string]['stim_on_times']/1E3,info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'k', label=None)
+            else:
+                ax.plot([info[trial_string]['stim_on_times']/1E3,info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'r', label=None)
+        if len(blink_times)>0:
+            ax.plot(blink_times, np.ones((len(blink_times),))*star_loc,'r*')#start blink events
+
+    sns.despine(trim=True, offset=1)
+    pl.savefig(figure_file, bbox_inches='tight')
+    pl.close()
+    
+def make_variable_histogram(df,feature, figure_file):
+    sns.distplot(df[feature]);
+    pl.savefig(figure_file, bbox_inches='tight')
+    pl.close()
+
 def extract_options(options):
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
@@ -422,6 +449,22 @@ def process_data(options):
                 pupil_axes_list[im_count,:] = pupil_axes
                 pupil_orientation_list[im_count] = pupil_orientation
                 
+                
+                
+                pupil_ratio = np.true_divide(pupil_axes[0],pupil_axes[1])
+                if pupil_center[0]==0 or pupil_ratio <=.6 or pupil_ratio>(1.0/.6):#flag this frame, probably blinking
+                    flag_event[im_count] = 1
+                    #give yourself room for error after event
+                    if flag_event[im_count-1]<1:
+                        pupil_x1 = int(pupil_x1-(5*scale_factor))
+                        pupil_y1 = int(pupil_y1-(5*scale_factor))
+                        pupil_x2 = int(pupil_x2+(5*scale_factor))
+                        pupil_y2 = int(pupil_y2+(5*scale_factor))
+        #                 pupil_x1 = pupil_x1_orig
+        #                 pupil_y1 = pupil_y1_orig
+        #                 pupil_x2 = pupil_x2_orig
+        #                 pupil_y2 = pupil_y2_orig
+                        
                 #draw and save to file
                 ellipse_params = tuple((pupil_center,pupil_axes,pupil_orientation))
                 if make_movie:
@@ -440,17 +483,12 @@ def process_data(options):
                         ellipse_params_disp = ellipse_params
                         
                     cv2.rectangle(im_disp,(pupil_x1_disp,pupil_y1_disp),(pupil_x2_disp,pupil_y2_disp),(0,255,255),1)
-                    cv2.ellipse(im_disp, ellipse_params_disp,(0,0,255),1)
+                    if flag_event[im_count] == 0:
+                        cv2.ellipse(im_disp, ellipse_params_disp,(0,0,255),1)
+                    else:
+                        cv2.ellipse(im_disp, ellipse_params_disp,(0,255,0),1)
                 
-                if pupil_center[0]==0:#flag this frame, probably blinking
-                    flag_event[im_count] = 1
-                    #give yourself room for error after event
-                    if flag_event[im_count-1]<1:
-                        pupil_x1 = int(pupil_x1-(5*scale_factor))
-                        pupil_y1 = int(pupil_y1-(5*scale_factor))
-                        pupil_x2 = int(pupil_x2+(5*scale_factor))
-                        pupil_y2 = int(pupil_y2+(5*scale_factor))
-                else:
+                if flag_event[im_count] == 0:
                      #adaptive part
                     dummy_img = np.zeros(im0.shape)
                     cv2.ellipse(dummy_img, ellipse_params,255,-1)
@@ -566,6 +604,10 @@ def process_data(options):
             #pixel radius
             tmp = np.mean(pupil_axes_list,1)#collapse across ellipse axes
             pupil_radius = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+            
+            #pupil aspect ratio
+            tmp = np.true_divide(pupil_axes_list[:,0],pupil_axes_list[:,1])#collapse across ellipse axes
+            pupil_aspect = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
 
             # pupil position X 
             tmp = pupil_center_list[:,1].copy()
@@ -578,10 +620,16 @@ def process_data(options):
             #distance
             tmp_pos = np.transpose(np.vstack((pupil_pos_x,pupil_pos_y)))
             pupil_dist = np.squeeze(spatial.distance.cdist(tmp_pos,tmp_pos[0:1,:]))
+            
+            #disance
         if 'cr' in user_rect:
             #pixel radius
             tmp = np.mean(cr_axes_list,1)#collapse across ellipse axes
             cr_radius = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+            
+            #pupil aspect ratio
+            tmp = np.true_divide(cr_axes_list[:,0],cr_axes_list[:,1])#collapse across ellipse axes
+            cr_aspect = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
 
             # cr position X 
             tmp = cr_center_list[:,1].copy()
@@ -594,7 +642,6 @@ def process_data(options):
             #cr distance
             tmp_pos = np.transpose(np.vstack((cr_pos_x,cr_pos_y)))
             cr_dist = np.squeeze((spatial.distance.cdist(tmp_pos,tmp_pos[0:1,:])))
-
         #**save complete traces**
         output_fn = os.path.join(output_file_dir,'full_session_eyetracker_data_%s_%s_%s.h5'%(session,animalid,run))
 
@@ -612,12 +659,11 @@ def process_data(options):
             tset = file_grp.create_dataset('camera_time',camera_time.shape, camera_time.dtype)
         tset[...] = camera_time
 
-        
         if 'blink_events' not in file_grp.keys():
             blink_ev_set = file_grp.create_dataset('blink_events',flag_event.shape, flag_event.dtype)
         blink_ev_set[...] = flag_event
 
-        if len(blink_times)>0:#deal with empty blink list
+        if len(blink_times)>0:
             if 'blink_times' not in file_grp.keys():
                 blink_set = file_grp.create_dataset('blink_times',blink_times.shape, blink_times.dtype)
             blink_set[...] = blink_times
@@ -627,6 +673,10 @@ def process_data(options):
             if 'pupil_radius' not in file_grp.keys():
                 pup_rad_set = file_grp.create_dataset('pupil_radius',pupil_radius.shape, pupil_radius.dtype)
             pup_rad_set[...] = pupil_radius
+            
+            if 'pupil_aspect' not in file_grp.keys():
+                pup_asp_set = file_grp.create_dataset('pupil_aspect',pupil_aspect.shape, pupil_aspect.dtype)
+            pup_asp_set[...] = pupil_aspect
 
             if 'pupil_distance' not in file_grp.keys():
                 pup_dist_set = file_grp.create_dataset('pupil_distance',pupil_dist.shape, pupil_dist.dtype)
@@ -644,6 +694,11 @@ def process_data(options):
             if 'cr_radius' not in file_grp.keys():
                 cr_rad_set = file_grp.create_dataset('cr_radius',cr_radius.shape, cr_radius.dtype)
             cr_rad_set[...] = cr_radius
+            
+            if 'pupil_aspect' not in file_grp.keys():
+                cr_asp_set = file_grp.create_dataset('cr_aspect',cr_aspect.shape, cr_aspect.dtype)
+            cr_asp_set[...] = cr_aspect
+
 
             if 'cr_distance' not in file_grp.keys():
                 cr_dist_set = file_grp.create_dataset('cr_distance',cr_dist.shape, cr_dist.dtype)
@@ -663,23 +718,42 @@ def process_data(options):
         print 'Plotting extracted features for the full session, output folder: %s'%(output_fig_dir)
         if 'pupil' in user_rect:
             pupil_df = pd.DataFrame({'camera time': camera_time,
-                                   'pupil radius': pupil_radius,
-                                   'pupil distance': pupil_dist,
-                                   'pupil position x': pupil_pos_x,
-                                   'pupil position y': pupil_pos_y,
-                                   })
+                                     'pupil radius': pupil_radius,
+                                     'pupil aspect ratio': pupil_aspect,              
+                                     'pupil distance': pupil_dist,
+                                     'pupil position x': pupil_pos_x,
+                                     'pupil position y': pupil_pos_y,
+                                    })
             
             fig_file = os.path.join(output_fig_dir,'pupil_radius_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil radius',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_radius_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil radius', fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_aspect_ratio_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(pupil_df, 'camera time', 'pupil aspect ratio',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_aspect_ratio_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil aspect ratio', fig_file)
 
             fig_file = os.path.join(output_fig_dir,'pupil_distance_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil distance',stim_on_times,stim_off_times, blink_times, fig_file)
-
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_distance_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil distance', fig_file)
+            
             fig_file = os.path.join(output_fig_dir,'pupil_x_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil position x',stim_on_times,stim_off_times, blink_times, fig_file)
-
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_x_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil position x', fig_file)
+            
             fig_file = os.path.join(output_fig_dir,'pupil_y_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil position y',stim_on_times,stim_off_times, blink_times, fig_file)
+             
+            fig_file = os.path.join(output_fig_dir,'pupil_y_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil position y', fig_file)
         if 'cr' in user_rect:
             cr_df = pd.DataFrame({'camera time': camera_time,
                                    'cr radius': cr_radius,
@@ -748,6 +822,7 @@ def parse_data(options):
         blink_times = file_grp['blink_times'][:]
     pupil_radius = file_grp['pupil_radius'][:]
     pupil_dist = file_grp['pupil_distance'][:]
+    pupil_aspect = file_grp['pupil_aspect'][:]
 
     file_grp.close()
 
@@ -756,7 +831,7 @@ def parse_data(options):
         print 'Choose eye feature criteria for trial exclusion'   
         print '0: pupil radius'
         print '1: blink events'
-        print '2: pupil distance'
+        print '2: pupil aspect ratio'
         print 'hint:'
         print 'to select multiple criteria:  <0,1,2>'
         tmp_user_selection = raw_input("Select exclusion criteria, or press <enter> to continue with none:\n")
@@ -777,11 +852,12 @@ def parse_data(options):
                     continue
      
     pupil_rad_thresh = None
-    exclude_blink = False
+    blink_count_thresh = None
+    pupil_aspect_hi_thresh = None
+    pupil_aspect_low_thresh = None
     for sel_idx in user_selection:
         if sel_idx == 0:#pupil_radius
             while True:
-
                 tmp_thresh = raw_input("Enter pupil radius threshold (pixel minimum):\n")
                 try:
                     pupil_rad_thresh = int(tmp_thresh)
@@ -791,7 +867,40 @@ def parse_data(options):
                     print 'Invalid value provided for threshold. Try again'
                     continue
         if sel_idx ==1:
-            exclude_blink = True
+            while True:
+                tmp_thresh = raw_input("Enter number of blink events for trial exclusion:\n")
+                try:
+                    blink_count_thresh = int(tmp_thresh)
+                    print 'Blink Event Threshold:%d'%(blink_count_thresh)
+                    break
+                except:
+                    print 'Invalid value provided for threshold. Try again'
+                    continue
+        if sel_idx ==2:
+            while True:
+                tmp_thresh = raw_input("Enter aspect ratio threshold (maximum). Leave blank for None:\n")
+                try:
+                    if not tmp_thresh:
+                        pupil_aspect_hi_thresh = np.inf
+                    else:
+                        pupil_aspect_hi_thresh = float(tmp_thresh)
+                        print 'Apect Ratio Threshold (max):%d'%(pupil_aspect_hi_thresh)
+                    break
+                except:
+                    print 'Invalid value provided for threshold. Try again'
+                    continue
+            while True:
+                tmp_thresh = raw_input("Enter aspect ratio threshold (mimimum). Leave blank for None:\n")
+                try:
+                    if not tmp_thresh:
+                        pupil_aspect_low_thresh = -np.inf
+                    else:
+                        pupil_aspect_low_thresh = float(tmp_thresh)
+                        print 'Apect Ratio Threshold (min):%d'%(pupil_aspect_low_thresh)
+                    break
+                except:
+                    print 'Invalid value provided for threshold. Try again'
+                    continue
 
     #****get trial info times***
     print 'Getting paradigm info from: %s'%(os.path.join(para_file_dir, para_file))
@@ -848,8 +957,10 @@ def parse_data(options):
         eye_info[trial_string]['on_idx'] = on_idx
         eye_info[trial_string]['end_idx'] = end_idx
         eye_info[trial_string]['off_idx'] = off_idx
-        eye_info[trial_string]['exclude_blink'] = exclude_blink
+        eye_info[trial_string]['blink_count_thresh'] = blink_count_thresh
         eye_info[trial_string]['pupil_radius_threshold'] = pupil_rad_thresh
+        eye_info[trial_string]['pupil_ratio_hi_threshold'] = pupil_aspect_hi_thresh
+        eye_info[trial_string]['pupil_ratio_low_threshold'] = pupil_aspect_low_thresh
 
         #get some feature values for stimulation and baseline periods
         pupil_sz_baseline = np.mean(pupil_radius[start_idx:on_idx])
@@ -865,10 +976,15 @@ def parse_data(options):
         if pupil_rad_thresh is not None:
             if any(pupil_radius[start_idx:end_idx]<pupil_rad_thresh):
                 trial_include = False
-        if exclude_blink:
-            if any(blink_events[start_idx:end_idx]):
+        if blink_count_thresh is not None:
+            if sum(blink_events[start_idx:end_idx])>=blink_count_thresh:
+                trial_include = False
+        if any([pupil_aspect_hi_thresh is not None,pupil_aspect_low_thresh is not None]):
+            print 'here'
+            if any(pupil_aspect[start_idx:end_idx]<=pupil_aspect_low_thresh) or any(pupil_aspect[start_idx:end_idx]>=pupil_aspect_hi_thresh):
                 trial_include = False
         eye_info[trial_string]['include_trial'] = trial_include
+
      
         
         if trial_include:
@@ -883,7 +999,7 @@ def parse_data(options):
             ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'r',alpha =0.1)
             
     print('***** FINAL TRIAL COUNT *****')
-    print('%d of %d trials passed NOT excluded')%(trial_include_count,len(trial_info))
+    print('%d of %d trials NOT excluded')%(trial_include_count,len(trial_info))
 
     print 'Saving figures to: %s' % (output_fig_dir)
     ax.plot(trial_time, np.nanmean(pup_rad_mat,0),'k',alpha=1)
@@ -910,31 +1026,18 @@ def parse_data(options):
 
     df = pd.DataFrame({'camera time': camera_time,
                                    'pupil radius': pupil_radius,
-                                   'pupil distance': pupil_dist
+                                   'pupil distance': pupil_dist,
+                                   'pupil ratio': pupil_aspect,
                                    })
 
     fig_file = os.path.join(output_fig_dir,'pupil_radius_trials_marked_%s_%s_%s.png'%(session,animalid,run))
-    feature = 'pupil radius'
-    stim_bar_loc = df[feature].min() - 1
-    star_loc = df[feature].max() + 1
+    make_excluded_variable_plot(df, 'camera time', 'pupil radius',eye_info , blink_times, fig_file)
 
-    grid = sns.FacetGrid(df, aspect=15)
-    grid.map(plt.plot, 'camera time', feature, linewidth=0.5)
+    fig_file = os.path.join(output_fig_dir,'pupil_ratio_trials_marked_%s_%s_%s.png'%(session,animalid,run))
+    make_excluded_variable_plot(df, 'camera time', 'pupil ratio',eye_info , blink_times, fig_file)
 
-    for ax in grid.axes.flat:
-        for ntrial in range(len(eye_info)):
-            trial_string = 'trial%05d'%(ntrial+1)
-            if eye_info[trial_string]['include_trial'] :
-                ax.plot([trial_info[trial_string]['stim_on_times']/1E3,trial_info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'k', label=None)
-            else:
-                ax.plot([trial_info[trial_string]['stim_on_times']/1E3,trial_info[trial_string]['stim_off_times']/1E3],np.array([1,1])*stim_bar_loc, 'r', label=None)
-        if len(blink_times)>0:
-            ax.plot(blink_times, np.ones((len(blink_times),))*star_loc,'r*')#start blink events
-
-    sns.despine(trim=True, offset=1)
-    pl.savefig(fig_file, bbox_inches='tight')
-    pl.close()
-
+    fig_file = os.path.join(output_fig_dir,'pupil_distance_trials_marked_%s_%s_%s.png'%(session,animalid,run))
+    make_excluded_variable_plot(df, 'camera time', 'pupil distance',eye_info , blink_times, fig_file)
 
     #save info to file
     output_fn = 'parsed_eye_%s_%s_%s.json'%(session,animalid,run)
