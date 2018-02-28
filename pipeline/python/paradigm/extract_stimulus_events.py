@@ -58,6 +58,7 @@ combined with a user-specified baseline period (default, 1 sec) to get trial-epo
 '''
 
 import os
+import sys
 import json
 import re
 import hashlib
@@ -209,45 +210,30 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
     return trialevents
 #%%
 
-parser = optparse.OptionParser()
+def extract_options(options):
+    parser = optparse.OptionParser()
 
-parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
-# Set specific session/run for current animal:
-parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-
-
-parser.add_option('--retinobar', action="store_true",
-                  dest="retinobar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
-parser.add_option('--phasemod', action="store_true",
-                  dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated gratings.")
-parser.add_option('-t', '--triggervar', action="store",
-                  dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
 
-(options, args) = parser.parse_args()
+    parser.add_option('--retinobar', action="store_true",
+                      dest="retinobar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
+    parser.add_option('--phasemod', action="store_true",
+                      dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated gratings.")
+    parser.add_option('-t', '--triggervar', action="store",
+                      dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
 
-# Set USER INPUT options:
-rootdir = options.rootdir
-animalid = options.animalid
-session = options.session
-acquisition = options.acquisition
-run = options.run
-slurm = options.slurm
 
-if slurm is True and 'coxfs01' not in rootdir:
-    rootdir = '/n/coxfs01/2p-data'
+    (options, args) = parser.parse_args(options)
 
-# MW specific options:
-retinobar = options.retinobar
-phasemod = options.phasemod
-trigger_varname = options.frametrigger_varname
-
-stimorder_files = False #True
+    return options
 
 #%%
 #rootdir = '/mnt/odyssey'
@@ -261,141 +247,178 @@ stimorder_files = False #True
 #trigger_varname = 'frame_trigger'
 #stimorder_files = False
 
-#%%
-# ================================================================================
-# MW trial extraction:
-# ================================================================================
-mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname]
-if slurm is True:
-    mwopts.extend(['--slurm'])
-if retinobar is True:
-    mwopts.extend(['--retinobar'])
-if phasemod is True:
-    mwopts.extend(['--phasemod'])
-#%
-paradigm_outdir = mw.parse_mw_trials(mwopts)
 
-#%
-if stimorder_files is True:
-    mw.create_stimorder_files(paradigm_outdir)
+def parse_acquisition_events(run_dir):
 
-#%%
-# ================================================================================
-# Load reference info:
-# ================================================================================
-run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-runinfo_path = os.path.join(run_dir, '%s.json' % run)
+    run = os.path.split(run_dir)[-1]
+    runinfo_path = os.path.join(run_dir, '%s.json' % run)
 
-with open(runinfo_path, 'r') as fr:
-    runinfo = json.load(fr)
-nfiles = runinfo['ntiffs']
-file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
+    with open(runinfo_path, 'r') as fr:
+        runinfo = json.load(fr)
+    nfiles = runinfo['ntiffs']
+    file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
 
-#%%
+    #%%
 
-# Set outpath to save trial info file for whole run:
-outdir = os.path.join(run_dir, 'paradigm')
+    # Set outpath to save trial info file for whole run:
+    outdir = os.path.join(run_dir, 'paradigm')
 
-#%%
-# =============================================================================
-# Get SERIAL data:
-# =============================================================================
-paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files')
-serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
-print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
+    #%%
+    # =============================================================================
+    # Get SERIAL data:
+    # =============================================================================
+    paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files')
+    serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
+    print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
 
-if len(serialdata_fns) < nfiles:
-    one_to_one = False
-else:
-    one_to_one = True
+    if len(serialdata_fns) < nfiles:
+        one_to_one = False
+    else:
+        one_to_one = True
 
-# Load MW info:
-mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
-print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
+    # Load MW info:
+    paradigm_outdir = os.path.join(run_dir, 'paradigm', 'files')
+    mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
+    print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
-#%%
-# =============================================================================
-# Create <RUN_DIR>/paradigm/trials_<TRIALINFO_HASH>.json file
-# =============================================================================
-RUN = dict()
-trialnum = 0
-for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
-
-    framerate = 44.68 #float(runinfo['frame_rate'])
-
-    currfile = "File%03d" % int(fid+1)
-
-    print "================================="
-    print "Processing files:"
-    print "MW: ", mwtrial_fns[fid]
-    print "ARD: ", serialdata_fns[fid]
-    print "---------------------------------"
-
-    # Load MW parsed trials:
-    mwtrial_path = os.path.join(paradigm_outdir, mwtrial_fns[fid])
-
-    # Load Acquisition serialdata info:
-    serialfn_path = os.path.join(paradigm_rawdir, serialfn)
-
-    # Align MW events to frame-events from serialdata:
-    trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False)
-
-    # Sort trials in run by time:
-    sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
-    sorted_stim_frames = [(trialevents[t]['stim_on_idx'], trialevents[t]['stim_off_idx']) for t in sorted_trials_in_run]
-
-    # Create a dictionary for each trial in the run that specifies ALL info:
-    # SI info:
-    #     - frame indices for sitm ON/OFF
-    #     - meta info (block number in run, ntiffs per behavior file, etc.)
-    # AUX info:
-    #     - stimulus info (from MW)
-    #     - stimulus presentation info
-    # META info:
-    #     - paths to MW and serial data info that are the source of this dict's contents
+    #%%
+    # =============================================================================
+    # Create <RUN_DIR>/paradigm/trials_<TRIALINFO_HASH>.json file
+    # =============================================================================
+    RUN = dict()
     trialnum = 0
-    for trialhash in sorted_trials_in_run:
-        trialnum += 1
-        trialname = 'trial%05d' % int(trialnum)
+    for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
-        RUN[trialname] = dict()
-        RUN[trialname]['trial_hash'] = trialhash
-        RUN[trialname]['block_idx'] = trialevents[trialhash]['mw_trial']['block_idx']
-        if one_to_one is True:
-            RUN[trialname]['ntiffs_per_auxfile'] = 1
-        else:
-            RUN[trialname]['ntiffs_per_auxfile'] = nfiles
-        RUN[trialname]['behavior_data_path'] = mwtrial_path
-        RUN[trialname]['serial_data_path'] = serialfn_path
+        framerate = 44.68 #float(runinfo['frame_rate'])
 
-        RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
-        RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
-        RUN[trialname]['stim_dur_ms'] = trialevents[trialhash]['mw_trial']['stim_off_times']\
-                                                - trialevents[trialhash]['mw_trial']['stim_on_times']
-        RUN[trialname]['iti_dur_ms'] = trialevents[trialhash]['mw_trial']['iti_duration']
-        RUN[trialname]['stimuli'] = trialevents[trialhash]['mw_trial']['stimuli']
+        currfile = "File%03d" % int(fid+1)
 
-        RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
-        RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
-        RUN[trialname]['trial_in_run'] = trialnum
+        print "================================="
+        print "Processing files:"
+        print "MW: ", mwtrial_fns[fid]
+        print "ARD: ", serialdata_fns[fid]
+        print "---------------------------------"
+
+        # Load MW parsed trials:
+        mwtrial_path = os.path.join(paradigm_outdir, mwtrial_fns[fid])
+
+        # Load Acquisition serialdata info:
+        serialfn_path = os.path.join(paradigm_rawdir, serialfn)
+
+        # Align MW events to frame-events from serialdata:
+        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False)
+
+        # Sort trials in run by time:
+        sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
+        sorted_stim_frames = [(trialevents[t]['stim_on_idx'], trialevents[t]['stim_off_idx']) for t in sorted_trials_in_run]
+
+        # Create a dictionary for each trial in the run that specifies ALL info:
+        # SI info:
+        #     - frame indices for sitm ON/OFF
+        #     - meta info (block number in run, ntiffs per behavior file, etc.)
+        # AUX info:
+        #     - stimulus info (from MW)
+        #     - stimulus presentation info
+        # META info:
+        #     - paths to MW and serial data info that are the source of this dict's contents
+        trialnum = 0
+        for trialhash in sorted_trials_in_run:
+            trialnum += 1
+            trialname = 'trial%05d' % int(trialnum)
+
+            RUN[trialname] = dict()
+            RUN[trialname]['trial_hash'] = trialhash
+            RUN[trialname]['block_idx'] = trialevents[trialhash]['mw_trial']['block_idx']
+            if one_to_one is True:
+                RUN[trialname]['ntiffs_per_auxfile'] = 1
+            else:
+                RUN[trialname]['ntiffs_per_auxfile'] = nfiles
+            RUN[trialname]['behavior_data_path'] = mwtrial_path
+            RUN[trialname]['serial_data_path'] = serialfn_path
+
+            RUN[trialname]['start_time_ms'] = trialevents[trialhash]['mw_trial']['start_time_ms']
+            RUN[trialname]['end_time_ms'] = trialevents[trialhash]['mw_trial']['end_time_ms']
+            RUN[trialname]['stim_dur_ms'] = trialevents[trialhash]['mw_trial']['stim_off_times']\
+                                                    - trialevents[trialhash]['mw_trial']['stim_on_times']
+            RUN[trialname]['iti_dur_ms'] = trialevents[trialhash]['mw_trial']['iti_duration']
+            RUN[trialname]['stimuli'] = trialevents[trialhash]['mw_trial']['stimuli']
+
+            RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
+            RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
+            RUN[trialname]['trial_in_run'] = trialnum
 
 
-# Get unique hash for current RUN dict:
-run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
+    # Get unique hash for current RUN dict:
+    run_trial_hash = hashlib.sha1(json.dumps(RUN, indent=4, sort_keys=True)).hexdigest()[0:6]
 
-# Move old files to subdir 'old' so that there is no confusion with hashed files:
-existing_files = [f for f in os.listdir(outdir) if 'trials_' in f and f.endswith('json') and run_trial_hash not in f]
-if len(existing_files) > 0:
-    old = os.path.join(os.path.split(outdir)[0], 'paradigm', 'old')
-    if not os.path.exists(old):
-        os.makedirs(old)
+    # Move old files to subdir 'old' so that there is no confusion with hashed files:
+    existing_files = [f for f in os.listdir(outdir) if 'trials_' in f and f.endswith('json') and run_trial_hash not in f]
+    if len(existing_files) > 0:
+        old = os.path.join(os.path.split(outdir)[0], 'paradigm', 'old')
+        if not os.path.exists(old):
+            os.makedirs(old)
+        for f in existing_files:
+            shutil.move(os.path.join(outdir, f), os.path.join(old, f))
 
-    for f in existing_files:
-        shutil.move(os.path.join(outdir, f), os.path.join(old, f))
+    parsed_run_outfile = os.path.join(outdir, 'trials_%s.json' % run_trial_hash)
+    with open(parsed_run_outfile, 'w') as f:
+        json.dump(RUN, f, sort_keys=True, indent=4)
 
-with open(os.path.join(outdir, 'trials_%s.json' % run_trial_hash), 'w') as f:
-    json.dump(RUN, f, sort_keys=True, indent=4)
+    return parsed_run_outfile
 
 
+def main(options):
+    # ================================================================================
+    # MW trial extraction:
+    # ================================================================================
+    options = extract_options(options)
+
+    # Set USER INPUT options:
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+    slurm = options.slurm
+
+    if slurm is True and 'coxfs01' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
+
+    # MW specific options:
+    retinobar = options.retinobar
+    phasemod = options.phasemod
+    trigger_varname = options.frametrigger_varname
+
+    stimorder_files = False #True
+
+    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname]
+    if slurm is True:
+        mwopts.extend(['--slurm'])
+    if retinobar is True:
+        mwopts.extend(['--retinobar'])
+    if phasemod is True:
+        mwopts.extend(['--phasemod'])
+    #%
+    paradigm_outdir = mw.parse_mw_trials(mwopts)
+    print "----------------------------------------"
+    print "Extracted MW events!"
+    print "Outfile saved to:\n%s" % paradigm_outdir
+    print "----------------------------------------"
+
+    #%
+    if stimorder_files is True:
+        mw.create_stimorder_files(paradigm_outdir)
+
+    # Set reference path and get SERIALDATA info:
+    # ================================================================================
+    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    parsed_run_outfile = parse_acquisition_events(run_dir)
+    print "----------------------------------------"
+    print "ACQUISITION INFO saved to:\n%s" % parsed_run_outfile
+    print "----------------------------------------"
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
 
