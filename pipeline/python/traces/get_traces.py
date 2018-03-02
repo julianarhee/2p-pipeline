@@ -317,7 +317,7 @@ def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', 
     return MASKS #, curr_rois
 
 #%%
-def plot_roi_masks(TID, RID, trace_figdir='/tmp', rootdir=''):
+def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
 
     maskdict_path = os.path.join(TID['DST'], 'MASKS.pkl')
     if rootdir not in maskdict_path:
@@ -361,7 +361,7 @@ def plot_roi_masks(TID, RID, trace_figdir='/tmp', rootdir=''):
                     bgax.imshow(avg, cmap='gray')
                     bgax.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
                     pl.title('background %i' % bgidx)
-                    pl.savefig(os.path.join(trace_figdir, 'bg%i_%s_%s_%s_%s.png' % (bgidx, curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
+                    pl.savefig(os.path.join(mask_figdir, 'bg%i_%s_%s_%s_%s.png' % (bgidx, curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
                     pl.close()
                 else:
                     if 'caiman' in RID['roi_type'] or (RID['roi_type']=='coregister' and 'caiman' in RID['PARAMS']['options']['source']['roi_type']):
@@ -372,7 +372,7 @@ def plot_roi_masks(TID, RID, trace_figdir='/tmp', rootdir=''):
                     ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
                 ax.axis('off')
 
-            pl.savefig(os.path.join(trace_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
+            pl.savefig(os.path.join(mask_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
             pl.close()
 
 
@@ -799,6 +799,10 @@ for v in range(nvolumes):
     vcounter += nslices_full
 vol_idxs = [int(v) for v in vol_idxs]
 
+
+# Check for ACQUISITION EVENT parsing:
+paradigm_dir = os.path.join()
+
 # Load specified trace-ID parameter set:
 # =============================================================================
 trace_dir = os.path.join(run_dir, 'traces')
@@ -896,9 +900,10 @@ if create_new is True or not os.path.exists(maskdict_path):
 # Check if alrady have plotted masks, if not, create new:
 all_files = ['File%03d' % int(i+1) for i in range(ntiffs)]
 tiffs_in_set = [t for t in all_files if t not in TID['PARAMS']['excluded_tiffs']]
-maskfigs = [i for i in os.listdir(trace_figdir) if 'rois_File' in i and i.endswith('png')]
+mask_figdir = os.path.join(trace_figdir, 'masks')
+maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
 if len(maskfigs) == 0 or not len(maskfigs) == len(tiffs_in_set) or create_new is True:
-    plot_roi_masks(TID, RID, trace_figdir=trace_figdir, rootdir=rootdir)
+    plot_roi_masks(TID, RID, mask_figdir=mask_figdir, rootdir=rootdir)
 
 print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
 print_elapsed_time(t_mask)
