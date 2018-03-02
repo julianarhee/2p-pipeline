@@ -292,6 +292,9 @@ def extract_options(options):
     parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--retinobar', action='store_true', dest='retinobar', default=False, help="Boolean flag to indicate this is a retionotopy-style run")
 
+    parser.add_option('-p', '--pupil', action='store', dest='pupil_thresh', default=None, help='manual pupil threshold')
+    parser.add_option('-c', '--cornea', action='store', dest='cr_thresh', default=None, help='manual corneal reflection threshold')
+
 
     parser.add_option('-m', '--movie', action='store_true', dest='make_movie', default='store_true', help='Boolean to indicate whether to make anotated movie of frames')
 
@@ -319,12 +322,17 @@ def process_data(options):
     run = options.run
     retinobar = options.retinobar
 
+    pupil_thresh = options.pupil_thresh
+    cr_thresh = options.cr_thresh
+
     make_movie = options.make_movie
 
     downsample = options.downsample
     space_filt_size = options.space_filt_size
+    if space_filt_size is not None:
+        space_filt_size = int(space_filt_size)
 
-    time_filt_size = options.time_filt_size
+    time_filt_size =  options.time_filt_size
 
     #***unpack some options***
     downsample_factor = None#hard-code,for now since it seems to alter ability to track upupil
@@ -398,8 +406,10 @@ def process_data(options):
             pupil_y1 = pupil_y1_orig
             pupil_x2 = pupil_x2_orig
             pupil_y2 = pupil_y2_orig
-
-            pupil_thresh = np.mean(im0[pupil_y1:pupil_y2,pupil_x1:pupil_x2])
+            if pupil_thresh is None:
+                pupil_thresh = np.mean(im0[pupil_y1:pupil_y2,pupil_x1:pupil_x2])
+            else:
+                pupil_thresh = int(pupil_thresh)
             print 'threshold value for pupil: %10.4f'%(pupil_thresh)
             
         if 'cr' in user_rect:
@@ -412,8 +422,10 @@ def process_data(options):
             cr_y1 = cr_y1_orig
             cr_x2 = cr_x2_orig
             cr_y2 = cr_y2_orig
-
-            cr_thresh = np.mean(im0[cr_y1:cr_y2,cr_x1:cr_x2])
+            if cr_thresh is None:
+                cr_thresh = np.mean(im0[cr_y1:cr_y2,cr_x1:cr_x2])
+            else:
+                cr_thresh = int(cr_thresh)
             print 'threshold value for corneal reflection: %10.4f'%(cr_thresh)
 
         #make empty arrays
@@ -444,27 +456,12 @@ def process_data(options):
                 #get features
                 pupil_center, pupil_axes, pupil_orientation = get_feature_info(im0, (pupil_x1,pupil_y1), (pupil_x2,pupil_y2),\
                                                                                pupil_thresh, 'pupil')
-                #save to array
-                pupil_center_list[im_count,:] = pupil_center
-                pupil_axes_list[im_count,:] = pupil_axes
-                pupil_orientation_list[im_count] = pupil_orientation
-                
-                
                 
                 pupil_ratio = np.true_divide(pupil_axes[0],pupil_axes[1])
                 if pupil_center[0]==0 or pupil_ratio <=.6 or pupil_ratio>(1.0/.6):#flag this frame, probably blinking
                     flag_event[im_count] = 1
-                    #give yourself room for error after event
-                    if flag_event[im_count-1]<1:
-                        pupil_x1 = int(pupil_x1-(5*scale_factor))
-                        pupil_y1 = int(pupil_y1-(5*scale_factor))
-                        pupil_x2 = int(pupil_x2+(5*scale_factor))
-                        pupil_y2 = int(pupil_y2+(5*scale_factor))
-        #                 pupil_x1 = pupil_x1_orig
-        #                 pupil_y1 = pupil_y1_orig
-        #                 pupil_x2 = pupil_x2_orig
-        #                 pupil_y2 = pupil_y2_orig
-                        
+                
+                
                 #draw and save to file
                 ellipse_params = tuple((pupil_center,pupil_axes,pupil_orientation))
                 if make_movie:
@@ -499,6 +496,29 @@ def process_data(options):
                     pupil_y1 = int(y-(3*scale_factor))
                     pupil_x2 = int(x+w+(3*scale_factor))
                     pupil_y2 = int(y+h+(3*scale_factor))
+                    
+                    #save to array
+                    pupil_center_list[im_count,:] = pupil_center
+                    pupil_axes_list[im_count,:] = pupil_axes
+                    pupil_orientation_list[im_count] = pupil_orientation
+                    
+                if im_count >10:    
+                    if sum(flag_event[im_count-10:im_count])>= 5:
+                        #back to beginning with latest size
+                        pupil_x1 = int(pupil_x1_orig-(10*scale_factor))
+                        pupil_y1 = int(pupil_y1_orig-(10*scale_factor))
+                        pupil_x2 = int(pupil_x2_orig+(10*scale_factor))
+                        pupil_y2 = int(pupil_y2_orig+(10*scale_factor))
+
+                        
+                    else:
+                        #give yourself room for error after event
+                        if flag_event[im_count-1]<1:
+                            pupil_x1 = int(pupil_x1-(5*scale_factor))
+                            pupil_y1 = int(pupil_y1-(5*scale_factor))
+                            pupil_x2 = int(pupil_x2+(5*scale_factor))
+                            pupil_y2 = int(pupil_y2+(5*scale_factor))
+
 
             if 'cr' in user_rect:
                 #get features
@@ -826,81 +846,6 @@ def parse_data(options):
 
     file_grp.close()
 
-    #***command-line dialogue to indicate thresholding to use
-    while True:
-        print 'Choose eye feature criteria for trial exclusion'   
-        print '0: pupil radius'
-        print '1: blink events'
-        print '2: pupil aspect ratio'
-        print 'hint:'
-        print 'to select multiple criteria:  <0,1,2>'
-        tmp_user_selection = raw_input("Select exclusion criteria, or press <enter> to continue with none:\n")
-        if len(tmp_user_selection)==1 or ',' in tmp_user_selection:
-            user_selection = [int(i) for i in tmp_user_selection.split(',')]
-            if any([i>= 2 for i in user_selection]):
-                print len(user_selection)
-                print "Bad selection, try again."
-                continue
-            else:
-                print '****SELECTED CRITERIA****'
-                for i in user_selection:
-                    print "Criteria option:", i
-                confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
-                if confirm_selection=='':
-                    break
-                else:
-                    continue
-     
-    pupil_rad_thresh = None
-    blink_count_thresh = None
-    pupil_aspect_hi_thresh = None
-    pupil_aspect_low_thresh = None
-    for sel_idx in user_selection:
-        if sel_idx == 0:#pupil_radius
-            while True:
-                tmp_thresh = raw_input("Enter pupil radius threshold (pixel minimum):\n")
-                try:
-                    pupil_rad_thresh = int(tmp_thresh)
-                    print 'Pupil Threshold:%d'%(pupil_rad_thresh)
-                    break
-                except:
-                    print 'Invalid value provided for threshold. Try again'
-                    continue
-        if sel_idx ==1:
-            while True:
-                tmp_thresh = raw_input("Enter number of blink events for trial exclusion:\n")
-                try:
-                    blink_count_thresh = int(tmp_thresh)
-                    print 'Blink Event Threshold:%d'%(blink_count_thresh)
-                    break
-                except:
-                    print 'Invalid value provided for threshold. Try again'
-                    continue
-        if sel_idx ==2:
-            while True:
-                tmp_thresh = raw_input("Enter aspect ratio threshold (maximum). Leave blank for None:\n")
-                try:
-                    if not tmp_thresh:
-                        pupil_aspect_hi_thresh = np.inf
-                    else:
-                        pupil_aspect_hi_thresh = float(tmp_thresh)
-                        print 'Apect Ratio Threshold (max):%d'%(pupil_aspect_hi_thresh)
-                    break
-                except:
-                    print 'Invalid value provided for threshold. Try again'
-                    continue
-            while True:
-                tmp_thresh = raw_input("Enter aspect ratio threshold (mimimum). Leave blank for None:\n")
-                try:
-                    if not tmp_thresh:
-                        pupil_aspect_low_thresh = -np.inf
-                    else:
-                        pupil_aspect_low_thresh = float(tmp_thresh)
-                        print 'Apect Ratio Threshold (min):%d'%(pupil_aspect_low_thresh)
-                    break
-                except:
-                    print 'Invalid value provided for threshold. Try again'
-                    continue
 
     #****get trial info times***
     print 'Getting paradigm info from: %s'%(os.path.join(para_file_dir, para_file))
@@ -928,11 +873,9 @@ def parse_data(options):
 
     pup_rad_mat = []
     pup_dist_mat = []
-
     fig, ax = pl.subplots()
     fig2, ax2 = pl.subplots()
 
-    trial_include_count = 0
 
     for ntrial in range(0, len((trial_info))):
         if ntrial%100 == 0:
@@ -957,49 +900,42 @@ def parse_data(options):
         eye_info[trial_string]['on_idx'] = on_idx
         eye_info[trial_string]['end_idx'] = end_idx
         eye_info[trial_string]['off_idx'] = off_idx
-        eye_info[trial_string]['blink_count_thresh'] = blink_count_thresh
-        eye_info[trial_string]['pupil_radius_threshold'] = pupil_rad_thresh
-        eye_info[trial_string]['pupil_ratio_hi_threshold'] = pupil_aspect_hi_thresh
-        eye_info[trial_string]['pupil_ratio_low_threshold'] = pupil_aspect_low_thresh
+
 
         #get some feature values for stimulation and baseline periods
-        pupil_sz_baseline = np.mean(pupil_radius[start_idx:on_idx])
+        pupil_sz_baseline = np.mean(pupil_dist[start_idx:on_idx])
         eye_info[trial_string]['pupil_size_stim'] = np.mean(pupil_radius[on_idx:off_idx])
-        eye_info[trial_string]['pupil_size_baseline'] = pupil_sz_baseline
+        eye_info[trial_string]['pupil_size_stim_min'] = np.min(pupil_radius[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_stim_max'] = np.max(pupil_radius[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_baseline'] = np.mean(pupil_radius[start_idx:on_idx])
+        eye_info[trial_string]['pupil_size_baseline_min'] = np.min(pupil_radius[start_idx:on_idx])
+        eye_info[trial_string]['pupil_size_baseline_max'] = np.max(pupil_radius[start_idx:on_idx])
         
         pupil_dist_baseline = np.mean(pupil_dist[start_idx:on_idx])
         eye_info[trial_string]['pupil_dist_stim'] = np.mean(pupil_dist[on_idx:off_idx])
-        eye_info[trial_string]['pupil_dist_baseline'] = pupil_dist_baseline
+        eye_info[trial_string]['pupil_dist_stim_min'] = np.min(pupil_dist[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_stim_max'] = np.max(pupil_dist[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_baseline'] = np.mean(pupil_dist[start_idx:on_idx])
+        eye_info[trial_string]['pupil_dist_baseline_min'] = np.min(pupil_dist[start_idx:on_idx])
+        eye_info[trial_string]['pupil_dist_baseline_max'] = np.max(pupil_dist[start_idx:on_idx])
 
-        #apply exclusion criteria, if indicated
-        trial_include = True
-        if pupil_rad_thresh is not None:
-            if any(pupil_radius[start_idx:end_idx]<pupil_rad_thresh):
-                trial_include = False
-        if blink_count_thresh is not None:
-            if sum(blink_events[start_idx:end_idx])>=blink_count_thresh:
-                trial_include = False
-        if any([pupil_aspect_hi_thresh is not None,pupil_aspect_low_thresh is not None]):
-            print 'here'
-            if any(pupil_aspect[start_idx:end_idx]<=pupil_aspect_low_thresh) or any(pupil_aspect[start_idx:end_idx]>=pupil_aspect_hi_thresh):
-                trial_include = False
-        eye_info[trial_string]['include_trial'] = trial_include
+        eye_info[trial_string]['blink_event_count_stim'] = np.sum(blink_events[on_idx:off_idx])
+        eye_info[trial_string]['blink_event_count_baseline'] = np.sum(blink_events[start_idx:on_idx])
 
-     
+        eye_info[trial_string]['pupil_ratio_stim'] = np.mean(pupil_aspect[on_idx:off_idx])
+        eye_info[trial_string]['pupil_ratio_stim_min'] = np.min(pupil_aspect[on_idx:off_idx])
+        eye_info[trial_string]['pupil_ratio_stim_max'] = np.max(pupil_aspect[on_idx:off_idx])
+        eye_info[trial_string]['pupil_ratio_baseline'] = np.mean(pupil_aspect[start_idx:on_idx])
+        eye_info[trial_string]['pupil_ratio_baseline_min'] = np.min(pupil_aspect[start_idx:on_idx])
+        eye_info[trial_string]['pupil_ratio_baseline_max'] = np.max(pupil_aspect[start_idx:on_idx])
+
+        ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'k',alpha =0.1,linewidth = 0.5)
+        pup_rad_mat.append(pupil_radius[start_idx:end_idx]-pupil_sz_baseline)
         
-        if trial_include:
-            trial_include_count = trial_include_count+1
-            ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'k',alpha =0.1,linewidth = 0.5)
-            pup_rad_mat.append(pupil_radius[start_idx:end_idx]-pupil_sz_baseline)
-            
-            ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'k',alpha =0.1,linewidth = 0.5)
-            pup_dist_mat.append(pupil_dist[start_idx:end_idx]-pupil_dist_baseline) 
-        else:
-            ax.plot(trial_time, pupil_radius[start_idx:end_idx]-pupil_sz_baseline,'r',alpha =0.1)
-            ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'r',alpha =0.1)
-            
-    print('***** FINAL TRIAL COUNT *****')
-    print('%d of %d trials NOT excluded')%(trial_include_count,len(trial_info))
+        ax2.plot(trial_time, pupil_dist[start_idx:end_idx]-pupil_dist_baseline,'k',alpha =0.1,linewidth = 0.5)
+        pup_dist_mat.append(pupil_dist[start_idx:end_idx]-pupil_dist_baseline) 
+
+   
 
     print 'Saving figures to: %s' % (output_fig_dir)
     ax.plot(trial_time, np.nanmean(pup_rad_mat,0),'k',alpha=1)
@@ -1023,21 +959,6 @@ def parse_data(options):
     fig_file = os.path.join(output_fig_dir,'parsed_pupil_distance_%s_%s_%s.png'%(session,animalid,run))
     fig2.savefig(fig_file, bbox_inches='tight')
     pl.close()
-
-    df = pd.DataFrame({'camera time': camera_time,
-                                   'pupil radius': pupil_radius,
-                                   'pupil distance': pupil_dist,
-                                   'pupil ratio': pupil_aspect,
-                                   })
-
-    fig_file = os.path.join(output_fig_dir,'pupil_radius_trials_marked_%s_%s_%s.png'%(session,animalid,run))
-    make_excluded_variable_plot(df, 'camera time', 'pupil radius',eye_info , blink_times, fig_file)
-
-    fig_file = os.path.join(output_fig_dir,'pupil_ratio_trials_marked_%s_%s_%s.png'%(session,animalid,run))
-    make_excluded_variable_plot(df, 'camera time', 'pupil ratio',eye_info , blink_times, fig_file)
-
-    fig_file = os.path.join(output_fig_dir,'pupil_distance_trials_marked_%s_%s_%s.png'%(session,animalid,run))
-    make_excluded_variable_plot(df, 'camera time', 'pupil distance',eye_info , blink_times, fig_file)
 
     #save info to file
     output_fn = 'parsed_eye_%s_%s_%s.json'%(session,animalid,run)
