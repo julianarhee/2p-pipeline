@@ -17,6 +17,7 @@ import hashlib
 import traceback
 import h5py
 import glob
+import shutil
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
 from pipeline.python.rois.utils import get_roi_eval_path, replace_root
 import numpy as np
@@ -585,10 +586,8 @@ def get_mmap_dirname(tiff_sourcedir, mmap_new=False, check_hash=False, auto=Fals
             print "Found duplicates:"
             for u, uf in enumerate(sorted(unknown_mmapped_files, key=natural_keys)):
                 print u, uf
-            if hashed_mmapped_files == unknown_mmapped_files:
-                print "Hashed MMAP dir already exists... Deleting duplicate." 
-                for f in unknown_mmapped_filepaths:
-                    os.remove(f)
+            shutil.rmtree(mmap_dir)
+               
         else:
             print "Renaming MMAP dir:\n --- %s\n to hashed dir: \n --- %s" % (mmap_dir, mmap_source)
             os.rename(mmap_dir, mmap_source)
