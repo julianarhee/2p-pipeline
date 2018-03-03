@@ -87,7 +87,9 @@ import seaborn as sns
 import pylab as pl
 import numpy as np
 from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file
+from pipeline.python.traces.utils import get_frame_info
 pp = pprint.PrettyPrinter(indent=4)
+
 
 #%%
 class StimInfo:
@@ -861,7 +863,7 @@ def set_figure_params(nrows, ncols, fontsize_pt=20, dpi=72.27, spacer=20, top_ma
 
 
 def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='raw', eye_info=None):
-
+    roi=None; configname=None; trial=None
     #ROIS = dict()
     DATA = dict()
 
@@ -902,10 +904,10 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                 first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
                 tsecs = (np.arange(0, nvols) - first_on ) / volumerate
 
-                if 'grating' in trial_info['stimtype']:
-                    stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
-                else:
-                    stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+#                if 'grating' in trial_info['stimtype']:
+#                    stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+#                else:
+#                    stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
 
                 for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
 #                    if trial not in ROIS[configname][roi].keys():
@@ -928,13 +930,11 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                     dfmat.append(df)
 
                     if eye_info is not None:
-                        include = eye_info[trial]['include_trial']
                         eye_radius_baseline = eye_info[trial]['pupil_size_baseline']
                         eye_radius_stimulus = eye_info[trial]['pupil_size_stim']
                         eye_dist_baseline = eye_info[trial]['pupil_dist_baseline']
                         eye_dist_stimulus = eye_info[trial]['pupil_dist_stim']
                     else:
-                        include = True
                         eye_radius_baseline = None
                         eye_radius_stimulus = None
                         eye_dist_baseline = None
@@ -949,7 +949,8 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
 
                     #dfmat.append(df)
                     nframes = len(df)
-                    roi_dfs.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
+                    if 'grating' in 'grating' in trial_info['stimtype']:
+                        roi_dfs.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
                                                  'config': np.tile(configname, (nframes,)),
                                                  'ori': np.tile(configs[configname]['rotation'], (nframes,)),
                                                  'sf': np.tile(configs[configname]['frequency'], (nframes,)),
@@ -957,7 +958,6 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                                                  'ypos': np.tile(configs[configname]['position'][1], (nframes,)),
                                                  'size': np.tile(configs[configname]['scale'][0], (nframes,)),
                                                  'tsec': tsecs,
-                                                 'eye': np.tile(include, (nframes,)),
                                                  'raw': trialmat[tidx,:],
                                                  'df': df,
                                                  'first_on': np.tile(first_on, (nframes,)),
@@ -965,10 +965,34 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                                                  'nsecs_on': np.tile(nframes_on/volumerate, (nframes,)),
                                                  'slice': np.tile(curr_slice, (nframes,)),
                                                  'roi_in_slice': np.tile(roi_in_slice, (nframes,)),
-                                                 'pupil_size_baseline': np.tile(eye_radius_baseline, (nframes,)),
-                                                 'pupil_size_stimulus': np.tile(eye_radius_stimulus, (nframes,)),
-                                                 'pupil_dist_baseline': np.tile(eye_dist_baseline, (nframes,)),
-                                                 'pupil_dist_stimulus': np.tile(eye_dist_stimulus, (nframes,))
+                                                 'pupil_size_baseline': np.tile(eye_info[trial]['pupil_size_baseline'], (nframes,)),
+                                                 'pupil_size_stimulus': np.tile(eye_info[trial]['pupil_size_stim'], (nframes,)),
+                                                 'pupil_dist_baseline': np.tile(eye_info[trial]['pupil_dist_baseline'], (nframes,)),
+                                                 'pupil_dist_stimulus': np.tile(eye_info[trial]['pupil_dist_stim'], (nframes,)),
+                                                 'nblinks_baseline': np.tile(eye_info[trial]['blink_event_count_baseline'], (nframes,)),
+                                                 'nblinks_stim': np.tile(eye_info[trial]['blink_event_count_stim'], (nframes,))
+                                                 }))
+                    else:
+                        roi_dfs.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
+                                                 'config': np.tile(configname, (nframes,)),
+                                                 'img': os.path.splitext(os.path.split(configs[configname]['filepath'])[1])[0],
+                                                 'xpos': np.tile(configs[configname]['position'][0], (nframes,)),
+                                                 'ypos': np.tile(configs[configname]['position'][1], (nframes,)),
+                                                 'size': np.tile(configs[configname]['scale'][0], (nframes,)),
+                                                 'tsec': tsecs,
+                                                 'raw': trialmat[tidx,:],
+                                                 'df': df,
+                                                 'first_on': np.tile(first_on, (nframes,)),
+                                                 'nframes_on': np.tile(nframes_on, (nframes,)),
+                                                 'nsecs_on': np.tile(nframes_on/volumerate, (nframes,)),
+                                                 'slice': np.tile(curr_slice, (nframes,)),
+                                                 'roi_in_slice': np.tile(roi_in_slice, (nframes,)),
+                                                 'pupil_size_baseline': np.tile(eye_info[trial]['pupil_size_baseline'], (nframes,)),
+                                                 'pupil_size_stimulus': np.tile(eye_info[trial]['pupil_size_stim'], (nframes,)),
+                                                 'pupil_dist_baseline': np.tile(eye_info[trial]['pupil_dist_baseline'], (nframes,)),
+                                                 'pupil_dist_stimulus': np.tile(eye_info[trial]['pupil_dist_stim'], (nframes,)),
+                                                 'pupil_nblinks_baseline': np.tile(eye_info[trial]['blink_event_count_baseline'], (nframes,)),
+                                                 'pupil_nblinks_stim': np.tile(eye_info[trial]['blink_event_count_stim'], (nframes,))
                                                  }))
 
 #                                                 index=[tidx]
@@ -992,13 +1016,19 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
 
 
 #%%
-def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw', filter_pupil=True, pupil_size_thr=30, pupil_dist_thr=4):
+def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw', filter_pupil=True, pupil_params=None):
+
+    if pupil_params is None:
+        pupil_params = set_pupil_params()
+    pupil_max_nblinks = pupil_params['max_nblinks']
+    pupil_size_thr = pupil_params['size_thr']
+    pupil_dist_thr = pupil_params['dist_thr']
 
     roi_psth_dir_all = os.path.join(roi_psth_dir, 'all')
     if not os.path.exists(roi_psth_dir_all):
         os.makedirs(roi_psth_dir_all)
     if filter_pupil is True:
-        pupil_thresh_str = 'size%.2f-dist%.2f' % (pupil_size_thr, pupil_dist_thr)
+        pupil_thresh_str = 'size%.2f-dist%.2f-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
         roi_psth_dir_include = os.path.join(roi_psth_dir, 'include', pupil_thresh_str)
         if not os.path.exists(roi_psth_dir_include):
             os.makedirs(roi_psth_dir_include)
@@ -1074,6 +1104,8 @@ def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_
                                                 & (curr_DF['pupil_size_baseline'] > pupil_size_thr)
                                                 & (curr_DF['pupil_dist_baseline'] < pupil_dist_thr)
                                                 & (curr_DF['pupil_dist_stimulus'] < pupil_dist_thr)
+                                                & (curr_DF['pupil_nblinks_stim'] < pupil_max_nblinks)
+                                                & (curr_DF['pupil_nblinks_baseline'] < pupil_max_nblinks)
                                                 )]
                         pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                         fail_trials = [t for t in stim_trials if t not in pass_trials]
@@ -1219,35 +1251,38 @@ def load_eye_data(run_dir):
 
     return eye_info
 
-def set_pupil_params(size_thr=30, dist_thr=8):
+def set_pupil_params(size_thr=30, dist_thr=8, max_nblinks=2):
     pupil_params = dict()
     pupil_params['size_thr'] = size_thr
     pupil_params['dist_thr'] = dist_thr
+    pupil_params['max_nblinks']= max_nblinks
+
+    # Generate hash ID for current pupil params set
+    pupil_params_hash = hash(json.dumps(pupil_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
+    pupil_params['hash'] = pupil_params_hash
 
     return pupil_params
 
 #%%
 def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
+    METRICS = {}
+    PASSTRIALS = {}
 
     if filter_pupil is True and pupil_params is None:
         pupil_params = set_pupil_params()
     pupil_size_thr = pupil_params['size_thr']
     pupil_dist_thr = pupil_params['dist_thr']
+    pupil_max_nblinks = pupil_params['max_nblinks']
 
     roi_list = sorted(DATA.keys(), key=natural_keys)
-    METRICS = dict((roi, dict()) for roi in roi_list)
-
     config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
 
-    for config in config_list:
-
-        for roi in roi_list:
-            DF = DATA[roi]
-
-            if config not in METRICS[roi].keys():
-                METRICS[roi][config] = dict()
-
-            trial_list = sorted(list(set(DATA[roi][DATA[roi]['config']==config]['trial'])), key=natural_keys)
+    #for config in config_list:
+    for roi in roi_list:
+        DF = DATA[roi]
+        metrics_df = []
+        for config in config_list:
+            trial_list = sorted(list(set(DF[DF['config']==config]['trial'])), key=natural_keys)
 
             if filter_pupil is True:
                 curr_DF = DF[DF['trial'].isin(trial_list)]
@@ -1256,25 +1291,25 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                                             & (curr_DF['pupil_size_baseline'] > pupil_size_thr)
                                             & (curr_DF['pupil_dist_baseline'] < pupil_dist_thr)
                                             & (curr_DF['pupil_dist_stimulus'] < pupil_dist_thr)
+                                            & (curr_DF['pupil_nblinks_stim'] < pupil_max_nblinks)
+                                            & (curr_DF['pupil_nblinks_baseline'] < pupil_max_nblinks)
                                             )]
+
                     pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                     fail_trials = [t for t in trial_list if t not in pass_trials]
                 else:
                     pass_trials = trial_list.copy()
                     fail_trials = []
 
-
-            #dfmat = []
-            METRICS[roi][config]['zscores'] = []
-            METRICS[roi][config]['mean_stim_on'] = []
-            METRICS[roi][config]['dfmat'] = []
             for trial in trial_list:
-                df = DATA[roi][DATA[roi]['trial'] == trial]['df']
+                df = DF[DF['trial'] == trial]['df']
+                nframes = len(df)
 
                 if filter_pupil is True and trial in fail_trials:
                     df = np.ones(df.shape) * np.nan
                     zscore_val = np.nan
                     mean_stim_on = np.nan
+                    passes = False
 
                 else:
                     first_on = list(set(DATA[roi][DATA[roi]['trial'] == trial]['first_on']))[0]
@@ -1284,110 +1319,271 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                     mean_stim_on = np.nanmean(stimulus)
                     std_baseline = np.nanstd(baseline)
                     zscore_val = mean_stim_on / std_baseline
+                    passes = True
 
-                METRICS[roi][config]['zscores'].append(zscore_val)
-                METRICS[roi][config]['mean_stim_on'].append(mean_stim_on)
-                METRICS[roi][config]['dfmat'].append(df)
+                metrics_df.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
+                                                'config': np.tile(config, (nframes,)),
+                                                'zscores': np.tile(zscore_val, (nframes,)),
+                                                'mean_stim_on': np.tile(mean_stim_on, (nframes,)),
+                                                'df': df,
+                                                'pass': passes
+                                                }))
+            PASSTRIALS[config] = pass_trials
 
-    return METRICS
+        ROI = pd.concat(metrics_df, axis=0)
+
+        METRICS[roi] = ROI
+
+    return METRICS, PASSTRIALS
 
 #%%
-def get_roi_metrics(DATA, configs, filter_pupil=False, pupil_params=None):
 
+def get_roi_metrics(DATA, configs, traceid_dir, filter_pupil=False, pupil_params=None):
+
+    # Use default pupil params if none provided:
     if filter_pupil is True and pupil_params is None:
-        # Use default:
         pupil_params = set_pupil_params()
 
-    METRICS =  calculate_metrics(DATA, filter_pupil=filter_pupil, pupil_params=pupil_params)
-    roimetrics = dict((roi, dict()) for roi in METRICS.keys())
-    for roi in METRICS.keys():
-        roi_zscores = [METRICS[roi][c]['zscores'] for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_stim_vals = [METRICS[roi][c]['mean_stim_on'] for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_maxdf_vals = [np.max(METRICS[roi][c]['dfmat'], axis=1) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        trial_sfs = [np.tile(configs[c]['frequency'], (len(roi_zscores[0]),)) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        trial_oris = [np.tile(configs[c]['rotation'], (len(roi_zscores[0]),)) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
+    # Check to see whether current pupil param set already exists:
+    metrics_basedir = os.path.join(traceid_dir, 'metrics')
+    if not os.path.exists(metrics_basedir):
+        os.makedirs(metrics_basedir)
+    pupil_metrics_dir = os.path.join(metrics_basedir, 'pupil_%d' % pupil_params['hash'])
+    if not os.path.exists(pupil_metrics_dir):
+        os.makedirs(pupil_metrics_dir)
+    pupil_params_filepath = os.path.join(pupil_metrics_dir, 'pupil_params.json')
+    if not os.path.exists(pupil_params_filepath):
+        with open(pupil_params_filepath, 'w') as f:
+            json.dump(pupil_params, f)
 
-        roi_zscore_means = [np.nanmean(METRICS[roi][c]['zscores']) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_zscore_stds = [np.nanstd(METRICS[roi][c]['zscores']) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_zscore_sems = [stats.sem(METRICS[roi][c]['zscores'], nan_policy='omit') for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_stim_means = [np.nanmean(METRICS[roi][c]['mean_stim_on']) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_meandf_max = [np.nanmax(np.mean(METRICS[roi][c]['dfmat'], axis=0)) for c in sorted(METRICS[roi].keys(), key=natural_keys)]
+    existing_metrics_files = [f for f in os.listdir(pupil_metrics_dir) if 'roi_metrics_%s' % pupil_params['hash'] in f and f.endswith('hdf5')]
+    if not len(existing_metrics_files) == 1:
+        datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        metrics_filepath = os.path.join(pupil_metrics_dir, 'roi_metrics_%s_%s.hdf5' % (pupil_params['hash'], datestr))
+        METRICS, PASSTRIALS =  calculate_metrics(DATA, filter_pupil=filter_pupil, pupil_params=pupil_params)
+        datastore = pd.HDFStore(metrics_filepath)
+        for roi in METRICS.keys():
+            datastore[str(roi)] = METRICS[roi]
+        with open(os.path.join(pupil_metrics_dir, 'pass_trials.json'), 'w') as f:
+            json.dump(PASSTRIALS, f, indent=4, sort_keys=True)
+    else:
+        metrics_filepath = os.path.join(pupil_metrics_dir, existing_metrics_files[0])
+        METRICS = pd.HDFStore(metrics_filepath)
+        with open(os.path.join(pupil_metrics_dir, 'pass_trials.json'), 'r') as f:
+            PASSTRIALS = json.load(f)
 
-        roi_sfs = [configs[c]['frequency'] for c in sorted(METRICS[roi].keys(), key=natural_keys)]
-        roi_oris = [configs[c]['rotation'] for c in sorted(METRICS[roi].keys(), key=natural_keys)]
+    # REPORT to CL:
+    print "*************************************"
+    print "Got ROI METRICS."
+    if filter_pupil is True:
+        print "-------------------------------------"
+        print "Used pupil data to filter ROI traces:"
+        pp.pprint(pupil_params)
+        print "....................................."
+        print "Trials that passed threshold params:"
+        print "....................................."
+        for config in sorted(PASSTRIALS.keys(), key=natural_keys):
+            print "    %s -- %i trials." % (config, len(PASSTRIALS[config]))
+    else:
+        print "-------------------------------------"
+        print "No filtering done on ROI traces."
+        print "Calculated metrics for ALL found trials."
+    print "*************************************"
 
-        df = pd.DataFrame({'sf': roi_sfs,
-                           'ori': roi_oris,
-                           'mean_zscores': roi_zscore_means,
-                           'mean_stim_ons': roi_stim_means,
-                           'std': roi_zscore_stds,
-                           'sem': roi_zscore_sems,
-                           'mean_df_max': roi_meandf_max,
-                           })
-        df_trial = pd.DataFrame({'sf': np.array(trial_sfs).ravel(),
-                                 'ori': np.array(trial_oris).ravel(),
-                                 'zscores_by_trial': np.array(roi_zscores).ravel(),
-                                 'mean_stim_by_trial': np.array(roi_stim_vals).ravel()
-                                 })
-
-        roimetrics[roi]['mean'] = df
-        roimetrics[roi]['trial'] = df_trial
-
-    return roimetrics
+    return metrics_filepath
 
 #%%
-def plot_tuning_curves(roimetrics, stimtype, output_dir, metric_type='zscore', use_errorbar=True, include_trials=True):
+def get_roi_summary_stats(metrics_filepath, configs):
 
-    for roi in roimetrics.keys():
-        df_means = roimetrics[roi]['mean']
-        df_means.sort_values(['sf', 'ori'])
-        df_trials = roimetrics[roi]['trial']
+    # Load METRICS:
+    METRICS = pd.HDFStore(metrics_filepath)
+
+    # First, check if corresponding ROISTATS file exists:
+    curr_metrics_dir = os.path.split(metrics_filepath)[0]
+    existing_files = [f for f in os.listdir(curr_metrics_dir) if 'roi_stats_' in f]
+    if not len(existing_files) == 1:
+        datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        metrics_hash = os.path.splitext(os.path.split(metrics_filepath)[-1])[0].split('roi_metrics_')[-1].split('_')[0]
+        roistats_filepath = os.path.join(curr_metrics_dir, 'roi_stats_%s_%s.hdf5' % (metrics_hash, datestr))
+        ROISTATS = collate_roi_stats(METRICS, configs)
+        datastore = pd.HDFStore(roistats_filepath)
+        df = {'df': ROISTATS}
+        for d in df:
+            datastore[d] = df[d]
+    else:
+        roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
+        ROISTATS = pd.HDFStore(roistats_filepath)
+        #ROISTATS = datastore['ROISTATS']
+
+    return roistats_filepath
+
+#%%
+def collate_roi_stats(METRICS, configs):
+
+    if 'frequency' in configs[configs.keys()[0]].keys():
+        stimtype = 'grating'
+    else:
+        stimtype = 'image'
+
+    # Sort metrics by stimulus-params and calculate sumamry stats:
+    roistats_df =[]
+    for roi in sorted(METRICS.keys(), key=natural_keys):
+        print roi
+        for config in sorted(configs.keys(), key = natural_keys):
+            #print config
+            DF = METRICS[roi][METRICS[roi]['config'] == config]
+
+            all_trials = sorted(list(set(DF['trial'])), key=natural_keys)
+            #pass_trials = sorted(list(set(DF[DF['pass'] == True]['trial'])), key=natural_keys)
+
+            zscore_trial = [DF[DF['trial'] == trial]['zscores'][0] for trial in sorted(all_trials, key=natural_keys)]
+            stimdf_trial = [DF[DF['trial'] == trial]['mean_stim_on'][0] for trial in sorted(all_trials, key=natural_keys)]
+
+            xpos_trial = np.tile(configs[config]['position'][0], (len(zscore_trial),))
+            ypos_trial = np.tile(configs[config]['position'][1], (len(zscore_trial),))
+            size_trial = np.tile(configs[config]['scale'][0], (len(zscore_trial),))
+
+            if stimtype == 'grating':
+                sf_trial = np.tile(configs[config]['frequency'], (len(zscore_trial),))
+                ori_trial = np.tile(configs[config]['rotation'], (len(zscore_trial),))
+
+                # Create DF entry:
+                roistats_df.append(pd.DataFrame({
+                                'roi': np.tile(str(roi), (len(zscore_trial),)),
+                                'config': np.tile(config, (len(zscore_trial),)),
+                                'trial': sorted(all_trials, key=natural_keys),
+                                'zscore': zscore_trial,
+                                'stimdf': stimdf_trial,
+                                'xpos': xpos_trial,
+                                'ypos': ypos_trial,
+                                'size': size_trial,
+                                'sf': sf_trial,
+                                'ori': ori_trial
+                                }))
+
+            else:
+                imname = os.path.splitext(configs[config]['filename'])[0]
+                if 'CamRot' in imname:
+                    objectid = imname.split('_CamRot_')[0]
+                    yrot = int(imname.split('_CamRot_y')[-1])
+                    if 'N1' in imname:
+                        morph = 1
+                    elif 'N2' in imname:
+                        morph = 20
+                elif 'morph' in imname:
+                    if 'yrot' not in imname:
+                        objectid = 'morph' #imname
+                        yrot = 0
+                        morph = int(imname.split('morph')[-1])
+                    else:
+                        objectid = 'morph' #imname.split('_y')[0]
+                        yrot = int(imname.split('_y')[-1])
+                        morph = int(imname.split('_y')[0].split('morph'))
 
 
-        pl.figure(figsize=(8,5))
-        if 'grating' in stimtype:
-            oris = list(set(df_means['ori']))
-            sfs = list(set(df_means['sf']))
-            noris = len(oris)
-            nsfs = len(sfs)
-            if metric_type == 'zscore':
-                metric_mean = 'mean_zscores'
-                metric_trial = 'zscores_by_trial'
-            elif metric_type == 'mean_df':
-                metric_mean = 'mean_stim_ons'
-                metric_trial = 'mean_stim_by_trial'
+                img_trial = np.tile(imname, (len(zscore_trial),))
+                # Create DF entry:
+                roistats_df.append(pd.DataFrame({
+                                'roi': np.tile(str(roi), (len(zscore_trial),)),
+                                'config': np.tile(config, (len(zscore_trial),)),
+                                'trial': sorted(all_trials, key=natural_keys),
+                                'zscore': zscore_trial,
+                                'stimdf': stimdf_trial,
+                                'xpos': xpos_trial,
+                                'ypos': ypos_trial,
+                                'size': size_trial,
+                                'img': img_trial,
+                                'object': np.tile(objectid, (len(zscore_trial),)),
+                                'yrot': np.tile(yrot, (len(zscore_trial),)),
+                                'morph': np.tile(morph, (len(zscore_trial),))
+                                }))
 
-            # Plot EACH trial or error bar for current orientation for all SFs:
-            if use_errorbar:
-                # Plot MEAN for each ori/sf:
-                ax = sns.pointplot(x='ori', y=metric_mean, hue='sf', data=df_means, ci='sd', legend=False, join=False, markers='_', scale=2) # legend_out=True)
-                for sf in sorted(sfs):
-                    ax.errorbar(np.arange(0, noris), df_means[df_means['sf'] == sf].sort_values(['ori'])[metric_mean], yerr=df_means[df_means['sf'] == sf].sort_values(['ori'])['sem'], capsize=5, elinewidth=0)
+    ROISTATS = pd.concat(roistats_df, axis=0)
 
-            if include_trials:
+    return ROISTATS
 
-                sns.stripplot(x="ori", y=metric_trial, data=df_trials, hue='sf', size=2, split=True)
-                # Plot MEAN for each ori/sf:
-                #sns.pointplot(x='ori', y=metric_mean, hue='sf', data=df_means, ci='sd', legend=False, join=False, markers='_', scale=2) # legend_out=True)
+#%%
 
-            # Plot MEAN for each ori/sf:
-            #sns.pointplot(x='ori', y=metric_mean, hue='sf', data=df_means, ci='sd', legend=False, join=False, markers='_', scale=2) # legend_out=True)
-            #pl.legend(loc='upper left'#
+def plot_transform_tuning(roi, curr_df, trans_type, object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
+    if object_type == 'object':
+        curr_objects = list(set(curr_df[object_type]))
+        hue = object_type
+        object_sorter = object_type
+    else:
+        curr_objects = ['morph']
+        hue = None
+        object_sorter = 'morph'
 
-            pl.legend(bbox_to_anchor=(1.0, 1), loc=2, borderaxespad=0.)
-                #sns.pointplot(x='ori', y=trial_metric, hue='sf', data=curr_df, ci='sf', marker='o', size=2)
+    fig, ax = pl.subplots()
+    # Plot mean value across all trials of stim-config:
+    sns.pointplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+                      ci=None, legend=False, join=False, markers='_', scale=2, ax=ax)
 
-        pl.title(roi)
-        sns.despine(offset=0, trim=True)
-        #pl.tight_layout()
-        if use_errorbar is True:
-            figname = 'tuning_%s_err_%s.png' % (metric_type, roi)
+    # Add dots for individual trial z-score values:
+    sns.stripplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+                      edgecolor="w", split=True, size=2, ax=ax)
+
+    # Add SEM cuz it looks good:
+    transforms = sorted(list(set(curr_df[trans_type])))
+    for oi, obj in enumerate(sorted(curr_objects, key=natural_keys)):
+        if hue=='object' and 'morph' in obj:
+            continue
+        if object_sorter == 'object':
+            curr_zmeans = [np.nanmean(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type]) for trans in sorted(transforms)]
+            curr_zmeans_yerr = [stats.sem(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type], nan_policy='omit') for trans in sorted(transforms)]
         else:
-            figname = 'tuning_%s_trials_%s.png' % (metric_type, roi)
+            curr_zmeans = [np.nanmean(curr_df[curr_df[trans_type] == trans][metric_type]) for trans in sorted(transforms)]
+            curr_zmeans_yerr = [stats.sem(curr_df[curr_df[trans_type] == trans][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+        ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
+
+    # Format, title, and save:
+    pl.title(roi)
+    sns.despine(offset=0, trim=True, bottom=True)
+    if include_trials is True:
+        figname = '%s_tuning_%s_trials_%s.png' % (trans_type, metric_type, roi)
+    else:
+        figname = '%s_tuning_%s_%s.png' % (trans_type, metric_type, roi)
+    pl.savefig(os.path.join(output_dir, figname))
+    pl.close()
+
+#%%
+def plot_tuning_curves(roistats_filepath, configs, output_dir, metric_type='zscore', include_trials=True):
+
+    STATS = pd.HDFStore(roistats_filepath)['/df']
 
 
-        pl.savefig(os.path.join(output_dir, figname))
-        pl.close()
+    if 'frequency' in configs[configs.keys()[0]].keys():
+        stimtype = 'grating'
+    else:
+        stimtype = 'image'
+
+    roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
+#    config_list = sorted(list(set(STATS['config'])), key=natural_keys)
+#
+#    Htranslations = list(set([configs[c]['position'][0] for c in configs.keys()]))
+#    Vtranslations = list(set([configs[c]['position'][1] for c in configs.keys()]))
+#    sizes = list(set(([configs[c]['scale'][0] for c in configs.keys()])))
+#
+#    ncols = len(positions)
+#    nrows = len(sizes)
+
+
+    for roi in sorted(roi_list, key=natural_keys):
+
+        if stimtype == 'image':
+            objectid_list = sorted(list(set(STATS['object'])))
+
+            # ----- First, plot TUNING curves for YROT (color by object ID) --------
+            curr_objects = [i for i in objectid_list if 'morph' not in i]
+            curr_df = STATS[((STATS['roi'] == roi) & (STATS['object'].isin(curr_objects)))]
+
+            plot_transform_tuning(roi, curr_df, "yrot", "object", metric_type, output_dir=output_dir, include_trials=include_trials)
+
+            # ----- Now, plot TUNING curves for MORPHS (color by morph level) --------
+            curr_df = STATS[((STATS['roi'] == roi) & (STATS['yrot'] == 0))]
+            plot_transform_tuning(roi, curr_df, "morph", object_type='morph', metric_type='zscore', output_dir=output_dir, include_trials=include_trials)
+
+
 
 #%%
 
@@ -1439,8 +1635,8 @@ def extract_options(options):
     parser.add_option('--scale', action="store_true",
                       dest="universal_scale", default=False, help="Set flag to plot all PSTH plots with same y-axis scale")
 
-    parser.add_option('--omit-err', action="store_false",
-                      dest="use_errorbar", default=True, help="Set flag to plot PSTHs without error bars (default: std)")
+#    parser.add_option('--omit-err', action="store_false",
+#                      dest="use_errorbar", default=True, help="Set flag to plot PSTHs without error bars (default: std)")
 
     parser.add_option('--omit-trials', action="store_false",
                       dest="include_trials", default=True, help="Set flag to plot PSTHS without individual trial values")
@@ -1451,6 +1647,12 @@ def extract_options(options):
                       dest="pupil_size_thr", default=30, help="Cut-off for pupil radius, if --pupil set [default: 30]")
     parser.add_option('--dist', action="store",
                       dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+    parser.add_option('--blinks', action="store",
+                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
+
+    parser.add_option('--metric', action="store",
+                      dest="roi_metric", default="zscore", help="ROI metric to use for tuning curves [default: 'zscore']")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -1490,31 +1692,29 @@ def plot_traceid_psths(options):
     create_new = options.create_new
     universal_scale = options.universal_scale
 
-    use_errorbar = options.use_errorbar
+    #use_errorbar = options.use_errorbar
     include_trials = options.include_trials
     filter_pupil = options.filter_pupil
     pupil_size_thr = float(options.pupil_size_thr)
     pupil_dist_thr = float(options.pupil_dist_thr)
+    pupil_max_nblinks = float(options.pupil_max_nblinks)
 
+    roi_metric = options.roi_metric
     #%
     # =============================================================================
-    # Get meta info for RUN:
+    # Get meta/SI info for RUN:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
     si_info = get_frame_info(run_dir)
 
-    # =============================================================================
-    # Get paradigm info:
+    # Get paradigm/AUX info:
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
     trial_info = get_alignment_specs(paradigm_dir, si_info, custom_mw=custom_mw, options=options)
 
-    # =============================================================================
     # Load TRACE ID info:
-    # =============================================================================
-
+    # =========================================================================
     TID = load_TID(run_dir, trace_id)
     traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
@@ -1523,26 +1723,19 @@ def plot_traceid_psths(options):
         print "Replacing orig root with dir:", traceid_dir
         trace_hash = TID['trace_hash']
 
-    excluded_tiffs = TID['PARAMS']['excluded_tiffs']
-    print "Current trace ID - %s - excludes %i tiffs." % (trace_id, len(excluded_tiffs))
-    #excluded_tiff_idxs = [int(tf[4:])-1 for tf in excluded_tiffs]
-    #%
-    # =============================================================================
     # Assign frame indices for specified trial epochs:
-    # =============================================================================
-
+    # =========================================================================
     parsed_frames_filepath = assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=create_new)
 
-    # =============================================================================
     # Get all unique stimulus configurations:
-    # =============================================================================
-
+    # =========================================================================
     configs, stimtype = get_stimulus_configs(trial_info)
 
     #%
-    # =============================================================================
     # Group ROI time-courses for each trial by stimulus config:
-    # =============================================================================
+    # =========================================================================
+    excluded_tiffs = TID['PARAMS']['excluded_tiffs']
+    print "Current trace ID - %s - excludes %i tiffs." % (trace_id, len(excluded_tiffs))
     roi_trials_by_stim_path = group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si_info, excluded_tiffs=excluded_tiffs, create_new=create_new)
     #%
     # GET eye-info:?
@@ -1550,8 +1743,8 @@ def plot_traceid_psths(options):
     if eye_info is None:
         filter_pupil = False
 
-
     # GET ALL DATA into a dataframe:
+    # =============================================================================
     corresponding_datestr = os.path.splitext(os.path.split(roi_trials_by_stim_path)[-1])[0]
     corresponding_datestr = corresponding_datestr.split('roi_trials_')[-1]
     roidata_filepath = os.path.join(traceid_dir, 'ROIDATA_%s.hdf5' % corresponding_datestr)
@@ -1566,21 +1759,20 @@ def plot_traceid_psths(options):
         for e in existing_df_files:
             shutil.move(os.path.join(traceid_dir, e), os.path.join(old_dir, e))
         print "Moved old files..."
-
         DATA = traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='raw', eye_info=eye_info)
-        #ROIS = plot_all_psths(roi_list, plot_info, trial_info, configs, roi_trials_by_stim_path, roi_psth_dir=roi_psth_dir, trace_type=trace_type, plot_all=True)
         # Save dataframe with same datestr as roi_trials.hdf5 file in traceid dir:
         datastore = pd.HDFStore(roidata_filepath)
         for roi in DATA.keys():
             datastore[str(roi)] = DATA[roi]
-#    with open(roidata_filepath, 'wb') as f:
-#        pkl.dump(ROIS, f, protocol=pkl.HIGHEST_PROTOCOL)
 
+
+    # FILTER DATA with PUPIL PARAM thresholds, if relevant:
+    # =============================================================================
+    pupil_params = set_pupil_params(size_thr=pupil_size_thr, dist_thr=pupil_dist_thr, max_nblinks=pupil_max_nblinks)
 
     # =============================================================================
     # Set plotting params for trial average plots for each ROI:
     # =============================================================================
-
     plot_info = set_subplot_order(configs, stimtype, universal_scale=universal_scale)
 
     #% For each ROI, plot PSTH for all stim configs:
@@ -1589,31 +1781,29 @@ def plot_traceid_psths(options):
         os.makedirs(roi_psth_dir)
     print "Saving PSTH plots to: %s" % roi_psth_dir
 
-    #plot_all_psths(DATA, plot_info, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type=trace_type)
     plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type='raw',
-                   filter_pupil=filter_pupil, pupil_size_thr=pupil_size_thr, pupil_dist_thr=pupil_dist_thr)
+                   filter_pupil=filter_pupil, pupil_params=pupil_params)
 
 
 
     # Cacluate some metrics, and plot tuning curves:
-    pupil_params = set_pupil_params(size_thr=pupil_size_thr, dist_thr=pupil_dist_thr)
-    roimetrics = get_roi_metrics(DATA, configs, filter_pupil=filter_pupil, pupil_params=pupil_params)
+    metrics_filepath = get_roi_metrics(DATA, configs, traceid_dir, filter_pupil=filter_pupil, pupil_params=pupil_params)
+    roistats_filepath = get_roi_summary_stats(metrics_filepath, configs)
+
+
     # PLOT TUNING CURVES
     tuning_figdir_base = os.path.join(traceid_dir, 'figures', 'tuning', trace_type)
-    metrics_to_plot = ['zscore', 'mean_df']
-    for roi_metric in metrics_to_plot:
-        #roi_metric = 'zscore'
 
-        # First, plot with ALL trials included:
-        tuning_figdir = os.path.join(tuning_figdir_base, roi_metric)
-        if filter_pupil is True:
-            curr_tuning_figdir = os.path.join(tuning_figdir, 'size%.2f-dist%.2f' % (pupil_size_thr, pupil_dist_thr))
-        else:
-            curr_tuning_figdir = os.path.join(tuning_figdir, 'all')
-        if not os.path.exists(curr_tuning_figdir):
-            os.makedirs(curr_tuning_figdir)
+    # First, plot with ALL trials included:
+    tuning_figdir = os.path.join(tuning_figdir_base, roi_metric)
+    if filter_pupil is True:
+        curr_tuning_figdir = os.path.join(tuning_figdir, 'size%.2f-dist%.2f-blinks%i' % (pupil_size_thr, pupil_dist_thr, pupil_max_nblinks))
+    else:
+        curr_tuning_figdir = os.path.join(tuning_figdir, 'all')
+    if not os.path.exists(curr_tuning_figdir):
+        os.makedirs(curr_tuning_figdir)
 
-        plot_tuning_curves(roimetrics, stimtype, curr_tuning_figdir, metric_type=roi_metric, use_errorbar=use_errorbar, include_trials=include_trials)
+    plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_type=roi_metric, include_trials=include_trials)
 
 
     return roidata_filepath, roi_psth_dir
@@ -1623,7 +1813,6 @@ def plot_traceid_psths(options):
 def main(options):
 
     roidata_filepath, roi_psth_dir = plot_traceid_psths(options)
-
 
     print "DONE PLOTTING PSTHS!"
     print "All ROI plots saved to: %s" % roi_psth_dir
