@@ -5,7 +5,8 @@ Created on Fri Feb 23 2018
 
 @author: cesarechavarria
 """
-
+import matplotlib
+matplotlib.use('Agg')
 import cv2
 import os
 import sys
