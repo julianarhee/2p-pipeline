@@ -58,11 +58,29 @@ Outputs:
                     'denoise_nmf' -- dataset
                     ...etc.
 
-    c.  PSTHs, if relevant for each ROI:
+    c.  Dataframe combining trace info, aux info, and eye-tracker data:
 
-    <TRACEID_DIR>/figures/psths/<TRACE_TYPE>/roiXXXXX_SliceXX_IDX.png
-    -- trace_type = 'raw' or 'denoised_nmf' for now
-    -- IDX = roi idx in current roi set
+    <TRACEID_DIR>/ROIDATA_<CORR_DATESTR>.hdf5
+    -- CORR_DATESTR = date-str that corresponds to 'roi_trials_....hdf5' file from (b)
+    -- each 'dataset' is an ROI:
+        '/roiXXXXX' = dataframe with all trial info, trace info, and eye-tracker info for given ROI
+
+
+
+    d.  PSTHs, if relevant for each ROI:
+
+    <TRACEID_DIR>/figures/psths/<TRACE_TYPE>/all/roiXXXXX_SliceXX_IDX_<TRACE_TYPE>_<TRANSFORM_STR>.png
+    -- TRACE_TYPE = 'raw' or 'denoised_nmf' for now
+    -- IDX = roi idx in current roi set (0-indexed)
+    -- TRANSFORM_STR = short '_'-separated string describing transforms
+
+    * if --pupil is True, also plots PSTHs that show 'included' and 'excluded' traces based on pupil_params:
+
+        <TRACEID_DIR>/figures/psths/<TRACE_TYPE>/size<SIZE>-dist<DIST>-blinks<BLINKS>/
+        -- SIZE = opt-arg, size of pupil radius, below which trials are excluded
+        -- DIST = opt-arg, pupil distance from start frame, below which trials are excluded
+        -- BLINKS = opt-arg, number of blinks allowed
+
 
 
 '''
@@ -819,12 +837,12 @@ def set_subplot_order(configs, stimtype, universal_scale=False):  # in percentag
             subplot_stimlist[img] = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
         else:
             nfigures = len(img_vals)
-            nrows = len(size_vals)
-            ncols = len(position_vals)
+            nrows = len(position_vals)
+            ncols = len(size_vals)
             subplot_stimlist = dict()
             for img in img_vals:
                 curr_img_configs = [c for c in configs.keys() if configs[c]['filename'] == img]
-                subplot_stimlist[img] = sorted(curr_img_configs, key=lambda x: (configs[x].get('position'), configs[x].get('size')))
+                subplot_stimlist[img] = sorted(curr_img_configs, key=lambda x: (configs[x].get('scale'), configs[x].get('position')))
 
         stiminfo['position_vals'] = position_vals
         stiminfo['size_vals'] = size_vals
@@ -969,8 +987,8 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                                                  'pupil_size_stimulus': np.tile(eye_info[trial]['pupil_size_stim'], (nframes,)),
                                                  'pupil_dist_baseline': np.tile(eye_info[trial]['pupil_dist_baseline'], (nframes,)),
                                                  'pupil_dist_stimulus': np.tile(eye_info[trial]['pupil_dist_stim'], (nframes,)),
-                                                 'nblinks_baseline': np.tile(eye_info[trial]['blink_event_count_baseline'], (nframes,)),
-                                                 'nblinks_stim': np.tile(eye_info[trial]['blink_event_count_stim'], (nframes,))
+                                                 'pupil_nblinks_baseline': np.tile(eye_info[trial]['blink_event_count_baseline'], (nframes,)),
+                                                 'pupil_nblinks_stim': np.tile(eye_info[trial]['blink_event_count_stim'], (nframes,))
                                                  }))
                     else:
                         roi_dfs.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
@@ -1012,13 +1030,65 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
     return DATA
 
 #%%
+def get_facet_stats(DF, curr_subplots, g):
+    plotstats = {'dfmats': {}, 'indices': {}}
+    dfmats = dict((config, []) for config in curr_subplots)
+    plotindices = dict((config, []) for config in curr_subplots)
+    for (row_i, col_j, hue_k), data_ijk in g.facet_data():
+        if len(data_ijk) == 0:
+            continue
+        dfmats[list(set(data_ijk['config']))[0]].append(data_ijk['df'])
+        plotindices[list(set(data_ijk['config']))[0]].append((row_i, col_j))
 
+    for config in dfmats.keys():
+        plotstats['dfmats'][config] = np.array(dfmats[config])
+        plotstats['indices'][config] = list(set(plotindices[config]))[0]
+
+    return plotstats
+
+#%%
+def plot_psth_df(roi, DF, curr_subplots, figpath='/tmp/figure.png', trace_color='k', stimbar_color='r'):
+
+    ordered_positions = sorted(list(set(DF['position'])))
+    ordered_sizes = sorted(list(set(DF['size'])))
+
+    first_on = list(set(DF['first_on']))
+    nsecs_on = list(set(DF['nsecs_on']))
+    assert(len(first_on)==1, "More than 1 stim ON index found! -- Check %s, %s" % (roi, str(curr_subplots)))
+    assert(len(nsecs_on)==1, "Multiple stim durations found! -- Check %s, %s" % (roi, str(nsecs_on)))
+    first_on = first_on[0]
+    nsecs_on = nsecs_on[0]
+    tsecs = sorted(list(set(DF['tsec'])))
+
+    g1 = sns.FacetGrid(DF, row='size', col='position', sharex=True, sharey=True, hue='trial', row_order=ordered_sizes, col_order=ordered_positions)
+    g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
+    plotstats = get_facet_stats(DF, curr_subplots, g1)
+
+    # Get mean trace:
+    meandfs = {}
+    for config in plotstats['dfmats'].keys():
+        meandfs[config] = np.mean(plotstats['dfmats'][config], axis=0)
+        currax = g1.facet_axis(plotstats['indices'][config][0], plotstats['indices'][config][1])
+        currax.plot(tsecs, meandfs[config], trace_color, linewidth=1, alpha=1)
+        currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
+
+    sns.despine(offset=2, trim=True)
+    #%
+    pl.subplots_adjust(top=0.9)
+    g1.fig.suptitle(roi)
+    g1.savefig(figpath)
+    pl.close()
 
 
 #%%
-def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw', filter_pupil=True, pupil_params=None):
 
-    if pupil_params is None:
+def plot_psths(roidata_filepath, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw', filter_pupil=True, pupil_params=None, plot_all=True):
+
+    if plot_all is False and filter_pupil is False:
+        print "No PSTH types specified. Exiting."
+        return
+
+    if filter_pupil is True and pupil_params is None:
         pupil_params = set_pupil_params()
     pupil_max_nblinks = pupil_params['max_nblinks']
     pupil_size_thr = pupil_params['size_thr']
@@ -1029,10 +1099,10 @@ def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_
         os.makedirs(roi_psth_dir_all)
     if filter_pupil is True:
         pupil_thresh_str = 'size%.2f-dist%.2f-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
-        roi_psth_dir_include = os.path.join(roi_psth_dir, 'include', pupil_thresh_str)
+        roi_psth_dir_include = os.path.join(roi_psth_dir, pupil_thresh_str, 'include')
         if not os.path.exists(roi_psth_dir_include):
             os.makedirs(roi_psth_dir_include)
-        roi_psth_dir_exclude = os.path.join(roi_psth_dir, 'exclude', pupil_thresh_str)
+        roi_psth_dir_exclude = os.path.join(roi_psth_dir, pupil_thresh_str, 'exclude')
         if not os.path.exists(roi_psth_dir_exclude):
             os.makedirs(roi_psth_dir_exclude)
 
@@ -1043,19 +1113,21 @@ def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_
     iti_dur = trial_info['iti_full'] #trialdict['trial00001']['iti_dur_ms']/1E3
     tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
+    DATA = pd.HDFStore(roidata_filepath)
     roi_list = sorted(DATA.keys(), key=natural_keys)
+    if '/' in DATA.keys()[0]:
+        roi_list = sorted([r[1:] for r in roi_list], key=natural_keys)
     subplot_stimlist = plot_info['subplot_stimlist']
-    roi =None; configname=None; trial=None
+    roi=None; configname=None; trial=None
     try:
         for roi in roi_list:
 
             #%
             print roi
-            DF = DATA[roi]
-            if plot_info['nrows']==1:
-                figwidth_multiplier = plot_info['ncols']*1
-            else:
-                figwidth_multiplier = 1
+#            if plot_info['nrows']==1:
+#                figwidth_multiplier = plot_info['ncols']*1
+#            else:
+#                figwidth_multiplier = 1
 
             for img in subplot_stimlist.keys():
                 curr_subplots = subplot_stimlist[img]
@@ -1063,156 +1135,41 @@ def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_
                 if plot_info['stimid_only'] is True:
                     figname = 'all_objects_default_pos_size'
                 else:
-                    figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(plot_info['stimuli']['position_vals']), len(plot_info['size_vals']))
+                    figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(plot_info['stimuli']['position_vals']), len(plot_info['stimuli']['size_vals']))
 
-                fig, axs = pl.subplots(
-            	    nrows=plot_info['nrows'],
-            	    ncols=plot_info['ncols'],
-            	    sharex=True,
-            	    sharey=True,
-            	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
-            	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
+                DF = DATA[roi][DATA[roi]['config'].isin(curr_subplots)]
+                DF['position'] = list(zip(DF['xpos'], DF['ypos']))
 
+
+                curr_slice = list(set(DF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
+                roi_in_slice = list(set(DF['roi_in_slice']))[0] #roi_trials[configname][roi].attrs['idx_in_slice']
+
+                # PLOT ALL:
+                if plot_all is True:
+                    psth_fig_fn = '%s_%s_%s_%s_%s_ALL.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
+                    figpath = os.path.join(roi_psth_dir_all, psth_fig_fn)
+                    plot_psth_df(roi, DF, curr_subplots, figpath=figpath, trace_color='k', stimbar_color='r')
+
+                    # Plot df values:
                 if filter_pupil is True:
-                    fig2, axs2 = pl.subplots(
-                	    nrows=plot_info['nrows'],
-                	    ncols=plot_info['ncols'],
-                	    sharex=True,
-                	    sharey=True,
-                	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
-                	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
-                    fig3, axs3 = pl.subplots(
-                	    nrows=plot_info['nrows'],
-                	    ncols=plot_info['ncols'],
-                	    sharex=True,
-                	    sharey=True,
-                	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
-                	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
+                    filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
+                                           & pupil_size_baseline > @pupil_size_thr \
+                                           & pupil_dist_stimulus < @pupil_dist_thr \
+                                           & pupil_dist_baseline < @pupil_dist_thr \
+                                           & pupil_nblinks_stim < @pupil_max_nblinks \
+                                           & pupil_nblinks_baseline < @pupil_max_nblinks')
+                    pass_trials = list(set(filtered_DF['trial']))
 
+                    # INCLUDED trials:
+                    psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_pass.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
+                    figpath = os.path.join(roi_psth_dir_include, psth_fig_fn)
+                    plot_psth_df(roi, filtered_DF, curr_subplots, figpath=figpath, trace_color='b', stimbar_color='k')
 
-                row=0
-                col=0
-                plotidx = 0
-
-                #roi = 'roi00003'
-                for configname in curr_subplots:
-
-                    stim_trials = sorted(list(set(DF[DF['config'] == configname]['trial'])), key=natural_keys)
-                    curr_DF = DF[DF['trial'].isin(stim_trials)]
-                    if filter_pupil is True:
-                        filtered_DF = curr_DF[((curr_DF['pupil_size_stimulus'] > pupil_size_thr)
-                                                & (curr_DF['pupil_size_baseline'] > pupil_size_thr)
-                                                & (curr_DF['pupil_dist_baseline'] < pupil_dist_thr)
-                                                & (curr_DF['pupil_dist_stimulus'] < pupil_dist_thr)
-                                                & (curr_DF['pupil_nblinks_stim'] < pupil_max_nblinks)
-                                                & (curr_DF['pupil_nblinks_baseline'] < pupil_max_nblinks)
-                                                )]
-                        pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
-                        fail_trials = [t for t in stim_trials if t not in pass_trials]
-                    else:
-                        pass_trials = stim_trials.copy()
-                        fail_trials = []
-
-                    curr_slice = list(set(DF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
-                    roi_in_slice = list(set(DF['roi_in_slice']))[0] #roi_trials[configname][roi].attrs['idx_in_slice']
-
-                    if col==(plot_info['ncols']) and plot_info['nrows']>1:
-                        row += 1
-                        col = 0
-                    if len(axs.shape)>1:
-                        ax_curr = axs[row, col] #, col]
-                        if filter_pupil is True:
-                            ax_curr2 = axs2[row, col]
-                            ax_curr3 = axs3[row, col]
-                    else:
-                        ax_curr = axs[col]
-                        if filter_pupil is True:
-                            ax_curr2 = axs2[col]
-                            ax_curr3 = axs3[col]
-
-                    dfmat = []
-                    if filter_pupil is True:
-                        dfmat_fail = []
-                        dfmat_pass = []
-
-                    if 'grating' in trial_info['stimtype']:
-                        stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
-                    else:
-                        stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
-
-                    ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
-                    if filter_pupil is True:
-                        ax_curr2.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
-                        ax_curr3.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
-
-
-                    for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
-
-                        first_on = list(set(DF[DF['trial'] == trial]['first_on']))[0]
-                        tsecs = DF[DF['trial'] == trial]['tsec']
-
-                        df = DF[DF['trial'] == trial]['df'] #roi_trials[configname][roi][trial][trace_type]
-
-                        #if plot_all is True:
-                        trial_color = 'k'
-                        stim_dur_color = 'r'
-                        dfmat.append(df)
-
-                        ax_curr.plot(tsecs, df, trial_color, alpha=0.2, linewidth=0.5)
-                        ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
-
-                        if filter_pupil is True:
-                            if trial in pass_trials:
-                                dfmat_pass.append(df)
-                                ax_curr2.plot(tsecs, df, 'b', alpha=0.2, linewidth=0.5)
-                                ax_curr2.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
-                            else:
-                                dfmat_fail.append(df)
-                                ax_curr3.plot(tsecs, df, 'r', alpha=0.2, linewidth=0.5)
-                                ax_curr3.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
-
-                    # Plot MEAN DF:
-                    ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
-                    if plot_info['universal_scale'] is True:
-                        ax_curr.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
-                    ax_curr.set(xticks=tpoints)
-                    ax_curr.tick_params(axis='x', which='both',length=0)
-
-                    if filter_pupil is True:
-                        # Plot PASS trials:
-                        if len(dfmat_pass) > 0:
-                            ax_curr2.plot(tsecs, np.nanmean(dfmat_pass, axis=0), 'b', alpha=1, linewidth=1)
-                        if plot_info['universal_scale'] is True:
-                            ax_curr2.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
-                        ax_curr2.set(xticks=tpoints)
-                        ax_curr2.tick_params(axis='x', which='both',length=0)
-                        # Plot FAIL trials:
-                        if len(dfmat_fail) > 0:
-                            ax_curr3.plot(tsecs, np.nanmean(dfmat_fail, axis=0), 'r', alpha=1, linewidth=1)
-                        if plot_info['universal_scale'] is True:
-                            ax_curr3.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
-                        ax_curr3.set(xticks=tpoints)
-                        ax_curr3.tick_params(axis='x', which='both',length=0)
-
-                    col = col + 1
-                    plotidx += 1
-
-            sns.despine(offset=2, trim=True)
-            #%
-            fig.suptitle(roi)
-            psth_fig_fn = '%s_%s_%s_%s_%s_ALL.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
-            fig.savefig(os.path.join(roi_psth_dir_all, psth_fig_fn))
-            pl.close(fig)
-
-            if filter_pupil is True:
-                fig2.suptitle(roi)
-                psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_pass.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
-                fig2.savefig(os.path.join(roi_psth_dir_include, psth_fig_fn))
-                pl.close(fig2)
-                fig3.suptitle(roi)
-                psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_fail.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
-                fig3.savefig(os.path.join(roi_psth_dir_exclude, psth_fig_fn))
-                pl.close(fig3)
+                    # EXCLUDED trials:
+                    excluded_DF = DF[~DF['trial'].isin(pass_trials)]
+                    psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_fail.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
+                    figpath = os.path.join(roi_psth_dir_exclude, psth_fig_fn)
+                    plot_psth_df(roi, excluded_DF, curr_subplots, figpath=figpath, trace_color='r', stimbar_color='k')
 
 
     except Exception as e:
@@ -1226,6 +1183,247 @@ def plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_
     #parsed_frames.close()
 
     print "PSTHs saved to: %s" % roi_psth_dir
+
+
+#%%
+#def plot_psths(roidata_filepath, plot_info, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw', filter_pupil=True, pupil_params=None, plot_all=True):
+#
+#    if plot_all is False and filter_pupil is False:
+#        print "No PSTH types specified. Exiting."
+#        return
+#
+#    if filter_pupil is True and pupil_params is None:
+#        pupil_params = set_pupil_params()
+#    pupil_max_nblinks = pupil_params['max_nblinks']
+#    pupil_size_thr = pupil_params['size_thr']
+#    pupil_dist_thr = pupil_params['dist_thr']
+#
+#    roi_psth_dir_all = os.path.join(roi_psth_dir, 'all')
+#    if not os.path.exists(roi_psth_dir_all):
+#        os.makedirs(roi_psth_dir_all)
+#    if filter_pupil is True:
+#        pupil_thresh_str = 'size%.2f-dist%.2f-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
+#        roi_psth_dir_include = os.path.join(roi_psth_dir, pupil_thresh_str, 'include')
+#        if not os.path.exists(roi_psth_dir_include):
+#            os.makedirs(roi_psth_dir_include)
+#        roi_psth_dir_exclude = os.path.join(roi_psth_dir, pupil_thresh_str, 'exclude')
+#        if not os.path.exists(roi_psth_dir_exclude):
+#            os.makedirs(roi_psth_dir_exclude)
+#
+#    volumerate = trial_info['volumerate'] #parsed_frames.attrs['volumerate']
+#    iti_pre = trial_info['iti_pre']
+#    nframes_on = trial_info['nframes_on'] #parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
+#    stim_dur = trial_info['stim_on_sec'] #trialdict['trial00001']['stim_dur_ms']/1E3
+#    iti_dur = trial_info['iti_full'] #trialdict['trial00001']['iti_dur_ms']/1E3
+#    tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
+#
+#    DATA = pd.HDFStore(roidata_filepath)
+#    roi_list = sorted(DATA.keys(), key=natural_keys)
+#    if '/' in DATA.keys()[0]:
+#        roi_list = sorted([r[1:] for r in roi_list], key=natural_keys)
+#    subplot_stimlist = plot_info['subplot_stimlist']
+#    roi=None; configname=None; trial=None
+#    try:
+#        for roi in roi_list:
+#
+#            #%
+#            print roi
+#            if plot_info['nrows']==1:
+#                figwidth_multiplier = plot_info['ncols']*1
+#            else:
+#                figwidth_multiplier = 1
+#
+#            for img in subplot_stimlist.keys():
+#                curr_subplots = subplot_stimlist[img]
+#
+#                if plot_info['stimid_only'] is True:
+#                    figname = 'all_objects_default_pos_size'
+#                else:
+#                    figname = '%s_pos%i_size%i' % (os.path.splitext(img)[0], len(plot_info['stimuli']['position_vals']), len(plot_info['stimuli']['size_vals']))
+#
+##                if plot_all is True:
+##                    fig, axs = pl.subplots(
+##                	    nrows=plot_info['nrows'],
+##                	    ncols=plot_info['ncols'],
+##                	    sharex=True,
+##                	    sharey=True,
+##                	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
+##                	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
+##
+##                if filter_pupil is True:
+##                    fig2, axs2 = pl.subplots(
+##                	    nrows=plot_info['nrows'],
+##                	    ncols=plot_info['ncols'],
+##                	    sharex=True,
+##                	    sharey=True,
+##                	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
+##                	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
+##                    fig3, axs3 = pl.subplots(
+##                	    nrows=plot_info['nrows'],
+##                	    ncols=plot_info['ncols'],
+##                	    sharex=True,
+##                	    sharey=True,
+##                	    figsize=(plot_info['figure_height']*figwidth_multiplier,plot_info['figure_height']),
+##                	    gridspec_kw=dict(top=1-plot_info['top_margin'], bottom=plot_info['bottom_margin'], wspace=0.05, hspace=0.05))
+##
+#                DF = DATA[roi][DATA[roi]['config'].isin(curr_subplots)]
+#                DF['position'] = list(zip(DF['xpos'], DF['ypos']))
+#                first_on = list(set(DF['first_on']))
+#                nframes_on = list(set(DF['nframes_on']))
+#                assert(len(first_on)==1, "More than 1 stim ON index found! -- Check %s, %s" % (roi, str(curr_subplots)))
+#                assert(len(nframes_on)==1, "Multiple stim durations found! -- Check %s, %s" % (roi, str(nframes_on)))
+#                first_on = first_on[0]
+#                nframes_on = nframes_on[0]
+#                tsecs = sorted(list(set(DF['tsec'])))
+#
+#                g = sns.FacetGrid(DF, row='size', col='position', sharex=True, sharey=True, hue='trial')
+#                g.map(pl.plot, "tsec", "df", linewidth=0.2, color='k', alpha=0.5)
+#                for ax in g.axes.flat:
+#                    ax.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], 'r', linewidth=2, alpha=1)
+#
+#
+#                row=0
+#                col=0
+#                plotidx = 0
+#
+#                #roi = 'roi00003'
+#                for configname in curr_subplots:
+#
+#                    stim_trials = sorted(list(set(DF[DF['config'] == configname]['trial'])), key=natural_keys)
+#                    curr_DF = DF[DF['trial'].isin(stim_trials)]
+#                    if filter_pupil is True:
+#                        filtered_DF = curr_DF[((curr_DF['pupil_size_stimulus'] > pupil_size_thr)
+#                                                & (curr_DF['pupil_size_baseline'] > pupil_size_thr)
+#                                                & (curr_DF['pupil_dist_baseline'] < pupil_dist_thr)
+#                                                & (curr_DF['pupil_dist_stimulus'] < pupil_dist_thr)
+#                                                & (curr_DF['pupil_nblinks_stim'] < pupil_max_nblinks)
+#                                                & (curr_DF['pupil_nblinks_baseline'] < pupil_max_nblinks)
+#                                                )]
+#                        pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
+#                        fail_trials = [t for t in stim_trials if t not in pass_trials]
+#                    else:
+#                        pass_trials = stim_trials
+#                        fail_trials = []
+#
+#                    curr_slice = list(set(DF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
+#                    roi_in_slice = list(set(DF['roi_in_slice']))[0] #roi_trials[configname][roi].attrs['idx_in_slice']
+#
+#                    if col==(plot_info['ncols']) and plot_info['nrows']>1:
+#                        row += 1
+#                        col = 0
+#                    if len(axs.shape)>1:
+#                        if plot_all is True:
+#                            ax_curr = axs[row, col] #, col]
+#                        if filter_pupil is True:
+#                            ax_curr2 = axs2[row, col]
+#                            ax_curr3 = axs3[row, col]
+#                    else:
+#                        if plot_all is True:
+#                            ax_curr = axs[col]
+#                        if filter_pupil is True:
+#                            ax_curr2 = axs2[col]
+#                            ax_curr3 = axs3[col]
+#
+#                    dfmat = []
+#                    if filter_pupil is True:
+#                        dfmat_fail = []
+#                        dfmat_pass = []
+#
+#                    if 'grating' in trial_info['stimtype']:
+#                        stimname = 'Ori %.0f, SF: %.2f' % (configs[configname]['rotation'], configs[configname]['frequency'])
+#                    else:
+#                        stimname = '%s- pos (%.1f, %.1f) - siz %.1f' % (os.path.splitext(configs[configname]['filename'])[0], configs[configname]['position'][0], configs[configname]['position'][1], configs[configname]['scale'][0])
+#
+#                    if plot_all is True:
+#                        ax_curr.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+#                    if filter_pupil is True:
+#                        ax_curr2.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+#                        ax_curr3.annotate(stimname,xy=(0.1,1), xycoords='axes fraction', horizontalalignment='middle', verticalalignment='top', weight='bold')
+#
+#                    for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+#
+#                        first_on = list(set(DF[DF['trial'] == trial]['first_on']))[0]
+#                        tsecs = DF[DF['trial'] == trial]['tsec']
+#
+#                        df = DF[DF['trial'] == trial]['df'] #roi_trials[configname][roi][trial][trace_type]
+#
+#                        #if plot_all is True:
+#                        trial_color = 'k'
+#                        stim_dur_color = 'r'
+#                        dfmat.append(df)
+#
+#                        if plot_all is True:
+#                            ax_curr.plot(tsecs, df, trial_color, alpha=0.2, linewidth=0.5)
+#                            ax_curr.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
+#
+#                        if filter_pupil is True:
+#                            if trial in pass_trials:
+#                                dfmat_pass.append(df)
+#                                ax_curr2.plot(tsecs, df, 'b', alpha=0.2, linewidth=0.5)
+#                                ax_curr2.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
+#                            else:
+#                                dfmat_fail.append(df)
+#                                ax_curr3.plot(tsecs, df, 'r', alpha=0.2, linewidth=0.5)
+#                                ax_curr3.plot([tsecs[first_on], tsecs[first_on]+nframes_on/volumerate], [0, 0], stim_dur_color, linewidth=1, alpha=0.1)
+#
+#                    # Plot MEAN DF:
+#                    if plot_all is True:
+#                        ax_curr.plot(tsecs, np.nanmean(dfmat, axis=0), 'k', alpha=1, linewidth=1)
+#                        if plot_info['universal_scale'] is True:
+#                            ax_curr.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
+#                        ax_curr.set(xticks=tpoints)
+#                        ax_curr.tick_params(axis='x', which='both',length=0)
+#
+#                    if filter_pupil is True:
+#                        # Plot PASS trials:
+#                        if len(dfmat_pass) > 0:
+#                            ax_curr2.plot(tsecs, np.nanmean(dfmat_pass, axis=0), 'b', alpha=1, linewidth=1)
+#                        if plot_info['universal_scale'] is True:
+#                            ax_curr2.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
+#                        ax_curr2.set(xticks=tpoints)
+#                        ax_curr2.tick_params(axis='x', which='both',length=0)
+#                        # Plot FAIL trials:
+#                        if len(dfmat_fail) > 0:
+#                            ax_curr3.plot(tsecs, np.nanmean(dfmat_fail, axis=0), 'r', alpha=1, linewidth=1)
+#                        if plot_info['universal_scale'] is True:
+#                            ax_curr3.set_ylim([plot_info['ylim_min'], plot_info['ylim_max']])
+#                        ax_curr3.set(xticks=tpoints)
+#                        ax_curr3.tick_params(axis='x', which='both',length=0)
+#
+#                    col = col + 1
+#                    plotidx += 1
+#
+#                if plot_all is True:
+#                    sns.despine(offset=2, trim=True)
+#                    #%
+#                    fig.suptitle(roi)
+#                    psth_fig_fn = '%s_%s_%s_%s_%s_ALL.png' % (roi, curr_slice, roi_in_slice, trace_type, figname)
+#                    fig.savefig(os.path.join(roi_psth_dir_all, psth_fig_fn))
+#                    pl.close(fig)
+#
+#                if filter_pupil is True:
+#                    sns.despine(offset=2, trim=True)
+#                    fig2.suptitle(roi)
+#                    psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_pass.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
+#                    fig2.savefig(os.path.join(roi_psth_dir_include, psth_fig_fn))
+#                    pl.close(fig2)
+#                    fig3.suptitle(roi)
+#                    psth_fig_fn = '%s_%s_%s_%s_%s_PUPIL_%s_fail.png' % (roi, curr_slice, roi_in_slice, trace_type, figname, pupil_thresh_str)
+#                    fig3.savefig(os.path.join(roi_psth_dir_exclude, psth_fig_fn))
+#                    pl.close(fig3)
+#
+#
+#    except Exception as e:
+#
+#        print "--- Error plotting PSTH ---------------------------------"
+#        print roi, configname, trial
+#        traceback.print_exc()
+#    #    print "---------------------------------------------------------"
+##        finally:
+##            roi_trials.close()
+#    #parsed_frames.close()
+#
+#    print "PSTHs saved to: %s" % roi_psth_dir
 
 
 #%%
@@ -1251,15 +1449,22 @@ def load_eye_data(run_dir):
 
     return eye_info
 
-def set_pupil_params(size_thr=30, dist_thr=8, max_nblinks=2):
+def set_pupil_params(size_thr=30, dist_thr=8, max_nblinks=2, create_empty=False):
     pupil_params = dict()
-    pupil_params['size_thr'] = size_thr
-    pupil_params['dist_thr'] = dist_thr
-    pupil_params['max_nblinks']= max_nblinks
+    if create_empty is True:
+        pupil_params['size_thr'] = None
+        pupil_params['dist_thr'] = None
+        pupil_params['max_nblinks']= None
+    else:
+        pupil_params['size_thr'] = size_thr
+        pupil_params['dist_thr'] = dist_thr
+        pupil_params['max_nblinks']= max_nblinks
 
     # Generate hash ID for current pupil params set
     pupil_params_hash = hash(json.dumps(pupil_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
     pupil_params['hash'] = pupil_params_hash
+
+
 
     return pupil_params
 
@@ -1269,7 +1474,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
     PASSTRIALS = {}
 
     if filter_pupil is True and pupil_params is None:
-        pupil_params = set_pupil_params()
+        pupil_params = set_pupil_params(create_empty=False)
     pupil_size_thr = pupil_params['size_thr']
     pupil_dist_thr = pupil_params['dist_thr']
     pupil_max_nblinks = pupil_params['max_nblinks']
@@ -1277,57 +1482,93 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
     roi_list = sorted(DATA.keys(), key=natural_keys)
     config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
 
+    # Get nframes for trial epochs:
+    first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
+    nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
+
+
     #for config in config_list:
     for roi in roi_list:
-        DF = DATA[roi]
+        print roi
         metrics_df = []
         for config in config_list:
-            trial_list = sorted(list(set(DF[DF['config']==config]['trial'])), key=natural_keys)
+            DF = DATA[roi][DATA[roi]['config'] == config]
+            trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
+
+            #trial_list = sorted(list(set(DF[DF['config']==config]['trial'])), key=natural_keys)
 
             if filter_pupil is True:
-                curr_DF = DF[DF['trial'].isin(trial_list)]
-                if filter_pupil is True:
-                    filtered_DF = curr_DF[((curr_DF['pupil_size_stimulus'] > pupil_size_thr)
-                                            & (curr_DF['pupil_size_baseline'] > pupil_size_thr)
-                                            & (curr_DF['pupil_dist_baseline'] < pupil_dist_thr)
-                                            & (curr_DF['pupil_dist_stimulus'] < pupil_dist_thr)
-                                            & (curr_DF['pupil_nblinks_stim'] < pupil_max_nblinks)
-                                            & (curr_DF['pupil_nblinks_baseline'] < pupil_max_nblinks)
-                                            )]
+                #curr_DF = DF[DF['trial'].isin(trial_list)]
+                DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
+                                       & pupil_size_baseline > @pupil_size_thr \
+                                       & pupil_dist_stimulus < @pupil_dist_thr \
+                                       & pupil_dist_baseline < @pupil_dist_thr \
+                                       & pupil_nblinks_stim < @pupil_max_nblinks \
+                                       & pupil_nblinks_baseline < @pupil_max_nblinks')
+                pass_trials = sorted(list(set(DF['trial'])), key=natural_keys)
+                fail_trials = [t for t in trial_list if t not in pass_trials]
+            else:
+                pass_trials = trial_list
+                fail_trials = []
 
-                    pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
-                    fail_trials = [t for t in trial_list if t not in pass_trials]
-                else:
-                    pass_trials = trial_list.copy()
-                    fail_trials = []
+            # Turn DF values into matrix with rows=trial, cols=df value for each frame:
+            trials = np.vstack((DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
+            nframes = trials.shape[1]
 
-            for trial in trial_list:
-                df = DF[DF['trial'] == trial]['df']
-                nframes = len(df)
+            std_baseline_values = np.nanstd(trials[:, 0:first_on], axis=1)
+            mean_stim_on_values = np.nanmean(trials[:, first_on:first_on+nframes_on], axis=1)
+            zscore_values = [stdval/meanval for (stdval, meanval) in zip(std_baseline_values, mean_stim_on_values)]
+            passes = [f in pass_trials for f in trial_list]
 
-                if filter_pupil is True and trial in fail_trials:
-                    df = np.ones(df.shape) * np.nan
-                    zscore_val = np.nan
-                    mean_stim_on = np.nan
-                    passes = False
+            idx = 0
+            for tidx, trial in enumerate(pass_trials):
+                #print tidx, trial
+                metrics_df.append(pd.DataFrame({'trial': trial,
+                                                'config': config,
+                                                'zscore': zscore_values[tidx],
+                                                'mean_stim_on': mean_stim_on_values[tidx],
+                                                'pass': True
+                                                },
+                                                index=[idx]))
+                idx += 1
 
-                else:
-                    first_on = list(set(DATA[roi][DATA[roi]['trial'] == trial]['first_on']))[0]
-                    nframes_on = int(round(list(set(DATA[roi][DATA[roi]['trial'] == trial]['nframes_on']))[0]))
-                    baseline = df[0:first_on]
-                    stimulus = df[first_on:first_on+nframes_on]
-                    mean_stim_on = np.nanmean(stimulus)
-                    std_baseline = np.nanstd(baseline)
-                    zscore_val = mean_stim_on / std_baseline
-                    passes = True
+            for trial in fail_trials:
+                metrics_df.append(pd.DataFrame({'trial': trial,
+                                                'config': config,
+                                                'zscore': np.nan,
+                                                'mean_stim_on': np.nan,
+                                                'pass': False
+                                                },
+                                                index=[idx]))
+                idx += 1
 
-                metrics_df.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
-                                                'config': np.tile(config, (nframes,)),
-                                                'zscores': np.tile(zscore_val, (nframes,)),
-                                                'mean_stim_on': np.tile(mean_stim_on, (nframes,)),
-                                                'df': df,
-                                                'pass': passes
-                                                }))
+#
+#                df = DF[DF['trial'] == trial]['df']
+#                nframes = len(df)
+#
+#                if filter_pupil is True and trial in fail_trials:
+#                    df = np.ones(df.shape) * np.nan
+#                    zscore_val = np.nan
+#                    mean_stim_on = np.nan
+#                    passes = False
+#
+#                else:
+#                    first_on = list(set(DATA[roi][DATA[roi]['trial'] == trial]['first_on']))[0]
+#                    nframes_on = int(round(list(set(DATA[roi][DATA[roi]['trial'] == trial]['nframes_on']))[0]))
+#                    baseline = df[0:first_on]
+#                    stimulus = df[first_on:first_on+nframes_on]
+#                    mean_stim_on = np.nanmean(stimulus)
+#                    std_baseline = np.nanstd(baseline)
+#                    zscore_val = mean_stim_on / std_baseline
+#                    passes = True
+#
+#                metrics_df.append(pd.DataFrame({'trial': np.tile(trial, (nframes,)),
+#                                                'config': np.tile(config, (nframes,)),
+#                                                'zscores': np.tile(zscore_val, (nframes,)),
+#                                                'mean_stim_on': np.tile(mean_stim_on, (nframes,)),
+#                                                'df': df,
+#                                                'pass': passes
+#                                                }))
             PASSTRIALS[config] = pass_trials
 
         ROI = pd.concat(metrics_df, axis=0)
@@ -1338,38 +1579,49 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
 #%%
 
-def get_roi_metrics(DATA, configs, traceid_dir, filter_pupil=False, pupil_params=None):
+def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, pupil_params=None):
+
+    DATA = pd.HDFStore(roidata_filepath)
 
     # Use default pupil params if none provided:
-    if filter_pupil is True and pupil_params is None:
-        pupil_params = set_pupil_params()
+    if filter_pupil is True:
+        metric_desc = 'pupil'
+        if pupil_params is None:
+            print "No pupil params provided. Using default..."
+            pupil_params = set_pupil_params(create_empty=False)
+    elif filter_pupil is False:
+        metric_desc = 'unfiltered'
+        pupil_params = set_pupil_params(create_empty=True)
 
-    # Check to see whether current pupil param set already exists:
+    # Check to see whether current metrics set exists:
     metrics_basedir = os.path.join(traceid_dir, 'metrics')
     if not os.path.exists(metrics_basedir):
         os.makedirs(metrics_basedir)
-    pupil_metrics_dir = os.path.join(metrics_basedir, 'pupil_%d' % pupil_params['hash'])
-    if not os.path.exists(pupil_metrics_dir):
-        os.makedirs(pupil_metrics_dir)
-    pupil_params_filepath = os.path.join(pupil_metrics_dir, 'pupil_params.json')
+    metric_hash = pupil_params['hash']
+    metrics_dir = os.path.join(metrics_basedir, '%s_%d' % (metric_desc, metric_hash))
+    if not os.path.exists(metrics_dir):
+        os.makedirs(metrics_dir)
+
+    pupil_params_filepath = os.path.join(metrics_dir, 'pupil_params.json')
     if not os.path.exists(pupil_params_filepath):
         with open(pupil_params_filepath, 'w') as f:
             json.dump(pupil_params, f)
 
-    existing_metrics_files = [f for f in os.listdir(pupil_metrics_dir) if 'roi_metrics_%s' % pupil_params['hash'] in f and f.endswith('hdf5')]
+    existing_metrics_files = [f for f in os.listdir(metrics_dir) if 'roi_metrics_%s' % metric_hash in f and f.endswith('hdf5')]
     if not len(existing_metrics_files) == 1:
+        print "No corresponding METRICS file found for pupil paraam set. Creating new."
         datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        metrics_filepath = os.path.join(pupil_metrics_dir, 'roi_metrics_%s_%s.hdf5' % (pupil_params['hash'], datestr))
+        metrics_filepath = os.path.join(metrics_dir, 'roi_metrics_%s_%s.hdf5' % (metric_hash, datestr))
         METRICS, PASSTRIALS =  calculate_metrics(DATA, filter_pupil=filter_pupil, pupil_params=pupil_params)
         datastore = pd.HDFStore(metrics_filepath)
         for roi in METRICS.keys():
             datastore[str(roi)] = METRICS[roi]
-        with open(os.path.join(pupil_metrics_dir, 'pass_trials.json'), 'w') as f:
+        with open(os.path.join(metrics_dir, 'pass_trials.json'), 'w') as f:
             json.dump(PASSTRIALS, f, indent=4, sort_keys=True)
     else:
-        metrics_filepath = os.path.join(pupil_metrics_dir, existing_metrics_files[0])
+        metrics_filepath = os.path.join(metrics_dir, existing_metrics_files[0])
         METRICS = pd.HDFStore(metrics_filepath)
-        with open(os.path.join(pupil_metrics_dir, 'pass_trials.json'), 'r') as f:
+        with open(os.path.join(metrics_dir, 'pass_trials.json'), 'r') as f:
             PASSTRIALS = json.load(f)
 
     # REPORT to CL:
@@ -1436,24 +1688,25 @@ def collate_roi_stats(METRICS, configs):
             all_trials = sorted(list(set(DF['trial'])), key=natural_keys)
             #pass_trials = sorted(list(set(DF[DF['pass'] == True]['trial'])), key=natural_keys)
 
-            zscore_trial = [DF[DF['trial'] == trial]['zscores'][0] for trial in sorted(all_trials, key=natural_keys)]
-            stimdf_trial = [DF[DF['trial'] == trial]['mean_stim_on'][0] for trial in sorted(all_trials, key=natural_keys)]
+            #zscore_trial = [DF[DF['trial'] == trial]['zscore'] for trial in sorted(all_trials, key=natural_keys)]
+            #stimdf_trial = [DF[DF['trial'] == trial]['mean_stim_on'] for trial in sorted(all_trials, key=natural_keys)]
+            ntrials = len(all_trials)
 
-            xpos_trial = np.tile(configs[config]['position'][0], (len(zscore_trial),))
-            ypos_trial = np.tile(configs[config]['position'][1], (len(zscore_trial),))
-            size_trial = np.tile(configs[config]['scale'][0], (len(zscore_trial),))
+            xpos_trial = np.tile(configs[config]['position'][0], (ntrials,))
+            ypos_trial = np.tile(configs[config]['position'][1], (ntrials,))
+            size_trial = np.tile(configs[config]['scale'][0], (ntrials,))
 
             if stimtype == 'grating':
-                sf_trial = np.tile(configs[config]['frequency'], (len(zscore_trial),))
-                ori_trial = np.tile(configs[config]['rotation'], (len(zscore_trial),))
+                sf_trial = np.tile(configs[config]['frequency'], (ntrials,))
+                ori_trial = np.tile(configs[config]['rotation'], (ntrials,))
 
                 # Create DF entry:
                 roistats_df.append(pd.DataFrame({
-                                'roi': np.tile(str(roi), (len(zscore_trial),)),
-                                'config': np.tile(config, (len(zscore_trial),)),
+                                'roi': np.tile(str(roi), (ntrials,)),
+                                'config': np.tile(config, (ntrials,)),
                                 'trial': sorted(all_trials, key=natural_keys),
-                                'zscore': zscore_trial,
-                                'stimdf': stimdf_trial,
+                                'zscore': DF['zscore'],
+                                'stimdf': DF['mean_stim_on'],
                                 'xpos': xpos_trial,
                                 'ypos': ypos_trial,
                                 'size': size_trial,
@@ -1467,35 +1720,35 @@ def collate_roi_stats(METRICS, configs):
                     objectid = imname.split('_CamRot_')[0]
                     yrot = int(imname.split('_CamRot_y')[-1])
                     if 'N1' in imname:
-                        morph = 1
+                        morphlevel = 1
                     elif 'N2' in imname:
-                        morph = 20
+                        morphlevel = 20
                 elif 'morph' in imname:
                     if 'yrot' not in imname:
-                        objectid = 'morph' #imname
+                        objectid = imname #'morph' #imname
                         yrot = 0
-                        morph = int(imname.split('morph')[-1])
+                        morphlevel = int(imname.split('morph')[-1])
                     else:
-                        objectid = 'morph' #imname.split('_y')[0]
+                        objectid = imname #'morph' #imname.split('_y')[0]
                         yrot = int(imname.split('_y')[-1])
-                        morph = int(imname.split('_y')[0].split('morph'))
+                        morphlevel = int(imname.split('_y')[0].split('morph'))
 
 
-                img_trial = np.tile(imname, (len(zscore_trial),))
+                img_trial = np.tile(imname, (ntrials,))
                 # Create DF entry:
                 roistats_df.append(pd.DataFrame({
-                                'roi': np.tile(str(roi), (len(zscore_trial),)),
-                                'config': np.tile(config, (len(zscore_trial),)),
+                                'roi': np.tile(str(roi), (ntrials,)),
+                                'config': np.tile(config, (ntrials,)),
                                 'trial': sorted(all_trials, key=natural_keys),
-                                'zscore': zscore_trial,
-                                'stimdf': stimdf_trial,
+                                'zscore': DF['zscore'],
+                                'stimdf': DF['mean_stim_on'],
                                 'xpos': xpos_trial,
                                 'ypos': ypos_trial,
                                 'size': size_trial,
                                 'img': img_trial,
-                                'object': np.tile(objectid, (len(zscore_trial),)),
-                                'yrot': np.tile(yrot, (len(zscore_trial),)),
-                                'morph': np.tile(morph, (len(zscore_trial),))
+                                'object': np.tile(objectid, (ntrials,)),
+                                'yrot': np.tile(yrot, (ntrials,)),
+                                'morphlevel': np.tile(morphlevel, (ntrials,))
                                 }))
 
     ROISTATS = pd.concat(roistats_df, axis=0)
@@ -1504,47 +1757,106 @@ def collate_roi_stats(METRICS, configs):
 
 #%%
 
-def plot_transform_tuning(roi, curr_df, trans_type, object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
-    if object_type == 'object':
-        curr_objects = list(set(curr_df[object_type]))
-        hue = object_type
-        object_sorter = object_type
-    else:
-        curr_objects = ['morph']
-        hue = None
-        object_sorter = 'morph'
+#def plot_object_tuning(roi, curr_df, trans_type, object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
+#    if object_type == 'object':
+#        curr_objects = list(set(curr_df[object_type]))
+#        hue = object_type
+#        object_sorter = object_type
+#    else:
+#        curr_objects = ['morph']
+#        hue = None
+#        object_sorter = 'morph'
+#
+#    fig, ax = pl.subplots()
+#    # Plot mean value across all trials of stim-config:
+#    sns.pointplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      ci=None, legend=False, join=False, markers='_', scale=2, ax=ax)
+#
+#    # Add dots for individual trial z-score values:
+#    sns.stripplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      edgecolor="w", split=True, size=2, ax=ax)
+#
+#    # Add SEM cuz it looks good:
+#    transforms = sorted(list(set(curr_df[trans_type])))
+#    for oi, obj in enumerate(sorted(curr_objects, key=natural_keys)):
+#        if hue=='object' and 'morph' in obj:
+#            continue
+#        if object_sorter == 'object':
+#            curr_zmeans = [np.nanmean(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        else:
+#            curr_zmeans = [np.nanmean(curr_df[curr_df[trans_type] == trans][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[curr_df[trans_type] == trans][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
+#
+#    # Format, title, and save:
+#    pl.title(roi)
+#    sns.despine(offset=0, trim=True, bottom=True)
+#    if include_trials is True:
+#        figname = '%s_tuning_%s_trials_%s.png' % (trans_type, metric_type, roi)
+#    else:
+#        figname = '%s_tuning_%s_%s.png' % (trans_type, metric_type, roi)
+#    pl.savefig(os.path.join(output_dir, figname))
+#    pl.close()
 
-    fig, ax = pl.subplots()
-    # Plot mean value across all trials of stim-config:
-    sns.pointplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
-                      ci=None, legend=False, join=False, markers='_', scale=2, ax=ax)
+#%%
 
-    # Add dots for individual trial z-score values:
-    sns.stripplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
-                      edgecolor="w", split=True, size=2, ax=ax)
-
-    # Add SEM cuz it looks good:
-    transforms = sorted(list(set(curr_df[trans_type])))
-    for oi, obj in enumerate(sorted(curr_objects, key=natural_keys)):
-        if hue=='object' and 'morph' in obj:
-            continue
-        if object_sorter == 'object':
-            curr_zmeans = [np.nanmean(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type]) for trans in sorted(transforms)]
-            curr_zmeans_yerr = [stats.sem(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type], nan_policy='omit') for trans in sorted(transforms)]
-        else:
-            curr_zmeans = [np.nanmean(curr_df[curr_df[trans_type] == trans][metric_type]) for trans in sorted(transforms)]
-            curr_zmeans_yerr = [stats.sem(curr_df[curr_df[trans_type] == trans][metric_type], nan_policy='omit') for trans in sorted(transforms)]
-        ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
-
-    # Format, title, and save:
-    pl.title(roi)
-    sns.despine(offset=0, trim=True, bottom=True)
-    if include_trials is True:
-        figname = '%s_tuning_%s_trials_%s.png' % (trans_type, metric_type, roi)
-    else:
-        figname = '%s_tuning_%s_%s.png' % (trans_type, metric_type, roi)
-    pl.savefig(os.path.join(output_dir, figname))
-    pl.close()
+#def plot_transform_tuning(roi, curr_df, trans_type='yrot', object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
+#    '''
+#    trans_type = feature that varies for a given object ID (i.e., how we want to color-code)
+#    object_sorter = how we want to define object ID
+#        -- for objects, this is the object ID (e.g., Blobs_N1, Blobs_N2, morph5, or just morph, if only 1 morph)
+#        -- for gratings, this is the spatial frequency, since we want to look at variation in ORI (trans_type) within a given S.F.
+#    hue = should be the same as object_sorter (except if only a single morph, since there is only 1 morphID)
+#    '''
+#    if object_type == 'grating':
+#        curr_objects = list(set(curr_df['sf']))
+#        hue = 'sf'
+#        object_sorter = 'sf'
+#
+#    else:
+#        if object_type == 'object':
+#            curr_objects = list(set(curr_df[object_type]))
+#            hue = object_type
+#            object_sorter = object_type
+#        else:
+#            curr_objects = ['morph']
+#            hue = None
+#            object_sorter = 'morph'
+#
+#    fig, ax = pl.subplots()
+#    # Plot mean value across all trials of stim-config:
+#    sns.pointplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      ci=None, legend=False, join=False, markers='_', scale=2, ax=ax)
+#
+#    # Add dots for individual trial z-score values:
+#    sns.stripplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      edgecolor="w", split=True, size=2, ax=ax)
+#
+#    # Add SEM cuz it looks good:
+#    transforms = sorted(list(set(curr_df[trans_type])))
+#    for oi, obj in enumerate(sorted(curr_objects)): #, key=natural_keys)):
+#        if hue=='object' and 'morph' in obj:
+#            continue
+#        if object_sorter == 'object' or object_sorter == 'sf':
+#            curr_zmeans = [np.nanmean(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        else:
+#            curr_zmeans = [np.nanmean(curr_df[curr_df[trans_type] == trans][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[curr_df[trans_type] == trans][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
+#
+#    # Format, title, and save:
+#    pl.title(roi)
+#    sns.despine(offset=0, trim=True, bottom=True)
+#    if '/' in roi:
+#        roi = roi[1:]
+#    if include_trials is True:
+#        figname = '%s_tuning_%s_trials_%s.png' % (trans_type, metric_type, roi)
+#    else:
+#        figname = '%s_tuning_%s_%s.png' % (trans_type, metric_type, roi)
+#    pl.savefig(os.path.join(output_dir, figname))
+#    pl.close()
 
 #%%
 def plot_tuning_curves(roistats_filepath, configs, output_dir, metric_type='zscore', include_trials=True):
@@ -1558,32 +1870,167 @@ def plot_tuning_curves(roistats_filepath, configs, output_dir, metric_type='zsco
         stimtype = 'image'
 
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
+#    if '/' in roi_list[0]:
+#        roi_list = [r[1:] for r in roi_list]
 #    config_list = sorted(list(set(STATS['config'])), key=natural_keys)
 #
-#    Htranslations = list(set([configs[c]['position'][0] for c in configs.keys()]))
-#    Vtranslations = list(set([configs[c]['position'][1] for c in configs.keys()]))
-#    sizes = list(set(([configs[c]['scale'][0] for c in configs.keys()])))
-#
-#    ncols = len(positions)
-#    nrows = len(sizes)
+
+
+    transformations = {'xpos': list(set(STATS['xpos'])),
+                       'ypos': list(set(STATS['ypos'])),
+                       'size': list(set((STATS['size'])))
+                       }
+    if stimtype == 'image':
+        transformations['yrot'] = list(set(STATS['yrot']))
+        transformations['morphlevel'] = list(set(STATS['morphlevel']))
+    else:
+        transformations['ori'] = sorted(list(set(STATS['ori'])))
+        transformations['sf'] = sorted(list(set(STATS['sf'])))
+
+
+    trans_types = [t for t in transformations.keys() if len(transformations[t]) > 1]
 
 
     for roi in sorted(roi_list, key=natural_keys):
 
+        ROI = STATS[STATS['roi'] == roi]
+
         if stimtype == 'image':
             objectid_list = sorted(list(set(STATS['object'])))
 
-            # ----- First, plot TUNING curves for YROT (color by object ID) --------
-            curr_objects = [i for i in objectid_list if 'morph' not in i]
-            curr_df = STATS[((STATS['roi'] == roi) & (STATS['object'].isin(curr_objects)))]
+            # ----- First, plot TUNING curves for each OBJECT ID --------
+            #
+            # Get list of objects that vary along this transformation:
+            object_transformations = {}
+            for trans in trans_types:
+                grp = ROI.groupby(trans)
+                trans_obj_ids = []
+                for k, gr in grp:
+                    trans_obj_ids.extend(list(set(gr['object'])))
+                object_transformations[trans] = list(set(trans_obj_ids))
 
-            plot_transform_tuning(roi, curr_df, "yrot", "object", metric_type, output_dir=output_dir, include_trials=include_trials)
+            plot_transform_tuning(roi, ROI, object_transformations, metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
+
+            #plot_transform_tuning(roi, curr_df, trans_type="yrot", object_type='object', metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
 
             # ----- Now, plot TUNING curves for MORPHS (color by morph level) --------
-            curr_df = STATS[((STATS['roi'] == roi) & (STATS['yrot'] == 0))]
-            plot_transform_tuning(roi, curr_df, "morph", object_type='morph', metric_type='zscore', output_dir=output_dir, include_trials=include_trials)
+            #curr_df = STATS[((STATS['roi'] == roi) & (STATS['yrot'] == 0))]
+            #plot_transform_tuning(roi, curr_df, trans_type="morph", object_type='morph', metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
+
+        elif 'grating' in stimtype:
+            print roi
+            objectid_list = sorted(list(set(STATS['ori'])))
+            curr_df = STATS[((STATS['roi'] == roi) & (STATS['ori'].isin(objectid_list)))]
+            plot_transform_tuning(roi, curr_df, trans_type="ori", object_type='grating', metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
+
+#%%
+def plot_transform_tuning(roi, ROI, object_transformations, object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
+    '''
+    trans_type = feature that varies for a given object ID (i.e., how we want to color-code)
+    object_sorter = how we want to define object ID
+        -- for objects, this is the object ID (e.g., Blobs_N1, Blobs_N2, morph5, or just morph, if only 1 morph)
+        -- for gratings, this is the spatial frequency, since we want to look at variation in ORI (trans_type) within a given S.F.
+    hue = should be the same as object_sorter (except if only a single morph, since there is only 1 morphID)
+    '''
+    nrows = len(object_transformations.keys())
+    fig, axes = pl.subplots(nrows=nrows, ncols=1, sharex=False, squeeze=True, figsize=(6,10))
+    transform_str = '_'.join(object_transformations.keys())
+    for trans, ax in zip(object_transformations.keys(), axes):
+        print trans
+        if object_type == 'grating':
+            object_color = trans
+            object_sorter = trans
+        else:
+            if trans == 'morph':
+                object_color = None
+                object_sorter = trans
+            else:
+                object_color = 'object'
+                object_sorter = 'object'
+
+#        blob_roi = ROI[ROI['object'].isin(['Blob_N1', 'Blob_N2'])]
+        sns.pointplot(x=trans, y=metric_type, hue=object_color, data=ROI.sort_values([object_sorter]),
+                      ci=None, join=False, markers='_', scale=2, ax=ax, legend_out=True)
+
+#        pl.figure();
+#        xvals = list(set(ROI['xpos']))
+#        yvals = []
+#        for x in xvals:
+#            yvals.append(np.nanmean(ROI[((ROI['object'] == 'Blob_N1') & (ROI['xpos'] == x))]['zscore']))
+#
+        # Add dots for individual trial z-score values:
+        if include_trials is True:
+            sns.stripplot(x=trans, y=metric_type, hue=object_color, data=ROI.sort_values([object_sorter]),
+                      edgecolor="w", split=True, size=2, ax=ax)
 
 
+
+        transforms = sorted(list(set(ROI[trans])))
+        for oi, obj in enumerate(sorted(list(set(ROI[object_sorter])))): #enumerate(sorted(curr_objects)): #, key=natural_keys)):
+#            if hue=='object' and 'morph' in obj:
+#                continue
+#            if object_sorter == 'object' or object_sorter == 'sf':
+            if object_color == 'object':
+                curr_zmeans = [np.nanmean(ROI[((ROI[object_sorter] == obj) & (ROI[trans] == t))][metric_type]) for t in sorted(transforms)]
+                curr_zmeans_yerr = [stats.sem(ROI[((ROI[object_sorter] == obj) & (ROI[trans] == t))][metric_type], nan_policy='omit') for t in sorted(transforms)]
+            else:
+                curr_zmeans = [np.nanmean(ROI[ROI[trans] == t][metric_type]) for t in sorted(transforms)]
+                curr_zmeans_yerr = [stats.sem(ROI[ROI[trans] == t][metric_type], nan_policy='omit') for t in sorted(transforms)]
+            ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
+
+
+#
+#
+#
+#    if object_type == 'grating':
+#        curr_objects = list(set(curr_df['sf']))
+#        hue = 'sf'
+#        object_sorter = 'sf'
+#
+#    else:
+#        if object_type == 'object':
+#            curr_objects = list(set(curr_df[object_type]))
+#            hue = object_type
+#            object_sorter = object_type
+#        else:
+#            curr_objects = ['morph']
+#            hue = None
+#            object_sorter = 'morph'
+#
+#    fig, ax = pl.subplots()
+#    # Plot mean value across all trials of stim-config:
+#    sns.pointplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      ci=None, legend=False, join=False, markers='_', scale=2, ax=ax)
+#
+#    # Add dots for individual trial z-score values:
+#    sns.stripplot(x=trans_type, y=metric_type, hue=hue, data=curr_df.sort_values([object_sorter]),
+#                      edgecolor="w", split=True, size=2, ax=ax)
+#
+#    # Add SEM cuz it looks good:
+#    transforms = sorted(list(set(curr_df[trans_type])))
+#    for oi, obj in enumerate(sorted(curr_objects)): #, key=natural_keys)):
+#        if hue=='object' and 'morph' in obj:
+#            continue
+#        if object_sorter == 'object' or object_sorter == 'sf':
+#            curr_zmeans = [np.nanmean(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[((curr_df[object_sorter] == obj) & (curr_df[trans_type] == trans))][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        else:
+#            curr_zmeans = [np.nanmean(curr_df[curr_df[trans_type] == trans][metric_type]) for trans in sorted(transforms)]
+#            curr_zmeans_yerr = [stats.sem(curr_df[curr_df[trans_type] == trans][metric_type], nan_policy='omit') for trans in sorted(transforms)]
+#        ax.errorbar(np.arange(0, len(curr_zmeans)), curr_zmeans, yerr=curr_zmeans_yerr, capsize=5, elinewidth=0)
+
+    # Format, title, and save:
+    pl.subplots_adjust(top=0.9)
+    fig.suptitle(roi)
+    sns.despine(offset=1, trim=True, bottom=False)
+    if '/' in roi:
+        roi = roi[1:]
+    if include_trials is True:
+        figname = '%s_tuning_%s_trials_%s.png' % (transform_str, metric_type, roi)
+    else:
+        figname = '%s_tuning_%s_%s.png' % (transform_str, metric_type, roi)
+    pl.savefig(os.path.join(output_dir, figname))
+    pl.close()
 
 #%%
 
@@ -1634,6 +2081,8 @@ def extract_options(options):
                       dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
     parser.add_option('--scale', action="store_true",
                       dest="universal_scale", default=False, help="Set flag to plot all PSTH plots with same y-axis scale")
+    parser.add_option('--filter', action="store_false",
+                      dest="plot_all_psths", default=True, help="Set flag to only plot PSTHs for filtered traces (don't plot PSTHS for ALL, unfiltered)")
 
 #    parser.add_option('--omit-err', action="store_false",
 #                      dest="use_errorbar", default=True, help="Set flag to plot PSTHs without error bars (default: std)")
@@ -1691,6 +2140,7 @@ def plot_traceid_psths(options):
 
     create_new = options.create_new
     universal_scale = options.universal_scale
+    plot_all_psths= options.plot_all_psths
 
     #use_errorbar = options.use_errorbar
     include_trials = options.include_trials
@@ -1704,7 +2154,6 @@ def plot_traceid_psths(options):
     # =============================================================================
     # Get meta/SI info for RUN:
     # =============================================================================
-    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
     si_info = get_frame_info(run_dir)
 
@@ -1738,10 +2187,17 @@ def plot_traceid_psths(options):
     print "Current trace ID - %s - excludes %i tiffs." % (trace_id, len(excluded_tiffs))
     roi_trials_by_stim_path = group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si_info, excluded_tiffs=excluded_tiffs, create_new=create_new)
     #%
-    # GET eye-info:?
-    eye_info = load_eye_data(run_dir)
-    if eye_info is None:
-        filter_pupil = False
+
+    # FILTER DATA with PUPIL PARAM thresholds, if relevant:
+    # =========================================================================
+    pupil_params = None
+    if filter_pupil is True:
+        eye_info = load_eye_data(run_dir)
+        if eye_info is None:
+            filter_pupil = False
+            pupil_params = None
+        else:
+            pupil_params = set_pupil_params(size_thr=pupil_size_thr, dist_thr=pupil_dist_thr, max_nblinks=pupil_max_nblinks, create_empty=False)
 
     # GET ALL DATA into a dataframe:
     # =============================================================================
@@ -1750,7 +2206,9 @@ def plot_traceid_psths(options):
     roidata_filepath = os.path.join(traceid_dir, 'ROIDATA_%s.hdf5' % corresponding_datestr)
     if os.path.exists(roidata_filepath) and create_new is False:
         DATA = pd.HDFStore(roidata_filepath)
-    else:
+        if len(DATA.keys()) == 0:
+            create_new = True
+    if create_new is True:
         # First remove old files:
         existing_df_files = [f for f in os.listdir(traceid_dir) if 'ROIDATA_' in f and f.endswith('hdf5')]
         old_dir = os.path.join(traceid_dir, 'old')
@@ -1763,12 +2221,9 @@ def plot_traceid_psths(options):
         # Save dataframe with same datestr as roi_trials.hdf5 file in traceid dir:
         datastore = pd.HDFStore(roidata_filepath)
         for roi in DATA.keys():
-            datastore[str(roi)] = DATA[roi]
+            datastore[roi] = DATA[roi]
+        datastore.close()
 
-
-    # FILTER DATA with PUPIL PARAM thresholds, if relevant:
-    # =============================================================================
-    pupil_params = set_pupil_params(size_thr=pupil_size_thr, dist_thr=pupil_dist_thr, max_nblinks=pupil_max_nblinks)
 
     # =============================================================================
     # Set plotting params for trial average plots for each ROI:
@@ -1781,13 +2236,12 @@ def plot_traceid_psths(options):
         os.makedirs(roi_psth_dir)
     print "Saving PSTH plots to: %s" % roi_psth_dir
 
-    plot_psths(DATA, plot_info, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type='raw',
-                   filter_pupil=filter_pupil, pupil_params=pupil_params)
-
+    plot_psths(roidata_filepath, plot_info, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type='raw',
+                   filter_pupil=filter_pupil, pupil_params=pupil_params, plot_all=plot_all_psths)
 
 
     # Cacluate some metrics, and plot tuning curves:
-    metrics_filepath = get_roi_metrics(DATA, configs, traceid_dir, filter_pupil=filter_pupil, pupil_params=pupil_params)
+    metrics_filepath = get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=filter_pupil, pupil_params=pupil_params)
     roistats_filepath = get_roi_summary_stats(metrics_filepath, configs)
 
 
