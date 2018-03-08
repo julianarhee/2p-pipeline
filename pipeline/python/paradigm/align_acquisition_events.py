@@ -1389,6 +1389,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
         for config in config_list:
             DF = DATA[roi][DATA[roi]['config'] == config]
             trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
+            print "%s -- N TRIALS: %i" % (config, len(trial_list))
 
             #trial_list = sorted(list(set(DF[DF['config']==config]['trial'])), key=natural_keys)
 
@@ -1406,6 +1407,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                 pass_trials = sorted(trial_list, key=natural_keys)
                 fail_trials = []
 
+            print "PASS:", len(pass_trials)
             # Turn DF values into matrix with rows=trial, cols=df value for each frame:
             trials = np.vstack((DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
             nframes = trials.shape[1]
@@ -1900,9 +1902,9 @@ def extract_options(options):
     parser.add_option('--pupil', action="store_true",
                       dest="filter_pupil", default=False, help="Set flag to filter PSTH traces by pupil threshold params")
     parser.add_option('--size', action="store",
-                      dest="pupil_size_thr", default=30, help="Cut-off for pupil radius, if --pupil set [default: 30]")
+                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
     parser.add_option('--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+                      dest="pupil_dist_thr", default=8, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
     parser.add_option('--blinks', action="store",
                       dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
 
@@ -2006,6 +2008,8 @@ def plot_traceid_psths(options):
     # =========================================================================
     pupil_params = None
     if filter_pupil is True:
+        print "-------------------------------------------------------------------"
+        print "Loading EYE INFO."
         eye_info = load_eye_data(run_dir)
         if eye_info is None:
             filter_pupil = False

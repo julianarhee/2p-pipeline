@@ -112,6 +112,7 @@ import cPickle as pkl
 from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root
 from pipeline.python.set_trace_params import post_tid_cleanup
 from pipeline.python.rois.utils import get_info_from_tiff_dir
+from pipeline.python.paradigm import align_acquisition_events as acq
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
@@ -147,7 +148,7 @@ def load_TID(run_dir, trace_id, auto=False):
                         break
                     elif userconfirm == 'q':
                         break
-        except Exception as E:
+        except Exception as e:
             print "---------------------------------------------------------------"
             print "No tmp trace-ids found either... ABORTING with error:"
             print e
@@ -390,7 +391,6 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
     print "TID %s -- Applying masks to traces..." % trace_hash
     t_extract = time.time()
 
-    #maskfile = h5py.File(mask_path, "r")
     # Load MASKDICT:
     traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
@@ -487,18 +487,6 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
                     fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
                 fset[...] = curr_tstamps
 
-                # Get curr file's masks, or use reference:
-#                if curr_file in maskfile.keys():
-#                    single_ref = False
-#                    mask_key = curr_file
-#                else:
-#                    single_ref = True
-#                    mask_key = maskfile.keys()[0]
-
-                # CHeck if have nmf traces:
-                #if 'Ab_data' in maskfile[maskfile.keys()[0]].keys():
-                    #Ab = load_sparse_mat('%s/Ab' % curr_file, mask_path).todense()
-                    #Cf = load_sparse_mat('%s/Cf' % curr_file, mask_path).todense()
                 if 'Ab' in MASKS[curr_file][curr_slice].keys():
                     Ab = MASKS[curr_file][curr_slice]['Ab']
                     Cf = MASKS[curr_file][curr_slice]['Cf']
@@ -602,7 +590,6 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
         for fi in range(ntiffs):
             tiff_start_fridxs.append(fi * nframes_in_file)
 
-        #file_start_idx = []
         try:
             for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
                 fidx_in_run = int(filetrace_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
@@ -667,18 +654,6 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
                             roi_tcourse.attrs['source_file'] = os.path.join(filetrace_dir, filetrace_fn)
 
                         print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
-                #file_start_idx.append(curr_frame_idx)
-                #curr_frame_idx += nframes_in_file
-
-        #                    if 'timecourse' not in roi_grp.keys():
-        #                        roi_tcourse = roi_grp.create_dataset('timecourse', (total_nframes_in_run,), tracefile[currslice]['rawtraces'][:, ridx].dtype)
-        #                    else:
-        ##                        roi_tcourse = roi_outfile[roiname]['timecourse']
-        #
-        #                    roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = tracefile[currslice]['rawtraces'][:, ridx]
-        #                    roi_tcourse.attrs['source_file'] = os.path.join(trace_source_dir, trace_fn)
-
-        #            curr_frame_idx += nframes_in_file
         except Exception as e:
             print "--- TID %s: ERROR extracting traces from file %s..." % (trace_hash, filetrace_fn)
             traceback.print_exc()
@@ -686,11 +661,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
             roi_outfile.close()
 
         ## Rename FRAME file with hash:
-        #roi_outfile.close()
-
         roi_tcourse_filehash = hash_file(roi_tcourse_filepath)
-        #new_filename = "%s_%s.%s" % (os.path.splitext(trace_outfile_path)[0], roi_tcourse_filehash, os.path.splitext(trace_outfile_path)[1])
-        #os.rename(trace_outfile_path, new_filename)
 
         # Check if existing files:
         outdir = os.path.split(roi_tcourse_filepath)[0]
@@ -710,120 +681,115 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
 
     return roi_tcourse_filepath
 
-#%%
-#
-#rootdir = '/mnt/odyssey' #'/nas/volume1/2photon/data'
-#animalid = 'CE074' #'JR063' #'CE059' #'JR063'
-#session = '20180215' #'20171128_JR063' #'20171009_CE059' #'20171202_JR063'
-#acquisition = 'FOV2_zoom1x_LI' #'FOV2_zoom1x' #'FOV1_zoom3x' #'FOV1_zoom1x_volume'
-#run = 'gratings_phasemod' #'gratings_static' #'gratings_phasemod' #'scenes'
-#slurm = False
-#
-#trace_id = 'traces001'
-#auto = False
-#create_new = False
-#
-#if slurm is True:
-#    if 'coxfs01' not in rootdir:
-#        rootdir = '/n/coxfs01/2p-data'
 
 #%%
 
-parser = optparse.OptionParser()
+def extract_options(options)
+    parser = optparse.OptionParser()
 
-# PATH opts:
-parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
-parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+    # PATH opts:
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
-parser.add_option('--new', action="store_true",
-                  dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
-
-(options, args) = parser.parse_args()
-
-# Set USER INPUT options:
-rootdir = options.rootdir
-animalid = options.animalid
-session = options.session
-acquisition = options.acquisition
-run = options.run
-
-trace_id = options.trace_id
-slurm = options.slurm
-
-auto = options.default
-
-if slurm is True:
-    if 'coxfs01' not in rootdir:
-        rootdir = '/n/coxfs01/2p-data'
-
-create_new = options.create_new
-
-#%%
-# NOTE:  caiman2D ROIs are already "normalized" or weighted (see format_rois_nmf in get_rois.py).
-# These masks can be directly applied to tiff movies, or can be applied to temporal component mat from NMF results (.npz)
-normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'opencv_blob_detector']
-
-print "======================================================================="
-print "Trace Set: %s -- Starting trace extraction..." % trace_id
-t_start = time.time()
-
-#% Get meta info for run:
-# =============================================================================
-run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-print 'RUN:', run_dir
-runmeta_path = os.path.join(run_dir, '%s.json' % run)
-with open(runmeta_path, 'r') as r:
-    runinfo = json.load(r)
-
-nslices = len(runinfo['slices'])
-nchannels = runinfo['nchannels']
-nvolumes = runinfo['nvolumes']
-ntiffs = runinfo['ntiffs']
-frames_tsec = runinfo['frame_tstamps_sec']
-
-# Get VOLUME indices to align to frame indices:
-# -----------------------------------------------------------------------------
-nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
-print "Creating volume index list for %i total slices. %i frames were discarded for flyback." % (nslices_full, nslices_full - nslices)
-
-vol_idxs = np.empty((nvolumes*nslices_full,))
-vcounter = 0
-for v in range(nvolumes):
-    vol_idxs[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
-    vcounter += nslices_full
-vol_idxs = [int(v) for v in vol_idxs]
+    parser.add_option('--new', action="store_true",
+                      dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
 
 
-# Check for ACQUISITION EVENT parsing:
-paradigm_dir = os.path.join()
+    if options.slurm is True:
+        if 'coxfs01' not in options.rootdir:
+            options.rootdir = '/n/coxfs01/2p-data'
 
-# Load specified trace-ID parameter set:
-# =============================================================================
-trace_dir = os.path.join(run_dir, 'traces')
-tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+    (options, args) = parser.parse_args(options)
 
-if not os.path.exists(trace_dir):
-    os.makedirs(trace_dir)
+    return options
 
-TID = load_TID(run_dir, trace_id, auto=auto)
-#%
-# Get source tiff paths using trace-ID params:
-# =============================================================================
-trace_hash = TID['trace_hash']
+def extract_traces(options):
+    # Set USER INPUT options:
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+    trace_id = options.trace_id
 
-tiff_dir = TID['SRC']
-roi_name = TID['PARAMS']['roi_id']
-if rootdir not in tiff_dir:
-    tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
 
-tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
-print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
+    create_new = options.create_new
+    auto = options.default
+
+    #%%
+    # NOTE:  caiman2D ROIs are already "normalized" or weighted (see format_rois_nmf in get_rois.py).
+    # These masks can be directly applied to tiff movies, or can be applied to temporal component mat from NMF results (.npz)
+    normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'opencv_blob_detector']
+
+    print "======================================================================="
+    print "Trace Set: %s -- Starting trace extraction..." % trace_id
+    t_start = time.time()
+
+
+
+    #% Get meta info for run:
+    # =============================================================================
+    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+
+    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    si_info = get_frame_info(run_dir)
+
+#    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+#    print 'RUN:', run_dir
+#    runmeta_path = os.path.join(run_dir, '%s.json' % run)
+#    with open(runmeta_path, 'r') as r:
+#        runinfo = json.load(r)
+#
+#    nslices = len(runinfo['slices'])
+#    nchannels = runinfo['nchannels']
+#    nvolumes = runinfo['nvolumes']
+#    ntiffs = runinfo['ntiffs']
+#    frames_tsec = runinfo['frame_tstamps_sec']
+#
+#    # Get VOLUME indices to align to frame indices:
+#    # -----------------------------------------------------------------------------
+#    nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
+#    print "Creating volume index list for %i total slices. %i frames were discarded for flyback." % (nslices_full, nslices_full - nslices)
+#
+#    vol_idxs = np.empty((nvolumes*nslices_full,))
+#    vcounter = 0
+#    for v in range(nvolumes):
+#        vol_idxs[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
+#        vcounter += nslices_full
+#    vol_idxs = [int(v) for v in vol_idxs]
+#
+
+
+    # Check for ACQUISITION EVENT parsing:
+    #paradigm_dir = os.path.join()
+
+    # Load specified trace-ID parameter set:
+    # =============================================================================
+    trace_dir = os.path.join(run_dir, 'traces')
+    tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+
+    if not os.path.exists(trace_dir):
+        os.makedirs(trace_dir)
+
+    TID = load_TID(run_dir, trace_id, auto=auto)
+    #%
+    # Get source tiff paths using trace-ID params:
+    # =============================================================================
+    trace_hash = TID['trace_hash']
+
+    tiff_dir = TID['SRC']
+    roi_name = TID['PARAMS']['roi_id']
+    if rootdir not in tiff_dir:
+        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
+    tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
+    print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
 
 #%
@@ -852,10 +818,6 @@ with open(roidict_path, 'r') as f:
 RID = roidict[TID['PARAMS']['roi_id']]
 rid_hash = RID['rid_hash']
 
-# Load ROI PARAMS info:
-#with open(os.path.join(RID['DST'], 'roiparams.json'), 'r') as f:
-#    roiparams = json.load(f)
-
 #%% For each specified SLICE in this ROI set, create 2D mask array:
 # TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
 # as python-based methods... if-checks hacked for now...
@@ -863,9 +825,6 @@ rid_hash = RID['rid_hash']
 # Load mask file:
 if rootdir not in RID['DST']:
     rid_dst = replace_root(RID['DST'], rootdir, animalid, session)
-    #orig_root = RID['DST'].split('/%s/%s' % (animalid, session))[0]
-    #print "Orig-root:", orig_root
-    #rid_dst = RID['DST'].replace(orig_root, rootdir)
     notnative = True
 else:
     rid_dst = RID['DST']
@@ -894,8 +853,6 @@ if create_new is True or not os.path.exists(maskdict_path):
     with open(maskdict_path, 'wb') as f:
         pkl.dump(MASKS, f, protocol=pkl.HIGHEST_PROTOCOL)
     del MASKS
-#else:
-#    MASKS = pkl.load(open(maskdict_path, 'rb'))
 
 # Check if alrady have plotted masks, if not, create new:
 all_files = ['File%03d' % int(i+1) for i in range(ntiffs)]
@@ -911,7 +868,6 @@ print "-----------------------------------------------------------------------"
 
 
 #%%
-
 
 filetrace_dir = apply_masks_to_movies(TID, RID, output_filedir=filetrace_dir, rootdir=rootdir)
 roi_tcourse_filepath = get_roi_timecourses(TID, ntiffs, input_filedir=filetrace_dir, rootdir=rootdir)
@@ -932,3 +888,7 @@ print "Cleaned up tmp tid files."
 print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
 #print_elapsed_time(t_start)
 print "======================================================================="
+
+#%% GET PLOTS:
+print "*** CREATING DEFAULT PLOTS ***"
+roidata_filepath, roi_psth_dir = acq.plot_traceid_psths(options)
