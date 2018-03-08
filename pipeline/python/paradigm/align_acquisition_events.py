@@ -1592,8 +1592,11 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
     existing_files = [f for f in os.listdir(curr_metrics_dir) if 'roi_stats_' in f]
     if create_new is False:
         if len(existing_files) == 1:
-            roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
-            #ROISTATS = pd.HDFStore(roistats_filepath)
+            roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0]) 
+            ROISTATS = pd.HDFStore(roistats_filepath, 'r')
+            if len(ROISTATS.keys()) == 0:
+                create_new = True
+            ROISTATS.close()
         else:
             create_new is True
 
@@ -1617,8 +1620,8 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
         for d in df:
             datastore[d] = df[d]
         datastore.close()
-    else:
-        roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
+#    else:
+#        roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
         #ROISTATS = pd.HDFStore(roistats_filepath)
         #ROISTATS = datastore['ROISTATS']
 
