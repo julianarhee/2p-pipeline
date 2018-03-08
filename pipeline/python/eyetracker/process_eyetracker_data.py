@@ -625,10 +625,22 @@ def process_data(options):
             #pixel radius
             tmp = np.mean(pupil_axes_list,1)#collapse across ellipse axes
             pupil_radius = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+
+            #radius - 1st deriv
+            tmp = np.diff(pupil_radius)
+            pupil_radius_diff1 = np.hstack((0,tmp))
+
+            #radius - 2nd deriv
+            tmp = np.diff(pupil_radius_diff1)
+            pupil_radius_diff2 = np.hstack((0,tmp))
             
             #pupil aspect ratio
             tmp = np.true_divide(pupil_axes_list[:,0],pupil_axes_list[:,1])#collapse across ellipse axes
             pupil_aspect = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+
+            #pupil orientation
+            tmp = pupil_orientation_list[:]
+            pupil_orientation = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
 
             # pupil position X 
             tmp = pupil_center_list[:,1].copy()
@@ -641,6 +653,10 @@ def process_data(options):
             #distance
             tmp_pos = np.transpose(np.vstack((pupil_pos_x,pupil_pos_y)))
             pupil_dist = np.squeeze(spatial.distance.cdist(tmp_pos,tmp_pos[0:1,:]))
+
+            #distance - 1st deriv
+            tmp = np.diff(pupil_dist)
+            pupil_dist_diff1 = np.hstack((0,tmp))
             
             #disance
         if 'cr' in user_rect:
@@ -694,7 +710,20 @@ def process_data(options):
             if 'pupil_radius' not in file_grp.keys():
                 pup_rad_set = file_grp.create_dataset('pupil_radius',pupil_radius.shape, pupil_radius.dtype)
             pup_rad_set[...] = pupil_radius
+
+            if 'pupil_radius_diff1' not in file_grp.keys():
+                pup_rad1_set = file_grp.create_dataset('pupil_radius_diff1',pupil_radius_diff1.shape, pupil_radius_diff1.dtype)
+            pup_rad1_set[...] = pupil_radius_diff1
             
+            if 'pupil_radius_diff2' not in file_grp.keys():
+                pup_rad2_set = file_grp.create_dataset('pupil_radius_diff2',pupil_radius_diff2.shape, pupil_radius_diff2.dtype)
+            pup_rad2_set[...] = pupil_radius_diff2
+            
+
+            if 'pupil_orientation' not in file_grp.keys():
+                pup_ori_set = file_grp.create_dataset('pupil_orientation',pupil_orientation.shape, pupil_orientation.dtype)
+            pup_ori_set[...] = pupil_orientation
+
             if 'pupil_aspect' not in file_grp.keys():
                 pup_asp_set = file_grp.create_dataset('pupil_aspect',pupil_aspect.shape, pupil_aspect.dtype)
             pup_asp_set[...] = pupil_aspect
@@ -703,6 +732,10 @@ def process_data(options):
                 pup_dist_set = file_grp.create_dataset('pupil_distance',pupil_dist.shape, pupil_dist.dtype)
             pup_dist_set[...] = pupil_dist
 
+            if 'pupil_dist_diff1' not in file_grp.keys():
+                pup_dist1_set = file_grp.create_dataset('pupil_dist_diff1',pupil_dist_diff1.shape, pupil_dist_diff1.dtype)
+            pup_dist1_set[...] = pupil_dist_diff1
+            
             if 'pupil_x' not in file_grp.keys():
                 pup_x_set = file_grp.create_dataset('pupil_x',pupil_pos_x.shape, pupil_pos_x.dtype)
             pup_x_set[...] = pupil_pos_x
@@ -740,8 +773,12 @@ def process_data(options):
         if 'pupil' in user_rect:
             pupil_df = pd.DataFrame({'camera time': camera_time,
                                      'pupil radius': pupil_radius,
-                                     'pupil aspect ratio': pupil_aspect,              
+                                     'pupil radius diff1': pupil_radius_diff1,
+                                     'pupil radius diff2': pupil_radius_diff2,
+                                     'pupil aspect ratio': pupil_aspect,
+                                     'pupil orientation': pupil_orientation,             
                                      'pupil distance': pupil_dist,
+                                     'pupil distance diff1': pupil_dist_diff1,
                                      'pupil position x': pupil_pos_x,
                                      'pupil position y': pupil_pos_y,
                                     })
@@ -751,6 +788,24 @@ def process_data(options):
             
             fig_file = os.path.join(output_fig_dir,'pupil_radius_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil radius', fig_file)
+
+            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff1_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(pupil_df, 'camera time', 'pupil radius diff1',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil radius diff1', fig_file)
+
+            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff2_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(pupil_df, 'camera time', 'pupil radius diff2',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff2_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil radius diff2', fig_file)
+
+            fig_file = os.path.join(output_fig_dir,'pupil_orientation_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(pupil_df, 'camera time', 'pupil orientation',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_orientation_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil orientation', fig_file)
             
             fig_file = os.path.join(output_fig_dir,'pupil_aspect_ratio_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil aspect ratio',stim_on_times,stim_off_times, blink_times, fig_file)
@@ -763,6 +818,12 @@ def process_data(options):
             
             fig_file = os.path.join(output_fig_dir,'pupil_distance_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil distance', fig_file)
+
+            fig_file = os.path.join(output_fig_dir,'pupil_distance_diff1_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(pupil_df, 'camera time', 'pupil distance diff1',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(output_fig_dir,'pupil_distance_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(pupil_df, 'pupil distance diff1', fig_file)
             
             fig_file = os.path.join(output_fig_dir,'pupil_x_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil position x',stim_on_times,stim_off_times, blink_times, fig_file)
@@ -842,8 +903,14 @@ def parse_data(options):
     if 'blink_Times' not in file_grp.keys():
         blink_times = file_grp['blink_times'][:]
     pupil_radius = file_grp['pupil_radius'][:]
+    pupil_radius_diff1 = file_grp['pupil_radius_diff1'][:]
+    pupil_radius_diff2 = file_grp['pupil_radius_diff2'][:]
+    pupil_x = file_grp['pupil_x'][:]
+    pupil_y = file_grp['pupil_y'][:]
     pupil_dist = file_grp['pupil_distance'][:]
+    pupil_dist_diff1 = file_grp['pupil_dist_diff1'][:]
     pupil_aspect = file_grp['pupil_aspect'][:]
+    pupil_orientation = file_grp['pupil_orientation'][:]
 
     file_grp.close()
 
@@ -911,6 +978,13 @@ def parse_data(options):
         eye_info[trial_string]['pupil_size_baseline'] = np.mean(pupil_radius[start_idx:on_idx])
         eye_info[trial_string]['pupil_size_baseline_min'] = np.min(pupil_radius[start_idx:on_idx])
         eye_info[trial_string]['pupil_size_baseline_max'] = np.max(pupil_radius[start_idx:on_idx])
+
+        eye_info[trial_string]['pupil_size_diff1_stim'] = np.mean(pupil_radius_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_diff1_stim_min'] = np.min(pupil_radius_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_diff1_stim_max'] = np.max(pupil_radius_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_size_diff1_baseline'] = np.mean(pupil_radius_diff1[start_idx:on_idx])
+        eye_info[trial_string]['pupil_size_diff1_baseline_min'] = np.min(pupil_radius_diff1[start_idx:on_idx])
+        eye_info[trial_string]['pupil_size_diff1_baseline_max'] = np.max(pupil_radius_diff1[start_idx:on_idx])
         
         pupil_dist_baseline = np.mean(pupil_dist[start_idx:on_idx])
         eye_info[trial_string]['pupil_dist_stim'] = np.mean(pupil_dist[on_idx:off_idx])
@@ -919,6 +993,27 @@ def parse_data(options):
         eye_info[trial_string]['pupil_dist_baseline'] = np.mean(pupil_dist[start_idx:on_idx])
         eye_info[trial_string]['pupil_dist_baseline_min'] = np.min(pupil_dist[start_idx:on_idx])
         eye_info[trial_string]['pupil_dist_baseline_max'] = np.max(pupil_dist[start_idx:on_idx])
+
+        eye_info[trial_string]['pupil_dist_diff1_stim'] = np.mean(pupil_dist_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_diff1_stim_min'] = np.min(pupil_dist_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_diff1_stim_max'] = np.max(pupil_dist_diff1[on_idx:off_idx])
+        eye_info[trial_string]['pupil_dist_diff1_baseline'] = np.mean(pupil_dist_diff1[start_idx:on_idx])
+        eye_info[trial_string]['pupil_dist_diff1_baseline_min'] = np.min(pupil_dist_diff1[start_idx:on_idx])
+        eye_info[trial_string]['pupil_dist_diff1_baseline_max'] = np.max(pupil_dist_diff1[start_idx:on_idx])
+
+        eye_info[trial_string]['pupil_x_stim'] = np.mean(pupil_x[on_idx:off_idx])
+        eye_info[trial_string]['pupil_x_stim_min'] = np.min(pupil_x[on_idx:off_idx])
+        eye_info[trial_string]['pupil_x_stim_max'] = np.max(pupil_x[on_idx:off_idx])
+        eye_info[trial_string]['pupil_x_baseline'] = np.mean(pupil_x[start_idx:on_idx])
+        eye_info[trial_string]['pupil_x_baseline_min'] = np.min(pupil_x[start_idx:on_idx])
+        eye_info[trial_string]['pupil_x_baseline_max'] = np.max(pupil_x[start_idx:on_idx])
+
+        eye_info[trial_string]['pupil_y_stim'] = np.mean(pupil_y[on_idx:off_idx])
+        eye_info[trial_string]['pupil_y_stim_min'] = np.min(pupil_y[on_idx:off_idx])
+        eye_info[trial_string]['pupil_y_stim_max'] = np.max(pupil_y[on_idx:off_idx])
+        eye_info[trial_string]['pupil_y_baseline'] = np.mean(pupil_y[start_idx:on_idx])
+        eye_info[trial_string]['pupil_y_baseline_min'] = np.min(pupil_y[start_idx:on_idx])
+        eye_info[trial_string]['pupil_y_baseline_max'] = np.max(pupil_y[start_idx:on_idx])
 
         eye_info[trial_string]['blink_event_count_stim'] = np.sum(blink_events[on_idx:off_idx])
         eye_info[trial_string]['blink_event_count_baseline'] = np.sum(blink_events[start_idx:on_idx])
