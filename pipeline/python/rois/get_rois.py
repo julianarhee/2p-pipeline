@@ -244,6 +244,9 @@ def standardize_rois(session_dir, roi_id, auto=False,
             roiparams = json.load(f)
 
     mask_filepath = os.path.join(rid_dir, 'masks.hdf5')
+    if 'manual' in roi_type:
+        return mask_filepath
+
     maskfile = h5py.File(mask_filepath, 'w')
     maskfile.attrs['roi_type'] = roi_type
     maskfile.attrs['roi_id'] = roi_id
