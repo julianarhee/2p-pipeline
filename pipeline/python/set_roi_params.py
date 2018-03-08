@@ -70,7 +70,7 @@ def extract_options(options):
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
 
-    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon', 'coregister')
+    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon', 'coregister', 'manual2D_warp')
     default_roitype = 'caiman2D'
 
     parser = optparse.OptionParser()
@@ -252,6 +252,7 @@ def create_rid(options):
                                        p=nmf_p,
                                        border_pix=border_pix)
         src_roi_type = roi_type
+
     elif 'manual' in roi_type:
         roi_options = set_options_manual(rootdir=homedir, animalid=animalid, session=session,
                                          acquisition=acquisition, run=run,
@@ -259,8 +260,13 @@ def create_rid(options):
                                          zproj_type=zproj_type,
                                          ref_file=ref_file,
                                          ref_channel=ref_channel,
-                                         slices=slices)
-        src_roi_type = roi_type
+                                         slices=slices,
+                                         roi_source=roi_source_ids)
+        if 'warp' in roi_type:
+            src_roi_type = roi_options['source']['roi_type']
+        else:
+            src_roi_type = roi_type
+
     elif roi_type == 'coregister':
         roi_options = set_options_coregister(rootdir=homedir, animalid=animalid, session=session,
                                          roi_source=roi_source_ids,
@@ -416,14 +422,36 @@ def set_options_cnmf(rootdir='', animalid='', session='', acquisition='', run=''
     return params
 
 def set_options_manual(rootdir='', animalid='', session='', acquisition='', run='',
-                    roi_type='', zproj_type='', ref_file=1, ref_channel=1, slices=[1]):
+                    roi_type='', zproj_type='', ref_file=1, ref_channel=1, slices=[1], roi_source=None):
 
     params = dict()
     params['roi_type'] = roi_type
-    params['zproj_type'] = zproj_type
+    params['roi_source'] = roi_source
+    if 'warp' in roi_type:
+        roidict_path = os.path.join(rootdir, animalid, session, 'ROIs', 'rids_%s.json' % session)
+        with open(roidict_path, 'r') as f:
+            rdict = json.load(f)
+        params['source'] = dict()
+        for ridx,roi_source_id in enumerate(roi_source):
+            src_rid = rdict[roi_source_id]
+            params['source'][ridx] = dict()
+            params['source'][ridx]['roi_dir'] = src_rid['DST']
+            params['source'][ridx]['tiff_dir'] = src_rid['SRC']
+            params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
+            params['source'][ridx]['roi_id'] = src_rid['roi_id']
+            params['source'][ridx]['roi_type'] = src_rid['roi_type']
+            params['source'][ridx]['ref_file'] = src_rid['PARAMS']['options']['ref_file']
+            params['source'][ridx]['ref_channel'] = src_rid['PARAMS']['options']['ref_channel']
+        if len(roi_source) == 1:
+            params['source'] = params['source'][0]
+        params['slices'] = src_rid['PARAMS']['options']['slices'] 
+        params['zproj_type'] = src_rid['PARAMS']['options']['zproj_type'] 
+    else: 
+        params['slices'] = slices
+        params['zproj_type'] = zproj_type
+
     params['ref_file'] = int(ref_file)
     params['ref_channel'] = int(ref_channel)
-    params['slices'] = slices
 
     return params
 
