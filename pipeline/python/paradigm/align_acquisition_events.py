@@ -1903,12 +1903,12 @@ def extract_options(options):
     parser.add_option('--omit-trials', action="store_false",
                       dest="include_trials", default=True, help="Set flag to plot PSTHS without individual trial values")
 
-    parser.add_option('--pupil', action="store_true",
-                      dest="filter_pupil", default=False, help="Set flag to filter PSTH traces by pupil threshold params")
+    parser.add_option('--no-pupil', action="store_false",
+                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
     parser.add_option('--size', action="store",
                       dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
     parser.add_option('--dist', action="store",
-                      dest="pupil_dist_thr", default=8, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+                      dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
     parser.add_option('--blinks', action="store",
                       dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
 
@@ -2015,11 +2015,14 @@ def plot_traceid_psths(options):
         print "-------------------------------------------------------------------"
         print "Loading EYE INFO."
         eye_info = load_eye_data(run_dir)
+        #print eye_info.keys()
         if eye_info is None:
             filter_pupil = False
             pupil_params = None
         else:
             pupil_params = set_pupil_params(size_thr=pupil_size_thr, dist_thr=pupil_dist_thr, max_nblinks=pupil_max_nblinks, create_empty=False)
+    else:
+        eye_info = None
 
     # GET ALL DATA into a dataframe:
     # =========================================================================
@@ -2029,9 +2032,14 @@ def plot_traceid_psths(options):
     corresponding_datestr = corresponding_datestr.split('roi_trials_')[-1]
     roidata_filepath = os.path.join(traceid_dir, 'ROIDATA_%s.hdf5' % corresponding_datestr)
     if os.path.exists(roidata_filepath) and create_new is False:
+        print "--> Trying to load existing file..."
+        print "--> Loading ROIDATA file: %s" % roidata_filepath
         DATA = pd.HDFStore(roidata_filepath, 'r')
         if len(DATA.keys()) == 0:
             create_new = True
+    else:
+        create_new = True
+
     if create_new is True:
         # First remove old files:
         existing_df_files = [f for f in os.listdir(traceid_dir) if 'ROIDATA_' in f and f.endswith('hdf5')]
