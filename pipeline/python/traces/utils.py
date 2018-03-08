@@ -83,6 +83,7 @@ def get_frame_info(run_dir):
     si_info['nslices'] = nslices
     si_info['nchannels'] = nchannels
     si_info['ntiffs'] = ntiffs
-
-
+    si_info['frames_tsec'] = runinfo['frame_tstamps_sec']
+    si_info['nvolumes'] = nvolumes
+    
     return si_info

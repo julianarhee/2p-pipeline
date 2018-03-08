@@ -95,6 +95,7 @@ Created on Tue Dec 12 11:57:24 2017
 import matplotlib
 matplotlib.use('Agg')
 import os
+import sys
 import h5py
 import json
 import re
@@ -112,24 +113,26 @@ import cPickle as pkl
 from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root
 from pipeline.python.set_trace_params import post_tid_cleanup
 from pipeline.python.rois.utils import get_info_from_tiff_dir
+from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.paradigm import align_acquisition_events as acq
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 
 def load_TID(run_dir, trace_id, auto=False):
+    run = os.path.split(run_dir)[-1]
     trace_dir = os.path.join(run_dir, 'traces')
     tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
+    tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
     try:
         print "Loading params for TRACE SET, id %s" % trace_id
-        tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
         with open(tracedict_path, 'r') as f:
             tracedict = json.load(f)
         TID = tracedict[trace_id]
         pp.pprint(TID)
     except Exception as e:
         print "No TRACE SET entry exists for specified id: %s" % trace_id
-        print e
+        print "TRACE DIR:", tracedict_path
         try:
             print "Checking tmp trace-id dir..."
             if auto is False:
@@ -149,6 +152,7 @@ def load_TID(run_dir, trace_id, auto=False):
                     elif userconfirm == 'q':
                         break
         except Exception as e:
+            traceback.print_exc()
             print "---------------------------------------------------------------"
             print "No tmp trace-ids found either... ABORTING with error:"
             print e
@@ -157,7 +161,7 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-def get_mask_info(mask_path):
+def get_mask_info(mask_path, ntiffs=None):
     maskinfo = dict()
     try:
         maskfile = h5py.File(mask_path, "r")
@@ -165,7 +169,9 @@ def get_mask_info(mask_path):
 
         # Get files for which there are ROIs in this set:
         maskfiles = maskfile.keys()
+        print "MASK FILES:", len(maskfiles)
         if len(maskfiles) == 1:
+            #ntiffs = maskfile.attrs['ntiffs_in_set']
             filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
             ref_file = maskfiles[0]
             print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
@@ -211,7 +217,8 @@ def get_mask_info(mask_path):
 def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', animalid='', session=''):
     MASKS = dict()
 
-    maskfile = h5py.File(mask_path, "r")
+    maskfile = h5py.File(maskinfo['filepath'], "r")
+    MASKS['original_source'] = maskinfo['filepath']
     for fidx, curr_file in enumerate(maskinfo['filenames']):
         MASKS[curr_file] = dict()
 
@@ -330,8 +337,8 @@ def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
         MASKS = pkl.load(f)
     f.close()
     print "Plotting masks for %i files." % len(MASKS.keys())
-
-    for curr_file in sorted(MASKS.keys(), key=natural_keys):
+    filenames = [k for k in MASKS.keys() if 'File' in k]
+    for curr_file in sorted(filenames, key=natural_keys): #sorted(MASKS.keys(), key=natural_keys):
         for curr_slice in sorted(MASKS[curr_file].keys(), key=natural_keys):
             curr_rois = MASKS[curr_file][curr_slice]['rois']
             nrois = len(curr_rois)
@@ -381,18 +388,29 @@ def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
 # =============================================================================
 # Extract ROIs for each specified slice for each file:
 # =============================================================================
-def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
+def apply_masks_to_movies(TID, RID, si_info, output_filedir='/tmp', rootdir=''):
     file_grp = None
     trace_hash = TID['trace_hash']
     filetrace_fn_base = 'rawtraces_%s' % TID['trace_hash']
+    traceid_dir = TID['DST']
+    filetrace_dir = os.path.join(traceid_dir, 'files')
 
-    roi_slices = maskinfo['roi_slices']
+    ntiffs = si_info['ntiffs']
+    nchannels = si_info['nchannels']
+    nslices = si_info['nslices']
+    nvolumes = si_info['nvolumes']
+    frames_tsec = si_info['frames_tsec']
+
+    #roi_slices = maskinfo['roi_slices']
+    tiff_dir = TID['SRC']
+    if rootdir not in tiff_dir:
+        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+    tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 
     print "TID %s -- Applying masks to traces..." % trace_hash
     t_extract = time.time()
 
     # Load MASKDICT:
-    traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
         session_dir = RID['DST'].split('/ROIs/')[0]
         info = get_info_from_tiff_dir(TID['SRC'], session_dir)
@@ -403,6 +421,8 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
         MASKS = pkl.load(f)
     f.close()
     print "Applying masks to %i files." % len(MASKS.keys())
+    filenames = [k for k in MASKS.keys() if 'File' in k]
+    roi_slices = [k for k in MASKS[filenames[0]].keys() if 'Slice' in k] #maskinfo['roi_slices']
 
     signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
     file_hashdict = dict()
@@ -436,7 +456,7 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
             file_grp.attrs['source_file'] = currtiff_path
             file_grp.attrs['file_id'] = curr_file
             file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
-            file_grp.attrs['mask_sourcefile'] = mask_path
+            file_grp.attrs['mask_sourcefile'] = MASKS['original_source'] #mask_path
 
             for sl in range(len(roi_slices)):
 
@@ -524,13 +544,19 @@ def apply_masks_to_movies(TID, RID, output_filedir='/tmp', rootdir=''):
 # Create time courses for ROIs:
 # =============================================================================
 
-def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
+def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', create_new=False):
     traceid_dir = TID['DST']
+    trace_hash = TID['trace_hash']
+    trace_id = TID['trace_id']
+    filetrace_dir = os.path.join(traceid_dir, 'files')
+    rundir = TID['DST'].split('/traces/')[0]
+    acqdir = os.path.split(rundir)[0]
+    session_dir = os.path.split(acqdir)[0]
+    info = get_info_from_tiff_dir(TID['SRC'], session_dir)
+    print "Got trace info:"
+    pp.pprint(info)
+    
     if rootdir not in traceid_dir:
-        rundir = TID['DST'].split('/traces/')[0]
-        acqdir = os.path.split(rundir)[0]
-        session_dir = os.path.split(acqdir)[0]
-        info = get_info_from_tiff_dir(TID['SRC'], session_dir)
         traceid_dir = replace_root(traceid_dir, rootdir, info['animalid'], info['session'])
 
     traceid_dir = TID['DST']
@@ -571,20 +597,21 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
         roi_outfile.attrs['trace_source'] = traceid_dir
         roi_outfile.attrs['roiset_id'] = RID['roi_id']
         roi_outfile.attrs['roiset_hash'] = RID['rid_hash']
-        roi_outfile.attrs['run'] = run
-        roi_outfile.attrs['session'] = session
-        roi_outfile.attrs['acquisition'] = acquisition
-        roi_outfile.attrs['animalid'] = animalid
+        roi_outfile.attrs['run'] = info['run']
+        roi_outfile.attrs['session'] = info['session']
+        roi_outfile.attrs['acquisition'] = info['acquisition']
+        roi_outfile.attrs['animalid'] = info['animalid']
         roi_outfile.attrs['creation_time'] = tstamp #datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Concatenate time courses across all files to create single time-source for RUN:
         # -----------------------------------------------------------------------------
         tmp_tracestruct = h5py.File(os.path.join(filetrace_dir, filetrace_fns[0]), 'r')
+        ntiffs = si_info['ntiffs']
         dims = tmp_tracestruct.attrs['dims']
         total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
         tmp_tracestruct.close(); del tmp_tracestruct
 
-        nframes_in_file = runinfo['nvolumes']
+        nframes_in_file = si_info['nframes_per_file'] #uninfo['nvolumes']
         curr_frame_idx = 0
         tiff_start_fridxs = []
         for fi in range(ntiffs):
@@ -675,7 +702,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
 
         roi_tcourse_filepath = hash_file_read_only(roi_tcourse_filepath)
 
-        print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, run)
+        print "TID %s -- Finished extracting time course for run %s by roi." % (trace_hash, info['run'])
         print_elapsed_time(t_roi)
         print "Saved ROI TIME COURSE file to:", roi_tcourse_filepath
 
@@ -684,7 +711,7 @@ def get_roi_timecourses(TID, ntiffs, input_filedir='/tmp', rootdir=''):
 
 #%%
 
-def extract_options(options)
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -701,22 +728,25 @@ def extract_options(options)
                       dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
 
 
-    if options.slurm is True:
-        if 'coxfs01' not in options.rootdir:
-            options.rootdir = '/n/coxfs01/2p-data'
-
     (options, args) = parser.parse_args(options)
 
     return options
 
 def extract_traces(options):
     # Set USER INPUT options:
+    options = extract_options(options)
+
     rootdir = options.rootdir
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
     run = options.run
     trace_id = options.trace_id
+    slurm = options.slurm
+    if slurm is True:
+        if 'coxfs01' not in rootdir:
+            rootdir = '/n/coxfs01/2p-data'
+
 
 
     create_new = options.create_new
@@ -776,7 +806,7 @@ def extract_traces(options):
 
     if not os.path.exists(trace_dir):
         os.makedirs(trace_dir)
-
+    print "RUN DIR:", run_dir
     TID = load_TID(run_dir, trace_id, auto=auto)
     #%
     # Get source tiff paths using trace-ID params:
@@ -791,104 +821,114 @@ def extract_traces(options):
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
-
-#%
-# Create output dirs and files:
-# =============================================================================
-
-traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-filetrace_dir = os.path.join(traceid_dir, 'files')
-if not os.path.exists(filetrace_dir):
-    os.makedirs(filetrace_dir)
-
-trace_figdir = os.path.join(traceid_dir, 'figures')
-if not os.path.exists(trace_figdir):
-    os.makedirs(trace_figdir)
-
-#%%
-# =============================================================================
-# Create mask array and save mask images for each slice specified in ROI set:
-# =============================================================================
-
-# Load ROI set specified in Traces param set:
-roi_dir = os.path.join(rootdir, animalid, session, 'ROIs')
-roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
-with open(roidict_path, 'r') as f:
-    roidict = json.load(f)
-RID = roidict[TID['PARAMS']['roi_id']]
-rid_hash = RID['rid_hash']
-
-#%% For each specified SLICE in this ROI set, create 2D mask array:
-# TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
-# as python-based methods... if-checks hacked for now...
-
-# Load mask file:
-if rootdir not in RID['DST']:
-    rid_dst = replace_root(RID['DST'], rootdir, animalid, session)
-    notnative = True
-else:
-    rid_dst = RID['DST']
-    notnative = False
-
-mask_path = os.path.join(rid_dst, 'masks.hdf5')
-
-print "-----------------------------------------------------------------------"
-print "TID %s -- Getting mask info..." % trace_hash
-t_mask = time.time()
-
-# Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
-normalize_rois = False
-if RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] in normalize_roi_types:
-    normalize_rois = True
-elif RID['roi_type'] in normalize_roi_types:
-    normalize_rois = True
-
-
-maskinfo = get_mask_info(mask_path)
-
-# Check if formatted MASKS dict exists and load, otherwise, create new:
-maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
-if create_new is True or not os.path.exists(maskdict_path):
-    MASKS = get_masks(maskinfo, RID, normalize_rois=normalize_rois, notnative=notnative, rootdir=rootdir, animalid=animalid, session=session)
-    with open(maskdict_path, 'wb') as f:
-        pkl.dump(MASKS, f, protocol=pkl.HIGHEST_PROTOCOL)
-    del MASKS
-
-# Check if alrady have plotted masks, if not, create new:
-all_files = ['File%03d' % int(i+1) for i in range(ntiffs)]
-tiffs_in_set = [t for t in all_files if t not in TID['PARAMS']['excluded_tiffs']]
-mask_figdir = os.path.join(trace_figdir, 'masks')
-maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
-if len(maskfigs) == 0 or not len(maskfigs) == len(tiffs_in_set) or create_new is True:
-    plot_roi_masks(TID, RID, mask_figdir=mask_figdir, rootdir=rootdir)
-
-print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
-print_elapsed_time(t_mask)
-print "-----------------------------------------------------------------------"
-
-
-#%%
-
-filetrace_dir = apply_masks_to_movies(TID, RID, output_filedir=filetrace_dir, rootdir=rootdir)
-roi_tcourse_filepath = get_roi_timecourses(TID, ntiffs, input_filedir=filetrace_dir, rootdir=rootdir)
-
-print "-----------------------------------------------------------------------"
-
-#%% move tmp file:
-tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
-completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
-if not os.path.exists(completed_tid_dir):
-    os.makedirs(completed_tid_dir)
-if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
-    os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
-
-print "Cleaned up tmp tid files."
-
-#%%
-print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
-#print_elapsed_time(t_start)
-print "======================================================================="
-
+    
+    #%
+    # Create output dirs and files:
+    # =============================================================================
+    
+    traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
+    filetrace_dir = os.path.join(traceid_dir, 'files')
+    if not os.path.exists(filetrace_dir):
+        os.makedirs(filetrace_dir)
+    
+    trace_figdir = os.path.join(traceid_dir, 'figures')
+    if not os.path.exists(trace_figdir):
+        os.makedirs(trace_figdir)
+    
+    #%%
+    # =============================================================================
+    # Create mask array and save mask images for each slice specified in ROI set:
+    # =============================================================================
+    
+    # Load ROI set specified in Traces param set:
+    roi_dir = os.path.join(rootdir, animalid, session, 'ROIs')
+    roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
+    with open(roidict_path, 'r') as f:
+        roidict = json.load(f)
+    RID = roidict[TID['PARAMS']['roi_id']]
+    rid_hash = RID['rid_hash']
+    
+    #%% For each specified SLICE in this ROI set, create 2D mask array:
+    # TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
+    # as python-based methods... if-checks hacked for now...
+    
+    # Load mask file:
+    if rootdir not in RID['DST']:
+        rid_dst = replace_root(RID['DST'], rootdir, animalid, session)
+        notnative = True
+    else:
+        rid_dst = RID['DST']
+        notnative = False
+    
+    mask_path = os.path.join(rid_dst, 'masks.hdf5')
+    
+    print "-----------------------------------------------------------------------"
+    print "TID %s -- Getting mask info..." % trace_hash
+    t_mask = time.time()
+    
+    # Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
+    normalize_rois = False
+    if RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] in normalize_roi_types:
+        normalize_rois = True
+    elif RID['roi_type'] in normalize_roi_types:
+        normalize_rois = True
+    
+    ntiffs = len(tiff_files) 
+    maskinfo = get_mask_info(mask_path, ntiffs=len(tiff_files))
+    
+    # Check if formatted MASKS dict exists and load, otherwise, create new:
+    maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
+    if create_new is True or not os.path.exists(maskdict_path):
+        MASKS = get_masks(maskinfo, RID, normalize_rois=normalize_rois, notnative=notnative, rootdir=rootdir, animalid=animalid, session=session)
+        with open(maskdict_path, 'wb') as f:
+            pkl.dump(MASKS, f, protocol=pkl.HIGHEST_PROTOCOL)
+        del MASKS
+    
+    # Check if alrady have plotted masks, if not, create new:
+    all_files = ['File%03d' % int(i+1) for i in range(len(tiff_files))]
+    tiffs_in_set = [t for t in all_files if t not in TID['PARAMS']['excluded_tiffs']]
+    mask_figdir = os.path.join(trace_figdir, 'masks')
+    if not os.path.exists(mask_figdir):
+        os.makedirs(mask_figdir)
+    maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
+    if len(maskfigs) == 0 or create_new is True:
+        plot_roi_masks(TID, RID, mask_figdir=mask_figdir, rootdir=rootdir)
+    
+    print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
+    print_elapsed_time(t_mask)
+    print "-----------------------------------------------------------------------"
+    
+    
+    #%%
+    if create_new is True or not len(os.listdir(filetrace_dir)) == len(maskfigs): 
+        filetrace_dir = apply_masks_to_movies(TID, RID, si_info, output_filedir=filetrace_dir, rootdir=rootdir)
+    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetrace_dir, rootdir=rootdir, create_new=create_new)
+    
+    print "-----------------------------------------------------------------------"
+    
+    #%% move tmp file:
+    tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
+    completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
+    if not os.path.exists(completed_tid_dir):
+        os.makedirs(completed_tid_dir)
+    if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
+        os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
+    
+    print "Cleaned up tmp tid files."
+    
+    #%%
+    print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
+    #print_elapsed_time(t_start)
+    print "======================================================================="
+    
 #%% GET PLOTS:
-print "*** CREATING DEFAULT PLOTS ***"
-roidata_filepath, roi_psth_dir = acq.plot_traceid_psths(options)
+def main(options):
+    #options = extract_options(options)
+    extract_traces(options)
+    print "*** CREATING DEFAULT PLOTS ***"
+    roidata_filepath, roi_psth_dir = acq.plot_traceid_psths(options)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+
