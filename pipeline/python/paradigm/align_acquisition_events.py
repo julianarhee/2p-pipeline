@@ -1591,6 +1591,7 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
     curr_metrics_dir = os.path.split(metrics_filepath)[0]
     existing_files = [f for f in os.listdir(curr_metrics_dir) if 'roi_stats_' in f]
     if create_new is False:
+        print "---> Looking for existing ROI STATS..."
         if len(existing_files) == 1:
             roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0]) 
             ROISTATS = pd.HDFStore(roistats_filepath, 'r')
@@ -1598,7 +1599,7 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
                 create_new = True
             ROISTATS.close()
         else:
-            create_new is True
+            create_new = True
 
     if create_new is True:
         # Move or get rid of existing files:
