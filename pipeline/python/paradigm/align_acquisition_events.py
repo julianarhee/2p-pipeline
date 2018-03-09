@@ -1363,7 +1363,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
             idx = 0
             for tidx, trial in enumerate(pass_trials):
-                print tidx, trial
+                #print tidx, trial
                 df_main = pd.DataFrame({'trial': trial,
                                                 'config': config,
                                                 'zscore': zscore_values[tidx],
