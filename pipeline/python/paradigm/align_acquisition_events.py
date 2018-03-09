@@ -104,6 +104,8 @@ import pandas as pd
 import seaborn as sns
 import pylab as pl
 import numpy as np
+from stat import S_IREAD, S_IRGRP, S_IROTH
+
 from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file
 from pipeline.python.traces.utils import get_frame_info
 pp = pprint.PrettyPrinter(indent=4)
@@ -129,16 +131,13 @@ def serialize_json(instance=None, path=None):
     dt.update(vars(instance))
     return dt
 
-
-
 #%%
-
 def load_parsed_trials(parsed_trials_path):
     with open(parsed_trials_path, 'r') as f:
         trialdict = json.load(f)
     return trialdict
 
-        #%%
+#%%
 def get_alignment_specs(paradigm_dir, si_info, custom_mw=False, options=None):
     trial_epoch_info = {}
     iti_pre = options.iti_pre
@@ -257,65 +256,6 @@ def get_alignment_specs(paradigm_dir, si_info, custom_mw=False, options=None):
     trial_epoch_info['custom_mw'] = custom_mw
 
     return trial_epoch_info
-
-#%%
-def get_frame_info(run_dir):
-    si_info = {}
-
-    run = os.path.split(run_dir)[-1]
-    runinfo_path = os.path.join(run_dir, '%s.json' % run)
-    with open(runinfo_path, 'r') as fr:
-        runinfo = json.load(fr)
-    nfiles = runinfo['ntiffs']
-    file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
-
-    # Get frame_idxs -- these are FRAME indices in the current .tif file, i.e.,
-    # removed flyback frames and discard frames at the top and bottom of the
-    # volume should not be included in the indices...
-    frame_idxs = runinfo['frame_idxs']
-    if len(frame_idxs) > 0:
-        print "Found %i frames from flyback correction." % len(frame_idxs)
-    else:
-        frame_idxs = np.arange(0, runinfo['nvolumes'] * len(runinfo['slices']))
-
-    ntiffs = runinfo['ntiffs']
-    file_names = sorted(['File%03d' % int(f+1) for f in range(ntiffs)], key=natural_keys)
-    volumerate = runinfo['volume_rate']
-    framerate = runinfo['frame_rate']
-    nvolumes = runinfo['nvolumes']
-    nslices = int(len(runinfo['slices']))
-    nchannels = runinfo['nchannels']
-
-
-    nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
-    nframes_per_file = nslices_full * nvolumes
-
-    # =============================================================================
-    # Get VOLUME indices to assign frame numbers to volumes:
-    # =============================================================================
-    vol_idxs_file = np.empty((nvolumes*nslices_full,))
-    vcounter = 0
-    for v in range(nvolumes):
-        vol_idxs_file[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
-        vcounter += nslices_full
-    vol_idxs_file = [int(v) for v in vol_idxs_file]
-
-
-    vol_idxs = []
-    vol_idxs.extend(np.array(vol_idxs_file) + nvolumes*tiffnum for tiffnum in range(nfiles))
-    vol_idxs = np.array(sorted(np.concatenate(vol_idxs).ravel()))
-
-    si_info['nslices_full'] = nslices_full
-    si_info['nframes_per_file'] = nframes_per_file
-    si_info['vol_idxs'] = vol_idxs
-    si_info['volumerate'] = volumerate
-    si_info['framerate'] = framerate
-    si_info['nslices'] = nslices
-    si_info['nchannels'] = nchannels
-    si_info['ntiffs'] = ntiffs
-
-
-    return si_info
 
 #%%
 
@@ -1381,6 +1321,10 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
     first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
     nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
 
+    if 'pupil_size_stimulus' in DATA[roi_list[0]].keys():
+        eye_info_exists = True
+    else:
+        eye_info_exists = False
 
     #for config in config_list:
     for roi in roi_list:
@@ -1389,27 +1333,27 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
         for config in config_list:
             DF = DATA[roi][DATA[roi]['config'] == config]
             trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
-            print "%s -- N TRIALS: %i" % (config, len(trial_list))
+            #print "%s -- N TRIALS: %i" % (config, len(trial_list))
 
             #trial_list = sorted(list(set(DF[DF['config']==config]['trial'])), key=natural_keys)
 
             if filter_pupil is True:
                 #curr_DF = DF[DF['trial'].isin(trial_list)]
-                DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
+                filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
                                        & pupil_size_baseline > @pupil_size_thr \
                                        & pupil_dist_stimulus < @pupil_dist_thr \
                                        & pupil_dist_baseline < @pupil_dist_thr \
                                        & pupil_nblinks_stim < @pupil_max_nblinks \
                                        & pupil_nblinks_baseline < @pupil_max_nblinks')
-                pass_trials = sorted(list(set(DF['trial'])), key=natural_keys)
+                pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                 fail_trials = sorted([t for t in trial_list if t not in pass_trials], key=natural_keys)
             else:
                 pass_trials = sorted(trial_list, key=natural_keys)
                 fail_trials = []
 
-            print "PASS:", len(pass_trials)
+            #print "PASS:", len(pass_trials)
             # Turn DF values into matrix with rows=trial, cols=df value for each frame:
-            trials = np.vstack((DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
+            trials = np.vstack((filtered_DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
             nframes = trials.shape[1]
 
             std_baseline_values = np.nanstd(trials[:, 0:first_on], axis=1)
@@ -1419,25 +1363,69 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
             idx = 0
             for tidx, trial in enumerate(pass_trials):
-                #print tidx, trial
-                metrics_df.append(pd.DataFrame({'trial': trial,
+                print tidx, trial
+                df_main = pd.DataFrame({'trial': trial,
                                                 'config': config,
                                                 'zscore': zscore_values[tidx],
                                                 'mean_stim_on': mean_stim_on_values[tidx],
                                                 'pass': True
-                                                },
-                                                index=[idx]))
+#                                                'pupil_size_baseline': DF[DF['trial']==trial]['pupil_size_baseline'],
+#                                                'pupil_size_stimulus': DF[DF['trial']==trial]['pupil_size_stimulus'],
+#                                                'pupil_dist_stimulus': DF[DF['trial']==trial]['pupil_dist_stimulus'],
+#                                                'pupil_dist_baseline': DF[DF['trial']==trial]['pupil_dist_baseline'],
+#                                                'pupil_nblinks_stim': DF[DF['trial']==trial]['pupil_nblinks_stim'],
+#                                                'pupil_nblinks_baseline': DF[DF['trial']==trial]['pupil_nblinks_baseline']
+                                                }, index=[idx]) #,
+                                                #index=[idx])
+                #df_main = pd.concat([df_main, pass_df], axis=1)
+
+                if eye_info_exists:
+                    eye_df = pd.DataFrame({'pupil_size_baseline': DF[DF['trial']==trial]['pupil_size_baseline'][0],
+                                           'pupil_size_stimulus': DF[DF['trial']==trial]['pupil_size_stimulus'][0],
+                                           'pupil_dist_stimulus': DF[DF['trial']==trial]['pupil_dist_stimulus'][0],
+                                           'pupil_dist_baseline': DF[DF['trial']==trial]['pupil_dist_baseline'][0],
+                                           'pupil_nblinks_stim': DF[DF['trial']==trial]['pupil_nblinks_stim'][0],
+                                           'pupil_nblinks_baseline': DF[DF['trial']==trial]['pupil_nblinks_baseline'][0]
+                                           }, index=[idx]) #,
+                                            #index=[idx])
+                    df_main = pd.concat([df_main, eye_df], axis=1)
+
+                metrics_df.append(df_main)
+
                 idx += 1
 
             for trial in fail_trials:
-                metrics_df.append(pd.DataFrame({'trial': trial,
-                                                'config': config,
-                                                'zscore': np.nan,
-                                                'mean_stim_on': np.nan,
-                                                'pass': False
-                                                },
-                                                index=[idx]))
+                fail_df = pd.DataFrame({'trial': trial,
+                                        'config': config,
+                                        'zscore': np.nan,
+                                        'mean_stim_on': np.nan,
+                                        'pass': False
+#                                        'pupil_size_baseline': DF[DF['trial']==trial]['pupil_size_baseline'],
+#                                        'pupil_size_stimulus': DF[DF['trial']==trial]['pupil_size_stimulus'],
+#                                        'pupil_dist_stimulus': DF[DF['trial']==trial]['pupil_dist_stimulus'],
+#                                        'pupil_dist_baseline': DF[DF['trial']==trial]['pupil_dist_baseline'],
+#                                        'pupil_nblinks_stim': DF[DF['trial']==trial]['pupil_nblinks_stim'],
+#                                        'pupil_nblinks_baseline': DF[DF['trial']==trial]['pupil_nblinks_baseline']
+                                        }, index=[idx])
+
+                #fail_df = pd.concat([df_main, fail_df], axis=1)
+
+                #metrics_df.append(fail_df)
+
+                if eye_info_exists:
+                    eye_df = pd.DataFrame({'pupil_size_baseline': DF[DF['trial']==trial]['pupil_size_baseline'][0],
+                                           'pupil_size_stimulus': DF[DF['trial']==trial]['pupil_size_stimulus'][0],
+                                           'pupil_dist_stimulus': DF[DF['trial']==trial]['pupil_dist_stimulus'][0],
+                                           'pupil_dist_baseline': DF[DF['trial']==trial]['pupil_dist_baseline'][0],
+                                           'pupil_nblinks_stim': DF[DF['trial']==trial]['pupil_nblinks_stim'][0],
+                                           'pupil_nblinks_baseline': DF[DF['trial']==trial]['pupil_nblinks_baseline'][0]
+                                           }, index=[idx])
+                    fail_df = pd.concat([fail_df, eye_df], axis=1)
+
+                metrics_df.append(fail_df)
+
                 idx += 1
+
 
             PASSTRIALS[config] = pass_trials
 
@@ -1533,6 +1521,7 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, 
         for roi in METRICS.keys():
             datastore[str(roi)] = METRICS[roi]
         datastore.close()
+        os.chmod(metrics_filepath, S_IREAD|S_IRGRP|S_IROTH)
         with open(os.path.join(metrics_dir, 'pass_trials.json'), 'w') as f:
             json.dump(PASSTRIALS, f, indent=4, sort_keys=True)
 
@@ -1593,7 +1582,7 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
     if create_new is False:
         print "---> Looking for existing ROI STATS..."
         if len(existing_files) == 1:
-            roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0]) 
+            roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
             ROISTATS = pd.HDFStore(roistats_filepath, 'r')
             if len(ROISTATS.keys()) == 0:
                 create_new = True
@@ -1621,6 +1610,7 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
         for d in df:
             datastore[d] = df[d]
         datastore.close()
+        os.chmod(roistats_filepath, S_IREAD|S_IRGRP|S_IROTH)
 #    else:
 #        roistats_filepath = os.path.join(curr_metrics_dir, existing_files[0])
         #ROISTATS = pd.HDFStore(roistats_filepath)
@@ -1680,8 +1670,15 @@ def collate_roi_stats(METRICS, configs):
                                 'ypos': ypos_trial,
                                 'size': size_trial,
                                 'sf': sf_trial,
-                                'ori': ori_trial
+                                'ori': ori_trial,
+                                'pupil_size_baseline': DF['pupil_size_baseline'],
+                                'pupil_size_stimulus': DF['pupil_size_stimulus'],
+                                'pupil_dist_stimulus': DF['pupil_dist_stimulus'],
+                                'pupil_dist_baseline': DF['pupil_dist_baseline'],
+                                'pupil_nblinks_stim': DF['pupil_nblinks_stim'],
+                                'pupil_nblinks_baseline': DF['pupil_nblinks_baseline']
                                 }))
+
 
             else:
                 imname = os.path.splitext(configs[config]['filename'])[0]
@@ -1717,7 +1714,13 @@ def collate_roi_stats(METRICS, configs):
                                 'img': img_trial,
                                 'object': np.tile(objectid, (ntrials,)),
                                 'yrot': np.tile(yrot, (ntrials,)),
-                                'morphlevel': np.tile(morphlevel, (ntrials,))
+                                'morphlevel': np.tile(morphlevel, (ntrials,)),
+                                'pupil_size_baseline': DF['pupil_size_baseline'],
+                                'pupil_size_stimulus': DF['pupil_size_stimulus'],
+                                'pupil_dist_stimulus': DF['pupil_dist_stimulus'],
+                                'pupil_dist_baseline': DF['pupil_dist_baseline'],
+                                'pupil_nblinks_stim': DF['pupil_nblinks_stim'],
+                                'pupil_nblinks_baseline': DF['pupil_nblinks_baseline']
                                 }))
 
     ROISTATS = pd.concat(roistats_df, axis=0)
@@ -2055,6 +2058,8 @@ def plot_traceid_psths(options):
         for roi in DATA.keys():
             datastore[roi] = DATA[roi]
         datastore.close()
+        os.chmod(roidata_filepath, S_IREAD|S_IRGRP|S_IROTH)
+
     print "Got ROIDATA -- trials parsed by stim-config for each ROI."
     print "Saved ROIDATA hdf5 to: %s" % roidata_filepath
 
@@ -2063,6 +2068,12 @@ def plot_traceid_psths(options):
     print "-------------------------------------------------------------------"
     print "Getting ROI METRICS."
     metrics_filepath = get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=filter_pupil, pupil_params=pupil_params, create_new=create_new)
+
+    # Cacluate some metrics, and plot tuning curves:
+    print "-------------------------------------------------------------------"
+    print "Collating ROI metrics into dataframe."
+    roistats_filepath = get_roi_summary_stats(metrics_filepath, configs, create_new=create_new)
+
 
     # =============================================================================
     # Set plotting params for trial average plots for each ROI:
@@ -2080,12 +2091,6 @@ def plot_traceid_psths(options):
     plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type='raw',
                    filter_pupil=filter_pupil, pupil_params=pupil_params, plot_all=plot_all_psths)
     print "==================================================================="
-
-
-    # Cacluate some metrics, and plot tuning curves:
-    print "-------------------------------------------------------------------"
-    print "Collating ROI metrics into dataframe."
-    roistats_filepath = get_roi_summary_stats(metrics_filepath, configs, create_new=create_new)
 
 
     # PLOT TUNING CURVES
