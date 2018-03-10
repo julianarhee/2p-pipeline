@@ -29,6 +29,24 @@ from pipeline.python.utils import natural_keys, hash_file_read_only, print_elaps
 pp = pprint.PrettyPrinter(indent=4)
 
 #%
+def load_TID(run_dir, trace_id):
+    run = os.path.split(run_dir)[-1]
+    trace_basedir = os.path.join(run_dir, 'traces')
+    try:
+        tracedict_path = os.path.join(trace_basedir, 'traceids_%s.json' % run)
+        with open(tracedict_path, 'r') as tr:
+            tracedict = json.load(tr)
+        TID = tracedict[trace_id]
+        print "USING TRACE ID: %s" % TID['trace_id']
+        pp.pprint(TID)
+    except Exception as e:
+        print "Unable to load TRACE params info: %s:" % trace_id
+        print "Aborting with error:"
+        print e
+
+    return TID
+
+
 def get_frame_info(run_dir):
     si_info = {}
 
@@ -85,5 +103,5 @@ def get_frame_info(run_dir):
     si_info['ntiffs'] = ntiffs
     si_info['frames_tsec'] = runinfo['frame_tstamps_sec']
     si_info['nvolumes'] = nvolumes
-    
+
     return si_info
