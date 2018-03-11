@@ -128,9 +128,9 @@ def extract_options(options):
     parser.add_option('-v', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
 
     #RETINOTOPY OPTIONS
-    parser.add_option('-a', action='store_true', dest='retino_id', default='analysis001', help="retino analysis id to use for ROI creation")
-    parser.add_option('--thresh', action='store_true', dest='ratio_thresh', default=None, help="threshold to use for magnitude ratio")
-    parser.add_option('--fwhm', action='store_true', dest='smooth_fwhm', default=None, help="full-width at half-max of smoothing kernel(odd integer)")
+    parser.add_option('-a', action='store', dest='retino_id', default='analysis001', help="retino analysis id to use for ROI creation")
+    parser.add_option('--thresh', action='store', dest='ratio_thresh', default=None, help="threshold to use for magnitude ratio")
+    parser.add_option('--fwhm', action='store', dest='smooth_fwhm', default=None, help="full-width at half-max of smoothing kernel(odd integer)")
 
     (options, args) = parser.parse_args(options)
 
