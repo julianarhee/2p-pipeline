@@ -19,7 +19,7 @@ import h5py
 import glob
 import shutil
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths
-from pipeline.python.rois.utils import get_roi_eval_path, replace_root
+from pipeline.python.rois.utils import *
 import numpy as np
 from checksumdir import dirhash
 
@@ -70,7 +70,7 @@ def extract_options(options):
     choices_sourcetype = ('raw', 'mcorrected', 'bidi')
     default_sourcetype = 'mcorrected'
 
-    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon', 'coregister', 'manual2D_warp')
+    choices_roi = ('caiman2D', 'manual2D_circle', 'manual2D_square', 'manual2D_polygon', 'coregister', 'manual2D_warp','retino')
     default_roitype = 'caiman2D'
 
     parser = optparse.OptionParser()
@@ -126,6 +126,11 @@ def extract_options(options):
     parser.add_option('-n', '--power', action='store', dest='dist_exp', default=1, help="[coreg]: power n for distance between masked components: dist = 1 - (and(M1,M2)/or(M1,M2)**n [default: 1]")
     parser.add_option('-d', '--dist', action='store', dest='dist_thr', default=0.5, help="[coreg]: threshold for setting a distance to infinity, i.e., illegal matches [default: 0.5]")
     parser.add_option('-v', '--overlap', action='store', dest='dist_overlap_thr', default=0.8, help="[coreg]: overlap threshold for detecting if one ROI is subset of another [default: 0.8]")
+
+    #RETINOTOPY OPTIONS
+    parser.add_option('-a', action='store', dest='retino_id', default='analysis001', help="retino analysis id to use for ROI creation")
+    parser.add_option('--thresh', action='store', dest='ratio_thresh', default=None, help="threshold to use for magnitude ratio")
+    parser.add_option('--fwhm', action='store', dest='smooth_fwhm', default=None, help="full-width at half-max of smoothing kernel(odd integer)")
 
     (options, args) = parser.parse_args(options)
 
@@ -220,6 +225,11 @@ def create_rid(options):
             slices = slices_str.split(',')
             slices = [int(s) for s in slices]
 
+    #retinotopy options
+    retino_id = options.retino_id
+    ratio_thresh = options.ratio_thresh
+    smooth_fwhm = options.smooth_fwhm
+
     # Create ROI output dir:
     session_dir = os.path.join(homedir, animalid, session)
     roi_dir = os.path.join(session_dir, 'ROIs')
@@ -287,8 +297,14 @@ def create_rid(options):
         else:
             tiff_sourcedir = roi_options['source']['tiff_dir']
             src_roi_type = roi_options['source']['roi_type']
-
-
+    elif roi_type =='retino':
+        roi_options = set_options_retino(rootdir=homedir, animalid=animalid, session=session,
+                                         acquisition=acquisition, run=run,
+                                         roi_type=roi_type,
+                                         retino_id = retino_id,
+                                         ratio_thresh = ratio_thresh,
+                                         smooth_fwhm = smooth_fwhm)
+                                    
     if rootdir not in tiff_sourcedir and notnative is False:
         tiff_sourcedir = replace_root(tiff_sourcedir, rootdir, animalid, session)
         print "NEW ROOT SRC:", tiff_sourcedir
@@ -452,6 +468,17 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
 
     params['ref_file'] = int(ref_file)
     params['ref_channel'] = int(ref_channel)
+
+    return params
+
+def set_options_retino(rootdir='', animalid='', session='', acquisition='', run='',
+                    roi_type='', retino_id = '', ratio_thresh = '', smooth_fwhm = ''):
+
+    params = dict()
+    params['roi_type'] = roi_type  
+    params['retino_id'] = retino_id
+    params['ratio_thresh'] = float(ratio_thresh)
+    params['smooth_fwhm'] = int(smooth_fwhm)
 
     return params
 
