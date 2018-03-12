@@ -33,6 +33,9 @@ import h5py
 import itertools
 import optparse
 import pprint
+import traceback
+import matplotlib
+matplotlib.use('Agg')
 import pylab as pl
 import seaborn as sns
 import pandas as pd
