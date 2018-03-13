@@ -63,11 +63,11 @@ import scipy
 import skimage
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, write_dict_to_json, save_sparse_hdf5, print_elapsed_time, replace_root
+from pipeline.python.utils import *
 from pipeline.python.rois import caiman2D as rcm
 from pipeline.python.rois import coregister_rois as reg
 from pipeline.python.set_roi_params import post_rid_cleanup
-from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation, get_info_from_tiff_dir
+from pipeline.python.rois.utils import *
 from scipy.sparse import spdiags
 from caiman.utils.visualization import get_contours
 from past.utils import old_div
@@ -544,7 +544,7 @@ def do_roi_extraction(options):
     exclude_str = ','.join([str(int(fn[4:])) for fn in excluded_tiffs])
     print "TIFFS EXCLUDED:", excluded_tiffs
 
-    if 'manual2D' not in roi_type:
+    if 'manual2D' not in roi_type and 'retino' not in roi_type:
         keep_good_rois = RID['PARAMS']['options']['keep_good_rois']
     else:
         keep_good_rois = True
@@ -586,6 +586,10 @@ def do_roi_extraction(options):
     elif 'manual' in roi_type:
         # Do some matlab-loading stuff ?
         print "manual"
+        format_roi_output = False
+    elif 'retino' in roi_type:
+        # Do some mask-making magic
+        print "retino"
         format_roi_output = False
 
     elif roi_type == 'coregister':

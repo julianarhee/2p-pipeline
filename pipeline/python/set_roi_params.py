@@ -479,6 +479,11 @@ def set_options_retino(rootdir='', animalid='', session='', acquisition='', run=
     params['retino_id'] = retino_id
     params['ratio_thresh'] = float(ratio_thresh)
     params['smooth_fwhm'] = int(smooth_fwhm)
+    #hard-coding some stuff, for now
+    params['morph_kernel_sz'] = 5
+    params['area_thresh'] = 50
+    params['sd_wind_size'] = 2
+    params['phase_sd_thresh'] = .06
 
     return params
 
