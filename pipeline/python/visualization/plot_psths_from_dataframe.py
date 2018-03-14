@@ -486,32 +486,7 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
     pl.savefig(os.path.join(output_dir, figname))
     pl.close()
 
-#%%
-
-def user_select_metric(traceid_dir, auto=False):
-    # Load particular metrics set:
-    metrics_dir = os.path.join(traceid_dir, 'metrics')
-    metric_list = [m for m in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, m))]
-    if auto is True:
-        # Sort by modified date, and select most-recent:
-        metric_list.sort(key=lambda s: os.path.getmtime(os.path.join(metrics_dir, s)), reverse=True)
-        return metric_list[0]
-
-    while True:
-        print "Found %i metric sets:" % len(metric_list)
-        for mi, metric in enumerate(metric_list):
-            print mi, metric
-        user_choice = input('Select IDX of metric set to view: ')
-        selected_metric = metric_list[int(user_choice)]
-        print "Viewing metric: %s" % selected_metric
-        with open(os.path.join(metrics_dir, selected_metric, 'pupil_params.json'), 'r') as f:
-            pupil_params = json.load(f)
-        pp.pprint(pupil_params)
-        confirm = raw_input("\nUse this metric? Select <Y> to use, or enter to try again: ")
-        if confirm == 'Y':
-            break
-
-    return selected_metric
+#
 
 #%%
 
@@ -620,28 +595,10 @@ def plot_roi_figures(options):
 
 
     # Load particular metrics set:
-    metrics_dir = os.path.join(traceid_dir, 'metrics')
-    metric_list = [m for m in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, m))]
-    if filter_pupil is True:
-        metric_desc_base = 'pupil_size%i-dist%i-blinks%i_' % (pupil_size_thr, pupil_dist_thr, pupil_max_nblinks)
-    else:
-        metric_desc_base = 'unfiltered_'
-    # First check for requested metrics set:
-    selected_metric = [m for m in metric_list if metric_desc_base in m][0]
-    if auto is False:
-        while True:
-            # Get confirmation...
-            confirm = raw_input('Selected metric: %s\nUse?  Press <Y> to confirm, <n> to reset: ' % selected_metric)
-            if confirm == 'Y':
-                break
-            else:
-                selected_metric = user_select_metric(traceid_dir, auto=False)
-    else:
-        if len(selected_metric) == 0:
-            print "Unable to find requested metrics set with base desc: %s" % metric_desc_base
-            selected_metric = user_select_metric(traceid_dir, auto=auto)
-        else:
-            assert not isinstance(selected_metric, list), "More than 1 match found... this is bad."
+    selected_metric = get_metric_set(traceid_dir, filter_pupil=filter_pupil,
+                                         pupil_size_thr=pupil_size_thr,
+                                         pupil_dist_thr=pupil_dist_thr,
+                                         pupil_max_nblinks=pupil_max_nblinks)
 
     # Load associated pupil_params set:
     with open(os.path.join(metrics_dir, selected_metric, 'pupil_params.json'), 'r') as f:
@@ -649,8 +606,8 @@ def plot_roi_figures(options):
     pp.pprint(pupil_params)
 
     # Set paths toi ROIDATA_, roi_metrics_, and roi_stats_:
-    roistats_filepath = [os.path.join(metrics_dir, selected_metric, f)
-                            for f in os.listdir(os.path.join(metrics_dir, selected_metric))
+    roistats_filepath = [os.path.join(traceid_dir, 'metrics', selected_metric, f)
+                            for f in os.listdir(os.path.join(traceid_dir, 'metrics', selected_metric))
                             if 'roi_stats_' in f and f.endswith('hdf5')][0]
 
     roidata_filepath = [os.path.join(traceid_dir, f)
