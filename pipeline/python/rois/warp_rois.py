@@ -277,7 +277,7 @@ fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.1, wspace
 ax1 = fig.add_subplot(1,3,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
 ax2 = fig.add_subplot(1,3,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, orig rois'); pl.axis('off')
 ax3 = fig.add_subplot(1,3,3); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
-for ridx in [44]: #range(nrois):
+for ridx in range(nrois):
     roinum = ridx + 1
     orig = masks[:,:,ridx].copy().astype('uint8')
     # Draw contour for ORIG rois on reference:
