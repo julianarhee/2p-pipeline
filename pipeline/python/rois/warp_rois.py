@@ -18,6 +18,7 @@ import tifffile as tf
 
 from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation, get_info_from_tiff_dir
 from pipeline.python.rois.get_rois import standardize_rois, save_roi_params
+from pipeline.python.utils import replace_root
 
 #%%
 def get_gradient(im) :
@@ -104,6 +105,8 @@ if not os.path.exists(warp_output_dir):
 
 # Load mean image of REFERENCE:
 src_tiff_dir = RID['PARAMS']['options']['source']['tiff_dir']
+if rootdir not in src_tiff_dir:
+    src_tiff_dir = replace_root(src_tiff_dir, rootdir, animalid, session)
 src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
                     '_mean_slices' in d and os.path.split(src_tiff_dir)[-1] in d][0]
 ref_img_dir = os.path.join(src_proj_dir,
@@ -113,6 +116,8 @@ ref_img_path = [os.path.join(ref_img_dir, t) for t in os.listdir(ref_img_dir) if
 
 # Load mean image of SAMPLE to warp to:
 rid_tiff_dir = RID['SRC']
+if rootdir not in rid_tiff_dir:
+    rid_tiff_dir = replace_root(rid_tiff_dir, rootdir, animalid, session)
 rid_proj_dir = [os.path.join(os.path.split(rid_tiff_dir)[0], d) for d in os.listdir(os.path.split(rid_tiff_dir)[0]) if
                     '_mean_slices' in d and os.path.split(rid_tiff_dir)[-1] in d][0]
 rid_img_dir = os.path.join(rid_proj_dir,
@@ -126,6 +131,8 @@ img = tf.imread(rid_img_path)
 
 #%% Load masks:
 mask_path = os.path.join(RID['PARAMS']['options']['source']['roi_dir'], 'masks.hdf5')
+if rootdir not in mask_path:
+    mask_path = replace_root(mask_path, rootdir, animalid, session)
 
 maskfile = h5py.File(mask_path, 'r')
 ref_key = 'File%03d' % RID['PARAMS']['options']['source']['ref_file']
@@ -133,6 +140,10 @@ masks = maskfile[ref_key]['masks']
 if type(masks) == h5py._hl.group.Group:
     if len(masks.keys()) == 1:  # SINGLE SLICE
         masks = np.array(masks['Slice01']).T
+
+EMPTY_orig = [idx for idx in range(masks.shape[-1]) if not masks[:,:,idx].sum() > 0]
+if len(EMPTY_orig) > 0:
+    print "--- ORIG --- EMPTY masks found:", EMPTY_orig
 
 
 # Find the width and height of the color image
@@ -217,6 +228,10 @@ nrois = masks.shape[-1]
 for r in xrange(0, nrois):
     masks_aligned[:,:,r] = cv2.warpPerspective (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
 
+EMPTY = [idx for idx in range(masks_aligned.shape[-1]) if not masks_aligned[:,:,idx].sum() > 0]
+if len(EMPTY) > 0:
+    print "--- WARPED --- EMPTY masks found:", EMPTY
+
 #%% Save WARP info:
 dtstamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 warp_filepath = os.path.join(warp_output_dir, 'warp_results.hdf5')
@@ -262,7 +277,7 @@ fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.1, wspace
 ax1 = fig.add_subplot(1,3,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
 ax2 = fig.add_subplot(1,3,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, orig rois'); pl.axis('off')
 ax3 = fig.add_subplot(1,3,3); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
-for ridx in range(nrois):
+for ridx in [44]: #range(nrois):
     roinum = ridx + 1
     orig = masks[:,:,ridx].copy().astype('uint8')
     # Draw contour for ORIG rois on reference:
@@ -280,6 +295,7 @@ for ridx in range(nrois):
     cv2.drawContours(wimRGB, contours, 0, (0,255,0), 1)
     cv2.drawContours(wimRGB, contours2, 0, (255,0,0), 1)
     ax3.imshow(wimRGB)
+
 figname = 'aligned_rois.png'
 pl.savefig(os.path.join(warp_output_dir, figname))
 pl.close()
@@ -290,13 +306,21 @@ pl.close()
 fig = pl.figure()
 ax = fig.add_subplot(1,1,1)
 pl.imshow(sample, cmap='gray')
+print "Saving standard mask figs for %i rois." % nrois
 for ridx in range(nrois):
     masktmp = masks_aligned[:,:,ridx]
     msk = masktmp.copy() #.copy().astype('float')
     msk[msk == 0] = np.nan
-    ax.imshow(msk, interpolation='None', alpha=0.2, cmap=pl.cm.Greens_r)
-    [ys, xs] = np.where(masktmp>0)
-    ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+    ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
+    print ridx, masktmp.max()
+    if masktmp.max() > 0:
+        [ys, xs] = np.where(masktmp>0)
+        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+    else:
+        masktmp2 = masks[:,:,ridx]
+        [ys, xs] = np.where(masktmp2>0)
+        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+
     ax.axis('off')
 
 std_figname = '%s_%s_Slice01_Channel%03d_File%03d_masks.tif' % (RID['roi_id'], RID['rid_hash'], RID['PARAMS']['options']['ref_channel'], RID['PARAMS']['options']['ref_file'])
