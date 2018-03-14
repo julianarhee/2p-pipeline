@@ -387,10 +387,14 @@ def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
                 else:
                     if 'caiman' in RID['roi_type'] or (RID['roi_type']=='coregister' and 'caiman' in RID['PARAMS']['options']['source']['roi_type']):
                         ax.imshow(msk, interpolation='None', alpha=0.2, cmap=pl.cm.hot)
+                        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
                     else:
-                        ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
-                    [ys, xs] = np.where(masktmp>0)
-                    ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+                        if np.isnan(masktmp).all():
+                            ax.text(1, 1, '%i - no mask' % int(ridx+1), fontsize=8, weight='light', color='r')
+                        else:
+                            ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
+                            [ys, xs] = np.where(masktmp>0)
+                            ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
                 ax.axis('off')
 
             pl.savefig(os.path.join(mask_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
@@ -888,6 +892,7 @@ def extract_traces(options):
     #%
     # Apply masks to .tif files:
     # -------------------------
+    print "N mask imgs:", len(maskfigs), len(os.listdir(filetrace_dir))
     if create_new is True or not len(os.listdir(filetrace_dir)) == len(maskfigs):
         filetrace_dir = apply_masks_to_movies(TID, RID, si_info, output_filedir=filetrace_dir, rootdir=rootdir)
 
