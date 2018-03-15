@@ -287,10 +287,11 @@ def create_zscore_df(dfpaths):
     DF = pd.concat(all_dfs, axis=0)
 
     return DF
-    
+
+#%%
 
 def get_tuning_paths(dfpaths, roi_list):
-    
+
     tuning_paths = dict((roi, []) for roi in roi_list)
     if '/' in roi_list[0]:
         slash = True
@@ -308,13 +309,16 @@ def get_tuning_paths(dfpaths, roi_list):
             tuning_paths[roi].append(r'file://'+str(roi_figpath))
             #tuning_paths[roi].append(r'http://localhost:5006/test_scatter/file://' + str(roi_figpath))
     dframe = pd.DataFrame(tuning_paths)
-    
+
     return pd.DataFrame(tuning_paths)
 
 
 
 
 opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV1_zoom1x_V1', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
+
+#opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
+
 
 options, trace_info = extract_options(opts)
 trace_info = list(trace_info)
@@ -339,7 +343,7 @@ oris = sorted(list(set(STATS1['ori'])))
 nlines = len(sfs)
 cpalette=Spectral11[0:nlines]
 
-        
+
 print "Getting DF..."
 # Create DF for easy plotting:
 animal_dir = os.path.join(rootdir, animalid)
@@ -351,7 +355,7 @@ if not os.path.exists(zdf_path):
 else:
     with open(zdf_path, 'rb') as f:
         zdf = pkl.load(f)
-        
+
 roi_list = sorted(list(set(zdf['roi'])), key=natural_keys)
 
 imgpaths = get_tuning_paths(dfpaths, roi_list)
@@ -382,7 +386,7 @@ run_list = list(set(zdf['run']))
 stat_list = [col for col in zdf if col != 'roi' and col != 'run']
 
 run1 = run_list[0]
-run2 = run_list[1] 
+run2 = run_list[1]
 stat1 = stat_list[0]
 stat2 = stat_list[0]
 
@@ -430,7 +434,7 @@ else:
         DSET2['objects'][trans] = sorted(list(set(STATS2['sf'])))
     DSET2['splitter'] = 'sf'
 
-    
+
 transmenu1 = DSET1['transforms'][0]
 transmenu2 = DSET2['transforms'][0]
 
@@ -461,7 +465,7 @@ def get_all_tuning_curves(roi_name, run1, run2):
     cstats1, stim_info1 = load_dset(run1)
     cstats2, stim_info2 = load_dset(run2)
     source2 = dict((run, {}) for run in [run1, run2])
-    
+
     for run in [run1, run2]:
         if run==run1:
             cstats = cstats1.copy()
@@ -489,8 +493,8 @@ def get_all_tuning_curves(roi_name, run1, run2):
                     y_err_x.append((px, px))
                     y_err_y.append((py - err, py + err))
                 # Get sem:
-                resps.update( {'%s_%s_yerr_x' % (run, obj_str): y_err_x})    
-                resps.update( {'%s_%s_yerr_y' % (run, obj_str): y_err_y})   
+                resps.update( {'%s_%s_yerr_x' % (run, obj_str): y_err_x})
+                resps.update( {'%s_%s_yerr_y' % (run, obj_str): y_err_y})
             else:
                 for obj in objects:
                     # Get mean:
@@ -504,23 +508,23 @@ def get_all_tuning_curves(roi_name, run1, run2):
                         y_err_x.append((px, px))
                         y_err_y.append((py - err, py + err))
 
-                    resps.update( {'%s_%s_yerr_x' % (run, str(obj)): y_err_x})    
-                    resps.update( {'%s_%s_yerr_y' % (run, str(obj)): y_err_y})    
-            resps.update({'%s_x' % run: sorted(transform_values)})   
-            
+                    resps.update( {'%s_%s_yerr_x' % (run, str(obj)): y_err_x})
+                    resps.update( {'%s_%s_yerr_y' % (run, str(obj)): y_err_y})
+            resps.update({'%s_x' % run: sorted(transform_values)})
+
             cds = ColumnDataSource(data=resps)
             source2[run][trans] = cds
-                
+
     print "Got updated tuning curve data for Ax1, Ax2"
-    
+
     return source2
 
-    
-    
+
+
 def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
     cstats1, stim_info1 = load_dset(run1)
     cstats2, stim_info2 = load_dset(run2)
-    
+
     # Get tuning curve for AXIS 1:----------------------------
     resps = dict()
     #print "TRANS1:", transmenu1
@@ -532,7 +536,7 @@ def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
         # Get mean:
         grouped = cstats1[((cstats1['roi']==roi_name) & (cstats1[splitter]==obj))].groupby(transmenu1)['zscore']
         resps.update({ str(obj): np.array(grouped.mean())})
-        
+
         # Get sem:
         yerr = np.array(grouped.aggregate(lambda x: np.std(x, ddof=1)/np.sqrt(x.count())))
         y_err_x = []
@@ -541,10 +545,10 @@ def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
             y_err_x.append((px, px))
             y_err_y.append((py - err, py + err))
 
-        resps.update( {'%s_yerr_x' % str(obj): y_err_x})    
-        resps.update( {'%s_yerr_y' % str(obj): y_err_y})    
-    
-    resps.update({'x': sorted(transforms)})   
+        resps.update( {'%s_yerr_x' % str(obj): y_err_x})
+        resps.update( {'%s_yerr_y' % str(obj): y_err_y})
+
+    resps.update({'x': sorted(transforms)})
     source2a = ColumnDataSource(data=resps)
 
     # Get tuning curve for AXIS 2:----------------------------
@@ -566,15 +570,15 @@ def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
             y_err_y.append((py - err, py + err))
 
         # Get sem:
-        resps.update( {'%s_yerr_x' % obj_str: y_err_x})    
-        resps.update( {'%s_yerr_y' % obj_str: y_err_y})   
-            
-    else:                 
+        resps.update( {'%s_yerr_x' % obj_str: y_err_x})
+        resps.update( {'%s_yerr_y' % obj_str: y_err_y})
+
+    else:
         for obj in ids2:
             grouped = cstats2[((cstats2['roi']==roi_name) & (cstats2[splitter]==obj))].groupby(transmenu2)['zscore']
             # Get means:
             resps.update({ str(obj): np.array(grouped.mean())})
-            
+
             # Get sem bars:
             yerr = np.array(grouped.aggregate(lambda x: np.std(x, ddof=1)/np.sqrt(x.count())))
             y_err_x = []
@@ -582,14 +586,14 @@ def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
             for px, py, err in zip(sorted(transforms), np.array(grouped.mean()), yerr):
                 y_err_x.append((px, px))
                 y_err_y.append((py - err, py + err))
-                
+
             # Get sem:
-            resps.update( {'%s_yerr_x' % str(obj): y_err_x})    
-            resps.update( {'%s_yerr_y' % str(obj): y_err_y})    
-            
-    resps.update({'x': sorted(transforms)})  
+            resps.update( {'%s_yerr_x' % str(obj): y_err_x})
+            resps.update( {'%s_yerr_y' % str(obj): y_err_y})
+
+    resps.update({'x': sorted(transforms)})
     source2b = ColumnDataSource(data=resps)
-    
+
     print "Got updated tuning curve data for Ax1, Ax2"
 
     return source2a, ids1, source2b, ids2
@@ -597,7 +601,7 @@ def get_tuning_data(roi_name, run1, run2, transmenu1, transmenu2):
 
 def errorbar(fig, x=[], y=[], name=None, source=None, yerr_x=None, yerr_y=None, xerr_x=None, xerr_y=None,
              color='red', line_width=3, point_kwargs={}, error_kwargs={}):
-    
+
     if source is None:
         #h1 = fig.circle(x, y, color=color, **point_kwargs)
         h1 = fig.line(x, y, legend=value(name), line_color=color, line_width=line_width )
@@ -618,17 +622,17 @@ def errorbar(fig, x=[], y=[], name=None, source=None, yerr_x=None, yerr_y=None, 
                 y_err_y.append((py - err, py + err))
             h2 = fig.multi_line(y_err_x, y_err_y, color=color, **error_kwargs)
     else:
-        
+
         #h1 = fig.circle(x=x, y=y, source=source, color=color, **point_kwargs)
         h1 = fig.line(x=x, y=y, legend=value(name), source=source, line_color=color, line_width=line_width)
-        
+
         if xerr_x:
             h2 = fig.multi_line(xs=x_err_x, ys=x_err_y, source=source, line_color=color, line_width=line_width, **error_kwargs)
 
         if yerr_x:
             h2 = fig.multi_line(xs=yerr_x, ys=yerr_y, source=source, line_color=color, line_width=line_width, **error_kwargs)
 
-            
+
     return h1, h2
 
 
@@ -678,7 +682,7 @@ hover = HoverTool(
 
 # Finally add/enable the tool
 tplot1.add_tools(hover)
-    
+
 lines1 = dict((run, dict()) for run in [run1, run2])
 for run in source2.keys():
     for trans in source2[run].keys():
@@ -689,15 +693,15 @@ for run in source2.keys():
             curr_cds = source2[run][trans]
             h1, h2 = errorbar(tplot1, x='%s_x' % run, y='%s_%s' % (run, line), name=line, source=curr_cds, yerr_x='%s_%s_yerr_x' % (run, line), yerr_y='%s_%s_yerr_y' % (run, line), color=cpalette[i], line_width=2)
             lines1[run][trans].append((h1, h2))
-            
+
             lines1[run][trans][i][0].visible = (run==run1) & (trans==transmenu1)
             lines1[run][trans][i][1].visible = (run==run1) & (trans==transmenu1)
-            
+
             transform_dict[run].append(trans)
     transform_dict[run] = list(set(transform_dict[run]))
 
 
-# plot tuning curve 2:          
+# plot tuning curve 2:
 tplot2 = figure(title='tuning 2', plot_width=400, plot_height=400, tools=TOOLS)
 lines2 = dict((run, dict()) for run in [run1, run2])
 for run in source2.keys():
@@ -709,7 +713,7 @@ for run in source2.keys():
             curr_cds = source2[run][trans]
             h1, h2 = errorbar(tplot2, x='%s_x' % run, y='%s_%s' % (run, line), name=line, source=curr_cds, yerr_x='%s_%s_yerr_x' % (run, line), yerr_y='%s_%s_yerr_y' % (run, line), color=cpalette[i], line_width=2)
             lines2[run][trans].append((h1, h2))
-            
+
             lines2[run][trans][i][0].visible = (run==run2) & (trans==transmenu2)
             lines2[run][trans][i][1].visible = (run==run2) & (trans==transmenu2)
 hover = HoverTool(
@@ -720,8 +724,8 @@ hover = HoverTool(
             ])
 # Finally add/enable the tool
 tplot2.add_tools(hover)
-    
-    
+
+
 # plot histograms:-------------------------------------------------------------
 d1 = np.array(zdf[zdf['run']==run1_select.value][stat1_select.value]) #source.data['d1']
 d2 = np.array(zdf[zdf['run']==run2_select.value][stat2_select.value]) #source.data['d2']
@@ -766,18 +770,18 @@ def select_roi(attr, old, new):
     print("TapTool callback executed on Roi {}".format(roi_name))
     update_menu(attr, old, new)
 
-    
+
 # set up callbacks----------------------------------------------------
 def update_menu(attr, old, new):
     global roi_name
-    
+
     run1, run2 = run1_select.value, run2_select.value
     #print "UPDATE:", run1, run2
     stat1, stat2 = stat1_select.value, stat2_select.value
     #print "UPDATE:", stat1, stat2
 
     transmenu1, transmenu2 = transmenu1_select.value, transmenu2_select.value
-    #print "UPDATE:", transmenu1, transmenu2   
+    #print "UPDATE:", transmenu1, transmenu2
 
     # Get joint ROI data for selcted runs:
     src1 = get_joint_data(run1, run2, stat1, stat2)
@@ -788,10 +792,10 @@ def update_menu(attr, old, new):
     if isinstance(old, dict):
         roi_name = source1.data['roi'][new['1d']['indices'][0]]
         print("TapTool callback executed on Roi {}".format(roi_name))
-        
+
     # Update tuning curve data:
     src2 = get_all_tuning_curves(roi_name, run1, run2)
-        
+
 
     # Update tuning curve menus, respectively:
     if run1 == DSET1['name']:
@@ -820,19 +824,19 @@ def update_menu(attr, old, new):
             for i in range(len(lines1[run][trans])):
                 lines1[run][trans][i][0].data_source.data = src2[run][trans].data
                 lines1[run][trans][i][1].data_source.data = src2[run][trans].data
-                
+
                 lines1[run][trans][i][0].visible = (run==run1) & (trans==transmenu1)
                 lines1[run][trans][i][1].visible = (run==run1) & (trans==transmenu1)
-                
+
             for i in range(len(lines2[run][trans])):
                 lines2[run][trans][i][0].data_source.data = src2[run][trans].data
                 lines2[run][trans][i][1].data_source.data = src2[run][trans].data
-                
+
                 lines2[run][trans][i][0].visible = (run==run2) & (trans==transmenu2)
                 lines2[run][trans][i][1].visible = (run==run2) & (trans==transmenu2)
-                
-        
-scatter.data_source.on_change('selected',select_roi)        
+
+
+scatter.data_source.on_change('selected',select_roi)
 for r in [run1_select, run2_select]:
     r.on_change('value', update_menu)
 for st in [stat1_select, stat2_select]:

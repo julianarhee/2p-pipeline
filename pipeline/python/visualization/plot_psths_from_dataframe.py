@@ -42,7 +42,7 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 
-from pipeline.python.utils import natural_keys
+from pipeline.python.utils import natural_keys, replace_root
 from pipeline.python.traces.utils import load_TID, get_metric_set
 from pipeline.python.paradigm.align_acquisition_events import get_stimulus_configs, set_pupil_params
 pp = pprint.PrettyPrinter(indent=4)
@@ -383,7 +383,7 @@ def plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_ty
         trans_types = ['ori', 'sf']
 
     for roi in sorted(roi_list, key=natural_keys):
-
+        print roi
         DF = STATS[STATS['roi'] == roi]
 
         if stimtype == 'image':
@@ -510,6 +510,13 @@ def extract_options(options):
     parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
     parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
 
+
+    parser.add_option('--psth', action="store_true",
+                      dest="psth", default=False, help="Set flag to plot (any) PSTH figures.")
+    parser.add_option('--tuning', action="store_true",
+                      dest="tuning", default=False, help="Set flag to plot(any) tuning curves.")
+
+
     parser.add_option('--scale', action="store_true",
                       dest="universal_scale", default=False, help="Set flag to plot all PSTH plots with same y-axis scale")
     parser.add_option('-y', '--ylim_min', action="store",
@@ -542,6 +549,11 @@ def extract_options(options):
 
 #%%
 
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180220',
+#        '-A', 'FOV1_zoom1x', '-R', 'blobs', '-t', 'traces004', '-r', '15', '-d8',
+#        '--omit-trials']
+
 
 def plot_roi_figures(options):
     options = extract_options(options)
@@ -571,6 +583,8 @@ def plot_roi_figures(options):
     pupil_dist_thr = float(options.pupil_dist_thr)
     pupil_max_nblinks = float(options.pupil_max_nblinks)
 
+    plot_psth = options.psth
+    plot_tuning = options.tuning
 
     # Get acquisition info:
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
@@ -587,9 +601,12 @@ def plot_roi_figures(options):
 
     # Get paradigm/AUX info:
     # =========================================================================
+
     event_info_fpath = [os.path.join(traceid_dir, f) for f in os.listdir(traceid_dir) if 'event_alignment' in f and f.endswith('json')][0]
     with open(event_info_fpath, 'r') as f:
         trial_info = json.load(f)
+    if rootdir not in trial_info['parsed_trials_source']:
+        trial_info['parsed_trials_source'] = replace_root(trial_info['parsed_trials_source'], rootdir, animalid, session)
     configs, stimtype = get_stimulus_configs(trial_info)
 
 
@@ -618,42 +635,47 @@ def plot_roi_figures(options):
     # PSTHS:
     # Set plotting params for trial average plots for each ROI:
     # =============================================================================
-    print "-------------------------------------------------------------------"
-    print "Plotting PSTHS."
-    print "-------------------------------------------------------------------"
-    #% For each ROI, plot PSTH for all stim configs:
     roi_psth_dir = os.path.join(traceid_dir, 'figures', 'psths', trace_type)
-    if not os.path.exists(roi_psth_dir):
-        os.makedirs(roi_psth_dir)
-    print "Saving PSTH plots to: %s" % roi_psth_dir
-    if plot_all_psths is True:
-        print "--- saving to ./unfiltered"
-    if filter_pupil is True:
-        print "--- saving to ./%s" % selected_metric
 
-    print "Plotting PSTHs.........."
-    plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type=trace_type,
-                   filter_pupil=filter_pupil, pupil_params=pupil_params, plot_all=plot_all_psths,
-                   universal_scale=universal_scale, ylim_min=ylim_min, ylim_max=ylim_max)
+    if plot_psth is True:
+        print "-------------------------------------------------------------------"
+        print "Plotting PSTHS."
+        print "-------------------------------------------------------------------"
+        #% For each ROI, plot PSTH for all stim configs:
+        if not os.path.exists(roi_psth_dir):
+            os.makedirs(roi_psth_dir)
+        print "Saving PSTH plots to: %s" % roi_psth_dir
+        if plot_all_psths is True:
+            print "--- saving to ./unfiltered"
+        if filter_pupil is True:
+            print "--- saving to ./%s" % selected_metric
+
+        print "Plotting PSTHs.........."
+        plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type=trace_type,
+                       filter_pupil=filter_pupil, pupil_params=pupil_params, plot_all=plot_all_psths,
+                       universal_scale=universal_scale, ylim_min=ylim_min, ylim_max=ylim_max)
 
 
     # PLOT TUNING CURVES
-    print "-------------------------------------------------------------------"
-    print "Plotting tuning curves."
-    print "-------------------------------------------------------------------"
-
     tuning_figdir_base = os.path.join(traceid_dir, 'figures', 'tuning', trace_type)
 
     # First, plot with ALL trials included:
     tuning_figdir = os.path.join(tuning_figdir_base, roi_metric)
-    if filter_pupil is True:
-        curr_tuning_figdir = os.path.join(tuning_figdir, selected_metric)
-    else:
-        curr_tuning_figdir = os.path.join(tuning_figdir, 'unfiltered')
-    if not os.path.exists(curr_tuning_figdir):
-        os.makedirs(curr_tuning_figdir)
 
-    plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_type=roi_metric, include_trials=include_trials)
+    if plot_tuning is True:
+        print "-------------------------------------------------------------------"
+        print "Plotting tuning curves."
+        print "-------------------------------------------------------------------"
+
+
+        if filter_pupil is True:
+            curr_tuning_figdir = os.path.join(tuning_figdir, selected_metric)
+        else:
+            curr_tuning_figdir = os.path.join(tuning_figdir, 'unfiltered')
+        if not os.path.exists(curr_tuning_figdir):
+            os.makedirs(curr_tuning_figdir)
+
+        plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_type=roi_metric, include_trials=include_trials)
 
 
     print "==================================================================="

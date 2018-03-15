@@ -14,6 +14,7 @@ import optparse
 import seaborn as sns
 import pylab as pl
 import pandas as pd
+import cPickle as pkl
 from optparse import OptionParser
 
 from pipeline.python.utils import natural_keys
@@ -52,8 +53,9 @@ class RunBase(object):
     def set_params(self, paramslist):
         #params = getattr(parservalues, 'trace_info')
         self.traceid = paramslist[0]
-        self.pupil_size_thr = paramslist[1]
-        self.pupil_dist_thr = paramslist[2]
+        if len(paramslist) > 1:
+            self.pupil_size_thr = paramslist[1]
+            self.pupil_dist_thr = paramslist[2]
 
 
 class FileOptionParser(object):
@@ -92,26 +94,28 @@ def extract_options(options):
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
 
     parser.add_option('-R', '--run', dest='run', type='string',
-                          action='callback', callback=fop.set_info, help="Supply multiple runs for comparison, all runs used otherwise")
+                          action='callback', callback=fop.set_info, help="Supply multiple runs for comparison (currently, expects only 2 runs)")
 
     parser.add_option('-t', '--traces', dest='trace_info', default=[], nargs=1,
-                          action='append', help="Corresponding trace ID to specified runs.")
+                          action='append', help="Comma-sep string of run, traceid, pupil rad thr, pupil dist thr (for ex, -t blobs,traces001,30,5)")
 
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--default', action='store_true', dest='auto', default=False, help="set if want to use all defaults")
+    parser.add_option('-z', '--zscore', action="store",
+                      dest="zscore_thr", default=2.0, help="Cut-off min zscore value [default: 2.0]")
 
     #    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
     # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-r', '--rad', action="store",
-                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-    parser.add_option('-b', '--blinks', action="store",
-                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
+#    parser.add_option('--no-pupil', action="store_false",
+#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+#    parser.add_option('-r', '--rad', action="store",
+#                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
+#    parser.add_option('-d', '--dist', action="store",
+#                      dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#    parser.add_option('-b', '--blinks', action="store",
+#                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
 
     (options, args) = parser.parse_args(options)
 
@@ -139,7 +143,10 @@ def get_dataframe_paths(acquisition_dir, trace_info):
         tracename = '%s_%s' % (info.traceid, tdict[info.traceid]['trace_hash'])
         traceid_dir = os.path.join(acquisition_dir, info.run, 'traces', tracename)
 
-        pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+        if info.pupil_dist_thr is None or info.pupil_size_thr is None:
+            pupil_str = 'unfiltered_'
+        else:
+            pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
         pupil_dir = [os.path.join(traceid_dir, 'metrics', p) for p in os.listdir(os.path.join(traceid_dir, 'metrics')) if pupil_str in p][0]
 
         dfilepath = [os.path.join(pupil_dir, f) for f in os.listdir(pupil_dir) if 'roi_stats_' in f][0]
@@ -172,7 +179,6 @@ def create_zscore_df(dfpaths):
 
         # Concatenate all info for this current trial:
         all_dfs.append(curr_df)
-        #rundf.close()
 
     # Finally, concatenate all trials across all configs for current ROI dataframe:
     DF = pd.concat(all_dfs, axis=0)
@@ -180,12 +186,15 @@ def create_zscore_df(dfpaths):
     return DF
 
 
+
 #%%
 def main(options):
 
-    opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV1_zoom1x_V1', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
+#
+#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV1_zoom1x_V1', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
+#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180221', '-A', 'FOV1_zoom1x', '-R', 'gratings', '-t', 'gratings,traces002', '-R', 'blobs_run3', '-t', 'blobs_run3,traces002']
 
-    options, trace_info = extract_options(opts)
+    options, trace_info = extract_options(options)
     trace_info = list(trace_info)
 
     rootdir = options.rootdir
@@ -198,10 +207,41 @@ def main(options):
     # Get dataframe paths for runs to be compared:
     dfpaths = get_dataframe_paths(acquisition_dir, trace_info)
 
+    # Get base name of this combination:
+    if 'pupil' in dfpaths['run1']:
+        run1_metric = '_'.join(os.path.split(os.path.split(dfpaths['run1'])[0])[-1].split('_')[0:-1])
+    else:
+        run1_metric = 'unfiltered'
+
+    if 'pupil' in dfpaths['run2']:
+        run2_metric = '_'.join(os.path.split(os.path.split(dfpaths['run2'])[0])[-1].split('_')[0:-1])
+    else:
+        run2_metric = 'unfiltered'
+
+    combo_basename = '%s_%s_R1-%s_T1-%s_M1-%s_R2-%s_T1-%s_M1-%s' % (session, acquisition, trace_info[0].run, trace_info[0].traceid, run1_metric,
+                                                                     trace_info[1].run, trace_info[1].traceid, run2_metric)
+
+    # Create otuput fig dri:
+    output_dir = os.path.join(rootdir, animalid, 'session_summaries')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     # Create DF for easy plotting:
-    zdf = create_zscore_df(dfpaths)
+    print "Getting DF..."
+    # Create DF for easy plotting:
+    animal_dir = os.path.join(rootdir, animalid)
+    zdf_path = os.path.join(animal_dir, output_dir, '%s_stats.pkl' % combo_basename)
+    if not os.path.exists(zdf_path):
+        zdf = create_zscore_df(dfpaths)
+        with open(zdf_path, 'wb') as f:
+            pkl.dump(zdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+    else:
+        with open(zdf_path, 'rb') as f:
+            zdf = pkl.load(f)
 
     roi_list = sorted(list(set(zdf['roi'])), key=natural_keys)
+
+
     nrois = len(roi_list)
 
     runs = list(set(zdf['run']))
@@ -214,7 +254,8 @@ def main(options):
 #    yfeat = "R2_max_zscore_stim"
 
     metric = 'max_zscore_stim'
-    min_zscore = 1.6
+    min_zscore = float(options.zscore_thr) # 2.0
+
 
     with sns.axes_style("white"):
 #        g1 = sns.jointplot(xfeat, yfeat, data=zdf, kind="scatter",
@@ -227,7 +268,40 @@ def main(options):
         g1.ax_joint.set_ylabel('%s: %s' % (run2, metric))
 
     pl.subplots_adjust(top=0.9)
+
+    ax1_min = zdf[zdf['run']==run1][metric].min()
+    ax1_max = zdf[zdf['run']==run1][metric].max()
+    ax2_min = zdf[zdf['run']==run2][metric].min()
+    ax2_max = zdf[zdf['run']==run2][metric].max()
+
+    #g1.line([min_zscore, ax2_min], [min_zscore, ax2_max], 'k', linewidth=1, alpha=0.5)
+
     g1.fig.suptitle(run_title)
+
+
+    figname = '%s_jointdistN.png' % combo_basename
+
+    pl.savefig(os.path.join(output_dir, figname))
+    #pl.close()
+
+
+    # Get list of good rois:
+    run1_rois = [roi for roi in roi_list if max(zdf[((zdf['roi']==roi) & (zdf['run']==run1))][metric]) >= min_zscore]
+    run2_rois = [roi for roi in roi_list if max(zdf[((zdf['roi']==roi) & (zdf['run']==run2))][metric]) >= min_zscore]
+
+    print "Run: %s -- Found %i with zscore >= 2." % (run1, len(run1_rois))
+    print "Run: %s -- Found %i with zscore >= 2." % (run2, len(run2_rois))
+
+    passrois = {}
+    passrois[run1] = run1_rois
+    passrois[run2] = run2_rois
+
+    pass_roi_fname = '%s_rois.json' % combo_basename
+    pass_roi_fpath = os.path.join(output_dir, pass_roi_fname)
+    with open(pass_roi_fpath, 'w') as f:
+        json.dump(passrois, f, indent=4, sort_keys=True)
+
+
 
     # Bin to compare distN:
     with sns.axes_style("white"):
@@ -245,11 +319,6 @@ def main(options):
     pl.subplots_adjust(top=0.9)
     g2.fig.suptitle(run_title)
 
-    run1_rois = [roi for roi in roi_list if max(zdf[((zdf['roi']==roi) & (zdf['run']==run1))][metric]) >= min_zscore]
-    run2_rois = [roi for roi in roi_list if max(zdf[((zdf['roi']==roi) & (zdf['run']==run2))][metric]) >= min_zscore]
-
-    print "Run: %s -- Found %i with zscore >= 2." % (run1, len(run1_rois))
-    print "Run: %s -- Found %i with zscore >= 2." % (run2, len(run2_rois))
 
 
     #run1_DF = R1[R1['roi'].isin(run1_rois)]
