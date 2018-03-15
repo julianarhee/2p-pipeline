@@ -91,7 +91,7 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH
 
 from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file
-from pipeline.python.traces.utils import get_frame_info, load_TID
+from pipeline.python.traces.utils import get_frame_info, load_TID, get_metric_set
 pp = pprint.PrettyPrinter(indent=4)
 
 flatui = ["#9b59b6", "#3498db", "#95a5a6", "#e74c3c", "#34495e", "#2ecc71"]
@@ -868,6 +868,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
     pupil_max_nblinks = pupil_params['max_nblinks']
 
     roi_list = sorted(DATA.keys(), key=natural_keys)
+    print "--> Found %i rois." % len(roi_list)
     config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
 
     # Get nframes for trial epochs:
@@ -896,6 +897,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                 pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                 fail_trials = sorted([t for t in trial_list if t not in pass_trials], key=natural_keys)
             else:
+                filtered_DF = DF.copy()
                 pass_trials = sorted(trial_list, key=natural_keys)
                 fail_trials = []
 

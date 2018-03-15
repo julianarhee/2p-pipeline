@@ -43,7 +43,7 @@ import numpy as np
 from scipy import stats
 
 from pipeline.python.utils import natural_keys
-from pipeline.python.traces.utils import load_TID
+from pipeline.python.traces.utils import load_TID, get_metric_set
 from pipeline.python.paradigm.align_acquisition_events import get_stimulus_configs, set_pupil_params
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -601,7 +601,7 @@ def plot_roi_figures(options):
                                          pupil_max_nblinks=pupil_max_nblinks)
 
     # Load associated pupil_params set:
-    with open(os.path.join(metrics_dir, selected_metric, 'pupil_params.json'), 'r') as f:
+    with open(os.path.join(traceid_dir, 'metrics', selected_metric, 'pupil_params.json'), 'r') as f:
         pupil_params = json.load(f)
     pp.pprint(pupil_params)
 

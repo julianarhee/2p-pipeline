@@ -741,6 +741,8 @@ def extract_options(options):
 
     parser.add_option('--new', action="store_true",
                       dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
+    parser.add_option('--extract', action="store_true",
+                      dest="extract_filtered_traces", default=False, help="Set flag to extract filtered traces using eye-tracker info after trace extraction.")
 
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
@@ -772,7 +774,7 @@ def extract_traces(options):
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
 
-
+    extract_filtered_traces = options.extract_filtered_traces
 
     create_new = options.create_new
     auto = options.default
@@ -917,13 +919,16 @@ def extract_traces(options):
     #print_elapsed_time(t_start)
     print "======================================================================="
 
+    return extract_filtered_traces
+
 #%% GET PLOTS:
 def main(options):
     #options = extract_options(options)
-    extract_traces(options)
+    extract_filtered_traces = extract_traces(options)
 
-    print "*** Creating ROI dataframes ***"
-    roidata_filepath, roi_psth_dir = acq.create_roi_dataframes(options)
+    if extract_filtered_traces is True:
+        print "*** Creating ROI dataframes ***"
+        roidata_filepath, roi_psth_dir = acq.create_roi_dataframes(options)
 
 
 if __name__ == '__main__':
