@@ -211,11 +211,14 @@ def interpolate_sites(var_array, interp_sites):
     for target_idx in interp_sites:
         ind_pre = get_interp_ind(target_idx, interp_sites, -1)
         ind_post = get_interp_ind(target_idx, interp_sites, 1)
-        x_good = np.array([ind_pre,ind_post])
-        y_good = np.hstack((var_array[ind_pre],var_array[ind_post]))
-
-        interpF = interpolate.interp1d(x_good, y_good,1)
-        new_value=interpF(target_idx)
+        if ind_post < var_array.size:
+            x_good = np.array([ind_pre,ind_post])
+            y_good = np.hstack((var_array[ind_pre],var_array[ind_post]))
+             interpF = interpolate.interp1d(x_good, y_good,1)
+            new_value=interpF(target_idx)
+        else:
+            new_value = var_array[target_idx-1]
+       
 
         array_interp[target_idx]=new_value
     return array_interp

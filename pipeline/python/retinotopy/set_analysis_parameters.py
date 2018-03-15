@@ -39,8 +39,12 @@ def create_retinoid(options):
 
     options = extract_options(options)
 
-    # # Set USER INPUT options:
     rootdir = options.rootdir
+    homedir = options.homedir
+    notnative = options.notnative
+    print "ROOT:", rootdir
+    print "HOME:", homedir
+
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
@@ -50,15 +54,23 @@ def create_retinoid(options):
     sourcetype = options.sourcetype
 
     pixelflag = options.pixelflag
+    roi_id = options.roi_id
+    if roi_id is not None:
+        pixelflag = False
+
+
     downsample = options.downsample
     smooth_fwhm = options.smooth_fwhm
+
     rolling_mean = options.rolling_mean
     average_frames = options.time_average
+
+    signal_channel = options.signal_channel
 
     auto = options.default
 
     #define session directory
-    session_dir = os.path.join(rootdir, animalid, session)
+    session_dir = os.path.join(homedir, animalid, session)
 
     # Set retino analysis dir:
     run_dir = os.path.join(session_dir, acquisition, run)
@@ -67,7 +79,7 @@ def create_retinoid(options):
         os.makedirs(analysis_dir)
 
     # Get paths to tiffs for analysis:
-    tiffpaths = get_tiff_paths(rootdir=rootdir, animalid=animalid, session=session,
+    tiffpaths = get_tiff_paths(rootdir=homedir, animalid=animalid, session=session,
                                acquisition=acquisition, run=run,
                                tiffsource=tiffsource, sourcetype=sourcetype, auto=auto)
 
@@ -75,8 +87,31 @@ def create_retinoid(options):
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
 
     if pixelflag:
-        PARAMS = get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames)
-    #TODO: for ROI-based analysis, create an alternative params function
+        PARAMS = get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames,
+                                        notnative,rootdir,homedir)
+    else:
+        #get RID
+        with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
+            roidict = json.load(f)
+        RID = roidict[roi_id]
+
+            # Check if there are any TIFFs to exclude:
+        orig_roi_dst = RID['DST']
+        if homedir not in orig_roi_dst:
+            orig_root = orig_roi_dst.split('/%s/%s' % (animalid, session))[0]
+            print "ORIG root:", orig_root
+            rparams_dir = orig_roi_dst.replace(orig_root, homedir)
+        else:
+            rparams_dir = orig_roi_dst
+        print "Loading PARAM info... Looking in ROI dst dir: %s" % rparams_dir
+        with open(os.path.join(rparams_dir, 'roiparams.json'), 'r') as f:
+            roiparams = json.load(f)
+        excluded_tiffs = roiparams['excluded_tiffs']
+
+        PARAMS = get_params_dict_rois(signal_channel, tiff_sourcedir, RID, 
+                                downsample,smooth_fwhm,rolling_mean,average_frames, excluded_tiffs,
+                                notnative, rootdir, homedir, auto)
+
 
     RETINOID = initialize_retinoid(PARAMS, run_dir, auto=auto)
 
@@ -115,25 +150,31 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-R', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-H', '--home', action='store', dest='homedir', default='/nas/volume1/2photon/data', help='current data root dir (if creating params with path-root different than what will be used for actually doing the processing.')
+    parser.add_option('--notnative', action='store_true', dest='notnative', default=False, help="Set flag if not setting params on same system as processing. MUST rsync data sources.")
+
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-r', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="Name of folder containing tiffs to be processed (ex: processed001). Should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
 
     parser.add_option('--pixels', action='store_true', dest='pixelflag', default=True, help="Analyze images as pixel arrays (instead of ROIs)")
-    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=None, help='Factor by which to downsample images (integer)')
-    parser.add_option('-m', '--rollingmean', action='store_true', dest='rolling_mean', default=False, help='Boolean to indicate whether to subtract rolling mean from signal')
-    parser.add_option('-w', '--timeaverage', action='store', dest='time_average', default=None, help='Size of time window with which to average frames (integer)')
+
+    parser.add_option('-r', '--roi-id', action='store', dest='roi_id', default=None, help="ROI ID for rid param set to use (created with set_roi_params.py, e.g., rois001, rois005, etc.)")
+    parser.add_option('-c', '--channel', action='store', dest='signal_channel', default=1, help="Signal channel [default: 1]")
+
+    #spatial pre-processing options, applied on images
+    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=None, help='Factor by which to downsample images (integer)')    
     parser.add_option('-f', '--fwhm', action='store', dest='smooth_fwhm', default=None, help='full-width at half-max size of guassian kernel for smoothing images(odd integer)')
 
-    #TODO: incoropate options for ROI-based analysis
-    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
-
+    #temporal pre-processing options, applied on timecourses
+    parser.add_option('-m', '--rollingmean', action='store_true', dest='rolling_mean', default=False, help='Boolean to indicate whether to subtract rolling mean from signal')
+    parser.add_option('-w', '--timeaverage', action='store', dest='time_average', default=None, help='Size of time window with which to average frames (integer)')
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
@@ -143,10 +184,15 @@ def extract_options(options):
         if 'coxfs01' not in options.rootdir:
             options.rootdir = '/n/coxfs01/2p-data'
 
+    if options.notnative is False:
+        print "NATIVE~~"
+        options.homedir = options.rootdir
+
     return options
 
 #%%
-def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames):
+def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames,
+                            notnative=False, rootdir='', homedir=''):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
     PARAMS['roi_type'] = 'pixels'
@@ -154,8 +200,37 @@ def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,av
     PARAMS['smooth_fwhm'] = smooth_fwhm
     PARAMS['minus_rolling_mean'] = rolling_mean
     PARAMS['average_frames'] = average_frames
+
+    # Replace PARAM paths with processing-machine paths:
+    if notnative is True:
+        PARAMS['tiff_source'] = PARAMS['tiff_source'].replace(homedir, rootdir)
+
     PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
     return PARAMS
+
+def get_params_dict_rois(signal_channel, tiff_sourcedir, RID, 
+                    downsample,smooth_fwhm,rolling_mean,average_frames,excluded_tiffs=[],
+                    notnative=False, rootdir='', homedir='', auto=False):
+    PARAMS = dict()
+    PARAMS['downsample_factor'] = None
+    PARAMS['smooth_fwhm'] = smooth_fwhm
+    PARAMS['minus_rolling_mean'] = rolling_mean
+    PARAMS['average_frames'] = average_frames
+    PARAMS['tiff_source'] = tiff_sourcedir
+    PARAMS['excluded_tiffs'] = excluded_tiffs
+    PARAMS['signal_channel'] = signal_channel
+    PARAMS['roi_id'] = RID['roi_id']
+    PARAMS['rid_hash'] = RID['rid_hash']
+    PARAMS['roi_type'] = RID['roi_type']
+
+    # Replace PARAM paths with processing-machine paths:
+    if notnative is True:
+        PARAMS['tiff_source'] = PARAMS['tiff_source'].replace(homedir, rootdir)
+
+    PARAMS['hashid'] = hashlib.sha1(json.dumps(PARAMS, sort_keys=True)).hexdigest()[0:6]
+
+    return PARAMS
+
 
 #%%
 def load_analysisdict(run_dir):

@@ -586,7 +586,9 @@ def get_bar_events(dfn, triggername='', remove_orphans=True):
         # Sort bar events into a dict that contains all the session's runs:
         order_in_session = 0
         stimevents = dict()
+        ncond_rep = np.array([0,0,0,0])
         for ridx,run in enumerate(bar_states):
+
             if np.sum(np.diff([r[1][1] for r in run]))==0:                    # VERTICAL bar, since ypos does not change.
                 positions = [i[1][0] for i in run]                            # Only "xpos" is changing value.
                 if positions[0] < 0:                                          # LEFT of center is negative, so bar starts at left.
@@ -606,8 +608,20 @@ def get_bar_events(dfn, triggername='', remove_orphans=True):
 
             restarts.append(0)                                                # Add 0 so first start is included in all starting-position indices.
             if curr_run in stimevents.keys():                                        # Add repetition number if this condition is a repeat
-                ncond_rep = len([i for i in stimevents.keys() if i==curr_run])
-                curr_run = curr_run + '_' + str(ncond_rep+1)
+                if curr_run == 'left':
+                    ncond_rep[0] += 1
+                    rep_count = ncond_rep[0]
+                elif curr_run == 'right':
+                    ncond_rep[1] += 1
+                    rep_count = ncond_rep[1]
+                elif curr_run == 'bottom':
+                    ncond_rep[2] += 1
+                    rep_count = ncond_rep[2]
+                elif curr_run == 'top':
+                    ncond_rep[3] += 1
+                    rep_count = ncond_rep[3]
+
+                curr_run = curr_run + '_' + str(rep_count+1)
 
             stimevents[curr_run] = cycstruct()
             stimevents[curr_run].states = run
