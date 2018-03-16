@@ -477,8 +477,15 @@ def set_options_retino(rootdir='', animalid='', session='', acquisition='', run=
     params = dict()
     params['roi_type'] = roi_type  
     params['retino_id'] = retino_id
-    params['ratio_thresh'] = float(ratio_thresh)
-    params['smooth_fwhm'] = int(smooth_fwhm)
+    if ratio_thresh is None:
+    	params['ratio_thresh'] = None
+    else:
+    	params['ratio_thresh'] = float(ratio_thresh)
+
+    if smooth_fwhm is None:
+    	params['smooth_fwhm'] = None
+    else:
+    	params['smooth_fwhm'] = int(smooth_fwhm)
     #hard-coding some stuff, for now
     params['morph_kernel_sz'] = 5
     params['area_thresh'] = 50

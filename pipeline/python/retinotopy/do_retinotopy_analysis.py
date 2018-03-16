@@ -381,7 +381,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		fig=plt.figure()
 		plt.imshow(mag_ratio_map)
 		plt.colorbar()
-		plt.savefig(os.path.join(fig_dir,fig_name))
+		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
 		fig_name = 'beta_map_%s.png' %(tiff_fn[:-4])
@@ -524,7 +524,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		fig_name = 'mag_info_%s.png' %(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
-		plt.imshow(mag_roi,'jet',alpha = 0.5)
+		plt.imshow(mag_roi, alpha = 0.5)
 		plt.colorbar()
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
@@ -532,7 +532,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		fig_name = 'mag_ratio_info_%s.png' %(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
-		plt.imshow(magratio_roi,'jet', alpha = 0.5)
+		plt.imshow(magratio_roi, alpha = 0.5)
 		plt.colorbar()
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
@@ -540,7 +540,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		fig_name = 'varexp_info_%s.png' %(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
-		plt.imshow(varexp_roi,'jet', alpha = 0.5)
+		plt.imshow(varexp_roi, alpha = 0.5)
 		plt.colorbar()
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
@@ -739,7 +739,8 @@ def do_analysis(options):
 			print('TIFF already analyzed!')
 		else:
 			analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file)
-	masks_file.close()
+	if RETINOID['PARAMS']['roi_type'] != 'pixels':
+		masks_file.close()
 
 #-----------------------------------------------------
 #           MAIN SET OF ACTIONS
