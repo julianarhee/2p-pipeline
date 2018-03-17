@@ -625,11 +625,11 @@ def plot_roi_figures(options):
     # Set paths toi ROIDATA_, roi_metrics_, and roi_stats_:
     roistats_filepath = [os.path.join(traceid_dir, 'metrics', selected_metric, f)
                             for f in os.listdir(os.path.join(traceid_dir, 'metrics', selected_metric))
-                            if 'roi_stats_' in f and f.endswith('hdf5')][0]
+                            if 'roi_stats_' in f  and trace_type in f and f.endswith('hdf5')][0]
 
     roidata_filepath = [os.path.join(traceid_dir, f)
                             for f in os.listdir(traceid_dir)
-                            if 'ROIDATA_' in f and f.endswith('hdf5')][0]
+                            if 'ROIDATA_' in f and trace_type in f and f.endswith('hdf5')][0]
 
 
     # PSTHS:

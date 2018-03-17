@@ -963,7 +963,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
 #%%
 
-def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, pupil_params=None, create_new=False):
+def get_roi_metrics(roidata_filepath, configs, traceid_dir, trace_type='raw', filter_pupil=False, pupil_params=None, create_new=False):
     '''
     Calculates zscore for each trial for each stimulus configuration for each ROI trace.
     Applies filter to trials based on pupil info, if relevant.
@@ -1020,7 +1020,7 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, 
 
     # Check for existing metrics files (hdf5) in current metrics dir:
     metric_hash = pupil_params['hash']
-    existing_metrics_files = [f for f in os.listdir(metrics_dir) if 'roi_metrics_%s' % metric_hash in f and f.endswith('hdf5')]
+    existing_metrics_files = [f for f in os.listdir(metrics_dir) if 'roi_metrics_%s_%s' % (metric_hash, trace_type) in f and f.endswith('hdf5')]
     if create_new is False:
         try:
             assert len(existing_metrics_files) == 1, "Unably to find unique metrics file for hash %s" % metric_hash
@@ -1049,7 +1049,7 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, 
 
     # Create new METRICS dataframe file using current date-time:
     datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    metrics_filepath = os.path.join(metrics_dir, 'roi_metrics_%s_%s.hdf5' % (metric_hash, datestr))
+    metrics_filepath = os.path.join(metrics_dir, 'roi_metrics_%s_%s_%s.hdf5' % (metric_hash, trace_type, datestr))
     METRICS, PASSTRIALS = calculate_metrics(DATA, filter_pupil=filter_pupil, pupil_params=pupil_params)
     datastore = pd.HDFStore(metrics_filepath, 'w')
     for roi in METRICS.keys():
@@ -1080,7 +1080,7 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=False, 
     return metrics_filepath
 
 #%%
-def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
+def get_roi_summary_stats(metrics_filepath, configs, trace_type='raw', create_new=False):
     '''
     Collate stimulus and metrics for each ROI's traces (i.e., trials).
     Main function is collate_roi_stats().
@@ -1112,7 +1112,8 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
 
     # First, check if corresponding ROISTATS file exists:
     curr_metrics_dir = os.path.split(metrics_filepath)[0]
-    existing_files = [f for f in os.listdir(curr_metrics_dir) if 'roi_stats_' in f]
+    metrics_hash = os.path.splitext(os.path.split(metrics_filepath)[-1])[0].split('roi_metrics_')[-1].split('_')[0]
+    existing_files = [f for f in os.listdir(curr_metrics_dir) if 'roi_stats_%s_%s' % (metrics_hash, trace_type) in f]
     if create_new is False:
         print "---> Looking for existing ROI STATS..."
         try:
@@ -1142,8 +1143,7 @@ def get_roi_summary_stats(metrics_filepath, configs, create_new=False):
 
         print "--->  Collating ROI metrics......"
         datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        metrics_hash = os.path.splitext(os.path.split(metrics_filepath)[-1])[0].split('roi_metrics_')[-1].split('_')[0]
-        roistats_filepath = os.path.join(curr_metrics_dir, 'roi_stats_%s_%s.hdf5' % (metrics_hash, datestr))
+        roistats_filepath = os.path.join(curr_metrics_dir, 'roi_stats_%s_%s_%s.hdf5' % (metrics_hash, trace_type, datestr))
         ROISTATS = collate_roi_stats(METRICS, configs)
         datastore = pd.HDFStore(roistats_filepath, 'w')
         df = {'df': ROISTATS}
@@ -1457,12 +1457,12 @@ def create_roi_dataframes(options):
     # Calculate metrics based on trial-filtering (eyetracker info):
     print "-------------------------------------------------------------------"
     print "Getting ROI METRICS."
-    metrics_filepath = get_roi_metrics(roidata_filepath, configs, traceid_dir, filter_pupil=filter_pupil, pupil_params=pupil_params, create_new=create_new)
+    metrics_filepath = get_roi_metrics(roidata_filepath, configs, traceid_dir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params, create_new=create_new)
 
     # Cacluate some metrics, and plot tuning curves:
     print "-------------------------------------------------------------------"
     print "Collating ROI metrics into dataframe."
-    roistats_filepath = get_roi_summary_stats(metrics_filepath, configs, create_new=create_new)
+    roistats_filepath = get_roi_summary_stats(metrics_filepath, configs, trace_type=trace_type, create_new=create_new)
 
     return roidata_filepath, roistats_filepath
 
