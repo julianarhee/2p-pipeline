@@ -870,7 +870,6 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
     roi_list = format_masks_fissa(rois_fpath)
 
     # Format .tif files to be NON-NEG:
-    images_dir = '%s_nonnegative' % tiff_src_dir
 
     # Get trace info:
     tiff_src_dir = TID['SRC']
@@ -880,10 +879,14 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
         ntiffs_in_src = 0
     else:
         ntiffs_in_src = len([t for t in os.listdir(tiff_src_dir) if t.endswith('tif')])
+
+    #images_dir = '%s_nonnegative' % tiff_src_dir
+    images_dir = tiff_src_dir
     if not os.path.exists(images_dir) or not len([t for t in os.listdir(images_dir) if t.endswith('tif')]) == ntiffs_in_src:
-        print "Making tif files NONNEGATIVE..."
-        src_img_dir = images_dir.split('_nonnegative')[0]
-        images_dir = make_nonnegative(src_img_dir)
+        if 'nonnegative' in tiff_src_dir:
+            print "Making tif files NONNEGATIVE..."
+            src_img_dir = images_dir.split('_nonnegative')[0]
+            images_dir = make_nonnegative(src_img_dir)
 
     # Extract raw & corrected traces with FISSA:
     exp = fissa.Experiment(str(images_dir), roi_list, str(output_dir), ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
