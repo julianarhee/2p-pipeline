@@ -690,6 +690,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                             tcourse_grp = roi_grp['timecourse']
 
                         for trace_type in trace_types:
+                            print "---> Sorting %s" % trace_type
                             curr_tcourse = filetrace[currslice]['traces'][trace_type][:, ridx]
                             if trace_type not in tcourse_grp.keys():
                                 roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_tcourse.dtype)
