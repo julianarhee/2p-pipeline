@@ -1131,7 +1131,7 @@ def extract_traces(options):
     else:
         ncores = int(options.ncores)
         ncores_sep = ncores * 2
-
+    print "Requesting %i cores prep, %i cores sep for FISSA." % (ncores, ncores_sep)
     extract_filtered_traces = options.extract_filtered_traces
 
     create_new = options.create_new
