@@ -1078,6 +1078,7 @@ def append_corrected_fissa(exp, filetrace_dir):
             traces_currfile.close()
 
 
+    return filetrace_dir
 
 #%%
 def extract_traces(options):
@@ -1254,20 +1255,25 @@ def extract_traces(options):
 
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
+            create_new = True
 
         else:
             aappend_trace_type = True
+            create_new = True
 
 
     # Append non-raw traces, if relevant:
     if append_trace_type:
         exp = get_fissa_object(TID, RID, rootdir='', ncores_prep=ncores, ncores_sepration=ncores*2)
-
+        filetrace_dir = append_corrected_fissa(exp, filetrace_dir)
 
     #%
     #%
     # Organize timecourses by stim-type for each ROI:
     # -----------------------------------------------
+    print "*** Creating ROI-TCOURSE file...."
+    print "-----------------------------------------------------------------------"
+
     roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetrace_dir, rootdir=rootdir, create_new=create_new)
 
     print "-----------------------------------------------------------------------"
