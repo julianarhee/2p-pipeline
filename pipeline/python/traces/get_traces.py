@@ -111,6 +111,7 @@ import tifffile as tf
 import pylab as pl
 import numpy as np
 import cPickle as pkl
+from skimage import img_as_uint
 from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root
 from pipeline.python.set_trace_params import post_tid_cleanup
 from pipeline.python.rois.utils import get_info_from_tiff_dir
@@ -1015,6 +1016,27 @@ def make_unsigned(images_dir):
 
     return images_dir_nonneg
 
+def convert_uint16(images_dir):
+
+    tiff_list = sorted([t for t in os.listdir(images_dir) if t.endswith('tif')], key=natural_keys)
+
+    images_dir_nonneg = '%s_uint16' % images_dir
+    if not os.path.exists(images_dir_nonneg):
+        os.makedirs(images_dir_nonneg)
+
+    for i in range(len(tiff_list)):
+        print "Processing %i of %i tiffs." % (int(i+1), len(tiff_list))
+        tiff = tf.imread(os.path.join(images_dir, tiff_list[i]))
+
+        # Make tif nonnegative:
+        #if tiff.min() < 0:
+        tiff = img_as_uint(tiff)
+
+        # Write tif to new directory:
+        tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff)
+
+    return images_dir_nonneg
+
 #%%
 
 def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_prep=False, redo_sep=False, append_only=False):
@@ -1059,6 +1081,10 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
             print "Making tif files unsigned..."
             src_img_dir = images_dir.split('_unsigned')[0]
             images_dir = make_unsigned(src_img_dir)
+        elif '_uint16' in tiff_src_dir:
+            print "Making tif files UINT16..."
+            src_img_dir = images_dir.split('_uint16')[0]
+            images_dir = convert_uint16(src_img_dir)
 
     # Extract raw & corrected traces with FISSA:
     exp = fissa.Experiment(str(images_dir), roi_list, output_dir, ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
@@ -1357,6 +1383,10 @@ def extract_traces(options):
         print "Making tif files psuedo unsigned..."
         orig_tiff_dir = tiff_dir.split('_unsigned')[0]
         tiff_dir = make_unsigned(orig_tiff_dir)
+    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files UINT16..."
+        orig_tiff_dir = tiff_dir.split('_uint16')[0]
+        tiff_dir = convert_uint16(orig_tiff_dir)
 
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 

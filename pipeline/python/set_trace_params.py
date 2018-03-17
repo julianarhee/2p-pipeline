@@ -45,7 +45,8 @@ def extract_options(options):
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
     parser.add_option('--nonneg', action='store_true', dest='make_nonnegative', default=False, help="Set if want to make .tifs non-negative (FISSA)")
-    parser.add_option('--uint', action='store_true', dest='make_uint', default=False, help="Set if want to make .tifs non-negative by shifting to uint16 to make unsigned (FISSA)")
+    parser.add_option('--unsign', action='store_true', dest='make_unsigned', default=False, help="Set if want to make .tifs non-negative by shifting to uint16 to make unsigned (FISSA)")
+    parser.add_option('--uint16', action='store_true', dest='convert_uint16', default=False, help="Set if want to make .tifs non-negative by shifting to uint16 to make unsigned (FISSA)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="Name of folder containing tiffs to be processed (ex: processed001). Should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
@@ -89,7 +90,8 @@ def create_tid(options):
 
     signal_channel = options.signal_channel
     make_nonnegative = options.make_nonnegative
-    make_uint = options.make_uint
+    make_unsigned = options.make_unsigned
+    convert_uint16 = options.convert_uint16
 
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=homedir, animalid=animalid, session=session,
@@ -112,8 +114,10 @@ def create_tid(options):
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
     if make_nonnegative is True:
         tiff_sourcedir = '%s_nonnegative' % tiff_sourcedir
-    elif make_uint is True:
+    elif make_unsigned is True:
         tiff_sourcedir = '%s_unsigned' % tiff_sourcedir
+    elif convert_uint16 is True:
+        tiff_sourcedir = '%s_uint16' % tiff_sourcedir
 
     # Check if there are any TIFFs to exclude:
     orig_roi_dst = RID['DST']
@@ -129,7 +133,7 @@ def create_tid(options):
     excluded_tiffs = roiparams['excluded_tiffs']
 
     PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs,
-                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto, make_nonnegative=make_nonnegative, make_uint=make_uint)
+                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto, make_nonnegative=make_nonnegative, make_unsigned=make_unsigned, convert_uint16=convert_uint16)
 
     # Create TRACE ID (TID):
     TID = initialize_tid(PARAMS, run_dir, notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
@@ -161,7 +165,7 @@ def create_tid(options):
 
 
 def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[],
-                    notnative=False, rootdir='', homedir='', auto=False, make_nonnegative=False, make_uint=False):
+                    notnative=False, rootdir='', homedir='', auto=False, make_nonnegative=False, make_unsigned=False, convert_uint16=False):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
     PARAMS['excluded_tiffs'] = excluded_tiffs
@@ -170,7 +174,8 @@ def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[],
     PARAMS['rid_hash'] = RID['rid_hash']
     PARAMS['roi_type'] = RID['roi_type']
     PARAMS['nonnegative'] = make_nonnegative
-    PARAMS['unsigned'] = make_uint
+    PARAMS['unsigned'] = make_unsigned
+    PARAMS['uint16'] = convert_uint16
 
     # Replace PARAM paths with processing-machine paths:
     if notnative is True:
