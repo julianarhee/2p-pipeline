@@ -403,6 +403,143 @@ def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
             pl.savefig(os.path.join(mask_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
             pl.close()
 
+#%%
+def hash_filetraces(filetraces_dir, traceid_hash):
+    file_hashdict = {}
+
+    filetraces_fns = sorted([f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')], key=natural_keys)
+
+    for filetraces_fname in filetraces_fns:
+        filetraces_fpath = os.path.join(filetraces_dir, filetraces_fname)
+        # Create hash of current raw tracemat:
+        rawfile_hash = hash_file(filetraces_fpath)
+
+        file_hashdict[os.path.splitext(filetraces_fname)[0]] = rawfile_hash
+
+    with open(os.path.join(filetraces_dir, 'filetrace_info_%s.json' % traceid_hash), 'w') as f:
+        json.dump(file_hashdict, f, indent=4, sort_keys=True)
+
+    print "Saved hash info for file-traces files."
+
+
+#%%
+def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir=''):
+    signal_channel_idx = 0
+    nchannels = si_info['nchannels']
+    nslices = si_info['nslices']
+    nvolumes = si_info['nvolumes']
+    frames_tsec = si_info['frames_tsec']
+
+    traceid_dir = TID['DST']
+
+    curr_file = str(re.search(r"File\d{3}", currtiff_path).group())
+    if curr_file in TID['PARAMS']['excluded_tiffs']:
+        print "***Skipping %s -- excluded from ROI set" % (curr_file)
+        return
+    print "Extracting traces: %s" % curr_file
+
+    # Load MASKS info:
+    maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
+    with open(maskdict_path, 'rb') as f:
+        MASKS = pkl.load(f)
+        fMASKS = MASKS[curr_file]
+        orig_source = MASKS['original_source']
+        del MASKS
+    f.close()
+    roi_slices = [k for k in fMASKS.keys() if 'Slice' in k] #maskinfo['roi_slices']
+
+
+    # Create outfile:
+    filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
+    filetrace_filepath = os.path.join(traceid_dir, 'files', filetrace_fn)
+
+    try:
+        # Load input tiff file:
+        print "Reading tiff..."
+        tiff = tf.imread(currtiff_path)
+        T, d1, d2 = tiff.shape
+        d = d1*d2
+        tiffR = np.reshape(tiff, (T, d), order='C')
+
+        # First get signal channel only:
+        tiffR = tiffR[signal_channel_idx::nchannels,:]
+
+        # Apply masks to each slice:
+        file_grp = h5py.File(filetrace_filepath, 'w')
+        file_grp.attrs['source_file'] = currtiff_path
+        file_grp.attrs['file_id'] = curr_file
+        file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
+        file_grp.attrs['mask_sourcefile'] = orig_source #MASKS['original_source'] #mask_path
+
+        for sl in range(len(roi_slices)):
+
+            curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
+            print "Extracting ROI time course from %s" % curr_slice
+            maskarray = fMASKS[roi_slices[sl]]['mask_array']
+
+            # Get frame tstamps:
+            curr_tstamps = np.array(frames_tsec[sl::nslices])
+
+            # Get current frames:
+            tiffslice = tiffR[sl::nslices, :]
+            tracemat = tiffslice.dot(maskarray)
+            dims = (d1, d2, T/nvolumes)
+
+            if curr_slice not in file_grp.keys():
+                slice_grp = file_grp.create_group(curr_slice)
+            else:
+                slice_grp = file_grp[curr_slice]
+
+            # Save masks:
+            if 'masks' not in slice_grp.keys():
+                mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
+            mset[...] = maskarray
+            mset.attrs['roi_id'] = str(TID['PARAMS']['roi_id'])
+            mset.attrs['rid_hash'] = str(TID['PARAMS']['rid_hash'])
+            mset.attrs['roi_type'] = str(TID['PARAMS']['roi_type'])
+            mset.attrs['nr'] = fMASKS[curr_slice]['nr']
+            mset.attrs['nb'] = fMASKS[curr_slice]['nb']
+            mset.attrs['src_roi_idxs'] = fMASKS[curr_slice]['src_roi_idxs']
+
+            # Save zproj img:
+            zproj = fMASKS[curr_slice]['zproj_img']
+            if 'zproj' not in slice_grp.keys():
+                zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
+            zset[...] = zproj
+            zset.attrs['img_source'] = fMASKS[curr_slice]['zproj_source']
+
+            # Save fluor trace:
+            if 'rawtraces' not in slice_grp.keys():
+                tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
+            tset[...] = tracemat
+            tset.attrs['nframes'] = tracemat.shape[0]
+            tset.attrs['dims'] = dims
+
+            # Save tstamps:
+            if 'frames_tsec' not in slice_grp.keys():
+                fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
+            fset[...] = curr_tstamps
+
+            if 'Ab' in fMASKS[curr_slice].keys():
+                Ab = fMASKS[curr_slice]['Ab']
+                Cf = fMASKS[curr_slice]['Cf']
+                extracted_traces = Ab.T.dot(Ab.dot(Cf))
+                extracted_traces = np.array(extracted_traces.T) # trans to get same format as other traces (NR x Tpoints)
+                ext = slice_grp.create_dataset('/'.join(['traces', 'denoised_nmf']), extracted_traces.shape, extracted_traces.dtype)
+                ext[...] = extracted_traces
+                ext.attrs['nb'] = fMASKS[curr_slice]['nb']
+                ext.attrs['nr'] = fMASKS[curr_slice]['nr']
+
+    except Exception as e:
+        print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
+        traceback.print_exc()
+        print "---------------------------------------------------------------"
+    finally:
+        if file_grp is not None:
+            file_grp.close()
+        #maskfile.close()
+
+    return filetrace_filepath
 
 #%%
 # =============================================================================
