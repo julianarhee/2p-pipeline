@@ -513,8 +513,8 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
     trialdict = load_parsed_trials(trial_info['parsed_trials_source'])
 
     # Get presentation info (should be constant across trials and files):
-    trial_list = sorted(trialdict.keys(), key=natural_keys)
-    print "PARSING %i trials" % len(trial_list)
+    #trial_list = sorted(trialdict.keys(), key=natural_keys)
+    #print "PARSING %i trials" % len(trial_list)
     vol_idxs = si_info['vol_idxs']
 
     # Load ROI timecourses file -- this should exist in TRACEID DIR:
@@ -523,6 +523,11 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
     roi_tcourse_filepath, curr_slices, roi_list = load_timecourses(traceid_dir)
     roi_timecourses = h5py.File(roi_tcourse_filepath, 'r')  # Load ROI traces
     parsed_frames = h5py.File(parsed_frames_filepath, 'r')  # Load PARSED FRAMES output file:
+
+
+    # Get trial list:
+    trial_list = sorted(parsed_frames.keys(), key=natural_keys)
+    print "PARSING %i trials" % len(trial_list) 
 
     # Check for stimulus configs:
     configs, stimtype = get_stimulus_configs(trial_info)
@@ -1252,7 +1257,7 @@ def collate_roi_stats(METRICS, configs):
 
 def extract_options(options):
 
-    choices_tracetype = ('raw', 'denoised_nmf')
+    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa')
     default_tracetype = 'raw'
 
     parser = optparse.OptionParser()
@@ -1408,7 +1413,7 @@ def create_roi_dataframes(options):
     print "Getting ROIDATA into dataframe."
     roitrials_datestr = os.path.splitext(os.path.split(roi_trials_by_stim_path)[-1])[0]
     roitrials_hash = roitrials_datestr.split('_')[-1]
-    roidata_filepath = os.path.join(traceid_dir, 'ROIDATA_%s.hdf5' % roitrials_hash)
+    roidata_filepath = os.path.join(traceid_dir, 'ROIDATA_%s_%s.hdf5' % (roitrials_hash, trace_type))
     if create_new is False:
         try:
             print "--> Trying to load existing file..."
@@ -1422,7 +1427,7 @@ def create_roi_dataframes(options):
 
     if create_new is True:
         # First move old files:
-        existing_df_files = [f for f in os.listdir(traceid_dir) if 'ROIDATA_' in f and f.endswith('hdf5')]
+        existing_df_files = [f for f in os.listdir(traceid_dir) if 'ROIDATA_' in f and trace_type in f and f.endswith('hdf5')]
         old_dir = os.path.join(traceid_dir, 'old')
         if not os.path.exists(old_dir):
             os.makedirs(old_dir)
@@ -1431,7 +1436,7 @@ def create_roi_dataframes(options):
         print "Moved old files..."
 
         # Align extracted traces into trials, and create dataframe:
-        DATA = traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='raw', eye_info=eye_info)
+        DATA = traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type=trace_type, eye_info=eye_info)
 
         # Save dataframe with same datestr as roi_trials.hdf5 file in traceid dir:
         datastore = pd.HDFStore(roidata_filepath, 'w')
