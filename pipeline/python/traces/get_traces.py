@@ -749,6 +749,8 @@ def extract_options(options):
                       dest="append_trace_type", default=False, help="Set flag to append non-default trace type to trace structs.")
     parser.add_option('--neuropil', action="store",
                       dest="np_method", default='fissa', help="Method for neuropil correction (default: fissa)")
+    parser.add_option('-N', '--ncores', action="store",
+                      dest="ncores", default=2, help="N cores to use for FISSA prep and separation [default: 2, 4. If slurm, 1]")
 
 
     parser.add_option('--extract', action="store_true",
@@ -847,7 +849,7 @@ def make_nonnegative(images_dir):
 
 #%%
 
-def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_separation=4):
+def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
     session_dir = RID['DST'].split('/ROIs/')[0]
     info = get_info_from_tiff_dir(TID['SRC'], session_dir)
 
@@ -856,11 +858,6 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_separation=4):
     if rootdir not in rid_dst:
         rid_dst = replace_root(rid_dst, rootdir, info['animalid'], info['session'])
     rois_fpath = os.path.join(rid_dst, 'masks.hdf5')
-
-    # Get trace info:
-    tiff_src_dir = TID['SRC']
-    if rootdir not in tiff_src_dir:
-        tiff_src_dir = replace_root(tiff_src_dir, info['animalid'], info['session'])
 
     # Set output dir:
     tiff_dst_dir = TID['DST']
@@ -874,13 +871,22 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_separation=4):
 
     # Format .tif files to be NON-NEG:
     images_dir = '%s_nonnegative' % tiff_src_dir
-    ntiffs_in_src = len([t for t in os.listdir(tiff_src_dir) if t.endswith('tif')])
-    if os.path.exists(images_dir) and not len([t for t in os.listdir(images_dir) if t.endswith('tif')]) == ntiffs_in_src:
-        print "Making tif files NONNEGATIVE...
-        images_dir = make_nonnegative(images_dir)
+
+    # Get trace info:
+    tiff_src_dir = TID['SRC']
+    if rootdir not in tiff_src_dir:
+        tiff_src_dir = replace_root(tiff_src_dir, info['animalid'], info['session'])
+    if not os.path.exists(tiff_src_dir):
+        ntiffs_in_src = 0
+    else:
+        ntiffs_in_src = len([t for t in os.listdir(tiff_src_dir) if t.endswith('tif')])
+    if not os.path.exists(images_dir) or not len([t for t in os.listdir(images_dir) if t.endswith('tif')]) == ntiffs_in_src:
+        print "Making tif files NONNEGATIVE..."
+        src_img_dir = images_dir.split('_nonnegative')[0]
+        images_dir = make_nonnegative(src_img_dir)
 
     # Extract raw & corrected traces with FISSA:
-    exp = fissa.Experiment(str(images_dir), roi_list, str(output_dir), ncores_preparation=2, ncores_separation=4)
+    exp = fissa.Experiment(str(images_dir), roi_list, str(output_dir), ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
     exp.separate() # To redo:  experiment.separate(redo_prep=True, redo_sep=True)
 
     return exp
@@ -1035,7 +1041,7 @@ def append_corrected_fissa(exp, filetrace_dir):
     tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
 
     #%
-    for tfpath in trace_file_paths:
+    for tfpath in tracefile_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
         file_idx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
@@ -1099,6 +1105,11 @@ def extract_traces(options):
     if slurm is True:
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
+        ncores = 1
+        ncores_sep = 1
+    else:
+        ncores = int(options.ncores)
+        ncores_sep = ncores * 2
 
     extract_filtered_traces = options.extract_filtered_traces
 
@@ -1146,7 +1157,14 @@ def extract_traces(options):
     if rootdir not in tiff_dir:
         tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
 
+    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files NONNEGATIVE..."
+        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
+        tiff_dir = make_nonnegative(orig_tiff_dir)
+    
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
+
+            
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
     #%
@@ -1247,8 +1265,8 @@ def extract_traces(options):
 
     if np_method == 'fissa':
 
-        exp = get_fissa_object(TID, RID, rootdir='')
-
+        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
+        
         # Create TRACEFILE files for each .tif, if none exist yet:
         tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
         if len(tracefile_fpaths) == 0:
@@ -1257,7 +1275,7 @@ def extract_traces(options):
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
             create_new = True
-
+             
         else:
             aappend_trace_type = True
             create_new = True
@@ -1265,7 +1283,7 @@ def extract_traces(options):
 
     # Append non-raw traces, if relevant:
     if append_trace_type:
-        exp = get_fissa_object(TID, RID, rootdir='', ncores_prep=ncores, ncores_sepration=ncores*2)
+        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
         filetrace_dir = append_corrected_fissa(exp, filetrace_dir)
 
     #%
