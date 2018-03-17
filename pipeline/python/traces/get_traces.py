@@ -416,19 +416,19 @@ def hash_filetraces(filetraces_dir, traceid_hash):
 
         file_hashdict[os.path.splitext(filetraces_fname)[0]] = rawfile_hash
 
-    with open(os.path.join(filetraces_dir, 'filetrace_info_%s.json' % traceid_hash), 'w') as f:
+    with open(os.path.join(filetraces_dir, 'filetraces_info_%s.json' % traceid_hash), 'w') as f:
         json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
     print "Saved hash info for file-traces files."
 
 
 #%%
-def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir=''):
-    signal_channel_idx = 0
+def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir='/tmp', rootdir=''):
     nchannels = si_info['nchannels']
     nslices = si_info['nslices']
     nvolumes = si_info['nvolumes']
     frames_tsec = si_info['frames_tsec']
+    signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
     traceid_dir = TID['DST']
 
@@ -436,7 +436,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
     if curr_file in TID['PARAMS']['excluded_tiffs']:
         print "***Skipping %s -- excluded from ROI set" % (curr_file)
         return
-    print "Extracting traces: %s" % curr_file
+    print "-- Extracting traces: %s" % curr_file
 
     # Load MASKS info:
     maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
@@ -450,12 +450,12 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
 
 
     # Create outfile:
-    filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
-    filetrace_filepath = os.path.join(traceid_dir, 'files', filetrace_fn)
+    filetraces_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
+    filetraces_filepath = os.path.join(traceid_dir, 'files', filetraces_fn)
 
     try:
         # Load input tiff file:
-        print "Reading tiff..."
+        print "-- -- Reading tiff..."
         tiff = tf.imread(currtiff_path)
         T, d1, d2 = tiff.shape
         d = d1*d2
@@ -465,7 +465,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
         tiffR = tiffR[signal_channel_idx::nchannels,:]
 
         # Apply masks to each slice:
-        file_grp = h5py.File(filetrace_filepath, 'w')
+        file_grp = h5py.File(filetraces_filepath, 'w')
         file_grp.attrs['source_file'] = currtiff_path
         file_grp.attrs['file_id'] = curr_file
         file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
@@ -474,7 +474,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
         for sl in range(len(roi_slices)):
 
             curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
-            print "Extracting ROI time course from %s" % curr_slice
+            print "-- -- -- Extracting ROI time course from %s" % curr_slice
             maskarray = fMASKS[roi_slices[sl]]['mask_array']
 
             # Get frame tstamps:
@@ -530,6 +530,8 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
                 ext.attrs['nb'] = fMASKS[curr_slice]['nb']
                 ext.attrs['nr'] = fMASKS[curr_slice]['nr']
 
+        print "-- Done extracting: %s" % curr_file
+
     except Exception as e:
         print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
         traceback.print_exc()
@@ -539,7 +541,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir, rootdir='')
             file_grp.close()
         #maskfile.close()
 
-    return filetrace_filepath
+    return filetraces_filepath
 
 #%%
 # =============================================================================
@@ -550,152 +552,160 @@ def apply_masks_to_movies(TID, RID, si_info, output_filedir='/tmp', rootdir=''):
     For each .tif in this trace id set, load .tif movie and apply masks.
     Save traces as .hdf5 for each .tif file in <TRACEID_DIR>/files/.
     '''
-    file_grp = None
+    #file_grp = None
 
     session_dir = RID['DST'].split('/ROIs/')[0]
     info = get_info_from_tiff_dir(TID['SRC'], session_dir)
 
-    nchannels = si_info['nchannels']
-    nslices = si_info['nslices']
-    nvolumes = si_info['nvolumes']
-    frames_tsec = si_info['frames_tsec']
+#    nchannels = si_info['nchannels']
+#    nslices = si_info['nslices']
+#    nvolumes = si_info['nvolumes']
+#    frames_tsec = si_info['frames_tsec']
 
     #roi_slices = maskinfo['roi_slices']
-    tiff_dir = TID['SRC']
-    if rootdir not in tiff_dir:
-        tiff_dir = replace_root(tiff_dir, rootdir, info['animalid'], info['session'])
-    tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
+#    tiff_dir = TID['SRC']
+    if rootdir not in TID['SRC']:
+        TID['SRC'] = replace_root(TID['SRC'], rootdir, info['animalid'], info['session'])
+    tiff_files = sorted([t for t in os.listdir(TID['SRC']) if t.endswith('tif')], key=natural_keys)
 
     print "TID %s -- Applying masks to traces..." % TID['trace_hash']
     t_extract = time.time()
 
     # Load MASKDICT:
-    traceid_dir = TID['DST']
-    if rootdir not in traceid_dir:
-        traceid_dir = replace_root(traceid_dir, rootdir, info['animalid'], info['session'])
+#    traceid_dir = TID['DST']
+    if rootdir not in TID['DST']:
+        TID['DST'] = replace_root(TID['DST'], rootdir, info['animalid'], info['session'])
 
-    maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
-    with open(maskdict_path, 'rb') as f:
-        MASKS = pkl.load(f)
-    f.close()
-    print "Applying masks to %i files." % len(MASKS.keys())
-    filenames = [k for k in MASKS.keys() if 'File' in k]
-    roi_slices = [k for k in MASKS[filenames[0]].keys() if 'Slice' in k] #maskinfo['roi_slices']
+#    maskdict_path = os.path.join(TID['DST'], 'MASKS.pkl')
+#    with open(maskdict_path, 'rb') as f:
+#        MASKS = pkl.load(f)
+#    f.close()
+#    print "Applying masks to %i files." % len(MASKS.keys())
+    #filenames = [k for k in MASKS.keys() if 'File' in k]
+    #roi_slices = [k for k in MASKS[filenames[0]].keys() if 'Slice' in k] #maskinfo['roi_slices']
 
-    signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
-    file_hashdict = dict()
-    try:
-        for tfn in tiff_files:
+    #signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
-            curr_file = str(re.search(r"File\d{3}", tfn).group())
-            if curr_file in TID['PARAMS']['excluded_tiffs']:
-                print "***Skipping %s -- excluded from ROI set %s" % (curr_file, RID['roi_id'])
-                continue
+#    try:
+    for tfn in tiff_files:
 
-            print "Extracting traces: %s" % curr_file
+        curr_file = str(re.search(r"File\d{3}", tfn).group())
+        if curr_file in TID['PARAMS']['excluded_tiffs']:
+            print "***Skipping %s -- excluded from ROI set %s" % (curr_file, RID['roi_id'])
+            continue
 
-            # Create outfile:
-            filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
-            filetrace_filepath = os.path.join(traceid_dir, 'files', filetrace_fn)
+        print "Extracting traces: %s" % curr_file
+        currtiff_path = os.path.join(TID['SRC'], tfn)
+        filetraces_filepath = apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir='/tmp', rootdir='')
 
-            # Load input tiff file:
-            print "Reading tiff..."
-            currtiff_path = os.path.join(tiff_dir, tfn)
-            tiff = tf.imread(currtiff_path)
-            T, d1, d2 = tiff.shape
-            d = d1*d2
-            tiffR = np.reshape(tiff, (T, d), order='C')
+        print "Saved %s traces: %s" % (curr_file, filetraces_filepath)
+#
+#            # Create outfile:
+#            filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
+#            filetrace_filepath = os.path.join(traceid_dir, 'files', filetrace_fn)
+#
+#            # Load input tiff file:
+#            print "Reading tiff..."
+#            currtiff_path = os.path.join(tiff_dir, tfn)
+#            tiff = tf.imread(currtiff_path)
+#            T, d1, d2 = tiff.shape
+#            d = d1*d2
+#            tiffR = np.reshape(tiff, (T, d), order='C')
+#
+#            # First get signal channel only:
+#            tiffR = tiffR[signal_channel_idx::nchannels,:]
+#
+#            # Apply masks to each slice:
+#            file_grp = h5py.File(filetrace_filepath, 'w')
+#            file_grp.attrs['source_file'] = currtiff_path
+#            file_grp.attrs['file_id'] = curr_file
+#            file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
+#            file_grp.attrs['mask_sourcefile'] = MASKS['original_source'] #mask_path
+#
+#            for sl in range(len(roi_slices)):
+#
+#                curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
+#                print "Extracting ROI time course from %s" % curr_slice
+#                maskarray = MASKS[curr_file][roi_slices[sl]]['mask_array']
+#
+#                # Get frame tstamps:
+#                curr_tstamps = np.array(frames_tsec[sl::nslices])
+#
+#                # Get current frames:
+#                tiffslice = tiffR[sl::nslices, :]
+#                tracemat = tiffslice.dot(maskarray)
+#                dims = (d1, d2, T/nvolumes)
+#
+#                if curr_slice not in file_grp.keys():
+#                    slice_grp = file_grp.create_group(curr_slice)
+#                else:
+#                    slice_grp = file_grp[curr_slice]
+#
+#                # Save masks:
+#                if 'masks' not in slice_grp.keys():
+#                    mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
+#                mset[...] = maskarray
+#                mset.attrs['roi_id'] = str(RID['roi_id'])
+#                mset.attrs['rid_hash'] = str(RID['rid_hash'])
+#                mset.attrs['roi_type'] = str(RID['roi_type'])
+#                mset.attrs['nr'] = MASKS[curr_file][curr_slice]['nr']
+#                mset.attrs['nb'] = MASKS[curr_file][curr_slice]['nb']
+#                mset.attrs['src_roi_idxs'] = MASKS[curr_file][curr_slice]['src_roi_idxs']
+#
+#                # Save zproj img:
+#                zproj = MASKS[curr_file][curr_slice]['zproj_img']
+#                if 'zproj' not in slice_grp.keys():
+#                    zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
+#                zset[...] = zproj
+#                zset.attrs['img_source'] = MASKS[curr_file][curr_slice]['zproj_source']
+#
+#                # Save fluor trace:
+#                if 'rawtraces' not in slice_grp.keys():
+#                    tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
+#                tset[...] = tracemat
+#                tset.attrs['nframes'] = tracemat.shape[0]
+#                tset.attrs['dims'] = dims
+#
+#                # Save tstamps:
+#                if 'frames_tsec' not in slice_grp.keys():
+#                    fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
+#                fset[...] = curr_tstamps
+#
+#                if 'Ab' in MASKS[curr_file][curr_slice].keys():
+#                    Ab = MASKS[curr_file][curr_slice]['Ab']
+#                    Cf = MASKS[curr_file][curr_slice]['Cf']
+#                    extracted_traces = Ab.T.dot(Ab.dot(Cf))
+#                    extracted_traces = np.array(extracted_traces.T) # trans to get same format as other traces (NR x Tpoints)
+#                    ext = slice_grp.create_dataset('/'.join(['traces', 'denoised_nmf']), extracted_traces.shape, extracted_traces.dtype)
+#                    ext[...] = extracted_traces
+#                    ext.attrs['nb'] = MASKS[curr_file][curr_slice]['nb']
+#                    ext.attrs['nr'] = MASKS[curr_file][curr_slice]['nr']
+#
+#            # Create hash of current raw tracemat:
+#            rawfile_hash = hash_file(filetrace_filepath)
+#            file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
+#    except Exception as e:
+#        print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
+#        traceback.print_exc()
+#        print "---------------------------------------------------------------"
+#    finally:
+#        if file_grp is not None:
+#            file_grp.close()
+#        #maskfile.close()
 
-            # First get signal channel only:
-            tiffR = tiffR[signal_channel_idx::nchannels,:]
-
-            # Apply masks to each slice:
-            file_grp = h5py.File(filetrace_filepath, 'w')
-            file_grp.attrs['source_file'] = currtiff_path
-            file_grp.attrs['file_id'] = curr_file
-            file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
-            file_grp.attrs['mask_sourcefile'] = MASKS['original_source'] #mask_path
-
-            for sl in range(len(roi_slices)):
-
-                curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
-                print "Extracting ROI time course from %s" % curr_slice
-                maskarray = MASKS[curr_file][roi_slices[sl]]['mask_array']
-
-                # Get frame tstamps:
-                curr_tstamps = np.array(frames_tsec[sl::nslices])
-
-                # Get current frames:
-                tiffslice = tiffR[sl::nslices, :]
-                tracemat = tiffslice.dot(maskarray)
-                dims = (d1, d2, T/nvolumes)
-
-                if curr_slice not in file_grp.keys():
-                    slice_grp = file_grp.create_group(curr_slice)
-                else:
-                    slice_grp = file_grp[curr_slice]
-
-                # Save masks:
-                if 'masks' not in slice_grp.keys():
-                    mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
-                mset[...] = maskarray
-                mset.attrs['roi_id'] = str(RID['roi_id'])
-                mset.attrs['rid_hash'] = str(RID['rid_hash'])
-                mset.attrs['roi_type'] = str(RID['roi_type'])
-                mset.attrs['nr'] = MASKS[curr_file][curr_slice]['nr']
-                mset.attrs['nb'] = MASKS[curr_file][curr_slice]['nb']
-                mset.attrs['src_roi_idxs'] = MASKS[curr_file][curr_slice]['src_roi_idxs']
-
-                # Save zproj img:
-                zproj = MASKS[curr_file][curr_slice]['zproj_img']
-                if 'zproj' not in slice_grp.keys():
-                    zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
-                zset[...] = zproj
-                zset.attrs['img_source'] = MASKS[curr_file][curr_slice]['zproj_source']
-
-                # Save fluor trace:
-                if 'rawtraces' not in slice_grp.keys():
-                    tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
-                tset[...] = tracemat
-                tset.attrs['nframes'] = tracemat.shape[0]
-                tset.attrs['dims'] = dims
-
-                # Save tstamps:
-                if 'frames_tsec' not in slice_grp.keys():
-                    fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
-                fset[...] = curr_tstamps
-
-                if 'Ab' in MASKS[curr_file][curr_slice].keys():
-                    Ab = MASKS[curr_file][curr_slice]['Ab']
-                    Cf = MASKS[curr_file][curr_slice]['Cf']
-                    extracted_traces = Ab.T.dot(Ab.dot(Cf))
-                    extracted_traces = np.array(extracted_traces.T) # trans to get same format as other traces (NR x Tpoints)
-                    ext = slice_grp.create_dataset('/'.join(['traces', 'denoised_nmf']), extracted_traces.shape, extracted_traces.dtype)
-                    ext[...] = extracted_traces
-                    ext.attrs['nb'] = MASKS[curr_file][curr_slice]['nb']
-                    ext.attrs['nr'] = MASKS[curr_file][curr_slice]['nr']
-
-            # Create hash of current raw tracemat:
-            rawfile_hash = hash_file(filetrace_filepath)
-            file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
-    except Exception as e:
-        print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
-        traceback.print_exc()
-        print "---------------------------------------------------------------"
-    finally:
-        if file_grp is not None:
-            file_grp.close()
-        #maskfile.close()
-
-    with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
-        json.dump(file_hashdict, f, indent=4, sort_keys=True)
+#    with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
+#        json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
     #%
+    # Hash filetraces files:
+    filetraces_dir = os.path.join(TID['DST'], 'files')
+    hash_filetraces(filetraces_dir, TID['trace_hash'])
+
     print "TID %s -- Finished compiling trace arrays across files" % TID['trace_hash']
     print_elapsed_time(t_extract)
     print "-----------------------------------------------------------------------"
 
-    return os.path.join(traceid_dir, 'files')
+    return os.path.join(TID['DST'], 'files')
 
 #%%
 # =============================================================================
@@ -726,8 +736,8 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 
     #% Load raw traces:
     try:
-        filetrace_fns = [f for f in os.listdir(os.path.join(traceid_dir, 'files')) if f.endswith('hdf5') and 'rawtraces' in f]
-        print "Found traces by file for %i tifs in dir: %s" % (len(filetrace_fns), os.path.join(traceid_dir, 'files'))
+        filetraces_fns = [f for f in os.listdir(os.path.join(traceid_dir, 'files')) if f.endswith('hdf5') and 'rawtraces' in f]
+        print "Found traces by file for %i tifs in dir: %s" % (len(filetraces_fns), os.path.join(traceid_dir, 'files'))
     except Exception as e:
         print "Unable to find extracted tracestructs from trace set: %s" % TID['trace_id']
         print "Aborting with error:"
@@ -760,7 +770,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 
         # Concatenate time courses across all files to create single time-source for RUN:
         # -----------------------------------------------------------------------------
-        tmp_tracestruct = h5py.File(os.path.join(traceid_dir, 'files', filetrace_fns[0]), 'r')
+        tmp_tracestruct = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fns[0]), 'r')
         ntiffs = si_info['ntiffs']
         dims = tmp_tracestruct.attrs['dims']
         total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
@@ -773,14 +783,14 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
             tiff_start_fridxs.append(fi * nframes_in_file)
 
         try:
-            for filetrace_fn in sorted(filetrace_fns, key=natural_keys):
-                fidx_in_run = int(filetrace_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
+            for filetraces_fn in sorted(filetraces_fns, key=natural_keys):
+                fidx_in_run = int(filetraces_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
                 curr_frame_idx = tiff_start_fridxs[fidx_in_run]
                 print "Loading file:", filetrace_fn
-                filetrace = h5py.File(os.path.join(traceid_dir, 'files', filetrace_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
+                filetraces = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
 
                 roi_counter = 0
-                for currslice in sorted(filetrace.keys(), key=natural_keys):
+                for currslice in sorted(filetraces.keys(), key=natural_keys):
                     print "Loading slice:", currslice
                     maskarray = filetrace[currslice]['masks']
                     d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
@@ -949,16 +959,16 @@ def collate_fissa_traces(exp, tiff=0, region='cell', trace_type='corrected'):
     if trace_type == 'corrected':
         for ridx in range(len(exp.result)):
             if not isinstance(result_trace_idx, int):
-                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
-            else:
                 tracemat[:, ridx] = exp.result[ridx][tiff][result_trace_idx,:]
+            else:
+                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
 
     elif trace_type == 'raw':
         for ridx in range(len(exp.result)):
             if isinstance(raw_trace_idx, int):
-                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][raw_trace_idx,:], axis=0)
-            else:
                 tracemat[:, ridx] = exp.raw[ridx][tiff][raw_trace_idx,:]
+            else:
+                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][raw_trace_idx,:], axis=0)
 
     return tracemat
 
@@ -1031,7 +1041,10 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
 
     # Check that 'means" is stored (not saved if redo):
     if len(exp.means) == 0:
-        exp.separate(redo_prep=True)
+        #exp.separate(redo_prep=True)
+        for trial in range(exp.nTrials):
+            curdata = datahandler.image2array(exp.images[trial])
+            exp.means += datahandler.getmean(curdata)
 
     return exp
 #%%
@@ -1055,7 +1068,7 @@ def roi_list_to_array(roi_list, normalize_rois=True):
     return maskarray
 
 #%%
-def create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=''):
+def create_filetraces_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=''):
     file_grp = None
 
     session_dir = RID['DST'].split('/ROIs/')[0]
@@ -1097,10 +1110,10 @@ def create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=
             print "Formatting traces file (idx %i): %s" % (fidx, curr_file)
 
             # Create outfile:
-            filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
-            filetrace_filepath = os.path.join(traceid_dir, 'files', filetrace_fn)
+            filetraces_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
+            filetraces_filepath = os.path.join(traceid_dir, 'files', filetraces_fn)
 
-            file_grp = h5py.File(filetrace_filepath, 'w')
+            file_grp = h5py.File(filetraces_filepath, 'w')
             file_grp.attrs['source_file'] = tfn
             file_grp.attrs['file_id'] = curr_file
             file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
@@ -1165,10 +1178,10 @@ def create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=
             npil[...] = tracemat_np
 
             # Create hash of current raw tracemat:
-            rawfile_hash = hash_file(filetrace_filepath)
-            file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
+            rawfile_hash = hash_file(filetraces_filepath)
+            file_hashdict[os.path.splitext(filetraces_fn)[0]] = rawfile_hash
 
-        with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
+        with open(os.path.join(traceid_dir, 'files', 'filetraces_info_%s.json' % TID['trace_hash']), 'w') as f:
             json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
 
@@ -1189,12 +1202,12 @@ def create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=
     return os.path.join(traceid_dir, 'files')
 
 #%%
-def append_corrected_fissa(exp, filetrace_dir):
+def append_corrected_fissa(exp, filetraces_dir):
 
-    tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
+    filetraces_fpaths = sorted([os.path.join(filetraces_dir, t) for t in os.listdir(filetraces_dir) if t.endswith('hdf5')], key=natural_keys)
 
     #%
-    for tfpath in tracefile_fpaths:
+    for tfpath in filetraces_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
         fidx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
@@ -1243,7 +1256,7 @@ def append_corrected_fissa(exp, filetrace_dir):
         finally:
             traces_currfile.close()
 
-    return filetrace_dir
+    return filetraces_dir
 
 #%%
 def extract_traces(options):
@@ -1323,9 +1336,9 @@ def extract_traces(options):
     # Create output dirs and files:
     # =============================================================================
     traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-    filetrace_dir = os.path.join(traceid_dir, 'files')
-    if not os.path.exists(filetrace_dir):
-        os.makedirs(filetrace_dir)
+    filetraces_dir = os.path.join(traceid_dir, 'files')
+    if not os.path.exists(filetraces_dir):
+        os.makedirs(filetraces_dir)
 
     trace_figdir = os.path.join(traceid_dir, 'figures')
     if not os.path.exists(trace_figdir):
@@ -1403,14 +1416,14 @@ def extract_traces(options):
 
     #np_method = 'fissa'
 
-    filetrace_fns = [f for f in os.listdir(filetrace_dir) if f.endswith('hdf5')]
-    print "N mask imgs:", len(maskfigs), "N trace files:", len(filetrace_fns)
-    if np_method!='fissa' and (len(filetrace_fns) != len(maskfigs) or create_new is True):
+    filetraces_fns = [f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')]
+    print "N mask imgs:", len(maskfigs), "N trace files:", len(filetraces_fns)
+    if np_method!='fissa' and (len(filetraces_fns) != len(maskfigs) or create_new is True):
         if create_new is False:
-            print "...... Incorrect N=%i trace files found (expecting %i)." % (len(filetrace_fns), len(maskfigs))
+            print "...... Incorrect N=%i trace files found (expecting %i)." % (len(filetraces_fns), len(maskfigs))
         else:
             print "...... Creating new!"
-        filetrace_dir = apply_masks_to_movies(TID, RID, si_info, output_filedir=filetrace_dir, rootdir=rootdir)
+        filetrace_dir = apply_masks_to_movies(TID, RID, si_info, output_filedir=filetraces_dir, rootdir=rootdir)
 
 
     if np_method == 'fissa':
@@ -1424,9 +1437,9 @@ def extract_traces(options):
         print "N results:", len(exp.result)
         print "N means:", len(exp.means)
         # Create TRACEFILE files for each .tif, if none exist yet:
-        tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
-        if not len(tracefile_fpaths) == len(maskfigs):
-            filetrace_dir = create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=rootdir)
+        filetraces_fpaths = sorted([os.path.join(filetraces_dir, t) for t in os.listdir(filetraces_dir) if t.endswith('hdf5')], key=natural_keys)
+        if not len(filetraces_fpaths) == len(maskfigs):
+            filetraces_dir = create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir=rootdir)
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
             create_new = True
@@ -1437,7 +1450,7 @@ def extract_traces(options):
     # Append non-raw traces, if relevant:
     if append_trace_type:
         exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
-        filetrace_dir = append_corrected_fissa(exp, filetrace_dir)
+        filetraces_dir = append_corrected_fissa(exp, filetraces_dir)
 
     #%
     #%
@@ -1446,7 +1459,7 @@ def extract_traces(options):
     print "*** Creating ROI-TCOURSE file...."
     print "-----------------------------------------------------------------------"
 
-    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetrace_dir, rootdir=rootdir, create_new=create_new)
+    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetraces_dir, rootdir=rootdir, create_new=create_new)
 
     print "-----------------------------------------------------------------------"
 
