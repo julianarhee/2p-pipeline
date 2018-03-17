@@ -1110,8 +1110,8 @@ def append_corrected_fissa(exp, filetrace_dir):
 
 #%%
 def extract_traces(options):
-    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
-            '-t', 'traces004', '--neuropil=fissa', '--append', '--no-pupil']
+#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
+#            '-t', 'traces004', '--neuropil=fissa', '--append', '--no-pupil']
 
     # Set USER INPUT options:
     options = extract_options(options)
@@ -1153,6 +1153,7 @@ def extract_traces(options):
     #% Get meta info for run:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    print "RUN:", run_dir
     si_info = get_frame_info(run_dir)
 
     # Load specified trace-ID parameter set:
