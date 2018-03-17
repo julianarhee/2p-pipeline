@@ -162,7 +162,7 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-def get_mask_info(mask_path, ntiffs=None, excluded_tiffs=[]):
+def get_mask_info(mask_path, ntiffs=None, nslices=1, excluded_tiffs=[]):
     maskinfo = dict()
     try:
         maskfile = h5py.File(mask_path, "r")
@@ -849,7 +849,7 @@ def make_nonnegative(images_dir):
 
 #%%
 
-def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
+def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_prep=True, redo_sep=False):
     session_dir = RID['DST'].split('/ROIs/')[0]
     info = get_info_from_tiff_dir(TID['SRC'], session_dir)
 
@@ -862,7 +862,7 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
     # Set output dir:
     tiff_dst_dir = TID['DST']
     if rootdir not in tiff_dst_dir:
-        tiff_dst_dir = replace_root(tiff_dst_dir, info['animalid'], info['session'])
+        tiff_dst_dir = replace_root(tiff_dst_dir, rootdir, info['animalid'], info['session'])
 
     output_dir = os.path.join(tiff_dst_dir, 'np_fissa_results')
 
@@ -874,7 +874,7 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
     # Get trace info:
     tiff_src_dir = TID['SRC']
     if rootdir not in tiff_src_dir:
-        tiff_src_dir = replace_root(tiff_src_dir, info['animalid'], info['session'])
+        tiff_src_dir = replace_root(tiff_src_dir, rootdir, info['animalid'], info['session'])
     if not os.path.exists(tiff_src_dir):
         ntiffs_in_src = 0
     else:
@@ -889,11 +889,15 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4):
             images_dir = make_nonnegative(src_img_dir)
 
     # Extract raw & corrected traces with FISSA:
-    exp = fissa.Experiment(str(images_dir), roi_list, str(output_dir), ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
-    exp.separate() # To redo:  experiment.separate(redo_prep=True, redo_sep=True)
+    exp = fissa.Experiment(str(images_dir), roi_list, output_dir, ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
+    exp.separate(redo_prep=redo_prep, redo_sep=redo_sep) # To redo:  experiment.separate(redo_prep=True, redo_sep=True)
+
+    # Check that 'means" is stored (not saved if redo):
+    if len(exp.means) == 0:
+        exp.separate(redo_prep=True)
 
     return exp
-
+#%%
 def roi_list_to_array(roi_list, normalize_rois=True):
 
     nrois = len(roi_list) # Only care about 1 file, since they are all the same
@@ -913,9 +917,8 @@ def roi_list_to_array(roi_list, normalize_rois=True):
 
     return maskarray
 
-
-
-def create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=''):
+#%%
+def create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=''):
     file_grp = None
 
     session_dir = RID['DST'].split('/ROIs/')[0]
@@ -938,11 +941,13 @@ def create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=
     traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
         traceid_dir = replace_root(traceid_dir, rootdir, info['animalid'], info['session'])
- 
+
     d1, d2 = exp.rois[0][0].shape
     T = exp.raw[0][0].shape[-1]
+    dims = (d1, d2, T/nvolumes)
 
     tiff_fpaths = exp.images
+    file_hashdict = dict()
     try:
         for fidx, tfn in enumerate(tiff_fpaths):
             sl = 0
@@ -974,60 +979,58 @@ def create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=
             # Get frame tstamps:
             curr_tstamps = np.array(frames_tsec)
 
-            dims = (d1, d2, T/nvolumes)
-
             # Save masks:
-            if 'masks' not in slice_grp.keys():
-                roi_list = exp.rois
-                maskarray = roi_list_to_array(roi_list[0], normalize_rois=True)
-                mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
-                mset[...] = maskarray
-                mset.attrs['roi_id'] = str(RID['roi_id'])
-                mset.attrs['rid_hash'] = str(RID['rid_hash'])
-                mset.attrs['roi_type'] = str(RID['roi_type'])
-                mset.attrs['nr'] = maskarray.shape[-1]
-                mset.attrs['nb'] = 0
-                mset.attrs['src_roi_idxs'] = np.arange(0, maskarray.shape[-1])
+            #if 'masks' not in slice_grp.keys():
+            roi_list = exp.rois
+            maskarray = roi_list_to_array(roi_list[0], normalize_rois=True)
+            mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
+            mset[...] = maskarray
+            mset.attrs['roi_id'] = str(RID['roi_id'])
+            mset.attrs['rid_hash'] = str(RID['rid_hash'])
+            mset.attrs['roi_type'] = str(RID['roi_type'])
+            mset.attrs['nr'] = maskarray.shape[-1]
+            mset.attrs['nb'] = 0
+            mset.attrs['src_roi_idxs'] = np.arange(0, maskarray.shape[-1])
 
-                # Save zproj img:
-                print "NFILES: %i" % len(exp.means)
-                zproj = exp.means[fidx]
-                if 'zproj' not in slice_grp.keys():
-                    zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
-                zset[...] = zproj
-                zset.attrs['img_source'] = tfn
+            # Save zproj img:
+            print "NFILES: %i" % len(exp.means)
+            zproj = exp.means[fidx]
+            if 'zproj' not in slice_grp.keys():
+                zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
+            zset[...] = zproj
+            zset.attrs['img_source'] = tfn
 
-                # Save fluor trace:
-                tracemat = collate_fissa_traces(exp, tiff=fidx, region='cell', trace_type='raw')
-                tset = slice_grp.create_dataset('/'.join(['traces', 'raw_fissa']), tracemat.shape, tracemat.dtype)
-                tset[...] = tracemat
-                tset.attrs['nframes'] = tracemat.shape[0]
-                tset.attrs['dims'] = dims
+            # Save fluor trace:
+            tracemat = collate_fissa_traces(exp, tiff=fidx, region='cell', trace_type='raw')
+            tset = slice_grp.create_dataset('/'.join(['traces', 'raw_fissa']), tracemat.shape, tracemat.dtype)
+            tset[...] = tracemat
+            tset.attrs['nframes'] = tracemat.shape[0]
+            tset.attrs['dims'] = dims
 
-                # Save tstamps:
-                if 'frames_tsec' not in slice_grp.keys():
-                    fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
-                fset[...] = curr_tstamps
+            # Save tstamps:
+            if 'frames_tsec' not in slice_grp.keys():
+                fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
+            fset[...] = curr_tstamps
 
-                # Save corrected trace:
-                tracemat_corr= collate_fissa_traces(exp, tiff=fidx, region='cell', trace_type='corrected')
-                tset_corrected = slice_grp.create_dataset('/'.join(['traces', 'corrected_fissa']), tracemat_corr.shape, tracemat_corr.dtype)
-                tset_corrected[...] = tracemat_corr
-                tset_corrected.attrs['nframes'] = tracemat_corr.shape[0]
-                tset_corrected.attrs['dims'] = dims
-                tset_corrected.attrs['source'] = exp.folder
-                tset_corrected.attrs['nregions'] = exp.result[0][file_idx].shape[0] - 1
-                tset_corrected.attrs['tiff'] = exp.images[file_idx]
+            # Save corrected trace:
+            tracemat_corr= collate_fissa_traces(exp, tiff=fidx, region='cell', trace_type='corrected')
+            tset_corrected = slice_grp.create_dataset('/'.join(['traces', 'np_corrected_fissa']), tracemat_corr.shape, tracemat_corr.dtype)
+            tset_corrected[...] = tracemat_corr
+            tset_corrected.attrs['nframes'] = tracemat_corr.shape[0]
+            tset_corrected.attrs['dims'] = dims
+            tset_corrected.attrs['source'] = exp.folder
+            tset_corrected.attrs['nregions'] = exp.result[0][fidx].shape[0] - 1
+            tset_corrected.attrs['tiff'] = exp.images[fidx]
 
-                # Also save averaged neuropil trace:
-                tracemat_np = collate_fissa_traces(exp, tiff=file_idx, region='neuropil', trace_type='corrected')
-                npil = traces_currfile[slicekey]['traces'].create_dataset('neuropil_fissa', tracemat_np.shape, tracemat_np.dtype)
-                npil[...] = tracemat_np
+            # Also save averaged neuropil trace:
+            tracemat_np = collate_fissa_traces(exp, tiff=fidx, region='neuropil', trace_type='corrected')
+            npil = slice_grp.create_dataset('/'.join(['traces', 'neuropil_fissa']), tracemat_np.shape, tracemat_np.dtype)
+            npil[...] = tracemat_np
 
             # Create hash of current raw tracemat:
             rawfile_hash = hash_file(filetrace_filepath)
             file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
-        
+
         with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
             json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
@@ -1048,8 +1051,7 @@ def create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=
 
     return os.path.join(traceid_dir, 'files')
 
-
-
+#%%
 def append_corrected_fissa(exp, filetrace_dir):
 
     tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
@@ -1058,8 +1060,14 @@ def append_corrected_fissa(exp, filetrace_dir):
     for tfpath in tracefile_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
-        file_idx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
-        print "FISSA -- Appending neurpil corrected traces: File%03d" % int(file_idx+1)
+        fidx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
+        print "FISSA -- Appending neurpil corrected traces: File%03d" % int(fidx+1)
+
+        nvolumes = 1
+        d1, d2 = exp.rois[0][0].shape
+        T = exp.raw[0][0].shape[-1]
+        dims = (d1, d2, T/nvolumes)
+
         try:
             # Append traces:
             for slicekey in traces_currfile.keys():
@@ -1077,17 +1085,17 @@ def append_corrected_fissa(exp, filetrace_dir):
                 if 'np_corrected_fissa' not in traces_currfile[slicekey]['traces'].keys():
                     print "-----> Appending CORRECTED output from FISSA..."
                     # Collate FISSA results to standard trace  mat form: MxN, where M = frame tpoints, N = roi
-                    tracemat_corr = collate_fissa_traces(exp, tiff=file_idx, region='cell', trace_type='corrected')
+                    tracemat_corr = collate_fissa_traces(exp, tiff=fidx, region='cell', trace_type='corrected')
                     corr = traces_currfile[slicekey]['traces'].create_dataset('np_corrected_fissa', tracemat_corr.shape, tracemat_corr.dtype)
                     corr[...] = tracemat_corr
                     corr.attrs['nframes'] = tracemat.shape[0]
                     corr.attrs['dims'] = dims
                     corr.attrs['source'] = exp.folder
-                    corr.attrs['nregions'] = exp.result[0][file_idx].shape[0] - 1
-                    corr.attrs['tiff'] = exp.images[file_idx]
+                    corr.attrs['nregions'] = exp.result[0][fidx].shape[0] - 1
+                    corr.attrs['tiff'] = exp.images[fidx]
 
-                    tracemat_np = collate_fissa_traces(exp, tiff=file_idx, region='neuropil', trace_type='corrected')
-                    npil = traces_currfile[slicekey]['traces'].create_dataset('np_fissa', tracemat_np.shape, tracemat_np.dtype)
+                    tracemat_np = collate_fissa_traces(exp, tiff=fidx, region='neuropil', trace_type='corrected')
+                    npil = traces_currfile[slicekey]['traces'].create_dataset('neuropil_fissa', tracemat_np.shape, tracemat_np.dtype)
                     npil[...] = tracemat_np
                 else:
                     print "-----> Corrected FISSA output already saved."
@@ -1098,13 +1106,12 @@ def append_corrected_fissa(exp, filetrace_dir):
         finally:
             traces_currfile.close()
 
-
     return filetrace_dir
 
 #%%
 def extract_traces(options):
-#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
-#            '-t', 'traces003', '--append', '--no-pupil']
+    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
+            '-t', 'traces004', '--neuropil=fissa', '--append', '--no-pupil']
 
     # Set USER INPUT options:
     options = extract_options(options)
@@ -1140,32 +1147,27 @@ def extract_traces(options):
 
     print "======================================================================="
     print "Trace Set: %s -- Starting trace extraction..." % trace_id
-    #t_start = time.time()
+    t_start = time.time()
 
 
     #% Get meta info for run:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-
-    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
     si_info = get_frame_info(run_dir)
-
 
     # Load specified trace-ID parameter set:
     # =============================================================================
     trace_dir = os.path.join(run_dir, 'traces')
     tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
-
     if not os.path.exists(trace_dir):
         os.makedirs(trace_dir)
-    print "RUN DIR:", run_dir
+    #print "RUN DIR:", run_dir
     TID = load_TID(run_dir, trace_id, auto=auto)
 
     #%
     # Get source tiff paths using trace-ID params:
     # =============================================================================
     trace_hash = TID['trace_hash']
-
     tiff_dir = TID['SRC']
     roi_name = TID['PARAMS']['roi_id']
     if rootdir not in tiff_dir:
@@ -1175,16 +1177,13 @@ def extract_traces(options):
         print "Making tif files NONNEGATIVE..."
         orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
         tiff_dir = make_nonnegative(orig_tiff_dir)
-    
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 
-            
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
 
     #%
     # Create output dirs and files:
     # =============================================================================
-
     traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
     filetrace_dir = os.path.join(traceid_dir, 'files')
     if not os.path.exists(filetrace_dir):
@@ -1216,7 +1215,6 @@ def extract_traces(options):
     else:
         rid_dst = RID['DST']
         notnative = False
-
     mask_path = os.path.join(rid_dst, 'masks.hdf5')
 
     print "TID %s -- Getting mask info..." % trace_hash
@@ -1229,7 +1227,7 @@ def extract_traces(options):
         normalize_rois = True
     elif RID['roi_type'] in normalize_roi_types:
         normalize_rois = True
-    maskinfo = get_mask_info(mask_path, ntiffs=len(tiff_files), excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
+    maskinfo = get_mask_info(mask_path, ntiffs=len(tiff_files), nslices=si_info['nslices'], excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
 
     # Check if formatted MASKS dict exists and load, otherwise, create new:
     maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
@@ -1278,25 +1276,25 @@ def extract_traces(options):
 
 
     if np_method == 'fissa':
-
-        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
-        print "Nfiles:", len(exp.rois)
-        print "Nrois:", len(exp.rois[0])
-        print "Nresults:", len(exp.result) 
-        print "Nmeans:", exp.nTrials
+        if create_new is True:
+            redo_prep=True; redo_sep=True
+        else:
+            redo_prep=False; redo_sep=False
+        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, redo_prep=redo_prep, redo_sep=redo_sep)
+        print "N files:", len(exp.rois)
+        print "N rois:", len(exp.rois[0])
+        print "N results:", len(exp.result)
+        print "N means:", len(exp.means)
         # Create TRACEFILE files for each .tif, if none exist yet:
         tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
         if not len(tracefile_fpaths) == len(maskfigs):
-            filetrace_dir = create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=rootdir)
-
+            filetrace_dir = create_tracefiles_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=rootdir)
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
             create_new = True
-             
         else:
-            aappend_trace_type = True
+            append_trace_type = True
             create_new = True
-
 
     # Append non-raw traces, if relevant:
     if append_trace_type:
@@ -1325,16 +1323,18 @@ def extract_traces(options):
 
     #%
     print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
-    #print_elapsed_time(t_start)
+    print_elapsed_time(t_start)
     print "======================================================================="
 
-    return extract_filtered_traces
+    return roi_tcourse_filepath, extract_filtered_traces
 
 
 #%% GET PLOTS:
 def main(options):
     #options = extract_options(options)
-    extract_filtered_traces = extract_traces(options)
+    roi_tcourse_filepath, extract_filtered_traces = extract_traces(options)
+    print "DONE extracting traces!"
+    print "Output saved to:\n---> %s" % roi_tcourse_filepath
 
     if extract_filtered_traces is True:
         print "*** Creating ROI dataframes ***"
