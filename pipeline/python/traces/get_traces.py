@@ -915,16 +915,16 @@ def roi_list_to_array(roi_list, normalize_rois=True):
 
 
 
-def create_tracefiles_from_fissa(exp, filetrace_dir):
+def create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=''):
     file_grp = None
 
     session_dir = RID['DST'].split('/ROIs/')[0]
     info = get_info_from_tiff_dir(TID['SRC'], session_dir)
 
-#    nchannels = si_info['nchannels']
-    nslices = si_info['nslices']
-#    nvolumes = si_info['nvolumes']
-#    frames_tsec = si_info['frames_tsec']
+    nchannels = si_info['nchannels']
+    nslices = 1 #si_info['nslices']
+    nvolumes = si_info['nvolumes']
+    frames_tsec = si_info['frames_tsec']
 
     #roi_slices = maskinfo['roi_slices']
     tiff_dir = TID['SRC']
@@ -938,17 +938,21 @@ def create_tracefiles_from_fissa(exp, filetrace_dir):
     traceid_dir = TID['DST']
     if rootdir not in traceid_dir:
         traceid_dir = replace_root(traceid_dir, rootdir, info['animalid'], info['session'])
+ 
+    d1, d2 = exp.rois[0][0].shape
+    T = exp.raw[0][0].shape[-1]
 
     tiff_fpaths = exp.images
     try:
         for fidx, tfn in enumerate(tiff_fpaths):
+            sl = 0
 
             curr_file = str(re.search(r"File\d{3}", tfn).group())
             if curr_file in TID['PARAMS']['excluded_tiffs']:
                 print "***Skipping %s -- excluded from ROI set %s" % (curr_file, RID['roi_id'])
                 continue
 
-            print "Formatting traces file: %s" % curr_file
+            print "Formatting traces file (idx %i): %s" % (fidx, curr_file)
 
             # Create outfile:
             filetrace_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
@@ -962,6 +966,10 @@ def create_tracefiles_from_fissa(exp, filetrace_dir):
 
             # Only done on 2D with FISSA, but keep slice group for consistency:
             curr_slice = 'Slice%02d' % int(sl+1)
+            if curr_slice not in file_grp.keys():
+                slice_grp = file_grp.create_group(curr_slice)
+            else:
+                slice_grp = file_grp[curr_slice]
 
             # Get frame tstamps:
             curr_tstamps = np.array(frames_tsec)
@@ -982,6 +990,7 @@ def create_tracefiles_from_fissa(exp, filetrace_dir):
                 mset.attrs['src_roi_idxs'] = np.arange(0, maskarray.shape[-1])
 
                 # Save zproj img:
+                print "NFILES: %i" % len(exp.means)
                 zproj = exp.means[fidx]
                 if 'zproj' not in slice_grp.keys():
                     zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
@@ -1018,6 +1027,11 @@ def create_tracefiles_from_fissa(exp, filetrace_dir):
             # Create hash of current raw tracemat:
             rawfile_hash = hash_file(filetrace_filepath)
             file_hashdict[os.path.splitext(filetrace_fn)[0]] = rawfile_hash
+        
+        with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
+            json.dump(file_hashdict, f, indent=4, sort_keys=True)
+
+
     except Exception as e:
         print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
         traceback.print_exc()
@@ -1026,9 +1040,6 @@ def create_tracefiles_from_fissa(exp, filetrace_dir):
         if file_grp is not None:
             file_grp.close()
         #maskfile.close()
-
-    with open(os.path.join(traceid_dir, 'files', 'filetrace_info_%s.json' % TID['trace_hash']), 'w') as f:
-        json.dump(file_hashdict, f, indent=4, sort_keys=True)
 
     #%
     print "TID %s -- Finished compiling trace arrays across files" % TID['trace_hash']
@@ -1269,11 +1280,14 @@ def extract_traces(options):
     if np_method == 'fissa':
 
         exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
-        
+        print "Nfiles:", len(exp.rois)
+        print "Nrois:", len(exp.rois[0])
+        print "Nresults:", len(exp.result) 
+        print "Nmeans:", exp.nTrials
         # Create TRACEFILE files for each .tif, if none exist yet:
         tracefile_fpaths = sorted([os.path.join(filetrace_dir, t) for t in os.listdir(filetrace_dir) if t.endswith('hdf5')], key=natural_keys)
-        if len(tracefile_fpaths) == 0:
-            filetrace_dir = create_tracefiles_from_fissa(exp, filetrace_dir)
+        if not len(tracefile_fpaths) == len(maskfigs):
+            filetrace_dir = create_tracefiles_from_fissa(TID, RID, si_info, exp, filetrace_dir, rootdir=rootdir)
 
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
