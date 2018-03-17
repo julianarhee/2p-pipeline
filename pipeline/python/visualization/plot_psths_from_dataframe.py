@@ -492,7 +492,7 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
 
 def extract_options(options):
 
-    choices_tracetype = ('raw', 'denoised_nmf')
+    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa')
     default_tracetype = 'raw'
 
     parser = optparse.OptionParser()
