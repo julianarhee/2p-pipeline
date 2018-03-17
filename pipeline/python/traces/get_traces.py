@@ -786,18 +786,18 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
             for filetraces_fn in sorted(filetraces_fns, key=natural_keys):
                 fidx_in_run = int(filetraces_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
                 curr_frame_idx = tiff_start_fridxs[fidx_in_run]
-                print "Loading file:", filetrace_fn
+                print "Loading file:", filetraces_fn
                 filetraces = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
 
                 roi_counter = 0
                 for currslice in sorted(filetraces.keys(), key=natural_keys):
                     print "Loading slice:", currslice
-                    maskarray = filetrace[currslice]['masks']
+                    maskarray = filetraces[currslice]['masks']
                     d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
                     T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
-                    src_roi_idxs = filetrace[currslice]['masks'].attrs['src_roi_idxs']
-                    nr = filetrace[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
-                    nb = filetrace[currslice]['masks'].attrs['nb']
+                    src_roi_idxs = filetraces[currslice]['masks'].attrs['src_roi_idxs']
+                    nr = filetraces[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
+                    nb = filetraces[currslice]['masks'].attrs['nb']
                     ncomps = nr + nb
                     masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
 
@@ -816,7 +816,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                         if roiname not in roi_outfile.keys():
                             roi_grp = roi_outfile.create_group(roiname)
                             roi_grp.attrs['slice'] = currslice
-                            roi_grp.attrs['roi_img_path'] = filetrace[currslice]['zproj'].attrs['img_source']
+                            roi_grp.attrs['roi_img_path'] = filetraces[currslice]['zproj'].attrs['img_source']
                         else:
                             roi_grp = roi_outfile[roiname]
 
@@ -830,7 +830,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                             roi_mask.attrs['is_background'] = is_background
 
                         # Add time courses:
-                        trace_types = filetrace[currslice]['traces'].keys()
+                        trace_types = filetraces[currslice]['traces'].keys()
                         if 'timecourse' not in roi_grp.keys():
                             tcourse_grp = roi_grp.create_group('timecourse')
                         else:
@@ -838,17 +838,17 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 
                         for trace_type in trace_types:
                             print "---> Sorting %s" % trace_type
-                            curr_tcourse = filetrace[currslice]['traces'][trace_type][:, ridx]
+                            curr_tcourse = filetraces[currslice]['traces'][trace_type][:, ridx]
                             if trace_type not in tcourse_grp.keys():
                                 roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_tcourse.dtype)
                             else:
                                 roi_tcourse = tcourse_grp[trace_type]
                             roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
-                            roi_tcourse.attrs['source_file'] = os.path.join(traceid_dir, 'files', filetrace_fn)
+                            roi_tcourse.attrs['source_file'] = os.path.join(traceid_dir, 'files', filetraces_fn)
 
-                        print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetrace_fn)
+                        print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetraces_fn)
         except Exception as e:
-            print "--- TID %s: ERROR extracting traces from file %s..." % (TID['trace_hash'], filetrace_fn)
+            print "--- TID %s: ERROR extracting traces from file %s..." % (TID['trace_hash'], filetraces_fn)
             traceback.print_exc()
         finally:
             roi_outfile.close()
@@ -958,7 +958,7 @@ def collate_fissa_traces(exp, tiff=0, region='cell', trace_type='corrected'):
     tracemat = np.empty((nframes, nrois))
     if trace_type == 'corrected':
         for ridx in range(len(exp.result)):
-            if not isinstance(result_trace_idx, int):
+            if isinstance(result_trace_idx, int):
                 tracemat[:, ridx] = exp.result[ridx][tiff][result_trace_idx,:]
             else:
                 tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
@@ -996,7 +996,7 @@ def make_nonnegative(images_dir):
 
 #%%
 
-def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_prep=True, redo_sep=False):
+def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_prep=False, redo_sep=False, append_only=False):
     session_dir = RID['DST'].split('/ROIs/')[0]
     info = get_info_from_tiff_dir(TID['SRC'], session_dir)
 
@@ -1040,11 +1040,11 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
     exp.separate(redo_prep=redo_prep, redo_sep=redo_sep) # To redo:  experiment.separate(redo_prep=True, redo_sep=True)
 
     # Check that 'means" is stored (not saved if redo):
-    if len(exp.means) == 0:
+    if len(exp.means) == 0 and append_only is False:
         #exp.separate(redo_prep=True)
         for trial in range(exp.nTrials):
             curdata = fissa.datahandler.image2array(exp.images[trial])
-            exp.means += fissa.datahandler.getmean(curdata)
+            exp.means.append(np.array(fissa.datahandler.getmean(curdata)))
 
     return exp
 #%%
@@ -1068,7 +1068,7 @@ def roi_list_to_array(roi_list, normalize_rois=True):
     return maskarray
 
 #%%
-def create_filetraces_from_fissa(exp, TID, RID, si_info, filetrace_dir, rootdir=''):
+def create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir=''):
     file_grp = None
 
     session_dir = RID['DST'].split('/ROIs/')[0]
@@ -1449,7 +1449,8 @@ def extract_traces(options):
 
     # Append non-raw traces, if relevant:
     if append_trace_type:
-        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep)
+        print "Appending!"
+        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, append_only=True)
         filetraces_dir = append_corrected_fissa(exp, filetraces_dir)
 
     #%
