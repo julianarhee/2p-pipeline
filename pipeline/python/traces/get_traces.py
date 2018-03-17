@@ -986,8 +986,29 @@ def make_nonnegative(images_dir):
         tiff = tf.imread(os.path.join(images_dir, tiff_list[i]))
 
         # Make tif nonnegative:
-        if tiff.min() < 0:
-            tiff = tiff - tiff.min()
+        #if tiff.min() < 0:
+        tiff = tiff - tiff.min()
+
+        # Write tif to new directory:
+        tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff)
+
+    return images_dir_nonneg
+#%%
+def make_unsigned(images_dir):
+
+    tiff_list = sorted([t for t in os.listdir(images_dir) if t.endswith('tif')], key=natural_keys)
+
+    images_dir_nonneg = '%s_unsigned' % images_dir
+    if not os.path.exists(images_dir_nonneg):
+        os.makedirs(images_dir_nonneg)
+
+    for i in range(len(tiff_list)):
+        print "Processing %i of %i tiffs." % (int(i+1), len(tiff_list))
+        tiff = tf.imread(os.path.join(images_dir, tiff_list[i]))
+
+        # Make tif nonnegative:
+        #if tiff.min() < 0:
+        tiff = tiff + 32768 #- tiff.min()
 
         # Write tif to new directory:
         tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff)
@@ -1030,10 +1051,14 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
     #images_dir = '%s_nonnegative' % tiff_src_dir
     images_dir = tiff_src_dir
     if not os.path.exists(images_dir) or not len([t for t in os.listdir(images_dir) if t.endswith('tif')]) == ntiffs_in_src:
-        if 'nonnegative' in tiff_src_dir:
+        if '_nonnegative' in tiff_src_dir:
             print "Making tif files NONNEGATIVE..."
             src_img_dir = images_dir.split('_nonnegative')[0]
             images_dir = make_nonnegative(src_img_dir)
+        elif '_unsigned' in tiff_src_dir:
+            print "Making tif files unsigned..."
+            src_img_dir = images_dir.split('_unsigned')[0]
+            images_dir = make_unsigned(src_img_dir)
 
     # Extract raw & corrected traces with FISSA:
     exp = fissa.Experiment(str(images_dir), roi_list, output_dir, ncores_preparation=ncores_prep, ncores_separation=ncores_sep)
@@ -1328,6 +1353,11 @@ def extract_traces(options):
         print "Making tif files NONNEGATIVE..."
         orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
         tiff_dir = make_nonnegative(orig_tiff_dir)
+    elif '_unsigned' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files psuedo unsigned..."
+        orig_tiff_dir = tiff_dir.split('_unsigned')[0]
+        tiff_dir = make_unsigned(orig_tiff_dir)
+
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
