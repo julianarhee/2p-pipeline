@@ -278,6 +278,7 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
         for tiffnum in range(si_info['ntiffs']): #ntiffs):
             trial_in_file = 0
             currfile= "File%03d" % int(tiffnum+1)
+            print currfile, trial_in_file
 
             if trial_info['custom_mw'] is True:
                 stimorder_fns = trial_info['simorder_source']
@@ -513,6 +514,7 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
 
     # Get presentation info (should be constant across trials and files):
     trial_list = sorted(trialdict.keys(), key=natural_keys)
+    print "PARSING %i trials" % len(trial_list)
     vol_idxs = si_info['vol_idxs']
 
     # Load ROI timecourses file -- this should exist in TRACEID DIR:
