@@ -948,28 +948,45 @@ def collate_fissa_traces(exp, tiff=0, region='cell', trace_type='corrected'):
     nregions = exp.result[0][tiff].shape[0]
     nregions_np = nregions - 1
 
-    if region=='cell':
-        result_trace_idx = 0
-        raw_trace_idx = 0
-    else:
-        result_trace_idx = np.arange(1, nregions)
-        raw_trace_idx = np.arange(1, nregions)
+#    if region=='cell':
+#        result_trace_idx = 0
+#        raw_trace_idx = 0
+#    else:
+#        result_trace_idx = np.arange(1, nregions)
+#        raw_trace_idx = np.arange(1, nregions)
 
 
     tracemat = np.empty((nframes, nrois))
-    if trace_type == 'corrected':
-        for ridx in range(len(exp.result)):
-            if isinstance(result_trace_idx, int):
-                tracemat[:, ridx] = exp.result[ridx][tiff][result_trace_idx,:]
-            else:
-                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
+    for ridx in range(len(exp.result)):
+        meandiffs = [abs(np.mean(exp.raw[ridx][tiff][0,:]) - np.mean(exp.result[ridx][tiff][i,:]))
+                                for i in range(len(exp.result[ridx][tiff]))]
+        if region == 'cell':
+            region_index = meandiffs.index(np.min(meandiffs))
+            if trace_type == 'corrected':
+                tracemat[:, ridx] = exp.result[ridx][tiff][region_index,:]
+            elif trace_type == 'raw':
+                tracemat[:, ridx] = exp.raw[ridx][tiff][region_index,:]
+        else:
+            region_index = [i for i in range(len(meandiffs)) if not i==meandiffs.index(np.min(meandiffs))]
+            if trace_type == 'corrected':
+                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][region_index,:], axis=0)
+            elif trace_type == 'raw':
+                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][region_index,:], axis=0)
 
-    elif trace_type == 'raw':
-        for ridx in range(len(exp.result)):
-            if isinstance(raw_trace_idx, int):
-                tracemat[:, ridx] = exp.raw[ridx][tiff][raw_trace_idx,:]
-            else:
-                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][raw_trace_idx,:], axis=0)
+
+#    if trace_type == 'corrected':
+#        for ridx in range(len(exp.result)):
+#            if isinstance(result_trace_idx, int):
+#                tracemat[:, ridx] = exp.result[ridx][tiff][result_trace_idx,:]
+#            else:
+#                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
+#
+#    elif trace_type == 'raw':
+#        for ridx in range(len(exp.result)):
+#            if isinstance(raw_trace_idx, int):
+#                tracemat[:, ridx] = exp.raw[ridx][tiff][raw_trace_idx,:]
+#            else:
+#                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][raw_trace_idx,:], axis=0)
 
     return tracemat
 
