@@ -895,7 +895,7 @@ def extract_options(options):
     parser.add_option('--append', action="store_true",
                       dest="append_trace_type", default=False, help="Set flag to append non-default trace type to trace structs.")
     parser.add_option('--neuropil', action="store",
-                      dest="np_method", default='fissa', help="Method for neuropil correction (default: fissa)")
+                      dest="np_method", default=None, help="Method for neuropil correction (default: fissa)")
     parser.add_option('-N', '--ncores', action="store",
                       dest="ncores", default=2, help="N cores to use for FISSA prep and separation [default: 2, 4. If slurm, 1]")
 
