@@ -44,6 +44,7 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
+    parser.add_option('--nonneg', action='store_true', dest='make_nonnegative', default=False, help="Set if want to make .tifs non-negative (FISSA)")
 
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="Name of folder containing tiffs to be processed (ex: processed001). Should be child of <run>/processed/")
     parser.add_option('-t', '--source-type', type='choice', choices=choices_sourcetype, action='store', dest='sourcetype', default=default_sourcetype, help="Type of tiff source. Valid choices: %s [default: %s]" % (choices_sourcetype, default_sourcetype))
@@ -86,6 +87,7 @@ def create_tid(options):
     auto = options.default
 
     signal_channel = options.signal_channel
+    make_nonnegative = options.make_nonnegative
 
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=homedir, animalid=animalid, session=session,
@@ -106,6 +108,9 @@ def create_tid(options):
 
     # Create trace-params dict with source and ROI set:
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
+    if make_nonnegative is True:
+        tiff_sourcedir = '%s_nonnegative' % tiff_sourcedir
+
     # Check if there are any TIFFs to exclude:
     orig_roi_dst = RID['DST']
     if homedir not in orig_roi_dst:
@@ -120,7 +125,7 @@ def create_tid(options):
     excluded_tiffs = roiparams['excluded_tiffs']
 
     PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs,
-                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
+                             notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto, make_nonnegative=make_nonnegative)
 
     # Create TRACE ID (TID):
     TID = initialize_tid(PARAMS, run_dir, notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
@@ -152,7 +157,7 @@ def create_tid(options):
 
 
 def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[],
-                    notnative=False, rootdir='', homedir='', auto=False):
+                    notnative=False, rootdir='', homedir='', auto=False, make_nonnegative=False):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
     PARAMS['excluded_tiffs'] = excluded_tiffs
@@ -160,6 +165,7 @@ def get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=[],
     PARAMS['roi_id'] = RID['roi_id']
     PARAMS['rid_hash'] = RID['rid_hash']
     PARAMS['roi_type'] = RID['roi_type']
+    PARAMS['nonnegative'] = make_nonnegative
 
     # Replace PARAM paths with processing-machine paths:
     if notnative is True:
