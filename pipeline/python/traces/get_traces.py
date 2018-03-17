@@ -1043,8 +1043,8 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
     if len(exp.means) == 0:
         #exp.separate(redo_prep=True)
         for trial in range(exp.nTrials):
-            curdata = datahandler.image2array(exp.images[trial])
-            exp.means += datahandler.getmean(curdata)
+            curdata = fissa.datahandler.image2array(exp.images[trial])
+            exp.means += fissa.datahandler.getmean(curdata)
 
     return exp
 #%%
