@@ -47,6 +47,8 @@ from pipeline.python.traces.utils import load_TID, get_metric_set
 from pipeline.python.paradigm.align_acquisition_events import get_stimulus_configs, set_pupil_params
 pp = pprint.PrettyPrinter(indent=4)
 
+def get_axis_limits(ax, xscale=.9, yscale=0.9):
+    return ax.get_xlim()[1]*xscale, ax.get_ylim()[1]*yscale
 
 #def set_subplot_order(configs, stimtype, universal_scale=False):  # in percentage of the figure height
 #    plot_info = {}
@@ -203,7 +205,9 @@ def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth',
 def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath):
 
     config_list = list(set(DF['config']))
-
+    # Add n trials to each subplot:
+    ntrials = dict((c, len(list(set(DF[DF['config']==c]['trial'])))) for c in config_list)
+    
     first_on = list(set(DF['first_on']))[0]
     nsecs_on = list(set(DF['nsecs_on']))[0]
     tsecs = sorted(list(set(DF['tsec'])))
@@ -219,6 +223,7 @@ def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar
         currax = g1.facet_axis(plotstats['indices'][config][0], plotstats['indices'][config][1])
         currax.plot(tsecs, meandfs[config], trace_color, linewidth=1, alpha=1)
         currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
+        currax.annotate("n = %i" % ntrials[config], xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
 
     sns.despine(offset=2, trim=True)
     #%
@@ -283,14 +288,17 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
     if filter_pupil is True and pupil_params is None:
         pupil_params = set_pupil_params()
     pupil_max_nblinks = pupil_params['max_nblinks']
-    pupil_size_thr = pupil_params['size_thr']
-    pupil_dist_thr = pupil_params['dist_thr']
+    pupil_radius_min = float(pupil_params['radius_min'])
+    pupil_radius_max = float(pupil_params['radius_max'])
+    #pupil_size_thr = pupil_params['size_thr']
+    pupil_dist_thr = float(pupil_params['dist_thr'])
 
     roi_psth_dir_all = os.path.join(roi_psth_dir, 'unfiltered')
     if not os.path.exists(roi_psth_dir_all):
         os.makedirs(roi_psth_dir_all)
     if filter_pupil is True:
-        pupil_thresh_str = 'pupil_size%i-dist%i-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
+        #pupil_thresh_str = 'pupil_size%i-dist%i-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
+        pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
         roi_psth_dir_include = os.path.join(roi_psth_dir, pupil_thresh_str, 'include')
         if not os.path.exists(roi_psth_dir_include):
             os.makedirs(roi_psth_dir_include)
@@ -325,12 +333,21 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
 
                 # Plot df values:
             if filter_pupil is True:
-                filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
-                                       & pupil_size_baseline > @pupil_size_thr \
+                filtered_DF = DF.query('pupil_size_stimulus > @pupil_radius_min \
+                                       & pupil_size_baseline > @pupil_radius_min \
+                                       & pupil_size_stimulus < @pupil_radius_max \
+                                       & pupil_size_baseline < @pupil_radius_max \
                                        & pupil_dist_stimulus < @pupil_dist_thr \
                                        & pupil_dist_baseline < @pupil_dist_thr \
-                                       & pupil_nblinks_stim < @pupil_max_nblinks \
-                                       & pupil_nblinks_baseline < @pupil_max_nblinks')
+                                       & pupil_nblinks_stim <= @pupil_max_nblinks \
+                                       & pupil_nblinks_baseline >= @pupil_max_nblinks')
+#
+#                filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
+#                                       & pupil_size_baseline > @pupil_size_thr \
+#                                       & pupil_dist_stimulus < @pupil_dist_thr \
+#                                       & pupil_dist_baseline < @pupil_dist_thr \
+#                                       & pupil_nblinks_stim < @pupil_max_nblinks \
+#                                       & pupil_nblinks_baseline < @pupil_max_nblinks')
                 pass_trials = list(set(filtered_DF['trial']))
 
                 # INCLUDED trials:
@@ -536,12 +553,12 @@ def extract_options(options):
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
                       dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-r', '--rad', action="store",
-                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
+    parser.add_option('-s', '--radius-min', action="store",
+                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+    parser.add_option('-B', '--radius-max', action="store",
+                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
     parser.add_option('-d', '--dist', action="store",
                       dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-    parser.add_option('-b', '--blinks', action="store",
-                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
 
     (options, args) = parser.parse_args(options)
 
@@ -579,9 +596,9 @@ def plot_roi_figures(options):
     roi_metric = options.roi_metric
 
     filter_pupil = options.filter_pupil
-    pupil_size_thr = float(options.pupil_size_thr)
+    pupil_radius_max = float(options.pupil_radius_max)
+    pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
-    pupil_max_nblinks = float(options.pupil_max_nblinks)
 
     plot_psth = options.psth
     plot_tuning = options.tuning
@@ -613,9 +630,10 @@ def plot_roi_figures(options):
 
     # Load particular metrics set:
     selected_metric = get_metric_set(traceid_dir, filter_pupil=filter_pupil,
-                                         pupil_size_thr=pupil_size_thr,
-                                         pupil_dist_thr=pupil_dist_thr,
-                                         pupil_max_nblinks=pupil_max_nblinks)
+                                         pupil_radius_min=pupil_radius_min,
+                                         pupil_radius_max=pupil_radius_max,
+                                         pupil_dist_thr=pupil_dist_thr
+                                         )
 
     # Load associated pupil_params set:
     with open(os.path.join(traceid_dir, 'metrics', selected_metric, 'pupil_params.json'), 'r') as f:

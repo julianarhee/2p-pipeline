@@ -29,13 +29,15 @@ from pipeline.python.utils import natural_keys, hash_file_read_only, print_elaps
 pp = pprint.PrettyPrinter(indent=4)
 
 
-def get_metric_set(traceid_dir, filter_pupil=True, pupil_size_thr=None,
-                       pupil_dist_thr=None, pupil_max_nblinks=None, auto=False):
+def get_metric_set(traceid_dir, filter_pupil=True, pupil_radius_min=None, pupil_radius_max=None,
+                       pupil_dist_thr=None, auto=False):
 
     metrics_dir = os.path.join(traceid_dir, 'metrics')
     metric_list = [m for m in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, m))]
     if filter_pupil is True:
-        metric_desc_base = 'pupil_size%i-dist%i-blinks%i_' % (pupil_size_thr, pupil_dist_thr, pupil_max_nblinks)
+        #metric_desc_base = 'pupil_size%i-dist%i-blinks%i_' % (pupil_size_thr, pupil_dist_thr, pupil_max_nblinks)
+        metric_desc_base = 'pupil_rmin%.2f-rmax%.2f-dist%.2f_' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
+
     else:
         metric_desc_base = 'unfiltered_'
 

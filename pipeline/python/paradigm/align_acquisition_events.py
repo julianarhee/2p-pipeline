@@ -904,8 +904,9 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                                        & pupil_size_baseline < @pupil_radius_max \
                                        & pupil_dist_stimulus < @pupil_dist_thr \
                                        & pupil_dist_baseline < @pupil_dist_thr \
-                                       & pupil_nblinks_stim < @pupil_max_nblinks \
-                                       & pupil_nblinks_baseline == @pupil_max_nblinks')
+                                       & pupil_nblinks_stim <= @pupil_max_nblinks \
+                                       & pupil_nblinks_baseline >= @pupil_max_nblinks')
+                print "FILTERED:", len(filtered_DF)
                 pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                 fail_trials = sorted([t for t in trial_list if t not in pass_trials], key=natural_keys)
             else:
@@ -1350,7 +1351,7 @@ def create_roi_dataframes(options):
     pupil_radius_max = float(options.pupil_radius_max)
     pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
-    pupil_max_nblinks = float(options.pupil_max_nblinks)
+    #pupil_max_nblinks = float(options.pupil_max_nblinks)
 
     #roi_metric = options.roi_metric
     #%
