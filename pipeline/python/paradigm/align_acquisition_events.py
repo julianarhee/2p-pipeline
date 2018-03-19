@@ -527,7 +527,7 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
 
     # Get trial list:
     trial_list = sorted(parsed_frames.keys(), key=natural_keys)
-    print "PARSING %i trials" % len(trial_list) 
+    print "PARSING %i trials" % len(trial_list)
 
     # Check for stimulus configs:
     configs, stimtype = get_stimulus_configs(trial_info)
@@ -833,16 +833,18 @@ def load_eye_data(run_dir):
     return eye_info
 
 #%%
-def set_pupil_params(size_thr=30, dist_thr=8, max_nblinks=2, create_empty=False):
+def set_pupil_params(radius_min=30, radius_max=60, dist_thr=8, create_empty=False):
     pupil_params = dict()
     if create_empty is True:
-        pupil_params['size_thr'] = None
+        pupil_params['radius_min'] = None
+        pupil_params['radius_max'] = None
         pupil_params['dist_thr'] = None
-        pupil_params['max_nblinks']= None
+        pupil_params['max_nblinks']= 0
     else:
-        pupil_params['size_thr'] = size_thr
+        pupil_params['radius_min'] = radius_min
+        pupil_params['radius_max'] = radius_max
         pupil_params['dist_thr'] = dist_thr
-        pupil_params['max_nblinks']= max_nblinks
+        pupil_params['max_nblinks']= 0
 
     # Generate hash ID for current pupil params set
     pupil_params_hash = hash(json.dumps(pupil_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
@@ -870,7 +872,8 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
     if filter_pupil is True and pupil_params is None:
         pupil_params = set_pupil_params(create_empty=False)
-    pupil_size_thr = pupil_params['size_thr']
+    pupil_radius_min = pupil_params['radius_min']
+    pupil_radius_max = pupil_params['radius_max']
     pupil_dist_thr = pupil_params['dist_thr']
     pupil_max_nblinks = pupil_params['max_nblinks']
 
@@ -895,12 +898,14 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
             trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
 
             if filter_pupil is True:
-                filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
-                                       & pupil_size_baseline > @pupil_size_thr \
+                filtered_DF = DF.query('pupil_size_stimulus > @pupil_radius_min \
+                                       & pupil_size_baseline > @pupil_radius_min \
+                                       & pupil_size_stimulus < @pupil_radius_max \
+                                       & pupil_size_baseline < @pupil_radius_max \
                                        & pupil_dist_stimulus < @pupil_dist_thr \
                                        & pupil_dist_baseline < @pupil_dist_thr \
                                        & pupil_nblinks_stim < @pupil_max_nblinks \
-                                       & pupil_nblinks_baseline < @pupil_max_nblinks')
+                                       & pupil_nblinks_baseline == @pupil_max_nblinks')
                 pass_trials = sorted(list(set(filtered_DF['trial'])), key=natural_keys)
                 fail_trials = sorted([t for t in trial_list if t not in pass_trials], key=natural_keys)
             else:
@@ -999,7 +1004,8 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, trace_type='raw', fi
         if pupil_params is None:
             print "No pupil params provided. Using default..."
             pupil_params = set_pupil_params(create_empty=False)
-        metric_desc = 'pupil_size%i-dist%i-blinks%i_%s' % (pupil_params['size_thr'], pupil_params['dist_thr'], pupil_params['max_nblinks'], pupil_params['hash'])
+        #metric_desc = 'pupil_size%i-dist%i-blinks%i_%s' % (pupil_params['size_thr'], pupil_params['dist_thr'], pupil_params['max_nblinks'], pupil_params['hash'])
+        metric_desc = 'pupil_rmin%.2f-rmax%.2f-dist%.2f_%s' % (pupil_params['radius_min'], pupil_params['radius_max'], pupil_params['dist_thr'], pupil_params['hash'])
     elif filter_pupil is False:
         pupil_params = set_pupil_params(create_empty=True)
         metric_desc = 'unfiltered_%d' % pupil_params['hash']
@@ -1299,12 +1305,14 @@ def extract_options(options):
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
                       dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-r', '--rad', action="store",
-                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
+    parser.add_option('-s', '--radius-min', action="store",
+                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+    parser.add_option('-B', '--radius-max', action="store",
+                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
     parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-    parser.add_option('-x', '--blinks', action="store",
-                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
+                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#    parser.add_option('-x', '--blinks', action="store",
+#                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
 
 
     (options, args) = parser.parse_args(options)
@@ -1338,7 +1346,9 @@ def create_roi_dataframes(options):
 
     #use_errorbar = options.use_errorbar
     filter_pupil = options.filter_pupil
-    pupil_size_thr = float(options.pupil_size_thr)
+    #pupil_size_thr = float(options.pupil_size_thr)
+    pupil_radius_max = float(options.pupil_radius_max)
+    pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
     pupil_max_nblinks = float(options.pupil_max_nblinks)
 
@@ -1402,9 +1412,9 @@ def create_roi_dataframes(options):
             filter_pupil = False
             pupil_params = None
         else:
-            pupil_params = set_pupil_params(size_thr=pupil_size_thr,
+            pupil_params = set_pupil_params(radius_min=pupil_radius_min,
+                                            radius_max=pupil_radius_max,
                                             dist_thr=pupil_dist_thr,
-                                            max_nblinks=pupil_max_nblinks,
                                             create_empty=False)
             print "Pupil params requested:"
             pp.pprint(pupil_params)
