@@ -108,6 +108,7 @@ def format_si_value(value):
                     value = [[float(i) for i in re.findall(num_format, row)] for row in rows]
                 else:
                     value = [float(i) for i in re.findall(num_format, tmpvalue)]
+            return value
         else:
             return value
 
