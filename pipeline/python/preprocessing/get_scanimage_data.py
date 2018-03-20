@@ -20,7 +20,7 @@ mpl.use('TKAgg')
 from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
-from pipeline.python.utils import write_dict_to_json
+from pipeline.python.utils import write_dict_to_json, isreadonly
 
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from caiman.utils import utils
@@ -228,7 +228,8 @@ def get_meta(options):
             currtiffpath = os.path.join(rawtiff_dir, rawtiff)
 
             # Make sure TIFF is READ ONLY:
-            os.chmod(currtiffpath, S_IREAD|S_IRGRP|S_IROTH)  
+            if not isreadonly(currtiffpath):
+                os.chmod(currtiffpath, S_IREAD|S_IRGRP|S_IROTH)  
 
             scanimage_metadata[curr_file] = {'SI': None}
 
@@ -276,7 +277,8 @@ def get_meta(options):
 
         # Make sure SIMETA data is now read-only:
         if new_acquisition is True:
-            os.chmod(os.path.join(rawtiff_dir, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
+            if not isreadonly(os.path.join(rawtiff_dir, raw_simeta_json)): 
+                os.chmod(os.path.join(rawtiff_dir, raw_simeta_json), S_IREAD|S_IRGRP|S_IROTH)
 
     # Create REFERENCE info file or overwrite relevant fields, if exists: 
     #if new_acquisition is True:

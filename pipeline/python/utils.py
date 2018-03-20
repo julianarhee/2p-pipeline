@@ -306,12 +306,18 @@ def get_file_size(file_path):
         file_info = os.stat(file_path)
         return convert_bytes(file_info.st_size)
 
+def isreadonly(filepath):
+    st = os.stat(filepath)
+    status = bool(bool(st.st_mode & S_IREAD) & bool(st.st_mode & S_IRGRP) & bool(st.st_mode & S_IROTH))
+    return status
+
 def change_permissions_recursive(path, mode):
     for root, dirs, files in os.walk(path, topdown=False):
         #for dir in [os.path.join(root,d) for d in dirs]:
             #os.chmod(dir, mode)
         for file in [os.path.join(root, f) for f in files]:
-            os.chmod(file, mode)
+            if not isreadonly(file):
+                os.chmod(file, mode)
 
 def hash_file_read_only(fpath, hashtype='sha1'):
     hashid = hash_file(fpath, hashtype=hashtype)
