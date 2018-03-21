@@ -115,16 +115,18 @@ class RunBase(object):
         print run
         self.run = run
         self.traceid = None
-        self.pupil_size_thr = None
-        self.pupil_dist_thr = None
+	self.pupil_radius_min = None #paramslist[1]
+	self.pupil_radius_max = None #paramslist[2]
+	self.pupil_dist_thr = None #paramslist[3]
         self.pupil_max_nblinks = 1
 
     def set_params(self, paramslist):
         #params = getattr(parservalues, 'trace_info')
         self.traceid = paramslist[0]
-        self.pupil_size_thr = paramslist[1]
-        self.pupil_dist_thr = paramslist[2]
-
+        if len(paramslist) > 1:
+	    self.pupil_radius_min = paramslist[1]
+	    self.pupil_radius_max = paramslist[2]
+	    self.pupil_dist_thr = paramslist[3]
 
 class FileOptionParser(object):
     def __init__(self):
@@ -249,7 +251,16 @@ def get_dataframe_paths(acquisition_dir, trace_info):
         tracename = '%s_%s' % (info.traceid, tdict[info.traceid]['trace_hash'])
         traceid_dir = os.path.join(acquisition_dir, info.run, 'traces', tracename)
 
-        pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+        if info.pupil_dist_thr is None or info.pupil_radius_min is None:
+            pupil_str = 'unfiltered_'
+        else:
+            #pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+            pupil_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (float(info.pupil_radius_min), float(info.pupil_radius_max), int(info.pupil_dist_thr))
+
+
+        #pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+        #pupil_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (float(info.pupil_radius_min), float(info.pupil_radius_max), int(info.pupil_dist_thr))
+
         pupil_dir = [os.path.join(traceid_dir, 'metrics', p) for p in os.listdir(os.path.join(traceid_dir, 'metrics')) if pupil_str in p][0]
 
         dfilepath = [os.path.join(pupil_dir, f) for f in os.listdir(pupil_dir) if 'roi_stats_' in f][0]
@@ -315,10 +326,12 @@ def get_tuning_paths(dfpaths, roi_list):
 
 
 
-opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV1_zoom1x_V1', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
+#opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV1_zoom1x_V1', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
 
 #opts = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'gratings_phasemod', '-t', 'gratings_phasemod,traces004,30,8', '-R', 'blobs', '-t', 'blobs,traces003,25,15']
 
+opts = sys.argv[1:]
+print opts
 
 options, trace_info = extract_options(opts)
 trace_info = list(trace_info)
@@ -358,7 +371,7 @@ else:
 
 roi_list = sorted(list(set(zdf['roi'])), key=natural_keys)
 
-imgpaths = get_tuning_paths(dfpaths, roi_list)
+#imgpaths = get_tuning_paths(dfpaths, roi_list)
 
 
 
@@ -672,7 +685,10 @@ ds0 = scatter.data_source
 
 # plot tuning curve 1:
 transform_dict = dict((run, []) for run in run_list)
-tplot1 = figure(title='tuning 1', plot_width=400, plot_height=400, tools=TOOLS)
+tplot1 = figure(title='tuning 1', plot_width=500, plot_height=500, tools=TOOLS)
+tplot1.xaxis.axis_label_text_font_size = "18pt"
+tplot1.yaxis.axis_label_text_font_size = "18pt"
+
 hover = HoverTool(
             tooltips=[
                 ("index", "$index"),
@@ -702,7 +718,7 @@ for run in source2.keys():
 
 
 # plot tuning curve 2:
-tplot2 = figure(title='tuning 2', plot_width=400, plot_height=400, tools=TOOLS)
+tplot2 = figure(title='tuning 2', plot_width=500, plot_height=500, tools=TOOLS)
 lines2 = dict((run, dict()) for run in [run1, run2])
 for run in source2.keys():
     for trans in source2[run].keys():

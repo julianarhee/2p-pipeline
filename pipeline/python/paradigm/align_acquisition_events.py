@@ -1364,8 +1364,6 @@ def create_roi_dataframes(options):
     # Get paradigm/AUX info:
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
-    if not os.path.exists(paradigm_dir):
-        f
     trial_info = get_alignment_specs(paradigm_dir, si_info, custom_mw=custom_mw, options=options)
 
     # Load TRACE ID info:

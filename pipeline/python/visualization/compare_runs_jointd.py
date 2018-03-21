@@ -46,7 +46,8 @@ class RunBase(object):
         print run
         self.run = run
         self.traceid = None
-        self.pupil_size_thr = None
+        self.pupil_radius_min = None
+        self.pupil_radius_max = None
         self.pupil_dist_thr = None
         self.pupil_max_nblinks = 1
 
@@ -54,8 +55,9 @@ class RunBase(object):
         #params = getattr(parservalues, 'trace_info')
         self.traceid = paramslist[0]
         if len(paramslist) > 1:
-            self.pupil_size_thr = paramslist[1]
-            self.pupil_dist_thr = paramslist[2]
+            self.pupil_radius_min = paramslist[1]
+            self.pupil_radius_max = paramslist[2]
+            self.pupil_dist_thr = paramslist[3]
 
 
 class FileOptionParser(object):
@@ -92,12 +94,15 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+                          default='raw', help="trace type [default: 'raw']")
 
     parser.add_option('-R', '--run', dest='run', type='string',
                           action='callback', callback=fop.set_info, help="Supply multiple runs for comparison (currently, expects only 2 runs)")
 
     parser.add_option('-t', '--traces', dest='trace_info', default=[], nargs=1,
-                          action='append', help="Comma-sep string of run, traceid, pupil rad thr, pupil dist thr (for ex, -t blobs,traces001,30,5)")
+                          action='append',
+                          help="Comma-sep string of run, traceid, pupil rad min, pupil rad max, pupil dist thr (for ex, -t blobs,traces001,30,50,5)")
 
 
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
@@ -130,7 +135,7 @@ def extract_options(options):
 
 #%%
 
-def get_dataframe_paths(acquisition_dir, trace_info):
+def get_dataframe_paths(acquisition_dir, trace_info, trace_type='raw'):
     dfpaths = dict()
     for idx, info in enumerate(trace_info):
         dfilepath = None
@@ -143,13 +148,15 @@ def get_dataframe_paths(acquisition_dir, trace_info):
         tracename = '%s_%s' % (info.traceid, tdict[info.traceid]['trace_hash'])
         traceid_dir = os.path.join(acquisition_dir, info.run, 'traces', tracename)
 
-        if info.pupil_dist_thr is None or info.pupil_size_thr is None:
+        if info.pupil_dist_thr is None or info.pupil_radius_min is None:
             pupil_str = 'unfiltered_'
         else:
-            pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+            #pupil_str = 'pupil_size%i-dist%i-blinks%i' % (float(info.pupil_size_thr), float(info.pupil_dist_thr), int(info.pupil_max_nblinks))
+            pupil_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (float(info.pupil_radius_min), float(info.pupil_radius_max), int(info.pupil_dist_thr))
+
         pupil_dir = [os.path.join(traceid_dir, 'metrics', p) for p in os.listdir(os.path.join(traceid_dir, 'metrics')) if pupil_str in p][0]
 
-        dfilepath = [os.path.join(pupil_dir, f) for f in os.listdir(pupil_dir) if 'roi_stats_' in f][0]
+        dfilepath = [os.path.join(pupil_dir, f) for f in os.listdir(pupil_dir) if 'roi_stats_' in f and trace_type in f][0]
         dfpaths[rkey] = dfilepath
 
     return dfpaths
@@ -201,11 +208,12 @@ def main(options):
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
+    trace_type = options.trace_type
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     # Get dataframe paths for runs to be compared:
-    dfpaths = get_dataframe_paths(acquisition_dir, trace_info)
+    dfpaths = get_dataframe_paths(acquisition_dir, trace_info, trace_type=trace_type)
 
     # Get base name of this combination:
     if 'pupil' in dfpaths['run1']:
