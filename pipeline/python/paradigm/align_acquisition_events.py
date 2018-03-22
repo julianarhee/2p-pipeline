@@ -621,7 +621,7 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
                         tset[...] = tcourse
 
                     config_grp[roi].attrs['id_in_set'] = roi_timecourses[roi].attrs['id_in_set']
-                    config_grp[roi].attrs['id_in_src'] = roi_timecourses[roi].attrs['id_in_src']
+                    #config_grp[roi].attrs['id_in_src'] = roi_timecourses[roi].attrs['id_in_src']
                     config_grp[roi].attrs['idx_in_slice'] = roi_timecourses[roi].attrs['idx_in_slice']
                     config_grp[roi].attrs['slice'] = roi_timecourses[roi].attrs['slice']
 
@@ -1461,6 +1461,14 @@ def create_roi_dataframes(options):
 
     # Save trial-alignment info with hash:
     alignment_info_filepath = os.path.join(traceid_dir, 'event_alignment_%s.json' % roitrials_hash)
+    # Move old jsons if exist:
+    existing_alignment_info = [e for e in os.listdir(traceid_dir) if 'event_alignment' in e and e.endswith('json')]
+    if len(existing_alignment_info) > 0:
+        print "Moving old trial-alignment info files."
+        if not os.path.exists(os.path.join(traceid_dir, 'old')):
+            os.makedirs(os.path.join(traceid_dir, 'old'))
+        for e in existing_alignment_info:
+            shutil.move(os.path.join(traceid_dir, e), os.path.join(traceid_dir, 'old', e))
     with open(alignment_info_filepath, 'w') as f:
         json.dump(trial_info, f, sort_keys=True, indent=4)
 
