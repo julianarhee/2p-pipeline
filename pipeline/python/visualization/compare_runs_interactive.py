@@ -1,3 +1,11 @@
+#!/usr/bin/env python2
+
+'''
+Same output-style as visualizatio/compare_runs_jointd.py, but interactive:
+
+$ bokeh serve visualization/compare_runs_interactive.py --args -D /mnt/odyssey -i CE077 -S 20180319 -A FOV1_zoom1x -R gratings_run1 -t gratings_run1,traces001 -R gratings_run2 -t gratings_run2,traces001
+
+'''
 
 import os
 import sys
