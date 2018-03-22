@@ -1101,12 +1101,12 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
             for filetraces_fn in sorted(filetraces_fns, key=natural_keys):
                 fidx_in_run = int(filetraces_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
                 curr_frame_idx = tiff_start_fridxs[fidx_in_run]
-                print "Loading file:", filetraces_fn
+                #print "Loading file:", filetraces_fn
                 filetraces = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
 
                 roi_counter = 0
                 for currslice in sorted(filetraces.keys(), key=natural_keys):
-                    print "Loading slice:", currslice
+                    #print "Loading slice:", currslice
                     maskarray = filetraces[currslice]['masks']
                     d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
                     T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
@@ -1152,7 +1152,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                             tcourse_grp = roi_grp['timecourse']
 
                         for trace_type in trace_types:
-                            print "---> Sorting %s" % trace_type
+                            #print "---> Sorting %s" % trace_type
                             curr_tcourse = filetraces[currslice]['traces'][trace_type][:, ridx]
                             if trace_type not in tcourse_grp.keys():
                                 roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_tcourse.dtype)
@@ -1625,14 +1625,25 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
                     session_dir = os.path.split(os.path.split(filetraces_dir.split('/traces')[0])[0])[0]
                     info = get_info_from_tiff_dir(os.path.split(tiffpath)[0], session_dir)
                     tiffpath = replace_root(tiffpath, rootdir, info['animalid'], info['session'])
-                tiffslice = tf.imread(tiffpath)
+              
+                tiff = tf.imread(tiffpath)
+                T, d1, d2 = tiff.shape
+                d = d1*d2
+                tiffslice = np.reshape(tiff, (T, d), order='C'); del tiff
 
                 np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
                 np_tracemat = tiffslice.dot(np_maskarray)
-                np_corrected = tracemat - (cfactor * np_tracemat)
-                np_traces = traces_currfile.create_dataset('/'.join([curr_slice, 'traces', 'neuropil']), np_tracemat.shape, np_tracemat.dtype)
+                np_correctedmat = tracemat - (cfactor * np_tracemat)
+                if 'neuropil' not in traces_currfile[curr_slice]['traces'].keys():
+                    np_traces = traces_currfile.create_dataset('/'.join([curr_slice, 'traces', 'neuropil']), np_tracemat.shape, np_tracemat.dtype)
+                else:
+                    np_traces = traces_currfile[curr_slice]['traces']['neuropil']
                 np_traces[...] = np_tracemat
-                np_corrected = traces_currfile.create_dataset('/'.join([curr_slice, 'traces', 'np_subtracted']), np_corrected.shape, np_corrected.dtype)
+                if 'np_subtracted' not in traces_currfile[curr_slice]['traces'].keys():
+                    np_corrected = traces_currfile.create_dataset('/'.join([curr_slice, 'traces', 'np_subtracted']), np_correctedmat.shape, np_correctedmat.dtype)
+                else:
+                    np_corrected = traces_currfile[curr_slice]['traces']['np_subtracted']
+                np_corrected[...] = np_correctedmat
                 np_corrected.attrs['correction_factor'] = cfactor
         except Exception as e:
             print "** ERROR appending NP-subtracted traces: %s" % traces_currfile
@@ -1677,8 +1688,8 @@ def extract_options(options):
                       dest="plot_neuropil", default=False, help="Set flag to plot neuropil masks with soma.")
 
 
-#    parser.add_option('--extract', action="store_true",
-#                      dest="extract_filtered_traces", default=False, help="Set flag to extract filtered traces using eye-tracker info after trace extraction.")
+    parser.add_option('--extract', action="store_true",
+                      dest="extract_filtered_traces", default=False, help="Set flag to extract filtered traces using eye-tracker info after trace extraction.")
 
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
@@ -1697,9 +1708,9 @@ def extract_options(options):
 
 #%%
 def extract_traces(options):
-    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
-            '-t', 'traces003', '--np-method=subtract', '--neuropil', '--append', '--no-pupil']
-
+#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
+#            '-t', 'traces003', '--np-method=subtract', '--neuropil', '--append', '--no-pupil']
+#
     # Set USER INPUT options:
     options = extract_options(options)
 
@@ -1719,7 +1730,7 @@ def extract_traces(options):
         ncores = int(options.ncores)
         ncores_sep = ncores * 2
 
-    #extract_filtered_traces = options.extract_filtered_traces
+    extract_filtered_traces = options.extract_filtered_traces
 
     create_new = options.create_new
     append_trace_type = options.append_trace_type
@@ -1756,6 +1767,8 @@ def extract_traces(options):
     #% Get meta info for run:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    if rootdir not in run_dir:
+        run_dir = replace_root(run_dir, rootdir, animalid, session)
     print "RUN:", run_dir
     si_info = get_frame_info(run_dir)
 
@@ -1922,7 +1935,9 @@ def extract_traces(options):
             create_new = True
 
     # Append non-raw traces, if relevant:
+    update_roi_timecourses = False
     if append_trace_type:
+        update_roi_timecourses = True
         print "Appending trace type!"
         if np_method == 'fissa':
             exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, append_only=True)
@@ -1945,8 +1960,8 @@ def extract_traces(options):
     # -----------------------------------------------
     print "*** Creating ROI-TCOURSE file...."
     print "-----------------------------------------------------------------------"
-
-    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetraces_dir, rootdir=rootdir, create_new=create_new)
+ 
+    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetraces_dir, rootdir=rootdir, create_new=update_roi_timecourses)
 
     print "-----------------------------------------------------------------------"
 

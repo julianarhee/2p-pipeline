@@ -803,7 +803,7 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
 
     except Exception as e:
 
-        print "--- Error plotting PSTH ---------------------------------"
+        print "--- Error configuring ROIDATA dataframe ---------------------------------"
         print roi, configname, trial
         traceback.print_exc()
 
@@ -1264,7 +1264,7 @@ def collate_roi_stats(METRICS, configs):
 
 def extract_options(options):
 
-    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa')
+    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa', 'np_subtracted', 'neuropil')
     default_tracetype = 'raw'
 
     parser = optparse.OptionParser()

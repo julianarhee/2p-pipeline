@@ -195,7 +195,7 @@ def plot_movie_timecourse(roi_df, TRIALS, configs, curr_roi_figdir='/tmp'): #, r
 #%%
 
 #choices_tracetype = ('raw', 'denoised_nmf')
-choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa')
+choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa', 'neuropil', 'np_subtracted')
 
 default_tracetype = 'raw'
 
