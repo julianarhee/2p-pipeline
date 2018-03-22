@@ -1107,43 +1107,46 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                 roi_counter = 0
                 for currslice in sorted(filetraces.keys(), key=natural_keys):
                     #print "Loading slice:", currslice
-                    maskarray = filetraces[currslice]['masks']
-                    d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
-                    T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
-                    src_roi_idxs = filetraces[currslice]['masks'].attrs['src_roi_idxs']
-                    nr = filetraces[currslice]['masks'].attrs['nr'] #maskarray.shape[1]
-                    nb = filetraces[currslice]['masks'].attrs['nb']
-                    ncomps = nr + nb
-                    masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
-
+#                    maskarray = filetraces[currslice]['maskarray'][:]
+#                    d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
+#                    T = dims[-1] #tracefile[currslice]['rawtraces'].attrs['nframes']
+#                    src_roi_idxs = filetraces[currslice]['maskarray'].attrs['src_roi_idxs']
+#                    nr = filetraces[currslice]['maskarray'].attrs['nr'] #maskarray.shape[1]
+#                    nb = filetraces[currslice]['maskarray'].attrs['nb']
+#                    ncomps = nr + nb
+#                    masks = np.reshape(maskarray, (d1, d2, nr+nb), order='C')
+#
+                    ncomps = filetraces[currslice]['traces']['raw'].shape[-1]
                     bgidx = 0
                     for ridx in range(ncomps): #, roi in enumerate(src_roi_idxs):
-                        if (nb > 0) and (ridx >= nr):
-                            bgidx += 1
-                            is_background = True
-                            roiname = 'bg%02d' % bgidx
-                        else:
-                            is_background = False
-                            roi_counter += 1
-                            roiname = 'roi%05d' % int(roi_counter)
+#                        if (nb > 0) and (ridx >= nr):
+#                            bgidx += 1
+#                            is_background = True
+#                            roiname = 'bg%02d' % bgidx
+#                        else:
+		        is_background = False
+		        roi_counter += 1
+		        roiname = 'roi%05d' % int(roi_counter)
 
                         # Create unique ROI group:
                         if roiname not in roi_outfile.keys():
                             roi_grp = roi_outfile.create_group(roiname)
-                            roi_grp.attrs['slice'] = currslice
-                            roi_grp.attrs['roi_img_path'] = filetraces[currslice]['zproj'].attrs['img_source']
+                            #roi_grp.attrs['slice'] = currslice
+                            #roi_grp.attrs['roi_img_path'] = filetraces[currslice]['zproj'].attrs['img_source']
                         else:
                             roi_grp = roi_outfile[roiname]
 
-                        if 'mask' not in roi_grp.keys():
-                            roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
-                            roi_mask[...] = masks[:,:,ridx]
-                            roi_grp.attrs['id_in_set'] = roi_counter #roi
-                            roi_grp.attrs['id_in_src'] = src_roi_idxs[ridx] #ridx
-                            roi_grp.attrs['idx_in_slice'] = ridx
-                            roi_mask.attrs['slice'] = currslice
-                            roi_mask.attrs['is_background'] = is_background
-
+#                        if 'mask' not in roi_grp.keys():
+#                            roi_mask = roi_grp.create_dataset('mask', masks[:,:,ridx].shape, masks[:,:,ridx].dtype)
+#                            roi_mask[...] = masks[:,:,ridx]
+                        roi_grp.attrs['id_in_set'] = roi_counter #roi
+#                            roi_grp.attrs['id_in_src'] = src_roi_idxs[ridx] #ridx
+                        roi_grp.attrs['idx_in_slice'] = ridx
+                        roi_grp.attrs['slice'] = currslice
+                        roi_grp.attrs['is_background'] = is_background
+#                            roi_mask.attrs['slice'] = currslice
+#                            roi_mask.attrs['is_background'] = is_background
+#
                         # Add time courses:
                         trace_types = filetraces[currslice]['traces'].keys()
                         if 'timecourse' not in roi_grp.keys():
