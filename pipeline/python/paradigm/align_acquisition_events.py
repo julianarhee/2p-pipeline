@@ -1462,7 +1462,7 @@ def create_roi_dataframes(options):
     # Save trial-alignment info with hash:
     alignment_info_filepath = os.path.join(traceid_dir, 'event_alignment_%s.json' % roitrials_hash)
     # Move old jsons if exist:
-    existing_alignment_info = [e for e in os.listdir(traceid_dir) if 'event_alignment' in e and e.endswith('json')]
+    existing_alignment_info = [e for e in os.listdir(traceid_dir) if 'event_alignment' in e and e.endswith('json') and not roitrials_hash in e]
     if len(existing_alignment_info) > 0:
         print "Moving old trial-alignment info files."
         if not os.path.exists(os.path.join(traceid_dir, 'old')):
