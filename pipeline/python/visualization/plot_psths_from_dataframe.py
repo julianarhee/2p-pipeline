@@ -285,13 +285,14 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
         print "No PSTH types specified. Exiting."
         return
 
-    if filter_pupil is True and pupil_params is None:
-        pupil_params = set_pupil_params()
-    pupil_max_nblinks = pupil_params['max_nblinks']
-    pupil_radius_min = float(pupil_params['radius_min'])
-    pupil_radius_max = float(pupil_params['radius_max'])
-    #pupil_size_thr = pupil_params['size_thr']
-    pupil_dist_thr = float(pupil_params['dist_thr'])
+    if filter_pupil is True:
+        if pupil_params is None:
+            pupil_params = set_pupil_params()
+        pupil_max_nblinks = pupil_params['max_nblinks']
+        pupil_radius_min = float(pupil_params['radius_min'])
+        pupil_radius_max = float(pupil_params['radius_max'])
+        #pupil_size_thr = pupil_params['size_thr']
+        pupil_dist_thr = float(pupil_params['dist_thr'])
 
     roi_psth_dir_all = os.path.join(roi_psth_dir, 'unfiltered')
     if not os.path.exists(roi_psth_dir_all):
