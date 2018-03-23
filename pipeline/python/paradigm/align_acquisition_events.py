@@ -561,7 +561,7 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
             os.makedirs(olddir)
         for ex in existing_roi_trial_fns:
             os.rename(os.path.join(traceid_dir, ex), os.path.join(olddir, ex))
-        print "Moved old files..."
+        print "Moving old roi_trials_ files..."
 
     tstamp = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
     roi_trials_by_stim_path = os.path.join(traceid_dir, 'roi_trials_%s.hdf5' % tstamp)
@@ -1052,7 +1052,7 @@ def get_roi_metrics(roidata_filepath, configs, traceid_dir, trace_type='raw', fi
             os.makedirs(os.path.join(metrics_dir, 'old'))
         for ex in existing_metrics_files:
             shutil.move(os.path.join(metrics_dir, ex), os.path.join(metrics_dir, 'old', ex))
-        print "Moving old files..."
+        print "Moving old METRICS files..."
 
     # Create new METRICS dataframe file using current date-time:
     datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -1146,7 +1146,7 @@ def get_roi_summary_stats(metrics_filepath, configs, trace_type='raw', create_ne
                 os.makedirs(curr_metrics_dir, 'old')
             for ex in existing_files:
                 shutil.move(os.path.join(curr_metrics_dir, ex), os.path.join(curr_metrics_dir, 'old', ex))
-            print "Moving old files..."
+            print "Moving old STATS files..."
 
         print "--->  Collating ROI metrics......"
         datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -1402,11 +1402,11 @@ def create_roi_dataframes(options):
     # FILTER DATA with PUPIL PARAM thresholds, if relevant:
     # =========================================================================
     pupil_params = None
-    eye_info = None
+    #eye_info = None
+    print "-------------------------------------------------------------------"
+    print "Loading EYE INFO."
+    eye_info = load_eye_data(run_dir)
     if filter_pupil is True:
-        print "-------------------------------------------------------------------"
-        print "Loading EYE INFO."
-        eye_info = load_eye_data(run_dir)
         if eye_info is None:
             filter_pupil = False
             pupil_params = None
@@ -1444,7 +1444,7 @@ def create_roi_dataframes(options):
             os.makedirs(old_dir)
         for e in existing_df_files:
             shutil.move(os.path.join(traceid_dir, e), os.path.join(old_dir, e))
-        print "Moved old files..."
+        print "Moving old ROIDATA files..."
 
         # Align extracted traces into trials, and create dataframe:
         DATA = traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type=trace_type, eye_info=eye_info)
