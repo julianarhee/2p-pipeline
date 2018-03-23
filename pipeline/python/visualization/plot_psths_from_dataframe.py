@@ -461,6 +461,11 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
         # Make sure only plotting lines for objects that are tested with current transform:
         if object_type == 'object':
             ROI = DF[DF['object'].isin(object_transformations[trans])]
+            
+            # TODO:  tmp filter to exclude YROT objects -30 and 30 
+            if trans == 'morphlevel':
+                ROI = ROI[ROI['yrot']==0]
+            
         else:
             ROI = DF
         # Draw MEAN metric:
@@ -473,6 +478,7 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
         if include_trials is True:
             if trans == 'morphlevel':
                 # Adjust colors for trans=morphlevel, since we aren't really testing any morphs except "default view" yet:
+                
                 sns.stripplot(x=trans, y=metric_type, hue=object_color, data=ROI.sort_values([object_sorter]),
                       edgecolor="w", split=True, size=2, ax=ax, color=sns.color_palette()[0])
             else:
