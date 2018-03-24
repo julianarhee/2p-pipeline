@@ -528,10 +528,11 @@ def process_data(options):
                 #get features
                 cr_center, cr_axes, cr_orientation = get_feature_info(im0, (cr_x1,cr_y1), (cr_x2,cr_y2),\
                                                                                cr_thresh, 'cr')
-                #save to array
-                cr_center_list[im_count,:] = cr_center
-                cr_axes_list[im_count,:] = cr_axes
-                cr_orientation_list[im_count] = cr_orientation
+                
+                cr_ratio = np.true_divide(cr_axes[0],cr_axes[1])
+                if cr_center[0]==0 or cr_ratio <=.6:#flag this frame, probably blinking
+                    flag_event[im_count] = 1
+                
                 
                 #draw and save to file
                 ellipse_params = tuple((cr_center,cr_axes,cr_orientation))
@@ -551,17 +552,12 @@ def process_data(options):
                         ellipse_params_disp = ellipse_params
                         
                     cv2.rectangle(im_disp,(cr_x1_disp,cr_y1_disp),(cr_x2_disp,cr_y2_disp),(255,255,0),1)
-                    cv2.ellipse(im_disp, ellipse_params_disp,(255,0,0),1)
+                    if flag_event[im_count] == 0:
+                        cv2.ellipse(im_disp, ellipse_params_disp,(255,0,0),1)
+                    else:
+                        cv2.ellipse(im_disp, ellipse_params_disp,(0,255,0),1)
                 
-                if cr_center[0]==0:#flag this frame, probably blinking
-                    flag_event[im_count] = 1
-                    #give yourself room for error after event
-                    if flag_event[im_count-1]<1:
-                        cr_x1 = int(cr_x1-(5*scale_factor))
-                        cr_y1 = int(cr_y1-(5*scale_factor))
-                        cr_x2 = int(cr_x2+(5*scale_factor))
-                        cr_y2 = int(cr_y2+(5*scale_factor))
-                else:
+                if flag_event[im_count] == 0:
                      #adaptive part
                     dummy_img = np.zeros(im0.shape)
                     cv2.ellipse(dummy_img, ellipse_params,255,-1)
@@ -572,6 +568,28 @@ def process_data(options):
                     cr_y1 = int(y-(3*scale_factor))
                     cr_x2 = int(x+w+(3*scale_factor))
                     cr_y2 = int(y+h+(3*scale_factor))
+                    
+                    #save to array
+                    cr_center_list[im_count,:] = cr_center
+                    cr_axes_list[im_count,:] = cr_axes
+                    cr_orientation_list[im_count] = cr_orientation
+                    
+                if im_count >10:    
+                    if sum(flag_event[im_count-10:im_count])>= 5:
+                        #back to beginning with latest size
+                        cr_x1 = int(cr_x1_orig-(10*scale_factor))
+                        cr_y1 = int(cr_y1_orig-(10*scale_factor))
+                        cr_x2 = int(cr_x2_orig+(10*scale_factor))
+                        cr_y2 = int(cr_y2_orig+(10*scale_factor))
+
+                        
+                    else:
+                        #give yourself room for error after event
+                        if flag_event[im_count-1]<1:
+                            cr_x1 = int(cr_x1-(5*scale_factor))
+                            cr_y1 = int(cr_y1-(5*scale_factor))
+                            cr_x2 = int(cr_x2+(5*scale_factor))
+                            cr_y2 = int(cr_y2+(5*scale_factor))
 
             if make_movie: 
                 cv2.imwrite((os.path.join(tmp_dir,im_list[im_count])), im_disp)
@@ -666,10 +684,22 @@ def process_data(options):
             #pixel radius
             tmp = np.mean(cr_axes_list,1)#collapse across ellipse axes
             cr_radius = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+
+            #radius - 1st deriv
+            tmp = np.diff(cr_radius)
+            cr_radius_diff1 = np.hstack((0,tmp))
+
+            #radius - 2nd deriv
+            tmp = np.diff(cr_radius_diff1)
+            cr_radius_diff2 = np.hstack((0,tmp))
             
-            #pupil aspect ratio
+            #cr aspect ratio
             tmp = np.true_divide(cr_axes_list[:,0],cr_axes_list[:,1])#collapse across ellipse axes
             cr_aspect = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
+
+            #cr orientation
+            tmp = cr_orientation_list[:]
+            cr_orientation = get_nice_signal(tmp, flag_event, time_filt_size)#clean up data a bit
 
             # cr position X 
             tmp = cr_center_list[:,1].copy()
@@ -679,9 +709,13 @@ def process_data(options):
             tmp = cr_center_list[:,0].copy()
             cr_pos_y = np.squeeze(get_nice_signal(tmp, flag_event, time_filt_size))#clean up data a bit
 
-            #cr distance
+            #distance
             tmp_pos = np.transpose(np.vstack((cr_pos_x,cr_pos_y)))
-            cr_dist = np.squeeze((spatial.distance.cdist(tmp_pos,tmp_pos[0:1,:])))
+            cr_dist = np.squeeze(spatial.distance.cdist(tmp_pos,tmp_pos[0:1,:]))
+
+            #distance - 1st deriv
+            tmp = np.diff(cr_dist)
+            cr_dist_diff1 = np.hstack((0,tmp))
         #**save complete traces**
         output_fn = os.path.join(output_file_dir,'full_session_eyetracker_data_%s_%s_%s.h5'%(session,animalid,run))
 
@@ -751,16 +785,32 @@ def process_data(options):
             if 'cr_radius' not in file_grp.keys():
                 cr_rad_set = file_grp.create_dataset('cr_radius',cr_radius.shape, cr_radius.dtype)
             cr_rad_set[...] = cr_radius
+
+            if 'cr_radius_diff1' not in file_grp.keys():
+                cr_rad1_set = file_grp.create_dataset('cr_radius_diff1',cr_radius_diff1.shape, cr_radius_diff1.dtype)
+            cr_rad1_set[...] = cr_radius_diff1
             
-            if 'pupil_aspect' not in file_grp.keys():
+            if 'cr_radius_diff2' not in file_grp.keys():
+                cr_rad2_set = file_grp.create_dataset('cr_radius_diff2',cr_radius_diff2.shape, cr_radius_diff2.dtype)
+            cr_rad2_set[...] = cr_radius_diff2
+            
+
+            if 'cr_orientation' not in file_grp.keys():
+                cr_ori_set = file_grp.create_dataset('cr_orientation',cr_orientation.shape, cr_orientation.dtype)
+            cr_ori_set[...] = cr_orientation
+
+            if 'cr_aspect' not in file_grp.keys():
                 cr_asp_set = file_grp.create_dataset('cr_aspect',cr_aspect.shape, cr_aspect.dtype)
             cr_asp_set[...] = cr_aspect
-
 
             if 'cr_distance' not in file_grp.keys():
                 cr_dist_set = file_grp.create_dataset('cr_distance',cr_dist.shape, cr_dist.dtype)
             cr_dist_set[...] = cr_dist
 
+            if 'cr_dist_diff1' not in file_grp.keys():
+                cr_dist1_set = file_grp.create_dataset('cr_dist_diff1',cr_dist_diff1.shape, cr_dist_diff1.dtype)
+            cr_dist1_set[...] = cr_dist_diff1
+            
             if 'cr_x' not in file_grp.keys():
                 cr_x_set = file_grp.create_dataset('cr_x',cr_pos_x.shape, cr_pos_x.dtype)
             cr_x_set[...] = cr_pos_x
@@ -774,6 +824,10 @@ def process_data(options):
         #***place feature info into dataframe and plot ***
         print 'Plotting extracted features for the full session, output folder: %s'%(output_fig_dir)
         if 'pupil' in user_rect:
+            pupil_fig_dir = os.path.join(output_fig_dir,'pupil')
+            if not os.path.exists(pupil_fig_dir):
+                os.makedirs(pupil_fig_dir)
+
             pupil_df = pd.DataFrame({'camera time': camera_time,
                                      'pupil radius': pupil_radius,
                                      'pupil radius diff1': pupil_radius_diff1,
@@ -786,78 +840,130 @@ def process_data(options):
                                      'pupil position y': pupil_pos_y,
                                     })
             
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil radius',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil radius', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff1_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_diff1_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil radius diff1',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil radius diff1', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff2_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_diff2_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil radius diff2',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_radius_diff2_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_radius_diff2_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil radius diff2', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'pupil_orientation_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_orientation_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil orientation',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_orientation_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_orientation_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil orientation', fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_aspect_ratio_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_aspect_ratio_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil aspect ratio',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_aspect_ratio_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_aspect_ratio_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil aspect ratio', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'pupil_distance_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_distance_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil distance',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_distance_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_distance_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil distance', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'pupil_distance_diff1_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_distance_diff1_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil distance diff1',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_distance_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_distance_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil distance diff1', fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_x_position_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_x_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil position x',stim_on_times,stim_off_times, blink_times, fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_x_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_x_position_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil position x', fig_file)
             
-            fig_file = os.path.join(output_fig_dir,'pupil_y_position_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_y_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(pupil_df, 'camera time', 'pupil position y',stim_on_times,stim_off_times, blink_times, fig_file)
              
-            fig_file = os.path.join(output_fig_dir,'pupil_y_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(pupil_fig_dir,'pupil_y_position_hist_%s_%s_%s.png'%(session,animalid,run))
             make_variable_histogram(pupil_df, 'pupil position y', fig_file)
         if 'cr' in user_rect:
+
+            cr_fig_dir = os.path.join(output_fig_dir,'cr')
+            if not os.path.exists(cr_fig_dir):
+                os.makedirs(cr_fig_dir)
+
             cr_df = pd.DataFrame({'camera time': camera_time,
-                                   'cr radius': cr_radius,
-                                   'cr distance': cr_dist,
-                                   'cr position x': cr_pos_x,
-                                   'cr position y': cr_pos_y,
-                                   })
+                                     'cr radius': cr_radius,
+                                     'cr radius diff1': cr_radius_diff1,
+                                     'cr radius diff2': cr_radius_diff2,
+                                     'cr aspect ratio': cr_aspect,
+                                     'cr orientation': cr_orientation,             
+                                     'cr distance': cr_dist,
+                                     'cr distance diff1': cr_dist_diff1,
+                                     'cr position x': cr_pos_x,
+                                     'cr position y': cr_pos_y,
+                                    })
             
-            fig_file = os.path.join(output_fig_dir,'cr_radius_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(cr_df, 'camera time', 'cr radius',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr radius', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'cr_distance_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_diff1_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(cr_df, 'camera time', 'cr radius diff1',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr radius diff1', fig_file)
+
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_diff2_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(cr_df, 'camera time', 'cr radius diff2',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_radius_diff2_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr radius diff2', fig_file)
+
+            fig_file = os.path.join(cr_fig_dir,'cr_orientation_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(cr_df, 'camera time', 'cr orientation',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_orientation_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr orientation', fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_aspect_ratio_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(cr_df, 'camera time', 'cr aspect ratio',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_aspect_ratio_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr aspect ratio', fig_file)
+
+            fig_file = os.path.join(cr_fig_dir,'cr_distance_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(cr_df, 'camera time', 'cr distance',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_distance_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr distance', fig_file)
 
-            fig_file = os.path.join(output_fig_dir,'cr_x_position_%s_%s_%s.png'%(session,animalid,run))
+            fig_file = os.path.join(cr_fig_dir,'cr_distance_diff1_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_plot(cr_df, 'camera time', 'cr distance diff1',stim_on_times,stim_off_times, blink_times, fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_distance_diff1_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr distance diff1', fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_x_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(cr_df, 'camera time', 'cr position x',stim_on_times,stim_off_times, blink_times, fig_file)
-
-            fig_file = os.path.join(output_fig_dir,'cr_y_position_%s_%s_%s.png'%(session,animalid,run))
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_x_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr position x', fig_file)
+            
+            fig_file = os.path.join(cr_fig_dir,'cr_y_position_%s_%s_%s.png'%(session,animalid,run))
             make_variable_plot(cr_df, 'camera time', 'cr position y',stim_on_times,stim_off_times, blink_times, fig_file)
+             
+            fig_file = os.path.join(cr_fig_dir,'cr_y_position_hist_%s_%s_%s.png'%(session,animalid,run))
+            make_variable_histogram(cr_df, 'cr position y', fig_file)
 
 def parse_data(options):
 
