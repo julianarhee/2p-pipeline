@@ -192,7 +192,7 @@ def do_bidir_correction(options):
     # -------------------------------------------------------------
     if do_bidi is True:
         volume_dir = copy.copy(write_dir)
-        slice_dir = volume_dir + '_slices'
+        slice_dir = volume_dir + '_deinterleaved'
             
         if multiplanar is True:
             print "Multiple slices/channels found. Sorting deinterleaved tiffs."

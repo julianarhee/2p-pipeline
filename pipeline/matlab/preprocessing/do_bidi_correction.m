@@ -2,7 +2,7 @@ function do_bidi_correction(paramspath, refpath)
 
 % Reads in TIFFs and does correction for bidirection-scanning.
 % For each TIFF in acquisition, does correction on interleaved tiff, saves to dir:  <source>_Bidi
-% Also saves deinterleaved tiffs to dir:  <source>_Bidi_slices dir
+% Also saves deinterleaved tiffs to dir:  <source>/bidi_deinterleaved dir
 
 % INPUTs:
 % source - can be 'Corrected' or 'Parsed' (i.e., do correcitonon mc or raw data)
@@ -62,7 +62,7 @@ else
 end
 
 if do_deinterleave
-    write_dir_deinterleaved = sprintf('%s_slices', dest)
+    write_dir_deinterleaved = sprintf('%s_deinterleaved', dest)
     fprintf('Writing deinterleaved files to: %s\n', write_dir_deinterleaved)
     if ~exist(write_dir_deinterleaved)
         mkdir(write_dir_deinterleaved)

@@ -34,7 +34,7 @@ parser.add_option('-R', '--run', action='store', dest='run', default='', help='n
 parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
 parser.add_option('-s', '--source', action='store', dest='source_dir', default=None, help="folder from which to create z-projected slice images")
-parser.add_option('-o', '--outdir', action='store', dest='write_dir', default=None, help="path to save averaged slices [default appends <sourcedir>_<zprojtype>_slices/")
+parser.add_option('-o', '--outdir', action='store', dest='write_dir', default=None, help="path to save averaged slices [default appends <sourcedir>_<zprojtype>_deinterleaved/")
 parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of z-projection to get summary slice image [default: mean]")
 
 

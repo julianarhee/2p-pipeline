@@ -54,9 +54,9 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
 
     # Before changing anything, check if there is a corresponding 'slices" dir:
     adjust_slicedir = False
-    if os.path.isdir(write_dir + '_slices'):
+    if os.path.isdir(write_dir + '_deinterleaved'):
         adjust_slicedir = True             # WRITE-DIR has companion _slices dir.
-        slice_dir = write_dir + '_slices'
+        slice_dir = write_dir + '_deinterleaved'
 
     write_hash = None
     excluded_files = [str(f) for f in os.listdir(write_dir) if not f.endswith('tif')]
@@ -84,9 +84,9 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
 
     # Adjust slice dir, too, if needed:
     if adjust_slicedir is True:
-        print "Also adding hash to _slices dir:", slice_dir
+        print "Also adding hash to _deinterleaved dir:", slice_dir
         if write_hash not in slice_dir:
-            newwrite_dir_slices = write_dir + '_%s_slices' % write_hash
+            newwrite_dir_slices = write_dir + '_%s_deinterleaved' % write_hash
             os.rename(slice_dir, newwrite_dir_slices)
         else:
             newwrite_dir_slices = slice_dir

@@ -227,8 +227,11 @@ def frame_corr_file(tiffpath, info, nstds=4, ref_frame=0, asdict=True):
     T = info['T']
     d1 = info['d1']; d2 = info['d2']; d3 = info['d3']
     mc_evaldir = info['output_dir']
+    nchannels = info['nchannels']
+    channelidx = int(info['ref_channel'][7:]) - 1
  
     mov = tf.imread(tiffpath)
+    mov = mov[channelidx::nchannels,:,:]
     curr_filename = str(re.search('File(\d{3})', tiffpath).group(0))
     
     
@@ -256,7 +259,7 @@ def mp_frame_corr(filepaths, info, nstds=4, ref_frame=0, nprocs=12):
     """filepaths is a dict: key=File001, val=path/to/tiff
     """
     t_eval_mp = time.time()
-    
+     
     filenames = sorted(filepaths.keys(), key=natural_keys)
     
     def worker(filenames, filepaths, info, nstds, ref_frame, out_q):
@@ -472,25 +475,27 @@ def evaluate_motion(options):
     framecorr_results = get_frame_correlations(info, nstds=nstds_frames, ref_frame=ref_frame, multiproc=multiproc, nprocs=nprocs)
 
     #%%
+    channelidx = int(info['ref_channel'][7:]) - 1
     if 'within_file' not in metrics.keys():
         frame_corr_grp = metrics.create_group('within_file')
         frame_corr_grp.attrs['nslices'] = info['d3']
         frame_corr_grp.attrs['nframes'] = info['T']
         frame_corr_grp.attrs['ref_frame'] = ref_frame
+        frame_corr_grp.attrs['ref_channel'] = info['ref_channel']
     else:
         frame_corr_grp = metrics['within_file']
     
     for fn in framecorr_results.keys():
         if fn not in frame_corr_grp.keys():
             curr_corrcoefs = framecorr_results[fn]['frame_corrcoefs']
-            frame_corr_file = frame_corr_grp.create_dataset(fn, curr_corrcoefs.shape, curr_corrcoefs.dtype)
-            frame_corr_file[...] = curr_corrcoefs
-            frame_corr_file.attrs['file_source'] = framecorr_results[fn]['file_source']
-            frame_corr_file.attrs['dims'] = framecorr_results[fn]['dims']
-            frame_corr_file.attrs['metric'] = framecorr_results[fn]['metric']
-            frame_corr_file.attrs['bad_frames'] = framecorr_results[fn]['bad_frames']
+            dset_frame_corr_file = frame_corr_grp.create_dataset(fn, curr_corrcoefs.shape, curr_corrcoefs.dtype)
+            dset_frame_corr_file[...] = curr_corrcoefs
+            dset_frame_corr_file.attrs['file_source'] = framecorr_results[fn]['file_source']
+            dset_frame_corr_file.attrs['dims'] = framecorr_results[fn]['dims']
+            dset_frame_corr_file.attrs['metric'] = framecorr_results[fn]['metric']
+            dset_frame_corr_file.attrs['bad_frames'] = framecorr_results[fn]['bad_frames']
         else:
-            frame_corr_file = frame_corr_grp[fn]
+            dset_frame_corr_file = frame_corr_grp[fn]
     
     #%%
     # -------------------------------------------------------------------------

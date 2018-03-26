@@ -173,7 +173,7 @@ def do_motion(options):
     interleave_write_tiffs = False
     if PID['PARAMS']['motion']['method'] == 'Acquisition2P' and multiplanar is True:
         # Default is to write deinterleaved slices to write_dir
-        PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_slices'
+        PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_deinterleaved'
         interleave_write_tiffs = True
        
     write_dict_to_json(PID, paramspath)  
@@ -219,11 +219,11 @@ def do_motion(options):
     if do_mc is True:
         if interleave_write_tiffs is True:
             slice_dir = copy.copy(write_dir)
-            volume_dir = slice_dir.split('_slices')[0]
+            volume_dir = slice_dir.split('_deinterleaved')[0]
             interleave_tiffs(slice_dir, volume_dir, runmeta_path)
         else:
             volume_dir = copy.copy(write_dir)
-            slice_dir = volume_dir + '_slices'
+            slice_dir = volume_dir + '_deinterleaved'
             
         if multiplanar is True:
             print "Multiple slices/channels found. Sorting deinterleaved tiffs."

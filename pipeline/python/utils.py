@@ -211,6 +211,7 @@ def get_source_info(acquisition_dir, run, process_id):
     info['d2'] = runmeta['pixels_per_line']
     info['d3'] = len(runmeta['slices'])
     info['T'] = runmeta['nvolumes']
+    info['nchannels'] = runmeta['nchannels']
     info['ntiffs'] = runmeta['ntiffs']
 
     return info
@@ -512,9 +513,9 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
     ntotalframes = nslices * nvolumes * nchannels
     basename = runinfo['base_filename']
 
-    # Default write-dir should be source_dir_<projectiontype>_slices
+    # Default write-dir should be source_dir_<projectiontype>_deinterleaved
     if write_dir is None:
-        write_dir = source_dir + '_%s_slices' % zproj_type
+        write_dir = source_dir + '_%s_deinterleaved' % zproj_type
     if not os.path.exists(write_dir):
         os.makedirs(write_dir)
     print "Writing AVERAGED SLICES to:", write_dir
