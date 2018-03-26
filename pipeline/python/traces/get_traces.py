@@ -797,6 +797,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=True, cfac
         file_grp = h5py.File(filetraces_filepath, 'w')
         file_grp.attrs['source_file'] = currtiff_path
         file_grp.attrs['file_id'] = curr_file
+        file_grp.attrs['signal_channel'] = TID['PARAMS']['signal_channel']
         file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
         file_grp.attrs['mask_sourcefile'] = MASKS.attrs['source_file']  #MASKS['original_source'] #mask_path
 
@@ -1459,6 +1460,7 @@ def create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir
 
             file_grp = h5py.File(filetraces_filepath, 'w')
             file_grp.attrs['source_file'] = tfn
+            file_grp.attrs['signal_channel'] = TID['PARAMS']['signal_channel']
             file_grp.attrs['file_id'] = curr_file
             file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
             file_grp.attrs['mask_sourcefile'] = exp.folder #MASKS['original_source'] #mask_path
@@ -1605,6 +1607,8 @@ def append_corrected_fissa(exp, filetraces_dir):
 #%%
 
 def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=''):
+    
+    #signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
     MASKS = h5py.File(maskdict_path, 'r')
 
@@ -1632,6 +1636,11 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
                 tiff = tf.imread(tiffpath)
                 T, d1, d2 = tiff.shape
                 d = d1*d2
+                orig_dims = traces_currfile.attrs['dims']
+                nchannels = T/orig_dims[-1]
+                signal_channel_idx = int(traces_currfile.attrs['signal_channel']) - 1 
+                tiffR = tiffR[signal_channel_idx::nchannels,:]
+
                 tiffslice = np.reshape(tiff, (T, d), order='C'); del tiff
 
                 np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
