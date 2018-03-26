@@ -101,7 +101,7 @@ def plot_movie_timecourse_for_stimconfig(roi_df, TRIALS, configs, curr_roi_figdi
 
 
 #%%
-def plot_movie_timecourse(roi_df, TRIALS, configs, curr_roi_figdir='/tmp'): #, roi_trials=None):
+def plot_movie_timecourse(roi_df, TRIALS, configs, trace_type='raw', roi_df_raw=None, compare_trace_types=False, curr_roi_figdir='/tmp'): #, roi_trials=None):
     """
     For user-specified ROI, create a plot of timecourse for EACH file. Create a new
     plot for each stimulus-config, s.t. each repetition of a given stim-config in a given file
@@ -117,11 +117,15 @@ def plot_movie_timecourse(roi_df, TRIALS, configs, curr_roi_figdir='/tmp'): #, r
     for blockidx, selected_file in enumerate(fnames):
         print "Plotting traces for BLOCK %i" % int(blockidx+1)
         file_df = roi_df.loc[roi_df['file'] == selected_file]
+
         curr_trials_df = TRIALS.loc[TRIALS['block'] == blockidx+1]
         stim_bar_loc = file_df['values'].min() - 500
 
         fig = pl.figure(figsize=(15,2))
-        pl.plot("tsec", "values", linewidth=0.5, data=file_df, label='raw')            # Plot trace for current block
+        pl.plot("tsec", "values", linewidth=0.5, data=file_df, label=trace_type)            # Plot trace for current block
+        if compare_trace_types is True:
+            file_df_raw = roi_df_raw.loc[roi_df_raw['file'] == selected_file]
+            pl.plot("tsec", "values", linewidth=0.5, data=file_df_raw, label='raw')
 
         dfs = []
         for cidx, config_key in enumerate(sorted(configs.keys(), key=natural_keys)):
@@ -216,6 +220,7 @@ parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype
 parser.add_option('-s', '--slice', action='store', dest='slice_id', default=1, help="Slice num of ROI to plot [default: 1]")
 parser.add_option('-r', '--roi', action='store', dest='roi_id', default=1, help="ROI num to plot [default: 1]")
 parser.add_option('--background', action='store_true', dest='is_background', default=False, help="set if ROI selected is a background component")
+parser.add_option('--config', action='store_true', dest='plot_by_config', default=False, help="set if want to plot timecourses per file, per stimulus config also.")
 
 (options, args) = parser.parse_args()
 
@@ -232,11 +237,16 @@ run = options.run
 
 trace_id = options.trace_id
 trace_type = options.trace_type
+if not trace_type == 'raw':
+    compare_trace_types = True
+else:
+    compare_trace_types = False
 
 roi_id = int(options.roi_id)
 slice_id = int(options.slice_id)
 
 is_background = options.is_background
+plot_by_config = options.plot_by_config
 
 #%%
 if is_background is True:
@@ -343,6 +353,10 @@ TRIALS = pd.concat(trial_dfs, axis=0)
 
 #%%  Create TRACES dataframe:
 
+# Get mask info from MASKS.hdf5 in traceid dir:
+maskinfo = h5py.File(os.path.join(traceid_dir, 'MASKS.hdf5'), 'r')
+
+rawtrace_dfs = []
 trace_dfs = []
 for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
     curr_file = file_names[fidx]
@@ -350,8 +364,10 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
     # Load extrated TRACES from extracted timecourse mats [T,nrois]:
     traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
     for sidx, curr_slice in enumerate(traces.keys()):
-        nr = traces[curr_slice]['masks'].attrs['nr']
-        nb = traces[curr_slice]['masks'].attrs['nb']
+        print "trace types:", traces[curr_slice]['traces'].keys()
+
+        nr = maskinfo[curr_file][curr_slice]['maskarray'].attrs['nr'] #traces[curr_slice]['masks'].attrs['nr']
+        nb = maskinfo[curr_file][curr_slice]['maskarray'].attrs['nb'] #traces[curr_slice]['masks'].attrs['nb']
 
         roi_list = ['roi%05d' % int(ridx+1) for ridx in range(nr)] #traces[curr_slice]['masks'].attrs['roi_idxs']]
         roi_list.extend(['bg%02d' % int(bidx+1) for bidx in range(nb)]) # Make sure background comps are at END Of list, since indexing thru:
@@ -365,6 +381,15 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
                                      'values': traces[curr_slice]['traces'][trace_type][:, ridx],
                                      'roi': roi_list[ridx]
                                      }))
+            if not trace_type == 'raw':
+                 rawtrace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'][:], # + fidx*secs_per_file,
+                                     'file': curr_file,
+                                     'block': fidx + 1,
+                                     'slice': curr_slice,
+                                     'values': traces[curr_slice]['traces']['raw'][:, ridx],
+                                     'roi': roi_list[ridx]
+                                     }))
+    
 #            else:
 #                trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'][:] + fidx*secs_per_file,
 #                                         'file': curr_file,
@@ -376,6 +401,9 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
     traces.close()
 
 DATA = pd.concat(trace_dfs, axis=0)
+if len(rawtrace_dfs) > 0:
+    rawDATA = pd.concat(rawtrace_dfs, axis=0)
+
 #TRIALS = pd.concat(trial_dfs, axis=0)
 
 #%%
@@ -410,6 +438,8 @@ if not os.path.exists(curr_save_dir):
 
 # Only grab entries for selected ROI:
 roi_df = DATA.loc[DATA['roi'] == selected_roi]
+if compare_trace_types:
+    roi_df_raw = rawDATA.loc[rawDATA['roi'] == selected_roi]
 
 # Only grab a given file, tmp:
 file_df = roi_df.loc[roi_df['file'] == selected_file]
@@ -445,9 +475,10 @@ with open(os.path.join(paradigm_dir, 'stimulus_configs.json'), 'r') as f:
 
 #%%
 # Plot time course of EACG file, highlight EACH stim config for specfied ROI:
+if plot_by_config:
+    plot_movie_timecourse_for_stimconfig(roi_df, TRIALS, configs, trace_type=trace_type, curr_roi_figdir=curr_roi_figdir) #, roi_trials=roi_trials)
 
-plot_movie_timecourse_for_stimconfig(roi_df, TRIALS, configs, curr_roi_figdir=curr_roi_figdir) #, roi_trials=roi_trials)
-plot_movie_timecourse(roi_df, TRIALS, configs, curr_roi_figdir=curr_roi_figdir)
+plot_movie_timecourse(roi_df, TRIALS, configs, trace_type=trace_type, roi_df_raw=roi_df_raw, compare_trace_types=compare_trace_types, curr_roi_figdir=curr_roi_figdir)
 
 
 #%%

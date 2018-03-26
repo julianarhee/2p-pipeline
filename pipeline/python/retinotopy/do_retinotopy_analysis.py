@@ -166,7 +166,7 @@ def do_regression(t,phi,roi_trace,npixels,tpoints,roi_type,signal_fit_idx):
 
 def get_mask_traces(tiff_stack,masks):
 	szx, szy, nframes = tiff_stack.shape
-	szx, szy, nmasks = masks.shape
+	nmasks, szx, szy = masks.shape
 
 	roi_trace = np.zeros((nmasks,nframes))
 
@@ -174,7 +174,7 @@ def get_mask_traces(tiff_stack,masks):
 		for midx in range(nmasks):
 			#get frame and mask
 			im0 = np.squeeze(tiff_stack[:,:,frame])
-			single_mask = np.squeeze(masks[:,:,midx])
+			single_mask = np.squeeze(masks[midx,:,:])
 
 			#set zero values in mask as nans in image
 			im0 = im0.astype('float32')
@@ -212,12 +212,29 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		#reshape stack
 		roi_trace = np.reshape(tiff_stack,(szx*szy, nframes))
 
-	else:
+	elif RETINOID['PARAMS']['roi_type'] == 'retino':
 		#get saved masks for this tiff stack
 		s0 = tiff_fn[:-4]
 		file_str = s0[s0.find('File'):s0.find('File')+7]
-		masks = masks_file[file_str]['masks'][:]
-		szx, szy, nmasks = masks.shape
+		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
+		masks = masks_file[file_str]['masks'][slice_str][:]
+
+		nmasks,szx, szy= masks.shape
+
+		#apply masks to stack
+		roi_trace = get_mask_traces(tiff_stack,masks)
+		
+	else:
+		#get saved masks for this tiff stack
+		s0 = tiff_fn[:-4]
+		file_str = masks_file.keys()[0]
+		print(file_str)
+		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
+		masks = masks_file[file_str]['masks'][slice_str][:]
+		#swap axes for familiarity
+		masks = np.swapaxes(masks,1,2)
+
+		nmasks, szx, szy= masks.shape
 
 		#apply masks to stack
 		roi_trace = get_mask_traces(tiff_stack,masks)
@@ -491,7 +508,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		phase_roi = np.copy(magratio_roi)
 
 		for midx in range(nmasks):
-			maskpix = np.where(np.squeeze(masks[:,:,midx]))
+			maskpix = np.where(np.squeeze(masks[midx,:,:]))
+			print(len(maskpix))
 			magratio_roi[maskpix]=mag_ratio_array[midx]
 			mag_roi[maskpix]=mag_array[midx]
 			varexp_roi[maskpix]=varexp_array[midx]
