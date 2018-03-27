@@ -169,12 +169,12 @@ def extract_options(options):
     parser.add_option('-c', '--channel', action='store', dest='signal_channel', default=1, help="Signal channel [default: 1]")
 
     #spatial pre-processing options, applied on images
-    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=None, help='Factor by which to downsample images (integer)')    
+    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=2, help='Factor by which to downsample images (integer)')    
     parser.add_option('-f', '--fwhm', action='store', dest='smooth_fwhm', default=None, help='full-width at half-max size of guassian kernel for smoothing images(odd integer)')
 
     #temporal pre-processing options, applied on timecourses
     parser.add_option('-m', '--rollingmean', action='store_true', dest='rolling_mean', default=False, help='Boolean to indicate whether to subtract rolling mean from signal')
-    parser.add_option('-w', '--timeaverage', action='store', dest='time_average', default=None, help='Size of time window with which to average frames (integer)')
+    parser.add_option('-w', '--timeaverage', action='store', dest='time_average', default=5, help='Size of time window with which to average frames (integer)')
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
