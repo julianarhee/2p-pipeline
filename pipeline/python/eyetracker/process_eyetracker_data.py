@@ -303,9 +303,9 @@ def extract_options(options):
     parser.add_option('-m', '--movie', action='store_true', dest='make_movie', default=True, help='Boolean to indicate whether to make anotated movie of frames')
 
     parser.add_option('-d', '--downsample', action='store', dest='downsample', default=None, help='Factor by which to downsample images (integer)---not implemented yet')
-    parser.add_option('-f', '--smooth', action='store', dest='space_filt_size', default=None, help='size of box filter for smoothing images(integer)')
+    parser.add_option('-f', '--smooth', action='store', dest='space_filt_size', default=5, help='size of box filter for smoothing images [default: 5 (int)]')
 
-    parser.add_option('-t', '--timefilt', action='store', dest='time_filt_size', default=5, help='Size of median filter to smooth signals over time(integer)')
+    parser.add_option('-t', '--timefilt', action='store', dest='time_filt_size', default=5, help='Size of median filter to smooth signals over time [default: 5 (int)]')
 
     parser.add_option('-b', '--baseline', action='store', dest='baseline', default=1, help='Length of baseline period (secs) for trial parsing')
 
