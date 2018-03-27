@@ -416,7 +416,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.close()
 
 		# #Read in average image (for viuslization)
-		avg_dir = os.path.join('%s_mean_slices'%(str(RETINOID['SRC'])),'visible')
+		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
 		s0 = tiff_fn[:-4]
 		s1 = s0[s0.find('Slice'):]
 
@@ -518,7 +518,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		fig_dir = tiff_fig_dir
 
 		# #Read in average image (for viuslization)
-		avg_dir = os.path.join('%s_mean_slices'%(str(RETINOID['SRC'])),'visible')
+		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
 		s0 = tiff_fn[:-4]
 		s1 = s0[s0.find('Slice'):]
 

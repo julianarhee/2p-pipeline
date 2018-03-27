@@ -223,7 +223,7 @@ def visualize_retino(options):
 
 
 		# #Read in average image (for viuslization)
-		avg_dir = os.path.join('%s_mean_slices'%(str(RETINOID['SRC'])),'visible')
+		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
 		s0 = tiff_fn[:-4]
 		s1 = s0[s0.find('Slice'):]
 
