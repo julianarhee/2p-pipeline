@@ -84,7 +84,7 @@ def get_timekey(item):
 #%% PARSE_MW_EVENTS methods:
 
 #%%
-def get_session_bounds(dfn, verbose=False):
+def get_session_bounds(dfn, single_run=False, verbose=False):
 
     df = None
     df = pymworks.open(dfn)                                                          # Open the datafile
@@ -125,6 +125,9 @@ def get_session_bounds(dfn, verbose=False):
         print "Bounds: ", bounds
         for bidx, bound in enumerate(bounds):
             print "bound ID:", bidx, (bound[1]-bound[0])/1E6, "sec"
+
+    if single_run is True:
+        bounds = [bounds[0]]
 
     return df, bounds
 
@@ -382,9 +385,9 @@ def get_session_info(df, stimulus_type=None):
     return info
 
 #%%
-def get_stimulus_events(dfn, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(dfn, single_run=True, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
-    df, bounds = get_session_bounds(dfn)
+    df, bounds = get_session_bounds(dfn, single_run=single_run)
     #print bounds
     codec = df.get_codec()
 
@@ -502,7 +505,7 @@ def get_stimulus_events(dfn, phasemod=False, triggername='frame_trigger', pixelc
 
 #%%
 
-def get_bar_events(dfn, triggername='', remove_orphans=True):
+def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True):
     """
     Open MW file and get time-stamped boundaries for acquisition.
 
@@ -520,7 +523,7 @@ def get_bar_events(dfn, triggername='', remove_orphans=True):
     """
     #for dfn in dfns:
 
-    df, bounds = get_session_bounds(dfn)
+    df, bounds = get_session_bounds(dfn, single_run=single_run)
 
     # Use chunks of MW "run"-states to get all associate events:
 
@@ -656,13 +659,13 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False):
+def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True):
 
     print "Current file: ", curr_dfn
     if retinobar is True:
-        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname)
+        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -955,6 +958,8 @@ def parse_mw_trials(options):
                       dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated grating stimulus.")
     parser.add_option('--verbose', action="store_true",
                       dest="verbose", default=False, help="Set flag if want to print all output (for debugging).")
+    parser.add_option('--multi', action="store_false",
+                      dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
 
     parser.add_option('-t', '--triggervar', action="store",
                       dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
@@ -971,6 +976,7 @@ def parse_mw_trials(options):
     retinobar = options.retinobar #'grating'
     phasemod = options.phasemod
     verbose = options.verbose
+    single_run = options.single_run
 
     slurm = options.slurm
     if slurm is True and 'coxfs01' not in rootdir:
@@ -1001,7 +1007,7 @@ def parse_mw_trials(options):
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
 
-        trials = extract_trials(curr_dfn, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose)
+        trials = extract_trials(curr_dfn, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run)
 
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 

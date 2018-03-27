@@ -229,7 +229,8 @@ def extract_options(options):
                       dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated gratings.")
     parser.add_option('-t', '--triggervar', action="store",
                       dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
-
+    parser.add_option('--multi', action="store_false",
+                      dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
 
     (options, args) = parser.parse_args(options)
 
@@ -389,6 +390,7 @@ def main(options):
     retinobar = options.retinobar
     phasemod = options.phasemod
     trigger_varname = options.frametrigger_varname
+    single_run = options.single_run
 
     stimorder_files = False #True
 
@@ -399,6 +401,9 @@ def main(options):
         mwopts.extend(['--retinobar'])
     if phasemod is True:
         mwopts.extend(['--phasemod'])
+    if single_run is False:
+        mwopts.extend(['--multi'])
+
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)
     print "----------------------------------------"
