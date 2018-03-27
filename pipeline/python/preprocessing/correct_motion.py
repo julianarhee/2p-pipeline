@@ -173,7 +173,8 @@ def do_motion(options):
     interleave_write_tiffs = False
     if PID['PARAMS']['motion']['method'] == 'Acquisition2P' and multiplanar is True:
         # Default is to write deinterleaved slices to write_dir
-        PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_deinterleaved'
+        if 'deinterleaved' not in PID['PARAMS']['motion']['destdir']:
+            PID['PARAMS']['motion']['destdir'] = PID['PARAMS']['motion']['destdir'] + '_deinterleaved'
         interleave_write_tiffs = True
        
     write_dict_to_json(PID, paramspath)  

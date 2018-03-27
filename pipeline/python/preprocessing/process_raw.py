@@ -233,7 +233,7 @@ def process_pid(options):
     if execute_bidi is True:  
         bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
     else:
-        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir']).split('_')[-1]
+        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir'])[-1].split('_')[-1]
     #pid_hash = PID['pid_hash']
     print "Bidir hash: %s" % bidir_hash
     print "PID %s: BIDIR finished." % pid_hash
