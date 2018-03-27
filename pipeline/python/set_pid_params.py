@@ -146,7 +146,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
     # Update source/dest, depending on current step and params:
     if step == 'flyback':
         PID['PARAMS']['preprocessing']['sourcedir'] = PID['SRC']
-        if correct_flyback is True:
+        if correct_flyback is True and 'raw' not in PID['PARAMS']['preprocessing']['destdir']:
             PID['PARAMS']['preprocessing']['destdir'] = os.path.join(PID['DST'], 'raw')
 
     if step == 'bidir':
@@ -163,7 +163,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
             # Bidir-correction is raw/SRC tiffs:
             print "processing on RAW"
             PID['PARAMS']['preprocessing']['sourcedir'] = PID['SRC']
-        if correct_bidir is True:
+        if correct_bidir is True and 'bidi' not in PID['PARAMS']['preprocessing']['destdir']:
             PID['PARAMS']['preprocessing']['destdir'] = os.path.join(PID['DST'], 'bidi')
 
     if step == 'motion':
@@ -171,7 +171,7 @@ def append_hash_to_paths(PID, pid_hash, step=''):
             PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['PARAMS']['preprocessing']['destdir'])
         else:
             PID['PARAMS']['motion']['sourcedir'] = copy.copy(PID['SRC'])
-        if correct_motion is True:
+        if correct_motion is True and 'mcorrected' not in PID['PARAMS']['motion']['destdir']:
             PID['PARAMS']['motion']['destdir'] = os.path.join(PID['DST'], 'mcorrected')
 
     return PID

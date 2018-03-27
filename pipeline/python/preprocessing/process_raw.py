@@ -70,7 +70,9 @@ def process_pid(options):
     parser.add_option('-Z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of zprojection to create slice images [default: mean].")
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
- 
+   
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to re-run all preprocessing steps from scratch [default: false]")
+
     tiffsource = 'raw'
 
     (options, args) = parser.parse_args(options) 
@@ -95,6 +97,7 @@ def process_pid(options):
 
     slurm = options.slurm
     default = options.default
+    create_new = options.create_new
     
     get_zproj = options.get_zproj
     zproj_type = options.zproj_type
@@ -213,14 +216,24 @@ def process_pid(options):
         bidir_otions.extend(['--default'])
     if slurm is True:
         bidir_options.extend(['--slurm', '-C', cvx_path])
+    # Check if bidi already done:
+    bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
+    if os.path.exists(bidi_output_dir):
+        bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
+        if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
+            print "*** Found existing BIDI corrected files. Skipping..."
+            execute_bidi = False
     if execute_bidi is True:
         bidir_options.extend(['--bidi'])
     if len(repo_path) > 0:
         bidir_options.extend(['-P', repo_path]) 
 
     print bidir_options
-
-    bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+    
+    if execute_bidi is True:  
+        bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+    else:
+        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir']).split('_')[-1]
     #pid_hash = PID['pid_hash']
     print "Bidir hash: %s" % bidir_hash
     print "PID %s: BIDIR finished." % pid_hash
