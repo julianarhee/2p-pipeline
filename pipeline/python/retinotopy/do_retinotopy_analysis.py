@@ -15,7 +15,7 @@ import numpy as np
 from scipy import ndimage
 import cv2
 
-from pipeline.python.utils import atoi , natural_keys
+from pipeline.python.utils import natural_keys, replace_root
 
 pp = pprint.PrettyPrinter(indent=4)
 
