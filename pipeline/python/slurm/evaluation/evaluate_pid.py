@@ -76,7 +76,11 @@ def main():
     
     # Open LOGGING dir in tmp PID dir:
     pid_id = os.path.splitext(os.path.split(pid_path)[-1])[0].split('_')[-1]
-    logdir = os.path.join(os.path.split(pid_path)[0], "logging_%s" % pid_id)
+    if 'completed' in pid_path:
+        spid_dir = os.path.split(os.path.split(pid_path)[0])[0]
+    else:
+        spid_dir = os.path.split(pid_path)[0] 
+    logdir = os.path.join(spid_dir, "logging_%s" % pid_id)
     if not os.path.exists(logdir):
         os.makedirs(logdir)
     print "Logging to: %s" % logdir
@@ -91,17 +95,20 @@ def main():
     logging.info("MC evaluation results saved to: %s" % outfilepath)
 
      # Clean up session info dict:
-    tmp_session_info_dir = os.path.split(pid_path)[0]
-    completed_session_info_dir = os.path.join(tmp_session_info_dir, 'completed')
+    #tmp_session_info_dir = os.path.split(pid_path)[0]
+    pid_fn = os.path.split(pid_path)[-1]
+    completed_session_info_dir = os.path.join(spid_dir, 'completed')
     if not os.path.exists(completed_session_info_dir):
         os.makedirs(completed_session_info_dir)
 
-    completed_pinfo_path = os.path.join(completed_session_info_dir, os.path.split(pid_path)[-1])
-    if os.path.exists(pid_path):
-        os.rename(pid_path, completed_pinfo_path)
-        logging.info("Cleaned up session info file: %s" % completed_pinfo_path)
+    #completed_pinfo_path = os.path.join(completed_session_info_dir, os.path.split(pid_path)[-1])
+    if 'completed' not in pid_path:
+        shutil.move(os.path.join(spid_dir, pid_fn), os.path.join(completed_session_info_dir, pid_fn))
+        logging.info("Cleaned up session info file: %s" % os.path.join(completed_session_info_dir, pid_fn))
     
     logging.info("PID %s -- MC EVALUATION!" % pid_id)
 
+    # Move log files to completed, if no error:
+    
 if __name__ == "__main__":
     main()

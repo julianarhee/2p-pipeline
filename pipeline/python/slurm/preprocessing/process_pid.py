@@ -11,6 +11,7 @@ import os
 import json
 import optparse
 import logging
+import shutil
 from pipeline.python.preprocessing.process_raw import process_pid
 
 def process_pid_from_file(pid_filepath):
@@ -52,13 +53,14 @@ def main():
 
      # Clean up session info dict:
     tmp_session_info_dir = os.path.split(pid_path)[0]
+    pid_fn = os.path.split(pid_path)[1]
     completed_session_info_dir = os.path.join(tmp_session_info_dir, 'completed')
     if not os.path.exists(completed_session_info_dir):
         os.makedirs(completed_session_info_dir)
 
     completed_pinfo_path = os.path.join(completed_session_info_dir, os.path.split(pid_path)[-1])
     if os.path.exists(pid_path):
-        os.rename(pid_path, completed_pinfo_path)
+        shutil.move(os.path.join(tmp_session_info_dir, pid_fn), os.path.join(completed_session_info_dir, pid_fn))
         logging.info("Cleaned up session info file: %s" % completed_pinfo_path)
     
     logging.info("PID %s -- done!" % pid_id)
