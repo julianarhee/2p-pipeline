@@ -85,6 +85,7 @@ if slurm is True and 'coxfs01' not in rootdir:
     rootdir = '/n/coxfs01/2p-data'
 auto = options.default
 
+zproj_type = options.zproj_type
 
 #%%
 session_dir = os.path.join(rootdir, animalid, session)
@@ -108,7 +109,7 @@ src_tiff_dir = RID['PARAMS']['options']['source']['tiff_dir']
 if rootdir not in src_tiff_dir:
     src_tiff_dir = replace_root(src_tiff_dir, rootdir, animalid, session)
 src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
-                    '_mean_slices' in d and os.path.split(src_tiff_dir)[-1] in d][0]
+                    '_%s_deinterleaved' % zproj_type in d and os.path.split(src_tiff_dir)[-1] in d][0]
 ref_img_dir = os.path.join(src_proj_dir,
                                 'Channel%02d' % RID['PARAMS']['options']['source']['ref_channel'],
                                 'File%03d' % RID['PARAMS']['options']['source']['ref_file'])
@@ -119,7 +120,7 @@ rid_tiff_dir = RID['SRC']
 if rootdir not in rid_tiff_dir:
     rid_tiff_dir = replace_root(rid_tiff_dir, rootdir, animalid, session)
 rid_proj_dir = [os.path.join(os.path.split(rid_tiff_dir)[0], d) for d in os.listdir(os.path.split(rid_tiff_dir)[0]) if
-                    '_mean_slices' in d and os.path.split(rid_tiff_dir)[-1] in d][0]
+                    '_%s_deinterleaved' % zproj_type in d and os.path.split(rid_tiff_dir)[-1] in d][0]
 rid_img_dir = os.path.join(rid_proj_dir,
                                  'Channel%02d' % RID['PARAMS']['options']['ref_channel'],
                                  'File%03d' % RID['PARAMS']['options']['ref_file'])
