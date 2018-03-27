@@ -446,7 +446,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, get_neurop
                             warp_img_path = os.path.join(warp_img_dir, 'warped_rois_r%s_to_%s_%s.png' % (maskinfo['ref_file'], curr_file, curr_slice))
                         else:
                             warp_img_path = ''
-                        masks = warp_masks(masks, ref_img, img, save_warp_images=save_warp_images, outfig_path=warp_img_path)
+                        masks = warp_masks(masks, ref_img, img, save_warp_images=save_warp_images, out_fpath=warp_img_path)
                         mask_arr = masks_to_normed_array(masks)
                     mref_name = maskinfo['ref_file']
                 else:
