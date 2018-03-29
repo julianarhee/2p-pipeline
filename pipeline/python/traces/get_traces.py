@@ -1683,6 +1683,8 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
 
                 # Load tiff:
                 tiffpath = traces_currfile.attrs['source_file']
+                print "Calculating neuropil from src: %s" % tiffpath
+
                 if rootdir not in tiffpath:
                     session_dir = os.path.split(os.path.split(filetraces_dir.split('/traces')[0])[0])[0]
                     info = get_info_from_tiff_dir(os.path.split(tiffpath)[0], session_dir)
@@ -1691,12 +1693,14 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
                 tiff = tf.imread(tiffpath)
                 T, d1, d2 = tiff.shape
                 d = d1*d2
-                orig_dims = traces_currfile.attrs['dims']
-                nchannels = T/orig_dims[-1]
+                orig_mat_shape = traces_currfile[curr_slice]['traces']['raw'].shape
+                #orig_dims = traces_currfile.attrs['dims'] # (d1, d2, nslices, T)
+                nchannels = T/orig_mat_shape[0]
                 signal_channel_idx = int(traces_currfile.attrs['signal_channel']) - 1
-                tiffR = tiffR[signal_channel_idx::nchannels,:]
-
-                tiffslice = np.reshape(tiff, (T, d), order='C'); del tiff
+                
+                tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
+                tiffslice = tiffR[signal_channel_idx::nchannels,:]
+                print "SLICE shape is:", tiffslice.shape
 
                 np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
                 np_tracemat = tiffslice.dot(np_maskarray)
