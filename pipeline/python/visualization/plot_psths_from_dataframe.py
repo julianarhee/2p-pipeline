@@ -47,84 +47,11 @@ from pipeline.python.traces.utils import load_TID, get_metric_set
 from pipeline.python.paradigm.align_acquisition_events import get_stimulus_configs, set_pupil_params
 pp = pprint.PrettyPrinter(indent=4)
 
+#%%
 def get_axis_limits(ax, xscale=.9, yscale=0.9):
     return ax.get_xlim()[1]*xscale, ax.get_ylim()[1]*yscale
 
-#def set_subplot_order(configs, stimtype, universal_scale=False):  # in percentage of the figure height
-#    plot_info = {}
-#    stiminfo = {}
-#
-#    if 'grating' in stimtype:
-#        sfs = list(set([configs[c]['frequency'] for c in configs.keys()]))
-#        oris = list(set([configs[c]['rotation'] for c in configs.keys()]))
-#
-#        noris = len(oris)
-#        nsfs = len(sfs)
-#
-#        nrows = min([noris, nsfs])
-#        ncols = (nsfs * noris) / nrows
-#
-#        tmp_list = []
-#        for sf in sorted(sfs):
-#            for oi in sorted(oris):
-#                match = [k for k in configs.keys() if configs[k]['rotation']==oi and configs[k]['frequency']==sf][0]
-#                tmp_list.append(match)
-#        stimid_only = True
-#        subplot_stimlist = dict()
-#        subplot_stimlist['defaultgratings'] = tmp_list
-#        #print subplot_stimlist
-#
-#        stiminfo['sfs'] = sfs
-#        stiminfo['oris'] = oris
-#
-#    else:
-#        #configparams = configs[configs.keys()[0]].keys()
-#
-#        # Create figure(s) based on stim configs:
-#        position_vals = list(set([tuple(configs[k]['position']) for k in configs.keys()]))
-#        size_vals = list(set([configs[k]['scale'][0] for k in configs.keys()]))
-#        img_vals = list(set([configs[k]['filename'] for k in configs.keys()]))
-#        if len(position_vals) > 1 or len(size_vals) > 1:
-#            stimid_only = False
-#        else:
-#            stimid_only = True
-#
-#        if stimid_only is True:
-#            nfigures = 1
-#            nrows = int(np.ceil(np.sqrt(len(configs.keys()))))
-#            ncols = len(configs.keys()) / nrows
-#            img = img_vals[0]
-#            subplot_stimlist = dict()
-#            subplot_stimlist[img] = sorted(configs.keys(), key=lambda x: configs[x]['filename'])
-#        else:
-#            nfigures = len(img_vals)
-#            nrows = len(position_vals)
-#            ncols = len(size_vals)
-#            subplot_stimlist = dict()
-#            for img in img_vals:
-#                curr_img_configs = [c for c in configs.keys() if configs[c]['filename'] == img]
-#                subplot_stimlist[img] = sorted(curr_img_configs, key=lambda x: (configs[x].get('scale'), configs[x].get('position')))
-#
-#        stiminfo['position_vals'] = position_vals
-#        stiminfo['size_vals'] = size_vals
-#        stiminfo['img_vals'] = img_vals
-#
-#    plot_info['stimuli'] = stiminfo
-#    plot_info['stimid_only'] = stimid_only
-#    plot_info['subplot_stimlist'] = subplot_stimlist
-#    plot_info['nrows'] = nrows
-#    plot_info['ncols'] = ncols
-#
-#    figure_height, top_margin, bottom_margin =  set_figure_params(nrows, ncols)
-#    plot_info['figure_height'] = figure_height
-#    plot_info['top_margin'] = top_margin
-#    plot_info['bottom_margin'] = bottom_margin
-#    plot_info['universal_scale'] = universal_scale
-##
-#
-#    return plot_info #subplot_stimlist, nrows, ncols
-
-#%%
+#%
 
 def set_figure_params(nrows, ncols, fontsize_pt=20, dpi=72.27, spacer=20, top_margin=0.01, bottom_margin=0.05):
 
@@ -140,14 +67,14 @@ def set_figure_params(nrows, ncols, fontsize_pt=20, dpi=72.27, spacer=20, top_ma
 
 
 #%%
-def get_facet_stats(DF, config_list, g):
+def get_facet_stats(config_list, g, value='df'):
     plotstats = {'dfmats': {}, 'indices': {}}
     dfmats = dict((config, []) for config in config_list)
     plotindices = dict((config, []) for config in config_list)
     for (row_i, col_j, hue_k), data_ijk in g.facet_data():
         if len(data_ijk) == 0:
             continue
-        dfmats[list(set(data_ijk['config']))[0]].append(data_ijk['df'])
+        dfmats[list(set(data_ijk['config']))[0]].append(data_ijk[value])
         plotindices[list(set(data_ijk['config']))[0]].append((row_i, col_j))
 
     for config in dfmats.keys():
@@ -165,41 +92,61 @@ def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth',
         stimtype = 'image'
 
     trans_types = object_transformations.keys()
-    #config_list = list(set(DF['config']))
-#
-#    first_on = list(set(DF['first_on']))[0]
-#    nsecs_on = list(set(DF['nsecs_on']))[0]
-#    tsecs = sorted(list(set(DF['tsec'])))
+
+    if stimtype == 'image':
+        object_sorter = 'object'
+    else:
+        if 'ori' in trans_types and not 'sf' in trans_types:
+            object_sorter = 'ori'
 
     single_object_figure = False
     if 'size' in trans_types and ('xpos' in trans_types or 'ypos' in trans_types):
-        ordered_rows = sorted(list(set(DF['position'])))
-        ordered_cols = sorted(list(set(DF['size'])))
+        # ---- Transform description ---------------------------
+        # Change SIZE & change POSITION
+        # NOTE:  only tested with size + horizontal translation
+        # ------------------------------------------------------
+        row_order = sorted(list(set(DF['position'])))
+        col_order = sorted(list(set(DF['size'])))
         rows = 'position'
         columns = 'size'
         single_object_figure = True
-        figbase = 'pos%i_size%i' % (len(ordered_rows), len(ordered_cols))
+        figbase = 'pos%i_size%i' % (len(row_order), len(col_order))
+    elif 'xpos' in trans_types and 'ypos' in trans_types:
+        # ---- Transform description ---------------------------
+        # Change POSITIONS only, grid w/ x and y positions
+        # NOTE:  only tested with 4 orientations + x-,y-position grid
+        # ------------------------------------------------------
+        row_order = sorted(list(set(DF['ypos'])))[::-1] # Reverse order so POS are on top, NEG on bottom
+        col_order = sorted(list(set(DF['xpos'])))
+        rows = 'ypos'
+        columns = 'xpos'
+        single_object_figure = True
+        figbase = 'xpos%i_ypos%i' % (len(row_order), len(col_order))
     else:
+        # ---- Transform description ---------------------------
+        # POS and SIZE at single value, only changing [morph or yrot
+        # NOTE:  only tested with 4 orientations + x-,y-position grid
+        # ------------------------------------------------------
         figbase = 'all_objects_default_pos_size'
         if stimtype == 'grating':
-            ordered_rows = sorted(list(set(DF['sf'])))
-            ordered_cols = sorted(list(set(DF['ori'])))
+            row_order = sorted(list(set(DF['sf'])))
+            col_order = sorted(list(set(DF['ori'])))
             rows = 'sf'
             columns = 'ori'
         else:
-            ordered_rows = sorted(list(set(DF['morphlevel'])))
-            ordered_cols = sorted(list(set(DF['yrot'])))
+            row_order = sorted(list(set(DF['morphlevel'])))
+            col_order = sorted(list(set(DF['yrot'])))
             rows = 'morphlevel'
             columns = 'yrot'
 
     if single_object_figure is True:
-        for objectid in list(set(DF['object'])):
-            currdf = DF[DF['object'] == objectid]
-            figpath = os.path.join(figdir, '%s_%s_%s.png' % (prefix, objectid, figbase))
-            draw_psth(roi, currdf, rows, columns, ordered_rows, ordered_cols, trace_color, stimbar_color, figpath)
+        for objectid in list(set(DF[object_sorter])):
+            currdf = DF[DF[object_sorter] == objectid]
+            figpath = os.path.join(figdir, '%s_%s%s_%s.png' % (prefix, object_sorter, objectid, figbase))
+            draw_psth(roi, currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
     else:
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roi, DF, rows, columns, ordered_rows, ordered_cols, trace_color, stimbar_color, figpath)
+        draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
 
 #%%
 def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath):
@@ -207,14 +154,14 @@ def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar
     config_list = list(set(DF['config']))
     # Add n trials to each subplot:
     ntrials = dict((c, len(list(set(DF[DF['config']==c]['trial'])))) for c in config_list)
-    
+
     first_on = list(set(DF['first_on']))[0]
     nsecs_on = list(set(DF['nsecs_on']))[0]
     tsecs = sorted(list(set(DF['tsec'])))
 
     g1 = sns.FacetGrid(DF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
     g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
-    plotstats = get_facet_stats(DF, config_list, g1)
+    plotstats = get_facet_stats(config_list, g1, value='df')
 
     # Get mean trace:
     meandfs = {}
@@ -279,7 +226,7 @@ def get_object_transforms(DF):
 #%%
 def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace_type='raw',
                    filter_pupil=True, pupil_params=None, plot_all=True, universal_scale=False,
-                   ylim_min=-1.0, ylim_max=1.0):
+                   ylim_min=-1.0, ylim_max=1.0, visualization_method='separate_transforms'):
 
     if plot_all is False and filter_pupil is False:
         print "No PSTH types specified. Exiting."
@@ -294,16 +241,19 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
         #pupil_size_thr = pupil_params['size_thr']
         pupil_dist_thr = float(pupil_params['dist_thr'])
 
-    roi_psth_dir_all = os.path.join(roi_psth_dir, 'unfiltered')
+    # UNFILTERED psth plot dir:
+    roi_psth_dir_all = os.path.join(roi_psth_dir, 'unfiltered', visualization_method)
     if not os.path.exists(roi_psth_dir_all):
         os.makedirs(roi_psth_dir_all)
+
+    # Excluded/Included psth plot dirs:
     if filter_pupil is True:
         #pupil_thresh_str = 'pupil_size%i-dist%i-blinks%i' % (pupil_size_thr, pupil_dist_thr, int(pupil_max_nblinks))
         pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
-        roi_psth_dir_include = os.path.join(roi_psth_dir, pupil_thresh_str, 'include')
+        roi_psth_dir_include = os.path.join(roi_psth_dir, pupil_thresh_str, visualization_method, 'include')
         if not os.path.exists(roi_psth_dir_include):
             os.makedirs(roi_psth_dir_include)
-        roi_psth_dir_exclude = os.path.join(roi_psth_dir, pupil_thresh_str, 'exclude')
+        roi_psth_dir_exclude = os.path.join(roi_psth_dir, pupil_thresh_str, visualization_method, 'exclude')
         if not os.path.exists(roi_psth_dir_exclude):
             os.makedirs(roi_psth_dir_exclude)
 
@@ -382,7 +332,10 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
 
 
 #%%
-def plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_type='zscore', include_trials=True):
+def plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir,
+                       metric_type='zscore', include_trials=True,
+                       visualization_method='separate_transforms',
+                       save_and_close=True):
 
     STATS = pd.HDFStore(roistats_filepath, 'r')['/df']
 
@@ -395,41 +348,53 @@ def plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_ty
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
 
     transform_dict, object_transformations = get_object_transforms(STATS)
-    if stimtype == 'image':
-        trans_types = [t for t in transform_dict.keys() if len(transform_dict[t]) > 1]
-    else:
-        trans_types = ['ori', 'sf']
+    trans_types = object_transformations.keys()
 
     for roi in sorted(roi_list, key=natural_keys):
         print roi
-        DF = STATS[STATS['roi'] == roi]
+        roiDF = STATS[STATS['roi'] == roi]
+        # Check if valid traces exist:
+        if len(roiDF[np.isfinite(roiDF['zscore'])]) == 0:
+            print "***WARNING: -- tuning curves --***"
+            print "-- No valid traces found for ROI: %s" % roi
+            print "-- skipping..."
+            continue
 
-        if stimtype == 'image':
-            #objectid_list = sorted(list(set(STATS['object'])))
+        if visualization_method == 'separate_transforms':
+            plot_tuning_by_transforms(roiDF, transform_dict, object_transformations,
+                                      metric_type=metric_type,
+                                      output_dir=curr_tuning_figdir,
+                                      include_trials=include_trials,
+                                      save_and_close=save_and_close)
+        else:
+            if stimtype == 'grating':
+                object_transformations = {}
+                for trans in trans_types:
+                    object_transformations[trans] = []
+                plot_tuning_collapse_transforms(roiDF, object_transformations,
+                                                object_type='grating',
+                                                metric_type=metric_type,
+                                                output_dir=curr_tuning_figdir,
+                                                include_trials=include_trials,
+                                                save_and_close=save_and_close)
+            else:
+                plot_tuning_collapse_transforms(roiDF, object_transformations,
+                                                object_type='object',
+                                                metric_type=metric_type,
+                                                output_dir=curr_tuning_figdir,
+                                                include_trials=include_trials,
+                                                save_and_close=save_and_close)
 
-            # ----- First, plot TUNING curves for each OBJECT ID --------
-            plot_transform_tuning(roi, DF, object_transformations, object_type='object', metric_type=metric_type, output_dir=curr_tuning_figdir, include_trials=include_trials)
 
-            #plot_transform_tuning(roi, curr_df, trans_type="yrot", object_type='object', metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
 
-            # ----- Now, plot TUNING curves for MORPHS (color by morph level) --------
-            #curr_df = STATS[((STATS['roi'] == roi) & (STATS['yrot'] == 0))]
-            #plot_transform_tuning(roi, curr_df, trans_type="morph", object_type='morph', metric_type=metric_type, output_dir=output_dir, include_trials=include_trials)
-
-        elif 'grating' in stimtype:
-
-            object_transformations = {}
-            for trans in trans_types:
-                object_transformations[trans] = []
-            #print roi
-            #objectid_list = sorted(list(set(STATS['ori'])))
-            #curr_df = STATS[((STATS['roi'] == roi) & (STATS['ori'].isin(objectid_list)))]
-            plot_transform_tuning(roi, DF, object_transformations, object_type='grating', metric_type=metric_type, output_dir=curr_tuning_figdir, include_trials=include_trials)
 
     #STATS.close()
 
 #%%
-def plot_transform_tuning(roi, DF, object_transformations, object_type='object', metric_type='zscore', output_dir='/tmp', include_trials=True):
+
+
+def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, metric_type='zscore',
+                              save_and_close=True, output_dir='/tmp', include_trials=True):
     '''
     trans_type = feature that varies for a given object ID (i.e., how we want to color-code)
     object_sorter = how we want to define object ID
@@ -437,17 +402,181 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
         -- for gratings, this is the spatial frequency, since we want to look at variation in ORI (trans_type) within a given S.F.
     hue = should be the same as object_sorter (except if only a single morph, since there is only 1 morphID)
     '''
+    fignames = []
+
+    roi = list(set(roiDF['roi']))[0]
+
+    colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+    cmapcolors = itertools.cycle(sns.xkcd_palette(colors))
+
+    trans_types = object_transformations.keys()
+
+    # Grid x,y positions, and vary other trans_type(s??) as curves:
+    grid_variables = ['xpos', 'ypos']
+    nrows = len(transform_dict['ypos'])
+    rows = 'ypos'
+    row_order = sorted(list(set(roiDF['ypos'])))[::-1]
+
+    ncols = len(transform_dict['xpos'])
+    columns = 'xpos'
+    col_order = sorted(list(set(roiDF['xpos'])))
+
+    other_trans_types = [t for t in object_transformations.keys() if not t in grid_variables]
+    desc = 'grid_xypos_%s' % '_'.join(other_trans_types)
+
+    if len(other_trans_types) == 1:
+        xval_trans = other_trans_types[0]
+        hue_trans = None
+
+    elif 'ori' in other_trans_types and 'sf' in other_trans_types:
+        xval_trans = 'ori'   # Plot orientation along x-axis
+        hue_trans = 'sf'     # Set hue by spatial frequency
+
+    elif 'morphlevel' in other_trans_types and ('yrot' in other_trans_types or 'size' in other_trans_types):
+        # Actually want to plot a figure for EACH transform...
+        descs = {}
+        hues = {}
+        stim_subsets = True
+        plotconfig = []
+        for trans_type in other_trans_types:
+            descs[trans_type] = 'grid_xypos_%s' % trans_type
+            hues[trans_type] = {}
+            trans_vals = roiDF.groupby([trans_type]).groups.keys()                                      # Get all values of current trans_type
+            comparison_trans_types = [i for i in other_trans_types if not i == trans_type]           # Identify which other transform there is (only 2)
+            for comp_trans in comparison_trans_types:
+                vals_bytrans = [list(set(roiDF[roiDF[trans_type]==tr][comp_trans])) for tr in trans_vals]  # Get other-transform vals for each value of current trans_type
+                all_vals = list(set(list(itertools.chain.from_iterable(vals_bytrans))))
+                common_vals = list(reduce(set.intersection, map(set, vals_bytrans)))                  # Only include other-trans vals common to all vals of trans_type
+
+#                if not len(common_vals) == len(all_vals):
+#                    stim_subsets = True
+#                else:
+#                    stim_subsets = False
+                plotconfig.append(stim_subsets)
+                hues[trans_type][comp_trans] = common_vals
+
+
+
+    # Set up colors for transforms with multiple combos with other transforms
+    color_dict = {}
+    if stim_subsets is True:
+        # There multiple transforms we want for the 'x-axis' in a given subplot
+        for xval_trans in hues.keys():
+            for comp_trans in hues[xval_trans].keys():
+                comparison_values = hues[xval_trans][comp_trans]
+                color_dict[xval_trans] = [next(cmapcolors) for v in comparison_values]
+    else:
+        # There is only one main transform to look at, with the other trans
+        # denoted by hue
+        if hue_trans is not None:
+            comparison_values = list(set(roiDF[hue_trans]))
+            color_dict[xval_trans] = [next(cmapcolors) for v in comparison_values] #'xkcd:%s' % cmapcolors[t]
+        else:
+            color_dict[xval_trans] = [next(cmapcolors)]
+
+
+    # Append summary stats for metric_type = 'zscore' to dataframe for plotting:
+
+    dfz = roiDF[np.isfinite(roiDF[metric_type])]     # Get rid of NaNs
+    plot_variables = list(trans_types)      # List of transforms (variables-of-interest) to pull from dataframe (e.g.,'ori')
+    plot_variables.extend([metric_type])    # Append metric to show in list of variables-of-interest
+    if 'xpos' not in plot_variables:
+        plot_variables.extend(['xpos'])
+    if 'ypos' not in plot_variables:
+        plot_variables.extend(['ypos'])
+
+    dfz = dfz[plot_variables]               # Get subset dataframe of variables-of-interest
+
+    grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
+    zscores = grouped.zscore.mean()                                            # Get mean of 'metric_type' for each combination of transforms
+    zscores['sem'] = grouped.zscore.aggregate(stats.sem)[metric_type]             # Get SEM
+    zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
+    dfz = dfz.merge(zscores).sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
+
+    # Plot tuning curves:
+
+    #sns.set_style("white")
+    sns.set()
+    for xval_trans in color_dict.keys():
+
+        if isinstance(descs, str):
+            transform_str = descs
+        elif isinstance(descs, dict):
+            transform_str = descs[xval_trans]
+
+        print "Plotting tuning for: %s" % transform_str
+
+        if stim_subsets is True and isinstance(hues, dict):
+            hue_trans = hues[xval_trans].keys()[0]  # Should only be one for now...
+            plotdf = dfz[dfz[hue_trans].isin(hues[xval_trans][hue_trans])]
+        else:
+            plotdf = dfz.copy()
+        #sns.boxplot(x="size", y="zscore", hue="morphlevel", data=plotdf)
+        g1 = sns.FacetGrid(plotdf.sort_values([xval_trans]), row=rows, col=columns, sharex=True, sharey=True,
+                               hue=hue_trans, row_order=row_order, col_order=col_order,
+                               legend_out=True, size=6)
+        g1.map(pl.plot, xval_trans, 'mean_%s' % metric_type, marker="_", linestyle='-')
+        g1.map(pl.errorbar, xval_trans, 'mean_%s' % metric_type, 'sem', elinewidth=1, linewidth=1)
+        if include_trials:
+            g1.map(pl.scatter, xval_trans, metric_type, s=1.0)
+
+        # Format ticks, title, etc.
+        g1.set(xticks=sorted(plotdf[xval_trans]))
+        sns.despine(offset=2, trim=True, bottom=True)
+        pl.subplots_adjust(top=0.8)
+        g1.fig.suptitle(roi)
+
+        # resize figure box to -> put the legend out of the figure
+        if hasattr(g1, 'ax'):
+            box = g1.ax.get_position() # get position of figure
+            g1.ax.set_position([box.x0, box.y0, box.width * 0.8, box.height]) # resize position
+            g1.ax.legend(loc='center right', bbox_to_anchor=(1.2, 0.8), ncol=1)
+        else:
+            box = g1.facet_axis(-1, -1).get_position() # get position of figure
+            g1.facet_axis(-1, -1).set_position([box.x0, box.y0, box.width * 0.8, box.height]) # resize position
+            g1.facet_axis(-1, -1).legend(loc='center right', bbox_to_anchor=(1.2, 0.8), ncol=1)
+        if '/' in roi:
+            roi = roi[1:]
+
+        if include_trials is True:
+            figname = '%s_tuning_%s_trials_%s.png' % (transform_str, metric_type, roi)
+        else:
+            figname = '%s_tuning_%s_%s.png' % (transform_str, metric_type, roi)
+
+        if save_and_close is True:
+            pl.savefig(os.path.join(output_dir, figname))
+            pl.close()
+        else:
+            fignames.append(figname)
+
+    return fignames
+
+
+#%%
+def plot_tuning_collapse_transforms(roiDF, object_transformations, object_type='object',
+                                    save_and_close=True, metric_type='zscore', output_dir='/tmp', include_trials=True):
+    '''
+    trans_type = feature that varies for a given object ID (i.e., how we want to color-code)
+    object_sorter = how we want to define object ID
+        -- for objects, this is the object ID (e.g., Blobs_N1, Blobs_N2, morph5, or just morph, if only 1 morph)
+        -- for gratings, this is the spatial frequency, since we want to look at variation in ORI (trans_type) within a given S.F.
+    hue = should be the same as object_sorter (except if only a single morph, since there is only 1 morphID)
+    '''
+    fignames = []
+
+    roi = list(set(roiDF['roi']))[0]
 
     nrows = len(object_transformations.keys())
     fig, axes = pl.subplots(nrows=nrows, ncols=1, sharex=False, squeeze=True, figsize=(6,10))
     transform_str = '_'.join(object_transformations.keys())
     for trans, ax in zip(object_transformations.keys(), axes):
         #print trans
+        other_trans_types = [t for t in object_transformations.keys() if not t==trans]
         if object_type == 'grating':
             if trans == 'ori':
                 object_color = 'sf'
                 object_sorter = 'sf'
-            else:
+            elif trans == 'sf':
                 object_color = 'ori'
                 object_sorter = 'ori'
         else:
@@ -460,14 +589,14 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
 
         # Make sure only plotting lines for objects that are tested with current transform:
         if object_type == 'object':
-            ROI = DF[DF['object'].isin(object_transformations[trans])]
-            
-            # TODO:  tmp filter to exclude YROT objects -30 and 30 
+            ROI = roiDF[roiDF['object'].isin(object_transformations[trans])]
+
+            # TODO:  tmp filter to exclude YROT objects -30 and 30
             if trans == 'morphlevel':
                 ROI = ROI[ROI['yrot']==0]
-            
+
         else:
-            ROI = DF
+            ROI = roiDF
         # Draw MEAN metric:
         sns.pointplot(x=trans, y=metric_type, hue=object_color, data=ROI.sort_values([object_sorter]),
                       ci=None, join=True, markers='_', scale=2, ax=ax, legend_out=True)
@@ -478,7 +607,7 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
         if include_trials is True:
             if trans == 'morphlevel':
                 # Adjust colors for trans=morphlevel, since we aren't really testing any morphs except "default view" yet:
-                
+
                 sns.stripplot(x=trans, y=metric_type, hue=object_color, data=ROI.sort_values([object_sorter]),
                       edgecolor="w", split=True, size=2, ax=ax, color=sns.color_palette()[0])
             else:
@@ -507,8 +636,16 @@ def plot_transform_tuning(roi, DF, object_transformations, object_type='object',
         figname = '%s_tuning_%s_trials_%s.png' % (transform_str, metric_type, roi)
     else:
         figname = '%s_tuning_%s_%s.png' % (transform_str, metric_type, roi)
-    pl.savefig(os.path.join(output_dir, figname))
-    pl.close()
+
+
+    if save_and_close is True:
+        pl.savefig(os.path.join(output_dir, figname))
+        pl.close()
+    else:
+        fignames.append(figname)
+
+    return fignames
+
 
 #
 
@@ -540,6 +677,8 @@ def extract_options(options):
     parser.add_option('--tuning', action="store_true",
                       dest="tuning", default=False, help="Set flag to plot(any) tuning curves.")
 
+    parser.add_option('--collapse', action="store_false",
+                      dest="separate_transforms", default=True, help="Set flag to collapse across all other transforms for a given transform (default separates)")
 
     parser.add_option('--scale', action="store_true",
                       dest="universal_scale", default=False, help="Set flag to plot all PSTH plots with same y-axis scale")
@@ -573,11 +712,34 @@ def extract_options(options):
 
 #%%
 
-#
-#options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180220',
-#        '-A', 'FOV1_zoom1x', '-R', 'blobs', '-t', 'traces004', '-r', '15', '-d8',
-#        '--omit-trials']
+# Test basic pplotting for ORI/SF only:
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180323',
+#        '-A', 'FOV1_zoom1x', '-R', 'gratings_run1', '-t', 'traces001',
+#        '-s', '20', '-B', '60', '-d', '8',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'raw']
 
+# Test plotting with varying x-,y-positions and 1 feature (ORI):
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180321',
+#        '-A', 'FOV1_zoom1x', '-R', 'gratings', '-t', 'traces001',
+#        '-s', '35', '-B', '60', '-d', '3',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'np_subtracted']
+
+# Test plotting with morphs + yrot, default position/size:
+
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180321',
+#        '-A', 'FOV1_zoom1x', '-R', 'blobs_run4', '-t', 'traces001',
+#        '-s', '30', '-B', '60', '-d', '3',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'np_subtracted']
+
+# Test plotting wtih morphs + vary pos/size:
+#options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180221',
+#        '-A', 'FOV1_zoom1x', '-R', 'blobs_run3', '-t', 'traces002',
+#        '--no-pupil',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'raw']
 
 def plot_roi_figures(options):
     options = extract_options(options)
@@ -609,6 +771,13 @@ def plot_roi_figures(options):
 
     plot_psth = options.psth
     plot_tuning = options.tuning
+
+    separate_transforms = options.separate_transforms
+    if separate_transforms is True:
+        visualization_method = 'separate_transforms'
+    else:
+        visualization_method = 'collapse_transforms'
+
 
     # Get acquisition info:
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
@@ -678,7 +847,8 @@ def plot_roi_figures(options):
         print "Plotting PSTHs.........."
         plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir=roi_psth_dir, trace_type=trace_type,
                        filter_pupil=filter_pupil, pupil_params=pupil_params, plot_all=plot_all_psths,
-                       universal_scale=universal_scale, ylim_min=ylim_min, ylim_max=ylim_max)
+                       universal_scale=universal_scale, ylim_min=ylim_min, ylim_max=ylim_max,
+                       visualization_method=visualization_method)
 
 
     # PLOT TUNING CURVES
@@ -694,13 +864,14 @@ def plot_roi_figures(options):
 
 
         if filter_pupil is True:
-            curr_tuning_figdir = os.path.join(tuning_figdir, selected_metric)
+            curr_tuning_figdir = os.path.join(tuning_figdir, selected_metric, visualization_method)
         else:
-            curr_tuning_figdir = os.path.join(tuning_figdir, 'unfiltered')
+            curr_tuning_figdir = os.path.join(tuning_figdir, 'unfiltered', visualization_method)
         if not os.path.exists(curr_tuning_figdir):
             os.makedirs(curr_tuning_figdir)
 
-        plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir, metric_type=roi_metric, include_trials=include_trials)
+        plot_tuning_curves(roistats_filepath, configs, curr_tuning_figdir,
+                           metric_type=roi_metric, include_trials=include_trials, visualization_method=visualization_method)
 
 
     print "==================================================================="
