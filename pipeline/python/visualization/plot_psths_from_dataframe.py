@@ -403,6 +403,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     hue = should be the same as object_sorter (except if only a single morph, since there is only 1 morphID)
     '''
     fignames = []
+    stim_subsets = False
 
     roi = list(set(roiDF['roi']))[0]
 
@@ -434,12 +435,12 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
 
     elif 'morphlevel' in other_trans_types and ('yrot' in other_trans_types or 'size' in other_trans_types):
         # Actually want to plot a figure for EACH transform...
-        descs = {}
+        desc = {}
         hues = {}
         stim_subsets = True
         plotconfig = []
         for trans_type in other_trans_types:
-            descs[trans_type] = 'grid_xypos_%s' % trans_type
+            desc[trans_type] = 'grid_xypos_%s' % trans_type
             hues[trans_type] = {}
             trans_vals = roiDF.groupby([trans_type]).groups.keys()                                      # Get all values of current trans_type
             comparison_trans_types = [i for i in other_trans_types if not i == trans_type]           # Identify which other transform there is (only 2)
@@ -499,10 +500,10 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     sns.set()
     for xval_trans in color_dict.keys():
 
-        if isinstance(descs, str):
-            transform_str = descs
-        elif isinstance(descs, dict):
-            transform_str = descs[xval_trans]
+        if isinstance(desc, str):
+            transform_str = desc
+        elif isinstance(desc, dict):
+            transform_str = desc[xval_trans]
 
         print "Plotting tuning for: %s" % transform_str
 
