@@ -1036,6 +1036,59 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=True, cfac
 #    return filetraces_filepath
 
 #%%
+
+def apply_masks_by_tid(tmp_tid_path, filenum=1, rootdir='', extract_neuropil=False, cfactor=0.5):
+    filetraces_filepath = None
+
+    # Load tmp rid file for coreg:
+    with open(tmp_tid_path, 'r') as f:
+        TID = json.load(f)
+
+    rundir = tmp_tid_path.split('/traces')[0]
+    session_dir = os.path.split(os.path.split(rundir)[0])[0]
+    info = get_info_from_tiff_dir(TID['SRC'], session_dir)
+
+    if rootdir not in rundir:
+        rundir = replace_root(rundir, rootdir, info['animalid'], info['session'])
+    print "RUN:", rundir
+    si_info = get_frame_info(rundir)
+
+    if rootdir not in TID['DST']:
+        TID['DST'] = replace_root(TID['DST'], rootdir, info['animalid'], info['session'])
+
+    filetraces_dir = os.path.join(TID['DST'], 'files')
+    print "Saving file traces to:", filetraces_dir
+    if not os.path.exists(filetraces_dir):
+        os.makedirs(filetraces_dir)
+
+    if rootdir not in TID['SRC']:
+        TID['SRC'] = replace_root(TID['SRC'], rootdir, info['animalid'], info['session'])
+    tiff_files = sorted([t for t in os.listdir(TID['SRC']) if t.endswith('tif')], key=natural_keys)
+
+    # Then, get matches to sample:
+    curr_file = 'File%03d' % filenum
+    if curr_file in TID['PARAMS']['excluded_tiffs']:
+        return None
+
+    try:
+        tfn = [p for p in tiff_files if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
+        currtiff_path = os.path.join(TID['SRC'], tfn)
+        filetraces_filepath = apply_masks_to_tiff(currtiff_path, TID, si_info,
+                                                  extract_neuropil=extract_neuropil,
+                                                  cfactor=cfactor,
+                                                  output_filedir=filetraces_dir,
+                                                  rootdir=rootdir)
+    except Exception as e:
+        if filetraces_filepath is None:
+            print 'Unable to find tiff src path for: %s' % curr_file
+            for r in tiff_files:
+                print r
+        traceback.print_exc()
+
+    return filetraces_filepath
+
+
+#%%
 # =============================================================================
 # Extract ROIs for each specified slice for each file:
 # =============================================================================
@@ -1759,8 +1812,11 @@ def extract_options(options):
                       dest="plot_neuropil", default=False, help="Set flag to plot neuropil masks with soma.")
 
 
-    parser.add_option('--extract', action="store_true",
-                      dest="extract_filtered_traces", default=False, help="Set flag to extract filtered traces using eye-tracker info after trace extraction.")
+    parser.add_option('--collate', action="store_true",
+                      dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
+    parser.add_option('-T', action="store",
+                      dest="trace_type", default="raw", help="Trace type to extract, if relevant (default: raw)")
+
     parser.add_option('--warp', action="store_true",
                       dest="save_warp_images", default=False, help="Set flag to save output plots of warped ROIs (manual warp only).")
 
@@ -1795,6 +1851,7 @@ def extract_traces(options):
     run = options.run
     trace_id = options.trace_id
     slurm = options.slurm
+
     if slurm is True:
         if 'coxfs01' not in rootdir:
             rootdir = '/n/coxfs01/2p-data'
@@ -1803,8 +1860,6 @@ def extract_traces(options):
     else:
         ncores = int(options.ncores)
         ncores_sep = ncores * 2
-
-    extract_filtered_traces = options.extract_filtered_traces
 
     create_new = options.create_new
     append_trace_type = options.append_trace_type
@@ -1827,12 +1882,20 @@ def extract_traces(options):
 
     save_warp_images = options.save_warp_images
 
+    # Trace alignment params:
+    create_dataframe = options.create_dataframe
+    trace_type = options.trace_type
+    filter_pupil = options.filter_pupil
+    pupil_radius_max = float(options.pupil_radius_max)
+    pupil_radius_min = float(options.pupil_radius_min)
+    pupil_dist_thr = float(options.pupil_dist_thr)
+
     auto = options.default
 
     #%
     # NOTE:  caiman2D ROIs are already "normalized" or weighted (see format_rois_nmf in get_rois.py).
     # These masks can be directly applied to tiff movies, or can be applied to temporal component mat from NMF results (.npz)
-    normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'manual2D_warp', 'opencv_blob_detector']
+    #normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'manual2D_warp', 'opencv_blob_detector']
 
     print "======================================================================="
     print "Trace Set: %s -- Starting trace extraction..." % trace_id
@@ -1923,21 +1986,11 @@ def extract_traces(options):
     t_mask = time.time()
 
     # Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
-#    normalize_rois = False
-#    if RID['roi_type'] == 'coregister' and RID['PARAMS']['options']['source']['roi_type'] in normalize_roi_types:
-#        normalize_rois = True
-#    elif RID['roi_type'] in normalize_roi_types:
-#        normalize_rois = True
     maskinfo = get_mask_info(mask_path, ntiffs=len(tiff_files), nslices=si_info['nslices'], excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
 
     # Check if formatted MASKS dict exists and load, otherwise, create new:
-    #maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
     maskdict_path = os.path.join(traceid_dir, 'MASKS.hdf5')
     if create_new is True or not os.path.exists(maskdict_path):
-#        MASKS = get_masks(maskinfo, RID, normalize_rois=normalize_rois, notnative=notnative, rootdir=rootdir, animalid=animalid, session=session)
-#        with open(maskdict_path, 'wb') as f:
-#            pkl.dump(MASKS, f, protocol=pkl.HIGHEST_PROTOCOL)
-#        del MASKS
         maskdict_path = get_masks(maskdict_path, maskinfo, RID, save_warp_images=save_warp_images, get_neuropil=subtract_neuropil, niter=np_niterations, rootdir=rootdir)
 
     # Check if alrady have plotted masks, if not, create new:
@@ -1981,7 +2034,6 @@ def extract_traces(options):
             print "...... Creating new file-trace files."
         else:
             print "...... Creating new!"
-        #filetrace_dir = apply_masks_to_movies(TID, RID, si_info, output_filedir=filetraces_dir, rootdir=rootdir)
         filetraces_dir = apply_masks_to_movies(TID, RID, si_info,
                                                   extract_neuropil=subtract_neuropil,
                                                   cfactor=np_correction_factor,
@@ -2054,21 +2106,31 @@ def extract_traces(options):
     print_elapsed_time(t_start)
     print "======================================================================="
 
-    return roi_tcourse_filepath, extract_filtered_traces
+    roidata_filepath = None
+    if create_dataframe is True:
+        print "*** Creating ROI dataframes ***"
+
+        # Assign frame indices for specified trial epochs:
+        # =====================================================================
+        roidata_filepath, roistats_filepath = acq.align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir,
+                                                           create_new=create_new,
+                                                           filter_pupil=filter_pupil,
+                                                           pupil_radius_min=pupil_radius_min,
+                                                           pupil_radius_max=pupil_radius_max,
+                                                           pupil_dist_thr=pupil_dist_thr)
+
+    return roi_tcourse_filepath, roidata_filepath
 
 
 
 #%% GET PLOTS:
 def main(options):
     #options = extract_options(options)
-    roi_tcourse_filepath, extract_filtered_traces = extract_traces(options)
+    roi_tcourse_filepath, roidata_filepath = extract_traces(options)
     print "DONE extracting traces!"
     print "Output saved to:\n---> %s" % roi_tcourse_filepath
-
-    if extract_filtered_traces is True:
-        print "*** Creating ROI dataframes ***"
-        roidata_filepath, roi_psth_dir = acq.create_roi_dataframes(options)
-
+    if roidata_filepath is not None:
+        print "Aligned traces to trial events. Saved dataframe to:\n%s" % roidata_filepath
 
 if __name__ == '__main__':
     main(sys.argv[1:])

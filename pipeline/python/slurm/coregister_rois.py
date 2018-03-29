@@ -23,11 +23,11 @@ args = parser.parse_args()
 
 def info(info_str):
     sys.stdout.write("INFO:  %s \n" % info_str)
-    sys.stdout.flush() 
+    sys.stdout.flush()
 
 def error(error_str):
     sys.stdout.write("ERR:  %s \n" % error_str)
-    sys.stdout.flush() 
+    sys.stdout.flush()
 
 def fatal(error_str):
     sys.stdout.write("ERR: %s \n" % error_str)
@@ -35,7 +35,7 @@ def fatal(error_str):
     sys.exit(1)
 
 
-# Create a (hopefully) unique prefix for the names of all jobs in this 
+# Create a (hopefully) unique prefix for the names of all jobs in this
 # particular run of the pipeline. This makes sure that runs can be
 # identified unambiguously
 piper = uuid.uuid4()
@@ -73,49 +73,7 @@ info("Processing RID file: %s" % RIDPATH)
 ###############################################################################
 #                               run the pipeline                               #
 ################################################################################
- 
 
-# STEP1: TIFF PROCESSING. All PIDs will be processed in parallel since they don't
-#        have any dependencies
-process_tiffs = False
-
-if process_tiffs is True:
-    pid_jobids = {}
-    for pid_file in pid_files:
-        phash = os.path.splitext(os.path.split(pid_file)[-1])[0].split('_')[-1]
-        cmd = "sbatch --job-name={PROCID}.processpid.{PHASH} \
-    		-o 'log/{PROCID}.processpid.{PHASH}.out' \
-    		-e 'log/{PROCID}.processpid.{PHASH}.err' \
-    		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/preprocessing/process_pid_file.sbatch \
-    		{FILEPATH}".format(PROCID=piper, PHASH=phash, FILEPATH=pid_file)
-        info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
-        status, joboutput = commands.getstatusoutput(cmd)
-        jobnum = joboutput.split(' ')[-1]
-        pid_jobids[pid_file] = jobnum
-        info("PROCESSING jobids: %s" % jobnum)
-    
-    
-    # STEP2: MC EVALUATION. Each mceval call will start when the corresponding processing 
-    #        call finishes sucessfully. Note, if STEP1 fails, all jobs depending on
-    #        it will remain in the queue and need to be canceled explicitly.
-    #        An alternative would be to use 'afterany' and make each job check for
-    #        the successful execution of the prerequisites.
-    eval_jobids = {}
-    for pid_file in pid_files:
-        phash = os.path.splitext(os.path.split(pid_file)[-1])[0].split('_')[-1]
-        jobdep = pid_jobids[pid_file]
-        cmd = "sbatch --job-name={PROCID}.mceval.{PHASH} \
-                      -o 'log/{PROCID}.mceval.{PHASH}.out' \
-                      -e 'log/{PROCID}.mceval.{PHASH}.err' \
-                      --depend=afterok:{JOBDEP} \
-                      /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/evaluation/evaluate_pid_file.sbatch \
-                      {FILEPATH}".format(PROCID=piper, PHASH=phash, FILEPATH=pid_file, JOBDEP=jobdep)
-        info("Submitting MCEVAL job with CMD:\n%s" % cmd)
-        status, joboutput = commands.getstatusoutput(cmd)
-        jobnum = joboutput.split(' ')[-1]
-        eval_jobids[pid_file] = jobnum
-        info("MCEVAL calling jobids: %s" % jobnum)
-       
 
 # STEP3: ROI EXTRACTION: Each nmf call will start when the corresponding alignments
 #        finish sucessfully. Note, if STEP1 fails, all jobs depending on
@@ -176,4 +134,4 @@ if coregister is True:
 #        jobnum = joboutput.split(' ')[-1]
 #        eval_jobids[pid_file] = jobnum
 #        info("MCEVAL calling jobids: %s" % jobnum)
-# 
+#
