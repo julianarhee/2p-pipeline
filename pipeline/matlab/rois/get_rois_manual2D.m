@@ -8,9 +8,9 @@ clc; clear all;
 % roi_id = 'rois007'; %'e4893c';
 
 rootdir = '/mnt/odyssey'
-animalid = 'CE074' %'JR063';
-session = '20180220' %'20171202_JR063';
-roi_id = 'rois003' %'e4893c';
+animalid = 'CE077' %'JR063';
+session = '20180326' %'20171202_JR063';
+roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -101,7 +101,7 @@ if ~any(strfind(rid_src_dir, rootdir))
     fprintf('Replacing root dir...\n');
     rid_src_dir = strrep(rid_src_dir, orig_root, rootdir);
 end
-average_images_dir = [rid_src_dir sprintf('_%s_slices', zproj_type)];
+average_images_dir = [rid_src_dir sprintf('_%s_deinterleaved', zproj_type)];
 if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
     slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
 else
