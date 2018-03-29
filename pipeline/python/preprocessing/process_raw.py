@@ -216,13 +216,14 @@ def process_pid(options):
         bidir_otions.extend(['--default'])
     if slurm is True:
         bidir_options.extend(['--slurm', '-C', cvx_path])
+    
     # Check if bidi already done:
-    bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
-    if os.path.exists(bidi_output_dir):
-        bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
-        if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
-            print "*** Found existing BIDI corrected files. Skipping..."
-            execute_bidi = False
+#    bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
+#    if os.path.exists(bidi_output_dir):
+#        bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
+#        if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
+#            print "*** Found existing BIDI corrected files. Skipping..."
+#            execute_bidi = False
     if execute_bidi is True:
         bidir_options.extend(['--bidi'])
     if len(repo_path) > 0:
@@ -230,10 +231,12 @@ def process_pid(options):
 
     print bidir_options
     
-    if execute_bidi is True:  
-        bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
-    else:
-        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir'])[-1].split('_')[-1]
+    bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+
+#    if execute_bidi is True:  
+#        bidir_hash, pid_hash = bd.do_bidir_correction(bidir_options)
+#    else:
+#        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir'])[-1].split('_')[-1]
     #pid_hash = PID['pid_hash']
     print "Bidir hash: %s" % bidir_hash
     print "PID %s: BIDIR finished." % pid_hash
