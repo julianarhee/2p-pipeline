@@ -122,92 +122,90 @@ def load_parsed_trials(parsed_trials_path):
     return trialdict
 
 #%%
-def get_alignment_specs(paradigm_dir, si_info, custom_mw=False, options=None):
+def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
     trial_epoch_info = {}
-    iti_pre = options.iti_pre
-    same_order = options.same_order
-    run = options.run
+    run = os.path.split(os.path.split(paradigm_dir)[0])[-1] #options.run
 
-    if custom_mw is True:
-        trial_fn = None
-        stimtype = None
-        # Get trial info if custom (non-MW) stim presentation protocols:
-        # -------------------------------------------------------------------------
-        try:
-            stim_on_sec = float(options.stim_on_sec) #2. # 0.5
-            first_stimulus_volume_num = int(options.first_stim_volume_num) #50
-            vols_per_trial = float(options.vols_per_trial) # 15
-            iti_full = (vols_per_trial/si_info['volumerate']) - stim_on_sec
-            iti_post = iti_full - iti_pre
-            print "==============================================================="
-            print "Using CUSTOM trial-info (not MW)."
-            print "==============================================================="
-            print "First stim on:", first_stimulus_volume_num
-            print "Volumes per trial:", vols_per_trial
-            print "ITI POST (s):", iti_post
-            print "ITT full (s):", iti_full
-            print "TRIAL dur (s):", stim_on_sec + iti_full
-            print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * si_info['volumerate']
-            print "==============================================================="
+#    if custom_mw is True:
+#        trial_fn = None
+#        stimtype = None
+#        # Get trial info if custom (non-MW) stim presentation protocols:
+#        # -------------------------------------------------------------------------
+#        try:
+#            stim_on_sec = float(options.stim_on_sec) #2. # 0.5
+#            first_stimulus_volume_num = int(options.first_stim_volume_num) #50
+#            vols_per_trial = float(options.vols_per_trial) # 15
+#            iti_full = (vols_per_trial/si_info['volumerate']) - stim_on_sec
+#            iti_post = iti_full - iti_pre
+#            print "==============================================================="
+#            print "Using CUSTOM trial-info (not MW)."
+#            print "==============================================================="
+#            print "First stim on:", first_stimulus_volume_num
+#            print "Volumes per trial:", vols_per_trial
+#            print "ITI POST (s):", iti_post
+#            print "ITT full (s):", iti_full
+#            print "TRIAL dur (s):", stim_on_sec + iti_full
+#            print "Vols per trial (calc):", (stim_on_sec + iti_pre + iti_post) * si_info['volumerate']
+#            print "==============================================================="
+#
+#            # Get stim-order files:
+#            stimorder_fns = sorted([f for f in os.listdir(paradigm_dir) if 'stimorder' in f and f.endswith('txt')], key=natural_keys)
+#            print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), si_info['ntiffs'])
+#            if len(stimorder_fns) < si_info['ntiffs']:
+#                if same_order: # Same stimulus order for each file (complete set)
+#                    stimorder_fns = np.tile(stimorder_fns, [si_info['ntiffs'],])
+#
+#        except Exception as e:
+#            print "---------------------------------------------------------------"
+#            print "Using CUSTOM trial-info. Use -h to check required options:"
+#            print "---------------------------------------------------------------"
+#            print "- volume num of 1st stimulus in tif"
+#            print "- N vols per trial"
+#            print "- duration (s) of stimulus-on period in trial"
+#            print " - stimorder.txt file with each line containing IDX of stim id."
+#            print " - whether the same order of stimuli are presented across all files."
+#            print "Aborting with error:"
+#            print "---------------------------------------------------------------"
+#            print e
+#            print "---------------------------------------------------------------"
+#
+#    else:
+    stimorder_fns = None
+    first_stimulus_volume_num = None
+    vols_per_trial = None
 
-            # Get stim-order files:
-            stimorder_fns = sorted([f for f in os.listdir(paradigm_dir) if 'stimorder' in f and f.endswith('txt')], key=natural_keys)
-            print "Found %i stim-order files, and %i TIFFs." % (len(stimorder_fns), si_info['ntiffs'])
-            if len(stimorder_fns) < si_info['ntiffs']:
-                if same_order: # Same stimulus order for each file (complete set)
-                    stimorder_fns = np.tile(stimorder_fns, [si_info['ntiffs'],])
-
-        except Exception as e:
-            print "---------------------------------------------------------------"
-            print "Using CUSTOM trial-info. Use -h to check required options:"
-            print "---------------------------------------------------------------"
-            print "- volume num of 1st stimulus in tif"
-            print "- N vols per trial"
-            print "- duration (s) of stimulus-on period in trial"
-            print " - stimorder.txt file with each line containing IDX of stim id."
-            print " - whether the same order of stimuli are presented across all files."
-            print "Aborting with error:"
-            print "---------------------------------------------------------------"
-            print e
-            print "---------------------------------------------------------------"
-
-    else:
-        stimorder_fns = None
-        first_stimulus_volume_num = None
-        vols_per_trial = None
-
-        ### Get PARADIGM INFO if using standard MW:
-        # -------------------------------------------------------------------------
-        try:
-            trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')][0]
-            parsed_trials_path = os.path.join(paradigm_dir, trial_fn)
-            trialdict = load_parsed_trials(parsed_trials_path)
-            trial_list = sorted(trialdict.keys(), key=natural_keys)
-            stimtype = trialdict[trial_list[0]]['stimuli']['type']
+    ### Get PARADIGM INFO if using standard MW:
+    # -------------------------------------------------------------------------
+    try:
+        trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')][0]
+        parsed_trials_path = os.path.join(paradigm_dir, trial_fn)
+        trialdict = load_parsed_trials(parsed_trials_path)
+        trial_list = sorted(trialdict.keys(), key=natural_keys)
+        stimtype = trialdict[trial_list[0]]['stimuli']['type']
 
 
-            # Get presentation info (should be constant across trials and files):
-            trial_list = sorted(trialdict.keys(), key=natural_keys)
-            stim_durs = [round(trialdict[t]['stim_dur_ms']/1E3, 1)for t in trial_list]
-            assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
-            stim_on_sec = stim_durs[0]
-            iti_durs = [round(trialdict[t]['iti_dur_ms']/1E3, 1) for t in trial_list]
-            assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
-            iti_full = iti_durs[0]
-            iti_post = iti_full - iti_pre
+        # Get presentation info (should be constant across trials and files):
+        trial_list = sorted(trialdict.keys(), key=natural_keys)
+        stim_durs = [round(trialdict[t]['stim_dur_ms']/1E3, 1)for t in trial_list]
+        assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
+        stim_on_sec = stim_durs[0]
+        iti_durs = [round(trialdict[t]['iti_dur_ms']/1E3, 1) for t in trial_list]
+        assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
+        iti_full = iti_durs[0]
+        iti_post = iti_full - iti_pre
 
-            # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
-            if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
-                one_to_one =  True
-            else:
-                one_to_one = False
+        # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
+        if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
+            one_to_one =  True
+        else:
+            one_to_one = False
 
-        except Exception as e:
-            print "Could not find unique trial-file for current run %s..." % run
-            print "Aborting with error:"
-            print "---------------------------------------------------------------"
-            traceback.print_exc()
-            print "---------------------------------------------------------------"
+    except Exception as e:
+        print "Could not find unique trial-file for current run %s..." % run
+        print "Aborting with error:"
+        print "---------------------------------------------------------------"
+        traceback.print_exc()
+        print "---------------------------------------------------------------"
 
     try:
         nframes_on = stim_on_sec * si_info['framerate'] #framerate #int(round(stim_on_sec * volumerate))
@@ -237,7 +235,7 @@ def get_alignment_specs(paradigm_dir, si_info, custom_mw=False, options=None):
     trial_epoch_info['first_stimulus_volume_num'] = first_stimulus_volume_num
     trial_epoch_info['vols_per_trial'] = vols_per_trial
     trial_epoch_info['stimtype'] = stimtype
-    trial_epoch_info['custom_mw'] = custom_mw
+    trial_epoch_info['custom_mw'] = False
 
     return trial_epoch_info
 
@@ -1295,125 +1293,13 @@ def collate_roi_stats(METRICS, configs):
 
     return ROISTATS
 
-
-#%%
-
-def extract_options(options):
-
-    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa', 'np_subtracted', 'neuropil')
-    default_tracetype = 'raw'
-
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
-
-    parser.add_option('-b', '--baseline', action="store",
-                      dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
-
-    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
-
-    parser.add_option('--new', action="store_true",
-                      dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
-
-    # Only need to set these if using custom-paradigm file:
-    parser.add_option('--custom', action="store_true",
-                      dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
-    parser.add_option('--order', action="store_true",
-                      dest="same_order", default=False, help="Set if same stimulus order across all files (1 stimorder.txt)")
-    parser.add_option('-O', '--stimon', action="store",
-                      dest="stim_on_sec", default=0, help="Time (s) stimulus ON.")
-    parser.add_option('-v', '--vol', action="store",
-                      dest="vols_per_trial", default=0, help="Num volumes per trial. Specifiy if custom_mw=True")
-    parser.add_option('-V', '--first', action="store",
-                      dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
-
-    # What metrics to calculate:
-#    parser.add_option('--metric', action="store",
-#                      dest="roi_metric", default="zscore", help="ROI metric to use for tuning curves [default: 'zscore']")
-
-    # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-s', '--radius-min', action="store",
-                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-    parser.add_option('-B', '--radius-max', action="store",
-                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-#    parser.add_option('-x', '--blinks', action="store",
-#                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
-
-
-    (options, args) = parser.parse_args(options)
-
-    return options
-
-
-#%%
-# Set USER INPUT options:
-
-def create_roi_dataframes(options):
-    options = extract_options(options)
-
-    rootdir = options.rootdir
-    slurm = options.slurm
-    if slurm is True and 'coxfs01' not in rootdir:
-        rootdir = '/n/coxfs01/2p-data'
-    animalid = options.animalid
-    session = options.session
-    acquisition = options.acquisition
-    run = options.run
-    trace_id = options.trace_id
-
-    #iti_pre = float(options.iti_pre)
-
-    custom_mw = options.custom_mw
-    #same_order = options.same_order #False #True
-
-    trace_type = options.trace_type
-    create_new = options.create_new
-
-    #use_errorbar = options.use_errorbar
-    filter_pupil = options.filter_pupil
-    #pupil_size_thr = float(options.pupil_size_thr)
-    pupil_radius_max = float(options.pupil_radius_max)
-    pupil_radius_min = float(options.pupil_radius_min)
-    pupil_dist_thr = float(options.pupil_dist_thr)
-    #pupil_max_nblinks = float(options.pupil_max_nblinks)
-
-    #roi_metric = options.roi_metric
-    #%
-    # =============================================================================
-    # Get meta/SI info for RUN:
-    # =============================================================================
-    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    si_info = get_frame_info(run_dir)
-
+def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, create_new=False,
+                     filter_pupil=False, pupil_radius_min=None, pupil_radius_max=None, pupil_dist_thr=None):
     # Get paradigm/AUX info:
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
-    trial_info = get_alignment_specs(paradigm_dir, si_info, custom_mw=custom_mw, options=options)
+    trial_info = get_alignment_specs(paradigm_dir, si_info)
 
-    # Load TRACE ID info:
-    # =========================================================================
-    TID = load_TID(run_dir, trace_id)
-    traceid_dir = TID['DST']
-    if rootdir not in traceid_dir:
-        orig_root = traceid_dir.split('/%s/%s' % (animalid, session))[0]
-        traceid_dir = traceid_dir.replace(orig_root, rootdir)
-        print "Replacing orig root with dir:", traceid_dir
-        #trace_hash = TID['trace_hash']
-
-    # Assign frame indices for specified trial epochs:
-    # =========================================================================
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
     parsed_frames_filepath = assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=create_new)
@@ -1431,7 +1317,7 @@ def create_roi_dataframes(options):
     excluded_tiffs = TID['PARAMS']['excluded_tiffs']
     print "-------------------------------------------------------------------"
     print "Getting ROI timecourses by trial and stim config"
-    print "Current trace ID - %s - excludes %i tiffs." % (trace_id, len(excluded_tiffs))
+    print "Current trace ID - %s - excludes %i tiffs." % (TID['trace_id'], len(excluded_tiffs))
     roi_trials_by_stim_path = group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si_info, excluded_tiffs=excluded_tiffs, create_new=create_new)
     #%
 
@@ -1518,6 +1404,124 @@ def create_roi_dataframes(options):
     print "-------------------------------------------------------------------"
     print "Collating ROI metrics into dataframe."
     roistats_filepath = get_roi_summary_stats(metrics_filepath, configs, trace_type=trace_type, create_new=create_new)
+
+    return roidata_filepath, roistats_filepath
+
+
+#%%
+
+def extract_options(options):
+
+    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa', 'np_subtracted', 'neuropil')
+    default_tracetype = 'raw'
+
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+
+    parser.add_option('-b', '--baseline', action="store",
+                      dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
+
+    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
+
+    parser.add_option('--new', action="store_true",
+                      dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
+
+    # Only need to set these if using custom-paradigm file:
+    parser.add_option('--custom', action="store_true",
+                      dest="custom_mw", default=False, help="Not using MW (custom params must be specified)")
+    parser.add_option('--order', action="store_true",
+                      dest="same_order", default=False, help="Set if same stimulus order across all files (1 stimorder.txt)")
+    parser.add_option('-O', '--stimon', action="store",
+                      dest="stim_on_sec", default=0, help="Time (s) stimulus ON.")
+    parser.add_option('-v', '--vol', action="store",
+                      dest="vols_per_trial", default=0, help="Num volumes per trial. Specifiy if custom_mw=True")
+    parser.add_option('-V', '--first', action="store",
+                      dest="first_stim_volume_num", default=0, help="First volume stimulus occurs (py-indexed). Specifiy if custom_mw=True")
+
+    # What metrics to calculate:
+#    parser.add_option('--metric', action="store",
+#                      dest="roi_metric", default="zscore", help="ROI metric to use for tuning curves [default: 'zscore']")
+
+    # Pupil filtering info:
+    parser.add_option('--no-pupil', action="store_false",
+                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+    parser.add_option('-s', '--radius-min', action="store",
+                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+    parser.add_option('-B', '--radius-max', action="store",
+                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
+    parser.add_option('-d', '--dist', action="store",
+                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#    parser.add_option('-x', '--blinks', action="store",
+#                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
+
+
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+
+#%%
+# Set USER INPUT options:
+
+def create_roi_dataframes(options):
+    options = extract_options(options)
+
+    rootdir = options.rootdir
+    slurm = options.slurm
+    if slurm is True and 'coxfs01' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    run = options.run
+    trace_id = options.trace_id
+
+    #iti_pre = float(options.iti_pre)
+
+    #custom_mw = options.custom_mw
+
+    trace_type = options.trace_type
+    create_new = options.create_new
+
+    filter_pupil = options.filter_pupil
+    pupil_radius_max = float(options.pupil_radius_max)
+    pupil_radius_min = float(options.pupil_radius_min)
+    pupil_dist_thr = float(options.pupil_dist_thr)
+
+    #%
+    # =============================================================================
+    # Get meta/SI info for RUN:
+    # =============================================================================
+    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    si_info = get_frame_info(run_dir)
+
+    # Load TRACE ID info:
+    # =========================================================================
+    TID = load_TID(run_dir, trace_id)
+    traceid_dir = TID['DST']
+    if rootdir not in traceid_dir:
+        orig_root = traceid_dir.split('/%s/%s' % (animalid, session))[0]
+        traceid_dir = traceid_dir.replace(orig_root, rootdir)
+        print "Replacing orig root with dir:", traceid_dir
+        #trace_hash = TID['trace_hash']
+
+    # Assign frame indices for specified trial epochs:
+    # =========================================================================
+    roidata_filepath, roistats_filepath = align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir,
+                                                           create_new=create_new,
+                                                           filter_pupil=filter_pupil,
+                                                           pupil_radius_min=pupil_radius_min,
+                                                           pupil_radius_max=pupil_radius_max,
+                                                           pupil_dist_thr=pupil_dist_thr)
 
     return roidata_filepath, roistats_filepath
 
