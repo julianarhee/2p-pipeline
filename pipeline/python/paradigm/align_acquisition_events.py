@@ -456,6 +456,12 @@ def get_stimulus_configs(trial_info):
         for config in configs.keys():
             configs[config]['filename'] = os.path.split(configs[config]['filepath'])[1]
 
+    # Sort config dict by value:
+#    sorted_configs = dict(sorted(configs.items(), key=operator.itemgetter(1)))
+#    sorted_confignames = sorted_configs.keys()
+#    for cidx, configname in sorted(configs.keys(), key=natural_keys):
+#        configs[configname] = sorted_configs[sorted_configs.keys()[cidx]
+
     # SAVE CONFIG info:
     config_filename = 'stimulus_configs.json'
     with open(os.path.join(paradigm_dir, config_filename), 'w') as f:
@@ -839,7 +845,7 @@ def set_pupil_params(radius_min=30, radius_max=60, dist_thr=8, create_empty=Fals
         pupil_params['radius_min'] = None
         pupil_params['radius_max'] = None
         pupil_params['dist_thr'] = None
-        pupil_params['max_nblinks']= 0
+        pupil_params['max_nblinks']= None
     else:
         pupil_params['radius_min'] = radius_min
         pupil_params['radius_max'] = radius_max
@@ -870,8 +876,9 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
     METRICS = {}
     PASSTRIALS = {}
 
-    if filter_pupil is True and pupil_params is None:
-        pupil_params = set_pupil_params(create_empty=False)
+    if filter_pupil is True:
+        if pupil_params is None:
+            pupil_params = set_pupil_params(create_empty=False)
         pupil_radius_min = pupil_params['radius_min']
         pupil_radius_max = pupil_params['radius_max']
         pupil_dist_thr = pupil_params['dist_thr']
