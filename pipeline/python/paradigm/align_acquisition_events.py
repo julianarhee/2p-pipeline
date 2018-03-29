@@ -872,29 +872,56 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
     if filter_pupil is True and pupil_params is None:
         pupil_params = set_pupil_params(create_empty=False)
-    pupil_radius_min = pupil_params['radius_min']
-    pupil_radius_max = pupil_params['radius_max']
-    pupil_dist_thr = pupil_params['dist_thr']
-    pupil_max_nblinks = pupil_params['max_nblinks']
+        pupil_radius_min = pupil_params['radius_min']
+        pupil_radius_max = pupil_params['radius_max']
+        pupil_dist_thr = pupil_params['dist_thr']
+        pupil_max_nblinks = pupil_params['max_nblinks']
 
-    roi_list = sorted(DATA.keys(), key=natural_keys)
-    print "--> Found %i rois." % len(roi_list)
-    config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
-
-    # Get nframes for trial epochs:
-    first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
-    nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
-
-    if 'pupil_size_stimulus' in DATA[roi_list[0]].keys():
-        eye_info_exists = True
+    if isinstance(DATA, pd.DataFrame):
+        is_dataframe = True
+        roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
+        config_list = sorted(list(set(DATA[DATA['roi']==roi_list[0]]['config'])), key=natural_keys)
+        # Get nframes for trial epochs:
+        first_on = list(set(DATA[DATA['roi']==roi_list[0]]['first_on']))[0]
+        nframes_on = int(round(list(set(DATA[DATA['roi']==roi_list[0]]['nframes_on']))[0]))
+        # Check if eye info exists in DataFrame:
+        if 'pupil_size_stimulus' in DATA[DATA['roi']==roi_list[0]].keys():
+            eye_info_exists = True
+        else:
+            eye_info_exists = False
     else:
-        eye_info_exists = False
+        is_dataframe = False
+        roi_list = sorted(DATA.keys(), key=natural_keys)
+        config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
+        # Get nframes for trial epochs:
+        first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
+        nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
+        # Check if eye info exists in DataFrame:
+        if 'pupil_size_stimulus' in DATA[roi_list[0]].keys():
+            eye_info_exists = True
+        else:
+            eye_info_exists = False
+
+    print "--> Found %i rois." % len(roi_list)
+    print "--> Found %i stim configs." % len(config_list)
+#
+#    # Get nframes for trial epochs:
+#    first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
+#    nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
+
+#    if 'pupil_size_stimulus' in DATA[roi_list[0]].keys():
+#        eye_info_exists = True
+#    else:
+#        eye_info_exists = False
 
     for roi in roi_list:
         print "      ... processing %s" % roi
         metrics_df = []
         for config in config_list:
-            DF = DATA[roi][DATA[roi]['config'] == config]
+            if is_dataframe:
+                DF = DATA[((DATA['roi']==roi) & (DATA['config']==config))]
+            else:
+                DF = DATA[roi][DATA[roi]['config'] == config]
             trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
 
             if filter_pupil is True:
@@ -916,6 +943,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
             # Turn DF values into matrix with rows=trial, cols=df value for each frame:
             trials = np.vstack((filtered_DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
+            #print trials.shape
 
             std_baseline_values = np.nanstd(trials[:, 0:first_on], axis=1)
             mean_baseline_values = np.nanmean(trials[:, 0:first_on], axis=1)
@@ -924,6 +952,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 
             idx = 0
             for tidx, trial in enumerate(trial_list): #enumerate(pass_trials):
+                #print trial
                 if trial in fail_trials:
                     pass_flag = False
                     zscore_val = np.nan
@@ -945,12 +974,12 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                                         'pass': pass_flag}, index=[idx])
                 # Also add eye-tracker info, if exists:
                 if eye_info_exists:
-                    eye_df = pd.DataFrame({'pupil_size_baseline': DF[DF['trial']==trial]['pupil_size_baseline'][0],
-                                           'pupil_size_stimulus': DF[DF['trial']==trial]['pupil_size_stimulus'][0],
-                                           'pupil_dist_stimulus': DF[DF['trial']==trial]['pupil_dist_stimulus'][0],
-                                           'pupil_dist_baseline': DF[DF['trial']==trial]['pupil_dist_baseline'][0],
-                                           'pupil_nblinks_stim': DF[DF['trial']==trial]['pupil_nblinks_stim'][0],
-                                           'pupil_nblinks_baseline': DF[DF['trial']==trial]['pupil_nblinks_baseline'][0]}, index=[idx])
+                    eye_df = pd.DataFrame({'pupil_size_baseline': list(set(DF[DF['trial']==trial]['pupil_size_baseline']))[0],
+                                           'pupil_size_stimulus': list(set(DF[DF['trial']==trial]['pupil_size_stimulus']))[0],
+                                           'pupil_dist_stimulus': list(set(DF[DF['trial']==trial]['pupil_dist_stimulus']))[0],
+                                           'pupil_dist_baseline': list(set(DF[DF['trial']==trial]['pupil_dist_baseline']))[0],
+                                           'pupil_nblinks_stim': list(set(DF[DF['trial']==trial]['pupil_nblinks_stim']))[0],
+                                           'pupil_nblinks_baseline': list(set(DF[DF['trial']==trial]['pupil_nblinks_baseline']))[0]}, index=[idx])
                     df_main = pd.concat([df_main, eye_df], axis=1)
 
                 # Append all relevant trial info to current ROI's metric DF:
