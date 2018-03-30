@@ -403,6 +403,12 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, get_neurop
                 zproj_source_dir = os.path.split(maskfile[maskfile_key]['masks'].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
             else:
                 zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]
+            if '_slices' in zproj_source_dir:
+                if '_mean_' in zproj_source_dir:
+                    zproj_source_dir = zproj_source_dir.replace('_mean_slices', '_mean_deinterleaved')
+                elif '_std_' in zproj_source_dir:
+                    zproj_source_dir = zproj_source_dir.replace('_std_slices', '_std_deinterleaved')
+
             curr_zproj_dir = os.path.join(zproj_source_dir, curr_file)
             # Check root:
             if rootdir not in curr_zproj_dir:
@@ -1726,6 +1732,8 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
     for tfpath in filetraces_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
+        print "FILETRACES attrs:"
+        print traces_currfile.attrs.keys()
         fidx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
         curr_file = "File%03d" % int(fidx+1)
         print "CFACTOR -- Appending neurpil corrected traces: %s" % curr_file
