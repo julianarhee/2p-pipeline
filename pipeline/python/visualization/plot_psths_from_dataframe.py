@@ -84,9 +84,11 @@ def get_facet_stats(config_list, g, value='df'):
     return plotstats
 
 #%%
-def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth', trace_color='k', stimbar_color='r'):
+def plot_roi_psth(roiDF, object_transformations, figdir='/tmp', prefix='psth', trace_color='k', stimbar_color='r', save_and_close=True):
 
-    if 'ori' in DF.keys():
+    roi = list(set(roiDF['roi']))[0]
+
+    if 'ori' in roiDF.keys():
         stimtype = 'grating'
     else:
         stimtype = 'image'
@@ -105,8 +107,8 @@ def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth',
         # Change SIZE & change POSITION
         # NOTE:  only tested with size + horizontal translation
         # ------------------------------------------------------
-        row_order = sorted(list(set(DF['position'])))
-        col_order = sorted(list(set(DF['size'])))
+        row_order = sorted(list(set(roiDF['position'])))
+        col_order = sorted(list(set(roiDF['size'])))
         rows = 'position'
         columns = 'size'
         single_object_figure = True
@@ -116,8 +118,8 @@ def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth',
         # Change POSITIONS only, grid w/ x and y positions
         # NOTE:  only tested with 4 orientations + x-,y-position grid
         # ------------------------------------------------------
-        row_order = sorted(list(set(DF['ypos'])))[::-1] # Reverse order so POS are on top, NEG on bottom
-        col_order = sorted(list(set(DF['xpos'])))
+        row_order = sorted(list(set(roiDF['ypos'])))[::-1] # Reverse order so POS are on top, NEG on bottom
+        col_order = sorted(list(set(roiDF['xpos'])))
         rows = 'ypos'
         columns = 'xpos'
         single_object_figure = True
@@ -129,37 +131,43 @@ def plot_roi_psth(roi, DF, object_transformations, figdir='/tmp', prefix='psth',
         # ------------------------------------------------------
         figbase = 'all_objects_default_pos_size'
         if stimtype == 'grating':
-            row_order = sorted(list(set(DF['sf'])))
-            col_order = sorted(list(set(DF['ori'])))
+            row_order = sorted(list(set(roiDF['sf'])))
+            col_order = sorted(list(set(roiDF['ori'])))
             rows = 'sf'
             columns = 'ori'
         else:
-            row_order = sorted(list(set(DF['morphlevel'])))
-            col_order = sorted(list(set(DF['yrot'])))
+            row_order = sorted(list(set(roiDF['morphlevel'])))
+            col_order = sorted(list(set(roiDF['yrot'])))
             rows = 'morphlevel'
             columns = 'yrot'
 
     if single_object_figure is True:
-        for objectid in list(set(DF[object_sorter])):
-            currdf = DF[DF[object_sorter] == objectid]
+        for objectid in list(set(roiDF[object_sorter])):
+            currdf = roiDF[roiDF[object_sorter] == objectid]
             figpath = os.path.join(figdir, '%s_%s%s_%s.png' % (prefix, object_sorter, objectid, figbase))
-            draw_psth(roi, currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
+            draw_psth(currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
     else:
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
+        draw_psth(roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
 
 #%%
-def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath):
+def draw_psth(roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
 
-    config_list = list(set(DF['config']))
+    roi = list(set(roiDF['roi']))[0]
+    config_list = list(set(roiDF['config']))
+
+#    funky_trials = [trial for trial in list(set(roiDF['trial'])) if max(roiDF[roiDF['trial']==trial]['df'])>10]
+#    funky_idxs = roiDF.index[roiDF['trial'].isin(funky_trials)].tolist()
+#    roiDF.loc[funky_idxs, 'df'] = np.nan
+
     # Add n trials to each subplot:
-    ntrials = dict((c, len(list(set(DF[DF['config']==c]['trial'])))) for c in config_list)
+    ntrials = dict((c, len(list(set(roiDF[roiDF['config']==c]['trial'])))) for c in config_list)
 
-    first_on = list(set(DF['first_on']))[0]
-    nsecs_on = list(set(DF['nsecs_on']))[0]
-    tsecs = sorted(list(set(DF['tsec'])))
+    first_on = list(set(roiDF['first_on']))[0]
+    nsecs_on = list(set(roiDF['nsecs_on']))[0]
+    tsecs = sorted(list(set(roiDF['tsec'])))
 
-    g1 = sns.FacetGrid(DF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
+    g1 = sns.FacetGrid(roiDF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
     g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
     plotstats = get_facet_stats(config_list, g1, value='df')
 
@@ -176,8 +184,10 @@ def draw_psth(roi, DF, rows, columns, row_order, col_order, trace_color, stimbar
     #%
     pl.subplots_adjust(top=0.9)
     g1.fig.suptitle(roi)
-    g1.savefig(figpath)
-    pl.close()
+
+    if save_and_close is True:
+        g1.savefig(figpath)
+        pl.close()
 
 
 #%%
@@ -271,20 +281,20 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
         for roi in roi_list:
             print roi
 
-            DF = DATA[roi] #[DATA[roi]['config'].isin(curr_subplots)]
-            DF['position'] = list(zip(DF['xpos'], DF['ypos']))
+            roiDF = DATA[roi] #[DATA[roi]['config'].isin(curr_subplots)]
+            roiDF['position'] = list(zip(roiDF['xpos'], roiDF['ypos']))
 
-            curr_slice = list(set(DF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
-            roi_in_slice = list(set(DF['roi_in_slice']))[0] #roi_trials[configname][roi].attrs['idx_in_slice']
+            curr_slice = list(set(roiDF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
+            roi_in_slice = list(set(roiDF['roi_in_slice']))[0] #roi_trials[configname][roi].attrs['idx_in_slice']
 
             # PLOT ALL:
             if plot_all is True:
                 prefix = '%s_%s_%s_%s_ALL' % (roi, curr_slice, roi_in_slice, trace_type) #, figname)
-                plot_roi_psth(roi, DF, object_transformations, figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
+                plot_roi_psth(roiDF, object_transformations, figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
 
                 # Plot df values:
             if filter_pupil is True:
-                filtered_DF = DF.query('pupil_size_stimulus > @pupil_radius_min \
+                filtered_DF = roiDF.query('pupil_size_stimulus > @pupil_radius_min \
                                        & pupil_size_baseline > @pupil_radius_min \
                                        & pupil_size_stimulus < @pupil_radius_max \
                                        & pupil_size_baseline < @pupil_radius_max \
@@ -303,13 +313,13 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
 
                 # INCLUDED trials:
                 prefix = '%s_%s_%s_%s_PUPIL_%s_pass.png' % (roi, curr_slice, roi_in_slice, trace_type, pupil_thresh_str)
-                plot_roi_psth(roi, filtered_DF, object_transformations,
+                plot_roi_psth(filtered_DF, object_transformations,
                                   figdir=roi_psth_dir_include, prefix=prefix, trace_color='b', stimbar_color='k')
 
                 # EXCLUDED trials:
-                excluded_DF = DF[~DF['trial'].isin(pass_trials)]
+                excluded_DF = roiDF[~roiDF['trial'].isin(pass_trials)]
                 prefix = '%s_%s_%s_%s_PUPIL_%s_fail.png' % (roi, curr_slice, roi_in_slice, trace_type, pupil_thresh_str)
-                plot_roi_psth(roi, excluded_DF, object_transformations,
+                plot_roi_psth(excluded_DF, object_transformations,
                                   figdir=roi_psth_dir_exclude, prefix=prefix, trace_color='r', stimbar_color='k')
 
 

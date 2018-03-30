@@ -757,6 +757,11 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                         df = np.ones(trialmat[tidx,:].shape) * np.nan
                     else:
                         df = (trialmat[tidx,:] - baseline) / baseline
+
+                    # check for FUNKY due to NP subtraction:
+                    if max(df) > 10 and not trace_type == 'raw':
+                        df = np.ones(trialmat[tidx,:].shape) * np.nan
+
                     dfmat.append(df)
                     nframes = len(df)
 
@@ -927,6 +932,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                 DF = DATA[((DATA['roi']==roi) & (DATA['config']==config))]
             else:
                 DF = DATA[roi][DATA[roi]['config'] == config]
+
             trial_list = sorted(list(set(DF['trial'])), key=natural_keys)
 
             if filter_pupil is True:
