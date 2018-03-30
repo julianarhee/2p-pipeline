@@ -1824,12 +1824,13 @@ def extract_options(options):
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
                       dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-r', '--rad', action="store",
-                      dest="pupil_size_thr", default=25, help="Cut-off for pupil radius, if --pupil set [default: 30]")
+    parser.add_option('-s', '--radius-min', action="store",
+                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+    parser.add_option('-B', '--radius-max', action="store",
+                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
     parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=15, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-    parser.add_option('-x', '--blinks', action="store",
-                      dest="pupil_max_nblinks", default=1, help="Cut-off for N blinks allowed in trial, if --pupil set [default: 1 (i.e., 0 blinks allowed)]")
+                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#
 
     (options, args) = parser.parse_args(options)
 
