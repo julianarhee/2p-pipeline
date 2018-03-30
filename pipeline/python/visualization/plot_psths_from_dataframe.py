@@ -84,9 +84,9 @@ def get_facet_stats(config_list, g, value='df'):
     return plotstats
 
 #%%
-def plot_roi_psth(roiDF, object_transformations, figdir='/tmp', prefix='psth', trace_color='k', stimbar_color='r', save_and_close=True):
+def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='psth', trace_color='k', stimbar_color='r', save_and_close=True):
 
-    roi = list(set(roiDF['roi']))[0]
+    #roi = list(set(roiDF['roi']))[0]
 
     if 'ori' in roiDF.keys():
         stimtype = 'grating'
@@ -145,15 +145,15 @@ def plot_roi_psth(roiDF, object_transformations, figdir='/tmp', prefix='psth', t
         for objectid in list(set(roiDF[object_sorter])):
             currdf = roiDF[roiDF[object_sorter] == objectid]
             figpath = os.path.join(figdir, '%s_%s%s_%s.png' % (prefix, object_sorter, objectid, figbase))
-            draw_psth(currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
+            draw_psth(roi, currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
     else:
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
+        draw_psth(roi, roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
 
 #%%
-def draw_psth(roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
+def draw_psth(roi, roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
 
-    roi = list(set(roiDF['roi']))[0]
+    #roi = list(set(roiDF['roi']))[0]
     config_list = list(set(roiDF['config']))
 
 #    funky_trials = [trial for trial in list(set(roiDF['trial'])) if max(roiDF[roiDF['trial']==trial]['df'])>10]
@@ -290,7 +290,7 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
             # PLOT ALL:
             if plot_all is True:
                 prefix = '%s_%s_%s_%s_ALL' % (roi, curr_slice, roi_in_slice, trace_type) #, figname)
-                plot_roi_psth(roiDF, object_transformations, figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
+                plot_roi_psth(roi, roiDF, object_transformations, figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
 
                 # Plot df values:
             if filter_pupil is True:
@@ -313,13 +313,13 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
 
                 # INCLUDED trials:
                 prefix = '%s_%s_%s_%s_PUPIL_%s_pass.png' % (roi, curr_slice, roi_in_slice, trace_type, pupil_thresh_str)
-                plot_roi_psth(filtered_DF, object_transformations,
+                plot_roi_psth(roi, filtered_DF, object_transformations,
                                   figdir=roi_psth_dir_include, prefix=prefix, trace_color='b', stimbar_color='k')
 
                 # EXCLUDED trials:
                 excluded_DF = roiDF[~roiDF['trial'].isin(pass_trials)]
                 prefix = '%s_%s_%s_%s_PUPIL_%s_fail.png' % (roi, curr_slice, roi_in_slice, trace_type, pupil_thresh_str)
-                plot_roi_psth(excluded_DF, object_transformations,
+                plot_roi_psth(roi, excluded_DF, object_transformations,
                                   figdir=roi_psth_dir_exclude, prefix=prefix, trace_color='r', stimbar_color='k')
 
 
