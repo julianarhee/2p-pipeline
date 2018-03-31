@@ -1279,7 +1279,7 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                             roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
                             roi_tcourse.attrs['source_file'] = os.path.join(traceid_dir, 'files', filetraces_fn)
 
-                        print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetraces_fn)
+                        #print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetraces_fn)
         except Exception as e:
             print "--- TID %s: ERROR extracting traces from file %s..." % (TID['trace_hash'], filetraces_fn)
             traceback.print_exc()
@@ -1728,7 +1728,8 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
 
     filetraces_fpaths = sorted([os.path.join(filetraces_dir, t) for t in os.listdir(filetraces_dir) if t.endswith('hdf5')], key=natural_keys)
 
-    #%
+    #
+    print "Appending subtrated NP traces to %i files." % len(filetraces_fpaths)
     for tfpath in filetraces_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
@@ -2078,8 +2079,9 @@ def extract_traces(options):
         if np_method == 'fissa':
             exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, append_only=True)
             filetraces_dir = append_corrected_fissa(exp, filetraces_dir)
-        elif np_method == 'subtract':
+        elif np_method == 'np_subtract':
             # First make sure that MASKS.hdf5 in traceid dir contains np info:
+            print "Checking MASKS.hdf5 for neuropil masks..."
             mtmp = h5py.File(maskdict_path, 'r')
             lev1 = mtmp.keys()[0]
             lev2 = mtmp[lev1].keys()[0]
@@ -2087,6 +2089,7 @@ def extract_traces(options):
                 mtmp.close()
                 print "--- Unable to find NEUROPIL mask info. Creating new."
                 maskdict_path = get_masks(maskdict_path, maskinfo, RID, get_neuropil=True, niter=np_niterations, rootdir=rootdir)
+            
             print "--- Using SUBTRACTION method, correction-factor specified was: ", np_correction_factor
             filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, rootdir=rootdir)
 
@@ -2118,6 +2121,8 @@ def extract_traces(options):
     roidata_filepath = None
     if create_dataframe is True:
         print "*** Creating ROI dataframes ***"
+        if append_trace_type is True:
+            create_new = True
 
         # Assign frame indices for specified trial epochs:
         # =====================================================================
