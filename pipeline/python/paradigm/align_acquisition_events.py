@@ -1358,7 +1358,7 @@ def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, create_new=
             print "--> Trying to load existing file..."
             print "--> Loading ROIDATA file: %s" % roidata_filepath
             DATA = pd.HDFStore(roidata_filepath, 'r')
-            assert len(DATA.keys()) > 0, "Empty ROIDATA file!"
+            assert len(DATA) > 0, "Empty ROIDATA file!"
         except Exception as e:
             create_new = True
             if 'DATA' in locals():
