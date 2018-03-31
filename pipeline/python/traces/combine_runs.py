@@ -113,12 +113,15 @@ def reindex_data_fields(DATA, run_list, stimconfigs, combined_tracedir):
     for run in run_list:
         ntrials[run] = len(list(set(DATA[DATA['run']==run]['trial'])))
 
+    ntrials_to_add = 0
     for idx,run in enumerate(run_list):
         if idx == 0:
             continue
 
         trial_list = sorted(list(set([str(t) for t in list(set(DATA[DATA['run']==run]['trial']))])), key=natural_keys)
-        ntrials_to_add = ntrials[run_list[idx-1]]
+        ntrials_to_add += ntrials[run_list[idx-1]]
+        print ntrials_to_add
+
         for trial in trial_list:
             old_trial_num = int(trial.split('trial')[-1])
             new_trial_num = old_trial_num + ntrials_to_add
@@ -339,12 +342,12 @@ def extract_options(options):
 #           '-R', 'blobs_run3', '-t', 'traces002', '-R', 'blobs_run4', '-t', 'traces002']
 
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180329', '-A', 'FOV2_zoom1x',
-           '-T', 'raw', '--no-pupil', '--new',
-           '-R', 'gratings_run1', '-t', 'traces001',
-           '-R', 'gratings_run2', '-t', 'traces001',
-           '-R', 'gratings_run3', '-t', 'traces001',
-           '-R', 'gratings_run4', '-t', 'traces001']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180329', '-A', 'FOV2_zoom1x',
+#           '-T', 'raw', '--no-pupil', '--new',
+#           '-R', 'gratings_run1', '-t', 'traces001',
+#           '-R', 'gratings_run2', '-t', 'traces001',
+#           '-R', 'gratings_run3', '-t', 'traces001',
+#           '-R', 'gratings_run4', '-t', 'traces001',]
 
 #%%
 
