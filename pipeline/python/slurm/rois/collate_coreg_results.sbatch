@@ -6,7 +6,7 @@
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-2:00 # Running time of 1 hours
-#SBATCH --mem 8000 # Memory request of 4 GB
+#SBATCH --mem 4000 # Memory request of 4 GB
 #SBATCH -o log/coreg_collate_%A_f%a.out # Standard output
 #SBATCH -e log/coreg_collate_%A_f%a.err # Standard error
 
