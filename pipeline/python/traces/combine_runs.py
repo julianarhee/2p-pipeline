@@ -358,6 +358,9 @@ def combine_runs_and_plot(options):
     animalid = options.animalid
     session = options.session
     acquisition = options.acquisition
+    slurm = options.slurm
+    if slurm is True:
+        rootdir = '/n/coxfs01/2p-data'
 
     trace_type = options.trace_type
     combine_new = options.combine_new
