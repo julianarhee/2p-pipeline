@@ -464,8 +464,8 @@ def combine_runs_and_plot(options):
     #%% Look at MAX ZSCORE:
 
     # Get stats on ROIs:
-
-    grouped = STATS.groupby(['roi', 'morphlevel', 'yrot'], as_index=False)         # Group dataframe by variables-of-interest
+    trans_types = object_transformations.keys()
+    grouped = STATS.groupby([trans_types], as_index=False)         # Group dataframe by variables-of-interest
 
     zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
     zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
@@ -473,14 +473,14 @@ def combine_runs_and_plot(options):
     STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
 
     # Get max zscore across all configs for each ROI:
-    max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_zscore']))) for roi in roi_list]
+    max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
     sns.distplot(max_config_zscores)
     pl.xlabel('max zscore')
     pl.title("%s %s %s %s" % (animalid, session, fov, stimulus))
 
     curr_tuning_dir = os.path.join(combined_tracedir, 'figures', 'tuning')
-    figname = "hist_rois_max_zscores_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
+    figname = "hist_rois_max_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
 
@@ -500,7 +500,7 @@ def combine_runs_and_plot(options):
     pl.xlabel('max df/f during stimulus')
     pl.title("%s %s %s %s" % (animalid, session, fov, stimulus))
 
-    figname = "hist_rois_max_stimdf_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
+    figname = "hist_rois_max_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
 
