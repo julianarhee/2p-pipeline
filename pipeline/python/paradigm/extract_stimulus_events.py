@@ -79,7 +79,7 @@ def natural_keys(text):
 
 #%%
 
-def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False):
+def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start=True, verbose=False):
 
     trialevents = None
 
@@ -151,7 +151,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
         #trialevents[trial]['iti_dur_ms'] = mwtrials[trial]['iti_duration']
 
-        if int(tidx+1)>1:
+        if (blank_start is True) or (int(tidx+1)>1):
         	    # Skip a good number of frames from the last "found" index of previous trial.
         	    # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
         	    # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
@@ -160,7 +160,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=Fal
         	    curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
-        minframes = 4
+        minframes = 5 #4
         for bitcode in mwtrials[trial]['all_bitcodes']:
             looking = True
             while looking is True:
@@ -231,6 +231,8 @@ def extract_options(options):
                       dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
     parser.add_option('--multi', action="store_false",
                       dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
+    parser.add_option('--no-blank', action="store_false",
+                      dest="blank_start", default=True, help="Set flag if no ITI blank period before first trial.")
 
     (options, args) = parser.parse_args(options)
 
@@ -238,18 +240,18 @@ def extract_options(options):
 
 #%%
 #rootdir = '/mnt/odyssey'
-#animalid = 'CE074'
-#session = '20180215'
-#acquisition = 'FOV2_zoom1x_LI'
-#run = 'blobs'
+#animalid = 'CE080'
+#session = '20180330'
+#acquisition = 'FOV1_zoom1x'
+#run = 'gratings_run2'
 #slurm = False
 #retinobar = False
-#phasemod = False
+#phasemod = True
 #trigger_varname = 'frame_trigger'
 #stimorder_files = False
 
 
-def parse_acquisition_events(run_dir):
+def parse_acquisition_events(run_dir, blank_start=True):
 
     run = os.path.split(run_dir)[-1]
     runinfo_path = os.path.join(run_dir, '%s.json' % run)
@@ -308,7 +310,7 @@ def parse_acquisition_events(run_dir):
         serialfn_path = os.path.join(paradigm_rawdir, serialfn)
 
         # Align MW events to frame-events from serialdata:
-        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, verbose=False)
+        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start=blank_start, verbose=False)
 
         # Sort trials in run by time:
         sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
@@ -391,6 +393,7 @@ def main(options):
     phasemod = options.phasemod
     trigger_varname = options.frametrigger_varname
     single_run = options.single_run
+    blank_start = options.blank_start
 
     stimorder_files = False #True
 
@@ -418,7 +421,7 @@ def main(options):
     # Set reference path and get SERIALDATA info:
     # ================================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    parsed_run_outfile = parse_acquisition_events(run_dir)
+    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start)
     print "----------------------------------------"
     print "ACQUISITION INFO saved to:\n%s" % parsed_run_outfile
     print "----------------------------------------"
