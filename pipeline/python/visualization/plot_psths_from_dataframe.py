@@ -100,6 +100,8 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
     else:
         if 'ori' in trans_types and not 'sf' in trans_types:
             object_sorter = 'ori'
+        elif 'ori' in trans_types and 'sf' in trans_types:
+            object_sorter = 'sf'
 
     single_object_figure = False
     if 'size' in trans_types and ('xpos' in trans_types or 'ypos' in trans_types):
@@ -145,13 +147,14 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         for objectid in list(set(roiDF[object_sorter])):
             currdf = roiDF[roiDF[object_sorter] == objectid]
             figpath = os.path.join(figdir, '%s_%s%s_%s.png' % (prefix, object_sorter, objectid, figbase))
-            draw_psth(roi, currdf, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath)
+            draw_psth(roi, currdf, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
     else:
+        objectid = 'all'
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roi, roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
+        draw_psth(roi, roiDF, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
 
 #%%
-def draw_psth(roi, roiDF, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
+def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
 
     #roi = list(set(roiDF['roi']))[0]
     config_list = list(set(roiDF['config']))
@@ -167,23 +170,49 @@ def draw_psth(roi, roiDF, rows, columns, row_order, col_order, trace_color, stim
     nsecs_on = list(set(roiDF['nsecs_on']))[0]
     tsecs = sorted(list(set(roiDF['tsec'])))
 
-    g1 = sns.FacetGrid(roiDF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
+    #pl.figure()
+    plot_vars = ['trial', 'df', 'tsec', rows, columns]
+    plot_vars.extend([t for t in trans_types if t not in plot_vars])
+
+    subDF = roiDF[plot_vars]
+    g1 = sns.FacetGrid(subDF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
     g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
-    plotstats = get_facet_stats(config_list, g1, value='df')
+    #plotstats = get_facet_stats(config_list, g1, value='df')
+
+    nrows = len(g1.row_names)
+    ncols = len(g1.col_names)
+    for ri, rowval in enumerate(g1.row_names):
+        for ci, colval in enumerate(g1.col_names):
+            currax = g1.facet_axis(ri, ci)
+            configDF = subDF[((subDF[rows]==rowval) & (subDF[columns]==colval))]
+            dfmat = []
+            tmat = []
+            for trial in list(set(configDF['trial'])):
+                dfmat.append(np.array(configDF[configDF['trial']==trial]['df'][:]))
+                tmat.append(np.array(configDF[configDF['trial']==trial]['tsec'][:]))
+            dfmat = np.array(dfmat); tmat = np.array(tmat);
+            curr_ntrials = dfmat.shape[0]
+            mean_df = np.mean(dfmat, axis=0)
+            mean_tsec = np.mean(tmat, axis=0)
+            if ri == 0 and ci == 0:
+                stimbar_pos = dfmat.min() - dfmat.min()*-.25
+            currax.plot(mean_tsec, mean_df, trace_color, linewidth=1, alpha=1)
+            currax.plot([mean_tsec[first_on], mean_tsec[first_on]+nsecs_on], [stimbar_pos, stimbar_pos], stimbar_color, linewidth=2, alpha=1)
+            currax.annotate("n = %i" % curr_ntrials, xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
 
     # Get mean trace:
-    meandfs = {}
-    for config in plotstats['dfmats'].keys():
-        meandfs[config] = np.mean(plotstats['dfmats'][config], axis=0)
-        currax = g1.facet_axis(plotstats['indices'][config][0], plotstats['indices'][config][1])
-        currax.plot(tsecs, meandfs[config], trace_color, linewidth=1, alpha=1)
-        currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
-        currax.annotate("n = %i" % ntrials[config], xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
+#    meandfs = {}
+#    for config in plotstats['dfmats'].keys():
+#        meandfs[config] = np.mean(plotstats['dfmats'][config], axis=0)
+#        currax = g1.facet_axis(plotstats['indices'][config][0], plotstats['indices'][config][1])
+#        currax.plot(tsecs, meandfs[config], trace_color, linewidth=1, alpha=1)
+#        currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
+#        currax.annotate("n = %i" % ntrials[config], xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
 
     sns.despine(offset=2, trim=True)
     #%
     pl.subplots_adjust(top=0.9)
-    g1.fig.suptitle(roi)
+    g1.fig.suptitle("%s - stim%s" % (roi, objectid))
 
     if save_and_close is True:
         g1.savefig(figpath)
