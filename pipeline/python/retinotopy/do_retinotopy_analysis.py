@@ -91,7 +91,7 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	#spatial smoothing, if indicated
 	if RETINOID['PARAMS']['smooth_fwhm'] is not None:
 		print('Performing spatial smoothing on stack....')
-		stack1 = smooth_stack(stack1, RETINOID['PARAMS']['smooth_fwhm'])
+		stack1 = smooth_stack(stack1, int(RETINOID['PARAMS']['smooth_fwhm']))
 	return stack1
 		
 def process_array(roi_trace, RETINOID, stack_info):
