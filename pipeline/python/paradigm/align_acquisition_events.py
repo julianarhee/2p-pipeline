@@ -692,10 +692,11 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
     iti_dur = trial_info['iti_full'] #trialdict['trial00001']['iti_dur_ms']/1E3
     tpoints = [int(i) for i in np.arange(-1*iti_pre, stim_dur+iti_dur)]
 
+    config_list = sorted(roi_trials.keys(), key=natural_keys)
     try:
         for roi in roi_list:
             roi_dfs = []
-            for configname in sorted(roi_trials.keys(), key=natural_keys): #sorted(ROIs.keys(), key=natural_key):
+            for configname in config_list: #sorted(ROIs.keys(), key=natural_key):
 
                 curr_slice = roi_trials[configname][roi].attrs['slice']
                 roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
@@ -720,18 +721,18 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                         objectid = imname.split('_CamRot_')[0]
                         yrot = int(imname.split('_CamRot_y')[-1])
                         if 'N1' in imname:
-                            morphlevel = 1
+                            morphlevel = 0
                         elif 'N2' in imname:
-                            morphlevel = 20
+                            morphlevel = 22
                     elif 'morph' in imname:
-                        if 'yrot' not in imname:
+                        if '_y' not in imname and '_yrot' not in imname:
                             objectid = imname #'morph' #imname
                             yrot = 0
                             morphlevel = int(imname.split('morph')[-1])
                         else:
                             objectid = imname #'morph' #imname.split('_y')[0]
                             yrot = int(imname.split('_y')[-1])
-                            morphlevel = int(imname.split('_y')[0].split('morph'))
+                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
 
                 for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
 
@@ -1475,7 +1476,17 @@ def extract_options(options):
     return options
 
 
+
+
+
 #%%
+
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
+#           '-R', 'blobs_run3',
+#           '-T', 'raw', '-t', 'traces001',
+#           '-s', '20', '-B', '80', '-d', '8']
+
+ #%%
 # Set USER INPUT options:
 
 def create_roi_dataframes(options):
