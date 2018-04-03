@@ -215,9 +215,10 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     if len(existing_stats) > 0:
         existing_stats_path = os.path.join(combined_metrics_dir, existing_stats[-1])
         STATS = pd.read_hdf(existing_stats_path, datakey, mode='r')
+        combined_stats_filepath = existing_stats_path
         print "Retrieved existing STATS file:"
         print existing_stats_path
-        return STATS
+        return STATS, combined_stats_filepath
 
     # Otherwise, check if metrics file exists:
     existing_metrics = sorted([f for f in os.listdir(combined_metrics_dir) if 'roi_metrics_%s_%s_' % (metric_hash, trace_type) in f and f.endswith('hdf5')])
@@ -271,7 +272,7 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     STATS = acq.collate_roi_stats(metrics, configs) # expects dict of DFs, so pass 'metrics' not 'METRICS'
     STATS.to_hdf(combined_stats_filepath, datakey,  mode='w')
 
-    return STATS
+    return STATS, combined_stats_filepath
 
 
 #%%
@@ -323,6 +324,38 @@ def extract_options(options):
 
     return options #, fop.run_list
 
+#%%
+def draw_heatmap(*args, **kwargs):
+    data = kwargs.pop('data')
+    d = data.pivot_table(index=args[1], columns=args[0], values=args[2])
+    sns.heatmap(d, ax=pl.gca(), **kwargs)
+
+def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', max_value=None):
+
+
+    #pl.figure()
+    stim_vars = ['roi', 'mean_%s' % metric_type]
+    stim_vars.extend([t for t in trans_types if t not in stim_vars])
+
+    #curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
+    subDF = STATS[stim_vars].drop_duplicates()
+    subDF.index = pd.RangeIndex(len(subDF.index))
+
+    rows = 'ypos'
+    columns = 'xpos'
+    row_order = sorted(list(set(subDF['ypos'])))[::-1]
+    col_order = sorted(list(set(subDF['xpos'])))
+    if max_value is None:
+        max_value = subDF['mean_zscore'].max()
+    minval = subDF['mean_zscore'].min()
+    sns.set()
+    g1 = sns.FacetGrid(data, row=rows, col=columns, sharex=True, sharey=True,row_order=row_order, col_order=col_order, size=3)
+    cbar_ax = g1.fig.add_axes([.91, .3, .03, .4])  # <-- Create a colorbar axes
+    g1 = g1.map_dataframe(draw_heatmap, curr_transform, "roi", "mean_%s" % metric_type, xticklabels=True, yticklabels=False,
+                          cbar_ax=cbar_ax, cbar_kws={"label": metric_type},
+                          vmin=minval, vmax=max_value)  # <-- Specify the colorbar axes and limits
+    g1.fig.subplots_adjust(right=.9)  # <-- Add space so the colorbar doesn't overlap the plot
+
 
 
 #%% Run info:
@@ -341,7 +374,7 @@ def extract_options(options):
 #           '-T', trace_type,
 #           '-R', 'blobs_run3', '-t', 'traces002', '-R', 'blobs_run4', '-t', 'traces002']
 
-
+#
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180329', '-A', 'FOV2_zoom1x',
 #           '-T', 'raw', '--no-pupil', '--new',
 #           '-R', 'gratings_run1', '-t', 'traces001',
@@ -409,7 +442,7 @@ def combine_runs_and_plot(options):
         pupil_params = acq.set_pupil_params(create_empty=True)
 
     #% Calculate metrics & get stats ---------------------------------------------
-    STATS = get_combined_stats(DATA, datakey, combined_tracedir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params)
+    STATS, stats_filepath = get_combined_stats(DATA, datakey, combined_tracedir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params)
 
     #%% if filter pupil, get subset of DATA:
     if filter_pupil is True:
@@ -444,6 +477,8 @@ def combine_runs_and_plot(options):
 
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
+
+    #%% tuning:
     for roi in roi_list:
         print roi
         roiDF = STATS[STATS['roi']==roi]
@@ -453,29 +488,47 @@ def combine_runs_and_plot(options):
                                                  output_dir = combined_runs_figdir_tuning,
                                                  include_trials=False) #output_dir='/tmp', include_trials=True)
 
+    #%% PSTHs
     combined_runs_figdir_psth = os.path.join(combined_tracedir, 'figures', 'psth', trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(combined_runs_figdir_psth):
         os.makedirs(combined_runs_figdir_psth)
 
+    if filter_pupil is True:
+        pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
+    else:
+        pupil_thresh_str = 'unfiltered'
+
     for roi in roi_list:
         roiDF = DATA[DATA['roi']==roi]
-        vis.plot_roi_psth(roi, roiDF, object_transformations,
-                          figdir=combined_runs_figdir_psth, prefix='psth',
+        prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)
+        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=True,
+                          figdir=combined_runs_figdir_psth, prefix=prefix,
                           trace_color=trace_color, stimbar_color=stimbar_color,
-                          save_and_close=True)
+                          )
 
-    #%% Look at MAX ZSCORE:
+
+    #%% Update STATS with summary metrics:
 
     # Get stats on ROIs:
+    group_vars = ['roi']
     trans_types = object_transformations.keys()
-    grouped = STATS.groupby([trans_types], as_index=False)         # Group dataframe by variables-of-interest
+    group_vars.extend([t for t in trans_types])
+    grouped = STATS.groupby(group_vars, as_index=False)         # Group dataframe by variables-of-interest
 
-    zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
-    zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
-    zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
-    STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
+    # metric summaries to add:
+    metrics = ['zscore', 'stim_df']
+    for metric_type in metrics:
+        zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
+        zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
+        zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
+        STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
 
-    # Get max zscore across all configs for each ROI:
+    # Update STATS dataframe on disk:
+    STATS.to_hdf(stats_filepath, datakey,  mode='r+')
+
+
+    #%% HSITOGRAM:   Get max zscore across all configs for each ROI:
+    metric_type = 'zscore'
     max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
     sns.distplot(max_config_zscores)
@@ -487,19 +540,13 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
 
-    #%% Look at STIM_DF:
+    #%% HISTOGRAM: Look at STIM_DF:
 
     metric_type = 'stim_df'
-    zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
-    zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
-    zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
-    STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
-
-    STATS[STATS['roi']==roi]['mean_stim_df']
-
-    max_config_stimdfs = [max(list(set(STATS[STATS['roi']==roi]['mean_stim_df']))) for roi in roi_list]
+    max_config_stimdfs = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
     sns.distplot(max_config_stimdfs)
+
     pl.xlabel('max df/f during stimulus')
     pl.title("%s %s %s %s" % (animalid, session, fov, stimulus))
 
@@ -507,7 +554,24 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
 
+    #%% Look at position & ORI selectivity as heatmap:
+
+    curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
+    position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', max_value=4.0)
+    pl.subplots_adjust(top=0.85)
+    pl.suptitle("%s %s %s %s" % (animalid, session, fov, stimulus))
+
+    figname = "gridxy_heatmap_%s_%s_%s_%s.png" % (curr_transform, trace_type, metric_type, selected_metric)
+    figpath = os.path.join(curr_tuning_dir, figname)
+    pl.savefig(figpath)
+
+
     return combined_tracedir
+
+
+
+
+
 #%%
 
 def main(options):
