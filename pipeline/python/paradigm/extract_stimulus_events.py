@@ -233,7 +233,8 @@ def extract_options(options):
                       dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
     parser.add_option('--no-blank', action="store_false",
                       dest="blank_start", default=True, help="Set flag if no ITI blank period before first trial.")
-
+    parser.add_option('-b', '--boundidx', action="store",
+                      dest="boundidx", default=0, help="Bound idx if single_run is True [default: 0]")
     (options, args) = parser.parse_args(options)
 
     return options
@@ -394,10 +395,11 @@ def main(options):
     trigger_varname = options.frametrigger_varname
     single_run = options.single_run
     blank_start = options.blank_start
+    boundidx = int(options.boundidx)
 
     stimorder_files = False #True
 
-    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname]
+    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx]
     if slurm is True:
         mwopts.extend(['--slurm'])
     if retinobar is True:
