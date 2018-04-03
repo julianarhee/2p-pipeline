@@ -1272,18 +1272,19 @@ def collate_roi_stats(METRICS, configs):
                     objectid = imname.split('_CamRot_')[0]
                     yrot = int(imname.split('_CamRot_y')[-1])
                     if 'N1' in imname:
-                        morphlevel = 1
+                        morphlevel = 0
                     elif 'N2' in imname:
-                        morphlevel = 20
+                        morphlevel = 22
                 elif 'morph' in imname:
-                    if 'yrot' not in imname:
+                    if '_y' not in imname and '_yrot' not in imname:
                         objectid = imname #'morph' #imname
                         yrot = 0
                         morphlevel = int(imname.split('morph')[-1])
                     else:
                         objectid = imname #'morph' #imname.split('_y')[0]
                         yrot = int(imname.split('_y')[-1])
-                        morphlevel = int(imname.split('_y')[0].split('morph'))
+                        morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+
                 img_trial = np.tile(imname, (ntrials,))
                 df_stim = pd.DataFrame({'img': img_trial,
                                         'object': np.tile(objectid, (ntrials,)),
