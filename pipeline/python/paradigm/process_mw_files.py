@@ -84,7 +84,7 @@ def get_timekey(item):
 #%% PARSE_MW_EVENTS methods:
 
 #%%
-def get_session_bounds(dfn, single_run=False, verbose=False):
+def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
 
     df = None
     df = pymworks.open(dfn)                                                          # Open the datafile
@@ -127,7 +127,7 @@ def get_session_bounds(dfn, single_run=False, verbose=False):
             print "bound ID:", bidx, (bound[1]-bound[0])/1E6, "sec"
 
     if single_run is True:
-        bounds = [bounds[0]]
+        bounds = [bounds[boundidx]]
 
     return df, bounds
 
@@ -385,7 +385,7 @@ def get_session_info(df, stimulus_type=None):
     return info
 
 #%%
-def get_stimulus_events(dfn, single_run=True, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
     df, bounds = get_session_bounds(dfn, single_run=single_run)
     #print bounds
@@ -659,13 +659,13 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True):
+def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
 
     print "Current file: ", curr_dfn
     if retinobar is True:
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -960,6 +960,8 @@ def parse_mw_trials(options):
                       dest="verbose", default=False, help="Set flag if want to print all output (for debugging).")
     parser.add_option('--multi', action="store_false",
                       dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
+    parser.add_option('-b', '--boundidx', action="store",
+                      dest="boundidx", default=0, help="Bound idx if single_run is True [default: 0]")
 
     parser.add_option('-t', '--triggervar', action="store",
                       dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
@@ -977,6 +979,7 @@ def parse_mw_trials(options):
     phasemod = options.phasemod
     verbose = options.verbose
     single_run = options.single_run
+    boundidx = int(options.boundidx)
 
     slurm = options.slurm
     if slurm is True and 'coxfs01' not in rootdir:
@@ -1007,7 +1010,7 @@ def parse_mw_trials(options):
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
 
-        trials = extract_trials(curr_dfn, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run)
+        trials = extract_trials(curr_dfn, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
 
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 
