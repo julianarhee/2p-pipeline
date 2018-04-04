@@ -209,10 +209,21 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     print "Requested METRIC:", metric_desc
 
     # Check to see if stats file already exists:
+    metric_hash = metric_desc.split('_')[-1]
+    metric_str = metric_desc.split(metric_hash)[0]
+   
+    # If metric combo already exists, re-use dir, so that there is always only 1 unique dir per metric combo: 
+    metric_dirs = [f for f in os.listdir(os.path.join(combined_tracedir, 'metrics')) if metric_str in f]
+    print "FOund metrics:", metric_dirs
+    if len(metric_dirs) > 0:
+        metric_desc = metric_dirs[0]
     combined_metrics_dir = os.path.join(combined_tracedir, 'metrics', metric_desc)
     if not os.path.exists(combined_metrics_dir):
         os.makedirs(combined_metrics_dir)
     metric_hash = metric_desc.split('_')[-1]
+    if not pupil_params['hash']==metric_hash:
+        pupil_params['hash'] = metric_hash
+
 
     existing_stats = sorted([f for f in os.listdir(combined_metrics_dir) if 'roi_stats_%s_%s_' % (metric_hash, trace_type) in f and f.endswith('hdf5')])
     if len(existing_stats) > 0:
@@ -494,9 +505,13 @@ def combine_runs_and_plot(options):
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
 
     #%% tuning:
+    sns.set()
     if plot_tuning: 
+        print "PLOTTING:  tuning"
+        print "Saving to:", combined_runs_figdir_tuning
+
         for roi in roi_list:
-            print roi
+            #print roi
             roiDF = STATS[STATS['roi']==roi]
 
             fignames = vis.plot_tuning_by_transforms(roiDF, transform_dict, object_transformations,
@@ -513,8 +528,10 @@ def combine_runs_and_plot(options):
         pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
     else:
         pupil_thresh_str = 'unfiltered'
-    
+   
+    sns.set() 
     if plot_psth:
+        print "PLOTTING:  psths"
         for roi in roi_list:
             roiDF = DATA[DATA['roi']==roi]
             prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)

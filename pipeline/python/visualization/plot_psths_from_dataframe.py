@@ -547,7 +547,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
         elif isinstance(desc, dict):
             transform_str = desc[xval_trans]
 
-        print "Plotting tuning for: %s" % transform_str
+        #print "Plotting tuning for: %s" % transform_str
 
         if stim_subsets is True and isinstance(hues, dict):
             hue_trans = hues[xval_trans].keys()[0]  # Should only be one for now...
