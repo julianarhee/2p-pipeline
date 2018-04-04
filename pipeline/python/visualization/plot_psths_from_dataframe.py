@@ -25,6 +25,8 @@ Created on Fri Mar  9 12:35:05 2018
 
 @author: juliana
 """
+import matplotlib
+matplotlib.use('Agg')
 
 import os
 import json
@@ -34,8 +36,6 @@ import itertools
 import optparse
 import pprint
 import traceback
-import matplotlib
-matplotlib.use('Agg')
 import pylab as pl
 import seaborn as sns
 import pandas as pd
@@ -151,7 +151,7 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
     else:
         objectid = 'all'
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roi, roiDF, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
+        draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
 
 #%%
 def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):

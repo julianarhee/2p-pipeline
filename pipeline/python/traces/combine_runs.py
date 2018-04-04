@@ -5,6 +5,9 @@ Created on Fri Mar 23 17:52:45 2018
 
 @author: juliana
 """
+import matplotlib
+matplotlib.use('agg')
+
 import optparse
 import h5py
 import sys
@@ -319,6 +322,12 @@ def extract_options(options):
     parser.add_option('-d', '--dist', action="store",
                       dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
 
+    parser.add_option('--psth', action="store_true",
+                      dest="psth", default=False, help="Set flag to plot (any) PSTH figures.")
+    parser.add_option('--tuning', action="store_true",
+                      dest="tuning", default=False, help="Set flag to plot(any) tuning curves.")
+
+
     (options, args) = parser.parse_args(options)
 
 
@@ -336,6 +345,10 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
     #pl.figure()
     stim_vars = ['roi', 'mean_%s' % metric_type]
     stim_vars.extend([t for t in trans_types if t not in stim_vars])
+    if 'xpos' not in stim_vars:
+        stim_vars.extend(['xpos'])
+    if 'ypos' not in stim_vars:
+        stim_vars.extend(['ypos'])
 
     #curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
     subDF = STATS[stim_vars].drop_duplicates()
@@ -349,7 +362,7 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
         max_value = subDF['mean_zscore'].max()
     minval = subDF['mean_zscore'].min()
     sns.set()
-    g1 = sns.FacetGrid(data, row=rows, col=columns, sharex=True, sharey=True,row_order=row_order, col_order=col_order, size=3)
+    g1 = sns.FacetGrid(subDF, row=rows, col=columns, sharex=True, sharey=True,row_order=row_order, col_order=col_order, size=3)
     cbar_ax = g1.fig.add_axes([.91, .3, .03, .4])  # <-- Create a colorbar axes
     g1 = g1.map_dataframe(draw_heatmap, curr_transform, "roi", "mean_%s" % metric_type, xticklabels=True, yticklabels=False,
                           cbar_ax=cbar_ax, cbar_kws={"label": metric_type},
@@ -405,7 +418,9 @@ def combine_runs_and_plot(options):
     pupil_radius_max = float(options.pupil_radius_max)
     pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
-
+    pupil_max_nblinks = 0
+    plot_psth = options.psth
+    plot_tuning = options.tuning
 
     fov = acquisition.split('_')[0]
     stimulus = run_list[0].split('_')[0]
@@ -479,11 +494,12 @@ def combine_runs_and_plot(options):
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
 
     #%% tuning:
-    for roi in roi_list:
-        print roi
-        roiDF = STATS[STATS['roi']==roi]
+    if plot_tuning: 
+        for roi in roi_list:
+            print roi
+            roiDF = STATS[STATS['roi']==roi]
 
-        fignames = vis.plot_tuning_by_transforms(roiDF, transform_dict, object_transformations,
+            fignames = vis.plot_tuning_by_transforms(roiDF, transform_dict, object_transformations,
                                                  metric_type=metric_type, save_and_close=True,
                                                  output_dir = combined_runs_figdir_tuning,
                                                  include_trials=False) #output_dir='/tmp', include_trials=True)
@@ -497,11 +513,12 @@ def combine_runs_and_plot(options):
         pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
     else:
         pupil_thresh_str = 'unfiltered'
-
-    for roi in roi_list:
-        roiDF = DATA[DATA['roi']==roi]
-        prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)
-        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=True,
+    
+    if plot_psth:
+        for roi in roi_list:
+            roiDF = DATA[DATA['roi']==roi]
+            prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)
+            vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=True,
                           figdir=combined_runs_figdir_psth, prefix=prefix,
                           trace_color=trace_color, stimbar_color=stimbar_color,
                           )
@@ -540,6 +557,7 @@ def combine_runs_and_plot(options):
     figname = "hist_rois_max_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
+    pl.close()
 
     #%% HISTOGRAM: Look at STIM_DF:
 
@@ -554,7 +572,7 @@ def combine_runs_and_plot(options):
     figname = "hist_rois_max_%s_%s_%s.png" % (trace_type, metric_type, selected_metric)
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
-
+    pl.close()
     #%% Look at position & ORI selectivity as heatmap:
 
     curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
@@ -565,8 +583,8 @@ def combine_runs_and_plot(options):
     figname = "gridxy_heatmap_%s_%s_%s_%s.png" % (curr_transform, trace_type, metric_type, selected_metric)
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
-
-
+    pl.close()
+   
     return combined_tracedir
 
 
