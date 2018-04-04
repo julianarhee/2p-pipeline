@@ -387,7 +387,7 @@ def get_session_info(df, stimulus_type=None):
 #%%
 def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
-    df, bounds = get_session_bounds(dfn, single_run=single_run)
+    df, bounds = get_session_bounds(dfn, single_run=single_run, boundidx=boundidx)
     #print bounds
     codec = df.get_codec()
 
@@ -523,7 +523,7 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True):
     """
     #for dfn in dfns:
 
-    df, bounds = get_session_bounds(dfn, single_run=single_run)
+    df, bounds = get_session_bounds(dfn, single_run=single_run, boundidx=boundidx)
 
     # Use chunks of MW "run"-states to get all associate events:
 
