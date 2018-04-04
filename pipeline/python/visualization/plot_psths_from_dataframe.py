@@ -185,6 +185,8 @@ def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_o
         for ci, colval in enumerate(g1.col_names):
             currax = g1.facet_axis(ri, ci)
             configDF = subDF[((subDF[rows]==rowval) & (subDF[columns]==colval))]
+            if len(configDF)==0:
+                continue
             dfmat = []
             tmat = []
             for trial in list(set(configDF['trial'])):
@@ -319,7 +321,8 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
             # PLOT ALL:
             if plot_all is True:
                 prefix = '%s_%s_%s_%s_ALL' % (roi, curr_slice, roi_in_slice, trace_type) #, figname)
-                plot_roi_psth(roi, roiDF, object_transformations, figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
+                plot_roi_psth(roi, roiDF, object_transformations,
+                                  figdir=roi_psth_dir_all, prefix=prefix, trace_color='k', stimbar_color='r')
 
                 # Plot df values:
             if filter_pupil is True:
