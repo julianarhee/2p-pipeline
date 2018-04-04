@@ -211,19 +211,26 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     # Check to see if stats file already exists:
     metric_hash = metric_desc.split('_')[-1]
     metric_str = metric_desc.split(metric_hash)[0]
-   
-    # If metric combo already exists, re-use dir, so that there is always only 1 unique dir per metric combo: 
-    metric_dirs = [f for f in os.listdir(os.path.join(combined_tracedir, 'metrics')) if metric_str in f]
-    print "FOund metrics:", metric_dirs
-    if len(metric_dirs) > 0:
-        metric_desc = metric_dirs[0]
+
+    # If metric combo already exists, re-use dir, so that there is always only 1 unique dir per metric combo:
+    if os.path.exists(os.path.join(combined_tracedir, 'metrics')):
+        metric_dirs = [f for f in os.listdir(os.path.join(combined_tracedir, 'metrics')) if metric_str in f]
+        print "Found metrics:", metric_dirs
+        if len(metric_dirs) > 0:
+            print "Renaming metric description string to existing."
+            metric_desc = metric_dirs[0]
     combined_metrics_dir = os.path.join(combined_tracedir, 'metrics', metric_desc)
     if not os.path.exists(combined_metrics_dir):
         os.makedirs(combined_metrics_dir)
     metric_hash = metric_desc.split('_')[-1]
     if not pupil_params['hash']==metric_hash:
+        print "Renamed hash to match existing."
         pupil_params['hash'] = metric_hash
 
+    # Save pupil params info, if relevant:
+    print "Saved roiparams to .json"
+    with open(os.path.join(combined_metrics_dir, 'roiparams.json'), 'w') as f:
+        json.dump(pupil_params, f, indent=4, sort_keys=True)
 
     existing_stats = sorted([f for f in os.listdir(combined_metrics_dir) if 'roi_stats_%s_%s_' % (metric_hash, trace_type) in f and f.endswith('hdf5')])
     if len(existing_stats) > 0:
@@ -405,10 +412,16 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 #           '-R', 'gratings_run2', '-t', 'traces001',
 #           '-R', 'gratings_run3', '-t', 'traces001',
 #           '-R', 'gratings_run4', '-t', 'traces001',]
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
+#           '-R', 'gratings_run1', '-t', 'traces002',
+#           '-R', 'gratings_run2', '-t', 'traces002']
 
 #%%
 
 def combine_runs_and_plot(options):
+    #%%
     options = extract_options(options)
 
     rootdir = options.rootdir
@@ -470,6 +483,7 @@ def combine_runs_and_plot(options):
     #% Calculate metrics & get stats ---------------------------------------------
     STATS, stats_filepath = get_combined_stats(DATA, datakey, combined_tracedir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params)
 
+
     #%% if filter pupil, get subset of DATA:
     if filter_pupil is True:
         DATA = DATA.query('pupil_size_stimulus > @pupil_radius_min \
@@ -506,7 +520,7 @@ def combine_runs_and_plot(options):
 
     #%% tuning:
     sns.set()
-    if plot_tuning: 
+    if plot_tuning:
         print "PLOTTING:  tuning"
         print "Saving to:", combined_runs_figdir_tuning
 
@@ -528,8 +542,8 @@ def combine_runs_and_plot(options):
         pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
     else:
         pupil_thresh_str = 'unfiltered'
-   
-    sns.set() 
+
+    sns.set()
     if plot_psth:
         print "PLOTTING:  psths"
         for roi in roi_list:
@@ -601,7 +615,7 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
     pl.close()
-   
+
     return combined_tracedir
 
 
