@@ -245,6 +245,7 @@ def standardize_rois(session_dir, roi_id, auto=False,
 
     mask_filepath = os.path.join(rid_dir, 'masks.hdf5')
     if 'manual' in roi_type:
+        print "Manual ROIs, no need to collate into .hdf5"
         return mask_filepath
 
     maskfile = h5py.File(mask_filepath, 'w')
