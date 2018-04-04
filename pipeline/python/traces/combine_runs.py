@@ -125,11 +125,11 @@ def reindex_data_fields(DATA, run_list, stimconfigs, combined_tracedir):
         ntrials_to_add += ntrials[run_list[idx-1]]
         print ntrials_to_add
 
-        for trial in trial_list:
+        for tidx,trial in enumerate(trial_list):
             old_trial_num = int(trial.split('trial')[-1])
             new_trial_num = old_trial_num + ntrials_to_add
             new_trial_name = 'trial%05d' % new_trial_num
-            print "%s --> %s" % (trial, new_trial_name)
+            print "%i:  %s --> %s" % (tidx, trial, new_trial_name)
             trial_idxs = DATA.index[((DATA['run'] == run) & (DATA['trial'] == trial))].tolist()
 
             DATA.loc[trial_idxs, 'trial'] = new_trial_name
@@ -517,23 +517,6 @@ def combine_runs_and_plot(options):
     # Update STATS dataframe on disk:
     STATS.to_hdf(stats_filepath, datakey,  mode='r+')
 
-    #%% If ilter pupil, get subset of DATA for plotting, etc.
-
-    if filter_pupil is True:
-        DATA = DATA.query('pupil_size_stimulus > @pupil_radius_min \
-                               & pupil_size_baseline > @pupil_radius_min \
-                               & pupil_size_stimulus < @pupil_radius_max \
-                               & pupil_size_baseline < @pupil_radius_max \
-                               & pupil_dist_stimulus < @pupil_dist_thr \
-                               & pupil_dist_baseline < @pupil_dist_thr \
-                               & pupil_nblinks_stim <= @pupil_max_nblinks \
-                               & pupil_nblinks_baseline >= @pupil_max_nblinks')
-
-        stimbar_color = 'k'
-        trace_color = 'b'
-    else:
-        stimbar_color = 'r'
-        trace_color = 'k'
 
     #%%  Set output dirs:
     metric_type = 'zscore'
@@ -548,7 +531,24 @@ def combine_runs_and_plot(options):
     if not os.path.exists(combined_runs_figdir_tuning):
         os.makedirs(combined_runs_figdir_tuning)
 
+    #% If ilter pupil, get subset of DATA for plotting, etc.
 
+    if filter_pupil is True:
+        filteredDATA = DATA.query('pupil_size_stimulus > @pupil_radius_min \
+                               & pupil_size_baseline > @pupil_radius_min \
+                               & pupil_size_stimulus < @pupil_radius_max \
+                               & pupil_size_baseline < @pupil_radius_max \
+                               & pupil_dist_stimulus < @pupil_dist_thr \
+                               & pupil_dist_baseline < @pupil_dist_thr \
+                               & pupil_nblinks_stim <= @pupil_max_nblinks \
+                               & pupil_nblinks_baseline >= @pupil_max_nblinks')
+
+        stimbar_color = 'k'
+        trace_color = 'b'
+    else:
+        stimbar_color = 'r'
+        trace_color = 'k'
+        filteredDATA = DATA.copy()
 
     #% Plot combined tuning:
     # -------------------------------------------------------------------------
@@ -590,7 +590,7 @@ def combine_runs_and_plot(options):
     if plot_psth:
         print "PLOTTING:  psths"
         for roi in roi_list:
-            roiDF = DATA[DATA['roi']==roi]
+            roiDF = filteredDATA[filteredDATA['roi']==roi]
             prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)
             vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=True,
                           figdir=combined_runs_figdir_psth, prefix=prefix,
@@ -603,7 +603,7 @@ def combine_runs_and_plot(options):
     print "SPLITTING DATA FROM BOTH RUNS."
     print "------------------------------"
 
-    trial_list = sorted(list(set(DATA['trial'])), key=natural_keys)
+    trial_list = sorted([str(t) for t in list(set(DATA['trial']))], key=natural_keys)
     run_list = sorted(list(set(DATA['run'])), key=natural_keys)
 
     print "Found %i trials total across %i runs." % (len(trial_list), len(run_list))
@@ -614,11 +614,33 @@ def combine_runs_and_plot(options):
 
     D1 = DATA.loc[DATA['trial'].isin(odd_trials)]
     D2 = DATA.loc[DATA['trial'].isin(even_trials)]
-    #del DATA
 
+    if filter_pupil is True:
+        D1 = D1.query('pupil_size_stimulus > @pupil_radius_min \
+                               & pupil_size_baseline > @pupil_radius_min \
+                               & pupil_size_stimulus < @pupil_radius_max \
+                               & pupil_size_baseline < @pupil_radius_max \
+                               & pupil_dist_stimulus < @pupil_dist_thr \
+                               & pupil_dist_baseline < @pupil_dist_thr \
+                               & pupil_nblinks_stim <= @pupil_max_nblinks \
+                               & pupil_nblinks_baseline >= @pupil_max_nblinks')
 
-    S1 = STATS.loc[STATS['trial'].isin(odd_trials)]
-    S2 = STATS.loc[STATS['trial'].isin(even_trials)]
+        D2 = D1.query('pupil_size_stimulus > @pupil_radius_min \
+                               & pupil_size_baseline > @pupil_radius_min \
+                               & pupil_size_stimulus < @pupil_radius_max \
+                               & pupil_size_baseline < @pupil_radius_max \
+                               & pupil_dist_stimulus < @pupil_dist_thr \
+                               & pupil_dist_baseline < @pupil_dist_thr \
+                               & pupil_nblinks_stim <= @pupil_max_nblinks \
+                               & pupil_nblinks_baseline >= @pupil_max_nblinks')
+
+    S1_trials = sorted([str(t) for t in list(set(D1['trial']))], key=natural_keys)
+    S2_trials = sorted([str(t) for t in list(set(D2['trial']))], key=natural_keys)
+
+    print "Filtered data yields: %i odd trials, %i even trials." % (len(S1_trials), len(S2_trials))
+
+    S1 = STATS.loc[STATS['trial'].isin(S1_trials)]
+    S2 = STATS.loc[STATS['trial'].isin(S2_trials)]
 
     #S1_orig = STATS.loc[STATS['run']==run_list[0]]
 
@@ -653,8 +675,11 @@ def combine_runs_and_plot(options):
                                       output_dir=evens_split_tuning_dir,
                                       include_trials=False)
 #
+#        vis.plot_tuning_by_transforms(roiSTAT1, transform_dict, object_transformations,
+#                                      metric_type=metric_type, save_and_close=False, include_trials=False)
 #        vis.plot_tuning_by_transforms(roiSTAT2, transform_dict, object_transformations,
 #                                      metric_type=metric_type, save_and_close=False, include_trials=False)
+
 #
 #        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
 
