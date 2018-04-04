@@ -413,16 +413,16 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 #           '-R', 'gratings_run3', '-t', 'traces001',
 #           '-R', 'gratings_run4', '-t', 'traces001',]
 #
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
-#           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
-#           '-R', 'gratings_run1', '-t', 'traces002',
-#           '-R', 'gratings_run2', '-t', 'traces002']
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
+           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
+           '-R', 'gratings_run1', '-t', 'traces002',
+           '-R', 'gratings_run2', '-t', 'traces002']
 
-
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
-           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
-           '-R', 'blobs_run3', '-t', 'traces002',
-           '-R', 'blobs_run4', '-t', 'traces002']
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
+#           '-R', 'blobs_run3', '-t', 'traces002',
+#           '-R', 'blobs_run4', '-t', 'traces002']
 
 
 #%%
@@ -500,22 +500,23 @@ def combine_runs_and_plot(options):
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
 
-    # Get stats on ROIs:
-    group_vars = ['roi']
-    trans_types = object_transformations.keys()
-    group_vars.extend([t for t in trans_types])
-    grouped = STATS.groupby(group_vars, as_index=False)         # Group dataframe by variables-of-interest
+    if 'mean_%s' % metric_type not in STATS.keys():
+        # Get stats on ROIs:
+        group_vars = ['roi']
+        trans_types = object_transformations.keys()
+        group_vars.extend([t for t in trans_types])
+        grouped = STATS.groupby(group_vars, as_index=False)         # Group dataframe by variables-of-interest
 
-    # metric summaries to add:
-    metrics = ['zscore', 'stim_df']
-    for metric_type in metrics:
-        zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
-        zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
-        zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
-        STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
+        # metric summaries to add:
+        metrics = ['zscore', 'stim_df']
+        for metric_type in metrics:
+            zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
+            zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
+            zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
+            STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
 
-    # Update STATS dataframe on disk:
-    STATS.to_hdf(stats_filepath, datakey,  mode='r+')
+        # Update STATS dataframe on disk:
+        STATS.to_hdf(stats_filepath, datakey,  mode='r+')
 
 
     #%%  Set output dirs:
@@ -596,6 +597,7 @@ def combine_runs_and_plot(options):
                           figdir=combined_runs_figdir_psth, prefix=prefix,
                           trace_color=trace_color, stimbar_color=stimbar_color,
                           )
+            vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
 
     #%% Recombine joined datasets:
     # -------------------------------------------------------------------------
@@ -625,7 +627,7 @@ def combine_runs_and_plot(options):
                                & pupil_nblinks_stim <= @pupil_max_nblinks \
                                & pupil_nblinks_baseline >= @pupil_max_nblinks')
 
-        D2 = D1.query('pupil_size_stimulus > @pupil_radius_min \
+        D2 = D2.query('pupil_size_stimulus > @pupil_radius_min \
                                & pupil_size_baseline > @pupil_radius_min \
                                & pupil_size_stimulus < @pupil_radius_max \
                                & pupil_size_baseline < @pupil_radius_max \
@@ -641,6 +643,8 @@ def combine_runs_and_plot(options):
 
     S1 = STATS.loc[STATS['trial'].isin(S1_trials)]
     S2 = STATS.loc[STATS['trial'].isin(S2_trials)]
+
+    print len(list(set(S1['trial'])))
 
     #S1_orig = STATS.loc[STATS['run']==run_list[0]]
 
@@ -719,6 +723,9 @@ def combine_runs_and_plot(options):
               )
 
 
+#        vis.plot_roi_psth(roi, roiDF1, object_transformations, save_and_close=False)
+#
+#        vis.plot_roi_psth(roi, roiDF2, object_transformations, save_and_close=False)
 
 
 
