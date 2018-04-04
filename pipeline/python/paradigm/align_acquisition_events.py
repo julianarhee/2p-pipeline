@@ -945,7 +945,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
                                        & pupil_dist_baseline < @pupil_dist_thr \
                                        & pupil_nblinks_stim <= @pupil_max_nblinks \
                                        & pupil_nblinks_baseline >= @pupil_max_nblinks')
-                print "FILTERED:", len(filtered_DF)
+                #print "FILTERED:", len(filtered_DF)
                 if len(filtered_DF)==0:
                     print "NONE found for config: %s" % config
                     print "...skipping"
