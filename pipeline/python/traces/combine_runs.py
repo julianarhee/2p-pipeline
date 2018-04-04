@@ -449,6 +449,11 @@ def combine_runs_and_plot(options):
     fov = acquisition.split('_')[0]
     stimulus = run_list[0].split('_')[0]
 
+
+    visualization_method = 'separate_transforms'
+    metric_type = 'zscore'
+
+
     #%% Create output dir:
     session_dir = os.path.join(rootdir, animalid, session, acquisition)
     combined_rundir = os.path.join(session_dir, '_'.join(run_list))
@@ -483,8 +488,30 @@ def combine_runs_and_plot(options):
     #% Calculate metrics & get stats ---------------------------------------------
     STATS, stats_filepath = get_combined_stats(DATA, datakey, combined_tracedir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params)
 
+    #%% Update STATS with summary metrics:
+    # -------------------------------------------------------------------------
+    roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
+    transform_dict, object_transformations = vis.get_object_transforms(DATA)
 
-    #%% if filter pupil, get subset of DATA:
+    # Get stats on ROIs:
+    group_vars = ['roi']
+    trans_types = object_transformations.keys()
+    group_vars.extend([t for t in trans_types])
+    grouped = STATS.groupby(group_vars, as_index=False)         # Group dataframe by variables-of-interest
+
+    # metric summaries to add:
+    metrics = ['zscore', 'stim_df']
+    for metric_type in metrics:
+        zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
+        zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
+        zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
+        STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
+
+    # Update STATS dataframe on disk:
+    STATS.to_hdf(stats_filepath, datakey,  mode='r+')
+
+    #%% If ilter pupil, get subset of DATA for plotting, etc.
+
     if filter_pupil is True:
         DATA = DATA.query('pupil_size_stimulus > @pupil_radius_min \
                                & pupil_size_baseline > @pupil_radius_min \
@@ -501,24 +528,23 @@ def combine_runs_and_plot(options):
         stimbar_color = 'r'
         trace_color = 'k'
 
-    #%%
+    #%%  Set output dirs:
+
     selected_metric = vis.get_metric_set(combined_tracedir, filter_pupil=filter_pupil,
                                          pupil_radius_min=pupil_radius_min,
                                          pupil_radius_max=pupil_radius_max,
                                          pupil_dist_thr=pupil_dist_thr
                                          )
 
-    visualization_method = 'separate_transforms'
-    metric_type = 'zscore'
-
     combined_runs_figdir_tuning = os.path.join(combined_tracedir, 'figures', 'tuning', trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(combined_runs_figdir_tuning):
         os.makedirs(combined_runs_figdir_tuning)
 
-    roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
-    transform_dict, object_transformations = vis.get_object_transforms(DATA)
 
-    #%% tuning:
+
+    #%% Plot combined tuning:
+    # -------------------------------------------------------------------------
+
     sns.set()
     if plot_tuning:
         print "PLOTTING:  tuning"
@@ -526,14 +552,21 @@ def combine_runs_and_plot(options):
 
         for roi in roi_list:
             #print roi
-            roiDF = STATS[STATS['roi']==roi]
+            roiSTAT = STATS[STATS['roi']==roi]
 
-            fignames = vis.plot_tuning_by_transforms(roiDF, transform_dict, object_transformations,
+            fignames = vis.plot_tuning_by_transforms(roiSTAT, transform_dict, object_transformations,
                                                  metric_type=metric_type, save_and_close=True,
                                                  output_dir = combined_runs_figdir_tuning,
                                                  include_trials=False) #output_dir='/tmp', include_trials=True)
 
-    #%% PSTHs
+
+    #%% TODO:  Plot tuning curve zscore values as HEATMAP for each ROI:
+    # -------------------------------------------------------------------------
+
+
+    #%% PLOT combined PSTHs
+    # -------------------------------------------------------------------------
+
     combined_runs_figdir_psth = os.path.join(combined_tracedir, 'figures', 'psth', trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(combined_runs_figdir_psth):
         os.makedirs(combined_runs_figdir_psth)
@@ -554,28 +587,109 @@ def combine_runs_and_plot(options):
                           trace_color=trace_color, stimbar_color=stimbar_color,
                           )
 
+    #%% Recombine joined datasets:
+    # -------------------------------------------------------------------------
+    print "------------------------------"
+    print "SPLITTING DATA FROM BOTH RUNS."
+    print "------------------------------"
 
-    #%% Update STATS with summary metrics:
+    trial_list = sorted(list(set(DATA['trial'])), key=natural_keys)
+    run_list = sorted(list(set(DATA['run'])), key=natural_keys)
 
-    # Get stats on ROIs:
-    group_vars = ['roi']
-    trans_types = object_transformations.keys()
-    group_vars.extend([t for t in trans_types])
-    grouped = STATS.groupby(group_vars, as_index=False)         # Group dataframe by variables-of-interest
+    print "Found %i trials total across %i runs." % (len(trial_list), len(run_list))
 
-    # metric summaries to add:
-    metrics = ['zscore', 'stim_df']
-    for metric_type in metrics:
-        zscores = grouped[metric_type].mean()                                                # Get mean of 'metric_type' for each combination of transforms
-        zscores['sem_%s' % metric_type] = grouped[metric_type].aggregate(stats.sem)[metric_type]             # Get SEM
-        zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
-        STATS = STATS.merge(zscores)#.sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
+    print "Splitting dataset by EVEN and ODD trials."
+    odd_trials = trial_list[0::2]
+    even_trials = trial_list[1::2]
 
-    # Update STATS dataframe on disk:
-    STATS.to_hdf(stats_filepath, datakey,  mode='r+')
+    D1 = DATA.loc[DATA['trial'].isin(odd_trials)]
+    D2 = DATA.loc[DATA['trial'].isin(even_trials)]
+    #del DATA
+
+
+    S1 = STATS.loc[STATS['trial'].isin(odd_trials)]
+    S2 = STATS.loc[STATS['trial'].isin(even_trials)]
+
+    #S1_orig = STATS.loc[STATS['run']==run_list[0]]
+
+    roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
+
+    metric_type = 'zscore'
+
+
+    split_runs_tuning_figdir = os.path.join(combined_tracedir, 'figures', 'tuning_split') #, trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(split_runs_tuning_figdir):
+        os.makedirs(split_runs_tuning_figdir)
+
+    odds_split_tuning_dir = os.path.join(split_runs_tuning_figdir, 'odds', trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(odds_split_tuning_dir):
+        os.makedirs(odds_split_tuning_dir)
+    evens_split_tuning_dir = os.path.join(split_runs_tuning_figdir, 'evens', trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(evens_split_tuning_dir):
+        os.makedirs(evens_split_tuning_dir)
+
+
+    for roi in roi_list:
+        roiSTAT1 = S1[S1['roi']==roi]
+        roiSTAT2 = S2[S2['roi']==roi]
+
+
+        vis.plot_tuning_by_transforms(roiSTAT1, transform_dict, object_transformations,
+                                      metric_type=metric_type, save_and_close=True,
+                                      output_dir=odds_split_tuning_dir,
+                                      include_trials=False)
+        vis.plot_tuning_by_transforms(roiSTAT2, transform_dict, object_transformations,
+                                      metric_type=metric_type, save_and_close=True,
+                                      output_dir=evens_split_tuning_dir,
+                                      include_trials=False)
+#
+#        vis.plot_tuning_by_transforms(roiSTAT2, transform_dict, object_transformations,
+#                                      metric_type=metric_type, save_and_close=False, include_trials=False)
+#
+#        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
+
+
+    #%%
+    if filter_pupil is True:
+        pupil_thresh_str = 'pupil_rmin%.2f-rmax%.2f-dist%.2f' % (pupil_radius_min, pupil_radius_max, pupil_dist_thr)
+    else:
+        pupil_thresh_str = 'unfiltered'
+
+    split_runs_psth_figdir = os.path.join(combined_tracedir, 'figures', 'psth_split') #, trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(split_runs_psth_figdir):
+        os.makedirs(split_runs_psth_figdir)
+
+    odds_split_psth_dir = os.path.join(split_runs_psth_figdir, 'odds', trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(odds_split_psth_dir):
+        os.makedirs(odds_split_psth_dir)
+    evens_split_psth_dir = os.path.join(split_runs_psth_figdir, 'evens', trace_type, metric_type, selected_metric, visualization_method)
+    if not os.path.exists(evens_split_psth_dir):
+        os.makedirs(evens_split_psth_dir)
+
+
+    for roi in roi_list:
+        roiDF1 = D1[D1['roi']==roi]
+        roiDF2 = D2[D2['roi']==roi]
+
+        prefix = '%s_%s_PUPIL_%s_pass.png' % (roi, trace_type, pupil_thresh_str)
+
+        vis.plot_roi_psth(roi, roiDF1, object_transformations, save_and_close=True,
+              figdir=odds_split_psth_dir, prefix=prefix,
+              trace_color=trace_color, stimbar_color=stimbar_color,
+              )
+
+        vis.plot_roi_psth(roi, roiDF2, object_transformations, save_and_close=True,
+              figdir=evens_split_psth_dir, prefix=prefix,
+              trace_color=trace_color, stimbar_color=stimbar_color,
+              )
+
+
+
 
 
     #%% HSITOGRAM:   Get max zscore across all configs for each ROI:
+    # -------------------------------------------------------------------------
+
     metric_type = 'zscore'
     max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
@@ -590,7 +704,9 @@ def combine_runs_and_plot(options):
     pl.savefig(figpath)
     pl.close()
 
+
     #%% HISTOGRAM: Look at STIM_DF:
+    # -------------------------------------------------------------------------
 
     metric_type = 'stim_df'
     max_config_stimdfs = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
@@ -604,7 +720,9 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
     pl.close()
+
     #%% Look at position & ORI selectivity as heatmap:
+    # -------------------------------------------------------------------------
 
     curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
     position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', max_value=4.0)
@@ -615,6 +733,9 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
     pl.close()
+
+
+
 
     return combined_tracedir
 
