@@ -418,6 +418,13 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 #           '-R', 'gratings_run1', '-t', 'traces002',
 #           '-R', 'gratings_run2', '-t', 'traces002']
 
+
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
+           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
+           '-R', 'blobs_run3', '-t', 'traces002',
+           '-R', 'blobs_run4', '-t', 'traces002']
+
+
 #%%
 
 def combine_runs_and_plot(options):
@@ -529,6 +536,7 @@ def combine_runs_and_plot(options):
         trace_color = 'k'
 
     #%%  Set output dirs:
+    metric_type = 'zscore'
 
     selected_metric = vis.get_metric_set(combined_tracedir, filter_pupil=filter_pupil,
                                          pupil_radius_min=pupil_radius_min,
@@ -542,7 +550,7 @@ def combine_runs_and_plot(options):
 
 
 
-    #%% Plot combined tuning:
+    #% Plot combined tuning:
     # -------------------------------------------------------------------------
 
     sns.set()
@@ -567,7 +575,9 @@ def combine_runs_and_plot(options):
     #%% PLOT combined PSTHs
     # -------------------------------------------------------------------------
 
-    combined_runs_figdir_psth = os.path.join(combined_tracedir, 'figures', 'psth', trace_type, metric_type, selected_metric, visualization_method)
+    metric_type = 'zscore'
+
+    combined_runs_figdir_psth = os.path.join(combined_tracedir, 'figures', 'psth', trace_type, selected_metric, visualization_method)
     if not os.path.exists(combined_runs_figdir_psth):
         os.makedirs(combined_runs_figdir_psth)
 
