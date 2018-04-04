@@ -376,7 +376,7 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 
 #
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180329', '-A', 'FOV2_zoom1x',
-#           '-T', 'raw', '--no-pupil', '--new',
+#           '-T', 'raw', '--no-pupil',
 #           '-R', 'gratings_run1', '-t', 'traces001',
 #           '-R', 'gratings_run2', '-t', 'traces001',
 #           '-R', 'gratings_run3', '-t', 'traces001',
@@ -531,7 +531,8 @@ def combine_runs_and_plot(options):
     metric_type = 'zscore'
     max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
-    sns.distplot(max_config_zscores)
+    sns.distplot(max_config_zscores, kde=False) #, hist=False, kde=False, norm_hist=True) #, kde=False, norm_hist=True, bins=20, fit=norm)
+    #np.hist(max_config_zscores, bins=50, normed=True)
     pl.xlabel('max zscore')
     pl.title("%s %s %s %s" % (animalid, session, fov, stimulus))
 
@@ -545,7 +546,7 @@ def combine_runs_and_plot(options):
     metric_type = 'stim_df'
     max_config_stimdfs = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
     pl.figure()
-    sns.distplot(max_config_stimdfs)
+    sns.distplot(max_config_stimdfs, kde=False) #norm_hist=True)
 
     pl.xlabel('max df/f during stimulus')
     pl.title("%s %s %s %s" % (animalid, session, fov, stimulus))
