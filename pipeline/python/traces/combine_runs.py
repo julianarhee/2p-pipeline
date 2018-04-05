@@ -388,6 +388,17 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
     g1.fig.subplots_adjust(right=.9)  # <-- Add space so the colorbar doesn't overlap the plot
 
 
+#%%
+
+def heatmapdat():
+    roi = 'roi00008'
+    D = subDF[subDF['roi']==roi]
+    g1 = sns.FacetGrid(D, row=rows, col=columns, sharex=True, sharey=True, row_order=row_order, col_order=col_order, size=3)
+    cbar_ax = g1.fig.add_axes([.9, .3, .03, .4])  # <-- Create a colorbar axes
+    g1 = g1.map_dataframe(draw_heatmap, 'yrot', 'morphlevel', "mean_%s" % metric_type, xticklabels=True, yticklabels=True,
+                          cbar_ax=cbar_ax, cbar_kws={"label": metric_type},
+                          vmin=minval, vmax=4)
+    g1.fig.subplots_adjust(right=.85)
 
 #%% Run info:
 
@@ -413,16 +424,16 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 #           '-R', 'gratings_run3', '-t', 'traces001',
 #           '-R', 'gratings_run4', '-t', 'traces001',]
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
-           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
-           '-R', 'gratings_run1', '-t', 'traces002',
-           '-R', 'gratings_run2', '-t', 'traces002']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
+#           '-R', 'gratings_run1', '-t', 'traces002',
+#           '-R', 'gratings_run2', '-t', 'traces002']
 
 #
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
-#           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
-#           '-R', 'blobs_run3', '-t', 'traces002',
-#           '-R', 'blobs_run4', '-t', 'traces002']
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
+           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
+           '-R', 'blobs_run3', '-t', 'traces002',
+           '-R', 'blobs_run4', '-t', 'traces002']
 
 
 #%%
@@ -499,6 +510,7 @@ def combine_runs_and_plot(options):
     # -------------------------------------------------------------------------
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
+    trans_types = object_transformations.keys()
 
     if 'mean_%s' % metric_type not in STATS.keys():
         # Get stats on ROIs:
@@ -731,6 +743,28 @@ def combine_runs_and_plot(options):
 
     #%% HSITOGRAM:   Get max zscore across all configs for each ROI:
     # -------------------------------------------------------------------------
+#
+#    roistats_filepath = '/mnt/odyssey/CE074/20180215/FOV1_zoom1x_V1/gratings_phasemod/traces/traces004_c04dde/metrics/pupil_size30-dist8-blinks1_12575665366856094372/roi_stats_12575665366856094372_20180309184424.hdf5'
+#    roidata_filepath  = '/mnt/odyssey/CE074/20180215/FOV1_zoom1x_V1/gratings_phasemod/traces/traces004_c04dde/ROIDATA_784044.hdf5'
+#
+#    # Reformat DATA stuct of old data:
+#    DATA = pd.HDFStore(roidata_filepath, 'r')
+#    df_list = []
+#    for roi in DATA.keys():
+#        if '/' in roi:
+#            roiname = roi[1:]
+#        else:
+#            roiname = roi
+#        dfr = DATA[roi]
+#        dfr['roi'] = pd.Series(np.tile(roiname, (len(dfr .index),)), index=dfr.index)
+#        df_list.append(dfr)
+#    DATA = pd.concat(df_list, axis=0, ignore_index=True)
+#    transform_dict, object_transformations = vis.get_object_transforms(DATA)
+#    trans_types = object_transformations.keys()
+#
+#    # Load STATS:
+#    STATS = pd.HDFStore(roistats_filepath, 'r')['/df']
+#    roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
 
     metric_type = 'zscore'
     max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
