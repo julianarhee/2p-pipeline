@@ -1642,6 +1642,8 @@ def extract_traces(options):
     run = options.run
     trace_id = options.trace_id
     slurm = options.slurm
+    auto = options.default
+    create_new = options.create_new
 
     if slurm is True:
         if 'coxfs01' not in rootdir:
@@ -1652,10 +1654,9 @@ def extract_traces(options):
         ncores = int(options.ncores)
         ncores_sep = ncores * 2
 
-    create_new = options.create_new
+    # Neuropil correction:
     append_trace_type = options.append_trace_type
     np_method = options.np_method
-
     np_niterations = options.np_niterations
     do_neuropil_correction = options.neuropil
     if do_neuropil_correction:
@@ -1675,7 +1676,6 @@ def extract_traces(options):
         print "Requesting NP subtraction method."
         print "... Specified %i iterations for annulus size." % np_niterations
         print "... Correction factor = %.2f" % np_correction_factor
-
     save_warp_images = options.save_warp_images
 
     # Trace alignment params:
@@ -1686,12 +1686,6 @@ def extract_traces(options):
     pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
 
-    auto = options.default
-
-    #%
-    # NOTE:  caiman2D ROIs are already "normalized" or weighted (see format_rois_nmf in get_rois.py).
-    # These masks can be directly applied to tiff movies, or can be applied to temporal component mat from NMF results (.npz)
-    #normalize_roi_types = ['manual2D_circle', 'manual2D_polygon', 'manual2D_square', 'manual2D_warp', 'opencv_blob_detector']
 
     print "======================================================================="
     print "Trace Set: %s -- Starting trace extraction..." % trace_id
@@ -1735,8 +1729,6 @@ def extract_traces(options):
     # =============================================================================
     RID = load_TID_roiset(TID, rootdir)
 
-
-
     #% For each specified SLICE in this ROI set, create 2D mask array:
     # TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
     # as python-based methods... if-checks hacked for now...
@@ -1754,7 +1746,6 @@ def extract_traces(options):
     print "TID %s - Got mask info from ROI set %s." % (TID['traceid_hash'], RID['roi_id'])
     print_elapsed_time(t_mask)
     print "-----------------------------------------------------------------------"
-
 
     #%
     # Apply masks to .tif files:
@@ -1776,7 +1767,7 @@ def extract_traces(options):
                                                   rootdir=rootdir)
 
     # Do neuropil correction, if relevant:
-    if np_method == 'fissa':
+    if do_neuropil_correction is True and np_method == 'fissa':
         if create_new is True:
             redo_prep=True; redo_sep=True
         else:
@@ -1786,10 +1777,12 @@ def extract_traces(options):
         print "N rois:", len(exp.rois[0])
         print "N results:", len(exp.result)
         print "N means:", len(exp.means)
+
         # Create TRACEFILE files for each .tif, if none exist yet:
         filetraces_fpaths = sorted([os.path.join(filetraces_dir, t) for t in os.listdir(filetraces_dir) if t.endswith('hdf5')], key=natural_keys)
         if not len(filetraces_fpaths) == len(maskfigs):
             filetraces_dir = create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir=rootdir)
+
             # Set append NP-correction flag to FALSE:
             append_trace_type = False
             create_new = True
@@ -1820,14 +1813,11 @@ def extract_traces(options):
             filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, rootdir=rootdir)
 
     #%
-    #%
     # Organize timecourses by stim-type for each ROI:
     # -----------------------------------------------
     print "*** Creating ROI-TCOURSE file...."
     print "-----------------------------------------------------------------------"
-
     roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetraces_dir, rootdir=rootdir, create_new=update_roi_timecourses)
-
     print "-----------------------------------------------------------------------"
 
     #% move tmp file and clean up:
