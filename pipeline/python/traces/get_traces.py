@@ -164,11 +164,21 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-def get_mask_info(mask_path, ntiffs=None, nslices=1, excluded_tiffs=[]):
+def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
     maskinfo = dict()
     try:
         maskfile = h5py.File(mask_path, "r")
         is_3D = bool(maskfile.attrs['is_3D'])
+
+        # identify tiff source:
+        roidict_path = os.path.join(rootdir, maskfile.attrs['animal'], maskfile.attrs['session'], 'ROIs', 'rids_%s.json' % maskfile.attrs['session'])
+        with open(roidict_path, 'r') as f:
+            roidict = json.load(f)
+        roi_tiff_src = roidict[maskfile.attrs['roi_id']]['SRC']
+        if rootdir not in roi_tiff_src:
+            roi_tiff_src = replace_root(roi_tiff_src, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
+        ntiffs = len([f for f in os.listdir(roi_tiff_src) if f.endswith('tif')])
+
 
         # Get files for which there are ROIs in this set:
         maskfiles = maskfile.keys()
@@ -335,6 +345,7 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
 
     return masks_aligned
 
+#%%
 
 def create_neuropil_masks(masks, niterations=3):
     # Create kernel for dilating ROIs:
@@ -364,7 +375,7 @@ def create_neuropil_masks(masks, niterations=3):
 
 
 #%%
-def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, get_neuropil=True, niter=3, rootdir=''):
+def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropil_correction=True, niter=3, rootdir=''):
     '''
     This function takes a masks.hdf5 file and formats it into a dict that standardizes how
     mask arrays are called. This was a tmp fix to deal with the fact that
@@ -479,7 +490,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, get_neurop
 
 
                 # Check if should create neuropil masks:
-                if get_neuropil:
+                if do_neuropil_correction:
                     np_masks = create_neuropil_masks(masks, niterations=niter)
                     npil_arr = masks_to_normed_array(np_masks)
                     npil = filegrp.create_dataset('/'.join([curr_slice, 'np_maskarray']), npil_arr.shape, npil_arr.dtype)
@@ -607,197 +618,6 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
 
     MASKS.close()
 
-
-#%%
-#def get_masks(maskinfo, RID, normalize_rois=False, notnative=False, rootdir='', animalid='', session=''):
-#    '''
-#    This function takes a masks.hdf5 file and formats it into a dict that standardizes how
-#    mask arrays are called. This was a tmp fix to deal with the fact that
-#        - ROI types differ in saving/indexing ROIs by slice or across the whole volume (only relevant for 3D)
-#        - if ROI type only uses a single reference (manual, for ex.), we want to apply those ROIs to all other files
-#        - cNMF trace extraction offers non-raw traces, so just bring that along at this step
-#
-#    Save MASKS.pkl at end.
-#    This only needs to be done once, unless create_new = True (i.e., if re-doing masks prior to extracting traces).
-#    '''
-#
-#    MASKS = dict()
-#
-#    maskfile = h5py.File(maskinfo['filepath'], "r")
-#    MASKS['original_source'] = maskinfo['filepath']
-#    for fidx, curr_file in enumerate(maskinfo['filenames']):
-#        MASKS[curr_file] = dict()
-#
-#        if maskinfo['is_single_reference'] is True:  # Load current file zproj image to draw ROIs
-#            maskfile_key = maskinfo['ref_file']
-#        else:
-#            maskfile_key = curr_file
-#
-#        if 'source' not in maskfile[maskfile_key].attrs.keys():
-#            zproj_source_dir = os.path.split(maskfile[maskfile_key]['masks'].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
-#        else:
-#            zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]
-#        zproj_dir = os.path.join(zproj_source_dir, curr_file)
-#
-#        # Check root:
-#        if rootdir not in zproj_dir:
-#            print "Replacing root..."
-#            zproj_dir = replace_root(zproj_dir, rootdir, animalid, session)
-#
-#        # Make sure all masks are saved by file, slice:
-#        for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
-#
-#            MASKS[curr_file][curr_slice] = dict()
-#
-#            # Get average image:
-#            if maskinfo['is_single_reference'] is True:
-#                if curr_file == maskfile_key and maskinfo['is_slice_format']: #slice_masks:
-#                    avg = np.array(maskfile[maskfile_key]['zproj_img'][curr_slice]).T
-#                    MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key]['zproj_img'][curr_slice].attrs['source_file']
-#                else:
-#                    zproj_img_fn = [m for m in os.listdir(zproj_dir) if curr_slice in m][0]
-#                    zproj_img_path = os.path.join(zproj_dir, zproj_img_fn)
-#                    avg = tf.imread(zproj_img_path)
-#                    MASKS[curr_file][curr_slice]['zproj_source'] = zproj_img_path
-#            else:
-#                if maskinfo['is_slice_format']: #slice_masks:
-#                    avg = np.array(maskfile[maskfile_key]['zproj_img'][curr_slice]).T
-#                    MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key]['zproj_img'][curr_slice].attrs['source_file']
-#                else:
-#                    avg = np.array(maskfile[maskfile_key]['zproj_img'])
-#                    MASKS[curr_file][curr_slice]['zproj_source'] = maskfile[maskfile_key].attrs['source']
-#
-#            MASKS[curr_file][curr_slice]['zproj_img'] =  avg
-#            if maskinfo['is_slice_format']: #slice_masks:
-#                MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[maskfile_key]['masks'][curr_slice].attrs['src_roi_idxs']
-#            else:
-#                MASKS[curr_file][curr_slice]['src_roi_idxs'] = maskfile[maskfile_key]['masks'].attrs['src_roi_idxs']
-#
-#            d1,d2 = avg.shape
-#            d = d1*d2
-#
-#            # Plot labeled ROIs on avg img:
-#            curr_rois = sorted(["roi%05d" % int(ridx+1) for ridx in range(len(MASKS[curr_file][curr_slice]['src_roi_idxs']))], key=natural_keys)
-#
-#            # Check if extra backround:
-#            if 'background' in maskfile[maskfile_key]['masks'].attrs.keys():
-#                nb = maskfile[maskfile_key]['masks'].attrs['background']
-#                #curr_rois = curr_rois[0:-1*nb]
-#            else:
-#                nb = 0
-#            nrois = len(curr_rois)
-#            MASKS[curr_file][curr_slice]['nb'] = nb
-#            MASKS[curr_file][curr_slice]['nr'] = nrois - nb
-#
-#            # Create maskarray:
-#            print "Creating mask array: %i ROIs on %s, %s" % (len(curr_rois), curr_file, curr_slice)
-#            maskarray = np.empty((d, nrois))
-#            maskarray_roi_ids = []
-#            for ridx, roi in enumerate(curr_rois):
-#                if maskinfo['is_slice_format']: #slice_masks:
-#                    masktmp = np.array(maskfile[maskfile_key]['masks'][curr_slice]).T[:,:,ridx] # T is needed for MATLAB masks... (TODO: check roi_blobs)
-#                else:
-#                    if len(maskinfo['roi_slices']) > 1:
-#                        masktmp = maskfile[maskfile_key]['masks'][:,:,sidx,ridx]
-#                    else:
-#                        masktmp = maskfile[maskfile_key]['masks'][:,:,ridx]
-#
-#                # Normalize by size:
-#                masktmp = np.reshape(masktmp, (d,), order='C')
-#                if normalize_rois is True:
-#                    npixels = len(np.nonzero(masktmp)[0])
-#                    maskarray[:, ridx] = masktmp/npixels
-#                else:
-#                    maskarray[:, ridx] = masktmp
-#                maskarray_roi_ids.append(roi)
-#
-#            MASKS[curr_file][curr_slice]['mask_array'] = maskarray
-#            MASKS[curr_file][curr_slice]['rois'] = curr_rois
-#
-#            # CHeck if have nmf traces:
-#            if 'Ab_data' in maskfile[maskfile.keys()[0]].keys():
-#                Ab = load_sparse_mat('%s/Ab' % curr_file, maskinfo['filepath']).todense()
-#                Cf = load_sparse_mat('%s/Cf' % curr_file, maskinfo['filepath']).todense()
-#                MASKS[curr_file][curr_slice]['Ab'] = Ab
-#                MASKS[curr_file][curr_slice]['Cf'] = Cf
-#
-#    maskfile.close()
-#
-#    return MASKS #, curr_rois
-
-#%%
-#def plot_roi_masks(TID, RID, mask_figdir='/tmp', rootdir=''):
-#    '''
-#    This also only needs to be done once, unless create_new = True or incorrect
-#    number of mask images found in <TRACEID_DIR>/figures/masks/.
-#
-#    It's a little slow..
-#
-#    '''
-#
-#    maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
-#    if rootdir not in maskdict_path:
-#        session_dir = RID['DST'].split('/ROIs')[0]
-#        info = get_info_from_tiff_dir(TID['SRC'], session_dir)
-#        maskdict_path = replace_root(maskdict_path, rootdir, info['animalid'], info['session'])
-#
-##    with open(maskdict_path, 'rb') as f:
-##        MASKS = pkl.load(f)
-##    f.close()
-#    MASKS = h5py.File(maskdict_path, 'r')
-#
-#    print "Plotting masks for %i files." % len(MASKS.keys())
-#    filenames = [k for k in MASKS.keys() if 'File' in k]
-#    for curr_file in sorted(filenames, key=natural_keys): #sorted(MASKS.keys(), key=natural_keys):
-#        for curr_slice in sorted(MASKS[curr_file].keys(), key=natural_keys):
-#            curr_rois = MASKS[curr_file][curr_slice]['rois']
-#            nrois = len(curr_rois)
-#
-#            avg = MASKS[curr_file][curr_slice]['zproj_img']
-#            dims = avg.shape
-#
-#            fig = pl.figure()
-#            ax = fig.add_subplot(1,1,1)
-#            p2, p98 = np.percentile(avg, (2, 99.98))
-#            avgimg = skimage.exposure.rescale_intensity(avg, in_range=(p2, p98)) #avg *= (1.0/avg.max())
-#            ax.imshow(avgimg, cmap='gray')
-#
-#            print "Plotting mask array: %i ROIs on %s, %s" % (len(curr_rois), curr_file, curr_slice)
-#
-#            nb = MASKS[curr_file][curr_slice]['nb']
-#
-#            bgidx = 0
-#            for ridx in range(nrois):
-#                masktmp = np.reshape(MASKS[curr_file][curr_slice]['mask_array'][:, ridx], dims, order='C')
-#                msk = masktmp.copy()
-#                msk[msk==0] = np.nan
-#
-#                if (nb > 0) and (ridx >= (nrois-nb)):
-#                    bgidx += 1
-#                    bgfig = pl.figure()
-#                    bgax = bgfig.add_subplot(1,1,1)
-#                    bgax.imshow(avg, cmap='gray')
-#                    bgax.imshow(msk, interpolation='None', alpha=0.3, cmap=pl.cm.hot)
-#                    pl.title('background %i' % bgidx)
-#                    pl.savefig(os.path.join(mask_figdir, 'bg%i_%s_%s_%s_%s.png' % (bgidx, curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
-#                    pl.close()
-#                else:
-#                    if 'caiman' in RID['roi_type'] or (RID['roi_type']=='coregister' and 'caiman' in RID['PARAMS']['options']['source']['roi_type']):
-#                        ax.imshow(msk, interpolation='None', alpha=0.2, cmap=pl.cm.hot)
-#                        [ys, xs] = np.where(masktmp>0)
-#                        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
-#                    else:
-#                        if np.isnan(masktmp).all():
-#                            ax.text(1, 1, '%i - no mask' % int(ridx+1), fontsize=8, weight='light', color='r')
-#                        else:
-#                            ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
-#                            [ys, xs] = np.where(masktmp>0)
-#                            ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
-#                ax.axis('off')
-#
-#            pl.savefig(os.path.join(mask_figdir, 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])))
-#            pl.close()
-
 #%%
 def hash_filetraces(filetraces_dir, traceid_hash):
     file_hashdict = {}
@@ -818,7 +638,7 @@ def hash_filetraces(filetraces_dir, traceid_hash):
 
 #%%
 
-def apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=True, cfactor=0.6, output_filedir='/tmp', rootdir=''):
+def apply_masks_to_tiff(currtiff_path, TID, si_info, do_neuropil_correction=True, cfactor=0.6, output_filedir='/tmp', rootdir=''):
     nchannels = si_info['nchannels']
     nslices = si_info['nslices']
     nvolumes = si_info['nvolumes']
@@ -886,7 +706,7 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=True, cfac
             tset.attrs['dims'] = dims
 
             # Save NEUROPIL traces and neurpil-CORRECTED traces, if relevant:
-            if extract_neuropil is True and 'np_maskarray' in MASKS[curr_file][curr_slice].keys():
+            if do_neuropil_correction is True and 'np_maskarray' in MASKS[curr_file][curr_slice].keys():
                 np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
                 np_tracemat = tiffslice.dot(np_maskarray)
                 np_corrected = tracemat - (cfactor * np_tracemat)
@@ -920,130 +740,10 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=True, cfac
 
     return filetraces_filepath
 
-#%%
-#def apply_masks_to_tiff(currtiff_path, TID, si_info, output_filedir='/tmp', rootdir=''):
-#    nchannels = si_info['nchannels']
-#    nslices = si_info['nslices']
-#    nvolumes = si_info['nvolumes']
-#    frames_tsec = si_info['frames_tsec']
-#    signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
-#
-#    traceid_dir = TID['DST']
-#
-#    curr_file = str(re.search(r"File\d{3}", currtiff_path).group())
-#    if curr_file in TID['PARAMS']['excluded_tiffs']:
-#        print "***Skipping %s -- excluded from ROI set" % (curr_file)
-#        return
-#    print "-- Extracting traces: %s" % curr_file
-#
-#    # Load MASKS info:
-#    maskdict_path = os.path.join(traceid_dir, 'MASKS.pkl')
-#    with open(maskdict_path, 'rb') as f:
-#        MASKS = pkl.load(f)
-#        fMASKS = MASKS[curr_file]
-#        orig_source = MASKS['original_source']
-#        del MASKS
-#    f.close()
-#    roi_slices = [k for k in fMASKS.keys() if 'Slice' in k] #maskinfo['roi_slices']
-#
-#
-#    # Create outfile:
-#    filetraces_fn = '%s_rawtraces_%s.hdf5' % (curr_file, TID['trace_hash'])
-#    filetraces_filepath = os.path.join(traceid_dir, 'files', filetraces_fn)
-#
-#    try:
-#        # Load input tiff file:
-#        print "-- -- Reading tiff..."
-#        tiff = tf.imread(currtiff_path)
-#        T, d1, d2 = tiff.shape
-#        d = d1*d2
-#        tiffR = np.reshape(tiff, (T, d), order='C')
-#
-#        # First get signal channel only:
-#        tiffR = tiffR[signal_channel_idx::nchannels,:]
-#
-#        # Apply masks to each slice:
-#        file_grp = h5py.File(filetraces_filepath, 'w')
-#        file_grp.attrs['source_file'] = currtiff_path
-#        file_grp.attrs['file_id'] = curr_file
-#        file_grp.attrs['dims'] = (d1, d2, nslices, T/nslices)
-#        file_grp.attrs['mask_sourcefile'] = orig_source #MASKS['original_source'] #mask_path
-#
-#        for sl in range(len(roi_slices)):
-#
-#            curr_slice = 'Slice%02d' % int(roi_slices[sl][5:])
-#            print "-- -- -- Extracting ROI time course from %s" % curr_slice
-#            maskarray = fMASKS[roi_slices[sl]]['mask_array']
-#
-#            # Get frame tstamps:
-#            curr_tstamps = np.array(frames_tsec[sl::nslices])
-#
-#            # Get current frames:
-#            tiffslice = tiffR[sl::nslices, :]
-#            tracemat = tiffslice.dot(maskarray)
-#            dims = (d1, d2, T/nvolumes)
-#
-#            if curr_slice not in file_grp.keys():
-#                slice_grp = file_grp.create_group(curr_slice)
-#            else:
-#                slice_grp = file_grp[curr_slice]
-#
-#            # Save masks:
-#            if 'masks' not in slice_grp.keys():
-#                mset = slice_grp.create_dataset('masks', maskarray.shape, maskarray.dtype)
-#            mset[...] = maskarray
-#            mset.attrs['roi_id'] = str(TID['PARAMS']['roi_id'])
-#            mset.attrs['rid_hash'] = str(TID['PARAMS']['rid_hash'])
-#            mset.attrs['roi_type'] = str(TID['PARAMS']['roi_type'])
-#            mset.attrs['nr'] = fMASKS[curr_slice]['nr']
-#            mset.attrs['nb'] = fMASKS[curr_slice]['nb']
-#            mset.attrs['src_roi_idxs'] = fMASKS[curr_slice]['src_roi_idxs']
-#
-#            # Save zproj img:
-#            zproj = fMASKS[curr_slice]['zproj_img']
-#            if 'zproj' not in slice_grp.keys():
-#                zset = slice_grp.create_dataset('zproj', zproj.shape, zproj.dtype)
-#            zset[...] = zproj
-#            zset.attrs['img_source'] = fMASKS[curr_slice]['zproj_source']
-#
-#            # Save fluor trace:
-#            if 'rawtraces' not in slice_grp.keys():
-#                tset = slice_grp.create_dataset('/'.join(['traces', 'raw']), tracemat.shape, tracemat.dtype)
-#            tset[...] = tracemat
-#            tset.attrs['nframes'] = tracemat.shape[0]
-#            tset.attrs['dims'] = dims
-#
-#            # Save tstamps:
-#            if 'frames_tsec' not in slice_grp.keys():
-#                fset = slice_grp.create_dataset('frames_tsec', curr_tstamps.shape, curr_tstamps.dtype)
-#            fset[...] = curr_tstamps
-#
-#            if 'Ab' in fMASKS[curr_slice].keys():
-#                Ab = fMASKS[curr_slice]['Ab']
-#                Cf = fMASKS[curr_slice]['Cf']
-#                extracted_traces = Ab.T.dot(Ab.dot(Cf))
-#                extracted_traces = np.array(extracted_traces.T) # trans to get same format as other traces (NR x Tpoints)
-#                ext = slice_grp.create_dataset('/'.join(['traces', 'denoised_nmf']), extracted_traces.shape, extracted_traces.dtype)
-#                ext[...] = extracted_traces
-#                ext.attrs['nb'] = fMASKS[curr_slice]['nb']
-#                ext.attrs['nr'] = fMASKS[curr_slice]['nr']
-#
-#        print "-- Done extracting: %s" % curr_file
-#
-#    except Exception as e:
-#        print "--- TID %s: Error extracting traces from file %s ---" % (TID['trace_hash'], curr_file)
-#        traceback.print_exc()
-#        print "---------------------------------------------------------------"
-#    finally:
-#        if file_grp is not None:
-#            file_grp.close()
-#        #maskfile.close()
-#
-#    return filetraces_filepath
 
 #%%
 
-def apply_masks_by_tid(tmp_tid_path, filenum=1, rootdir='', extract_neuropil=False, cfactor=0.5):
+def apply_masks_by_tid(tmp_tid_path, filenum=1, rootdir='', do_neuropil_correction=True, cfactor=0.5):
     filetraces_filepath = None
 
     # Load tmp rid file for coreg:
@@ -1080,7 +780,7 @@ def apply_masks_by_tid(tmp_tid_path, filenum=1, rootdir='', extract_neuropil=Fal
         tfn = [p for p in tiff_files if str(re.search('File(\d{3})', p).group(0)) == curr_file][0]
         currtiff_path = os.path.join(TID['SRC'], tfn)
         filetraces_filepath = apply_masks_to_tiff(currtiff_path, TID, si_info,
-                                                  extract_neuropil=extract_neuropil,
+                                                  do_neuropil_correction=do_neuropil_correction,
                                                   cfactor=cfactor,
                                                   output_filedir=filetraces_dir,
                                                   rootdir=rootdir)
@@ -1098,7 +798,7 @@ def apply_masks_by_tid(tmp_tid_path, filenum=1, rootdir='', extract_neuropil=Fal
 # =============================================================================
 # Extract ROIs for each specified slice for each file:
 # =============================================================================
-def apply_masks_to_movies(TID, RID, si_info, extract_neuropil=True, cfactor=0.6, output_filedir='/tmp', rootdir=''):
+def apply_masks_to_movies(TID, RID, si_info, do_neuropil_correction=True, cfactor=0.6, output_filedir='/tmp', rootdir=''):
     '''
     For each .tif in this trace id set, load .tif movie and apply masks.
     Save traces as .hdf5 for each .tif file in <TRACEID_DIR>/files/.
@@ -1124,7 +824,10 @@ def apply_masks_to_movies(TID, RID, si_info, extract_neuropil=True, cfactor=0.6,
             continue
         print "Extracting traces: %s" % curr_file
         currtiff_path = os.path.join(TID['SRC'], tfn)
-        filetraces_filepath = apply_masks_to_tiff(currtiff_path, TID, si_info, extract_neuropil=extract_neuropil, cfactor=cfactor, output_filedir='/tmp', rootdir='')
+        filetraces_filepath = apply_masks_to_tiff(currtiff_path, TID, si_info,
+                                                  do_neuropil_correction=do_neuropil_correction,
+                                                  cfactor=cfactor,
+                                                  output_filedir=output_filedir, rootdir=rootdir)
         print "Saved %s traces: %s" % (curr_file, filetraces_filepath)
 
     # Hash filetraces files:
@@ -1239,9 +942,9 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 #                            is_background = True
 #                            roiname = 'bg%02d' % bgidx
 #                        else:
-		        is_background = False
-		        roi_counter += 1
-		        roiname = 'roi%05d' % int(roi_counter)
+            		        is_background = False
+            		        roi_counter += 1
+            		        roiname = 'roi%05d' % int(roi_counter)
 
                         # Create unique ROI group:
                         if roiname not in roi_outfile.keys():
@@ -1339,14 +1042,6 @@ def collate_fissa_traces(exp, tiff=0, region='cell', trace_type='corrected'):
     nregions = exp.result[0][tiff].shape[0]
     nregions_np = nregions - 1
 
-#    if region=='cell':
-#        result_trace_idx = 0
-#        raw_trace_idx = 0
-#    else:
-#        result_trace_idx = np.arange(1, nregions)
-#        raw_trace_idx = np.arange(1, nregions)
-
-
     tracemat = np.empty((nframes, nrois))
     for ridx in range(len(exp.result)):
         meandiffs = [abs(np.mean(exp.raw[ridx][tiff][0,:]) - np.mean(exp.result[ridx][tiff][i,:]))
@@ -1364,21 +1059,6 @@ def collate_fissa_traces(exp, tiff=0, region='cell', trace_type='corrected'):
             elif trace_type == 'raw':
                 tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][region_index,:], axis=0)
 
-
-#    if trace_type == 'corrected':
-#        for ridx in range(len(exp.result)):
-#            if isinstance(result_trace_idx, int):
-#                tracemat[:, ridx] = exp.result[ridx][tiff][result_trace_idx,:]
-#            else:
-#                tracemat[:, ridx] = np.mean(exp.result[ridx][tiff][result_trace_idx,:], axis=0)
-#
-#    elif trace_type == 'raw':
-#        for ridx in range(len(exp.result)):
-#            if isinstance(raw_trace_idx, int):
-#                tracemat[:, ridx] = exp.raw[ridx][tiff][raw_trace_idx,:]
-#            else:
-#                tracemat[:, ridx] = np.mean(exp.raw[ridx][tiff][raw_trace_idx,:], axis=0)
-
     return tracemat
 
 #%%
@@ -1395,13 +1075,13 @@ def make_nonnegative(images_dir):
         tiff = tf.imread(os.path.join(images_dir, tiff_list[i]))
 
         # Make tif nonnegative:
-        #if tiff.min() < 0:
         tiff = tiff - tiff.min()
 
         # Write tif to new directory:
         tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff)
 
     return images_dir_nonneg
+
 #%%
 def make_unsigned(images_dir):
 
@@ -1506,6 +1186,7 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
             exp.means.append(np.array(fissa.datahandler.getmean(curdata)))
 
     return exp
+
 #%%
 def roi_list_to_array(roi_list, normalize_rois=True):
 
@@ -1759,7 +1440,7 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
                 #orig_dims = traces_currfile.attrs['dims'] # (d1, d2, nslices, T)
                 nchannels = T/orig_mat_shape[0]
                 signal_channel_idx = int(traces_currfile.attrs['signal_channel']) - 1
-                
+
                 tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
                 tiffslice = tiffR[signal_channel_idx::nchannels,:]
                 print "SLICE shape is:", tiffslice.shape
@@ -1804,9 +1485,9 @@ def extract_options(options):
     parser.add_option('--new', action="store_true",
                       dest="create_new", default=False, help="Set flag to create new output files (/paradigm/parsed_frames.hdf5, roi_trials.hdf5")
     parser.add_option('--append', action="store_true",
-                      dest="append_trace_type", default=False, help="Set flag to append non-default trace type to trace structs.")
+                      dest="append_trace_type", default=False, help="Set flag to append non-default trace type to trace structs (e.g., neuropil correction).")
 
-    parser.add_option('--np-method', action="store",
+    parser.add_option('--np', action="store",
                       dest="np_method", default=None, help="Method for neuropil correction (default: None)")
 
     parser.add_option('-N', '--ncores', action="store",
@@ -1818,7 +1499,7 @@ def extract_options(options):
                       dest="np_correction_factor", default=0.5, help="[np-subtract]: Correction factor for neuropil subtraction [default: 0.5]")
 
     parser.add_option('--neuropil', action="store_true",
-                      dest="plot_neuropil", default=False, help="Set flag to plot neuropil masks with soma.")
+                      dest="neuropil", default=False, help="Set flag to extract neuropil.")
 
 
     parser.add_option('--collate', action="store_true",
@@ -1845,6 +1526,102 @@ def extract_options(options):
 
     return options
 
+#%%
+
+def get_tiff_source(TID):
+    trace_hash = TID['trace_hash']
+    tiff_dir = TID['SRC']
+    roi_name = TID['PARAMS']['roi_id']
+    if rootdir not in tiff_dir:
+        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
+    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files NONNEGATIVE..."
+        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
+        tiff_dir = make_nonnegative(orig_tiff_dir)
+    elif '_unsigned' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files psuedo unsigned..."
+        orig_tiff_dir = tiff_dir.split('_unsigned')[0]
+        tiff_dir = make_unsigned(orig_tiff_dir)
+    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files UINT16..."
+        orig_tiff_dir = tiff_dir.split('_uint16')[0]
+        tiff_dir = convert_uint16(orig_tiff_dir)
+
+    return tiff_dir
+
+
+#%%
+def load_TID_roiset(TID, rootdir):
+
+    rundir = TID['DST'].split('/traces')[0]
+    sessiondir =  os.path.split(os.path.split(rundir)[0])[0]
+    session = os.path.split(sessiondir)[-1]
+    animalid = os.path.split(os.path.split(sessiondir)[0])[-1]
+
+    # Load ROI set specified in Traces param set:
+    roi_dir = os.path.join(rootdir, animalid, session, 'ROIs')
+    roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
+    with open(roidict_path, 'r') as f:
+        roidict = json.load(f)
+    RID = roidict[TID['PARAMS']['roi_id']]
+
+    if rootdir not in RID['DST']:
+        RID['DST'] = replace_root(RID['DST'], rootdir, animalid, session)
+        notnative = True
+
+    return RID
+
+#%%
+def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, do_neuropil_correction=True, plot_neuropil=True, niter=3, rootdir=''):
+    '''
+    For each specified SLICE in this ROI set, create 2D mask array.
+    Save as standardized format to disk...
+
+    Note:  This may be a bit redundant with standard_rois() steps in rois/get_rois.py
+    but addresses slight differences in how hdf5 mask files are structured across
+    roi types.
+
+    TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
+    as python-based methods... Ambiguity comes from 2D vs. 3D Rois, and whether
+    to define ROIs per-slice, or per-volume.
+
+    '''
+
+    mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+
+    # Get mask info (is3D, normalize, by-slice, etc.):
+    maskinfo = get_mask_info(mask_path, nslices=nslices, rootdir=rootidr, excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
+
+    # Check if formatted MASKS dict exists and load, otherwise, create new:
+    maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
+    if create_new is True or not os.path.exists(maskdict_path):
+        maskdict_path = get_masks(maskdict_path, maskinfo, RID,
+                                  save_warp_images=save_warp_images,
+                                  do_neuropil_correction=do_neuropil_correction,
+                                  niter=np_niterations,
+                                  rootdir=rootdir)
+
+    # Check if alrady have plotted masks, if not, create new:
+    mask_figdir = os.path.join(TID['DST'], 'figures', 'masks')
+    if not os.path.exists(mask_figdir):
+        os.makedirs(mask_figdir)
+
+    maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
+    if create_new is True or not len(maskfigs)==len(maskinfo['filenames']):
+        print "Removing old mask files..."
+        for f in maskfigs:
+            os.remove(os.path.join(mask_figdir, f))
+        print "Plotting new mask figures."
+        plot_roi_masks(TID, RID, plot_neuropil=False, mask_figdir=mask_figdir, rootdir=rootdir)
+        maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
+
+    if np_method=='subtract' and plot_neuropil is True:
+        np_maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_iter%i' % np_niterations in i]
+        if create_new is True or len(np_maskfigs) != len(maskfigs):
+            plot_roi_masks(TID, RID, plot_neuropil=plot_neuropil, mask_figdir=mask_figdir, rootdir=rootdir)
+
+    return maskinfo, maskdict_path
 
 #%%
 def extract_traces(options):
@@ -1876,7 +1653,12 @@ def extract_traces(options):
     np_method = options.np_method
 
     np_niterations = options.np_niterations
-    plot_neuropil = options.plot_neuropil
+    do_neuropil_correction = options.neuropil
+    if do_neuropil_correction:
+        plot_neuropil = True
+    else:
+        plot_neuropil = False
+
     if np_method == 'subtract':
         subtract_neuropil = True
     else:
@@ -1922,119 +1704,58 @@ def extract_traces(options):
 
     # Load specified trace-ID parameter set:
     # =============================================================================
-    trace_dir = os.path.join(run_dir, 'traces')
-    tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
-    if not os.path.exists(trace_dir):
-        os.makedirs(trace_dir)
-    #print "RUN DIR:", run_dir
     TID = load_TID(run_dir, trace_id, auto=auto)
+    if rootdir not in TID['DST']:
+        TID['DST'] = replace_root(TID['DST'], rootdir, animalid, session)
 
     #%
     # Get source tiff paths using trace-ID params:
     # =============================================================================
-    trace_hash = TID['trace_hash']
-    tiff_dir = TID['SRC']
-    roi_name = TID['PARAMS']['roi_id']
-    if rootdir not in tiff_dir:
-        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
-
-    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
-        print "Making tif files NONNEGATIVE..."
-        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
-        tiff_dir = make_nonnegative(orig_tiff_dir)
-    elif '_unsigned' in tiff_dir and not os.path.exists(tiff_dir):
-        print "Making tif files psuedo unsigned..."
-        orig_tiff_dir = tiff_dir.split('_unsigned')[0]
-        tiff_dir = make_unsigned(orig_tiff_dir)
-    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
-        print "Making tif files UINT16..."
-        orig_tiff_dir = tiff_dir.split('_uint16')[0]
-        tiff_dir = convert_uint16(orig_tiff_dir)
-
+    tiff_dir = get_tiff_source(TID)
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
-
-    print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
+    print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, TID['PARAMS']['roi_id'])
 
     #%
     # Create output dirs and files:
     # =============================================================================
-    traceid_dir = os.path.join(trace_dir, '%s_%s' % (TID['trace_id'], TID['trace_hash']))
-    filetraces_dir = os.path.join(traceid_dir, 'files')
+    filetraces_dir = os.path.join(TID['DST'], 'files')
     if not os.path.exists(filetraces_dir):
         os.makedirs(filetraces_dir)
 
-    trace_figdir = os.path.join(traceid_dir, 'figures')
+    trace_figdir = os.path.join(TID['DST'], 'figures')
     if not os.path.exists(trace_figdir):
         os.makedirs(trace_figdir)
 
     #%
     # Create mask array and save mask images for each slice specified in ROI set:
     # =============================================================================
-    # Load ROI set specified in Traces param set:
-    roi_dir = os.path.join(rootdir, animalid, session, 'ROIs')
-    roidict_path = os.path.join(roi_dir, 'rids_%s.json' % session)
-    with open(roidict_path, 'r') as f:
-        roidict = json.load(f)
-    RID = roidict[TID['PARAMS']['roi_id']]
-    print "-----------------------------------------------------------------------"
+    RID = load_TID_roiset(TID, rootdir)
+
+
 
     #% For each specified SLICE in this ROI set, create 2D mask array:
     # TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
     # as python-based methods... if-checks hacked for now...
-
-    # Load mask file:
-    if rootdir not in RID['DST']:
-        rid_dst = replace_root(RID['DST'], rootdir, animalid, session)
-        notnative = True
-    else:
-        rid_dst = RID['DST']
-        notnative = False
-    mask_path = os.path.join(rid_dst, 'masks.hdf5')
-
-    print "TID %s -- Getting mask info..." % trace_hash
-    print "-----------------------------------------------------------------------"
+    print "TID %s -- Getting mask info..." % TID['traceid_hash']
+    print "--------------------------------------------------------------------"
     t_mask = time.time()
+    maskinfo, maskdict_path = create_formatted_maskfile(TID, RID,
+                                                        nslices=si_info['nslices'],
+                                                        save_warp_images=save_warp_images,
+                                                        do_neuropil_correction=do_neuropil_correction,
+                                                        plot_neuropil=plot_neuropil,
+                                                        niter=niter,
+                                                        rootdir=rootdir)
 
-    # Check if ROI masks need to be normalized before applying to traces (non-NMF methods):
-    maskinfo = get_mask_info(mask_path, ntiffs=len(tiff_files), nslices=si_info['nslices'], excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
-
-    # Check if formatted MASKS dict exists and load, otherwise, create new:
-    maskdict_path = os.path.join(traceid_dir, 'MASKS.hdf5')
-    if create_new is True or not os.path.exists(maskdict_path):
-        maskdict_path = get_masks(maskdict_path, maskinfo, RID, save_warp_images=save_warp_images, get_neuropil=subtract_neuropil, niter=np_niterations, rootdir=rootdir)
-
-    # Check if alrady have plotted masks, if not, create new:
-    all_files = ['File%03d' % int(i+1) for i in range(len(tiff_files))]
-    tiffs_in_set = [t for t in all_files if t not in TID['PARAMS']['excluded_tiffs']]
-    mask_figdir = os.path.join(trace_figdir, 'masks')
-    if not os.path.exists(mask_figdir):
-        os.makedirs(mask_figdir)
-
-    maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
-    if create_new is True or not len(maskfigs)==len(tiffs_in_set):
-        print "Removing old mask files..."
-        for f in maskfigs:
-            os.remove(os.path.join(mask_figdir, f))
-        print "Plotting new mask figures."
-        plot_roi_masks(TID, RID, plot_neuropil=False, mask_figdir=mask_figdir, rootdir=rootdir)
-        maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
-
-    if np_method=='subtract' and plot_neuropil is True:
-        np_maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_iter%i' % np_niterations in i]
-        if create_new is True or len(np_maskfigs) != len(maskfigs):
-            plot_roi_masks(TID, RID, plot_neuropil=plot_neuropil, mask_figdir=mask_figdir, rootdir=rootdir)
-
-    print "TID %s - Got mask info from ROI set %s." % (trace_hash, RID['roi_id'])
+    print "TID %s - Got mask info from ROI set %s." % (TID['traceid_hash'], RID['roi_id'])
     print_elapsed_time(t_mask)
     print "-----------------------------------------------------------------------"
 
+
     #%
     # Apply masks to .tif files:
-    # -------------------------
     print "*** Extracting traces from each file."
     print "-----------------------------------------------------------------------"
-
-    #np_method = 'fissa'
 
     filetraces_fns = [f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')]
     print "N mask imgs:", len(maskfigs), "N trace files:", len(filetraces_fns)
@@ -2045,11 +1766,12 @@ def extract_traces(options):
         else:
             print "...... Creating new!"
         filetraces_dir = apply_masks_to_movies(TID, RID, si_info,
-                                                  extract_neuropil=subtract_neuropil,
+                                                  do_neuropil_correction=do_neuropil_correction,
                                                   cfactor=np_correction_factor,
                                                   output_filedir=filetraces_dir,
                                                   rootdir=rootdir)
 
+    # Do neuropil correction, if relevant:
     if np_method == 'fissa':
         if create_new is True:
             redo_prep=True; redo_sep=True
@@ -2088,8 +1810,8 @@ def extract_traces(options):
             if 'np_maskarray' not in mtmp[lev1][lev2].keys():
                 mtmp.close()
                 print "--- Unable to find NEUROPIL mask info. Creating new."
-                maskdict_path = get_masks(maskdict_path, maskinfo, RID, get_neuropil=True, niter=np_niterations, rootdir=rootdir)
-            
+                maskdict_path = get_masks(maskdict_path, maskinfo, RID, do_neuropil_correction=True, niter=np_niterations, rootdir=rootdir)
+
             print "--- Using SUBTRACTION method, correction-factor specified was: ", np_correction_factor
             filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, rootdir=rootdir)
 
