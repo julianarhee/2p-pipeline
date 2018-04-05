@@ -430,11 +430,11 @@ def heatmapdat():
 #           '-R', 'gratings_run2', '-t', 'traces002']
 
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
-           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
-           '-R', 'blobs_run3', '-t', 'traces002',
-           '-R', 'blobs_run4', '-t', 'traces002']
-
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
+#           '-R', 'blobs_run3', '-t', 'traces002',
+#           '-R', 'blobs_run4', '-t', 'traces002']
+#
 
 #%%
 
@@ -656,14 +656,9 @@ def combine_runs_and_plot(options):
     S1 = STATS.loc[STATS['trial'].isin(S1_trials)]
     S2 = STATS.loc[STATS['trial'].isin(S2_trials)]
 
-    print len(list(set(S1['trial'])))
-
-    #S1_orig = STATS.loc[STATS['run']==run_list[0]]
-
     roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
 
     metric_type = 'zscore'
-
 
     split_runs_tuning_figdir = os.path.join(combined_tracedir, 'figures', 'tuning_split') #, trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(split_runs_tuning_figdir):
@@ -695,10 +690,6 @@ def combine_runs_and_plot(options):
 #                                      metric_type=metric_type, save_and_close=False, include_trials=False)
 #        vis.plot_tuning_by_transforms(roiSTAT2, transform_dict, object_transformations,
 #                                      metric_type=metric_type, save_and_close=False, include_trials=False)
-
-#
-#        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
-
 
     #%%
     if filter_pupil is True:
@@ -743,28 +734,6 @@ def combine_runs_and_plot(options):
 
     #%% HSITOGRAM:   Get max zscore across all configs for each ROI:
     # -------------------------------------------------------------------------
-#
-#    roistats_filepath = '/mnt/odyssey/CE074/20180215/FOV1_zoom1x_V1/gratings_phasemod/traces/traces004_c04dde/metrics/pupil_size30-dist8-blinks1_12575665366856094372/roi_stats_12575665366856094372_20180309184424.hdf5'
-#    roidata_filepath  = '/mnt/odyssey/CE074/20180215/FOV1_zoom1x_V1/gratings_phasemod/traces/traces004_c04dde/ROIDATA_784044.hdf5'
-#
-#    # Reformat DATA stuct of old data:
-#    DATA = pd.HDFStore(roidata_filepath, 'r')
-#    df_list = []
-#    for roi in DATA.keys():
-#        if '/' in roi:
-#            roiname = roi[1:]
-#        else:
-#            roiname = roi
-#        dfr = DATA[roi]
-#        dfr['roi'] = pd.Series(np.tile(roiname, (len(dfr .index),)), index=dfr.index)
-#        df_list.append(dfr)
-#    DATA = pd.concat(df_list, axis=0, ignore_index=True)
-#    transform_dict, object_transformations = vis.get_object_transforms(DATA)
-#    trans_types = object_transformations.keys()
-#
-#    # Load STATS:
-#    STATS = pd.HDFStore(roistats_filepath, 'r')['/df']
-#    roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
 
     metric_type = 'zscore'
     max_config_zscores = [max(list(set(STATS[STATS['roi']==roi]['mean_%s' % metric_type]))) for roi in roi_list]
@@ -809,9 +778,6 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
     pl.close()
-
-
-
 
     return combined_tracedir
 
