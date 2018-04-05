@@ -1422,7 +1422,7 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
         try:
             for curr_slice in traces_currfile.keys():
 
-                tracemat = traces_currfile[curr_slice]['traces']['raw'][:]
+                tracemat = np.array(traces_currfile[curr_slice]['traces']['raw'])
 
                 # Load tiff:
                 tiffpath = traces_currfile.attrs['source_file']
@@ -1470,6 +1470,12 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
 
 #%%
 def extract_options(options):
+    choices_npmethod = ('fissa', 'subtract')
+    default_npmethod = 'subtract'
+
+    choices_tracetype = ('raw', 'raw_fissa', 'denoised_nmf', 'np_corrected_fissa', 'neuropil_fissa', 'np_subtracted', 'neuropil')
+    default_tracetype = 'raw'
+
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -1487,8 +1493,7 @@ def extract_options(options):
     parser.add_option('--append', action="store_true",
                       dest="append_trace_type", default=False, help="Set flag to append non-default trace type to trace structs (e.g., neuropil correction).")
 
-    parser.add_option('--np', action="store",
-                      dest="np_method", default=None, help="Method for neuropil correction (default: None)")
+    parser.add_option('--np', type='choice', choices=choices_npmethod, action='store', dest='np_method', default=default_npmethod, help="Method for neuropil correction. Valid choices: %s [default: %s]" % (choices_npmethod, default_npmethod))
 
     parser.add_option('-N', '--ncores', action="store",
                       dest="ncores", default=2, help="[np-fissa]: N cores to use for FISSA prep and separation [default: 2, 4. If slurm, 1]")
@@ -1504,8 +1509,7 @@ def extract_options(options):
 
     parser.add_option('--collate', action="store_true",
                       dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
-    parser.add_option('-T', action="store",
-                      dest="trace_type", default="raw", help="Trace type to extract, if relevant (default: raw)")
+    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
 
     parser.add_option('--warp', action="store_true",
                       dest="save_warp_images", default=False, help="Set flag to save output plots of warped ROIs (manual warp only).")
@@ -1801,7 +1805,7 @@ def extract_traces(options):
         if np_method == 'fissa':
             exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, append_only=True)
             filetraces_dir = append_corrected_fissa(exp, filetraces_dir)
-        elif np_method == 'np_subtract':
+        elif np_method == 'subtract':
             # First make sure that MASKS.hdf5 in traceid dir contains np info:
             print "Checking MASKS.hdf5 for neuropil masks..."
             mtmp = h5py.File(maskdict_path, 'r')

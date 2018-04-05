@@ -799,7 +799,7 @@ def combine_runs_and_plot(options):
 
     #%% Look at position & ORI selectivity as heatmap:
     # -------------------------------------------------------------------------
-
+    trans_types = object_transformations.keys()
     curr_transform = [t for t in trans_types if not t=='xpos' and not t=='ypos'][0]
     position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', max_value=4.0)
     pl.subplots_adjust(top=0.85)
