@@ -59,7 +59,7 @@ def create_retinoid(options):
         pixelflag = False
 
 
-    downsample = int(options.downsample)
+    downsample = options.downsample
     smooth_fwhm = options.smooth_fwhm
 
     rolling_mean = options.rolling_mean
@@ -169,7 +169,7 @@ def extract_options(options):
     parser.add_option('-c', '--channel', action='store', dest='signal_channel', default=1, help="Signal channel [default: 1]")
 
     #spatial pre-processing options, applied on images
-    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=2, help='Factor by which to downsample images (integer)')    
+    parser.add_option('-d', '--downsample', action='store', dest='downsample', default=None, help='Factor by which to downsample images (integer)')    
     parser.add_option('-f', '--fwhm', action='store', dest='smooth_fwhm', default=None, help='full-width at half-max size of guassian kernel for smoothing images(odd integer)')
 
     #temporal pre-processing options, applied on timecourses
