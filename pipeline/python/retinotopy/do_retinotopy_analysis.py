@@ -52,12 +52,20 @@ def block_mean(ar, fact):
 	res.shape = (sx/fact, sy/fact)
 	return res
 
-def block_mean_stack(stack0, ds_factor):
+def block_mean_stack(stack0, ds_factor, along_axis=2):
+    if along_axis==2:
 	im0 = block_mean(stack0[:,:,0],ds_factor) 
+        print im0.shape
 	stack1 = np.zeros((im0.shape[0],im0.shape[1],stack0.shape[2]))
 	for i in range(0,stack0.shape[2]):
-		stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
-	return stack1
+            stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
+    else:
+ 	im0 = block_mean(stack0[0,:,:],ds_factor) 
+	stack1 = np.zeros((stack0.shape[0], im0.shape[0], im0.shape[1]))
+	for i in range(stack0.shape[0]):
+            stack1[i,:,:] = block_mean(stack0[i,:,:],ds_factor) 
+
+    return stack1
 
 def smooth_array(inputArray,fwhm):
 	szList=np.array([None,None,None,11,None,21,None,27,None,31,None,37,None,43,None,49,None,53,None,59,None,55,None,69,None,79,None,89,None,99])
@@ -78,6 +86,7 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	# Read in RAW tiff: 
 	print('Loading file : %s'%(tiff_path_full))
 	stack0 = tf.imread(tiff_path_full)
+        print stack0.shape
 	#swap axes for familiarity
 	stack1 = np.swapaxes(stack0,0,2)
 	stack1 = np.swapaxes(stack1,1,0)
@@ -218,6 +227,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		file_str = s0[s0.find('File'):s0.find('File')+7]
 		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 		masks = masks_file[file_str]['masks'][slice_str][:]
+                if RETINOID['PARAMS']['downsample_factor'] is not None:
+                    masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
 
 		nmasks,szx, szy= masks.shape
 
@@ -233,6 +244,9 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		masks = masks_file[file_str]['masks'][slice_str][:]
 		#swap axes for familiarity
 		masks = np.swapaxes(masks,1,2)
+                if RETINOID['PARAMS']['downsample_factor'] is not None:
+                    masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
+                print "MASKS:", masks.shape
 
 		nmasks, szx, szy= masks.shape
 
