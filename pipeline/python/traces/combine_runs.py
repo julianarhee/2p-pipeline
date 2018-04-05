@@ -388,6 +388,17 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
     g1.fig.subplots_adjust(right=.9)  # <-- Add space so the colorbar doesn't overlap the plot
 
 
+#%%
+
+def heatmapdat():
+    roi = 'roi00008'
+    D = subDF[subDF['roi']==roi]
+    g1 = sns.FacetGrid(D, row=rows, col=columns, sharex=True, sharey=True, row_order=row_order, col_order=col_order, size=3)
+    cbar_ax = g1.fig.add_axes([.9, .3, .03, .4])  # <-- Create a colorbar axes
+    g1 = g1.map_dataframe(draw_heatmap, 'yrot', 'morphlevel', "mean_%s" % metric_type, xticklabels=True, yticklabels=True,
+                          cbar_ax=cbar_ax, cbar_kws={"label": metric_type},
+                          vmin=minval, vmax=4)
+    g1.fig.subplots_adjust(right=.85)
 
 #%% Run info:
 
@@ -413,17 +424,17 @@ def position_heatmap(curr_transform, trans_types, STATS, metric_type='zscore', m
 #           '-R', 'gratings_run3', '-t', 'traces001',
 #           '-R', 'gratings_run4', '-t', 'traces001',]
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
-           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
-           '-R', 'gratings_run1', '-t', 'traces002',
-           '-R', 'gratings_run2', '-t', 'traces002']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180319', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '-s', '20', '-B', '60', '-d', '8',
+#           '-R', 'gratings_run1', '-t', 'traces002',
+#           '-R', 'gratings_run2', '-t', 'traces002']
 
 #
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
 #           '-T', 'raw', '-s', '20', '-B', '80', '-d', '8',
 #           '-R', 'blobs_run3', '-t', 'traces002',
 #           '-R', 'blobs_run4', '-t', 'traces002']
-
+#
 
 #%%
 
@@ -499,6 +510,7 @@ def combine_runs_and_plot(options):
     # -------------------------------------------------------------------------
     roi_list = sorted(list(set(STATS['roi'])), key=natural_keys)
     transform_dict, object_transformations = vis.get_object_transforms(DATA)
+    trans_types = object_transformations.keys()
 
     if 'mean_%s' % metric_type not in STATS.keys():
         # Get stats on ROIs:
@@ -644,14 +656,9 @@ def combine_runs_and_plot(options):
     S1 = STATS.loc[STATS['trial'].isin(S1_trials)]
     S2 = STATS.loc[STATS['trial'].isin(S2_trials)]
 
-    print len(list(set(S1['trial'])))
-
-    #S1_orig = STATS.loc[STATS['run']==run_list[0]]
-
     roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
 
     metric_type = 'zscore'
-
 
     split_runs_tuning_figdir = os.path.join(combined_tracedir, 'figures', 'tuning_split') #, trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(split_runs_tuning_figdir):
@@ -683,10 +690,6 @@ def combine_runs_and_plot(options):
 #                                      metric_type=metric_type, save_and_close=False, include_trials=False)
 #        vis.plot_tuning_by_transforms(roiSTAT2, transform_dict, object_transformations,
 #                                      metric_type=metric_type, save_and_close=False, include_trials=False)
-
-#
-#        vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
-
 
     #%%
     if filter_pupil is True:
@@ -775,9 +778,6 @@ def combine_runs_and_plot(options):
     figpath = os.path.join(curr_tuning_dir, figname)
     pl.savefig(figpath)
     pl.close()
-
-
-
 
     return combined_tracedir
 
