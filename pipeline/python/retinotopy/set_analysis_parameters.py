@@ -59,7 +59,7 @@ def create_retinoid(options):
         pixelflag = False
 
 
-    downsample = options.downsample
+    downsample = int(options.downsample)
     smooth_fwhm = options.smooth_fwhm
 
     rolling_mean = options.rolling_mean
@@ -212,7 +212,7 @@ def get_params_dict_rois(signal_channel, tiff_sourcedir, RID,
                     downsample,smooth_fwhm,rolling_mean,average_frames,excluded_tiffs=[],
                     notnative=False, rootdir='', homedir='', auto=False):
     PARAMS = dict()
-    PARAMS['downsample_factor'] = None
+    PARAMS['downsample_factor'] = downsample #None
     PARAMS['smooth_fwhm'] = smooth_fwhm
     PARAMS['minus_rolling_mean'] = rolling_mean
     PARAMS['average_frames'] = average_frames
