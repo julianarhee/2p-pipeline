@@ -115,8 +115,13 @@ def extract_options(options):
     parser.add_option('--default', action='store_true', dest='auto', default=False, help="set if want to use all defaults")
 #    parser.add_option('-z', '--zscore', action="store",
 #                      dest="zscore_thr", default=2.0, help="Cut-off min zscore value [default: 2.0]")
-
     parser.add_option('--positions', action='store_true', dest='colormap_position', default=False, help="set if want to view position responses as color map (retinotopy)")
+
+    parser.add_option('-B', '--bbox', dest='boundingbox_runs', default=[], nargs=1, action='append', help="RUN that is a bounding box run (only for retino)")
+    parser.add_option('-l', '--left', dest='leftedge', default=None, action='store', help="left edge of bounding box")
+    parser.add_option('-r', '--right', dest='rightedge', default=None, action='store', help="right edge of bounding box")
+    parser.add_option('-u', '--upper', dest='topedge', default=None, action='store', help="upper edge of bounding box")
+    parser.add_option('-b', '--lower', dest='bottomedge', default=None, action='store', help="bottom edge of bounding box")
 
     #    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
@@ -622,7 +627,7 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
 
     return lin_coord_x, lin_coord_y
 
-def get_retino_info(width=103, height=58, resolution=[1920, 1080],
+def get_retino_info(width=80, height=44, resolution=[1920, 1080],
                     azimuth='right', elevation='top',
                     leftedge=None, rightedge=None, bottomedge=None, topedge=None):
 
@@ -642,6 +647,7 @@ def get_retino_info(width=103, height=58, resolution=[1920, 1080],
     retino_info['linmaxW'] = linmaxW
     retino_info['linminH'] = linminH
     retino_info['linmaxH'] = linmaxH
+    retino_info['bounding_box'] = [leftedge, bottomedge, rightedge, topedge]
 
     return retino_info
 
@@ -673,11 +679,18 @@ def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
 
 
 def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_mean',
-                        alpha_min=0, alpha_max=1, output_dir='', figname='roi_retinotopy.png', save_and_close=True):
+                        alpha_min=0, alpha_max=1, color_position=False,
+                        output_dir='', figname='roi_retinotopy.png', save_and_close=True):
     sns.set()
     fig = pl.figure(figsize=(10,8))
     ax = fig.add_subplot(111) #, aspect=retino_info['aspect'])
-    pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
+    if color_position is True:
+        pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
+        magcmap = mpl.cm.Greys
+    else:
+        pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
+        magcmap=mpl.cm.inferno
+
     pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
 #    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
 #    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
@@ -689,9 +702,9 @@ def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_me
     pl.title('ROI position selectivity (%s)' % curr_metric)
     pos = ax.get_position()
     ax2 = fig.add_axes([pos.x0+.8, pos.y0, 0.01, pos.height])
-    magcmap = mpl.cm.Greys
-#    if alpha_max < 0.1:
-#        alpha_max = 0.1
+    #magcmap = mpl.cm.Greys
+#    if alpha_max < 0.05:
+#        alpha_max = 0.05
     magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
     cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
 
@@ -710,13 +723,22 @@ def store_session_info(rootdir, animalid, session, acquisition):
 
 #%%
 def visualize_position_data(dataframes, zdf, retino_info,
-                            set_response_alpha=True, stat_type='mean',
+                            set_response_alpha=True, stat_type='mean', color_position=False,
                             acquisition_str='', output_dir='/tmp', save_and_close=True):
 
     # Get RGBA mapping normalized to mag-ratio values:
     norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
     cmap = mpl.cm.get_cmap('hsv')
     mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    retino_runs = [k for k in retino_info.keys() if 'retino' in k]
+    if color_position is False and len(retino_runs)>1:
+        same_alpha=True
+        alpha_min = min([zdf[k].min() for k in zdf.keys()])
+        alpha_max = min([zdf[k].max() for k in zdf.keys()])
+    else:
+        same_alpha=False
+        alpha_min=None; alpha_max=None
 
     visinfo = dict((run, dict()) for run in dataframes.keys())
     for runnum, run in enumerate(dataframes.keys()):
@@ -734,8 +756,14 @@ def visualize_position_data(dataframes, zdf, retino_info,
         visinfo[run]['metric'] = curr_metric
 
         rgbas = np.array([mapper.to_rgba(v) for v in linC])
+        magratios = zdf[curr_metric]
+        if alpha_min is None:
+            alpha_min = magratios.min()
+        if alpha_max is None:
+            alpha_max = magratios.max()
+
         if set_response_alpha is True:
-            alphas = np.array(zdf[curr_metric] / zdf[curr_metric].max())
+            alphas = np.array(magratios / magratios.max())
             rgbas[:, 3] = alphas
         visinfo[run]['rgbas'] = rgbas
 
@@ -745,10 +773,16 @@ def visualize_position_data(dataframes, zdf, retino_info,
                 rgbas[:, 3] = alphas
 
             # Plot each ROI's "position" color-coded with angle map:
-            figname = '%s_R%i-%s_position_selectivity_%s.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-            plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
-                                alpha_min=zdf[curr_metric].min(), alpha_max=zdf[curr_metric].max(),
-                                output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+            if color_position is True:
+                figname = '%s_R%i-%s_position_selectivity_%s_Cpos.png' % (acquisition_str, int(runnum+1), run, curr_metric)
+                plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
+                                    alpha_min=zdf[curr_metric].min(), alpha_max=zdf[curr_metric].max(),
+                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+            else:
+                figname = '%s_R%i-%s_position_selectivity_%s_Cmagr.png' % (acquisition_str, int(runnum+1), run, curr_metric)
+                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
+                                    alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
+                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
 
     return visinfo
 
@@ -780,9 +814,9 @@ def main(options):
 #               '-t', 'gratings_run2,traces001,20,80,8']
 
 
-    options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180316', '-A', 'FOV1_zoom1x',
-               '-R', 'retino_run1', '-t', 'retino_run1,analysis001',
-               '-R', 'retino_run2', '-t', 'retino_run2,analysis001']
+#    options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180316', '-A', 'FOV1_zoom1x',
+#               '-R', 'retino_run1', '-t', 'retino_run1,analysis001',
+#               '-R', 'retino_run2', '-t', 'retino_run2,analysis001']
 
 
     options, trace_info = extract_options(options)
@@ -794,6 +828,12 @@ def main(options):
     acquisition = options.acquisition
     trace_type = options.trace_type
     colormap_position = options.colormap_position
+
+    boundingbox_runs = options.boundingbox_runs
+    leftedge = options.leftedge
+    rightedge = options.rightedge
+    topedge = options.topedge
+    bottomedge = options.bottomedge
 
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -842,12 +882,13 @@ def main(options):
     animal_dir = os.path.join(rootdir, animalid)
 
     #% If retinotopy vs. gratings, look at position-selectivity:
-#    width = 103
-#    height = 58
+#    width = 80
+#    height = 44
 #    resolution = [1920, 1080]
-    leftedge = -28; rightedge = 0
-    bottomedge = -15; topedge=13
-    boundingbox_runs = ['retino_run2']
+
+#    leftedge = -28; rightedge = 0
+#    bottomedge = -15; topedge = 13
+#    boundingbox_runs = ['retino_run2']
 
 
 #    retino_info = get_retino_info(azimuth='right', elevation='top',
@@ -856,6 +897,10 @@ def main(options):
 
     stat_type = 'mean'
     set_response_alpha = False
+
+    output_figdir = os.path.join(output_dir, 'figures')
+    if not os.path.exists(output_figdir):
+        os.makedirs(output_figdir)
 
     #%%
     if colormap_position is True:
@@ -880,9 +925,14 @@ def main(options):
         visinfo = visualize_position_data(dataframes, zdf, retino_info,
                                           set_response_alpha=set_response_alpha,
                                           stat_type=stat_type,
+                                          color_position=False,
                                           acquisition_str=acquisition_str,
-                                          output_dir=output_dir,
+                                          output_dir=output_figdir,
                                           save_and_close=True)
+
+        # Save monitor/retino info:
+        with open(os.path.join(output_dir, 'retinotopy.json'), 'w') as f:
+            json.dump(retino_info, f, indent=4, sort_keys=True)
 
         # Scatter plot:  phase-encoded response vs. grid-position response
         sns.set()
@@ -925,7 +975,7 @@ def main(options):
         pl.suptitle(run_title)
 
         figname = '%s_jointdistN.png' % combo_basename
-        pl.savefig(os.path.join(output_dir, figname))
+        pl.savefig(os.path.join(output_figdir, figname))
         pl.close()
 
         # Create custom legend for color & alpha:
@@ -942,10 +992,13 @@ def main(options):
         pl.imshow(z, cmap='hsv'); pl.gca().invert_yaxis()
         pl.axis('off')
         figname = '%s_jointdistN_legend.png' % combo_basename
-        pl.savefig(os.path.join(output_dir, figname))
+        pl.savefig(os.path.join(output_figdir, figname))
         pl.close()
 
     #%% Look at repsonse magnitudes by their relevant measures:
+
+    # TODO:  Save all combo stats for session in 1 file, store w/ keys matching
+    # combo_info.json file.
 
     compare_metrics = True
 
@@ -961,7 +1014,7 @@ def main(options):
 
         #% Look at 2 runs at a time:
         metric = 'max_zscore_stim'
-        plot_joint_distn_metric(zdf, metric, combo_basename=combo_basename, output_dir=output_dir, save_and_close=False)
+        plot_joint_distn_metric(zdf, metric, combo_basename=combo_basename, output_dir=output_figdir, save_and_close=True)
 
         #% Get list of good rois:
         roi_list = sorted(list(set(zdf['roi'])), key=natural_keys)
