@@ -202,7 +202,10 @@ def get_combined_data(run_list, traceid_list, combined_tracedir, trace_type, com
 def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filter_pupil=False, pupil_params=None):
 
     if filter_pupil is False:
-        metric_desc = 'unfiltered_%d' % pupil_params['hash']
+        if isinstance(pupil_params['hash'], str):
+            metric_desc = 'unfiltered_%s' % pupil_params['hash']
+        else:
+            metric_desc = 'unfiltered_%d' % pupil_params['hash']
     else:
         metric_desc = 'pupil_rmin%.2f-rmax%.2f-dist%.2f_%s' % (pupil_params['radius_min'], pupil_params['radius_max'], pupil_params['dist_thr'], pupil_params['hash'])
 
@@ -217,7 +220,8 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
         metric_dirs = [f for f in os.listdir(os.path.join(combined_tracedir, 'metrics')) if metric_str in f]
         print "Found metrics:", metric_dirs
         if len(metric_dirs) > 0:
-            print "Renaming metric description string to existing."
+            if not metric_desc == metric_dirs[0]:
+                print "Renaming metric description string to existing."
             metric_desc = metric_dirs[0]
     combined_metrics_dir = os.path.join(combined_tracedir, 'metrics', metric_desc)
     if not os.path.exists(combined_metrics_dir):
@@ -235,7 +239,12 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     existing_stats = sorted([f for f in os.listdir(combined_metrics_dir) if 'roi_stats_%s_%s_' % (metric_hash, trace_type) in f and f.endswith('hdf5')])
     if len(existing_stats) > 0:
         existing_stats_path = os.path.join(combined_metrics_dir, existing_stats[-1])
-        STATS = pd.read_hdf(existing_stats_path, datakey, mode='r')
+        statsdf = pd.HDFStore(existing_stats_path, 'r')
+        if datakey in statsdf.keys():
+            STATS = statsdf[datakey]
+        else:
+            STATS = statsdf['/df']
+        #STATS = pd.read_hdf(existing_stats_path, datakey, mode='r')
         combined_stats_filepath = existing_stats_path
         print "Retrieved existing STATS file:"
         print existing_stats_path
@@ -246,7 +255,13 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     if len(existing_metrics) > 0:
         print "Loading existing combined METRICS..."
         existing_metrics_path = os.path.join(combined_metrics_dir, existing_metrics[-1])
-        metrics = pd.read_hdf(existing_metrics_path, datakey, mode='r')
+        metrics = pd.HDFStore(existing_metrics_path, 'r') #pd.read_hdf(existing_metrics_path, mode='r')
+        if datakey in metrics.keys():
+            metrics = metrics[datakey] #pd.read_hdf(existing_metrics_path, datakey, mode='r')
+        combined_metrics_filepath = existing_metrics_path
+        fn = os.path.split(combined_metrics_filepath)[-1]
+        combined_stats_filepath = os.path.join(os.path.split(combined_metrics_filepath)[0], fn.replace('metrics', 'stats'))
+        print "C stats path:", combined_stats_filepath
     else:
         print "Creating combined METRICS..."
         metrics, passtrials = acq.calculate_metrics(DATA, filter_pupil=filter_pupil, pupil_params=pupil_params)
@@ -287,8 +302,14 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
 
     # Get STATS:
     # Load common stim-config info:
-    with open(os.path.join(combined_tracedir, 'stimulus_configs.json'), 'r') as f:
-        configs = json.load(f)
+    if not os.path.exists(os.path.join(combined_tracedir, 'stimulus_configs.json')):
+        paradigm_dir = os.path.join(combined_tracedir.split('/traces')[0], 'paradigm')
+        config_info_path = os.path.join(paradigm_dir, 'stimulus_configs.json')
+        with open(config_info_path, 'r') as f:
+            configs = json.load(f)
+    else:
+        with open(os.path.join(combined_tracedir, 'stimulus_configs.json'), 'r') as f:
+            configs = json.load(f)
 
     STATS = acq.collate_roi_stats(metrics, configs) # expects dict of DFs, so pass 'metrics' not 'METRICS'
     STATS.to_hdf(combined_stats_filepath, datakey,  mode='w')
