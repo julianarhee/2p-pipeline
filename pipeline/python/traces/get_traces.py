@@ -942,12 +942,12 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 #                            is_background = True
 #                            roiname = 'bg%02d' % bgidx
 #                        else:
-            		        is_background = False
-            		        roi_counter += 1
-            		        roiname = 'roi%05d' % int(roi_counter)
+			is_background = False
+			roi_counter += 1
+			roiname = 'roi%05d' % int(roi_counter)
 
                         # Create unique ROI group:
-                        if roiname not in roi_outfile.keys():
+			if roiname not in roi_outfile.keys():
                             roi_grp = roi_outfile.create_group(roiname)
                             #roi_grp.attrs['slice'] = currslice
                             #roi_grp.attrs['roi_img_path'] = filetraces[currslice]['zproj'].attrs['img_source']
@@ -1532,7 +1532,7 @@ def extract_options(options):
 
 #%%
 
-def get_tiff_source(TID):
+def get_tiff_source(TID, rootdir):
     trace_hash = TID['trace_hash']
     tiff_dir = TID['SRC']
     roi_name = TID['PARAMS']['roi_id']
@@ -1577,7 +1577,7 @@ def load_TID_roiset(TID, rootdir):
     return RID
 
 #%%
-def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, do_neuropil_correction=True, plot_neuropil=True, niter=3, rootdir=''):
+def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, np_method=None, do_neuropil_correction=True, plot_neuropil=True, niter=3, rootdir='', create_new=False):
     '''
     For each specified SLICE in this ROI set, create 2D mask array.
     Save as standardized format to disk...
@@ -1595,7 +1595,7 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, do_neu
     mask_path = os.path.join(RID['DST'], 'masks.hdf5')
 
     # Get mask info (is3D, normalize, by-slice, etc.):
-    maskinfo = get_mask_info(mask_path, nslices=nslices, rootdir=rootidr, excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
+    maskinfo = get_mask_info(mask_path, nslices=nslices, rootdir=rootdir, excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
 
     # Check if formatted MASKS dict exists and load, otherwise, create new:
     maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
@@ -1603,7 +1603,7 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, do_neu
         maskdict_path = get_masks(maskdict_path, maskinfo, RID,
                                   save_warp_images=save_warp_images,
                                   do_neuropil_correction=do_neuropil_correction,
-                                  niter=np_niterations,
+                                  niter=niter,
                                   rootdir=rootdir)
 
     # Check if alrady have plotted masks, if not, create new:
@@ -1621,7 +1621,7 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, do_neu
         maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
 
     if np_method=='subtract' and plot_neuropil is True:
-        np_maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_iter%i' % np_niterations in i]
+        np_maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_iter%i' % niter in i]
         if create_new is True or len(np_maskfigs) != len(maskfigs):
             plot_roi_masks(TID, RID, plot_neuropil=plot_neuropil, mask_figdir=mask_figdir, rootdir=rootdir)
 
@@ -1709,7 +1709,7 @@ def extract_traces(options):
     #%
     # Get source tiff paths using trace-ID params:
     # =============================================================================
-    tiff_dir = get_tiff_source(TID)
+    tiff_dir = get_tiff_source(TID, rootdir)
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, TID['PARAMS']['roi_id'])
 
@@ -1732,18 +1732,20 @@ def extract_traces(options):
     #% For each specified SLICE in this ROI set, create 2D mask array:
     # TODO:  Need to make MATLAB (manual methods) HDF5 output structure the same
     # as python-based methods... if-checks hacked for now...
-    print "TID %s -- Getting mask info..." % TID['traceid_hash']
+    print "TID %s -- Getting mask info..." % TID['trace_hash']
     print "--------------------------------------------------------------------"
     t_mask = time.time()
     maskinfo, maskdict_path = create_formatted_maskfile(TID, RID,
                                                         nslices=si_info['nslices'],
                                                         save_warp_images=save_warp_images,
+                                                        np_method=np_method,
                                                         do_neuropil_correction=do_neuropil_correction,
                                                         plot_neuropil=plot_neuropil,
-                                                        niter=niter,
-                                                        rootdir=rootdir)
+                                                        niter=np_niterations,
+                                                        rootdir=rootdir, 
+							create_new=create_new)
 
-    print "TID %s - Got mask info from ROI set %s." % (TID['traceid_hash'], RID['roi_id'])
+    print "TID %s - Got mask info from ROI set %s." % (TID['trace_hash'], RID['roi_id'])
     print_elapsed_time(t_mask)
     print "-----------------------------------------------------------------------"
 
@@ -1751,11 +1753,12 @@ def extract_traces(options):
     # Apply masks to .tif files:
     print "*** Extracting traces from each file."
     print "-----------------------------------------------------------------------"
+    maskfigs = [i for i in os.listdir(os.path.join(trace_figdir, 'masks')) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
 
     filetraces_fns = [f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')]
     print "N mask imgs:", len(maskfigs), "N trace files:", len(filetraces_fns)
     if np_method!='fissa' and (len(filetraces_fns) != len(maskfigs) or create_new is True):
-        if create_new is False:
+        if create_new is False or len(filetraces_fns)==0:
             print "...... Incorrect N=%i trace files found (expecting %i)." % (len(filetraces_fns), len(maskfigs))
             print "...... Creating new file-trace files."
         else:
@@ -1821,7 +1824,9 @@ def extract_traces(options):
     print "-----------------------------------------------------------------------"
 
     #% move tmp file and clean up:
-    tmp_tid_fn = 'tmp_tid_%s.json' % trace_hash
+    tmp_tid_fn = 'tmp_tid_%s.json' % TID['trace_hash']
+    tmp_tid_dir = os.path.join(run_dir, 'traces', 'tmp_tids')
+
     completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
     if not os.path.exists(completed_tid_dir):
         os.makedirs(completed_tid_dir)
@@ -1830,9 +1835,10 @@ def extract_traces(options):
     print "Cleaned up tmp tid files."
 
     #%
-    print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % trace_hash
+    print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % TID['trace_hash']
     print_elapsed_time(t_start)
     print "======================================================================="
+    traceid_dir = TID['DST']
 
     roidata_filepath = None
     if create_dataframe is True:

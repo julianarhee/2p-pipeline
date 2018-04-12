@@ -630,7 +630,7 @@ def combine_runs_and_plot(options):
                           figdir=combined_runs_figdir_psth, prefix=prefix,
                           trace_color=trace_color, stimbar_color=stimbar_color,
                           )
-            vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
+            #vis.plot_roi_psth(roi, roiDF, object_transformations, save_and_close=False)
 
     #%% Recombine joined datasets:
     # -------------------------------------------------------------------------
