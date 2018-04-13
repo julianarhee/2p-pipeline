@@ -496,17 +496,19 @@ def combine_runs_and_plot(options):
     #%% Create output dir:
     session_dir = os.path.join(rootdir, animalid, session, acquisition)
 
-    if len(run_list > 2):
+    if len(run_list) > 2:
         combined_rundir = os.path.join(session_dir, '_'.join([run_list[0], 'thru', run_list[-1]]))
         if len(list(set(traceid_list))) == 1:
-            combined_tracedir = os.path.join(session_dir, traceid_list[0])
+            combined_tracedir = os.path.join(combined_rundir, traceid_list[0])
         else:
-            combined_tracedir = os.path.join(session_dir, '_'.join([traceid_list[0], 'thru', traceid_list[-1]]))
+            combined_tracedir = os.path.join(combined_rundir, '_'.join([traceid_list[0], 'thru', traceid_list[-1]]))
     else:
         combined_rundir = os.path.join(session_dir, '_'.join(run_list))
         combined_tracedir = os.path.join(combined_rundir, '_'.join(traceid_list))
     if not os.path.exists(combined_tracedir):
         os.makedirs(combined_tracedir)
+
+    print "Saving COMBO info to: %s" % combined_tracedir
 
     # Load combined dataframe, or create new, if none exists:
     DATA, datakey = get_combined_data(run_list, traceid_list, combined_tracedir, trace_type, combine_new=combine_new)
