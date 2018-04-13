@@ -495,8 +495,16 @@ def combine_runs_and_plot(options):
 
     #%% Create output dir:
     session_dir = os.path.join(rootdir, animalid, session, acquisition)
-    combined_rundir = os.path.join(session_dir, '_'.join(run_list))
-    combined_tracedir = os.path.join(combined_rundir, '_'.join(traceid_list))
+
+    if len(run_list > 2):
+        combined_rundir = os.path.join(session_dir, '_'.join([run_list[0], 'thru', run_list[-1]]))
+        if len(list(set(traceid_list))) == 1:
+            combined_tracedir = os.path.join(session_dir, traceid_list[0])
+        else:
+            combined_tracedir = os.path.join(session_dir, '_'.join([traceid_list[0], 'thru', traceid_list[-1]]))
+    else:
+        combined_rundir = os.path.join(session_dir, '_'.join(run_list))
+        combined_tracedir = os.path.join(combined_rundir, '_'.join(traceid_list))
     if not os.path.exists(combined_tracedir):
         os.makedirs(combined_tracedir)
 
