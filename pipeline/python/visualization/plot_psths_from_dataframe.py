@@ -115,7 +115,7 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         columns = 'size'
         single_object_figure = True
         figbase = 'pos%i_size%i' % (len(row_order), len(col_order))
-    elif 'xpos' in trans_types and 'ypos' in trans_types:
+    elif 'xpos' in trans_types or 'ypos' in trans_types:
         # ---- Transform description ---------------------------
         # Change POSITIONS only, grid w/ x and y positions
         # NOTE:  only tested with 4 orientations + x-,y-position grid
