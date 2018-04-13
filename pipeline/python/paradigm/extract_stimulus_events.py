@@ -151,13 +151,17 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
         #trialevents[trial]['iti_dur_ms'] = mwtrials[trial]['iti_duration']
 
+        # First, check if first "stimulus" bit-code is actually an image(in case frame-trigger  update missed at start)
         if (blank_start is True) or (int(tidx+1)>1):
-        	    # Skip a good number of frames from the last "found" index of previous trial.
-        	    # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
-        	    # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
-        	    nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3)
-        	    #print 'skipping iti...', nframes_to_skip
-        	    curr_frames = allframes[first_frame+nframes_to_skip:]
+            if tidx == 0 and (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
+                nframes_to_skip= 0
+            else:
+                # Skip a good number of frames from the last "found" index of previous trial.
+                # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
+                # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
+                nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3)
+            # print 'skipping iti...', nframes_to_skip
+            curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
         minframes = 5 #4
@@ -240,16 +244,16 @@ def extract_options(options):
     return options
 
 #%%
-#rootdir = '/mnt/odyssey'
-#animalid = 'CE080'
-#session = '20180330'
-#acquisition = 'FOV1_zoom1x'
-#run = 'gratings_run2'
-#slurm = False
-#retinobar = False
-#phasemod = True
-#trigger_varname = 'frame_trigger'
-#stimorder_files = False
+rootdir = '/mnt/odyssey'
+animalid = 'CE077'
+session = '20180412'
+acquisition = 'FOV2_zoom1x'
+run = 'blobs_run7'
+slurm = False
+retinobar = False
+phasemod = False
+trigger_varname = 'frame_trigger'
+stimorder_files = False
 
 
 def parse_acquisition_events(run_dir, blank_start=True):
@@ -262,12 +266,12 @@ def parse_acquisition_events(run_dir, blank_start=True):
     nfiles = runinfo['ntiffs']
     file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
 
-    #%%
+    #%
 
     # Set outpath to save trial info file for whole run:
     outdir = os.path.join(run_dir, 'paradigm')
 
-    #%%
+    #%
     # =============================================================================
     # Get SERIAL data:
     # =============================================================================
@@ -286,7 +290,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
     print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
-    #%%
+    #%
     # =============================================================================
     # Create <RUN_DIR>/paradigm/trials_<TRIALINFO_HASH>.json file
     # =============================================================================
@@ -294,7 +298,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
     trialnum = 0
     for fid,serialfn in enumerate(sorted(serialdata_fns, key=natural_keys)):
 
-        framerate = 44.68 #float(runinfo['frame_rate'])
+        framerate = runinfo['frame_rate'] # 44.68 #float(runinfo['frame_rate'])
 
         currfile = "File%03d" % int(fid+1)
 
@@ -371,7 +375,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
 
     return parsed_run_outfile
 
-
+#%%
 def main(options):
     # ================================================================================
     # MW trial extraction:
