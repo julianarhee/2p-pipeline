@@ -302,6 +302,8 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
     parser.add_option('--retinobar', action='store_true', dest='retinobar', default=False, help="Boolean flag to indicate this is a retionotopy-style run")
 
     parser.add_option('-p', '--pupil', action='store', dest='pupil_thresh', default=None, help='manual pupil threshold')
@@ -332,6 +334,10 @@ def process_data(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    slurm = options.slurm
+    if slurm is True and 'coxfs' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
+
     retinobar = options.retinobar
 
     pupil_thresh = options.pupil_thresh
@@ -1095,6 +1101,9 @@ def parse_data(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    slurm = options.slurm
+    if slurm is True and 'coxfs' not in rootdir:
+        rootdir = '/n/coxfs01/2p-data'
 
     baseline_time = options.baseline
 
