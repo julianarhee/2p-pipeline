@@ -925,8 +925,9 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
 #    else:
 #        eye_info_exists = False
 
-    for roi in roi_list:
-        print "      ... processing %s" % roi
+    for ri,roi in enumerate(roi_list):
+        if ri % 10 == 0:
+            print "      ... processing %i (of %i)" % (ri, len(roi_list))
         metrics_df = []
         for config in config_list:
             if is_dataframe:
@@ -1231,8 +1232,9 @@ def collate_roi_stats(METRICS, configs):
 
     # Sort metrics by stimulus-params and calculate sumamry stats:
     roistats_df =[]
-    for roi in sorted(METRICS.keys(), key=natural_keys):
-        print roi
+    for ri,roi in enumerate(sorted(METRICS.keys(), key=natural_keys)):
+        if ri % 10 == 0:
+            print "... collating %i of %i rois" % (ri, len(METRICS.keys()))
         for config in sorted(configs.keys(), key = natural_keys):
             DF = METRICS[roi][METRICS[roi]['config'] == config]
             all_trials = sorted(list(set(DF['trial'])), key=natural_keys)
