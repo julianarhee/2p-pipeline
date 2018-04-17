@@ -313,7 +313,7 @@ for ridx in range(nrois):
     msk = masktmp.copy() #.copy().astype('float')
     msk[msk == 0] = np.nan
     ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
-    print ridx, masktmp.max()
+    #print ridx, masktmp.max()
     if masktmp.max() > 0:
         [ys, xs] = np.where(masktmp>0)
         ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
