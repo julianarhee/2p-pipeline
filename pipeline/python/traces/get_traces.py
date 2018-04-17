@@ -164,36 +164,80 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
+def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
+
+    mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+    excluded_tiffs = TID['PARAMS']['excluded_tiffs']
+
+
     maskinfo = dict()
     try:
-        maskfile = h5py.File(mask_path, "r")
-        is_3D = bool(maskfile.attrs['is_3D'])
+        maskfile = h5py.File(mask_path, 'r')
+        is_3D = maskfile.attrs['is_3D'] in ['True']
 
-        # identify tiff source:
+        # Identify tiff source for ROIs:
         roidict_path = os.path.join(rootdir, maskfile.attrs['animal'], maskfile.attrs['session'], 'ROIs', 'rids_%s.json' % maskfile.attrs['session'])
         with open(roidict_path, 'r') as f:
             roidict = json.load(f)
         roi_tiff_src = roidict[maskfile.attrs['roi_id']]['SRC']
         if rootdir not in roi_tiff_src:
             roi_tiff_src = replace_root(roi_tiff_src, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
-        ntiffs = len([f for f in os.listdir(roi_tiff_src) if f.endswith('tif')])
 
+        # Check whether ROI tiffs are same src as TRACE ID tiffs:
+        trace_tiff_src = TID['SRC']
+        if rootdir not in trace_tiff_src:
+            trace_tiff_src = replace_root(trace_tiff_src, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
 
-        # Get files for which there are ROIs in this set:
+        # Get n tiffs from TRACE source:
+        ntiffs = len([f for f in os.listdir(trace_tiff_src) if f.endswith('tif')])
+
+        # Get files from which ROIs were extracted in this set:
         maskfiles = maskfile.keys()
         print "MASK FILES:", len(maskfiles)
         if len(maskfiles) == 1:
-            #ntiffs = maskfile.attrs['ntiffs_in_set']
-            filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
-            filenames = sorted([ f for f in filenames if f not in excluded_tiffs], key=natural_keys)
             ref_file = maskfiles[0]
-            print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
             single_reference = True
         else:
-            filenames = maskfile.keys()
+            ref_file = None
             single_reference = False
-            ref_file = None #RID['PARAMS']['options']['ref_file']
+
+        # Get zproj source base dir:
+        # For now, assuming preprocessing + motion-correction output of fmt:
+        # <...>_ZPROJ_deinterleaved/Channel01/File003 -- only take up to the Channel-dir
+        if 'source' not in maskfile[maskfile.keys()[0]].attrs.keys():
+            rid_zproj_basedir = os.path.split(maskfile[maskfile.keys()[0]]['masks'].attrs['source'])[0]
+        else:
+            rid_zproj_basedir = os.path.split(maskfile[maskfile.keys()[0]].attrs['source'])[0]
+        sigchannel_dirname = os.path.split(rid_zproj_basedir)[-1]
+
+        # Get reference file in current trace id set (just use reference from processed dir)
+        if roi_tiff_src == trace_tiff_src:
+            matched_sources = True
+            if len(maskfiles) == 1:
+                ref_file = maskfiles[0]  # REF FILE just is the one used to extract ROIs
+            else:
+                ref_file = None          # REF FILE doesn't exist, since ROIs extracted from each tif in set
+            zproj_source_dir = rid_zproj_basedir
+        else:
+            matched_sources = False
+            # Identify which file was used as reference, assuming tiffs were preprocessed and motion-corrected:
+            if 'mcorrected' in trace_tiff_src:
+                # Walk backward from standard motion-correction output-dir formatting
+                # to get filepath parts we need:
+                processed_dir = os.path.split(trace_tiff_src.split('/mcorrected')[0])[0]
+                process_name =  os.path.split(trace_tiff_src.split('/mcorrected')[0])[1]
+                run_name = os.path.split(os.path.split(processed_dir)[0])[-1]
+                with open(os.path.join(processed_dir, 'pids_%s.json' % run_name), 'r') as f:
+                    pdict = json.load(f)
+                ref_file = 'File%03d' % int(pdict[process_name.split('_')[0]]['PARAMS']['motion']['ref_file'])
+            # Get corresponding zproj source dir:
+            zproj_source_dir = '%s_mean_deinterleaved/%s' % (trace_tiff_src, sigchannel_dirname)
+
+        # Get list of files in current trace set:
+        filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
+        filenames = sorted([ f for f in filenames if f not in excluded_tiffs], key=natural_keys)
+        print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
+
 
         # Check if masks are split up by slices: (Matlab, manual2D methods are diff)
         if type(maskfile[maskfiles[0]]['masks']) == h5py.Dataset:
@@ -224,8 +268,74 @@ def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2
     maskinfo['is_slice_format'] = slice_masks
     maskinfo['roi_slices'] = roi_slices
     maskinfo['filepath'] = mask_path
+    maskinfo['matched_sources'] = matched_sources
+    maskinfo['zproj_source'] = zproj_source_dir
 
     return maskinfo
+
+#def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
+#    maskinfo = dict()
+#    try:
+#        maskfile = h5py.File(mask_path, "r")
+#        is_3D = bool(maskfile.attrs['is_3D'])
+#
+#        # identify tiff source:
+#        roidict_path = os.path.join(rootdir, maskfile.attrs['animal'], maskfile.attrs['session'], 'ROIs', 'rids_%s.json' % maskfile.attrs['session'])
+#        with open(roidict_path, 'r') as f:
+#            roidict = json.load(f)
+#        roi_tiff_src = roidict[maskfile.attrs['roi_id']]['SRC']
+#
+#        if rootdir not in roi_tiff_src:
+#            roi_tiff_src = replace_root(roi_tiff_src, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
+#        ntiffs = len([f for f in os.listdir(roi_tiff_src) if f.endswith('tif')])
+#
+#
+#        # Get files for which there are ROIs in this set:
+#        maskfiles = maskfile.keys()
+#        print "MASK FILES:", len(maskfiles)
+#        if len(maskfiles) == 1:
+#            #ntiffs = maskfile.attrs['ntiffs_in_set']
+#            filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
+#            filenames = sorted([ f for f in filenames if f not in excluded_tiffs], key=natural_keys)
+#            ref_file = maskfiles[0]
+#            print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
+#            single_reference = True
+#        else:
+#            filenames = maskfile.keys()
+#            single_reference = False
+#            ref_file = None #RID['PARAMS']['options']['ref_file']
+#
+#        # Check if masks are split up by slices: (Matlab, manual2D methods are diff)
+#        if type(maskfile[maskfiles[0]]['masks']) == h5py.Dataset:
+#            slice_masks = False
+#        else:
+#            slice_keys = [s for s in maskfile[maskfiles[0]]['masks'].keys() if 'Slice' in s]
+#            if len(slice_keys) > 0:
+#                slice_masks = True
+#            else:
+#                slice_masks = False
+#
+#        # Get slices for which there are ROIs in this set:
+#        if slice_masks:
+#            roi_slices = sorted([str(s) for s in maskfile[maskfiles[0]]['masks'].keys()], key=natural_keys)
+#        else:
+#            roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
+#    except Exception as e:
+#        traceback.print_exc()
+#        print "Error loading mask info..."
+#        print "Mask path was: %s" % mask_path
+#    #finally:
+#        #maskfile.close()
+#
+#    maskinfo['filenames'] = filenames
+#    maskinfo['ref_file'] = ref_file
+#    maskinfo['is_single_reference'] = single_reference
+#    maskinfo['is_3D'] = is_3D
+#    maskinfo['is_slice_format'] = slice_masks
+#    maskinfo['roi_slices'] = roi_slices
+#    maskinfo['filepath'] = mask_path
+#
+#    return maskinfo
 
 #%%
 def masks_to_normed_array(masks):
@@ -409,11 +519,12 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
             else:
                 maskfile_key = curr_file
 
-            # Get base dir of zprojected images:
-            if 'source' not in maskfile[maskfile_key].attrs.keys():
-                zproj_source_dir = os.path.split(maskfile[maskfile_key]['masks'].attrs['source'])[0]  # .../mean_slices_dir/Channel01/File00X
-            else:
-                zproj_source_dir = os.path.split(maskfile[maskfile_key].attrs['source'])[0]
+            # Get base dir of zprojected images -- this is the DETINERLEAVED
+            # zproj-dir in 'processed' folder, specifying Channel and File.
+            # This format is assumed since we save the REFERENCE info as source.
+            zproj_source_dir = maskinfo['zproj_source']
+
+            # Tmp fix:  renamed zproj-dirs with "deinterleaved" (old way: "slices")
             if '_slices' in zproj_source_dir:
                 if '_mean_' in zproj_source_dir:
                     zproj_source_dir = zproj_source_dir.replace('_mean_slices', '_mean_deinterleaved')
@@ -1577,7 +1688,10 @@ def load_TID_roiset(TID, rootdir):
     return RID
 
 #%%
-def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, np_method=None, do_neuropil_correction=True, plot_neuropil=True, niter=3, rootdir='', create_new=False):
+def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
+                              np_method=None, do_neuropil_correction=True,
+                              plot_neuropil=True, niter=3, rootdir='',
+                              create_new=False):
     '''
     For each specified SLICE in this ROI set, create 2D mask array.
     Save as standardized format to disk...
@@ -1592,10 +1706,12 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, np_met
 
     '''
 
-    mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+
 
     # Get mask info (is3D, normalize, by-slice, etc.):
-    maskinfo = get_mask_info(mask_path, nslices=nslices, rootdir=rootdir, excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
+    #mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+    #maskinfo = get_mask_info(mask_path, nslices=nslices, rootdir=rootdir, excluded_tiffs=TID['PARAMS']['excluded_tiffs'])
+    maskinfo = get_mask_info(TID, RID, nslices=nslices, rootdir=rootdir)
 
     # Check if formatted MASKS dict exists and load, otherwise, create new:
     maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
@@ -1613,7 +1729,8 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, np_met
 
     maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
     if create_new is True or not len(maskfigs)==len(maskinfo['filenames']):
-        print "Removing old mask files..."
+        if len(maskfigs) > 0:
+            print "Removing old mask files..."
         for f in maskfigs:
             os.remove(os.path.join(mask_figdir, f))
         print "Plotting new mask figures."
@@ -1626,6 +1743,10 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True, np_met
             plot_roi_masks(TID, RID, plot_neuropil=plot_neuropil, mask_figdir=mask_figdir, rootdir=rootdir)
 
     return maskinfo, maskdict_path
+
+#%%
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180413', '-A', 'FOV1_zoom1x', '-R', 'gratings_run2',
+        '-t', 'traces001', '--np=subtract', '--neuropil', '--append']
 
 #%%
 def extract_traces(options):
@@ -1742,8 +1863,8 @@ def extract_traces(options):
                                                         do_neuropil_correction=do_neuropil_correction,
                                                         plot_neuropil=plot_neuropil,
                                                         niter=np_niterations,
-                                                        rootdir=rootdir, 
-							create_new=create_new)
+                                                        rootdir=rootdir,
+                                                        create_new=create_new)
 
     print "TID %s - Got mask info from ROI set %s." % (TID['trace_hash'], RID['roi_id'])
     print_elapsed_time(t_mask)
