@@ -9,7 +9,7 @@ clc; clear all;
 
 rootdir = '/mnt/odyssey'
 animalid = 'CE077' %'JR063';
-session = '20180326' %'20171202_JR063';
+session = '20180413' %'20171202_JR063';
 roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
@@ -88,9 +88,9 @@ else
 end
     
 if length(runinfo.slices) > 1
-    is_3D = false;
+    is_3D = true
 else
-    is_3D = true;
+    is_3D = false
 end
 
 %% Get AVERAGE SLICE files:
