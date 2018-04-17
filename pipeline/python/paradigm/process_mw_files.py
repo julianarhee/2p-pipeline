@@ -505,7 +505,7 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
 
 #%%
 
-def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True):
+def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, boundidx=0):
     """
     Open MW file and get time-stamped boundaries for acquisition.
 
@@ -663,7 +663,7 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
 
     print "Current file: ", curr_dfn
     if retinobar is True:
-        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run)
+        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx)
     else:
         pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
 
