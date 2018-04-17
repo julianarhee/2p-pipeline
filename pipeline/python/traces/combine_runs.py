@@ -86,7 +86,7 @@ def get_info_for_runs(run_list, traceid_list, trace_type, acquisition_dir):
 #%%
 def roidata_collate_runs(data_fpaths):
 
-    run_list = data_fpaths.keys()
+    run_list = sorted(data_fpaths.keys(), key=natural_keys)
     print "Collating data across %i runs." % len(run_list)
 
     t_collate = time.time()
