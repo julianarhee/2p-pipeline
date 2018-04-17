@@ -240,8 +240,9 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
     if len(existing_stats) > 0:
         existing_stats_path = os.path.join(combined_metrics_dir, existing_stats[-1])
         statsdf = pd.HDFStore(existing_stats_path, 'r')
-        if datakey in statsdf.keys():
-            STATS = statsdf[datakey]
+        print "STATS keys:", statsdf.keys()
+        if '/%s' % datakey in statsdf.keys():
+            STATS = statsdf['/%s' % datakey]
         else:
             STATS = statsdf['/df']
         #STATS = pd.read_hdf(existing_stats_path, datakey, mode='r')
@@ -512,6 +513,7 @@ def combine_runs_and_plot(options):
 
     # Load combined dataframe, or create new, if none exists:
     DATA, datakey = get_combined_data(run_list, traceid_list, combined_tracedir, trace_type, combine_new=combine_new)
+    print "Loaded DATA. Found datakey is: %s" % datakey
 
     # Load common stim-config info:
     with open(os.path.join(combined_tracedir, 'stimulus_configs.json'), 'r') as f:
