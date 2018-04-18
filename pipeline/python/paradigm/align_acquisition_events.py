@@ -177,7 +177,10 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
     ### Get PARADIGM INFO if using standard MW:
     # -------------------------------------------------------------------------
     try:
-        trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')][0]
+        trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')]
+        assert len(trial_fn)==1, "Unable to find unique trials .json in %s" % paradigm_dir
+        trial_fn = trial_fn[0]
+        #print paradigm_dir
         parsed_trials_path = os.path.join(paradigm_dir, trial_fn)
         trialdict = load_parsed_trials(parsed_trials_path)
         trial_list = sorted(trialdict.keys(), key=natural_keys)
@@ -668,7 +671,7 @@ def group_rois_by_trial_type(traceid_dir, parsed_frames_filepath, trial_info, si
 
 
 #%%
-def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='raw', eye_info=None):
+def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trace_type='raw', eye_info=None):
     print "-------------------------------------------------------------------"
     print "Aligning TRACES into parsed trials by stimulus type."
 
@@ -680,12 +683,15 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
     else:
         stimtype = 'image'
 
+
+
     # Load ROI list and traces:
     roi_trials = h5py.File(roi_trials_by_stim_path, 'r')
     roi_list = sorted(roi_trials[roi_trials.keys()[0]].keys(), key=natural_keys)
 
     # Get info for TRIAL EPOCH for alignment:
     volumerate = trial_info['volumerate'] #parsed_frames.attrs['volumerate']
+    framerate = trial_info['framerate']
     iti_pre = trial_info['iti_pre']
     nframes_on = trial_info['nframes_on'] #parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
     stim_dur = trial_info['stim_on_sec'] #trialdict['trial00001']['stim_dur_ms']/1E3
@@ -696,7 +702,8 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
     try:
         for roi in roi_list:
             roi_dfs = []
-            for configname in config_list: #sorted(ROIs.keys(), key=natural_key):
+
+            for configname in sorted(config_list, key=natural_keys): #sorted(ROIs.keys(), key=natural_key):
 
                 curr_slice = roi_trials[configname][roi].attrs['slice']
                 roi_in_slice = roi_trials[configname][roi].attrs['idx_in_slice']
@@ -707,11 +714,16 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                 # initialize TRIALMAT: each row is a trial, each column is a frame of that trial
                 trialmat = np.ones((ntrials, nvols)) * np.nan
                 dfmat = []
+                tsecmat = np.ones((ntrials, nvols)) * np.nan
 
                 # Identify the first frame (across all trials) that the stimulus comes on --
                 # This frame is the one we will align all other trials to.
                 first_on = int(min([[i for i in roi_trials[configname][roi][t].attrs['frame_idxs']].index(roi_trials[configname][roi][t].attrs['volume_stim_on']) for t in stim_trials]))
-                tsecs = (np.arange(0, nvols) - first_on ) / volumerate
+
+                #tsecs = (np.arange(0, nvols) - first_on ) / volumerate  # Using volumerate, since assuming we look at 1 roi on 1 slice
+                sidx = int(curr_slice[5:]) - 1 # Get slice index
+                nslices_full = si_info['nslices_full']
+                all_frame_idxs = np.array(si_info['frames_tsec'])[sidx::nslices_full]
 
                 # If stimulus is an object, we should parse the image name into
                 # object ID + transform type and level:
@@ -735,6 +747,9 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                             morphlevel = int(imname.split('_y')[0].split('morph')[-1])
 
                 for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                    frame_idxs = roi_trials[configname][roi][trial].attrs['frame_idxs']
+                    adj_frame_idxs = frame_idxs - roi_trials[configname][roi][trial].attrs['aux_file_idx'] * len(all_frame_idxs)
+                    tsecs = all_frame_idxs[adj_frame_idxs] - all_frame_idxs[adj_frame_idxs][first_on]
 
                     # Get raw (or other specified) timecourse for current trial:
                     trial_timecourse = roi_trials[configname][roi][trial][trace_type]
@@ -744,10 +759,13 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
 
                     # Align current trial frames to the "stim onset" point:
                     trialmat[tidx, first_on:first_on+len(trial_timecourse[curr_on:])] = trial_timecourse[curr_on:]
+                    tsecmat[tidx, first_on:first_on+len(tsecs[curr_on:])] = tsecs[curr_on:]
                     if first_on < curr_on:
                         trialmat[tidx, 0:first_on] = trial_timecourse[1:curr_on]
+                        tsecmat[tidx, 0:first_on] = tsecs[1:curr_on]
                     else:
                         trialmat[tidx, 0:first_on] = trial_timecourse[0:curr_on]
+                        tsecmat[tidx, 0:first_on] = tsecs[0:curr_on]
 
                     # Identify the baseline period in order to calculate DF/F.
                     # NOTE:  if baseline is nans or 0s, this is likely a "bad" ROI
@@ -774,12 +792,12 @@ def traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type='r
                                              'xpos': np.tile(configs[configname]['position'][0], (nframes,)),
                                              'ypos': np.tile(configs[configname]['position'][1], (nframes,)),
                                              'size': np.tile(configs[configname]['scale'][0], (nframes,)),
-                                             'tsec': tsecs,
-                                             'raw': trialmat[tidx,:],
+                                             'tsec': tsecmat[tidx, :], #tsecs,
+                                             'raw': trialmat[tidx, :],
                                              'df': df,
                                              'first_on': np.tile(first_on, (nframes,)),
                                              'nframes_on': np.tile(nframes_on, (nframes,)),
-                                             'nsecs_on': np.tile(nframes_on/volumerate, (nframes,)),
+                                             'nsecs_on': np.tile(nframes_on/framerate, (nframes,)),
                                              'slice': np.tile(curr_slice, (nframes,)),
                                              'roi_in_slice': np.tile(roi_in_slice, (nframes,)) })
 
@@ -1383,7 +1401,7 @@ def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, create_new=
         print "Moving old ROIDATA files..."
 
         # Align extracted traces into trials, and create dataframe:
-        DATA = traces_to_trials(trial_info, configs, roi_trials_by_stim_path, trace_type=trace_type, eye_info=eye_info)
+        DATA = traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trace_type=trace_type, eye_info=eye_info)
 
         # Save dataframe with same datestr as roi_trials.hdf5 file in traceid dir:
         datastore = pd.HDFStore(roidata_filepath, 'w')
