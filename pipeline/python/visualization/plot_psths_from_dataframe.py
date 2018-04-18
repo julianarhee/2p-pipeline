@@ -84,7 +84,8 @@ def get_facet_stats(config_list, g, value='df'):
     return plotstats
 
 #%%
-def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='psth', trace_color='k', stimbar_color='r', save_and_close=True):
+def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='psth',
+                  trace_color='k', stimbar_color='r', save_and_close=True):
 
     #roi = list(set(roiDF['roi']))[0]
 
@@ -147,37 +148,44 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         for objectid in list(set(roiDF[object_sorter])):
             currdf = roiDF[roiDF[object_sorter] == objectid]
             figpath = os.path.join(figdir, '%s_%s%s_%s.png' % (prefix, object_sorter, objectid, figbase))
-            draw_psth(roi, currdf, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
+            draw_psth(roi, currdf, objectid, trans_types, rows, columns, row_order, col_order,
+                      figpath=figpath, trace_color=trace_color, stimbar_color=stimbar_color,
+                      save_and_close=save_and_close)
     else:
         objectid = 'all'
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
-        draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=save_and_close)
+        draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order,
+                  figpath=figpath, trace_color=trace_color, stimbar_color=stimbar_color,
+                  save_and_close=save_and_close)
 
 #%%
-def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, trace_color, stimbar_color, figpath, save_and_close=True):
+def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_order, figpath, trace_color='k', stimbar_color='r', save_and_close=True):
+
+    sns.set()
 
     #roi = list(set(roiDF['roi']))[0]
-    config_list = list(set(roiDF['config']))
+    config_list = list(set(rDF['config']))
 
 #    funky_trials = [trial for trial in list(set(roiDF['trial'])) if max(roiDF[roiDF['trial']==trial]['df'])>10]
 #    funky_idxs = roiDF.index[roiDF['trial'].isin(funky_trials)].tolist()
 #    roiDF.loc[funky_idxs, 'df'] = np.nan
 
     # Add n trials to each subplot:
-    ntrials = dict((c, len(list(set(roiDF[roiDF['config']==c]['trial'])))) for c in config_list)
+    ntrials = dict((c, len(list(set(rDF[rDF['config']==c]['trial'])))) for c in config_list)
 
-    first_on = list(set(roiDF['first_on']))[0]
-    nsecs_on = list(set(roiDF['nsecs_on']))[0]
-    tsecs = sorted(list(set(roiDF['tsec'])))
+    first_on = list(set(rDF['first_on']))[0]
+    nsecs_on = list(set(rDF['nsecs_on']))[0]
+    #tsecs = sorted(list(set(roiDF['tsec'])))
 
     #pl.figure()
     plot_vars = ['trial', 'df', 'tsec', rows, columns]
     plot_vars.extend([t for t in trans_types if t not in plot_vars])
 
-    subDF = roiDF[plot_vars]
+    subDF = rDF[plot_vars]
     g1 = sns.FacetGrid(subDF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
     g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
     #plotstats = get_facet_stats(config_list, g1, value='df')
+    pl.subplots_adjust(top=0.78)
 
     nrows = len(g1.row_names)
     ncols = len(g1.col_names)
@@ -190,17 +198,26 @@ def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_o
             dfmat = []
             tmat = []
             for trial in list(set(configDF['trial'])):
-                dfmat.append(np.array(configDF[configDF['trial']==trial]['df'][:]))
-                tmat.append(np.array(configDF[configDF['trial']==trial]['tsec'][:]))
+                dfmat.append(np.array(configDF[configDF['trial']==trial]['df']))
+                tmat.append(np.array(configDF[configDF['trial']==trial]['tsec']))
             dfmat = np.array(dfmat); tmat = np.array(tmat);
             curr_ntrials = dfmat.shape[0]
+            # Plot MEAN DF trace:
             mean_df = np.mean(dfmat, axis=0)
             mean_tsec = np.mean(tmat, axis=0)
+            # Set y-value for stimulus-bar position:
             if ri == 0 and ci == 0:
-                stimbar_pos = dfmat.min() - dfmat.min()*-.25
+                stimbar_pos = np.nanmin(dfmat) - np.nanmin(dfmat) *-.25
+            # Plot:
             currax.plot(mean_tsec, mean_df, trace_color, linewidth=1, alpha=1)
             currax.plot([mean_tsec[first_on], mean_tsec[first_on]+nsecs_on], [stimbar_pos, stimbar_pos], stimbar_color, linewidth=2, alpha=1)
             currax.annotate("n = %i" % curr_ntrials, xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
+#            if not ci % ncols == 0:
+#                print ci
+#                # Remove the y-axis label
+#                currax.set_ylabel('')
+#                currax.set_yticks(())
+
 
     # Get mean trace:
 #    meandfs = {}
@@ -211,10 +228,10 @@ def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_o
 #        currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
 #        currax.annotate("n = %i" % ntrials[config], xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
 
-    sns.despine(offset=2, trim=True)
+    #sns.despine(offset=2, trim=True)
     #%
-    pl.subplots_adjust(top=0.9)
-    g1.fig.suptitle("%s - stim%s" % (roi, objectid))
+    pl.subplots_adjust(top=0.78)
+    g1.fig.suptitle("%s - stim %s" % (roi, objectid))
 
     if save_and_close is True:
         g1.savefig(figpath)
@@ -784,6 +801,15 @@ def extract_options(options):
 #        '--omit-trials', '--psth', '--tuning',
 #        '-T', 'raw']
 
+
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412',
+#        '-A', 'FOV1_zoom1x', '-R', 'blobs_run3', '-t', 'traces001',
+#        '--no-pupil',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'raw']
+
+
+#%%
 def plot_roi_figures(options):
     options = extract_options(options)
 
@@ -862,7 +888,7 @@ def plot_roi_figures(options):
     # Set paths toi ROIDATA_, roi_metrics_, and roi_stats_:
     roistats_filepath = [os.path.join(traceid_dir, 'metrics', selected_metric, f)
                             for f in os.listdir(os.path.join(traceid_dir, 'metrics', selected_metric))
-                            if 'roi_stats_' in f  and trace_type in f and f.endswith('hdf5')][0]
+                            if 'roi_stats_' in f and trace_type in f and f.endswith('hdf5')][0]
 
     roidata_filepath = [os.path.join(traceid_dir, f)
                             for f in os.listdir(traceid_dir)
