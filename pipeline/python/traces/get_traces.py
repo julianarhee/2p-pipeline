@@ -570,7 +570,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                             warp_img_dir = os.path.join(traceid_dir, 'figures', 'masks', 'warps')
                             if not os.path.exists(warp_img_dir):
                                 os.makedirs(warp_img_dir)
-                            print "Saving warp imgs to: %s" % warp_img_dir
+                            print "%s - %s: Saving warp imgs to %s" % (curr_slice, curr_file, warp_img_dir)
                             warp_img_path = os.path.join(warp_img_dir, 'warped_rois_r%s_to_%s_%s.png' % (maskinfo['ref_file'], curr_file, curr_slice))
                         else:
                             warp_img_path = ''
@@ -650,8 +650,19 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
 
     print "Plotting masks for %i files." % len(MASKS.keys())
     filenames = [k for k in MASKS.keys() if 'File' in k]
+
+    #Save slices in separate dirs:
+    multislice = len(MASKS[filenames[0]].keys()) > 1
+
     for curr_file in sorted(filenames, key=natural_keys): #sorted(MASKS.keys(), key=natural_keys):
         for curr_slice in sorted(MASKS[curr_file].keys(), key=natural_keys):
+            if multislice is True:
+                save_dir = os.path.join(mask_figdir, curr_slice)
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+            else:
+                save_dir = mask_figdir
+
             curr_rois = MASKS[curr_file][curr_slice]['maskarray'].attrs['rois']
             nrois = len(curr_rois)
 
@@ -659,7 +670,7 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
             dims = avg.shape
 
             nb = MASKS[curr_file][curr_slice]['maskarray'].attrs['nb']
-            maskarray = MASKS[curr_file][curr_slice]['maskarray'][:]
+            maskarray= MASKS[curr_file][curr_slice]['maskarray'][:]
 
             print "--- Mask array: %i ROIs on %s, %s" % (len(curr_rois), curr_file, curr_slice)
             fig = pl.figure()
@@ -703,7 +714,7 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
                         if np.isnan(masktmp).all():
                             ax.text(1, 1, '%i - no mask' % int(ridx+1), fontsize=8, weight='light', color='r')
                         else:
-                            ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
+                            ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r, vmin=0, vmax=1.0)
                             [ys, xs] = np.where(masktmp>0)
                             ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
                     is_bg = False
@@ -723,7 +734,7 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
             else:
                 figname = 'rois_%s_%s_%s_%s.png' % (curr_file, curr_slice, RID['roi_id'], RID['rid_hash'])
 
-            pl.savefig(os.path.join(mask_figdir, figname))
+            pl.savefig(os.path.join(save_dir, figname))
             pl.close()
 
 
@@ -818,7 +829,8 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, do_neuropil_correction=True
 
             # Save NEUROPIL traces and neurpil-CORRECTED traces, if relevant:
             if do_neuropil_correction is True and 'np_maskarray' in MASKS[curr_file][curr_slice].keys():
-                np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
+                print "-- -- -- + neuropil subtraction"
+                np_maskarray = np.array(MASKS[curr_file][curr_slice]['np_maskarray']) #[:]
                 np_tracemat = tiffslice.dot(np_maskarray)
                 np_corrected = tracemat - (cfactor * np_tracemat)
                 np_traces = file_grp.create_dataset('/'.join([curr_slice, 'traces', 'neuropil']), np_tracemat.shape, np_tracemat.dtype)
@@ -1016,25 +1028,34 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
         # -----------------------------------------------------------------------------
         tmp_tracestruct = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fns[0]), 'r')
         ntiffs = si_info['ntiffs']
+        nslices = si_info['nslices']
+        nslices_full = si_info['nslices_full']
         dims = tmp_tracestruct.attrs['dims']
-        total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs #tmp_tracestruct['Slice01']['rawtraces'].shape[0] * ntiffs
+        all_frames_tsec = np.array(si_info['frames_tsec'])
+        #total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs * nslices_full
         tmp_tracestruct.close(); del tmp_tracestruct
 
-        nframes_in_file = si_info['nframes_per_file'] #uninfo['nvolumes']
+        #nframes_in_file = si_info['nframes_per_file'] #uninfo['nvolumes']
+        nframes_in_file_raw = si_info['nframes_per_file']
+        nframes_per_chunk = int(round(nframes_in_file_raw / nslices_full))
+        total_nframes_in_run = nframes_per_chunk * ntiffs
+
+        full_file_dur = all_frames_tsec[-1] + (1/si_info['framerate'])
+
         curr_frame_idx = 0
         tiff_start_fridxs = []
         for fi in range(ntiffs):
-            tiff_start_fridxs.append(fi * nframes_in_file)
+            tiff_start_fridxs.append(fi * nframes_per_chunk)
 
         try:
-            for filetraces_fn in sorted(filetraces_fns, key=natural_keys):
+            for fi, filetraces_fn in enumerate(sorted(filetraces_fns, key=natural_keys)):
                 fidx_in_run = int(filetraces_fn[4:7]) - 1 # Get IDX of tiff file in run (doesn't assume all tiffs continuous)
                 curr_frame_idx = tiff_start_fridxs[fidx_in_run]
                 #print "Loading file:", filetraces_fn
                 filetraces = h5py.File(os.path.join(traceid_dir, 'files', filetraces_fn), 'r')         # keys are SLICES (Slice01, Slice02, ...)
 
                 roi_counter = 0
-                for currslice in sorted(filetraces.keys(), key=natural_keys):
+                for sidx, currslice in enumerate(sorted(filetraces.keys(), key=natural_keys)):
                     #print "Loading slice:", currslice
 #                    maskarray = filetraces[currslice]['maskarray'][:]
 #                    d1, d2 = dims[0:2] #tracefile[currslice]['traces']'rawtraces'].attrs['dims'][0:-1]
@@ -1053,12 +1074,12 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
 #                            is_background = True
 #                            roiname = 'bg%02d' % bgidx
 #                        else:
-			is_background = False
-			roi_counter += 1
-			roiname = 'roi%05d' % int(roi_counter)
+                        is_background = False
+                        roi_counter += 1
+                        roiname = 'roi%05d' % int(roi_counter)
 
                         # Create unique ROI group:
-			if roiname not in roi_outfile.keys():
+                        if roiname not in roi_outfile.keys():
                             roi_grp = roi_outfile.create_group(roiname)
                             #roi_grp.attrs['slice'] = currslice
                             #roi_grp.attrs['roi_img_path'] = filetraces[currslice]['zproj'].attrs['img_source']
@@ -1090,8 +1111,15 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
                                 roi_tcourse = tcourse_grp.create_dataset(trace_type, (total_nframes_in_run,), curr_tcourse.dtype)
                             else:
                                 roi_tcourse = tcourse_grp[trace_type]
-                            roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_in_file] = curr_tcourse
+                            roi_tcourse[curr_frame_idx:curr_frame_idx+nframes_per_chunk] = curr_tcourse
                             roi_tcourse.attrs['source_file'] = os.path.join(traceid_dir, 'files', filetraces_fn)
+
+                        # Add raw time stamps:
+                        if 'frames_tsec' not in roi_grp.keys():
+                            tsec = roi_grp.create_dataset('frames_tsec', (total_nframes_in_run,), all_frames_tsec.dtype)
+                        else:
+                            tsec = roi_grp['frames_tsec']
+                        tsec[curr_frame_idx:curr_frame_idx+nframes_per_chunk] = all_frames_tsec[sidx::nslices_full] + (full_file_dur * fi)
 
                         #print "%s: added frames %i:%i, from %s." % (roiname, curr_frame_idx, curr_frame_idx+nframes_in_file, filetraces_fn)
         except Exception as e:
@@ -1525,8 +1553,8 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, create_n
     for tfpath in filetraces_fpaths:
         #tfpath = trace_file_paths[0]
         traces_currfile = h5py.File(tfpath, 'r+')
-        print "FILETRACES attrs:"
-        print traces_currfile.attrs.keys()
+        #print "FILETRACES attrs:"
+        #print traces_currfile.attrs.keys()
         fidx = int(os.path.split(tfpath)[-1].split('_')[0][4:]) - 1
         curr_file = "File%03d" % int(fidx+1)
         print "CFACTOR -- Appending neurpil corrected traces: %s" % curr_file
@@ -1534,7 +1562,7 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, create_n
             for curr_slice in traces_currfile.keys():
 
                 tracemat = np.array(traces_currfile[curr_slice]['traces']['raw'])
-                
+
                 # First check that neuropil traces don't already exist:
                 if 'neuropil' in traces_currfile[curr_slice]['traces'].keys() and create_new is False:
                     np_tracemat = np.array(traces_currfile[curr_slice]['traces']['neuropil'])
@@ -1548,7 +1576,7 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, create_n
                         overwrite_correctedmat = True
                     else:
                         overwrite_correctedmat = False
-                 
+
                 if overwrite_neuropil is True:
                     overwrite_correctedmat = True # always overwrite tracemat if new neuropil
 
@@ -1572,10 +1600,10 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, create_n
                     tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
                     tiffslice = tiffR[signal_channel_idx::nchannels,:]
                     print "SLICE shape is:", tiffslice.shape
-    
+
                     np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
                     np_tracemat = tiffslice.dot(np_maskarray)
-                
+
                 if overwrite_correctedmat is True:
                     np_correctedmat = tracemat - (cfactor * np_tracemat)
 
@@ -1663,7 +1691,7 @@ def extract_options(options):
 
 #%%
 
-def get_tiff_source(TID, rootdir):
+def get_tiff_source(TID, rootdir, animalid, session):
     trace_hash = TID['trace_hash']
     tiff_dir = TID['SRC']
     roi_name = TID['PARAMS']['roi_id']
@@ -1765,8 +1793,8 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
     return maskinfo, maskdict_path
 
 #%%
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180413', '-A', 'FOV1_zoom1x', '-R', 'gratings_run2',
-        '-t', 'traces001', '--np=subtract', '--neuropil', '--append']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412', '-A', 'FOV1_zoom1x', '-R', 'blobs_run3',
+#        '-t', 'traces001', '--np=subtract', '--neuropil', '--append', '--no-pupil', '--warp']
 
 #%%
 def extract_traces(options):
@@ -1850,7 +1878,7 @@ def extract_traces(options):
     #%
     # Get source tiff paths using trace-ID params:
     # =============================================================================
-    tiff_dir = get_tiff_source(TID, rootdir)
+    tiff_dir = get_tiff_source(TID, rootdir, animalid, session)
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
     print "Found %i tiffs in dir %s.\nExtracting traces with ROI set %s." % (len(tiff_files), tiff_dir, TID['PARAMS']['roi_id'])
 
@@ -1894,36 +1922,56 @@ def extract_traces(options):
     # Apply masks to .tif files:
     print "*** Extracting traces from each file."
     print "-----------------------------------------------------------------------"
-    maskfigs = [i for i in os.listdir(os.path.join(trace_figdir, 'masks')) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
-
     filetraces_fns = [f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')]
-    print "N mask imgs:", len(maskfigs), "N trace files:", len(filetraces_fns)
-    if np_method!='fissa' and (len(filetraces_fns) != len(maskfigs) or create_new is True):
-        if create_new is False or len(filetraces_fns)==0:
-            print "...... Incorrect N=%i trace files found (expecting %i)." % (len(filetraces_fns), len(maskfigs))
+    mismatch= []
+    if si_info['nslices'] > 1:
+        for slicename in ['Slice%02d' % int(i+1) for i in range(si_info['nslices'])]:
+            maskfig_dir = os.path.join(trace_figdir, 'masks', slicename)
+            maskfigs = [i for i in os.listdir(maskfig_dir) if i.endswith('png') and 'np_' not in i]
+            print "...... N=%i trace files found (expecting %i)." % (len(filetraces_fns), len(maskfigs))
+            mismatch.append(len(filetraces_fns) != len(maskfigs))
+    else:
+        maskfigs = [i for i in os.listdir(os.path.join(trace_figdir, 'masks')) if i.endswith('png') and 'np_' not in i]
+        print "...... N=%i trace files found (expecting %i)." % (len(filetraces_fns), len(maskfigs))
+        mismatch.append(len(filetraces_fns) != len(maskfigs))
+
+    if any(mismatch):
+        create_new = True
+
+    # 1)  If np_method == 'fissa', raw trace extraction and neuropil-subtraction
+    # happens simultaneously (unless "--append" is specified, i.e., raw traces
+    # were already extracted).
+    if np_method!='fissa' and create_new is True:
+        if len(filetraces_fns)==0:
             print "...... Creating new file-trace files."
         else:
-            print "...... Creating new!"
+            print "...... Rewriting file-trace files."
         filetraces_dir = apply_masks_to_movies(TID, RID, si_info,
                                                   do_neuropil_correction=do_neuropil_correction,
                                                   cfactor=np_correction_factor,
                                                   output_filedir=filetraces_dir,
                                                   rootdir=rootdir)
+        create_new = False # Re-toggle create-new, since traces now extracted.
 
-    # Do neuropil correction, if relevant:
+
+    # 2)  Do neuropil correction (& raw trace extraction) using FISSA method:
     if do_neuropil_correction is True and np_method == 'fissa':
         if create_new is True:
             redo_prep=True; redo_sep=True
         else:
             redo_prep=False; redo_sep=False
-        exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, redo_prep=redo_prep, redo_sep=redo_sep)
+        exp = get_fissa_object(TID, RID, rootdir=rootdir,
+                               ncores_prep=ncores, ncores_sep=ncores_sep,
+                               redo_prep=redo_prep, redo_sep=redo_sep)
         print "N files:", len(exp.rois)
         print "N rois:", len(exp.rois[0])
         print "N results:", len(exp.result)
         print "N means:", len(exp.means)
 
         # Create TRACEFILE files for each .tif, if none exist yet:
-        filetraces_fpaths = sorted([os.path.join(filetraces_dir, t) for t in os.listdir(filetraces_dir) if t.endswith('hdf5')], key=natural_keys)
+        filetraces_fpaths = sorted([os.path.join(filetraces_dir, t)
+                                        for t in os.listdir(filetraces_dir)
+                                        if t.endswith('hdf5')], key=natural_keys)
         if not len(filetraces_fpaths) == len(maskfigs):
             filetraces_dir = create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir=rootdir)
 
@@ -1934,13 +1982,16 @@ def extract_traces(options):
             append_trace_type = True
             create_new = True
 
+
     # Append non-raw traces, if relevant:
     update_roi_timecourses = False
     if append_trace_type:
         update_roi_timecourses = True
         print "Appending trace type!"
         if np_method == 'fissa':
-            exp = get_fissa_object(TID, RID, rootdir=rootdir, ncores_prep=ncores, ncores_sep=ncores_sep, append_only=True)
+            exp = get_fissa_object(TID, RID, rootdir=rootdir,
+                                   ncores_prep=ncores, ncores_sep=ncores_sep,
+                                   append_only=True)
             filetraces_dir = append_corrected_fissa(exp, filetraces_dir)
         elif np_method == 'subtract':
             # First make sure that MASKS.hdf5 in traceid dir contains np info:
@@ -1951,17 +2002,27 @@ def extract_traces(options):
             if 'np_maskarray' not in mtmp[lev1][lev2].keys():
                 mtmp.close()
                 print "--- Unable to find NEUROPIL mask info. Creating new."
-                maskdict_path = get_masks(maskdict_path, maskinfo, RID, do_neuropil_correction=True, niter=np_niterations, rootdir=rootdir)
+                maskdict_path = get_masks(maskdict_path, maskinfo, RID,
+                                          do_neuropil_correction=True,
+                                          niter=np_niterations,
+                                          rootdir=rootdir)
 
-            print "--- Using SUBTRACTION method, correction-factor specified was: ", np_correction_factor
-            filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, create_new=create_new, rootdir=rootdir)
+            print "--- Using SUBTRACTION method, (global) correction-factor: ", np_correction_factor
+            filetraces_dir = append_neuropil_subtraction(maskdict_path,
+                                                         np_correction_factor,
+                                                         filetraces_dir,
+                                                         create_new=create_new,
+                                                         rootdir=rootdir)
 
     #%
     # Organize timecourses by stim-type for each ROI:
     # -----------------------------------------------
     print "*** Creating ROI-TCOURSE file...."
     print "-----------------------------------------------------------------------"
-    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info, input_filedir=filetraces_dir, rootdir=rootdir, create_new=update_roi_timecourses)
+    roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info,
+                                               input_filedir=filetraces_dir,
+                                               rootdir=rootdir,
+                                               create_new=update_roi_timecourses)
     print "-----------------------------------------------------------------------"
 
     #% move tmp file and clean up:
@@ -1999,6 +2060,25 @@ def extract_traces(options):
     return roi_tcourse_filepath, roidata_filepath
 
 
+#%%
+#rdata = h5py.File(roi_tcourse_filepath, 'r')
+#pl.figure(); sns.distplot(np.diff(rdata['roi00001']['frames_tsec']))
+#Out[321]: <matplotlib.axes._subplots.AxesSubplot at 0x7f3dc962ead0>
+#
+#np.diff(rdata['roi00001']['frames_tsec'])
+#Out[322]:
+#array([ 0.06721005,  0.0672101 ,  0.0672102 , ...,  0.0672498 ,
+#        0.0672498 ,  0.0672498 ])
+#np.diff(rdata['roi00001']['frames_tsec']).min()
+#Out[323]: 0.067208268739022969
+#np.diff(rdata['roi00001']['frames_tsec']).max()
+#Out[324]: 0.067249800000013238
+#
+#1/si_info['framerate']
+#Out[325]: 0.022375018739078194
+#
+#1/si_info['volumerate']
+#Out[326]: 0.06712490602513156
 
 #%% GET PLOTS:
 def main(options):
