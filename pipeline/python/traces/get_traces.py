@@ -1952,6 +1952,8 @@ def extract_traces(options):
                                                   output_filedir=filetraces_dir,
                                                   rootdir=rootdir)
         create_new = False # Re-toggle create-new, since traces now extracted.
+        if np_method=='subtract':
+            append_trace_type = True
 
 
     # 2)  Do neuropil correction (& raw trace extraction) using FISSA method:
