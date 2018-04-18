@@ -457,6 +457,14 @@ def heatmapdat():
 #           '-R', 'blobs_run3', '-t', 'traces002',
 #           '-R', 'blobs_run4', '-t', 'traces002']
 #
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180413', '-A', 'FOV1_zoom1x',
+#           '-T', 'raw', '--no-pupil',
+#           '-R', 'gratings_run1', '-t', 'traces001',
+#           '-R', 'gratings_run2', '-t', 'traces001',
+#           '-R', 'gratings_run3', '-t', 'traces001',
+#           '-R', 'gratings_run4', '-t', 'traces001',
+#           '-R', 'gratings_run5', '-t', 'traces001'
+#           ]
 
 #%%
 
@@ -573,6 +581,8 @@ def combine_runs_and_plot(options):
                                          pupil_dist_thr=pupil_dist_thr
                                          )
 
+
+    #%%
     combined_runs_figdir_tuning = os.path.join(combined_tracedir, 'figures', 'tuning', trace_type, metric_type, selected_metric, visualization_method)
     if not os.path.exists(combined_runs_figdir_tuning):
         os.makedirs(combined_runs_figdir_tuning)
@@ -650,14 +660,23 @@ def combine_runs_and_plot(options):
     print "SPLITTING DATA FROM BOTH RUNS."
     print "------------------------------"
 
-    trial_list = sorted([str(t) for t in list(set(DATA['trial']))], key=natural_keys)
+    rdata = DATA[DATA['roi']==roi_list[0]]
+    #trial_list = sorted([str(t) for t in list(set(DATA['trial']))], key=natural_keys)
+    trial_list = [str(t) for t in list(set(rdata.sort_values(['config'])['trial']))]
     run_list = sorted(list(set(DATA['run'])), key=natural_keys)
 
     print "Found %i trials total across %i runs." % (len(trial_list), len(run_list))
 
     print "Splitting dataset by EVEN and ODD trials."
-    odd_trials = trial_list[0::2]
-    even_trials = trial_list[1::2]
+    odd_trials = []; even_trials = []
+    config_list = sorted(list(set(rdata['config'])), key=natural_keys)
+    for config in config_list:
+        curr_trials = sorted(list(set(rdata[rdata['config']==config]['trial'])), key=natural_keys)
+        odd_trials.extend(curr_trials[0::2])
+        even_trials.extend(curr_trials[1::2])
+
+#    odd_trials = trial_list[0::2]
+#    even_trials = trial_list[1::2]
 
     D1 = DATA.loc[DATA['trial'].isin(odd_trials)]
     D2 = DATA.loc[DATA['trial'].isin(even_trials)]
