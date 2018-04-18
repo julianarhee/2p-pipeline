@@ -1512,7 +1512,7 @@ def append_corrected_fissa(exp, filetraces_dir):
 
 #%%
 
-def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=''):
+def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, create_new=False, rootdir=''):
 
     #signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
 
@@ -1534,31 +1534,51 @@ def append_neuropil_subtraction(maskdict_path, cfactor, filetraces_dir, rootdir=
             for curr_slice in traces_currfile.keys():
 
                 tracemat = np.array(traces_currfile[curr_slice]['traces']['raw'])
+                
+                # First check that neuropil traces don't already exist:
+                if 'neuropil' in traces_currfile[curr_slice]['traces'].keys() and create_new is False:
+                    np_tracemat = np.array(traces_currfile[curr_slice]['traces']['neuropil'])
+                    overwrite_neuropil = False
+                else:
+                    overwrite_neuropil = True
 
-                # Load tiff:
-                tiffpath = traces_currfile.attrs['source_file']
-                print "Calculating neuropil from src: %s" % tiffpath
+                if 'np_subtracted' in traces_currfile[curr_slice]['traces'].keys() and create_new is False:
+                    np_correctedmat = np.array(traces_currfile[curr_slice]['traces']['np_subtracted'])
+                    if np.mean(np_correctedmat) == 0:
+                        overwrite_correctedmat = True
+                    else:
+                        overwrite_correctedmat = False
+                 
+                if overwrite_neuropil is True:
+                    overwrite_correctedmat = True # always overwrite tracemat if new neuropil
 
-                if rootdir not in tiffpath:
-                    session_dir = os.path.split(os.path.split(filetraces_dir.split('/traces')[0])[0])[0]
-                    info = get_info_from_tiff_dir(os.path.split(tiffpath)[0], session_dir)
-                    tiffpath = replace_root(tiffpath, rootdir, info['animalid'], info['session'])
+                    # Load tiff:
+                    tiffpath = traces_currfile.attrs['source_file']
+                    print "Calculating neuropil from src: %s" % tiffpath
 
-                tiff = tf.imread(tiffpath)
-                T, d1, d2 = tiff.shape
-                d = d1*d2
-                orig_mat_shape = traces_currfile[curr_slice]['traces']['raw'].shape
-                #orig_dims = traces_currfile.attrs['dims'] # (d1, d2, nslices, T)
-                nchannels = T/orig_mat_shape[0]
-                signal_channel_idx = int(traces_currfile.attrs['signal_channel']) - 1
+                    if rootdir not in tiffpath:
+                        session_dir = os.path.split(os.path.split(filetraces_dir.split('/traces')[0])[0])[0]
+                        info = get_info_from_tiff_dir(os.path.split(tiffpath)[0], session_dir)
+                        tiffpath = replace_root(tiffpath, rootdir, info['animalid'], info['session'])
 
-                tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
-                tiffslice = tiffR[signal_channel_idx::nchannels,:]
-                print "SLICE shape is:", tiffslice.shape
+                    tiff = tf.imread(tiffpath)
+                    T, d1, d2 = tiff.shape
+                    d = d1*d2
+                    orig_mat_shape = traces_currfile[curr_slice]['traces']['raw'].shape
+                    #orig_dims = traces_currfile.attrs['dims'] # (d1, d2, nslices, T)
+                    nchannels = T/orig_mat_shape[0]
+                    signal_channel_idx = int(traces_currfile.attrs['signal_channel']) - 1
 
-                np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
-                np_tracemat = tiffslice.dot(np_maskarray)
-                np_correctedmat = tracemat - (cfactor * np_tracemat)
+                    tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
+                    tiffslice = tiffR[signal_channel_idx::nchannels,:]
+                    print "SLICE shape is:", tiffslice.shape
+    
+                    np_maskarray = MASKS[curr_file][curr_slice]['np_maskarray'][:]
+                    np_tracemat = tiffslice.dot(np_maskarray)
+                
+                if overwrite_correctedmat is True:
+                    np_correctedmat = tracemat - (cfactor * np_tracemat)
+
                 if 'neuropil' not in traces_currfile[curr_slice]['traces'].keys():
                     np_traces = traces_currfile.create_dataset('/'.join([curr_slice, 'traces', 'neuropil']), np_tracemat.shape, np_tracemat.dtype)
                 else:
@@ -1934,7 +1954,7 @@ def extract_traces(options):
                 maskdict_path = get_masks(maskdict_path, maskinfo, RID, do_neuropil_correction=True, niter=np_niterations, rootdir=rootdir)
 
             print "--- Using SUBTRACTION method, correction-factor specified was: ", np_correction_factor
-            filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, rootdir=rootdir)
+            filetraces_dir = append_neuropil_subtraction(maskdict_path, np_correction_factor, filetraces_dir, create_new=create_new, rootdir=rootdir)
 
     #%
     # Organize timecourses by stim-type for each ROI:
