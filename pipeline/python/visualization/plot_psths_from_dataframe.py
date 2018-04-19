@@ -173,7 +173,7 @@ def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_ord
     # Add n trials to each subplot:
     ntrials = dict((c, len(list(set(rDF[rDF['config']==c]['trial'])))) for c in config_list)
 
-    first_on = list(set(rDF['first_on']))[0]
+    first_on = int(list(set(rDF['first_on']))[0])
     nsecs_on = list(set(rDF['nsecs_on']))[0]
     #tsecs = sorted(list(set(roiDF['tsec'])))
 
@@ -210,7 +210,7 @@ def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_ord
                 stimbar_pos = np.nanmin(dfmat) - np.nanmin(dfmat) *-.25
             # Plot:
             currax.plot(mean_tsec, mean_df, trace_color, linewidth=1, alpha=1)
-            currax.plot([mean_tsec[first_on], mean_tsec[first_on]+nsecs_on], [stimbar_pos, stimbar_pos], stimbar_color, linewidth=2, alpha=1)
+            currax.plot([mean_tsec[int(first_on)], mean_tsec[int(first_on)]+nsecs_on], [stimbar_pos, stimbar_pos], stimbar_color, linewidth=2, alpha=1)
             currax.annotate("n = %i" % curr_ntrials, xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
 #            if not ci % ncols == 0:
 #                print ci
