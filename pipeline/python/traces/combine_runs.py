@@ -127,14 +127,13 @@ def roidata_collate_runs(data_fpaths):
             f = lambda d: d.append(s, ignore_index=True)
             grp = np.arange(len(dfr_pad)) // (max_nframes-1)
             dfr_pad = dfr_pad.groupby(grp, group_keys=False).apply(f).reset_index(drop=True)
+            nan_rows = dfr_pad.loc[dfr_pad.isnull().all(axis=1)].index.tolist()
             for col in dfr_pad.columns:
                 if col in mat_vars:
                     continue
-                nan_rows = dfr_pad.loc[dfr_pad.isnull().all(axis=1)].index.tolist()
                 for nan_row in nan_rows:
-                    dfr_pad.loc[nan_row, col] = dfr_pad.loc[nan_row-1, col]
-                for trial in trials_to_pad:
-                    dfr_pad.loc[dfr_pad['trial']==trial, col] = dfr_pad[dfr_pad['trial']==trial][col][-2]
+                    dfr_pad.at[nan_row, col] = dfr_pad.loc[nan_row-1, col]
+
             dfr = pd.concat([dfr_fine, dfr_pad], axis=0, ignore_index=True)
 
             dfr['run'] = pd.Series(np.tile(run, (len(dfr .index),)), index=dfr.index)
@@ -504,11 +503,11 @@ def heatmapdat():
 #           '-R', 'gratings_run5', '-t', 'traces001'
 #           ]
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run3', '-t', 'traces001',
-           '-R', 'blobs_run4', '-t', 'traces001'
-           ]
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run3', '-t', 'traces001',
+#           '-R', 'blobs_run4', '-t', 'traces001'
+#           ]
 #%%
 
 def combine_runs_and_plot(options):
