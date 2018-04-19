@@ -91,18 +91,56 @@ def roidata_collate_runs(data_fpaths):
 
     t_collate = time.time()
     df_list = []
+    max_nframes_by_run = []
+    for run in run_list:
+        #print data_fpaths[run]['roidata_filepath']
+        df = pd.HDFStore(data_fpaths[run]['roidata_filepath'], 'r')
+        # First check that all trials across runs have same N frames:
+        tmpdf = df[df.keys()[0]]
+        tmp_tlist = list(set(tmpdf['trial']))
+        max_nframes_by_run.append( np.max([len(tmpdf[tmpdf['trial']==tr]['df']) for tr in tmp_tlist]) )
+
+    max_nframes = np.max(max_nframes_by_run)
+
     for run in run_list:
         print data_fpaths[run]['roidata_filepath']
         df = pd.HDFStore(data_fpaths[run]['roidata_filepath'], 'r')
+
+        tmpdf = df[df.keys()[0]]
+        tmp_tlist = list(set(tmpdf['trial']))
+        trials_to_pad = [t for t in tmp_tlist if not len(tmpdf[tmpdf['trial']==t]['df']) == max_nframes]
+        trials_fine = [t for t in tmp_tlist if len(tmpdf[tmpdf['trial']==t]['df']) == max_nframes]
+
         for roi in df.keys():
             if '/' in roi:
                 roiname = roi[1:]
             else:
                 roiname = roi
             dfr = df[roi]
+
+            # Pad trials that are 1-frame short:
+            dfr_fine = dfr[dfr['trial'].isin(trials_fine)]
+            dfr_pad = dfr[dfr['trial'].isin(trials_to_pad)]
+
+            mat_vars = ['df', 'raw', 'tsec']
+            s = pd.Series(np.nan, dfr_pad.columns)
+            f = lambda d: d.append(s, ignore_index=True)
+            grp = np.arange(len(dfr_pad)) // (max_nframes-1)
+            dfr_pad = dfr_pad.groupby(grp, group_keys=False).apply(f).reset_index(drop=True)
+            for col in dfr_pad.columns:
+                if col in mat_vars:
+                    continue
+                nan_rows = dfr_pad.loc[dfr_pad.isnull().all(axis=1)].index.tolist()
+                for nan_row in nan_rows:
+                    dfr_pad.loc[nan_row, col] = dfr_pad.loc[nan_row-1, col]
+                for trial in trials_to_pad:
+                    dfr_pad.loc[dfr_pad['trial']==trial, col] = dfr_pad[dfr_pad['trial']==trial][col][-2]
+            dfr = pd.concat([dfr_fine, dfr_pad], axis=0, ignore_index=True)
+
             dfr['run'] = pd.Series(np.tile(run, (len(dfr .index),)), index=dfr.index)
             dfr['roi'] = pd.Series(np.tile(roiname, (len(dfr .index),)), index=dfr.index)
             df_list.append(dfr)
+
     DATA = pd.concat(df_list, axis=0, ignore_index=True)
     print_elapsed_time(t_collate)
 
@@ -117,7 +155,7 @@ def reindex_data_fields(DATA, run_list, stimconfigs, combined_tracedir):
         ntrials[run] = len(list(set(DATA[DATA['run']==run]['trial'])))
 
     ntrials_to_add = 0
-    for idx,run in enumerate(run_list):
+    for idx,run in enumerate(sorted(run_list, key=natural_keys)):
         if idx == 0:
             continue
 
@@ -125,7 +163,7 @@ def reindex_data_fields(DATA, run_list, stimconfigs, combined_tracedir):
         ntrials_to_add += ntrials[run_list[idx-1]]
         print ntrials_to_add
 
-        for tidx,trial in enumerate(trial_list):
+        for tidx,trial in enumerate(sorted(trial_list, key=natural_keys)):
             old_trial_num = int(trial.split('trial')[-1])
             new_trial_num = old_trial_num + ntrials_to_add
             new_trial_name = 'trial%05d' % new_trial_num
@@ -465,7 +503,12 @@ def heatmapdat():
 #           '-R', 'gratings_run4', '-t', 'traces001',
 #           '-R', 'gratings_run5', '-t', 'traces001'
 #           ]
-
+#
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'blobs_run3', '-t', 'traces001',
+           '-R', 'blobs_run4', '-t', 'traces001'
+           ]
 #%%
 
 def combine_runs_and_plot(options):
