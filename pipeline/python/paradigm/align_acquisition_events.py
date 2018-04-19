@@ -911,7 +911,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
         roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
         config_list = sorted(list(set(DATA[DATA['roi']==roi_list[0]]['config'])), key=natural_keys)
         # Get nframes for trial epochs:
-        first_on = list(set(DATA[DATA['roi']==roi_list[0]]['first_on']))[0]
+        first_on = int(list(set(DATA[DATA['roi']==roi_list[0]]['first_on']))[0])
         nframes_on = int(round(list(set(DATA[DATA['roi']==roi_list[0]]['nframes_on']))[0]))
         # Check if eye info exists in DataFrame:
         if 'pupil_size_stimulus' in DATA[DATA['roi']==roi_list[0]].keys():
@@ -923,7 +923,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
         roi_list = sorted(DATA.keys(), key=natural_keys)
         config_list = sorted(list(set(DATA[roi_list[0]]['config'])), key=natural_keys)
         # Get nframes for trial epochs:
-        first_on = list(set(DATA[roi_list[0]]['first_on']))[0]
+        first_on = int(list(set(DATA[roi_list[0]]['first_on']))[0])
         nframes_on = int(round(list(set(DATA[roi_list[0]]['nframes_on']))[0]))
         # Check if eye info exists in DataFrame:
         if 'pupil_size_stimulus' in DATA[roi_list[0]].keys():
@@ -979,7 +979,7 @@ def calculate_metrics(DATA, filter_pupil=False, pupil_params=None):
             # Turn DF values into matrix with rows=trial, cols=df value for each frame:
             trials = np.vstack((filtered_DF.groupby(['trial'])['df'].apply(np.array)).as_matrix())
             #print trials.shape
-
+            #print 'FIRST ON IDX:', first_on
             std_baseline_values = np.nanstd(trials[:, 0:first_on], axis=1)
             mean_baseline_values = np.nanmean(trials[:, 0:first_on], axis=1)
             mean_stim_on_values = np.nanmean(trials[:, first_on:first_on+nframes_on], axis=1)
