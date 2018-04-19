@@ -752,6 +752,7 @@ def combine_runs_and_plot(options):
 
     roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
 
+    #%%
     metric_type = 'zscore'
 
     split_runs_tuning_figdir = os.path.join(combined_tracedir, 'figures', 'tuning_split') #, trace_type, metric_type, selected_metric, visualization_method)
@@ -819,11 +820,11 @@ def combine_runs_and_plot(options):
               trace_color=trace_color, stimbar_color=stimbar_color,
               )
 
-
+#
 #        vis.plot_roi_psth(roi, roiDF1, object_transformations, save_and_close=False)
 #
 #        vis.plot_roi_psth(roi, roiDF2, object_transformations, save_and_close=False)
-
+#
 
 
     #%% HSITOGRAM:   Get max zscore across all configs for each ROI:
