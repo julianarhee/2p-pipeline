@@ -244,16 +244,16 @@ def extract_options(options):
     return options
 
 #%%
-rootdir = '/mnt/odyssey'
-animalid = 'CE077'
-session = '20180412'
-acquisition = 'FOV2_zoom1x'
-run = 'blobs_run7'
-slurm = False
-retinobar = False
-phasemod = False
-trigger_varname = 'frame_trigger'
-stimorder_files = False
+#rootdir = '/mnt/odyssey'
+#animalid = 'CE077'
+#session = '20180412'
+#acquisition = 'FOV2_zoom1x'
+#run = 'blobs_run7'
+#slurm = False
+#retinobar = False
+#phasemod = False
+#trigger_varname = 'frame_trigger'
+#stimorder_files = False
 
 
 def parse_acquisition_events(run_dir, blank_start=True):
@@ -376,6 +376,10 @@ def parse_acquisition_events(run_dir, blank_start=True):
     return parsed_run_outfile
 
 #%%
+
+#options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180418', '-A', 'FOV1_zoom1x','-R', 'gratings_run2', '--phasemod']
+
+           #%%
 def main(options):
     # ================================================================================
     # MW trial extraction:
