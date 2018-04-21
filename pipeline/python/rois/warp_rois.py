@@ -5,6 +5,8 @@ Created on Thu Mar  8 13:49:03 2018
 
 @author: juliana
 """
+import matplotlib
+matplotlib.use('Agg')
 import os
 import json
 import h5py
@@ -100,6 +102,8 @@ RID = load_RID(session_dir, roi_id)
 
 # Set output paths:
 warp_output_dir = os.path.join(RID['DST'], 'warp_results')
+if rootdir not in warp_output_dir:
+    warp_output_dir = replace_root(warp_output_dir, rootdir, animalid, session)
 if not os.path.exists(warp_output_dir):
     os.makedirs(warp_output_dir)
 
