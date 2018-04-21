@@ -746,10 +746,24 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             yrot = int(imname.split('_y')[-1])
                             morphlevel = int(imname.split('_y')[0].split('morph')[-1])
 
-                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)):
+                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)[15:25]):
+                    #print trial
                     frame_idxs = roi_trials[configname][roi][trial].attrs['frame_idxs']
+                    #print frame_idxs
                     adj_frame_idxs = frame_idxs - roi_trials[configname][roi][trial].attrs['aux_file_idx'] * len(all_frame_idxs)
+
+                    # Check if last calculated frame is actually not included (can happend at end of .tif file):
+                    if adj_frame_idxs[-1] > len(all_frame_idxs):
+                        last_idx = [i for i in adj_frame_idxs].index(len(all_frame_idxs))
+                        trailing_frames = np.arange(last_idx, len(adj_frame_idxs))
+                        print "**WARNING: %i extra frames calculated for %s" % (len(trailing_frames), trial)
+                        adj_frame_idxs = adj_frame_idxs[0:last_idx]
+
                     tsecs = all_frame_idxs[adj_frame_idxs] - all_frame_idxs[adj_frame_idxs][first_on]
+                    if not (round(tsecs[0]) == -1 and round(tsecs[-1]) == 3):
+                        print "Bad trial indices found!", roi, configname, trial
+                        print "Aux file idx:", roi_trials[configname][roi][trial].attrs['aux_file_idx']
+                        print "tsecs:", tsecs
 
                     # Get raw (or other specified) timecourse for current trial:
                     trial_timecourse = roi_trials[configname][roi][trial][trace_type]
@@ -1506,10 +1520,10 @@ def extract_options(options):
 
 #%%
 
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180331', '-A', 'FOV1_zoom1x',
-#           '-R', 'blobs_run3',
-#           '-T', 'raw', '-t', 'traces001',
-#           '-s', '20', '-B', '80', '-d', '8']
+options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180419', '-A', 'FOV1_zoom1x',
+           '-R', 'blobs_run1',
+           '-T', 'np_subtracted', '-t', 'traces001',
+           '-s', '25', '-B', '75', '-d', '10']
 
  #%%
 # Set USER INPUT options:
