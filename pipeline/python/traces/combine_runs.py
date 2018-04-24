@@ -278,7 +278,9 @@ def get_combined_stats(DATA, datakey, combined_tracedir, trace_type='raw', filte
         existing_stats_path = os.path.join(combined_metrics_dir, existing_stats[-1])
         statsdf = pd.HDFStore(existing_stats_path, 'r')
         print "STATS keys:", statsdf.keys()
-        if '/%s' % datakey in statsdf.keys():
+        if len(statsdf.keys())==1:
+            STATS = statsdf[statsdf.keys()[0]]
+        elif '/%s' % datakey in statsdf.keys():
             STATS = statsdf['/%s' % datakey]
         else:
             STATS = statsdf['/df']
