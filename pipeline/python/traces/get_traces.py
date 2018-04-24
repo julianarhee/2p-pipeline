@@ -208,6 +208,8 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
             mask_source_dir = maskfile[maskfile.keys()[0]]['masks'].attrs['source']
         else:
             mask_source_dir = maskfile[maskfile.keys()[0]].attrs['source']
+        if rootdir not in mask_source_dir:
+            mask_source_dir = replace_root(mask_source_dir, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
         rid_zproj_basedir = os.path.split(mask_source_dir)[0]
         sigchannel_dirname = os.path.split(rid_zproj_basedir)[-1]
 
@@ -581,7 +583,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                         if maskinfo['matched_sources'] is False:
                             print "... loading ROI src reference img to warp."
                             ref_img_fpath = [os.path.join(maskinfo['roi_source_dir'], f)
-                                                for f in os.listdir(maskinfo['roi_source_dir'] if f.endswith('tif'))][0]
+                                                for f in os.listdir(maskinfo['roi_source_dir']) if f.endswith('tif')][0]
                             print "... %s" % ref_img_fpath
                         else:
                             zproj_base = os.path.split(curr_zproj_dir)[0]; ref = maskinfo['ref_file']
