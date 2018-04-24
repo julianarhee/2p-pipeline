@@ -69,6 +69,10 @@ parser.add_option('--par', action="store_true",
                   dest='multiproc', default=False, help="Use mp parallel processing to extract from tiffs at once, only if not slurm")
 parser.add_option('--format', action="store_true",
                   dest='format_only', default=False, help="Only format ROIs to standard (already extracted).")
+parser.add_option('--no-masks', action="store_false",
+                  dest='plot_masks', default=True, help="Don't plot mask overlays onto tif file imgs.")
+parser.add_option('--no-warps', action="store_false",
+                  dest='plot_warps', default=True, help="Don't plot warp overlays onto ref file img")
 
 (options, args) = parser.parse_args()
 
@@ -88,6 +92,8 @@ if slurm is True and 'coxfs01' not in rootdir:
 auto = options.default
 
 zproj_type = options.zproj_type
+plot_masks = options.plot_masks
+plot_warps = options.plot_warps
 
 #%%
 session_dir = os.path.join(rootdir, animalid, session)
@@ -174,6 +180,7 @@ else :
 # Set the stopping criteria for the algorithm.
 criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-6)
 
+print "WARPING!"
 sample = img.copy()
 # Warp REFERENCE image into sample:
 (cc, warp_matrix) = cv2.findTransformECC (get_gradient(sample), get_gradient(ref),warp_matrix, warp_mode, criteria)
@@ -187,6 +194,7 @@ else :
     mode_str = 'WARP_AFFINE'
 
 #%% Visualize img diff with and without warp:
+print "Saving warp img"
 pl.figure()
 pl.subplot(2,2,1); pl.imshow(ref); pl.title('ref'); pl.axis('off')
 pl.subplot(2,2,2); pl.imshow(img); pl.title('sample'); pl.axis('off')
@@ -226,7 +234,7 @@ pl.close()
 #pl.axis('off')
 #pl.title('ref: orig roi contours')
 
-
+print "Apply warps to files..."
 #%% Warp masks with same transform:
 masks_aligned = np.zeros(masks.shape, dtype=masks.dtype)
 nrois = masks.shape[-1]
@@ -271,74 +279,12 @@ except Exception as e:
 finally:
     warp_file.close()
 
-
-#%% Show original, uncorrected, and corrected ROIs on ref and sample:
-refRGB = uint16_to_RGB(ref)
-imRGB = uint16_to_RGB(sample)
-wimRGB = uint16_to_RGB(sample)
-
-fig = pl.figure(figsize=(15,5))
-fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.1, wspace=0.1)
-ax1 = fig.add_subplot(1,3,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
-ax2 = fig.add_subplot(1,3,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, orig rois'); pl.axis('off')
-ax3 = fig.add_subplot(1,3,3); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
-for ridx in range(nrois):
-    roinum = ridx + 1
-    orig = masks[:,:,ridx].copy().astype('uint8')
-    # Draw contour for ORIG rois on reference:
-    ret,thresh = cv2.threshold(orig,.5,255,0)
-    orig2,contours,hierarchy = cv2.findContours(thresh, 1, 2)
-    cv2.drawContours(refRGB, contours, 0, (0,255,0), 1)
-    ax1.imshow(refRGB)
-    # Draw orig ROIs on sample:
-    cv2.drawContours(imRGB, contours, 0, (0,255,0), 1)
-    ax2.imshow(imRGB)
-    # Draw orig ROIs + warped ROIs on sample (i.e., ref rois warped to match sample)
-    alig = masks_aligned[:,:,ridx].copy().astype('uint8')
-    ret,thresh = cv2.threshold(alig,.5,255,0)
-    aligC,contours2,hierarchy = cv2.findContours(thresh, 1, 2)
-    cv2.drawContours(wimRGB, contours, 0, (0,255,0), 1)
-    cv2.drawContours(wimRGB, contours2, 0, (255,0,0), 1)
-    ax3.imshow(wimRGB)
-
-figname = 'aligned_rois.png'
-pl.savefig(os.path.join(warp_output_dir, figname))
-pl.close()
-
-#%% STANDARDIZE
-
-# Save figure:
-fig = pl.figure()
-ax = fig.add_subplot(1,1,1)
-pl.imshow(sample, cmap='gray')
-print "Saving standard mask figs for %i rois." % nrois
-for ridx in range(nrois):
-    masktmp = masks_aligned[:,:,ridx]
-    msk = masktmp.copy() #.copy().astype('float')
-    msk[msk == 0] = np.nan
-    ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
-    #print ridx, masktmp.max()
-    if masktmp.max() > 0:
-        [ys, xs] = np.where(masktmp>0)
-        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
-    else:
-        masktmp2 = masks[:,:,ridx]
-        [ys, xs] = np.where(masktmp2>0)
-        ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
-
-    ax.axis('off')
-
-std_figname = '%s_%s_Slice01_Channel%03d_File%03d_masks.tif' % (RID['roi_id'], RID['rid_hash'], RID['PARAMS']['options']['ref_channel'], RID['PARAMS']['options']['ref_file'])
-rid_figdir = os.path.join(RID['DST'], 'figures')
-if not os.path.exists(rid_figdir):
-    os.makedirs(rid_figdir)
-
-pl.savefig(os.path.join(rid_figdir, std_figname))
-pl.close()
-
 #%
 # Save masks in standard MANUAL2D format:
 mask_outpath = os.path.join(RID['DST'], 'masks.hdf5')
+if rootdir not in mask_outpath:
+    mask_outpath = replace_root(mask_outpath, rootdir, animalid, session)
+
 outmasks = h5py.File(mask_outpath, 'w')
 try:
     outmasks.attrs['roi_type'] = RID['roi_type']
@@ -389,3 +335,78 @@ print "TIFFS EXCLUDED:", excluded_tiffs
 
 roiparams = save_roi_params(RID, evalparams={}, keep_good_rois=True, excluded_tiffs=excluded_tiffs, rootdir=rootdir)
 
+if plot_warps:
+    print "Plotting unwarped and warped ROIs onto zproj images..."
+    #%% Show original, uncorrected, and corrected ROIs on ref and sample:
+    refRGB = uint16_to_RGB(ref)
+    imRGB = uint16_to_RGB(sample)
+    wimRGB = uint16_to_RGB(sample)
+    
+    fig = pl.figure(figsize=(15,5))
+    fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.1, wspace=0.1)
+    ax1 = fig.add_subplot(1,3,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
+    ax2 = fig.add_subplot(1,3,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, orig rois'); pl.axis('off')
+    ax3 = fig.add_subplot(1,3,3); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
+    for ridx in range(nrois):
+        if ridx % 10 == 0:
+            print "plotting %i of %i rois..." % (ridx, nrois)
+    
+        roinum = ridx + 1
+        orig = masks[:,:,ridx].copy().astype('uint8')
+        # Draw contour for ORIG rois on reference:
+        ret,thresh = cv2.threshold(orig,.5,255,0)
+        orig2,contours,hierarchy = cv2.findContours(thresh, 1, 2)
+        cv2.drawContours(refRGB, contours, 0, (0,255,0), 1)
+        ax1.imshow(refRGB)
+        # Draw orig ROIs on sample:
+        cv2.drawContours(imRGB, contours, 0, (0,255,0), 1)
+        ax2.imshow(imRGB)
+        # Draw orig ROIs + warped ROIs on sample (i.e., ref rois warped to match sample)
+        alig = masks_aligned[:,:,ridx].copy().astype('uint8')
+        ret,thresh = cv2.threshold(alig,.5,255,0)
+        aligC,contours2,hierarchy = cv2.findContours(thresh, 1, 2)
+        cv2.drawContours(wimRGB, contours, 0, (0,255,0), 1)
+        cv2.drawContours(wimRGB, contours2, 0, (255,0,0), 1)
+        ax3.imshow(wimRGB)
+    
+    figname = 'aligned_rois.png'
+    pl.savefig(os.path.join(warp_output_dir, figname))
+    pl.close()
+
+#%% STANDARDIZE
+if plot_masks:
+    # Save figure:
+    fig = pl.figure()
+    ax = fig.add_subplot(1,1,1)
+    pl.imshow(sample, cmap='gray')
+    print "Saving standard mask figs for %i rois." % nrois
+    for ridx in range(nrois):
+        if ridx % 10 == 0:
+            print "plotting %i of %i rois..." % (ridx, nrois)
+        masktmp = masks_aligned[:,:,ridx]
+        msk = masktmp.copy() #.copy().astype('float')
+        msk[msk == 0] = np.nan
+        ax.imshow(msk, interpolation='None', alpha=0.5, cmap=pl.cm.Greens_r)
+        #print ridx, masktmp.max()
+        if masktmp.max() > 0:
+            [ys, xs] = np.where(masktmp>0)
+            ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+        else:
+            masktmp2 = masks[:,:,ridx]
+            [ys, xs] = np.where(masktmp2>0)
+            ax.text(xs[int(round(len(xs)/4))], ys[int(round(len(ys)/4))], str(ridx+1), fontsize=8, weight='light', color='w')
+    
+        ax.axis('off')
+    
+    std_figname = '%s_%s_Slice01_Channel%03d_File%03d_masks.tif' % (RID['roi_id'], RID['rid_hash'], RID['PARAMS']['options']['ref_channel'], RID['PARAMS']['options']['ref_file'])
+    rid_figdir = os.path.join(RID['DST'], 'figures')
+    if rootdir not in rid_figdir:
+        rid_figdir = replace_root(rid_figdir, rootdir, animalid, session)
+    if not os.path.exists(rid_figdir):
+        os.makedirs(rid_figdir)
+    
+    pl.savefig(os.path.join(rid_figdir, std_figname))
+    pl.close()
+    
+
+print "DONE!"
