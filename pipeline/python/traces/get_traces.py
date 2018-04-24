@@ -212,6 +212,7 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
         # Get reference file in current trace id set (just use reference from processed dir)
         if roi_tiff_src == trace_tiff_src:
+            print "Extracting traces from ROI source"
             matched_sources = True
             if len(maskfiles) == 1:
                 ref_file = maskfiles[0]  # REF FILE just is the one used to extract ROIs
@@ -219,6 +220,7 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
                 ref_file = None          # REF FILE doesn't exist, since ROIs extracted from each tif in set
             zproj_source_dir = rid_zproj_basedir
         else:
+            print "Extracting traces from ALT run roi src"
             matched_sources = False
             # Identify which file was used as reference, assuming tiffs were preprocessed and motion-corrected:
             if 'mcorrected' in trace_tiff_src:
