@@ -205,9 +205,10 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
         # For now, assuming preprocessing + motion-correction output of fmt:
         # <...>_ZPROJ_deinterleaved/Channel01/File003 -- only take up to the Channel-dir
         if 'source' not in maskfile[maskfile.keys()[0]].attrs.keys():
-            rid_zproj_basedir = os.path.split(maskfile[maskfile.keys()[0]]['masks'].attrs['source'])[0]
+            mask_source_dir = maskfile[maskfile.keys()[0]]['masks'].attrs['source']
         else:
-            rid_zproj_basedir = os.path.split(maskfile[maskfile.keys()[0]].attrs['source'])[0]
+            mask_source_dir = maskfile[maskfile.keys()[0]].attrs['source']
+        rid_zproj_basedir = os.path.split(mask_source_dir)[0]
         sigchannel_dirname = os.path.split(rid_zproj_basedir)[-1]
 
         # Get reference file in current trace id set (just use reference from processed dir)
@@ -272,6 +273,7 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
     maskinfo['filepath'] = mask_path
     maskinfo['matched_sources'] = matched_sources
     maskinfo['zproj_source'] = zproj_source_dir
+    maskinfo['roi_source_dir'] = mask_source_dir
 
     return maskinfo
 
@@ -517,7 +519,14 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                 filegrp = MASKS[curr_file]
 
             if maskinfo['is_single_reference'] is True:
-                maskfile_key = maskinfo['ref_file']
+                if maskinfo['matched_sources'] is True:
+                    maskfile_key = maskinfo['ref_file']
+                else:
+                    # ROI_SOURCE_DIR is the deinterleaved dir containing the
+                    # source img(s) from which ROIs were created -- this is the image
+                    # set we want to warp to the CURRENT set of tiffs' reference img...
+                    maskfile_key = os.path.split(maskinfo['roi_source_dir'])[-1]
+                ref_zproj_dir = maskinfo['roi_source_dir']
             else:
                 maskfile_key = curr_file
 
@@ -542,29 +551,44 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
             # Make sure all masks are saved by file, slice:
             for sidx, curr_slice in enumerate(maskinfo['roi_slices']):
 
-                # Get average image:
+                # Get average image of CURRENT TIFF:
                 zproj_img_fn = [m for m in os.listdir(curr_zproj_dir) if curr_slice in m][0]
                 zproj_img_path = os.path.join(curr_zproj_dir, zproj_img_fn)
                 img = tf.imread(zproj_img_path)
+                print "... loaded TIFF %i of %i to warp ROIs onto..." % (fidx, len(maskinfo['filenames']))
                 zproj = filegrp.create_dataset('/'.join([curr_slice, 'zproj']), img.shape, img.dtype)
                 zproj[...] = img
                 zproj.attrs['source'] = zproj_img_path
 
-                # Get masks:
+                # Get masks from ROI SOURCE:
                 if maskinfo['is_slice_format']: #slice_masks:
                     src_roi_idxs = maskfile[maskfile_key]['masks'][curr_slice].attrs['src_roi_idxs']
-                    masks = maskfile[maskinfo['ref_file']]['masks'][curr_slice][:].T.copy()
+                    masks = maskfile[maskfile_key]['masks'][curr_slice][:].T.copy()
                 else:
                     src_roi_idxs = maskfile[maskfile_key]['masks'].attrs['src_roi_idxs']
-                    masks = maskfile[maskinfo['ref_file']]['masks'][:].T.copy()  # Not sure if this is the right thing to do for NON slice-formats...
+                    masks = maskfile[maskfile_key]['masks'][:].T.copy()
 
+
+                # Warp reference tiff to current tiff so that ROIs line up:
                 if maskinfo['is_single_reference']:
-                    if curr_file == maskinfo['ref_file']:
+                    # If ROI source == tiff source, just need to make sure REF FILE is normed:
+                    if curr_file == maskinfo['ref_file'] and maskinfo['matched_sources'] is True:
                         mask_arr = masks_to_normed_array(masks)
                     else:
-                        zproj_base = os.path.split(curr_zproj_dir)[0]; ref = maskinfo['ref_file']
-                        curr_refimg_path = [os.path.join(zproj_base, ref, m) for m in os.listdir(os.path.join(zproj_base, ref)) if curr_slice in m][0]
-                        ref_img = tf.imread(curr_refimg_path)
+                        # If ROI source and TIFF source differ, reference image
+                        # of ROI source should be loaded, to then be aligned to
+                        # all current tiff files:
+                        if maskinfo['matched_sources'] is False:
+                            print "... loading ROI src reference img to warp."
+                            ref_img_fpath = [os.path.join(maskinfo['roi_source_dir'], f)
+                                                for f in os.listdir(maskinfo['roi_source_dir'] if f.endswith('tif'))][0]
+                            print "... %s" % ref_img_fpath
+                        else:
+                            zproj_base = os.path.split(curr_zproj_dir)[0]; ref = maskinfo['ref_file']
+                            ref_img_fpath = [os.path.join(zproj_base, ref, m)
+                                                for m in os.listdir(os.path.join(zproj_base, ref)) if curr_slice in m][0]
+
+                        ref_img = tf.imread(ref_img_fpath)
 
                         # Get warp matrix to transform reference to current file:
                         if save_warp_images:
@@ -576,6 +600,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                             warp_img_path = os.path.join(warp_img_dir, 'warped_rois_r%s_to_%s_%s.png' % (maskinfo['ref_file'], curr_file, curr_slice))
                         else:
                             warp_img_path = ''
+                        print "... warping original REF to current tif image for aligned ROIs."
                         masks = warp_masks(masks, ref_img, img, save_warp_images=save_warp_images, out_fpath=warp_img_path)
                         mask_arr = masks_to_normed_array(masks)
                     mref_name = maskinfo['ref_file']
