@@ -807,6 +807,13 @@ def extract_options(options):
 #        '--no-pupil',
 #        '--omit-trials', '--psth', '--tuning',
 #        '-T', 'raw']
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180423',
+#        '-A', 'FOV2_zoom1x', '-R', 'gratings_run1', '-t', 'traces001',
+#        '--no-pupil',
+#        '--omit-trials', '--psth', '--tuning',
+#        '-T', 'np_subtracted']
+#
 
 
 #%%

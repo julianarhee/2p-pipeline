@@ -746,7 +746,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             yrot = int(imname.split('_y')[-1])
                             morphlevel = int(imname.split('_y')[0].split('morph')[-1])
 
-                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)[15:25]):
+                for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)): #[15:25]):
                     #print trial
                     frame_idxs = roi_trials[configname][roi][trial].attrs['frame_idxs']
                     #print frame_idxs
@@ -1519,11 +1519,11 @@ def extract_options(options):
 
 
 #%%
-
-options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180419', '-A', 'FOV1_zoom1x',
-           '-R', 'blobs_run1',
-           '-T', 'np_subtracted', '-t', 'traces001',
-           '-s', '25', '-B', '75', '-d', '10']
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180419', '-A', 'FOV1_zoom1x',
+#           '-R', 'blobs_run1',
+#           '-T', 'np_subtracted', '-t', 'traces001',
+#           '-s', '25', '-B', '75', '-d', '10']
 
  #%%
 # Set USER INPUT options:
