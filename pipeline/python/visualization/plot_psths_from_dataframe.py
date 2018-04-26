@@ -549,7 +549,12 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
 
     grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
     zscores = grouped.zscore.mean()                                            # Get mean of 'metric_type' for each combination of transforms
-    zscores['sem'] = grouped.zscore.aggregate(stats.sem)[metric_type]             # Get SEM
+    if len(other_trans_types) > 1:
+        zscores['sem'] = grouped.zscore.aggregate(stats.sem)[metric_type]             # Get SEM
+    else:
+        zscores['sem'] = grouped.zscore.apply(stats.sem)
+
+
     zscores = zscores.rename(columns={metric_type: 'mean_%s' % metric_type})                # Rename 'zscore' column to 'mean_zscore' so we can merge
     dfz = dfz.merge(zscores).sort_values([xval_trans])                         # Merge summary stats to each corresponding row (indexed by columns values in that row)
 
@@ -808,12 +813,12 @@ def extract_options(options):
 #        '--omit-trials', '--psth', '--tuning',
 #        '-T', 'raw']
 #
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180423',
-#        '-A', 'FOV2_zoom1x', '-R', 'gratings_run1', '-t', 'traces001',
-#        '--no-pupil',
-#        '--omit-trials', '--psth', '--tuning',
-#        '-T', 'np_subtracted']
-#
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425',
+        '-A', 'FOV1_zoom1x', '-R', 'gratings_run2', '-t', 'traces001',
+        '--no-pupil',
+        '--omit-trials', '--tuning',
+        '-T', 'np_subtracted']
+
 
 
 #%%
