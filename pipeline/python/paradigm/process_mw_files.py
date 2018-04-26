@@ -428,18 +428,20 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
         elif 'grating' in stimtype:
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
 
-	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
-	    start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
-	    find_static = np.where(np.diff(start_times) > 0)[0] + 1
-	    find_static = np.append(find_static, 0)
-	    find_static = sorted(find_static)
-	    if phasemod:
-		# Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
-		find_static = find_static[::2]
+            # Find ITI indices:
+            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value)==2]
 
-	    image_evs = [tmp_image_evs[i] for i in find_static]
+	        # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+            start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
+            find_static = np.where(np.diff(start_times) > 0)[0] + 1
+            find_static = np.append(find_static, 0)
+            find_static = sorted(find_static)
+            if phasemod:
+                # Just grab every other (for phaseMod, 'start_time' for phase1 and phase2 are different (just take 1st):
+                find_static = find_static[::2]
 
-        print "Found %i total image onset events." % len(image_evs)
+            image_evs = [tmp_image_evs[i] for i in find_static]
+            print "Found %i total image onset events." % len(image_evs)
 
         first_stim_index = pixelclock_evs.index(image_evs[0])
         if first_stim_index>0:

@@ -86,6 +86,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     ### LOAD MW DATA.
     with open(mwtrial_path, 'r') as f:
         mwtrials = json.load(f)
+    print len(mwtrials)
 
     ### LOAD SERIAL DATA.
     serialdata = pd.read_csv(serialfn_path, sep='\t')
@@ -377,7 +378,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
 
 #%%
 
-#options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180418', '-A', 'FOV1_zoom1x','-R', 'gratings_run2', '--phasemod']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 
            #%%
 def main(options):
