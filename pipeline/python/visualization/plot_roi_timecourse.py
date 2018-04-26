@@ -221,6 +221,7 @@ parser.add_option('-s', '--slice', action='store', dest='slice_id', default=1, h
 parser.add_option('-r', '--roi', action='store', dest='roi_id', default=1, help="ROI num to plot [default: 1]")
 parser.add_option('--background', action='store_true', dest='is_background', default=False, help="set if ROI selected is a background component")
 parser.add_option('--config', action='store_true', dest='plot_by_config', default=False, help="set if want to plot timecourses per file, per stimulus config also.")
+parser.add_option('--compare', action='store_true', dest='compare_traces', default=False, help="set if want to plot non-raw trace against raw.")
 
 (options, args) = parser.parse_args()
 
@@ -234,10 +235,11 @@ animalid = options.animalid
 session = options.session
 acquisition = options.acquisition
 run = options.run
+compare_traces = options.compare_traces
 
 trace_id = options.trace_id
 trace_type = options.trace_type
-if not trace_type == 'raw':
+if not trace_type == 'raw' and compare_traces is True:
     compare_trace_types = True
 else:
     compare_trace_types = False
@@ -440,6 +442,8 @@ if not os.path.exists(curr_save_dir):
 roi_df = DATA.loc[DATA['roi'] == selected_roi]
 if compare_trace_types:
     roi_df_raw = rawDATA.loc[rawDATA['roi'] == selected_roi]
+else:
+    roi_df_raw = None
 
 # Only grab a given file, tmp:
 file_df = roi_df.loc[roi_df['file'] == selected_file]
