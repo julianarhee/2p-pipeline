@@ -199,6 +199,8 @@ def get_combined_data(run_list, traceid_list, combined_tracedir, trace_type, com
     TIDs, data_fpaths, stimconfigs, alignment_info = get_info_for_runs(run_list, traceid_list, trace_type, acquisition_dir)
 
     # Check if existing dataframe:
+    for r in data_fpaths.keys():
+        print r, data_fpaths[r].keys()
     combined_roidata_fpath = os.path.join(combined_tracedir, 'ROIDATA_%s_%s.hdf5' % ('_'.join([data_fpaths[r]['roidata_hash'] for r in data_fpaths.keys()]), trace_type))
     datakey = '%s_%s' % (trace_type, '_'.join([data_fpaths[r]['roidata_hash'] for r in data_fpaths.keys()]))
 

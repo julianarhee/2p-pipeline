@@ -1521,12 +1521,12 @@ def extract_options(options):
 
 #%%
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV2_zoom1x',
-           '-R', 'gratings_run1',
-           '-T', 'np_subtracted', '-t', 'traces001',
-           '--no-pupil', '--new',
-           '-b', 2.0]
-
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV2_zoom1x',
+#           '-R', 'gratings_run1',
+#           '-T', 'np_subtracted', '-t', 'traces001',
+#           '--no-pupil', '--new',
+#           '-b', 2.0]
+#
  #%%
 # Set USER INPUT options:
 
