@@ -546,10 +546,12 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
         plot_variables.extend(['ypos'])
 
     dfz = dfz[plot_variables]               # Get subset dataframe of variables-of-interest
+    dfz = dfz.reset_index()
 
     grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
     zscores = grouped.zscore.mean()                                            # Get mean of 'metric_type' for each combination of transforms
-    if len(other_trans_types) > 1:
+    print zscores.head()
+    if len(trans_types) > 1:
         zscores['sem'] = grouped.zscore.aggregate(stats.sem)[metric_type]             # Get SEM
     else:
         zscores['sem'] = grouped.zscore.apply(stats.sem)
