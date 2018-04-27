@@ -693,6 +693,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
     volumerate = trial_info['volumerate'] #parsed_frames.attrs['volumerate']
     framerate = trial_info['framerate']
     iti_pre = trial_info['iti_pre']
+    iti_post = trial_info['iti_post']
     nframes_on = trial_info['nframes_on'] #parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate
     stim_dur = trial_info['stim_on_sec'] #trialdict['trial00001']['stim_dur_ms']/1E3
     iti_dur = trial_info['iti_full'] #trialdict['trial00001']['iti_dur_ms']/1E3
@@ -760,7 +761,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         adj_frame_idxs = adj_frame_idxs[0:last_idx]
 
                     tsecs = all_frame_idxs[adj_frame_idxs] - all_frame_idxs[adj_frame_idxs][first_on]
-                    if not (round(tsecs[0]) == -1 and round(tsecs[-1]) == 3):
+                    if not (round(tsecs[0]) == -1*iti_pre and round(tsecs[-1]) == (stim_dur+iti_post)):
                         print "Bad trial indices found!", roi, configname, trial
                         print "Aux file idx:", roi_trials[configname][roi][trial].attrs['aux_file_idx']
                         print "tsecs:", tsecs
@@ -1339,12 +1340,12 @@ def collate_roi_stats(METRICS, configs):
 
     return ROISTATS
 
-def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, create_new=False,
+def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0, create_new=False,
                      filter_pupil=False, pupil_radius_min=None, pupil_radius_max=None, pupil_dist_thr=None):
     # Get paradigm/AUX info:
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
-    trial_info = get_alignment_specs(paradigm_dir, si_info)
+    trial_info = get_alignment_specs(paradigm_dir, si_info, iti_pre)
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
@@ -1520,10 +1521,11 @@ def extract_options(options):
 
 #%%
 #
-#options = ['-D', '/mnt/odyssey', '-i', 'CE082', '-S', '20180419', '-A', 'FOV1_zoom1x',
-#           '-R', 'blobs_run1',
-#           '-T', 'np_subtracted', '-t', 'traces001',
-#           '-s', '25', '-B', '75', '-d', '10']
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV2_zoom1x',
+           '-R', 'gratings_run1',
+           '-T', 'np_subtracted', '-t', 'traces001',
+           '--no-pupil', '--new',
+           '-b', 2.0]
 
  #%%
 # Set USER INPUT options:
@@ -1541,7 +1543,7 @@ def create_roi_dataframes(options):
     run = options.run
     trace_id = options.trace_id
 
-    #iti_pre = float(options.iti_pre)
+    iti_pre = float(options.iti_pre)
 
     #custom_mw = options.custom_mw
 
@@ -1573,6 +1575,7 @@ def create_roi_dataframes(options):
     # Assign frame indices for specified trial epochs:
     # =========================================================================
     roidata_filepath, roistats_filepath = align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir,
+                                                           iti_pre=iti_pre,
                                                            create_new=create_new,
                                                            filter_pupil=filter_pupil,
                                                            pupil_radius_min=pupil_radius_min,
