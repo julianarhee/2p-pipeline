@@ -25,6 +25,7 @@ from matplotlib.lines import Line2D
 
 from pipeline.python.utils import natural_keys
 from pipeline.python.traces.utils import get_metric_set
+import pipeline.python.retinotopy.visualize_rois as ret
 
 #%%
 #rootdir = '/mnt/odyssey'
@@ -596,60 +597,60 @@ def assign_roi_metric(dataframes, run1_stat_type='mean', run2_stat_type='mean'):
 
 
 #%%
-def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
-    oldrange = (oldmax - oldmin)
-    newrange = (newmax - newmin)
-    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
-    return newval
-
-# Convert degs to centimeters:
-def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, bottomedge=None, topedge=None):
-    #width = 103 # in cm
-    #height = 58 # in cm
-    #resolution = [1920, 1080]
-
-    if leftedge is None:
-        leftedge = -1*width/2.
-    if rightedge is None:
-        rightedge = width/2.
-    if bottomedge is None:
-        bottomedge = -1*height/2.
-    if topedge is None:
-        topedge = height/2.
-
-    print "center 2 Top/Anterior:", topedge, rightedge
-
-
-    mapx = np.linspace(leftedge, rightedge, resolution[0] * ((rightedge-leftedge)/float(width)))
-    mapy = np.linspace(bottomedge, topedge, resolution[1] * ((topedge-bottomedge)/float(height)))
-
-    lin_coord_x, lin_coord_y = np.meshgrid(mapx, mapy, sparse=False)
-
-    return lin_coord_x, lin_coord_y
-
-def get_retino_info(width=80, height=44, resolution=[1920, 1080],
-                    azimuth='right', elevation='top',
-                    leftedge=None, rightedge=None, bottomedge=None, topedge=None):
-
-    lin_coord_x, lin_coord_y = get_linear_coords(width, height, resolution, leftedge=leftedge, rightedge=rightedge, bottomedge=bottomedge, topedge=topedge)
-    linminW = lin_coord_x.min(); linmaxW = lin_coord_x.max()
-    linminH = lin_coord_y.min(); linmaxH = lin_coord_y.max()
-
-    retino_info = {}
-    retino_info['width'] = width
-    retino_info['height'] = height
-    retino_info['resolution'] = resolution
-    aspect_ratio = float(height)/float(width)
-    retino_info['aspect'] = aspect_ratio
-    retino_info['azimuth'] = azimuth
-    retino_info['elevation'] = elevation
-    retino_info['linminW'] = linminW
-    retino_info['linmaxW'] = linmaxW
-    retino_info['linminH'] = linminH
-    retino_info['linmaxH'] = linmaxH
-    retino_info['bounding_box'] = [leftedge, bottomedge, rightedge, topedge]
-
-    return retino_info
+#def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
+#    oldrange = (oldmax - oldmin)
+#    newrange = (newmax - newmin)
+#    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+#    return newval
+#
+## Convert degs to centimeters:
+#def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, bottomedge=None, topedge=None):
+#    #width = 103 # in cm
+#    #height = 58 # in cm
+#    #resolution = [1920, 1080]
+#
+#    if leftedge is None:
+#        leftedge = -1*width/2.
+#    if rightedge is None:
+#        rightedge = width/2.
+#    if bottomedge is None:
+#        bottomedge = -1*height/2.
+#    if topedge is None:
+#        topedge = height/2.
+#
+#    print "center 2 Top/Anterior:", topedge, rightedge
+#
+#
+#    mapx = np.linspace(leftedge, rightedge, resolution[0] * ((rightedge-leftedge)/float(width)))
+#    mapy = np.linspace(bottomedge, topedge, resolution[1] * ((topedge-bottomedge)/float(height)))
+#
+#    lin_coord_x, lin_coord_y = np.meshgrid(mapx, mapy, sparse=False)
+#
+#    return lin_coord_x, lin_coord_y
+#
+#def get_retino_info(width=80, height=44, resolution=[1920, 1080],
+#                    azimuth='right', elevation='top',
+#                    leftedge=None, rightedge=None, bottomedge=None, topedge=None):
+#
+#    lin_coord_x, lin_coord_y = get_linear_coords(width, height, resolution, leftedge=leftedge, rightedge=rightedge, bottomedge=bottomedge, topedge=topedge)
+#    linminW = lin_coord_x.min(); linmaxW = lin_coord_x.max()
+#    linminH = lin_coord_y.min(); linmaxH = lin_coord_y.max()
+#
+#    retino_info = {}
+#    retino_info['width'] = width
+#    retino_info['height'] = height
+#    retino_info['resolution'] = resolution
+#    aspect_ratio = float(height)/float(width)
+#    retino_info['aspect'] = aspect_ratio
+#    retino_info['azimuth'] = azimuth
+#    retino_info['elevation'] = elevation
+#    retino_info['linminW'] = linminW
+#    retino_info['linmaxW'] = linmaxW
+#    retino_info['linminH'] = linminH
+#    retino_info['linmaxH'] = linmaxH
+#    retino_info['bounding_box'] = [leftedge, bottomedge, rightedge, topedge]
+#
+#    return retino_info
 
 #%%
 def assign_lincoords_lincolors(rundf, metric_values, stat_type='mean'):
@@ -664,53 +665,53 @@ def assign_lincoords_lincolors(rundf, metric_values, stat_type='mean'):
 
     return linX, linY, linC
 
-
-def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
-
-    angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
-    angY = rundf.xs(rinfo['elevation'], axis=0)['phase_%s' % stat_type].values
-
-    # Convert phase range to linear-coord range:
-    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(angY, rinfo['linminH'], rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
-    linC = np.arctan2(linY,linX)
-
-    return linX, linY, linC
-
-
-def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_mean',
-                        alpha_min=0, alpha_max=1, color_position=False,
-                        output_dir='', figname='roi_retinotopy.png', save_and_close=True):
-    sns.set()
-    fig = pl.figure(figsize=(10,8))
-    ax = fig.add_subplot(111) #, aspect=retino_info['aspect'])
-    if color_position is True:
-        pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
-        magcmap = mpl.cm.Greys
-    else:
-        pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
-        magcmap=mpl.cm.inferno
-
-    pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
-#    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
-#    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
-    pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
-    pl.ylim([-1*retino_info['height']/2., retino_info['height']/2.])
-
-    pl.xlabel('x position')
-    pl.ylabel('y position')
-    pl.title('ROI position selectivity (%s)' % curr_metric)
-    pos = ax.get_position()
-    ax2 = fig.add_axes([pos.x0+.8, pos.y0, 0.01, pos.height])
-    #magcmap = mpl.cm.Greys
-#    if alpha_max < 0.05:
-#        alpha_max = 0.05
-    magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
-    cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
-
-    if save_and_close is True:
-        pl.savefig(os.path.join(output_dir, figname))
-        pl.close()
+#
+#def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
+#
+#    angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
+#    angY = rundf.xs(rinfo['elevation'], axis=0)['phase_%s' % stat_type].values
+#
+#    # Convert phase range to linear-coord range:
+#    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+#    linY = convert_values(angY, rinfo['linminH'], rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
+#    linC = np.arctan2(linY,linX)
+#
+#    return linX, linY, linC
+#
+#
+#def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_mean',
+#                        alpha_min=0, alpha_max=1, color_position=False,
+#                        output_dir='', figname='roi_retinotopy.png', save_and_close=True):
+#    sns.set()
+#    fig = pl.figure(figsize=(10,8))
+#    ax = fig.add_subplot(111) #, aspect=retino_info['aspect'])
+#    if color_position is True:
+#        pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
+#        magcmap = mpl.cm.Greys
+#    else:
+#        pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
+#        magcmap=mpl.cm.inferno
+#
+#    pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
+##    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
+##    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
+#    pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
+#    pl.ylim([-1*retino_info['height']/2., retino_info['height']/2.])
+#
+#    pl.xlabel('x position')
+#    pl.ylabel('y position')
+#    pl.title('ROI position selectivity (%s)' % curr_metric)
+#    pos = ax.get_position()
+#    ax2 = fig.add_axes([pos.x0+.8, pos.y0, 0.01, pos.height])
+#    #magcmap = mpl.cm.Greys
+##    if alpha_max < 0.05:
+##        alpha_max = 0.05
+#    magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
+#    cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
+#
+#    if save_and_close is True:
+#        pl.savefig(os.path.join(output_dir, figname))
+#        pl.close()
 
 def store_session_info(rootdir, animalid, session, acquisition):
     session_info = {}
@@ -745,7 +746,7 @@ def visualize_position_data(dataframes, zdf, retino_info,
         rundf = dataframes[run]['df']
         if dataframes[run]['is_phase']:
             curr_metric = 'magratio_%s%i' % (stat_type, int(runnum+1))
-            linX, linY, linC = convert_lincoords_lincolors(rundf, retino_info[run], stat_type=stat_type)
+            linX, linY, linC = ret.convert_lincoords_lincolors(rundf, retino_info[run], stat_type=stat_type)
         else:
             curr_metric = 'zscore_%s%i' % (stat_type, int(runnum+1))
             linX, linY, linC = assign_lincoords_lincolors(rundf, zdf[curr_metric].values, stat_type=stat_type)
@@ -775,12 +776,12 @@ def visualize_position_data(dataframes, zdf, retino_info,
             # Plot each ROI's "position" color-coded with angle map:
             if color_position is True:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cpos.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
+                ret.plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
                                     alpha_min=zdf[curr_metric].min(), alpha_max=zdf[curr_metric].max(),
                                     output_dir=output_dir, figname=figname, save_and_close=save_and_close)
             else:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cmagr.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
+                ret.plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
                                     alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
                                     output_dir=output_dir, figname=figname, save_and_close=save_and_close)
 
@@ -834,7 +835,6 @@ def main(options):
     rightedge = options.rightedge
     topedge = options.topedge
     bottomedge = options.bottomedge
-
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
@@ -914,11 +914,11 @@ def main(options):
         retino_info = {}
         for run in run_list:
             if run in boundingbox_runs:
-                retino_info[run] = get_retino_info(azimuth='right', elevation='top',
+                retino_info[run] = ret.get_retino_info(azimuth='right', elevation='top',
                                               leftedge=leftedge, rightedge=rightedge,
                                               bottomedge=bottomedge, topedge=topedge)
             else:
-                retino_info[run] = get_retino_info(azimuth='right', elevation='top')
+                retino_info[run] = ret.get_retino_info(azimuth='right', elevation='top')
 
         # Get conversions for retinotopy & grid protocols:
         acquisition_str = '%s_%s_%s' % (animalid, session, acquisition)
