@@ -1686,22 +1686,15 @@ def extract_options(options):
     parser.add_option('-N', '--ncores', action="store",
                       dest="ncores", default=2, help="[np-fissa]: N cores to use for FISSA prep and separation [default: 2, 4. If slurm, 1]")
 
+    # Neuropil options:
     parser.add_option('-a', '--halo', action="store",
                       dest="np_niterations", default=3, help="[np-subtract]:  N iterations for ROI dilation when creating annulus for neuropil [default: 3]")
     parser.add_option('-c', '--cfactor', action="store",
                       dest="np_correction_factor", default=0.5, help="[np-subtract]: Correction factor for neuropil subtraction [default: 0.5]")
-
     parser.add_option('--neuropil', action="store_true",
                       dest="neuropil", default=False, help="Set flag to extract neuropil.")
-
-
-    parser.add_option('--collate', action="store_true",
-                      dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
-    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype))
-
     parser.add_option('--warp', action="store_true",
                       dest="save_warp_images", default=False, help="Set flag to save output plots of warped ROIs (manual warp only).")
-
 
     # Pupil filtering info:
     parser.add_option('--no-pupil', action="store_false",
@@ -1712,6 +1705,14 @@ def extract_options(options):
                       dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
     parser.add_option('-d', '--dist', action="store",
                       dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+
+    # Trace alignment info:
+    parser.add_option('--collate', action="store_true",
+                      dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
+    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype)) 
+    parser.add_option('-b', '--baseline', action="store",
+                      dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
+
 #
 
     (options, args) = parser.parse_args(options)
@@ -1883,6 +1884,7 @@ def extract_traces(options):
     pupil_radius_max = float(options.pupil_radius_max)
     pupil_radius_min = float(options.pupil_radius_min)
     pupil_dist_thr = float(options.pupil_dist_thr)
+    iti_pre = float(options.iti_pre)
 
 
     print "======================================================================="
@@ -2086,7 +2088,8 @@ def extract_traces(options):
                                                            filter_pupil=filter_pupil,
                                                            pupil_radius_min=pupil_radius_min,
                                                            pupil_radius_max=pupil_radius_max,
-                                                           pupil_dist_thr=pupil_dist_thr)
+                                                           pupil_dist_thr=pupil_dist_thr,
+                                                           iti_pre=iti_pre)
 
     return roi_tcourse_filepath, roidata_filepath
 
