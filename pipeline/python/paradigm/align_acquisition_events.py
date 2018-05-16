@@ -1287,6 +1287,8 @@ def collate_roi_stats(METRICS, configs):
 
     if 'frequency' in configs[configs.keys()[0]].keys():
         stimtype = 'grating'
+    elif 'fps' in configs[configs.keys()[0]].keys():
+        stimtype = 'movie'
     else:
         stimtype = 'image'
 
@@ -1332,14 +1334,14 @@ def collate_roi_stats(METRICS, configs):
 
                 df_stim = pd.DataFrame({'sf': sf_trial,
                                         'ori': ori_trial})
-            else:
+            elif stimtype == 'image':
                 imname = os.path.splitext(configs[config]['filename'])[0]
-                if 'CamRot' in imname:
+                if ('CamRot' in imname) and not ('morph' in imname):
                     objectid = imname.split('_CamRot_')[0]
                     yrot = int(imname.split('_CamRot_y')[-1])
-                    if 'N1' in imname:
+                    if 'N1' in imname or 'D1' in imname:
                         morphlevel = 0
-                    elif 'N2' in imname:
+                    elif 'N2' in imname or 'D2' in imname:
                         morphlevel = 22
                 elif 'morph' in imname:
                     if '_y' not in imname and '_yrot' not in imname:
@@ -1350,6 +1352,24 @@ def collate_roi_stats(METRICS, configs):
                         objectid = imname #'morph' #imname.split('_y')[0]
                         yrot = int(imname.split('_y')[-1])
                         morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+            elif stimtype == 'movie':
+                imname = os.path.splitext(configs[config]['filename'])[0]
+                objectid = '_'.join(imname.split('_')[0:-1])
+                if 'reverse' in imname:
+                    yrot = -1
+                else:
+                    yrot = 0
+                if imname.split('_')[1] == 'D1':
+                    morphlevel = 0
+                elif imname.split('_')[1] == 'D2':
+                    morphlevel = 1
+                elif imname.split('_')[1][0] == 'M':
+                    # Blob_M11_Rot_y_etc.
+                    morphlevel = int(imname.split('_')[1][1:])
+                elif imname.split('_')[1] == 'morph':
+                    # This is a full morph movie:
+                    morphlevel = -1
+                        
 
                 img_trial = np.tile(imname, (ntrials,))
                 df_stim = pd.DataFrame({'img': img_trial,
