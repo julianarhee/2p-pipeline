@@ -441,6 +441,10 @@ def get_stimulus_configs(trial_info):
     if stimtype=='image':
         #stimids = sorted(list(set([trialdict[t]['stimuli']['stimulus'] for t in trial_list])), key=natural_keys)
         stimids = sorted(list(set([os.path.split(trialdict[t]['stimuli']['filepath'])[1] for t in trial_list])), key=natural_keys)
+    elif 'movie' in stimtype:
+        stimids = sorted(list(set([os.path.split(os.path.split(trialdict[t]['stimuli']['filepath'])[0])[1] for t in trial_list])), key=natural_keys)
+    
+    if stimtype == 'image' or 'movie' in stimtype:
         filepaths = list(set([trialdict[trial]['stimuli']['filepath'] for trial in trial_list]))
         filehashes = list(set([trialdict[trial]['stimuli']['filehash'] for trial in trial_list]))
 
@@ -456,7 +460,10 @@ def get_stimulus_configs(trial_info):
     if stimtype == 'image':
         for config in configs.keys():
             configs[config]['filename'] = os.path.split(configs[config]['filepath'])[1]
-
+    elif 'movie' in stimtype:
+        for config in configs.keys():
+            configs[config]['filename'] = os.path.split(os.path.split(configs[config]['filepath'])[0])[1]
+            
     # Sort config dict by value:
 #    sorted_configs = dict(sorted(configs.items(), key=operator.itemgetter(1)))
 #    sorted_confignames = sorted_configs.keys()
@@ -680,6 +687,8 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
 
     if 'grating' in trial_info['stimtype']:
         stimtype = 'grating'
+    elif 'movie' in trial_info['stimtype']:
+        stimtype = 'movie'
     else:
         stimtype = 'image'
 
@@ -746,6 +755,24 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             objectid = imname #'morph' #imname.split('_y')[0]
                             yrot = int(imname.split('_y')[-1])
                             morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+                elif 'movie' in stimtype:
+                    imname = os.path.splitext(configs[configname]['filename'])[0]
+                    objectid = '_'.join(imname.split('_')[0:-1])
+                    if 'reverse' in imname:
+                        yrot = -1
+                    else:
+                        yrot = 0
+                    if imname.split('_')[1] == 'D1':
+                        morphlevel = 0
+                    elif imname.split('_')[1] == 'D2':
+                        morphlevel = 1
+                    elif imname.split('_')[1][0] == 'M':
+                        # Blob_M11_Rot_y_etc.
+                        morphlevel = int(imname.split('_')[1][1:])
+                    elif imname.split('_')[1] == 'morph':
+                        # This is a full morph movie:
+                        morphlevel = -1
+                        
 
                 for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)): #[15:25]):
                     #print trial
@@ -1527,6 +1554,12 @@ def extract_options(options):
 #           '--no-pupil', '--new',
 #           '-b', 2.0]
 #
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
+           '-R', 'blobs_movies_run2',
+           '-T', 'np_subtracted', '-t', 'traces001',
+           '--no-pupil', '--new',
+           '-b', 2.0]
+
  #%%
 # Set USER INPUT options:
 
