@@ -739,7 +739,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                 # object ID + transform type and level:
                 if stimtype == 'image':
                     imname = os.path.splitext(configs[configname]['filename'])[0]
-                    if 'CamRot' in imname:
+                    if ('CamRot' in imname) and not('morph' in imname):
                         objectid = imname.split('_CamRot_')[0]
                         yrot = int(imname.split('_CamRot_y')[-1])
                         if 'N1' in imname:
@@ -765,7 +765,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                     if imname.split('_')[1] == 'D1':
                         morphlevel = 0
                     elif imname.split('_')[1] == 'D2':
-                        morphlevel = 1
+                        morphlevel = 22
                     elif imname.split('_')[1][0] == 'M':
                         # Blob_M11_Rot_y_etc.
                         morphlevel = int(imname.split('_')[1][1:])
@@ -1362,7 +1362,7 @@ def collate_roi_stats(METRICS, configs):
                 if imname.split('_')[1] == 'D1':
                     morphlevel = 0
                 elif imname.split('_')[1] == 'D2':
-                    morphlevel = 1
+                    morphlevel = 22
                 elif imname.split('_')[1][0] == 'M':
                     # Blob_M11_Rot_y_etc.
                     morphlevel = int(imname.split('_')[1][1:])
