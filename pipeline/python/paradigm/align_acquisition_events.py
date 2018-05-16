@@ -776,7 +776,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                     if 'reverse' in imname:
                         yrot = -1
                     else:
-                        yrot = 0
+                        yrot = 1
                     if imname.split('_')[1] == 'D1':
                         morphlevel = 0
                     elif imname.split('_')[1] == 'D2':
@@ -1386,7 +1386,7 @@ def collate_roi_stats(METRICS, configs):
                 if 'reverse' in imname:
                     yrot = -1
                 else:
-                    yrot = 0
+                    yrot = 1
                 if imname.split('_')[1] == 'D1':
                     morphlevel = 0
                 elif imname.split('_')[1] == 'D2':
@@ -1601,11 +1601,11 @@ def extract_options(options):
 #           '--no-pupil', '--new',
 #           '-b', 2.0]
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
-           '-R', 'blobs_movies_run2',
-           '-T', 'np_subtracted', '-t', 'traces001',
-           '--no-pupil', '--new',
-           '-b', 2.0]
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
+#           '-R', 'blobs_movies_run2',
+#           '-T', 'np_subtracted', '-t', 'traces001',
+#           '--no-pupil', '--new',
+#           '-b', 2.0]
 
  #%%
 # Set USER INPUT options:
