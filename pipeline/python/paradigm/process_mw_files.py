@@ -424,14 +424,14 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
 
         ### Get Image events:
         if stimtype=='image':
-            image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='image']
+            image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
         elif 'grating' in stimtype:
-            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type'in i.keys() and i['type']=='drifting_grating']
+            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
 
             # Find ITI indices:
             iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value)==2]
 
-	        # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
             find_static = np.where(np.diff(start_times) > 0)[0] + 1
             find_static = np.append(find_static, 0)
@@ -441,7 +441,22 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
                 find_static = find_static[::2]
 
             image_evs = [tmp_image_evs[i] for i in find_static]
-            print "Found %i total image onset events." % len(image_evs)
+            
+        elif 'movie' in stimtype:
+            tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image_directory_movie']
+
+            # Find ITI indices:
+            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value)==2]
+
+        	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+            start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
+            find_static = np.where(np.diff(start_times) > 0)[0] + 1
+            find_static = np.append(find_static, 0)
+            find_static = sorted(find_static)
+            
+            image_evs = [tmp_image_evs[i] for i in find_static]
+        
+        print "Found %i total image onset events." % len(image_evs)
 
         first_stim_index = pixelclock_evs.index(image_evs[0])
         if first_stim_index>0:
@@ -770,20 +785,14 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
             trial[trialname]['end_time_ms'] = round((iti.time/1E3 + session_info['ITI']))
             stimtype = stim.value[1]['type']
             stimname = stim.value[1]['name']
-            stimrotation = stim.value[1]['rotation']
             if 'grating' in stimtype:
-                #ori = stim.value[1]['rotation']
-                #sf = round(stim.value[1]['frequency'], 2)
-                #stimname = 'grating-ori-%i-sf-%f' % (ori, sf)
+                stimrotation = stim.value[1]['rotation']
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
                 stimsize = (stim.value[1]['width'], stim.value[1]['height'])
                 phase = stim.value[1]['current_phase']
                 freq = stim.value[1]['frequency']
                 speed = stim.value[1]['speed']
                 direction = stim.value[1]['direction']
-#                stimfile = 'NA'
-#                stimhash = 'NA'
-
                 trial[trialname]['stimuli'] = {'stimulus': stimname,
                                               'position': stimpos,
                                               'scale': stimsize,
@@ -793,19 +802,30 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
                                               'frequency': freq,
                                               'speed': speed,
                                               'direction': direction}
+            elif 'movie' in stimtype:
+                stimrotation = stim.value[1]['current_stimulus']['rotation']
+                stimpos = (stim.value[1]['current_stimulus']['pos_x'], stim.value[1]['current_stimulus']['pos_y']) #''
+                stimsize = (stim.value[1]['current_stimulus']['size_x'], stim.value[1]['current_stimulus']['size_y'])
+                stimfile = stim.value[1]['current_stimulus']['filename']
+                stimhash = stim.value[1]['current_stimulus']['file_hash']
+                trial[trialname]['stimuli'] = {'stimulus': stimname,
+                                              'position': stimpos,
+                                              'scale': stimsize,
+                                              'type': stimtype,
+                                              'filepath': stimfile,
+                                              'filehash': stimhash,
+                                              'rotation': stimrotation,
+                                              'fps': stim.value[1]['frames_per_second']
+                                              }
 
             else:
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
                 #stimname = stim.value[1]['name'] #''
+                stimrotation = stim.value[1]['rotation']
                 stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
                 stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
-#                phase = 0
-#                freq = 0
-#                speed = 0
-#                direction = 0
                 stimfile = stim.value[1]['filename']
                 stimhash = stim.value[1]['file_hash']
-
                 trial[trialname]['stimuli'] = {'stimulus': stimname,
                                               'position': stimpos,
                                               'scale': stimsize,
