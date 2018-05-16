@@ -752,9 +752,24 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             yrot = 0
                             morphlevel = int(imname.split('morph')[-1])
                         else:
-                            objectid = imname #'morph' #imname.split('_y')[0]
-                            yrot = int(imname.split('_y')[-1])
-                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+                            #objectid = imname #'morph' #imname.split('_y')[0]
+                            if 'CamRot' in imname:
+                                objectid = imname.split('_CamRot_')[0] #'morph' #imname.split('_y')[0]
+                                yrot = int(imname.split('_CamRot_y')[-1])
+                                morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])
+                            else:
+                                objectid = imname.split('_y')[0]
+                                yrot = int(imname.split('_y')[-1])
+                                morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+                            
+#                        if '_y' not in imname and '_yrot' not in imname:
+#                            objectid = imname #'morph' #imname
+#                            yrot = 0
+#                            morphlevel = int(imname.split('morph')[-1])
+#                        else:
+#                            objectid = imname #'morph' #imname.split('_y')[0]
+#                            yrot = int(imname.split('_y')[-1])
+#                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
                 elif 'movie' in stimtype:
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     objectid = '_'.join(imname.split('_')[0:-1])
@@ -1349,10 +1364,16 @@ def collate_roi_stats(METRICS, configs):
                         yrot = 0
                         morphlevel = int(imname.split('morph')[-1])
                     else:
-                        objectid = imname #'morph' #imname.split('_y')[0]
-                        yrot = int(imname.split('_y')[-1])
-                        morphlevel = int(imname.split('_y')[0].split('morph')[-1])
-                        
+                        #objectid = imname #'morph' #imname.split('_y')[0]
+                        if 'CamRot' in imname:
+                            objectid = imname.split('_CamRot_')[0] #'morph' #imname.split('_y')[0]
+                            yrot = int(imname.split('_CamRot_y')[-1])
+                            morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])
+                        else:
+                            objectid = imname.split('_y')[0]
+                            yrot = int(imname.split('_y')[-1])
+                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+                            
                 img_trial = np.tile(imname, (ntrials,))
                 df_stim = pd.DataFrame({'img': img_trial,
                                         'object': np.tile(objectid, (ntrials,)),
