@@ -1352,6 +1352,13 @@ def collate_roi_stats(METRICS, configs):
                         objectid = imname #'morph' #imname.split('_y')[0]
                         yrot = int(imname.split('_y')[-1])
                         morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+                        
+                img_trial = np.tile(imname, (ntrials,))
+                df_stim = pd.DataFrame({'img': img_trial,
+                                        'object': np.tile(objectid, (ntrials,)),
+                                        'yrot': np.tile(yrot, (ntrials,)),
+                                        'morphlevel': np.tile(morphlevel, (ntrials,))
+                                        })
             elif stimtype == 'movie':
                 imname = os.path.splitext(configs[config]['filename'])[0]
                 objectid = '_'.join(imname.split('_')[0:-1])
@@ -1369,8 +1376,7 @@ def collate_roi_stats(METRICS, configs):
                 elif imname.split('_')[1] == 'morph':
                     # This is a full morph movie:
                     morphlevel = -1
-                        
-
+            
                 img_trial = np.tile(imname, (ntrials,))
                 df_stim = pd.DataFrame({'img': img_trial,
                                         'object': np.tile(objectid, (ntrials,)),
