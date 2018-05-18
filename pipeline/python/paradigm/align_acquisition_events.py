@@ -746,6 +746,13 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             morphlevel = 0
                         elif 'N2' in imname:
                             morphlevel = 22
+                            
+                    elif '_yRot' in imname:
+                        # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
+                        objectid = imname.split('_')[0]
+                        yrot = int(imname.split('_')[2][4:])
+                        morphlevel = 0
+                        
                     elif 'morph' in imname:
                         if '_y' not in imname and '_yrot' not in imname:
                             objectid = imname #'morph' #imname
@@ -762,14 +769,6 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                                 yrot = int(imname.split('_y')[-1])
                                 morphlevel = int(imname.split('_y')[0].split('morph')[-1])
                             
-#                        if '_y' not in imname and '_yrot' not in imname:
-#                            objectid = imname #'morph' #imname
-#                            yrot = 0
-#                            morphlevel = int(imname.split('morph')[-1])
-#                        else:
-#                            objectid = imname #'morph' #imname.split('_y')[0]
-#                            yrot = int(imname.split('_y')[-1])
-#                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
                 elif 'movie' in stimtype:
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     objectid = '_'.join(imname.split('_')[0:-1])
@@ -1358,6 +1357,13 @@ def collate_roi_stats(METRICS, configs):
                         morphlevel = 0
                     elif 'N2' in imname or 'D2' in imname:
                         morphlevel = 22
+                            
+                elif '_yRot' in imname:
+                    # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
+                    objectid = imname.split('_')[0]
+                    yrot = int(imname.split('_')[2][4:])
+                    morphlevel = 0
+                        
                 elif 'morph' in imname:
                     if '_y' not in imname and '_yrot' not in imname:
                         objectid = imname #'morph' #imname
