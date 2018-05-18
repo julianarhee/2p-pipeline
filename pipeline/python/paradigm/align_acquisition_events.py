@@ -750,7 +750,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                     elif '_yRot' in imname:
                         # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
                         objectid = imname.split('_')[0]
-                        yrot = int(imname.split('_')[2][4:])
+                        yrot = int(imname.split('_')[3][4:])
                         morphlevel = 0
                         
                     elif 'morph' in imname:
@@ -1361,7 +1361,7 @@ def collate_roi_stats(METRICS, configs):
                 elif '_yRot' in imname:
                     # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
                     objectid = imname.split('_')[0]
-                    yrot = int(imname.split('_')[2][4:])
+                    yrot = int(imname.split('_')[3][4:])
                     morphlevel = 0
                         
                 elif 'morph' in imname:
