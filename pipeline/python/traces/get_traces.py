@@ -816,8 +816,9 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, do_neuropil_correction=True
 
     try:
         # Load input tiff file:
-        print "-- -- Reading tiff..."
+        print "-- -- Reading tiff... %s" % currtiff_path
         tiff = tf.imread(currtiff_path)
+        print tiff.shape
         T, d1, d2 = tiff.shape
         d = d1*d2
         tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
@@ -1805,7 +1806,10 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
     if not os.path.exists(mask_figdir):
         os.makedirs(mask_figdir)
 
-    maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_' not in i]
+    maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png')]
+    np_figs = [i for i in maskfigs if 'np_iter' in i]
+    maskfigs = [i for i in maskfigs if not i in np_figs]
+    print "Found %i maskfigs." % len(maskfigs)
     if create_new is True or not len(maskfigs)==len(maskinfo['filenames']):
         if len(maskfigs) > 0:
             print "Removing old mask files..."

@@ -470,6 +470,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     cmapcolors = itertools.cycle(sns.xkcd_palette(colors))
 
     trans_types = object_transformations.keys()
+    print trans_types
 
     # Grid x,y positions, and vary other trans_type(s??) as curves:
     grid_variables = ['xpos', 'ypos']
@@ -484,7 +485,20 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     other_trans_types = [t for t in object_transformations.keys() if not t in grid_variables]
     desc = 'grid_xypos_%s' % '_'.join(other_trans_types)
 
-    if len(other_trans_types) == 1:
+    if len(other_trans_types) == 0:
+        if 'xpos' in trans_types and not 'ypos' in trans_types:
+            xval_trans = 'xpos' # Just plot each object as a function of x-position
+            rows = 'ypos'; columns = 'ypos'
+            row_order = sorted(list(set(roiDF['ypos'])))
+            col_order = sorted(list(set(roiDF['ypos'])))
+        elif 'ypos' in trans_types and not 'xpos' in trans_types:
+            xval_trans = 'ypos'
+            rows = 'xpos'; columns = 'xpos'
+            row_order = sorted(list(set(roiDF['xpos'])))
+            col_order = sorted(list(set(roiDF['xpos'])))
+        hue_trans = 'object'
+            
+    elif len(other_trans_types) == 1:
         xval_trans = other_trans_types[0]
         hue_trans = None
 
@@ -516,7 +530,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
                 hues[trans_type][comp_trans] = common_vals
 
 
-
+    #print roiDF.keys()
     # Set up colors for transforms with multiple combos with other transforms
     color_dict = {}
     if stim_subsets is True:
@@ -538,7 +552,9 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     # Append summary stats for metric_type = 'zscore' to dataframe for plotting:
 
     dfz = roiDF[np.isfinite(roiDF[metric_type])]     # Get rid of NaNs
+    #print dfz.head() 
     plot_variables = list(trans_types)      # List of transforms (variables-of-interest) to pull from dataframe (e.g.,'ori')
+    plot_variables.extend(['object'])    
     plot_variables.extend([metric_type])    # Append metric to show in list of variables-of-interest
     if 'xpos' not in plot_variables:
         plot_variables.extend(['xpos'])
