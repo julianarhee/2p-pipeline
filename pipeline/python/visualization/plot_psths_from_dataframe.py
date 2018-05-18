@@ -554,7 +554,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     dfz = roiDF[np.isfinite(roiDF[metric_type])]     # Get rid of NaNs
     #print dfz.head() 
     plot_variables = list(trans_types)      # List of transforms (variables-of-interest) to pull from dataframe (e.g.,'ori')
-    plot_variables.extend(['object'])    
+    #plot_variables.extend(['object'])    
     plot_variables.extend([metric_type])    # Append metric to show in list of variables-of-interest
     if 'xpos' not in plot_variables:
         plot_variables.extend(['xpos'])
@@ -564,7 +564,12 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     dfz = dfz[plot_variables]               # Get subset dataframe of variables-of-interest
     dfz = dfz.reset_index()
 
-    grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
+    if len(trans_types) > 1:
+        grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
+    else:
+        grouper = trans_types
+        grouper.append('object')
+        grouped = dfz.groupby(grouper, as_index=False)
     zscores = grouped.zscore.mean()                                            # Get mean of 'metric_type' for each combination of transforms
     print zscores.head()
     if len(trans_types) > 1:
@@ -599,7 +604,7 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
                                hue=hue_trans, row_order=row_order, col_order=col_order,
                                legend_out=True, size=6)
         g1.map(pl.plot, xval_trans, 'mean_%s' % metric_type, marker="_", linestyle='-')
-        g1.map(pl.errorbar, xval_trans, 'mean_%s' % metric_type, 'sem', elinewidth=1, linewidth=1)
+        g1.map(pl.errorbar, xval_trans, 'mean_%s' % metric_type, 'sem', elinewidth=1, linewidth=1, label=None)
         if include_trials:
             g1.map(pl.scatter, xval_trans, metric_type, s=1.0)
 
@@ -613,11 +618,11 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
         if hasattr(g1, 'ax'):
             box = g1.ax.get_position() # get position of figure
             g1.ax.set_position([box.x0, box.y0, box.width * 0.8, box.height]) # resize position
-            g1.ax.legend(loc='center right', bbox_to_anchor=(1.2, 0.8), ncol=1)
+            g1.ax.legend(loc='center right', bbox_to_anchor=(1.3, 0.8), ncol=1)
         else:
             box = g1.facet_axis(-1, -1).get_position() # get position of figure
             g1.facet_axis(-1, -1).set_position([box.x0, box.y0, box.width * 0.8, box.height]) # resize position
-            g1.facet_axis(-1, -1).legend(loc='center right', bbox_to_anchor=(1.2, 0.8), ncol=1)
+            g1.facet_axis(-1, -1).legend(loc='center right', bbox_to_anchor=(1.3, 0.8), ncol=1)
         if '/' in roi:
             roi = roi[1:]
 
@@ -831,8 +836,8 @@ def extract_options(options):
 #        '--omit-trials', '--psth', '--tuning',
 #        '-T', 'raw']
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425',
-        '-A', 'FOV1_zoom1x', '-R', 'gratings_run2', '-t', 'traces001',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516',
+        '-A', 'FOV1_zoom1x', '-R', 'objects_run2', '-t', 'traces001',
         '--no-pupil',
         '--omit-trials', '--tuning',
         '-T', 'np_subtracted']
