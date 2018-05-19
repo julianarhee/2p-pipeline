@@ -1019,7 +1019,7 @@ def parse_mw_trials(options):
 
     # Get raw MW files:
     raw_files = [f for f in os.listdir(paradigm_indir) if 'mwk' in f or 'serial' in f]
-    mw_dfns = sorted([os.path.join(paradigm_indir, m) for m in raw_files if m.endswith('.mwk')], key=natural_keys)
+    mw_dfns = sorted([os.path.join(paradigm_indir, m) for m in raw_files if m.endswith('.mwk') and not m.startswith('._')], key=natural_keys)
 
     # TODO:  adjust path-setting to allow for multiple reps of the same experiment
     if verbose is True:

@@ -277,7 +277,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
     # Get SERIAL data:
     # =============================================================================
     paradigm_rawdir = os.path.join(run_dir, runinfo['rawtiff_dir'], 'paradigm_files')
-    serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') if 'serial' in s], key=natural_keys)
+    serialdata_fns = sorted([s for s in os.listdir(paradigm_rawdir) if s.endswith('txt') and 'serial' in s and not s.startswith('._')], key=natural_keys)
     print "Found %02d serial-data files, and %i TIFFs." % (len(serialdata_fns), nfiles)
 
     if len(serialdata_fns) < nfiles:
