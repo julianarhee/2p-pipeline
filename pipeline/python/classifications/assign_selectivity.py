@@ -742,7 +742,7 @@ def get_OSI(DATA, roi_list, stimconfigs, metric='meanstimdf'):
 def assign_OSI(stimconfigs, DATA, sorted_visual, sort_dir, metric='meanstimdf'):
     osi_fpath = os.path.join(sort_dir, 'OSI_%s.json' % metric)
     if os.path.exists(osi_fpath):
-        print "Loading OSI results (%s) from:\n%s" % (osi_fpath)
+        print "Loading OSI results from:\n%s" % (osi_fpath)
         with open(osi_fpath, 'r') as f:
             OSI = json.load(f)
     else:
@@ -1616,7 +1616,7 @@ def compare_meandf_zscore(stimconfigs, DATA, sorted_visual, sorted_selective, so
         #grped = df.groupby(['config']) #.mean()
         #df2_dff = pd.DataFrame({col:vals['dff'] for col,vals in grped})
         df.config = df.config.astype("category")
-        df.config.cat.set_categories(INFO['condition_list'], inplace=True)
+        #df.config.cat.set_categories(INFO['condition_list'], inplace=True)
         df = df.sort_values(['config'])
         
         stimdf_means = df.groupby(['config'])['meanstimdf'].mean() # df2_dff.mean() #.sort_values(ascending=False)
