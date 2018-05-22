@@ -554,7 +554,8 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
     dfz = roiDF[np.isfinite(roiDF[metric_type])]     # Get rid of NaNs
     #print dfz.head() 
     plot_variables = list(trans_types)      # List of transforms (variables-of-interest) to pull from dataframe (e.g.,'ori')
-    #plot_variables.extend(['object'])    
+    if 'object' in roiDF.keys():
+        plot_variables.extend(['object'])    
     plot_variables.extend([metric_type])    # Append metric to show in list of variables-of-interest
     if 'xpos' not in plot_variables:
         plot_variables.extend(['xpos'])
@@ -563,12 +564,14 @@ def plot_tuning_by_transforms(roiDF, transform_dict, object_transformations, met
 
     dfz = dfz[plot_variables]               # Get subset dataframe of variables-of-interest
     dfz = dfz.reset_index()
+    print dfz.head()
 
     if len(trans_types) > 1:
         grouped = dfz.groupby(trans_types, as_index=False)                         # Group dataframe subset by variables-of-interest
     else:
         grouper = trans_types
-        grouper.append('object')
+        if 'object' in plot_variables:
+            grouper.append('object')
         grouped = dfz.groupby(grouper, as_index=False)
     zscores = grouped.zscore.mean()                                            # Get mean of 'metric_type' for each combination of transforms
     print zscores.head()
