@@ -82,6 +82,7 @@ import time
 import shutil
 import datetime
 import traceback
+import copy
 from itertools import permutations
 from scipy import stats
 import pandas as pd
@@ -216,6 +217,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
         nframes_iti_post = iti_post*si_info['framerate'] #framerate # int(round(iti_post * volumerate))
         nframes_iti_full = iti_full * si_info['framerate'] #framerate #int(round(iti_full * volumerate))
         nframes_post_onset = (stim_on_sec + iti_post) * si_info['framerate'] #framerate
+        vols_per_trial = (iti_pre + stim_on_sec + iti_post) * si_info['volumerate']
     except Exception as e:
         print "Problem calcuating nframes for trial epochs..."
         traceback.print_exc()
@@ -712,7 +714,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
     try:
         for roi in roi_list:
             roi_dfs = []
-
+            bad_trials = []
             for configname in sorted(config_list, key=natural_keys): #sorted(ROIs.keys(), key=natural_key):
 
                 curr_slice = roi_trials[configname][roi].attrs['slice']
@@ -771,7 +773,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                             
                 elif 'movie' in stimtype:
                     imname = os.path.splitext(configs[configname]['filename'])[0]
-                    objectid = '_'.join(imname.split('_')[0:-1])
+                    objectid = imname.split('_movie')[0] #'_'.join(imname.split('_')[0:-1])
                     if 'reverse' in imname:
                         yrot = -1
                     else:
@@ -806,6 +808,9 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         print "Bad trial indices found!", roi, configname, trial
                         print "Aux file idx:", roi_trials[configname][roi][trial].attrs['aux_file_idx']
                         print "tsecs:", tsecs
+                        bad_trials.append((configname, trial, roi_trials[configname][roi][trial].attrs['aux_file_idx']))
+                        continue
+                        
 
                     # Get raw (or other specified) timecourse for current trial:
                     trial_timecourse = roi_trials[configname][roi][trial][trace_type]
@@ -1289,6 +1294,91 @@ def get_roi_summary_stats(metrics_filepath, configs, trace_type='raw', create_ne
     return roistats_filepath
 
 #%%
+def format_stimconfigs(configs):
+    
+    stimconfigs = copy.deepcopy(configs)
+    
+    if 'frequency' in configs[configs.keys()[0]].keys():
+        stimtype = 'grating'
+    elif 'fps' in configs[configs.keys()[0]].keys():
+        stimtype = 'movie'
+    else:
+        stimtype = 'image'
+        
+    # Split position into x,y:
+    for config in stimconfigs.keys():
+        stimconfigs[config]['xpos'] = configs[config]['position'][0]
+        stimconfigs[config]['ypos'] = configs[config]['position'][1]
+        stimconfigs[config]['size'] = configs[config]['scale'][0]
+        stimconfigs[config].pop('position', None)
+        stimconfigs[config].pop('scale', None)
+        
+        # stimulus-type specific variables:
+        if stimtype == 'grating':
+            stimconfigs[config]['sf'] = configs[config]['frequency']
+            stimconfigs[config]['ori'] = configs[config]['rotation']
+            stimconfigs[config].pop('frequency', None)
+            stimconfigs[config].pop('rotation', None)
+        else:
+            transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype']
+            if stimtype == 'image':
+                imname = os.path.splitext(configs[config]['filename'])[0]
+                if ('CamRot' in imname):
+                    objectid = imname.split('_CamRot_')[0]
+                    yrot = int(imname.split('_CamRot_y')[-1])
+                    if 'N1' in imname or 'D1' in imname:
+                        morphlevel = 0
+                    elif 'N2' in imname or 'D2' in imname:
+                        morphlevel = 22
+                    elif 'morph' in imname:
+                        morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])   
+                elif '_zRot' in imname:
+                    # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_zRot0'
+                    objectid = imname.split('_')[0]
+                    yrot = int(imname.split('_')[3][4:])
+                    morphlevel = 0
+                elif 'morph' in imname: 
+                    # These are morphs w/ old naming convention, 'CamRot' not in filename)
+                    if '_y' not in imname and '_yrot' not in imname:
+                        objectid = imname #'morph' #imname
+                        yrot = 0
+                        morphlevel = int(imname.split('morph')[-1])
+                    else:
+                        objectid = imname.split('_y')[0]
+                        yrot = int(imname.split('_y')[-1])
+                        morphlevel = int(imname.split('_y')[0].split('morph')[-1])
+            elif stimtype == 'movie':
+                imname = os.path.splitext(configs[config]['filename'])[0]
+                objectid = imname.split('_movie')[0] #'_'.join(imname.split('_')[0:-1])
+                if 'reverse' in imname:
+                    yrot = -1
+                else:
+                    yrot = 1
+                if imname.split('_')[1] == 'D1':
+                    morphlevel = 0
+                elif imname.split('_')[1] == 'D2':
+                    morphlevel = 22
+                elif imname.split('_')[1][0] == 'M':
+                    # Blob_M11_Rot_y_etc.
+                    morphlevel = int(imname.split('_')[1][1:])
+                elif imname.split('_')[1] == 'morph':
+                    # This is a full morph movie:
+                    morphlevel = -1
+                    
+        stimconfigs[config]['object'] = objectid
+        stimconfigs[config]['yrot'] = yrot
+        stimconfigs[config]['morphlevel'] = morphlevel
+        stimconfigs[config]['stimtype'] = stimtype
+        
+        for skey in stimconfigs[config].keys():
+            if skey not in transform_variables:
+                stimconfigs[config].pop(skey, None)
+
+    
+    return stimconfigs
+
+    
+#%%
 def collate_roi_stats(METRICS, configs):
     '''
     This is really just a formatting function for easier plotting.
@@ -1305,121 +1395,65 @@ def collate_roi_stats(METRICS, configs):
         stimtype = 'movie'
     else:
         stimtype = 'image'
+        
+    sconfigs = format_stimconfigs(configs)
+    
 
     # Sort metrics by stimulus-params and calculate sumamry stats:
     roistats_df =[]
     for ri,roi in enumerate(sorted(METRICS.keys(), key=natural_keys)):
+        rdata = METRICS[roi]
+        
+        # filter funky trials:
+        rdata = rdata[rdata['mean_stim_on']<20].reset_index()
         if ri % 10 == 0:
             print "... collating %i of %i rois" % (ri, len(METRICS.keys()))
-        for config in sorted(configs.keys(), key = natural_keys):
-            DF = METRICS[roi][METRICS[roi]['config'] == config]
-            all_trials = sorted(list(set(DF['trial'])), key=natural_keys)
-            ntrials = len(all_trials)
-
-            xpos_trial = np.tile(configs[config]['position'][0], (ntrials,))
-            ypos_trial = np.tile(configs[config]['position'][1], (ntrials,))
-            size_trial = np.tile(configs[config]['scale'][0], (ntrials,))
-
-            # First, get all general info:
-            df_main = pd.DataFrame({'roi': np.tile(str(roi), (ntrials,)),
-                                    'config': np.tile(config, (ntrials,)),
-                                    'trial': sorted(all_trials, key=natural_keys),
-                                    'zscore': DF['zscore'],
-                                    'stim_df': DF['mean_stim_on'],
-                                    'baseline_df': DF['mean_baseline'],
-                                    'xpos': xpos_trial,
-                                    'ypos': ypos_trial,
-                                    'size': size_trial})
-
-            # Add eye-info, if exists:
-            if 'pupil_size_stimulus' in DF.keys():
-                df_eye = pd.DataFrame({'pupil_size_baseline': DF['pupil_size_baseline'],
-                                       'pupil_size_stimulus': DF['pupil_size_stimulus'],
-                                       'pupil_dist_stimulus': DF['pupil_dist_stimulus'],
-                                       'pupil_dist_baseline': DF['pupil_dist_baseline'],
-                                       'pupil_nblinks_stim': DF['pupil_nblinks_stim'],
-                                       'pupil_nblinks_baseline': DF['pupil_nblinks_baseline']})
-                df_main = pd.concat([df_main, df_eye], axis=1)
-
-            # Add stimulus-specific info:
-            if stimtype == 'grating':
-                sf_trial = np.tile(configs[config]['frequency'], (ntrials,))
-                ori_trial = np.tile(configs[config]['rotation'], (ntrials,))
-
-                df_stim = pd.DataFrame({'sf': sf_trial,
-                                        'ori': ori_trial})
-            elif stimtype == 'image':
-                imname = os.path.splitext(configs[config]['filename'])[0]
-                if ('CamRot' in imname) and not ('morph' in imname):
-                    objectid = imname.split('_CamRot_')[0]
-                    yrot = int(imname.split('_CamRot_y')[-1])
-                    if 'N1' in imname or 'D1' in imname:
-                        morphlevel = 0
-                    elif 'N2' in imname or 'D2' in imname:
-                        morphlevel = 22
-                            
-                elif '_yRot' in imname:
-                    # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
-                    objectid = imname.split('_')[0]
-                    yrot = int(imname.split('_')[3][4:])
-                    morphlevel = 0
-                        
-                elif 'morph' in imname:
-                    if '_y' not in imname and '_yrot' not in imname:
-                        objectid = imname #'morph' #imname
-                        yrot = 0
-                        morphlevel = int(imname.split('morph')[-1])
-                    else:
-                        #objectid = imname #'morph' #imname.split('_y')[0]
-                        if 'CamRot' in imname:
-                            objectid = imname.split('_CamRot_')[0] #'morph' #imname.split('_y')[0]
-                            yrot = int(imname.split('_CamRot_y')[-1])
-                            morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])
-                        else:
-                            objectid = imname.split('_y')[0]
-                            yrot = int(imname.split('_y')[-1])
-                            morphlevel = int(imname.split('_y')[0].split('morph')[-1])
-                            
-                img_trial = np.tile(imname, (ntrials,))
-                df_stim = pd.DataFrame({'img': img_trial,
-                                        'object': np.tile(objectid, (ntrials,)),
-                                        'yrot': np.tile(yrot, (ntrials,)),
-                                        'morphlevel': np.tile(morphlevel, (ntrials,))
-                                        })
-            elif stimtype == 'movie':
-                imname = os.path.splitext(configs[config]['filename'])[0]
-                objectid = '_'.join(imname.split('_')[0:-1])
-                if 'reverse' in imname:
-                    yrot = -1
-                else:
-                    yrot = 1
-                if imname.split('_')[1] == 'D1':
-                    morphlevel = 0
-                elif imname.split('_')[1] == 'D2':
-                    morphlevel = 22
-                elif imname.split('_')[1][0] == 'M':
-                    # Blob_M11_Rot_y_etc.
-                    morphlevel = int(imname.split('_')[1][1:])
-                elif imname.split('_')[1] == 'morph':
-                    # This is a full morph movie:
-                    morphlevel = -1
             
-                img_trial = np.tile(imname, (ntrials,))
-                df_stim = pd.DataFrame({'img': img_trial,
-                                        'object': np.tile(objectid, (ntrials,)),
-                                        'yrot': np.tile(yrot, (ntrials,)),
-                                        'morphlevel': np.tile(morphlevel, (ntrials,))
-                                        })
-            df_main = pd.concat([df_main, df_stim], axis=1)
+        grouped = rdata.groupby(['config'])
+        ntrials_per_cond = [len(g['trial']) for k,g in grouped]
+        max_ntrials = max(ntrials_per_cond)
+    
+        # First, get all general info:
+        df_main = pd.concat([pd.DataFrame({
+                                'roi': np.tile(str(roi), (max_ntrials,)),
+                                'config': np.tile(k, (max_ntrials,)),
+                                'trial': np.pad(g['trial'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'zscore': np.pad(g['zscore'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'stim_df': np.pad(g['mean_stim_on'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'baseline_df': np.pad(g['mean_baseline'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan))
+                                }) for k,g in grouped], axis=0)
+        # Add eye info:
+        df_eye = pd.DataFrame()
+        if 'pupil_size_stimulus' in rdata.keys():
+            df_eye = pd.concat([pd.DataFrame({
+                                'pupil_size_baseline': np.pad(g['pupil_size_baseline'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'pupil_size_stimulus': np.pad(g['pupil_size_stimulus'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'pupil_dist_stimulus': np.pad(g['pupil_dist_stimulus'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'pupil_dist_baseline': np.pad(g['pupil_dist_baseline'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'pupil_nblinks_stim': np.pad(g['pupil_nblinks_stim'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan)),
+                                'pupil_nblinks_baseline': np.pad(g['pupil_nblinks_baseline'].values, (0, max_ntrials - len(g['trial'])), mode='constant', constant_values=(np.nan, np.nan))
+                                }) for k,g in grouped], axis=0)
+        df_main = pd.concat([df_main, df_eye], axis=1)
+        
+        # Add stimulus-specific info:
+        stimlist = []
+        for k,g in grouped:
+            tmpdf = dict((k, np.tile(v, max_ntrials)) for k,v in sconfigs[k].iteritems())
+            stimlist.append(pd.DataFrame(tmpdf))  
+        df_stim = pd.concat(stimlist, axis=0)
+    
+        # Put all DFs together:
+        df_main = pd.concat([df_main, df_stim], axis=1)
 
-            # Append current config info for all trials ROI DF:
-            roistats_df.append(df_main)
+        # Append current config info for all trials ROI DF:
+        roistats_df.append(df_main)
 
     # Concatenate all trials across all configs for all ROIs into main dataframe:
     ROISTATS = pd.concat(roistats_df, axis=0)
 
     return ROISTATS
 
+#%%
 def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0, create_new=False,
                      filter_pupil=False, pupil_radius_min=None, pupil_radius_max=None, pupil_dist_thr=None):
     # Get paradigm/AUX info:
@@ -1607,16 +1641,24 @@ def extract_options(options):
 #           '--no-pupil', '--new',
 #           '-b', 2.0]
 #
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516', '-A', 'FOV1_zoom1x',
 #           '-R', 'blobs_movies_run2',
 #           '-T', 'np_subtracted', '-t', 'traces001',
 #           '--no-pupil', '--new',
 #           '-b', 2.0]
+#
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518',
+        '-A', 'FOV1_zoom1x', '-R', 'blobs_dynamic_run3', '-t', 'traces001',
+        '--no-pupil',
+        '-T', 'np_subtracted',
+        '-b', 2.0]
+
 
  #%%
 # Set USER INPUT options:
 
 def create_roi_dataframes(options):
+    
     options = extract_options(options)
 
     rootdir = options.rootdir
