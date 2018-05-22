@@ -530,6 +530,7 @@ def test_for_responsive(DATA, save_figs=False, output_dir='/tmp'):
 # -----------------------------------------------------------------------------
 # Test if there is a significant interaction between transformation types:
 # -----------------------------------------------------------------------------
+from ast import literal_eval
 
 def find_selective_cells_ANOVA(trans_types, options, DATA, sort_dir, sorted_visual, metric='meanstimdf'):
     
@@ -551,6 +552,10 @@ def find_selective_cells_ANOVA(trans_types, options, DATA, sort_dir, sorted_visu
         print "Loading existing %i-way ANOVA results: %s" % (len(trans_types), selective_anova_fpath)
         with open(selective_anova_fpath, 'r') as f:
             selective_anova = json.load(f)
+        if '(' in selective_anova[selective_anova.keys()[0]].keys()[0]:
+            for r in selective_anova.keys():
+                selective_anova[r] = {literal_eval(k):v for k, v in selective_anova[r].items()}
+            
     else:
         if multiproc:
             selective_anova = test_transform_selectivity_mp(sorted_visual, DATA, trans_types,
@@ -562,18 +567,30 @@ def find_selective_cells_ANOVA(trans_types, options, DATA, sort_dir, sorted_visu
                                                          metric=metric,
                                                          output_dir=selective_resultsdir)
         
+        if isinstance(selective_anova[selective_anova.keys()[0]].keys()[0], tuple):
+            for r in selective_anova.keys():
+                selective_anova[r] = {str(k):v for k, v in selective_anova[r] .items()}
+                
         # Save responsive roi list to disk:
         print "Saving %i-way ANOVA results to:\n%s" % (len(trans_types), selective_anova_fpath)
         with open(selective_anova_fpath, 'w') as f:
             json.dump(selective_anova, f, indent=4, sort_keys=True)
-    
+
+    if '(' in selective_anova[selective_anova.keys()[0]].keys()[0]:
+        for r in selective_anova.keys():
+            selective_anova[r] = {literal_eval(k):v for k, v in selective_anova[r].items()}
+                
     if len(trans_types) > 1:    
         selective_rois_anova = [k for k in selective_anova.keys()
                                 if any([selective_anova[k][t]['p'] < 0.05
                                 for t in selective_anova[k].keys()]) ]
+        # Sort by F-value, from biggest --> smallest:
+        selective_rois_anova = sorted(selective_rois_anova, key=lambda x: max([selective_anova[x][f]['F'] for f in selective_anova[x].keys()]))[::-1]
+        
     else:
         selective_rois_anova = [k for k in selective_anova.keys()
                                 if selective_anova[k]['p'] < 0.05]
+    
         # Sort by F-value, from biggest --> smallest:
         selective_rois_anova = sorted(selective_rois_anova, key=lambda x: selective_anova[x]['F'])[::-1]
         
@@ -658,7 +675,7 @@ def test_transform_selectivity(sorted_visual, DATA, trans_types, metric='meansti
     results = {}
 
     for roi in sorted_visual:
-        print roi
+        #print roi
         rdata = DATA[DATA['roi']==roi]
         results[roi] = selectivity_nwayANOVA(roi, rdata, trans_types, metric=metric, output_dir=output_dir)
 
@@ -740,6 +757,7 @@ def get_OSI(DATA, roi_list, stimconfigs, metric='meanstimdf'):
 
 
 def assign_OSI(stimconfigs, DATA, sorted_visual, sort_dir, metric='meanstimdf'):
+    
     osi_fpath = os.path.join(sort_dir, 'OSI_%s.json' % metric)
     if os.path.exists(osi_fpath):
         print "Loading OSI results from:\n%s" % (osi_fpath)
@@ -783,12 +801,22 @@ def get_reference_config(Cmax_overall, trans_types, transform_dict):
         if 'sf' in transform_dict.keys():
             ref_sf = transform_dict['sf'][0]
 
+    if 'yrot' in trans_types:
+        yrot_tidx = trans_types.index('yrot')
+        ref_yrot = Cmax_overall[yrot_tidx]
+    else:
+        if 'yrot' in transform_dict.keys():
+            ref_yrot = transform_dict['yrot'][0]
+            
     Cref = {'xpos': ref_xpos,
             'ypos': ref_ypos,
             'size': ref_size}
 
     if 'sf' in trans_types:
         Cref['sf'] = ref_sf
+        
+    if 'yrot' in trans_types:
+        Cref['yrot'] = ref_yrot
 
     return Cref
 
@@ -844,15 +872,19 @@ def calc_sparseness(df, trans_types, transform_dict, metric='meanstimdf'):
 
     Cref = get_reference_config(Cmax_overall, trans_types, transform_dict)
 
+    # Get responses to each "OBJECT" at the reference transform values (i.e., transform values at BEST object response):
     object_resp_df = stimdf_means.copy()
-    if 'xpos' in trans_types:
-        object_resp_df = object_resp_df.xs(Cref['xpos'], level='xpos')
-    if 'ypos' in trans_types:
-        object_resp_df = object_resp_df.xs(Cref['ypos'], level='ypos')
-    if 'size' in trans_types:
-        object_resp_df = object_resp_df.xs(Cref['size'], level='size')
-    if 'sf' in trans_types:
-        object_resp_df = object_resp_df.xs(Cref['sf'], level='sf')
+    for best_trans in Cref.keys():
+        if best_trans in object_resp_df.keys().names:
+            object_resp_df = object_resp_df.xs(Cref[best_trans], level=best_trans)  
+#    if 'xpos' in trans_types:
+#        object_resp_df = object_resp_df.xs(Cref['xpos'], level='xpos')
+#    if 'ypos' in trans_types:
+#        object_resp_df = object_resp_df.xs(Cref['ypos'], level='ypos')
+#    if 'size' in trans_types:
+#        object_resp_df = object_resp_df.xs(Cref['size'], level='size')
+#    if 'sf' in trans_types:
+#        object_resp_df = object_resp_df.xs(Cref['sf'], level='sf')
 
     # TODO:  what to do if stim_df values are negative??
     if all(object_resp_df.values < 0):
@@ -974,9 +1006,14 @@ def normalize_rank_ordered_responses(sparseness, sorted_visual,
     kept_rois = [r for r in sparseness.keys() if r not in excluded_rois]
     print "%i (out of %i) ROIs excluded because of negative stim_df values..." % (len(excluded_rois), len(sparseness.keys()))
     
-    sparseness_vals_topn = [sparseness[r]['S'] for r in sorted_visual[0:10]]
+    strong_rois = [r for r in sorted_visual if sparseness[r]['object_responses'].max() >= 0.2]
+    sparseness_vals_topn = [sparseness[r]['S'] for r in strong_rois]
     highS_ex = [r for r in kept_rois if sparseness[r]['S'] == max(sparseness_vals_topn)][0]
     lowS_ex = [r for r in kept_rois if sparseness[r]['S'] == min(sparseness_vals_topn)][0]
+    
+    #sparseness_vals_topn = [sparseness[r]['S'] for r in kept_rois]
+    #highS_ex = [r for r in kept_rois if sparseness[r]['S'] >=0.8 ][0]
+    #lowS_ex = [r for r in kept_rois if sparseness[r]['S'] <= 0.1 ][0]
     
     sorted_lowS_vals = sorted(sparseness[lowS_ex]['object_responses'].values / sparseness[lowS_ex]['object_responses'].max())[::-1]
     sorted_highS_vals = sorted(sparseness[highS_ex]['object_responses'].values / sparseness[highS_ex]['object_responses'].max())[::-1]
@@ -1210,11 +1247,16 @@ def extract_options(options):
 #           '-R', 'blobs_run1', '-t', 'traces002',
 #           '-n', '1']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_run1', '-t', 'traces001',
-           '-n', '1', '--par', '--nproc=4']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180515', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run3', '-t', 'traces001',
+#           '-n', '1', '--par', '--nproc=4']
     
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518', '-A', 'FOV1_zoom1x',
+       '-T', 'np_subtracted', '--no-pupil',
+       '-R', 'blobs_dynamic_run3', '-t', 'traces002',
+       '-n', '1', '--par', '--nproc=4']
+
 #%% 
 
 # -----------------------------------------------------------------------------
@@ -1330,7 +1372,7 @@ def find_selective_cells_KW(options, DATA, sort_dir, sorted_visual, post_hoc='du
         new_sorting = True
         if multiproc is False and nprocesses > 1:
             nprocesses = 1
-        selectivityKW_results = test_for_selectiveKW_mp(DATA, metric=metric, nprocs=nprocesses)
+        selectivityKW_results = test_for_selectiveKW_mp(sorted_visual, DATA, metric=metric, nprocs=nprocesses)
 
         # Save results to file:
         posthoc_fpath = os.path.join(sort_dir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
@@ -1355,9 +1397,9 @@ def find_selective_cells_KW(options, DATA, sort_dir, sorted_visual, post_hoc='du
 
 
 #%
-def test_for_selectiveKW_mp(DATA, metric='meanstimdf', nprocs=4):
+def test_for_selectiveKW_mp(roi_list, DATA, metric='meanstimdf', nprocs=4):
 
-    roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
+    #roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
     print("Calculating KW selectivity test for %i rois." % len(roi_list))
 
     t_eval_mp = time.time()
@@ -1411,6 +1453,7 @@ def selectivity_KW(rdata, post_hoc='dunn', metric='meanstimdf', asdict=True):
     # Format dataframe and do KW test:
     groupedconfigs = {}
     for grp in df['config'].unique():
+        print grp
         groupedconfigs[grp] = df[df['config']==grp][metric].values
     args = groupedconfigs.values()
     H, p = stats.kruskal(*args)
@@ -1455,9 +1498,16 @@ def boxplot_roi_selectivity(rdata, sort_dir, metric='meanstimdf', stimlabels={})
 #                                                  stimconfigs[t.get_text()]['frequency'],
 #                                                  t.get_text()) for t in ax.get_xticklabels()])
     if len(stimlabels.keys()) > 0:
-        ax.set_xticklabels(['%i deg\n%.2f cpd\n%s' % (stimlabels[t.get_text()],
+        if isinstance(stimlabels[stimlabels.keys()[0]], int):
+            ax.set_xticklabels(['%i deg\n%.2f cpd\n%s' % (stimlabels[t.get_text()],
                                                   stimlabels[t.get_text()],
-                                                  t.get_text()) for t in ax.get_xticklabels()])
+                                                  t.get_text()) for t in ax.get_xticklabels()],
+                                rotation=45)
+        else:
+            ax.set_xticklabels(['%s\n%s' % (stimlabels[t.get_text()],
+                                      t.get_text()) for t in ax.get_xticklabels()],
+                                rotation=45)
+    
     figname = 'box_mediandff_%s.png' % roi
     pl.savefig(os.path.join(selective_dir, figname))
     pl.close()
@@ -1592,8 +1642,42 @@ def hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir='/tmp', sa
     
     return figname
 
+def format_stimulus_transforms(stimconfigs):
+    # Split position into x,y:
+    for config in stimconfigs.keys():
+        stimconfigs[config]['xpos'] = stimconfigs[config]['position'][0]
+        stimconfigs[config]['ypos'] = stimconfigs[config]['position'][1]
+        stimconfigs[config]['size'] = stimconfigs[config]['scale'][0]
+        stimconfigs[config].pop('position', None)
+        stimconfigs[config].pop('scale', None)
+        if 'frequency' in stimconfigs[config].keys():
+            stimconfigs[config]['sf'] = stimconfigs[config]['frequency']
+            stimconfigs[config].pop('frequency', None)
+        if 'rotation' in stimconfigs[config].keys():
+            stimconfigs[config]['ori'] = stimconfigs[config]['rotation']
+            stimconfigs[config].pop('rotation', None)
+        if 'filename' in stimconfigs[config].keys():
+            fn = os.path.splitext(stimconfigs[config]['filename'])[0] # remove extension
+            if '_CamRot_y' in fn:
+                stimconfigs[config]['object'] = fn.split('_CamRot_y')[0]
+                stimconfigs[config]['yrot'] = int(fn.split('_CamRot_y')[-1])
+            else: # RW objects are formatted differently:
+                stimconfigs[config]['object'] = fn.split('_')[0]
+                stimconfigs[config]['yrot'] = int(fn.split('zRot')[-1])
+                
+            stimconfigs[config].pop('filename', None)        
+            stimconfigs[config].pop('filepath', None)        
+            if 'morph' in stimconfigs[config]['object']:
+                stimconfigs[config]['morphlevel'] = int(stimconfigs[config]['object'].split('morph')[-1])
+            elif '_N1' in stimconfigs[config]['object']:
+                stimconfigs[config]['morphlevel'] = 0
+            elif '_N2' in stimconfigs[config]['object']:
+                stimconfigs[config]['morphlevel'] = 22
+            else: # RW object
+                stimconfigs[config]['morphlevel'] = -1
+    return stimconfigs
 
-def compare_meandf_zscore(stimconfigs, DATA, sorted_visual, sorted_selective, sort_dir, trans_types=[], metric='meanstimdf'):
+def compare_meandf_zscore(stimconfigs, transform_dict, DATA, sorted_visual, sorted_selective, sort_dir, metric='meanstimdf'):
     print "------ Creating tuning curves from mean stim ON values and zscore values"
     
     sorted_tuningdir_visual = os.path.join(sort_dir, 'figures', 'tuning_responsive')
@@ -1601,7 +1685,18 @@ def compare_meandf_zscore(stimconfigs, DATA, sorted_visual, sorted_selective, so
         os.makedirs(sorted_tuningdir_visual)
     
     #roi = 'roi00030'
+    id_trans = ['xpos', 'ypos', 'yrot', 'size']
+    id_preserving_transforms = [t for t in transform_dict.keys() if t in id_trans and len(transform_dict[t]) > 1]
     
+    # Format MW stimulus config labels for easy access:
+    sconfigs = format_stimulus_transforms(stimconfigs)
+    
+    # Turn into DF with row indices as 'config' to concat with mean/sem dfs:
+    config_df = pd.DataFrame(stimconfigs).T.reset_index()
+    config_df = config_df.rename(columns={'index': 'config'}).sort_values('config')
+    sns.set_palette(sns.color_palette("hls", len(sconfigs)))
+    
+    # Only plot top 10 visual/selective ROIs
     rois_to_plot = sorted_selective[0:10]
     rois_to_plot.extend(sorted_visual[0:10])
     rois_to_plot = list(set(rois_to_plot))
@@ -1619,68 +1714,223 @@ def compare_meandf_zscore(stimconfigs, DATA, sorted_visual, sorted_selective, so
         #df.config.cat.set_categories(INFO['condition_list'], inplace=True)
         df = df.sort_values(['config'])
         
-        stimdf_means = df.groupby(['config'])['meanstimdf'].mean() # df2_dff.mean() #.sort_values(ascending=False)
-        stimdf_sems = df.groupby(['config'])['meanstimdf'].sem() #df2_dff.sem()
+        stimdf_means = df.groupby(['config'])['meanstimdf'].mean().reset_index().rename(columns={'meanstimdf': 'mean'}) 
+        stimdf_sems  = df.groupby(['config'])['meanstimdf'].sem().reset_index().rename(columns={'meanstimdf': 'sem'}) 
+        stimdf = pd.merge(stimdf_means, stimdf_sems, on='config')
+        stimdf = pd.merge(stimdf, config_df, on='config')
     
-        zscore_means = df.groupby(['config'])['zscore'].mean()
-        zscore_sems = df.groupby(['config'])['zscore'].sem()
+        zscore_means = df.groupby(['config'])['zscore'].mean().reset_index().rename(columns={'zscore': 'mean'}) 
+        zscore_sems = df.groupby(['config'])['zscore'].sem().reset_index().rename(columns={'zscore': 'sem'}) 
+        zscoredf = pd.merge(zscore_means, zscore_sems, on='config')
+        zscoredf = pd.merge(zscoredf, config_df, on='config')
     
-        if 'sf' in trans_types:
-            sf1 = sorted([config for config in stimconfigs.keys() if stimconfigs[config]['frequency']==0.1], key=lambda x: stimconfigs[x]['rotation'])
-            sf2 = sorted([config for config in stimconfigs.keys() if stimconfigs[config]['frequency']==0.5], key=lambda x: stimconfigs[x]['rotation'])
-            oris = [stimconfigs[config]['rotation'] for config in sf1]
-            sfs = [sf1, sf2]
-            colors = ['g', 'm']
-            labels = [0.1, 0.5]
-        else:
-            oris = sorted([stimconfigs[config]['rotation'] for config in stimconfigs])
-    
-        sns.set()
-        ntransforms = len(trans_types)
+        trans_list = []
+        if len(id_preserving_transforms) == 1:
+            # For gratings, this is ORI. For objects, this can be Yrot, Xpos, etc.
+            config_idx = dict((g[0], g[1]['config'].values) for g in config_df.groupby(id_preserving_transforms))
+            if 'object' in config_df.columns:
+                objects_to_color = list(set(config_df.sort_values(['morphlevel'])['object']))
+            elif 'sf' in config_df.columns:
+                objects_to_color = list(set(config_df['sf']))
+            
+        labels = objects_to_color
+        trans_values = sorted(config_idx.keys())
+        colors = ['g', 'm', 'b', 'orange', 'purple']
+#            sf2 = sorted([config for config in stimconfigs.keys() if stimconfigs[config]['frequency']==0.5], key=lambda x: stimconfigs[x]['rotation'])
+#            oris = [stimconfigs[config]['rotation'] for config in sf1]
+#            sfs = [sf1, sf2]
+#            colors = ['g', 'm']
+#            labels = [0.1, 0.5]
+#        else:
+#            oris = sorted([stimconfigs[config]['rotation'] for config in stimconfigs])
+#    
+        sns.set_style('white')
+
+        fig, (ax1, ax2) = pl.subplots(1, 2, figsize=(12,5))
         
-            
-        if len(trans_types) == 2:
-            fig, (ax1, ax2) = pl.subplots(1, 2, figsize=(10,5))
-    
-            ax1.plot(oris, stimdf_means[sf1], color='g', label=0.1)
-            ax1.errorbar(oris, stimdf_means[sf1], yerr=stimdf_sems[sf1], color='g', label=None)
-            ax1.plot(oris, stimdf_means[sf1], color='m', label=0.5)
-            ax1.errorbar(oris, stimdf_means[sf1], yerr=stimdf_sems[sf1], color='m', label=None)
-            ax1.xticks(oris)
-            ax1.ylabel('df/f')
-            ax1.legend()
-                
-            ax2.plot(oris, stimdf_means[sf1], color='g', label=0.1)
-            ax2.errorbar(oris, zscore_means[sf1], yerr=zscore_sems[sf1], color='g', label=None)
-            ax2.plot(oris, zscore_means[sf2], color='m', label=0.5)
-            ax2.errorbar(oris, zscore_means[sf2], yerr=zscore_sems[sf2], color='m', label=None)
-            ax2.xticks(oris)
-            ax2.ylabel('zscore')
-            ax2.legend()
-            
-        else:
-            fig, (ax1, ax2) = pl.subplots(1, 2, figsize=(10,5))
-    
-            ax1.plot(oris, stimdf_means, color='m', label=None)
-            ax1.errorbar(oris, stimdf_means, yerr=stimdf_sems, color='m', label=None)
-            ax1.set(xticks=oris)
+        trans = id_preserving_transforms[0]
+        for idx, obj in enumerate(objects_to_color):
+            if 'object' in stimdf.columns:
+                mdf = stimdf[stimdf['object']==obj]
+                zdf = zscoredf[zscoredf['object']==obj]
+            elif 'sf' in stimdf.columns:
+                mdf = stimdf[stimdf['sf']==obj]
+                zdf = zscoredf[zscoredf['object']==obj]
+            ax1.plot(trans_values, mdf.sort_values(trans)['mean'].values, label=obj, color=colors[idx])
+            ax1.errorbar(trans_values, mdf.sort_values(trans)['mean'].values, \
+                             yerr=mdf.sort_values(trans)['sem'].values, label=None, color=colors[idx])
+            ax1.set(xticks=trans_values)
             ax1.set(ylabel='df/f')
-            #ax1.legend()
-            
-            ax2.plot(oris, zscore_means, color='m', label=None)
-            ax2.errorbar(oris, zscore_means, yerr=zscore_sems, color='m', label=None)
-            ax2.set(xticks=oris)
-            ax2.set(ylabel = 'zscore')
-            #ax1.legend()
+            ax1.set(xlabel=trans)
+            #ax1.legend(loc='best')
+                
+            ax2.plot(trans_values, zdf.sort_values(trans)['mean'].values, label=obj, color=colors[idx])
+            ax2.errorbar(trans_values, zdf.sort_values(trans)['mean'].values, \
+                             yerr=zdf.sort_values(trans)['sem'].values, label=None, color=colors[idx])
+            ax2.set(xticks=trans_values)
+            ax2.set(ylabel='zscore')
+            ax2.set(xlabel=trans)
+            ax2.legend(bbox_to_anchor=(1.02, 1), loc=2, borderaxespad=0.)
+        sns.despine(offset=4, trim=True)
             
         pl.suptitle(roi)
-    
         figname = 'tuning_%s_%s.png' % (metric, roi)
         pl.savefig(os.path.join(sorted_tuningdir_visual, figname))
     
         pl.close()
 
+#%%
+    
+def load_masks_and_img(options, INFO):
+    
+    options = extract_options(options)
+    rootdir = options.rootdir
+    animalid = options.animalid
+    session = options.session
+    acquisition = options.acquisition
+    
+    # Identify reference file and load MASKS:
+    session_dir = os.path.join(rootdir, animalid, session)
+    traceid_dir = INFO['traceid_dir']
+    trace_id = os.path.split(traceid_dir)[-1].split('_')[0]
+    run_dir = traceid_dir.split('/traces')[0]
+    
+    if INFO['combined_dataset'] is True:
+        tmp_runfolder = '_'.join([run_dir.split('_')[0], run_dir.split('_')[1]])
+        tmp_rundir = os.path.join(session_dir, acquisition, tmp_runfolder)
+        TID = load_TID(tmp_rundir, trace_id)
+        tmp_traceid_dir = TID['DST']
+    else:
+        TID = load_TID(run_dir, trace_id)
+        tmp_traceid_dir = traceid_dir
+    
+    with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
+        rdict = json.load(f)
+    
+    RID = rdict[TID['PARAMS']['roi_id']]
+    ref_file = 'File%03d' % int(RID['PARAMS']['options']['ref_file'])
+    
+    if rootdir not in tmp_traceid_dir:
+        tmp_traceid_dir = replace_root(tmp_traceid_dir, rootdir, animalid, session)
+    
+    maskpath = os.path.join(tmp_traceid_dir, 'MASKS.hdf5')
+    masks = h5py.File(maskpath, 'r')
+    
+    # Plot on MEAN img:
+    img_src = masks[ref_file]['Slice01']['zproj'].attrs['source']
+    if 'std' in img_src:
+        img_src = img_src.replace('std', 'mean')
+    if rootdir not in img_src:
+        img_src = replace_root(img_src, rootdir, animalid, session)
+    
+    img = tf.imread(img_src)
+    maskarray = masks[ref_file]['Slice01']['maskarray']
+    
+    return maskarray, img
 
+
+#%%
+def plot_roi_tolerance(transform_dict, DATA, sorted_visual, sort_dir, metric='meanstimdf'):
+    
+    tolerance_figdir = os.path.join(sort_dir, 'figures', 'tolerance')
+    if not os.path.exists(tolerance_figdir):
+        os.makedirs(tolerance_figdir)
+    
+#    def average_resp_transforms(group, objectid, transform, metric_type='dff'):
+#        grp = group.groupby(transform) # All entries belong to a single object ID (from original groupby)
+#        xvals = grp.mean().index.get_level_values(transform).unique().tolist() # These are the varying transform values
+#        assert len(list(set(np.hstack(grp[objectid].apply(np.array))))) == 1, "More than 1 object id found!"
+#        obj_name = grp[objectid].unique().tolist()[0][0] # There should only be a single object ID
+#        print(obj_name)
+#        global ax, count
+#        if count > 0:
+#            #ax.plot(xvals, grp.dff.mean(), label=obj_name)
+#            ax.errorbar(xvals, grp[metric_type].mean(), yerr=grp[metric_type].sem(), label=obj_name)
+#        count += 1
+#        return group
+    
+    trans_types = [trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1]
+    id_trans = ['xpos', 'ypos', 'yrot', 'size']
+    id_preserving_transforms = [t for t in transform_dict.keys() if t in id_trans and len(transform_dict[t]) > 1]
+            
+    # Select an ID-preserving transform to view:
+    transform = id_preserving_transforms[0] #'xpos'
+    
+    print "Plotting TOLERANCE to %s..." % transform
+                
+    for roi in sorted_visual:
+        rdata = DATA[DATA['roi']==roi]
+        df = roidata_to_df_transforms(rdata, trans_types)
+    
+        stimdf_means = df.groupby(trans_types)[metric].mean()
+        ordered_configs = stimdf_means.sort_values(ascending=False).index
+        if isinstance(ordered_configs, pd.MultiIndex):
+            ordered_configs = ordered_configs.tolist()
+        Cmax_overall = ordered_configs[0]
+    
+        # Get transform values using the stimulus config with the BEST response:
+        Cref = get_reference_config(Cmax_overall, trans_types, transform_dict)
+        
+        # Assign the "reference" value for current transform type based on 
+        # the stim-config w/ best reference:
+        Tref = Cref[transform]
+        
+        # Assign the other values of the current transform type as "flankers"
+        Tflankers = [tval for tval in transform_dict[transform] if not tval==Tref]
+    
+        # Determine if there are any other varying transform types that we
+        # are keeping constant while viewing the current transform:
+        const_trans_types = [trans for trans in Cref.keys() if not trans==transform and trans in df.keys()]
+    
+        objectid = 'morphlevel' #'ori' # 'morphlevel' #'ori'
+        if len(const_trans_types) == 0:
+            transdf = df.copy()
+        else:
+            transdf = df[[i for i in df[c]==Cref[c] for c in const_trans_types]]
+        
+#        means = transdf.groupby([objectid, transform]).mean()
+#        xvals = means.index.get_level_values(transform).unique()
+#        count = 0
+        #transdf.groupby([objectid]).apply(average_resp_transforms, objectid, transform, metric_type=metric)
+        means = transdf.groupby([objectid, transform])[metric].mean().reset_index().rename(columns={metric: 'means'})
+        sems = transdf.groupby([objectid, transform])[metric].sem().reset_index().rename(columns={metric: 'sems'})
+        tdf = pd.merge(means, sems)
+        xvals = sorted(list(set(tdf[transform])))
+
+        fig, ax = pl.subplots(figsize=(8,6))   
+        grped_means = tdf.groupby([objectid])
+        for k,g in grped_means:
+            g.plot(x=transform, y='means', yerr='sems', kind='line', ax=ax, label=k)
+        
+        # Shrink current axis by 20%
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+        
+        # Put a legend to the right of the current axis
+        legend = ax.legend(loc='center left', bbox_to_anchor=(1, 0.2), title=objectid, fontsize=10)
+        pl.setp(legend.get_title(), fontsize='10')
+
+        # Customize axes:
+        pl.xticks(xvals)
+        pl.xlabel(transform)
+        if metric=='meanstimdf':
+            ylabel = 'df/f'
+            ax.set(ylim=[0, .5])
+            ax.set(yticks=[0, 0.20])
+            ylabel_pos = 0.25
+        else:
+            ylabel = 'zscore'
+            ax.set(ylim=[-1, 4])
+            ax.set(yticks=[0, 4])
+            ylabel_pos = 0.5
+        pl.ylabel(ylabel, verticalalignment='bottom')
+        ax.get_yaxis().set_label_coords(-0.1, ylabel_pos)
+        sns.despine(offset=8, trim=True)
+        
+        pl.title(roi)
+        figname = '%s_%s_%s_across_%s.png' % (metric, roi, objectid, transform)
+        pl.savefig(os.path.join(tolerance_figdir, figname))
+        pl.close()
 
 #%%
 
@@ -1742,8 +1992,19 @@ def calculate_selectivity_measures(options):
     metric = 'meanstimdf'
     # Rename stim labels so that "config" is replaced w/ sth informative...
     if 'frequency' in stimconfigs[stimconfigs.keys()[0]].keys():
-        stimtype = 'grating'
+        stimtype = 'gratings'
         stimlabels = dict((c, stimconfigs[c]['rotation']) for c in stimconfigs.keys())
+    else:
+        # each config is some combination of various transforms:
+        stim_fnames = [stimconfigs[c]['filename'] for c in stimconfigs.keys()]
+        if stim_fnames[0].endswith('png') and any(['morph' in f for f in stim_fnames]):
+            stimtype = 'blobs'
+        elif 'movie' in stim_fnames[0]:
+            stimtype = 'movie'
+            
+        if len(stim_fnames) == len(stimconfigs): 
+            # Prob only YROTATION tested:
+            stimlabels = dict((c, os.path.splitext(stimconfigs[c]['filename'])[0]) for c in stimconfigs.keys())
         
     selectivityKW_results, sorted_selective = find_selective_cells_KW(options, DATA, sort_dir, sorted_visual, 
                                                                            post_hoc=post_hoc, metric=metric,
@@ -1751,8 +2012,8 @@ def calculate_selectivity_measures(options):
 
     # Update roi stats summary file:
     # ---------------------------------------------------------
-    H_mean = np.mean([selectivityKW_results[r]['H'] for r in sorted_selective])
-    H_std = np.std([selectivityKW_results[r]['H'] for r in sorted_selective])
+    H_mean = np.mean([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
+    H_std = np.std([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
     with open(summary_fpath, 'a') as f:
         pprint.pprint(INFO, f)
         print >> f, '**********************************************************************'
@@ -1774,7 +2035,7 @@ def calculate_selectivity_measures(options):
     
     with open(summary_fpath, 'a') as f:
         print >> f, '---- Test effects of transforms (%i-way ANOVA: %s) ---------------' % (len(trans_types), str(trans_types))
-        print >> f, ".... Found %i out of %i ROIs with a significant effect of 1 or more factors (p < 0.05)"
+        print >> f, ".... Found %i out of %i visual ROIs with a significant effect of 1 or more factors (p < 0.05)" % (len(selective_rois_anova), len(sorted_visual))
         print >> f, '.... Top 10 neuron ids: %s' % str([int(r[3:]) for r in selective_rois_anova[0:10]])    
     
     #%
@@ -1788,160 +2049,47 @@ def calculate_selectivity_measures(options):
     
     #SI = (Rmost - Rleast) / (Rmost + Rleast)
     
-    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_selective, metric='meanstimdf', plot=True)
+    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, metric=metric, plot=True)
 
-    # =============================================================================
+    # =========================================================================
     # Visualize FOV with color-coded ROIs
-    # =============================================================================
-    parsed_opts = extract_options(options)
-    rootdir = parsed_opts.rootdir
-    animalid = parsed_opts.animalid
-    session = parsed_opts.session
-    acquisition = parsed_opts.acquisition
-    
-    # Identify reference file and load MASKS:
-    session_dir = os.path.join(rootdir, animalid, session)
-    trace_id = os.path.split(traceid_dir)[-1].split('_')[0]
-    
-    if INFO['combined_dataset'] is True:
-        tmp_runfolder = '_'.join([run_dir.split('_')[0], run_dir.split('_')[1]])
-        tmp_rundir = os.path.join(session_dir, acquisition, tmp_runfolder)
-        TID = load_TID(tmp_rundir, trace_id)
-        tmp_traceid_dir = TID['DST']
-    else:
-        TID = load_TID(run_dir, trace_id)
-        tmp_traceid_dir = traceid_dir
-    
-    with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
-        rdict = json.load(f)
-    
-    RID = rdict[TID['PARAMS']['roi_id']]
-    ref_file = 'File%03d' % int(RID['PARAMS']['options']['ref_file'])
-    
-    if rootdir not in tmp_traceid_dir:
-        tmp_traceid_dir = replace_root(tmp_traceid_dir, rootdir, animalid, session)
-    
-    maskpath = os.path.join(tmp_traceid_dir, 'MASKS.hdf5')
-    masks = h5py.File(maskpath, 'r')
-
-    # =============================================================================
-    # Assign OSI for all (visual) ROIs in FOV:
-    # =============================================================================
-    #% Best orientation
-    # TODO:  calculate standard OSI / DSI instead?
-    OSI = assign_OSI(stimconfigs, DATA, sorted_visual, sort_dir, metric=metric)
-    
-    #%
-    # Plot on MEAN img:
-    img_src = masks[ref_file]['Slice01']['zproj'].attrs['source']
-    if 'std' in img_src:
-        img_src = img_src.replace('std', 'mean')
-    if rootdir not in img_src:
-        img_src = replace_root(img_src, rootdir, animalid, session)
-    
-    img = tf.imread(img_src)
-    maskarray = masks[ref_file]['Slice01']['maskarray']
-    
-    cmap='hls'
-    color_rois_by_OSI(img, maskarray, OSI, stimconfigs, cmap=cmap,
-                          sorted_selective=sorted_selective, 
-                          sort_dir=sort_dir, 
-                          metric=metric, save_and_close=True)
-    
-    colorvals = sns.color_palette(cmap, len(configs))
-    hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir=sort_dir, save_and_close=True)
+    # =========================================================================
+    maskarray, img = load_masks_and_img(options, INFO)
 
 
-    #%
-    
+    if stimtype == 'gratings':
+        # =====================================================================
+        # Assign OSI for all (visual) ROIs in FOV:
+        # =====================================================================
+        #% Best orientation
+        # TODO:  calculate standard OSI / DSI instead?
+        OSI = assign_OSI(stimconfigs, DATA, sorted_visual, sort_dir, metric=metric)
+            
+        cmap='hls'
+        color_rois_by_OSI(img, maskarray, OSI, stimconfigs, cmap=cmap,
+                              sorted_selective=sorted_selective, 
+                              sort_dir=sort_dir, 
+                              metric=metric, save_and_close=True)
+        
+        colorvals = sns.color_palette(cmap, len(configs))
+        hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir=sort_dir, save_and_close=True)
+        
+    elif stimtype == 'blobs':
+        # =====================================================================
+        # Assign TOLERANCE.
+        # =====================================================================
+        plot_roi_tolerance(transform_dict, DATA, sorted_visual, sort_dir, metric=metric)
+
+
     # =========================================================================
     # Check tuning curves (compare stimdf vs zscore):
     # =========================================================================
-    compare_meandf_zscore(stimconfigs, DATA, sorted_visual, sorted_selective, sort_dir, trans_types=trans_types, metric=metric)
+    compare_meandf_zscore(stimconfigs, transform_dict, DATA, sorted_visual, sorted_selective, sort_dir, metric=metric)
     
     print "SELECTIVITY:  @@@DONE@@@"
     
     return sort_dir
 
-    #%%
-    
-    # =============================================================================
-    # Assign TOLERANCE.
-    # =============================================================================
-
-def assign_tolerance(DATA, sorted_visual, trans_types, transform_dict, sort_dir):
-    
-    tolerance_figdir = os.path.join(sort_dir, 'figures', 'tolerance')
-    if not os.path.exists(tolerance_figdir):
-        os.makedirs(tolerance_figdir)
-    
-    def func(group, objectid, transform, metric_type='dff'):
-        grp = group.groupby(transform)
-        xvals = grp.mean().index.get_level_values(transform).unique().tolist()
-        obj_name = grp[objectid].unique().tolist()[0][0]
-        print(obj_name)
-        global ax, count
-        if count > 0:
-            #ax.plot(xvals, grp.dff.mean(), label=obj_name)
-            ax.errorbar(xvals, grp[metric_type].mean(), yerr=grp[metric_type].sem(), label=obj_name)
-        count += 1
-        return group
-    
-    #%
-    # Case:  POSITION (XPOS)
-    
-    #roi = 'roi00006'
-    #roi = 'roi00024'
-    #roi = 'roi00002'
-    #roi = 'roi00003'
-    
-    if len(trans_types) > 1:
-        print "ummmm calculating Tolerance..."
-        
-        metric_type = 'zscore'
-        
-        for roi in sorted_visual:
-            rdata = DATA[DATA['roi']==roi]
-            #df = roidata_to_df_configs(rdata)
-            df = roidata_to_df_transforms(rdata, trans_types)
-        
-            stimdf_means = df.groupby(trans_types)[metric_type].mean()
-            ordered_configs = stimdf_means.sort_values(ascending=False).index
-            if isinstance(ordered_configs, pd.MultiIndex):
-                ordered_configs = ordered_configs.tolist()
-            Cmax_overall = ordered_configs[0]
-        
-            Cref = get_reference_config(Cmax_overall, trans_types, transform_dict)
-        
-            transform = 'xpos'
-        
-            Tref = Cref[transform]
-            Tflankers = [tval for tval in transform_dict[transform] if not tval==Tref]
-        
-            const_trans_types = [trans for trans in Cref.keys() if not trans==transform and trans in df.keys()]
-        
-            objectid = 'morphlevel' #'ori' # 'morphlevel' #'ori'
-            if len(const_trans_types) == 0:
-                transdf = df.copy()
-            else:
-                transdf = df[[i for i in df[c]==Cref[c] for c in const_trans_types]]
-            means = transdf.groupby([objectid, transform]).mean()
-        
-            fig, ax = pl.subplots()
-            count = 0
-        
-        
-            xvals = means.index.get_level_values(transform).unique()
-            #means.groupby(objectid).apply(func, xvals)
-            transdf.groupby([objectid]).apply(func, objectid, transform, metric_type=metric_type)
-            ax.legend(loc='best', numpoints=1)
-            pl.xticks(xvals)
-            pl.xlabel(transform)
-            pl.ylabel(metric_type)
-            pl.title(roi)
-            figname = '%s_%s_across_%s.png' % (roi, objectid, transform)
-            pl.savefig(os.path.join(tolerance_figdir, figname))
-            pl.close()
 
     #%
 def main(options):
