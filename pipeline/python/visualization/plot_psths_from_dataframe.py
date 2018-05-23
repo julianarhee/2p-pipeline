@@ -190,7 +190,7 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         figpath = os.path.join(figdir, '%s_%s.png' % (prefix, figbase))
         draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order,
                   figpath=figpath, trace_color=trace_color, stimbar_color=stimbar_color,
-                  save_and_close=False )
+                  save_and_close=save_and_close)
 
 #%%
 def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, figpath, trace_color='k', stimbar_color='r', save_and_close=True):
