@@ -476,7 +476,14 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
                 next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
                 iti_evs.append(next_iti)
             except StopIteration:
-                print "No ITI found after last image onset event.\n"
+                # First, see if theer is an extra p-clock event missed because of missed triggers:
+                tmp_pixelclock_evs = get_pixelclock_events(df, boundary)
+                if len(tmp_pixelclock_evs[-1].value)==(num_non_stimuli-1) and\
+                        len(tmp_pixelclock_evs[-2].value)==num_non_stimuli and\
+                        tmp_pixelclock_evs[-2].value[1]['start_time']==image_evs[-1].value[1]['start_time']:
+                    iti_evs.append(tmp_pixelclock_evs[-1])
+                else:
+                    print "No ITI found after last image onset event.\n"
 
         print "Found %i iti events after a stimulus onset." % len(iti_evs)
 
