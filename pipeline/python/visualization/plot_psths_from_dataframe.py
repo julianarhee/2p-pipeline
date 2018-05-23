@@ -346,26 +346,26 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
             os.makedirs(roi_psth_dir_exclude)
             
             
-    DATA = {}
-    D = pd.HDFStore(roidata_filepath, 'r')
+    #DATA = {}
+    DATA = pd.HDFStore(roidata_filepath, 'r')
 
-    transform_dict, object_transformations = get_object_transforms(D[D.keys()[0]])
+    transform_dict, object_transformations = get_object_transforms(DATA[DATA.keys()[0]])
 
-    roi_list = sorted(D.keys(), key=natural_keys)
-    if '/' in D.keys()[0]:
+    roi_list = sorted(DATA.keys(), key=natural_keys)
+    if '/' in DATA.keys()[0]:
         roi_list = sorted([r[1:] for r in roi_list], key=natural_keys)
 
-    for roi in roi_list:
-        rdata = D[roi]
-        grped = rdata.groupby(['trial'])
-        exclude_trials = []
-        trial_list = []
-        for k,g in grped:
-            trial_list.append(k)
-            if g['df'].max() > 10.:
-                exclude_trials.append(k)
-        kept_trials = [t for t in trial_list if t not in exclude_trials]
-        DATA[roi] = rdata[rdata['trial'].isin(kept_trials)].reset_index()
+#    for roi in roi_list:
+#        rdata = D[roi]
+#        grped = rdata.groupby(['trial'])
+#        exclude_trials = []
+#        trial_list = []
+#        for k,g in grped:
+#            trial_list.append(k)
+#            if g['df'].max() > 10.:
+#                exclude_trials.append(k)
+#        kept_trials = [t for t in trial_list if t not in exclude_trials]
+#        DATA[roi] = rdata[rdata['trial'].isin(kept_trials)].reset_index()
             
 
     roi=None; configname=None; trial=None
@@ -374,6 +374,17 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
             print roi
 
             roiDF = DATA[roi] #[DATA[roi]['config'].isin(curr_subplots)]
+            grped = roiDF.groupby(['trial'])
+            exclude_trials = []
+            trial_list = []
+            for k,g in grped:
+                trial_list.append(k)
+                if g['df'].max() > 10.:
+                    exclude_trials.append(k)
+            kept_trials = [t for t in trial_list if t not in exclude_trials]
+            roiDF = roiDF[roiDF['trial'].isin(kept_trials)].reset_index()
+                
+            
             
             roiDF['position'] = list(zip(roiDF['xpos'], roiDF['ypos']))
 
