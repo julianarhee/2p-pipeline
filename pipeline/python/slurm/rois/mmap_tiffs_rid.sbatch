@@ -11,6 +11,7 @@
 #SBATCH -e mmap_%A_%a.err # Standard error
 
 # load modules
+module load centos6/0.0.1-fasrc01
 module load matlab/R2015b-fasrc01
 module load Anaconda/5.0.1-fasrc01
 
