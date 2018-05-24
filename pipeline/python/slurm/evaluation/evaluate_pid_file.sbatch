@@ -8,6 +8,7 @@
 #SBATCH --mem 32768 # Memory request of 12 GB 
 
 # load modules
+module load centos6/0.0.1-fasrc01
 module load matlab/R2015b-fasrc01
 module load Anaconda/5.0.1-fasrc01
 
