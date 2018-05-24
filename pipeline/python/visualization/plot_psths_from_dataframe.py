@@ -96,13 +96,13 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
 
     trans_types = object_transformations.keys()
 
-    if stimtype == 'image':
-        object_sorter = 'object'
-    else:
+    if stimtype == 'grating':
         if 'ori' in trans_types and not 'sf' in trans_types:
             object_sorter = 'ori'
         elif 'ori' in trans_types and 'sf' in trans_types:
             object_sorter = 'sf'
+    else:
+        object_sorter = 'object'
 
     single_object_figure = False
     if 'size' in trans_types and ('xpos' in trans_types or 'ypos' in trans_types):
@@ -116,7 +116,8 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         columns = 'size'
         single_object_figure = True
         figbase = 'pos%i_size%i' % (len(row_order), len(col_order))
-    elif 'xpos' in trans_types or 'ypos' in trans_types:
+
+    elif 'xpos' in trans_types and 'ypos' in trans_types:
         # ---- Transform description ---------------------------
         # Change POSITIONS only, grid w/ x and y positions
         # NOTE:  only tested with 4 orientations + x-,y-position grid
@@ -127,22 +128,55 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
         columns = 'xpos'
         single_object_figure = True
         figbase = 'xpos%i_ypos%i' % (len(row_order), len(col_order))
+        
+    elif ('xpos' in trans_types or 'ypos' in trans_types) and len([t for t in trans_types if t!='xpos' and t!='ypos'])==1:
+        # ---- Transform description ---------------------------
+        # POSITION is one factor, some other factor for the other axis:
+        # ------------------------------------------------------
+        if 'xpos' in trans_types:
+            columns = 'xpos'
+            rows = [t for t in trans_types if t!='xpos'][0]
+        else: # ypos is varying:
+            rows = 'ypos'
+            columns = [t for t in trans_types if t!='ypos'][0]
+            
+        row_order = sorted(list(set(roiDF[rows]))) #[::-1] # Reverse order so POS are on top, NEG on bottom
+        col_order = sorted(list(set(roiDF[columns])))
+
+        single_object_figure = False
+        figbase = '%s%i_%s%i' % (rows, len(row_order), columns, len(col_order))
+        
+    elif ('xpos' in trans_types or 'ypos' in trans_types) and 'morphlevel' in trans_types:
+        # ---- Transform description ---------------------------
+        # POSITION is one factor, MORPH is other factor, but yrot is included in trans_types cuz MOVIE:
+        # ------------------------------------------------------
+        if 'xpos' in trans_types:
+            columns = 'xpos'
+            rows = 'morphlevel' #[t for t in trans_types if t!='xpos'][0]
+        else: # ypos is varying:
+            rows = 'ypos'
+            columns = 'morphlevel' #[t for t in trans_types if t!='ypos'][0]
+            
+        row_order = sorted(list(set(roiDF[rows]))) #[::-1] # Reverse order so POS are on top, NEG on bottom
+        col_order = sorted(list(set(roiDF[columns])))
+
+        single_object_figure = False
+        figbase = '%s%i_%s%i' % (rows, len(row_order), columns, len(col_order))
+        
     else:
         # ---- Transform description ---------------------------
         # POS and SIZE at single value, only changing [morph or yrot
         # NOTE:  only tested with 4 orientations + x-,y-position grid
         # ------------------------------------------------------
-        figbase = 'all_objects_default_pos_size'
         if stimtype == 'grating':
-            row_order = sorted(list(set(roiDF['sf'])))
-            col_order = sorted(list(set(roiDF['ori'])))
             rows = 'sf'
             columns = 'ori'
         else:
-            row_order = sorted(list(set(roiDF['morphlevel'])))
-            col_order = sorted(list(set(roiDF['yrot'])))
             rows = 'morphlevel'
             columns = 'yrot'
+        row_order = sorted(list(set(roiDF[rows])))
+        col_order = sorted(list(set(roiDF[columns])))
+        figbase = '%s%i_%s%i' % (rows, len(row_order), columns, len(col_order))
 
     if single_object_figure is True:
         for objectid in list(set(roiDF[object_sorter])):
@@ -159,29 +193,39 @@ def plot_roi_psth(roi, roiDF, object_transformations, figdir='/tmp', prefix='pst
                   save_and_close=save_and_close)
 
 #%%
-def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_order, figpath, trace_color='k', stimbar_color='r', save_and_close=True):
+def draw_psth(roi, roiDF, objectid, trans_types, rows, columns, row_order, col_order, figpath, trace_color='k', stimbar_color='r', save_and_close=True):
 
     sns.set()
 
     #roi = list(set(roiDF['roi']))[0]
-    config_list = list(set(rDF['config']))
+    config_list = list(set(roiDF['config']))
 
 #    funky_trials = [trial for trial in list(set(roiDF['trial'])) if max(roiDF[roiDF['trial']==trial]['df'])>10]
 #    funky_idxs = roiDF.index[roiDF['trial'].isin(funky_trials)].tolist()
 #    roiDF.loc[funky_idxs, 'df'] = np.nan
 
     # Add n trials to each subplot:
-    ntrials = dict((c, len(list(set(rDF[rDF['config']==c]['trial'])))) for c in config_list)
+    #ntrials = dict((c, len(list(set(roiDF[roiDF['config']==c]['trial'])))) for c in config_list)
 
-    first_on = int(list(set(rDF['first_on']))[0])
-    nsecs_on = list(set(rDF['nsecs_on']))[0]
+    first_on = int(list(set(roiDF['first_on']))[0])
+    nsecs_on = list(set(roiDF['nsecs_on']))[0]
     #tsecs = sorted(list(set(roiDF['tsec'])))
 
     #pl.figure()
     plot_vars = ['trial', 'df', 'tsec', rows, columns]
     plot_vars.extend([t for t in trans_types if t not in plot_vars])
 
-    subDF = rDF[plot_vars]
+    subDF = roiDF[plot_vars]
+#    grped = subDF.groupby(['trial'])
+#    exclude_trials = []
+#    trial_list = []
+#    for k,g in grped:
+#        trial_list.append(k)
+#        if g['df'].max() > 10.:
+#            exclude_trials.append(k)
+#    kept_trials = [t for t in trial_list if t not in exclude_trials]
+#    subDF = subDF[subDF['trial'].isin(kept_trials)]
+    
     g1 = sns.FacetGrid(subDF, row=rows, col=columns, sharex=True, sharey=True, hue='trial', row_order=row_order, col_order=col_order)
     g1.map(pl.plot, "tsec", "df", linewidth=0.2, color=trace_color, alpha=0.5)
     #plotstats = get_facet_stats(config_list, g1, value='df')
@@ -198,6 +242,9 @@ def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_ord
             dfmat = []
             tmat = []
             for trial in list(set(configDF['trial'])):
+#                if trial in exclude_trials:
+#                    continue
+                dftrace = np.array(configDF[configDF['trial']==trial]['df'])
                 dfmat.append(np.array(configDF[configDF['trial']==trial]['df']))
                 tmat.append(np.array(configDF[configDF['trial']==trial]['tsec']))
             dfmat = np.array(dfmat); tmat = np.array(tmat);
@@ -212,24 +259,7 @@ def draw_psth(roi, rDF, objectid, trans_types, rows, columns, row_order, col_ord
             currax.plot(mean_tsec, mean_df, trace_color, linewidth=1, alpha=1)
             currax.plot([mean_tsec[int(first_on)], mean_tsec[int(first_on)]+nsecs_on], [stimbar_pos, stimbar_pos], stimbar_color, linewidth=2, alpha=1)
             currax.annotate("n = %i" % curr_ntrials, xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
-#            if not ci % ncols == 0:
-#                print ci
-#                # Remove the y-axis label
-#                currax.set_ylabel('')
-#                currax.set_yticks(())
 
-
-    # Get mean trace:
-#    meandfs = {}
-#    for config in plotstats['dfmats'].keys():
-#        meandfs[config] = np.mean(plotstats['dfmats'][config], axis=0)
-#        currax = g1.facet_axis(plotstats['indices'][config][0], plotstats['indices'][config][1])
-#        currax.plot(tsecs, meandfs[config], trace_color, linewidth=1, alpha=1)
-#        currax.plot([tsecs[first_on], tsecs[first_on]+nsecs_on], [0, 0], stimbar_color, linewidth=2, alpha=1)
-#        currax.annotate("n = %i" % ntrials[config], xy=get_axis_limits(currax, xscale=0.2, yscale=0.8))
-
-    #sns.despine(offset=2, trim=True)
-    #%
     pl.subplots_adjust(top=0.78)
     g1.fig.suptitle("%s - stim %s" % (roi, objectid))
 
@@ -314,7 +344,9 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
         roi_psth_dir_exclude = os.path.join(roi_psth_dir, pupil_thresh_str, visualization_method, 'exclude')
         if not os.path.exists(roi_psth_dir_exclude):
             os.makedirs(roi_psth_dir_exclude)
-
+            
+            
+    #DATA = {}
     DATA = pd.HDFStore(roidata_filepath, 'r')
 
     transform_dict, object_transformations = get_object_transforms(DATA[DATA.keys()[0]])
@@ -323,6 +355,18 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
     if '/' in DATA.keys()[0]:
         roi_list = sorted([r[1:] for r in roi_list], key=natural_keys)
 
+#    for roi in roi_list:
+#        rdata = D[roi]
+#        grped = rdata.groupby(['trial'])
+#        exclude_trials = []
+#        trial_list = []
+#        for k,g in grped:
+#            trial_list.append(k)
+#            if g['df'].max() > 10.:
+#                exclude_trials.append(k)
+#        kept_trials = [t for t in trial_list if t not in exclude_trials]
+#        DATA[roi] = rdata[rdata['trial'].isin(kept_trials)].reset_index()
+            
 
     roi=None; configname=None; trial=None
     try:
@@ -330,6 +374,18 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
             print roi
 
             roiDF = DATA[roi] #[DATA[roi]['config'].isin(curr_subplots)]
+            grped = roiDF.groupby(['trial'])
+            exclude_trials = []
+            trial_list = []
+            for k,g in grped:
+                trial_list.append(k)
+                if g['df'].max() > 10.:
+                    exclude_trials.append(k)
+            kept_trials = [t for t in trial_list if t not in exclude_trials]
+            roiDF = roiDF[roiDF['trial'].isin(kept_trials)].reset_index()
+                
+            
+            
             roiDF['position'] = list(zip(roiDF['xpos'], roiDF['ypos']))
 
             curr_slice = list(set(roiDF['slice']))[0] #roi_trials[configname][roi].attrs['slice']
@@ -351,13 +407,6 @@ def plot_psths(roidata_filepath, trial_info, configs, roi_psth_dir='/tmp', trace
                                        & pupil_dist_baseline < @pupil_dist_thr \
                                        & pupil_nblinks_stim <= @pupil_max_nblinks \
                                        & pupil_nblinks_baseline >= @pupil_max_nblinks')
-#
-#                filtered_DF = DF.query('pupil_size_stimulus > @pupil_size_thr \
-#                                       & pupil_size_baseline > @pupil_size_thr \
-#                                       & pupil_dist_stimulus < @pupil_dist_thr \
-#                                       & pupil_dist_baseline < @pupil_dist_thr \
-#                                       & pupil_nblinks_stim < @pupil_max_nblinks \
-#                                       & pupil_nblinks_baseline < @pupil_max_nblinks')
                 pass_trials = list(set(filtered_DF['trial']))
 
                 # INCLUDED trials:
@@ -839,8 +888,8 @@ def extract_options(options):
 #        '--omit-trials', '--psth', '--tuning',
 #        '-T', 'raw']
 #
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516',
-        '-A', 'FOV1_zoom1x', '-R', 'objects_run2', '-t', 'traces001',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518',
+        '-A', 'FOV1_zoom1x', '-R', 'blobs_dynamic_run3', '-t', 'traces001',
         '--no-pupil',
         '--omit-trials', '--tuning',
         '-T', 'np_subtracted']

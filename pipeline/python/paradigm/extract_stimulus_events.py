@@ -101,10 +101,24 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
     frame_on_idxs.append(0)
     frame_on_idxs = sorted(frame_on_idxs)
+    print "Found %i serial triggers" % len(frame_on_idxs)
+    
     # Check that no frame triggers were skipped/missed:
     diffs = np.diff(frame_on_idxs)
     nreads_per_frame = max(set(diffs), key=list(diffs).count)
-    print "Found %i frame-triggers." % len(frame_on_idxs)
+    print "Nreads per frame:", nreads_per_frame
+#    missed_triggers = np.where(diffs>nreads_per_frame*2)[0]
+#    for trigg in missed_triggers:
+#        last_good_trigger = frame_on_idxs[trigg]
+#        next_good_trigger = frame_on_idxs[trigg+1]
+#        print "missed a trigger in a gap of %i frames." % (next_good_trigger - last_good_trigger)
+#        interp_idxs = list(set([int(f) for f in np.arange(frame_on_idxs[trigg], frame_on_idxs[trigg+1]-nreads_per_frame, nreads_per_frame)])) # Make sure no repeats
+#        print len(interp_idxs)
+#        frame_on_idxs.extend(interp_idxs)
+#    # Re-sort frame_idxs:
+    frame_on_idxs = sorted(list(set(frame_on_idxs)))
+    
+#    print "Final: %i frame-triggers." % len(frame_on_idxs)
 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
@@ -138,8 +152,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     curr_frames = sorted(allframes[first_stim_frame+1:]) #, key=natural_keys)
     first_frame = first_stim_frame
 
-
-    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:46]):
+#first_frame = 71264 
+#F = copy.copy(curr_frames)
+#
+#curr_frames = copy.copy(F)
+#first_frame = F[0]
+    durs = []
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
         #print trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
@@ -157,19 +176,32 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
             if tidx == 0 and (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
                 nframes_to_skip= 0
             else:
+                #nframes_to_skip = 0
                 # Skip a good number of frames from the last "found" index of previous trial.
                 # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
                 # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
-                nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3)
+                nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3) #3)
             # print 'skipping iti...', nframes_to_skip
             curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
         minframes = 5 #4
-        for bitcode in mwtrials[trial]['all_bitcodes']:
+#        if mwtrials[trial]['stimuli']['type'] == 'image_directory_movie':
+#            bitcodes = mwtrials[trial]['all_bitcodes'][1:]
+#        else:
+        bitcodes = mwtrials[trial]['all_bitcodes']
+        for bitcode in bitcodes: #mwtrials[trial]['all_bitcodes'][1:]: # 20180516 - FOV1_zoom1x - blobs_movies_run3 is messed up (trial00049 has super long first bitcode??)
             looking = True
             while looking is True:
+                if len(curr_frames)==0:
+                    break
                 for frame in sorted(curr_frames):
+                    #print frame
+                    if frame == allframes[-1]: # no ITI period found likely, so just append last frame
+                        first_frame = frame
+                        looking = False
+                        
+                    #print "frame:", frame
                     tmp_frames = [i for i in frame_bitcodes[frame] if i==bitcode]
                     consecutives = [i for i in np.diff(tmp_frames) if i==0]
 
@@ -206,12 +238,26 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         #if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
         #print "Trial %i dur (s):" % int(trial)
-        print (first_found_frame[-1][1] - first_found_frame[0][1])/framerate, '[%s]' % trial
+        frame_diffs = np.diff([f[1] for f in first_found_frame])
+        weird_diffs = np.where(frame_diffs>10)[0]
+        if len(weird_diffs) > 0:
+            print "*** warning ***"
+            print "%s: frame diffs:" % (trial), weird_diffs
+            first_found_frame = [f for fi,f in enumerate(first_found_frame) if not fi in weird_diffs]
+            
+        stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
+        print stim_dur_curr, '[%s]' % trial
+        durs.append(stim_dur_curr)
+        
 
         trialevents[mwtrial_hash]['stim_on_idx'] = first_found_frame[0][1]
         trialevents[mwtrial_hash]['stim_off_idx'] = first_found_frame[-1][1]
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
 
+    rounded_durs = list(set([round(d) for d in durs]))
+    if len(rounded_durs) > 1:
+        print " *** WARNING -- funky stim durs found:", rounded_durs
+        
     return trialevents
 #%%
 
@@ -247,9 +293,9 @@ def extract_options(options):
 #%%
 #rootdir = '/mnt/odyssey'
 #animalid = 'CE077'
-#session = '20180412'
-#acquisition = 'FOV2_zoom1x'
-#run = 'blobs_run7'
+#session = '20180516'
+#acquisition = 'FOV1_zoom1x'
+#run = 'blobs_movies_run2'
 #slurm = False
 #retinobar = False
 #phasemod = False
