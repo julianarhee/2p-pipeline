@@ -1365,14 +1365,14 @@ def format_stimconfigs(configs):
                     # This is a full morph movie:
                     morphlevel = -1
                     
-        stimconfigs[config]['object'] = objectid
-        stimconfigs[config]['yrot'] = yrot
-        stimconfigs[config]['morphlevel'] = morphlevel
-        stimconfigs[config]['stimtype'] = stimtype
+            stimconfigs[config]['object'] = objectid
+            stimconfigs[config]['yrot'] = yrot
+            stimconfigs[config]['morphlevel'] = morphlevel
+            stimconfigs[config]['stimtype'] = stimtype
         
-        for skey in stimconfigs[config].keys():
-            if skey not in transform_variables:
-                stimconfigs[config].pop(skey, None)
+            for skey in stimconfigs[config].keys():
+                if skey not in transform_variables:
+                    stimconfigs[config].pop(skey, None)
 
     
     return stimconfigs
