@@ -93,6 +93,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     if verbose is True:
         print serialdata.columns
 
+    #abstime = serialdata[' abosolute_arduino_time']
     ### Extract events from serialdata:
     frame_triggers = serialdata[' frame_trigger']
     bitcodes = serialdata[' pixel_clock']
@@ -107,7 +108,12 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     diffs = np.diff(frame_on_idxs)
     nreads_per_frame = max(set(diffs), key=list(diffs).count)
     print "Nreads per frame:", nreads_per_frame
-#    missed_triggers = np.where(diffs>nreads_per_frame*2)[0]
+    long_breaks = np.where(diffs>nreads_per_frame*2)[0]
+    for lix, lval in enumerate(long_breaks):
+        subintervals = list(set(frame_on_idxs[lval+1:long_breaks[lix]]))
+        if any(subintervals > nreads_per_frame+2) or any(subintervals < nreads_per_frame-2):
+            print "WARNING -- extra missed frame-triggers in tif %i." % lix+1
+            
 #    for trigg in missed_triggers:
 #        last_good_trigger = frame_on_idxs[trigg]
 #        next_good_trigger = frame_on_idxs[trigg+1]
@@ -185,7 +191,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
             curr_frames = allframes[first_frame+nframes_to_skip:]
 
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
-        minframes = 5 #4
+        minframes = 4 #5 #4
 #        if mwtrials[trial]['stimuli']['type'] == 'image_directory_movie':
 #            bitcodes = mwtrials[trial]['all_bitcodes'][1:]
 #        else:
@@ -238,12 +244,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         #if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
         #print "Trial %i dur (s):" % int(trial)
-        frame_diffs = np.diff([f[1] for f in first_found_frame])
-        weird_diffs = np.where(frame_diffs>10)[0]
-        if len(weird_diffs) > 0:
-            print "*** warning ***"
-            print "%s: frame diffs:" % (trial), weird_diffs
-            first_found_frame = [f for fi,f in enumerate(first_found_frame) if not fi in weird_diffs]
+#        frame_diffs = np.diff([f[1] for f in first_found_frame])
+#        if 'movie' in mwtrials['trial00001']['stimuli']['type']:
+#            weird_diffs = np.where(frame_diffs>10)[0]
+#            if len(weird_diffs) > 0:
+#                print "*** warning ***"
+#                print "%s: frame diffs:" % (trial), weird_diffs
+#                first_found_frame = [f for fi,f in enumerate(first_found_frame) if not fi in weird_diffs]
             
         stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
         print stim_dur_curr, '[%s]' % trial

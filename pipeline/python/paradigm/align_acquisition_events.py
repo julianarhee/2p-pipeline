@@ -694,7 +694,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
     else:
         stimtype = 'image'
 
-
+    last_trials_in_block = ['trial%05d' % i for i in np.arange(16, 416, 16)]
 
     # Load ROI list and traces:
     roi_trials = h5py.File(roi_trials_by_stim_path, 'r')
@@ -791,6 +791,9 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         
 
                 for tidx, trial in enumerate(sorted(stim_trials, key=natural_keys)): #[15:25]):
+                    if trial in last_trials_in_block:
+                        continue
+                    
                     #print trial
                     frame_idxs = roi_trials[configname][roi][trial].attrs['frame_idxs']
                     #print frame_idxs
