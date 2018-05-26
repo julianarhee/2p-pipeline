@@ -695,7 +695,8 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
         stimtype = 'image'
 
     if stimtype == 'movie':
-        last_trials_in_block = ['trial%05d' % i for i in np.arange(16, 416, 16)]
+        last_trials_in_block = []
+        #last_trials_in_block = ['trial%05d' % i for i in np.arange(16, 416, 16)]
     else:
         last_trials_in_block= []
 

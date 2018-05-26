@@ -1,0 +1,56 @@
+# 1.  Load ROI evaluation info, if relevant (evalparams).
+- User-provided key specifying a particular evaluation result
+- Evaluation set is keyed with a date-time string (output of evaulate_roi_extraction.py)
+
+# 2.  Populate coregistration params (params_thr).
+- dist_maxthr <float>
+	threshold for turning spatial components into binary masks
+	(default: 0.1)
+- dist_exp <float>
+	power n for distance between masked components: dist = 1 - (and(m1,m2)/or(m1,m2))^n
+	(default: 1.0)
+- dist_thr <float>
+	threshold for setting a distance to infinity (illegal matches)
+	(default: 0.5)
+- dist_overlap_thr <float>
+	overlap threshold for detecting if one ROI is a subset of another
+	(default: 0.8)
+
+# 3.  Load ROI set info and get roi/tiff source paths.
+
+# 4.  Identify file to be used as coregistration reference.
+
+# 5.  Save coregistration parameters to output dir:
+	- params_thr saved to: 
+	<rid_dir>/coreg_results/coreg_params.json
+
+# 6.  Run coregistration (coregister_rois_nmf)
+
+	a. Find matches to reference for each file and save results (coreg_results_path):
+	   [outfile]:  <rid_dir>/coreg_results/coreg_results_<datetimestr>.hdf5
+	   --> keys are file groups (File001, File002, etc.), each of which contains:
+		roi_idxs :  indices of rois (source indices)
+		distance :  distance matrix between ref and current file
+		distance_thr :  thresholded distance matrix (params_thr['dist_thr'])
+		matches :  list of matches between ref rois and current file rois
+
+	b. Plot distance matrix and contour plots for each file's matches to reference:
+	   [outfiles]:  <rid_dir>/coreg_results/figures/files/distancematrix_FileXXX.png
+
+	c. Save matches to json for easy acccess:
+	   [outfile]:  <rid_dir>/coreg_results/matches_byfile_rFileRRR.json,
+	   where rFileRRR is the reference file.
+
+	d. Plot ROI matches for each file:
+	   [outfiles]:  <rid_dir>/coreg_results/figures/matches_rFileRRR_FileXXX.png
+
+	e. Identify universal ROIs, i.e., ROI idxs common across all files (ref_rois)
+
+	f. Save univeral ROIs to json file:
+	   [outfile]:  <rid_dir>/coreg_results/coregistered_rFileRRR.json
+
+	g. Plot universal ROIs on contour plots:
+	   [outfiles]: <rid_dir>/coreg_results/figures/contours_byfile_rFileRRR.png
+		       <rid_dir>/coreg_results/figures/contours_byroi_rFileRRR.png
+
+

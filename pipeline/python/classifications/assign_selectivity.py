@@ -1694,6 +1694,7 @@ def compare_meandf_zscore(stimconfigs, transform_dict, DATA, sorted_visual, sort
     # Turn into DF with row indices as 'config' to concat with mean/sem dfs:
     config_df = pd.DataFrame(stimconfigs).T.reset_index()
     config_df = config_df.rename(columns={'index': 'config'}).sort_values('config')
+    print config_df.head()
     sns.set_palette(sns.color_palette("hls", len(sconfigs)))
     
     # Only plot top 10 visual/selective ROIs
@@ -1725,14 +1726,20 @@ def compare_meandf_zscore(stimconfigs, transform_dict, DATA, sorted_visual, sort
         zscoredf = pd.merge(zscoredf, config_df, on='config')
     
         trans_list = []
-        if len(id_preserving_transforms) == 1:
-            # For gratings, this is ORI. For objects, this can be Yrot, Xpos, etc.
-            config_idx = dict((g[0], g[1]['config'].values) for g in config_df.groupby(id_preserving_transforms))
-            if 'object' in config_df.columns:
-                objects_to_color = list(set(config_df.sort_values(['morphlevel'])['object']))
-            elif 'sf' in config_df.columns:
-                objects_to_color = list(set(config_df['sf']))
-            
+        print id_preserving_transforms
+        print stimdf.head()
+        #if len(id_preserving_transforms) == 1:
+        if len(id_preserving_transforms)==0 and 'sf' in config_df.columns:
+            id_preserving_transforms = ['ori']
+	# For gratings, this is ORI. For objects, this can be Yrot, Xpos, etc.
+	config_idx = dict((g[0], g[1]['config'].values) for g in config_df.groupby(id_preserving_transforms))
+        print config_idx
+	if 'object' in config_df.columns:
+	    objects_to_color = list(set(config_df.sort_values(['morphlevel'])['object']))
+	elif 'sf' in config_df.columns:
+	    objects_to_color = list(set(config_df['sf']))
+        print "COLORS:", objects_to_color
+ 
         labels = objects_to_color
         trans_values = sorted(config_idx.keys())
         colors = ['g', 'm', 'b', 'orange', 'purple']
@@ -1755,7 +1762,7 @@ def compare_meandf_zscore(stimconfigs, transform_dict, DATA, sorted_visual, sort
                 zdf = zscoredf[zscoredf['object']==obj]
             elif 'sf' in stimdf.columns:
                 mdf = stimdf[stimdf['sf']==obj]
-                zdf = zscoredf[zscoredf['object']==obj]
+                zdf = zscoredf[zscoredf['sf']==obj]
             ax1.plot(trans_values, mdf.sort_values(trans)['mean'].values, label=obj, color=colors[idx])
             ax1.errorbar(trans_values, mdf.sort_values(trans)['mean'].values, \
                              yerr=mdf.sort_values(trans)['sem'].values, label=None, color=colors[idx])
@@ -1817,6 +1824,8 @@ def load_masks_and_img(options, INFO):
     masks = h5py.File(maskpath, 'r')
     
     # Plot on MEAN img:
+    if ref_file not in masks.keys():
+        ref_file = masks.keys()[0]
     img_src = masks[ref_file]['Slice01']['zproj'].attrs['source']
     if 'std' in img_src:
         img_src = img_src.replace('std', 'mean')
