@@ -14,6 +14,7 @@ from skimage import img_as_ubyte
 import scipy.io as spio
 import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
+from scipy import ndimage
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
@@ -498,7 +499,7 @@ def sort_deinterleaved_tiffs(source_dir, runinfo_path):
     print "Done organizing tiffs."
 
 
-def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
+def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, filter3D=False, filter_type='median', filter_size=4):
     '''
     source_dir (str) : path to folder containing tiffs to deinterleave and z-project
     runinfo_path (str) : path to .json contaning run meta info
@@ -539,6 +540,10 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None):
                     slicenum = int(sl+1)
                     sl_tiff = ch_tiff[sl::(nslices+ndiscard)]
 		    print "Slice tiff shape:", sl_tiff.shape
+                    if filter3D:
+                        if filter_type == 'median':
+                            print "Median filtering, size %i" % filter_size
+                            sl_tiff = ndimage.median_filter(sl_tiff, size=filter_size)
                     if zproj_type == 'mean' or zproj_type == 'average':
                         zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
                     elif zproj_type == 'std':
