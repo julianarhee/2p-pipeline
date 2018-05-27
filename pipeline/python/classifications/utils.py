@@ -42,6 +42,7 @@ import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from pipeline.python.traces.utils import get_frame_info
 
 #%% Load Datasets:
 
@@ -204,6 +205,9 @@ def get_run_details(options, verbose=True):
     #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     traceid_dir = get_traceid_dir(options)
     
+    run_dir = traceid_dir.split('/traces')[0]
+    si_info = get_frame_info(run_dir)
+    
 
     #% # Load ROIDATA file:
     print "Loading ROIDATA file..."
@@ -307,6 +311,7 @@ def get_run_details(options, verbose=True):
     run_info['transforms'] = object_transformations
     run_info['datakey'] = datakey
     run_info['trans_types'] = trans_types
+    run_info['framerate'] = si_info['framerate']
 
 
     return sDATA, run_info, stimconfigs
@@ -400,12 +405,74 @@ def format_stimconfigs(configs):
 
     return stimconfigs
 
-#%
-def format_framesXrois(sDATA, roi_list, verbose=True, missing='drop'):
+#%%
+
+# Use cnvlib.smoothing functions to deal get mirrored edges on rolling quantile:
+    
+def check_inputs(x, width, as_series=True):
+    """Transform width into a half-window size.
+
+    `width` is either a fraction of the length of `x` or an integer size of the
+    whole window. The output half-window size is truncated to the length of `x`
+    if needed.
+    """
+    x = np.asfarray(x)
+    wing = _width2wing(width, x)
+    signal = _pad_array(x, wing)
+    if as_series:
+        signal = pd.Series(signal)
+    return x, wing, signal
+
+
+def _width2wing(width, x, min_wing=3):
+    """Convert a fractional or absolute width to integer half-width ("wing").
+    """
+    if 0 < width < 1:
+        wing = int(math.ceil(len(x) * width * 0.5))
+    elif width >= 2 and int(width) == width:
+        wing = int(width // 2)
+    else:
+        raise ValueError("width must be either a fraction between 0 and 1 "
+                         "or an integer greater than 1 (got %s)" % width)
+    wing = max(wing, min_wing)
+    wing = min(wing, len(x) - 1)
+    assert wing >= 1, "Wing must be at least 1 (got %s)" % wing
+    return wing
+
+
+def _pad_array(x, wing):
+    """Pad the edges of the input array with mirror copies."""
+    return np.concatenate((x[wing-1::-1],
+                           x,
+                           x[:-wing-1:-1]))
+
+def rolling_quantile(x, width, quantile):
+    """Rolling quantile (0--1) with mirrored edges."""
+    x, wing, signal = check_inputs(x, width)
+    rolled = signal.rolling(2 * wing + 1, 2, center=True).quantile(quantile)
+    return np.asfarray(rolled[wing:-wing])
+
+#%%
+def format_framesXrois(sDATA, roi_list, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
 
     # Format data: rows = frames, cols = rois
-    Xdata = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['df'].apply(np.array).tolist()).T
-
+    raw_xdata = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])[trace].apply(np.array).tolist()).T
+    
+    roi_list = sorted(roi_list, key=natural_keys)
+    Xdf = pd.DataFrame(raw_xdata, columns=roi_list)
+    #decay_constant = 71./1000 # in sec -- this is what Romano et al. bioRxiv 2017 do for Fsmooth (decay_constant of indicator * 40)
+    # vs. Dombeck et al. Neuron 2007 methods (15 sec +/- tpoint 8th percentile)
+    
+    window_size_sec = (nframes_on/framerate) * 4 # decay_constant * 40
+    decay_frames = window_size_sec * framerate # decay_constant in frames
+    window_size = int(round(decay_frames))
+    quantile = 0.08
+    
+    Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
+    Xdata_tmp = (Xdf - Fsmooth)
+    Xdata = np.array(Xdata_tmp)
+    
+    
     # Get rid of "bad rois" that have np.nan on some of the trials:
     # NOTE:  This is not exactly the best way, but if the df/f trace is wild, np.nan is set for df value on that trial
     # Since this is done in traces/get_traces.py, for now, just deal with this by ignoring ROI
@@ -441,7 +508,7 @@ def format_framesXrois(sDATA, roi_list, verbose=True, missing='drop'):
     return Xdata, ylabels, groups, tsecs, roi_list
 
 #%%
-def format_roisXzscore(sDATA, run_info, trace='raw'):
+def format_roisXvalue(sDATA, run_info, value_type='meanstimdf', trace='raw'):
 
     # Make sure that we only get ROIs in provided list (we are dropping ROIs w/ np.nan dfs on any trials...)
     #sDATA = sDATA[sDATA['roi'].isin(roi_list)]
@@ -458,12 +525,17 @@ def format_roisXzscore(sDATA, run_info, trace='raw'):
     mean_stim_on_values = np.nanmean(rawtraces[:, stim_on_frame:stim_on_frame+nframes_on], axis=1)
 
     #zscore_values_raw = np.array([meanval/stdval for (meanval, stdval) in zip(mean_stim_on_values, std_baseline_values)])
-    zscored_df = (mean_stim_on_values - mean_baseline_values ) / std_baseline_values
-    rois_by_zscore = np.reshape(zscored_df, (nrois, ntrials_total))
+    if value_type == 'zscore':
+        values_df = (mean_stim_on_values - mean_baseline_values ) / std_baseline_values
+    else:
+        values_df = mean_stim_on_values #- mean_baseline_values ) / std_baseline_values
+    
+    rois_by_value = np.reshape(values_df, (nrois, ntrials_total))
+        
 #    if bad_roi is not None:
 #        rois_by_zscore = np.delete(rois_by_zscore, bad_roi, 0)
 
-    return rois_by_zscore
+    return rois_by_value
 
 #%% Preprocess data:
 #%

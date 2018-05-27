@@ -208,7 +208,7 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
     return visual_rids
 
 
-def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', const_trans=None, trans_value=None):
+def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', const_trans=None, trans_value=None, data_type='zscores'):
     sconfigs_df = pd.DataFrame(sconfigs).T
 
     # Check that input data is correctly formatted:
@@ -229,12 +229,14 @@ def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', c
         sorted_ixs = [s[0] for s in sorted(enumerate(cy), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
 
         # check that indices are grouped properly:
-        sidx = 0
-        diffs = []
-        for k in sorted(ordered_configs.keys(), key= lambda d: ordered_configs[d]):
-            diffs.append(len(list(set(np.diff(sorted_ixs[sidx:sidx+nframes_per_trial])))))
-            sidx += nframes_per_trial
-        assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
+        if data_type == 'xcondsub':
+            sidx = 0
+            diffs = []
+            for k in sorted(ordered_configs.keys(), key= lambda d: ordered_configs[d]):
+                diffs.append(len(list(set(np.diff(sorted_ixs[sidx:sidx+nframes_per_trial])))))
+                sidx += nframes_per_trial
+            print diffs
+            assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
 
         # Re-sort class labels and data:
         cy_tmp = cy[sorted_ixs]
@@ -394,7 +396,7 @@ options_list = [opts3]
 #options_list = [opts1]
 
 
-test = True
+test = False
 
 #load_pretrained = True
 
@@ -469,20 +471,24 @@ for options_idx in range(len(options_list)):
         os.makedirs(output_basedir)
 
     # First check if processed datafile exists:
+    reload_data = False
     data_fpath = os.path.join(output_basedir, 'datasets.npz')
     if os.path.exists(data_fpath):
-        dataset = np.load(data_fpath)
-        print "Loaded existing datafile:\n%s" % data_fpath
-        print dataset.keys()
+        try:
+            dataset = np.load(data_fpath)
+            print "Loaded existing datafile:\n%s" % data_fpath
+            print dataset.keys()
+    
+            sconfigs = dataset['sconfigs'][()]
+            roi_list = dataset['run_info'][()]['roi_list']
+            zscores = dataset['zscores']
+            X = dataset['smoothedX']
+            y = dataset['y']
+            tsecs = dataset['tsecs']
+        except Exception as e:
+            reload_data = True
 
-        sconfigs = dataset['sconfigs'][()]
-        roi_list = dataset['run_info'][()]['roi_list']
-        zscores = dataset['zscores']
-        X = dataset['smoothedX']
-        y = dataset['y']
-        tsecs = dataset['tsecs']
-
-    else:
+    if reload_data:
             
         sDATA, run_info, stimconfigs = util.get_run_details(options)
         sconfigs = util.format_stimconfigs(stimconfigs)
@@ -494,7 +500,7 @@ for options_idx in range(len(options_list)):
     
         #% Load time-course data and format:
         roi_list = run_info['roi_list']
-        Xdata, ylabels, groups, tsecs, roi_list = util.format_framesXrois(sDATA, roi_list, missing='none')
+        Xdata, ylabels, groups, tsecs, roi_list = util.format_framesXrois(sDATA, roi_list, run_info['nframes_on'], run_info['framerate'], missing='none')
     
         nframes_per_trial = run_info['nframes_per_trial']
     
@@ -553,17 +559,20 @@ for options_idx in range(len(options_list)):
             figname = 'avgtrial_vs_xcondsubtracted_roi%05d.png' % int(ridx+1)
             pl.savefig(os.path.join(output_basedir, figname))
     
-        zscores = util.format_roisXzscore(sDATA, run_info)
-        
+        tvalues = util.format_roisXvalue(sDATA, run_info, value_type='meanstimdf')
+        zscores = util.format_roisXvalue(sDATA, run_info, value_type='zscore')
+
         # Save:
         print "Saving processed data..."
         np.savez(data_fpath, 
                  sDATA=sDATA,
-                 smoothedX=X, frac=frac, y=y,
+                 X=X, y=y,
+                 smoothedX=X, frac=frac,
                  tsecs=tsecs,
                  groups=groups,
                  sconfigs=sconfigs, 
-                 zscores=zscores, 
+                 tvalues=tvalues, 
+                 zscores=zscores,
                  run_info=run_info)
 
 
@@ -628,8 +637,8 @@ if spatial_sort:
 # =============================================================================
 
 metric = 'meanstimdf'
-roi_selector = 'visual' #'selectiveanova' #'selective'
-data_type = 'xcondsub' #zscore' # 'xcondsub'
+roi_selector = 'all' #'selectiveanova' #'selective'
+data_type = 'zscore' #zscore' # 'xcondsub'
 is_test = False
 
 options_idx = 0
@@ -644,7 +653,7 @@ elif data_type == 'avgconds':
     cX = avgDF.values
 
 # Use subset of ROIs, e.g., VISUAL or SELECTIVE only:
-if roi_selector is not None:
+if roi_selector == 'visual':
     visual_rids = get_roi_list(run_info, roi_selector=roi_selector, metric=metric)
 else:
     visual_rids = xrange(cX.shape[1])
@@ -938,9 +947,9 @@ elif classifier == 'LogReg':
 else:
     svc = OneVsRestClassifier(SVC(kernel='linear', decision_function_shape='ovr'))
 
-import statsmodels.discrete.discrete_model as sm
-logit = sm.Logit(cy, cX_std)
-logit.fit().params
+#import statsmodels.discrete.discrete_model as sm
+#logit = sm.Logit(cy, cX_std)
+#logit.fit().params
 
 if find_C:
     best_C = get_best_C(svc, cX_std, cy, output_dir=output_dir, classifier_str=classif_identifier)
@@ -948,7 +957,7 @@ if find_C:
 else:
     C_val = big_C
     
-svc = LinearSVC(random_state=0, dual=False, multi_class='ovr', C=best_C)
+svc = LinearSVC(random_state=0, dual=False, multi_class='ovr', C=C_val)
     
 
 #%%
@@ -1193,7 +1202,7 @@ labels_df = pd.DataFrame(data=py,
 pdf = pd.concat([pca_df, labels_df], axis=1).reset_index()
 
 stimtype = sconfigs['config001']['stimtype']
-if class_type == 'ori':
+if class_name == 'ori':
     curr_colors = sns.color_palette("hls", len(class_labels))
 else:
     curr_colors = sns.color_palette("RdBu_r", len(class_labels))
@@ -1275,7 +1284,7 @@ nruns = 4
 if multi_run is False:
     nruns = 1
 
-perplexity = 400 #100# 40 #100 #5# 100
+perplexity = 1000 #100# 40 #100 #5# 100
 niter = 3000 #5000
 
 colors = curr_colors # 'r', 'orange', 'y', 'g', 'c', 'b', 'm', 'k' #, 'purple'
