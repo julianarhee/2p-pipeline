@@ -36,6 +36,11 @@ parser.add_option('--slurm', action='store_true', dest='slurm', default=False, h
 parser.add_option('-s', '--source', action='store', dest='source_dir', default=None, help="folder from which to create z-projected slice images")
 parser.add_option('-o', '--outdir', action='store', dest='write_dir', default=None, help="path to save averaged slices [default appends <sourcedir>_<zprojtype>_deinterleaved/")
 parser.add_option('-z', '--zproj', action='store', dest='zproj_type', default='mean', help="Method of z-projection to get summary slice image [default: mean]")
+parser.add_option('--filter', action='store_true', dest='filter3D', default=False, help="Filter 3D tif for ROI extraction (default, false)")
+parser.add_option('-f', '--ftype', action='store', dest='filter_type', default='median', help="Filter type, if --filter set [default: median]")
+parser.add_option('-g', '--fsize', action='store', dest='filter_size', default=4, help="Filter size, if --filter set [default: 4]")
+
+
 
 
 (options, args) = parser.parse_args() 
@@ -55,7 +60,9 @@ run = options.run
 source_dir = options.source_dir
 write_dir = options.write_dir
 zproj_type = options.zproj_type
-
+filter3D = options.filter3D
+filter_type = options.filter_type
+filter_size = int(options.filter_size)
 runmeta_path = os.path.join(rootdir, animalid, session, acquisition, run, '%s.json' % run)
 
-zproj_tseries(source_dir, runmeta_path, zproj_type=zproj_type, write_dir=write_dir)
+zproj_tseries(source_dir, runmeta_path, zproj_type=zproj_type, write_dir=write_dir, filter3D=filter3D, filter_type=filter_type, filter_size=filter_size)
