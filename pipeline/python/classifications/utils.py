@@ -18,6 +18,7 @@ import itertools
 import copy
 import scipy.io
 import optparse
+import cPickle as pkl
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -34,6 +35,7 @@ import scikit_posthocs as sp
 from statsmodels.stats.multicomp import pairwise_tukeyhsd, MultiComparison
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from skimage import exposure
+from collections import Counter
 
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
 import pipeline.python.traces.combine_runs as cb
@@ -88,6 +90,705 @@ def extract_options(options):
 
     return options
 
+#%% Formatting functions for raw traces:
+    
+
+
+#def load_roiXtrials(traceid_dir, get_raw=True, smoothed=False, frac=0.001):
+#    
+#    create_new = False
+#    labels_df=None; raw_df=None; processed_df=None; baseline_df=None;
+#
+#    if get_raw:
+#        # Get everything:
+#        raw_df, labels_df = get_raw_df(traceid_dir)
+#    else:
+#        if smoothed is True:
+#            dataframe_fpath = os.path.join(traceid_dir, 'roiXtrials_smoothed.pkl')
+#        else:
+#            dataframe_fpath = os.path.join(traceid_dir, 'roiXtrials_processed.pkl')
+#        try:
+#            print "Loading dataframe: %s" % dataframe_fpath
+#            with open(dataframe_fpath, 'rb') as f:
+#                df = pkl.load(f)
+#                print "Loaded df: (%s)." % str(df.shape)
+#            if smoothed is True:
+#                processed_df = df
+#            else:
+#                processed_df = df['processed']
+#                baseline_df = df['F0']
+#        except Exception as e:
+#            print "Unable to load file..."
+#            
+#            
+#        create_new = True
+#    
+#    if create_new:
+        
+
+#%%
+        
+def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False, frac=0.001):
+    
+    collate=False
+    # Set up paths to look for saved dataframes:
+    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
+    if not os.path.exists(data_array_dir):
+        os.makedirs(data_array_dir)
+    
+    if trace_type == 'processed' and dff:
+        xdata_fpath = os.path.join(data_array_dir, 'roiXtrials_dff.pkl')
+    else:
+        xdata_fpath = os.path.join(data_array_dir, 'roiXtrials_%s.pkl' % trace_type) # processed OR raw
+        
+    if smoothed:
+        fbase = os.path.splitext(xdata_fpath)[0]
+        xdata_fpath = '%s_smoothed.pkl' % fbase
+        
+    print "XDATA path:", xdata_fpath
+    
+    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
+    F0_fpath=None; F0_df=None
+    if trace_type == 'processed' and smoothed is False:
+        # Also get baseline:
+        F0_fpath = os.path.join(data_array_dir, 'roiXtrials_F0.pkl')
+        
+    try:
+        with open(xdata_fpath, 'rb') as f:
+            xdata_df = pkl.load(f)
+        print "Loaded XDATA."
+        
+        with open(labels_fpath, 'rb') as f:
+            labels_df = pkl.load(f)
+        print "Loaded labels."
+        
+        if F0_fpath is not None:
+            with open(F0_fpath, 'rb') as f:
+                F0_df = pkl.load(f)
+            print "Loaded F0."
+            
+    except Exception as e:
+        collate = True
+    
+    if collate:
+        # First, check that there are indeed df arrays from which to collate all data:
+        # roi-xframes arrays:
+        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
+
+        trace_arrays_dir = os.path.join(traceid_dir, 'files', '%s_trace_arrays' % trace_type)
+
+        if smoothed:
+            if dff:
+                trace_arrays_dir = '%s_dff' % trace_arrays_dir
+            else:
+                trace_arrays_dir = '%s_smoothed' % trace_arrays_dir
+            
+        if not os.path.exists(trace_arrays_dir):
+            os.makedirs(trace_arrays_dir)
+        n_src_dataframes = len([r for r in os.listdir(trace_arrays_dir) if 'File' in r])
+
+        if not n_orig_tiffs == n_src_dataframes:
+            if trace_type == 'raw':
+                raw_hdf_to_dataframe(traceid_dir)
+            elif trace_type == 'processed':
+                processed_trace_arrays(traceid_dir)
+            
+            if smoothed:
+                smoothed_trace_arrays(traceid_dir, trace_type=trace_type, dff=dff, frac=frac)
+
+
+        if trace_type == 'raw':
+            labels_df, xdata_df = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
+        else:
+            labels_df, xdata_df, F0_df = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
+    
+    return labels_df, xdata_df, F0_df
+    
+
+#def get_raw_df(traceid_dir):
+#    
+#    collate = False
+#    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
+#    if not os.path.exists(data_array_dir):
+#        os.makedirs(data_array_dir)
+#
+#    raw_fpath = os.path.join(data_array_dir, 'roiXtrials_raw.pkl')
+#    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
+#    try:
+#        with open(raw_fpath, 'rb') as f:
+#            raw_df = pkl.load(f)
+#        print "Loaded XDATA."
+#        with open(labels_fpath, 'rb') as f:
+#            labels_df = pkl.load(f)
+#        print "Loaded labels."
+#    except Exception as e:
+#        collate = True
+#    
+#    if collate:
+#        # First, create ROI x FRAMES array for full session from individual tif traces:
+#        raw_trace_arrays_dir = os.path.join(traceid_dir, 'files', 'raw_trace_arrays')
+#        if not os.path.exists(raw_trace_arrays_dir):
+#            os.makedirs(raw_trace_arrays_dir)
+#
+#        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
+#        n_raw_dataframes = len([r for r in os.listdir(os.path.join(traceid_dir, 'files', 'raw_trace_arrays')) if 'File' in r])
+#        print n_orig_tiffs
+#        if not n_orig_tiffs == n_raw_dataframes:
+#            raw_hdf_to_dataframe(traceid_dir)
+#    
+#        raw_df, labels_df = collate_trials(traceid_dir, trace_type='raw')
+#    
+#    return raw_df, labels_df
+#
+#
+#def get_processed_df(traceid_dir):
+#    
+#
+#    collate = False
+#    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
+#    if not os.path.exists(data_array_dir):
+#        os.makedirs(data_array_dir)
+#
+#    raw_fpath = os.path.join(data_array_dir, 'roiXtrials_raw.pkl')
+#    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
+#    try:
+#        with open(raw_fpath, 'rb') as f:
+#            raw_df = pkl.load(f)
+#        print "Loaded XDATA."
+#        with open(labels_fpath, 'rb') as f:
+#            labels_df = pkl.load(f)
+#        print "Loaded labels."
+#    except Exception as e:
+#        collate = True
+#    
+#    if collate:
+#        # First, create ROI x FRAMES array for full session from individual tif traces:
+#        raw_trace_arrays_dir = os.path.join(traceid_dir, 'files', 'raw_trace_arrays')
+#        if not os.path.exists(raw_trace_arrays_dir):
+#            os.makedirs(raw_trace_arrays_dir)
+#
+#        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
+#        n_raw_dataframes = len([r for r in os.listdir(os.path.join(traceid_dir, 'files', 'raw_trace_arrays')) if 'File' in r])
+#        print n_orig_tiffs
+#        if not n_orig_tiffs == n_raw_dataframes:
+#            raw_hdf_to_dataframe(traceid_dir)
+#    
+#        processed_df, baseline_df, labels_df = collate_trials(traceid_dir, trace_type='processed')
+#    
+#    return processed_df, baseline_df, labels_df
+#    
+
+    
+def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt='.pkl', nonnegative=True,):
+    xdata_df=None; baseline_df=None; labels_df=None
+    
+    trace_arrays_type = '%s_trace_arrays' % trace_type
+        
+    if dff:
+        roixtrial_fn = 'roiXtrials_dff.pkl'
+        trace_arrays_type = '%s_dff' % trace_arrays_type
+    else:
+        roixtrial_fn = 'roiXtrials_%s.pkl' % trace_type # Procssed or SMoothed
+
+    if smoothed:
+        fn_base = os.path.splitext(roixtrial_fn)[0]
+        roixtrial_fn = '%s_smoothed.pkl' % fn_base
+        trace_arrays_type = '%s_smoothed' % trace_arrays_type
+
+    # Set up output dir for collated trials (combine all trials from each .tif file)
+    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
+    if not os.path.exists(data_array_dir):
+        os.makedirs(data_array_dir)
+        
+    # Get SCAN IMAGE info for run:
+    run_dir = traceid_dir.split('/traces')[0]
+    run = os.path.split(run_dir)[-1]
+    with open(os.path.join(run_dir, '%s.json' % run), 'r') as fr:
+        scan_info = json.load(fr)
+    frame_tsecs = np.array(scan_info['frame_tstamps_sec'])
+    framerate = scan_info['frame_rate']
+
+
+    paradigm_dir = os.path.join(run_dir, 'paradigm')
+    # Load MW info to get stimulus details:
+    mw_fpath = [os.path.join(paradigm_dir, m) for m in os.listdir(paradigm_dir) if 'trials_' in m and m.endswith('json')][0]
+    with open(mw_fpath,'r') as m:
+        mwinfo = json.load(m)
+    with open(os.path.join(paradigm_dir, 'stimulus_configs.json'), 'r') as s:
+        stimconfigs = json.load(s)
+    if 'frequency' in stimconfigs[stimconfigs.keys()[0]].keys():
+        stimtype = 'gratings'
+    elif 'fps' in stimconfigs[stimconfigs.keys()[0]].keys():
+        stimtype = 'movie'
+    else:
+        stimtype = 'image'
+    
+    # For movies, remove last trial:
+    skip_last_trial = False
+    acqdir = os.path.split(run_dir)[0]
+    session = os.path.split(os.path.split(acqdir)[0])[-1]
+    if stimtype == 'movie' and int(session) < 20180525:
+        skip_last_trial = True
+            
+        
+    for conf, params in stimconfigs.items():
+        if 'filename' in params.keys():
+            params.pop('filename')
+        stimconfigs[conf] = params
+        
+    
+    # Load frames--trial info:
+    parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
+    parsed_frames = h5py.File(parsed_frames_fpath, 'r')
+    
+    trial_list = sorted(parsed_frames.keys(), key=natural_keys)
+    print "There are %i total trials across all .tif files." % len(trial_list)
+
+
+    stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
+    assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
+    nframes_on = round(int(stimdurs[0] * framerate))
+    
+    print "Collating trials across all files from %s" % trace_arrays_type
+    trace_arrays_dir = os.path.join(traceid_dir, 'files', trace_arrays_type)
+    
+    # Check if frame indices are indexed relative to full run (all .tif files)
+    # or relative to within-tif frames (i.e., a "block")
+    block_indexed = True
+    if all([all(parsed_frames[t]['frames_in_run'][:] == parsed_frames[t]['frames_in_file'][:]) for t in trial_list]):
+        block_indexed = False
+        
+    trace_fns = sorted([f for f in os.listdir(trace_arrays_dir) if 'File' in f], key=natural_keys)
+    print "Found %i files to collate." % len(trace_fns)
+    if len(trace_fns) > 0:
+        fmt = os.path.splitext(trace_fns[0])[-1]
+    else:
+        fmt = fmt
+    if '.' in fmt:
+        fmt = fmt[1:]
+    
+    frame_df_list = []
+    drift_df_list = []
+    frame_times = []
+    trial_ids = []
+    config_ids = []
+    for fidx, dfn in enumerate(trace_fns):
+        F0_df = None
+        if fmt == 'pkl':
+            print "Loading... %s" % dfn
+            with open(os.path.join(trace_arrays_dir, dfn), 'rb') as f:
+                filedf = pkl.load(f)
+
+        if 'F0' in filedf.keys():
+            F0_df = filedf['F0']
+            if dff:
+                filedf = filedf['processed']/filedf['F0']
+            else:
+                filedf = filedf['processed']
+                
+        if trace_type=='raw' and nonnegative and np.array(filedf).min() < 0:
+            print "making nonnegative..."
+            filedf -= np.array(filedf).min()
+        
+        #print filedf.head()
+        # Get all trials contained in current .tif file:
+        trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
+
+        if skip_last_trial:
+            #trials_in_block = trials_in_block[0:-1]
+            # Check if this is a bad tif:
+            frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+            if frame_indices[-1] > len(frame_tsecs):
+                print "Skipping last trial!"
+                trials_in_block = trials_in_block[0:-1]
+        
+        excluded_params = ['filehash', 'stimulus', 'type']
+        curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
+        curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
+        config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+        
+    
+        # Get frame indices of the full trial (this includes PRE-stim baseline, stim on, and POST-stim iti):
+        frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+        trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
+        stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block])
+        
+        # Subtract off appropriate number of frames if frame indices are relative
+        # to FULL set of blocks:
+        if block_indexed is False:
+            frame_indices -= fidx*filedf.shape[0]
+            stim_onset_idxs -= fidx*filedf.shape[0]
+
+        currtrials_df = filedf.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
+        if F0_df is not None:
+            currbaseline_df = F0_df.loc[frame_indices,:]
+        
+        # Turn time-stamp array into (ntrials x nframes_per_trial) array:
+        trial_tstamps = frame_tsecs[frame_indices]        
+        nframes_per_trial = len(frame_indices) / len(trials_in_block)
+        tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
+        
+        # Subtract frame_onset timestamp from each frame for each trial to get
+        # time relative to stim ON:
+        tsec_mat -= np.tile(frame_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+        relative_tsecs = np.reshape(tsec_mat, (len(trials_in_block)*nframes_per_trial, ))
+        
+        # Get corresponding STIM CONFIG ids:
+        if stimtype == 'grating':
+            excluded_params = ['stimulus', 'type']
+        else:
+            excluded_params = ['filehash', 'stimulus', 'type']
+        curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
+        curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
+        config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+        
+        # Add current block of trial info:
+        frame_df_list.append(currtrials_df)
+        if F0_df is not None:
+            drift_df_list.append(currbaseline_df)
+        
+        frame_times.append(relative_tsecs)
+        trial_ids.append(trial_labels)
+        config_ids.append(config_labels)
+
+    xdata_df = pd.concat(frame_df_list, axis=0).reset_index(drop=True)
+    if len(drift_df_list)>0:
+        baseline_df = pd.concat(drift_df_list, axis=0).reset_index(drop=True)
+        
+    # Also collate relevant frame info (i.e., labels):
+    tstamps = np.hstack(frame_times)
+    trials = np.hstack(trial_ids)
+    configs = np.hstack(config_ids)
+    
+    stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
+    assert len(stim_dur_sec)==1, "more than 1 unique stim duration found in MW file!"
+    stim_dur = stim_dur_sec[0]
+    
+    
+    if skip_last_trial:
+        # Look in data_arrays dir to see if trials_to_dump were selected from
+        # a previous run:
+        dump_info_fpath = os.path.join(data_array_dir, 'dump_info.pkl')
+        if os.path.exists(dump_info_fpath):
+            with open(dump_info_fpath, 'rb') as d:
+                dumpinfo = pkl.load(d)
+        else:
+            dumpinfo = {}
+            # Need to remove trials for certain conditions since we're missing traces...
+            counts = Counter(configs)
+            dumpinfo['orig_counts'] = counts
+            min_frames = min([v for k,v in counts.items()])
+            conds_with_less = [k for k,v in counts.items() if v==min_frames]
+            conds_to_lop = [k for k in counts.keys() if k not in conds_with_less]
+            dumpinfo['conds_to_lop'] = conds_to_lop
+            kept_indices = []
+            dumpedtrials = {}
+            for cond in counts.keys():
+                currcond_idxs = np.where(configs==cond)[0]  # Original indices into the full array for current condition
+                if cond in conds_to_lop:
+                    curr_trials = trials[currcond_idxs]         # Trials 
+                    trial_labels = np.array(sorted(list(set(curr_trials)), key=natural_keys)) # Get trial IDs in order
+                    currcond_nframes = counts[cond]
+                    nframes_over = currcond_nframes - min_frames
+                    ntrials_to_remove = nframes_over/nframes_per_trial
+                    ntrials_orig = currcond_nframes/nframes_per_trial
+                    randomly_removed_trials = random.sample(range(0, ntrials_orig), ntrials_to_remove)
+                    trials_to_dump = trial_labels[randomly_removed_trials]
+                    cond_indices_to_keep = [i for i,trial in enumerate(curr_trials) if trial not in trials_to_dump]
+                    kept_indices.append(currcond_idxs[cond_indices_to_keep])
+                    dumpedtrials[cond] = trials_to_dump
+                else:
+                    kept_indices.append(currcond_idxs)
+            keep = np.array(sorted(list(itertools.chain(*kept_indices))))
+            dumpinfo['keep'] = keep
+            dumpinfo['dumpedtrials'] = dumpedtrials
+            
+            with open(dump_info_fpath, 'wb') as d:
+                pkl.dump(dumpinfo, d, protocol=pkl.HIGHEST_PROTOCOL)
+
+        if len(dumpinfo['keep']) > 0:
+            keep = np.array(dumpinfo['keep'])
+            xdata_df = xdata_df.loc[keep, :].reset_index(drop=True)
+            tstamps = tstamps[keep]
+            trials = trials[keep]
+            configs = configs[keep]
+            if baseline_df is not None:
+                baseline_df = baseline_df.loc[keep, :].reset_index(drop=True)
+        
+    
+    # Turn paradigm info into dataframe:
+    labels_df = pd.DataFrame({'tsec': tstamps, 
+                              'config': configs,
+                              'trial': trials,
+                              'stim_dur': np.tile(stim_dur, trials.shape)
+                              }, index=xdata_df.index)
+    
+    with open(os.path.join(data_array_dir, roixtrial_fn), 'wb') as f:
+        pkl.dump(xdata_df, f, protocol=pkl.HIGHEST_PROTOCOL)
+    with open(os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl'), 'wb') as fp:
+        pkl.dump(labels_df, fp, protocol=pkl.HIGHEST_PROTOCOL)
+
+    if trace_type=='processed':
+        if baseline_df is not None:
+            with open(os.path.join(data_array_dir, 'roiXtrials_F0.pkl'), 'wb') as fp:
+                pkl.dump(baseline_df, fp, protocol=pkl.HIGHEST_PROTOCOL)
+        if not os.path.exists(os.path.join(data_array_dir, 'roiXtrials_dff.pkl')):
+            # Save DFF roiXtrials array, in case want to load it later
+            # No need, if returning dff itself
+            DFF = xdata_df/baseline_df
+            with open(os.path.join(data_array_dir, 'roiXtrials_dff.pkl'), 'wb') as fd:
+                pkl.dump(DFF, fd, protocol=pkl.HIGHEST_PROTOCOL)
+            
+        return labels_df, xdata_df, baseline_df
+    else:
+        return labels_df, xdata_df
+        
+            
+
+def make_raw_trace_arrays(options=[], acquisition_dir='', run='', traceid='', fmt='pkl'):
+    '''
+    Converts hdf5 files created from initial trace extraction step (traces/get_traces.py)
+    into standard frames X roi dataframes. Uses get_raw_runs(), which assumes
+    the raw traces are neuropil-subtracted.
+    
+    Either provide options list to extract info, 
+    OR provide acquisition_dir, run id, trace id.
+    '''
+    
+    if len(options) > 0:
+        optsE = extract_options(options)
+        run = optsE.run_list[0]
+        traceid = optsE.traceid_list[0]
+        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+    
+    traceid_dir = get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    raw_trace_arrays_dir = raw_hdf_to_dataframe(traceid_dir, fmt=fmt)
+    
+    return raw_trace_arrays_dir
+
+
+def raw_hdf_to_dataframe(traceid_dir, roi_list=[], fmt='pkl'):
+#def get_raw_runs(acquisition_dir, run, traceid, roi_list=[], fmt='pkl'):
+    
+    #traceid_dir = get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    filetraces_dir = os.path.join(traceid_dir, 'files')
+    raw_trace_arrays_dir = os.path.join(filetraces_dir, 'raw_trace_arrays')
+    if not os.path.exists(raw_trace_arrays_dir):
+        os.makedirs(raw_trace_arrays_dir)
+    
+    trace_fns = [f for f in os.listdir(filetraces_dir) if f.endswith('hdf5')]
+    
+    print "Getting frame x roi arrays for %i tifs." % len(trace_fns)
+    print "Ouput format: %s." % fmt
+    print "Saving to: %s" % raw_trace_arrays_dir
+    
+    for f in trace_fns:
+        tfile = h5py.File(os.path.join(filetraces_dir, f), 'r')
+        tracemat = np.array(tfile['Slice01']['traces']['np_subtracted'])  # (nframes_in_tif x nrois)
+        if len(roi_list)==0:
+            roi_list = sorted(['roi%05d' % int(r+1) for r in range(tracemat.shape[1])], key=natural_keys)
+        df = pd.DataFrame(data=tracemat, columns=roi_list, index=range(tracemat.shape[0]))
+        
+        out_fname = '%s.%s' % (str(os.path.splitext(f)[0]), fmt)
+        with open(os.path.join(raw_trace_arrays_dir, out_fname), 'wb') as o:
+            pkl.dump(df, o, protocol=pkl.HIGHEST_PROTOCOL)
+        print "Saved %s" % out_fname
+    
+    return raw_trace_arrays_dir
+
+            
+def processed_trace_arrays(traceid_dir, nframes_on=None, framerate=None, fmt='pkl'):
+    '''
+    Calculate F0 for each ROI by .tif file (continuous time points). These
+    trace "chunks" can later be parsed and combined into a dataframe for trial
+    analyses, but smoothing should be done within continuous periods of shutter
+    on/off (i.e., a literal 'acquisition' in SI).
+    '''
+    if framerate is None:
+        run_dir = traceid_dir.split('/traces')[0]
+        run = os.path.split(run_dir)[-1]
+        with open(os.path.join(run_dir, '%s.json' % run), 'r') as f:
+            scan_info = json.load(f)
+        framerate = scan_info['frame_rate']
+        print "Got framerate from RUN INFO:", framerate
+        
+    if nframes_on is None:
+        paradigm_dir = os.path.join(traceid_dir.split('/traces')[0], 'paradigm')
+        parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
+        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
+    
+        trial_list = sorted(parsed_frames.keys(), key=natural_keys)
+        print "There are %i total trials across all .tif files." % len(trial_list)
+        stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
+        itidurs = list(set([parsed_frames[t]['frames_in_run'].attrs['iti_dur_sec'] for t in trial_list]))
+        assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
+        assert len(itidurs)==1, "More than 1 unique value for iti dur found in parsed_frames_ file!"
+        nframes_on = round(int(stimdurs[0] * framerate))
+        nframes_iti = round(int(itidurs[0] * framerate))
+        nframes_trial = nframes_on + nframes_iti
+        parsed_frames.close()
+        print "Got nframes_on from parsed_frames_:", nframes_on
+    
+    
+    tracefile_dir = os.path.join(traceid_dir, 'files')
+    raw_trace_arrays_dir = os.path.join(tracefile_dir, 'raw_trace_arrays')
+    if not os.path.exists(raw_trace_arrays_dir) or len(os.listdir(raw_trace_arrays_dir))==0:
+        raw_hdf_to_dataframe(traceid_dir, fmt=fmt)
+    processed_trace_arrays_dir = os.path.join(tracefile_dir, 'processed_trace_arrays')
+    if not os.path.exists(processed_trace_arrays_dir):
+        os.makedirs(processed_trace_arrays_dir)
+        
+    # Load raw trace arrays from which to calculate drift:    
+    rtrace_fns = [f for f in os.listdir(raw_trace_arrays_dir) if 'rawtraces' in f]
+    fmt = os.path.splitext(rtrace_fns[0])[-1]
+    
+    for dfn in rtrace_fns:
+        if fmt == '.pkl':            
+            with open(os.path.join(raw_trace_arrays_dir, dfn),'rb') as f:
+                rawdf = pkl.load(f)
+        
+        dfs = {}
+        # Make data non-negative:
+        raw_xdata = np.array(rawdf)
+        if raw_xdata.min() < 0:
+            print "Making data non-negative"
+            raw_xdata = raw_xdata - raw_xdata.min()
+            rawdf = pd.DataFrame(raw_xdata, columns=rawdf.columns.tolist(), index=rawdf.index)
+        
+        # Get BASELINE from rolling window:
+        ntrials_in_file = rawdf.shape[0]/nframes_trial
+        print "... and extracting 8% percentile as F0"
+        corrected_df, baseline_df = get_rolling_baseline(rawdf, nframes_trial*3, framerate)
+        
+        dfs['processed'] = corrected_df
+        dfs['F0'] = baseline_df
+        
+        # Save 
+        out_fname = dfn.replace('rawtraces', 'processed')
+        with open(os.path.join(processed_trace_arrays_dir, out_fname), 'wb') as o:
+            pkl.dump(dfs, o, protocol=pkl.HIGHEST_PROTOCOL)
+        print "Saved %s" % out_fname
+    
+    return processed_trace_arrays_dir        
+    
+
+
+def smoothed_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.01):
+    '''
+    Smooth traces for each ROI by .tif file (continuous time points). These
+    trace "chunks" can later be parsed and combined into a dataframe for trial
+    analyses, but smoothing should be done within continuous periods of shutter
+    on/off (i.e., a literal 'acquisition' in SI).
+    '''
+
+    # Get source data:
+    tracefile_dir = os.path.join(traceid_dir, 'files')
+    trace_arrays_src = os.path.join(tracefile_dir, '%s_trace_arrays' % trace_type)
+        
+    # Set output:
+    if dff:
+        smooothed_trace_arrays_dir = os.path.join(tracefile_dir, '%s_trace_arrays_dff_smoothed' % trace_type)
+    else:
+        smooothed_trace_arrays_dir = os.path.join(tracefile_dir, '%s_trace_arrays_smoothed' % trace_type)
+        
+    print "Saving smoothed array files to:", smooothed_trace_arrays_dir
+    if not os.path.exists(smooothed_trace_arrays_dir):
+        os.makedirs(smooothed_trace_arrays_dir)
+        
+    # Load each file and smooth:
+    trace_fns = [f for f in os.listdir(trace_arrays_src) if 'File' in f]
+    fmt = os.path.splitext(trace_fns[0])[-1]
+    
+    for dfn in trace_fns:
+        if fmt == '.pkl':            
+            with open(os.path.join(trace_arrays_src, dfn),'rb') as f:
+                tfile = pkl.load(f)
+        if 'F0' in tfile.keys():
+            F0 = tfile['F0']
+            tfile = tfile['processed']
+        if dff:
+            print "Getting smoothed df/f"
+            tfile = tfile/F0
+        
+        nframes, nrois = tfile.shape
+        smoothed = tfile.apply(smooth_traces, frac=frac, missing='drop')
+        
+        out_fname = dfn.replace(trace_type, 'smoothed%s' % str(frac)[2:])
+        with open(os.path.join(smooothed_trace_arrays_dir, out_fname), 'wb') as o:
+            pkl.dump(smoothed, o, protocol=pkl.HIGHEST_PROTOCOL)
+        print "Saved %s" % out_fname
+    
+    return smooothed_trace_arrays_dir        
+    
+
+def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir='/tmp'):
+    '''
+    Same as smooth_trace_arrays() but only does 1 file with specified 
+    smoothing fraction. Plots figure with user-provided example ROI.
+    '''
+    
+    tracefile_dir = os.path.join(traceid_dir, 'files')
+    if use_raw:
+        trace_arrays_dir = os.path.join(tracefile_dir, 'raw_trace_arrays')
+    else:
+        trace_arrays_dir = os.path.join(tracefile_dir, 'processed_trace_arrays')
+    
+    if os.path.exists(trace_arrays_dir):
+        trace_fns = [f for f in os.listdir(trace_arrays_dir) if 'File' in f]
+        
+    if (not os.path.exists(trace_arrays_dir)) or (len(trace_fns) == 0):
+        traceid = os.path.split(traceid_dir)[-1].split('_')[0]
+        run_dir = os.path.split(os.path.split(traceid_dir)[0])[0]
+        run = os.path.split(run_dir)[-1]
+        acquisition_dir = traceid_dir.split('/%s' % run)[0]
+        if use_raw:
+            print "Creating raw trace arrays for: %s" % acquisition_dir
+            print "Run: %s, Trace ID: %s" % (run, traceid)
+            raw_hdf_to_dataframe(traceid_dir)
+        else:
+            print "Creating F0-subtracted arrays for: %s" % acquisition_dir
+            print "Run: %s, Trace ID: %s" % (run, traceid)
+            processed_trace_arrays(traceid_dir)
+
+        trace_fns = [f for f in os.listdir(trace_arrays_dir) if 'File' in f]
+
+    fmt = os.path.splitext(trace_fns[0])[-1]
+    
+    dfn = trace_fns[0]
+    if fmt == '.pkl':            
+        with open(os.path.join(trace_arrays_dir, dfn),'rb') as f:
+            tfile = pkl.load(f)
+            if 'F0' in tfile.keys():
+                F0 = tfile['F0']
+                tfile = tfile['processed']
+            
+    roi_id = 'roi%05d' % int(ridx+1)
+    roi_trace = tfile[roi_id].values
+    
+    frac_range = np.linspace(fmin, fmax, num=8)
+    fig, axes = pl.subplots(2,4, figsize=(30,6)) #pl.figure()
+
+    for i, ax, in enumerate(axes.flat):
+        
+        filtered = np.apply_along_axis(smooth_traces, 0, roi_trace, frac=frac_range[i], missing='drop')
+        
+        ax.plot(xrange(len(filtered)), roi_trace, 'k', linewidth=0.5)
+        ax.plot(xrange(len(filtered)), filtered, 'r', linewidth=1, alpha=0.8)
+        ax.set_title('%.04f' % frac_range[i])
+
+    pl.suptitle('%s_%s' % (roi_id, dfn))
+    figstring = '%s_%s_smoothed_fmin%s_fmax%s' % (roi_id, dfn, str(fmin)[2:], str(fmax)[2:])
+    
+    if save_and_close:
+        pl.savefig(os.path.join(output_dir, '%s.png' % figstring))
+        pl.close()
+    
+    return figstring
+#    
+        
+
+
+#%%
 def load_roi_dataframe(roidata_filepath):
 
     fn_parts = os.path.split(roidata_filepath)[-1].split('_')
@@ -121,6 +822,19 @@ def load_roi_dataframe(roidata_filepath):
 
     return DATA, datakey
 
+
+def get_traceid_from_acquisition(acquisition_dir, run, traceid):
+    # Get paths to data source:
+    print "Getting path info for single run dataset..."
+    with open(os.path.join(acquisition_dir, run, 'traces', 'traceids_%s.json' % run), 'r') as f:
+        tdict = json.load(f)
+    tracefolder = '%s_%s' % (traceid, tdict[traceid]['trace_hash'])
+    traceid_dir = os.path.join(acquisition_dir, run, 'traces', tracefolder)
+    
+    return traceid_dir
+
+
+#%%
 def get_traceid_dir(options):
     traceid_dir = None
 
@@ -170,69 +884,69 @@ def get_traceid_dir(options):
     
     return traceid_dir
 
+#%%
+def get_transforms(stimconfigs):
+    
+    if 'frequency' in stimconfigs[stimconfigs.keys()[0]]:
+        stimtype = 'grating'
+#    elif 'fps' in stimconfigs[stimconfigs.keys()[0]]:
+#        stimtype = 'movie'
+    else:
+        stimtype = 'image'
 
-#%
+    sconfigs = format_stimconfigs(stimconfigs)
+    
+    transform_dict = {'xpos': list(set([sconfigs[c]['xpos'] for c in sconfigs.keys()])),
+                       'ypos': list(set([sconfigs[c]['ypos'] for c in sconfigs.keys()])),
+                       'size': list(set(([sconfigs[c]['size'] for c in sconfigs.keys()])))
+                       }
+    
+    if stimtype == 'image':
+        transform_dict['yrot'] = list(set([sconfigs[c]['yrot'] for c in sconfigs.keys()]))
+        transform_dict['morphlevel'] = list(set([sconfigs[c]['morphlevel'] for c in sconfigs.keys()]))
+    else:
+        transform_dict['ori'] = sorted(list(set([sconfigs[c]['ori'] for c in sconfigs.keys()])))
+        transform_dict['sf'] = sorted(list(set([sconfigs[c]['sf'] for c in sconfigs.keys()])))
+    trans_types = [t for t in transform_dict.keys() if len(transform_dict[t]) > 1]
+
+    object_transformations = {}
+    for trans in trans_types:
+        if stimtype == 'image':
+            curr_objects = []
+            for transval in transform_dict[trans]:
+                curr_configs = [c for c,v in sconfigs.iteritems() if v[trans] == transval]
+                tmp_obj = [list(set([sconfigs[c]['object'] for c in curr_configs])) for t in transform_dict[trans]]
+                tmp_obj = list(itertools.chain(*tmp_obj))
+                curr_objects.append(tmp_obj)
+                
+            if len(list(itertools.chain(*curr_objects))) == len(transform_dict[trans]):
+                # There should be a one-to-one correspondence between object id and the transformation (i.e., morphs)
+                included_objects = list(itertools.chain(*curr_objects))
+#            elif trans == 'morphlevel':
+#                included_objects = list(set(list(itertools.chain(*curr_objects))))
+            else:
+                included_objects = list(set(curr_objects[0]).intersection(*curr_objects[1:]))
+        else:
+            included_objects = transform_dict[trans]
+            print included_objects
+        object_transformations[trans] = included_objects
+
+    return transform_dict, object_transformations
+
+#%%
+    
 def get_run_details(options, verbose=True):
     run_info = {}
 
     optsE = extract_options(options)
-#
-#    rootdir = optsE.rootdir
-#    animalid = optsE.animalid
-#    session = optsE.session
-#    acquisition = optsE.acquisition
-#    slurm = optsE.slurm
-#    if slurm is True:
-#        rootdir = '/n/coxfs01/2p-data'
-
     trace_type = optsE.trace_type
-
-    #run_list = optsE.run_list
-    #traceid_list = optsE.traceid_list
-
-    filter_pupil = optsE.filter_pupil
-    pupil_radius_max = float(optsE.pupil_radius_max)
-    pupil_radius_min = float(optsE.pupil_radius_min)
-    pupil_dist_thr = float(optsE.pupil_dist_thr)
-    pupil_max_nblinks = 0
-
-    #multiproc = options.multiproc
-    #nprocesses = int(options.nprocesses)
     combined = optsE.combined
-    nruns = int(optsE.nruns)
 
     # Get paths to data source:
-    #acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     traceid_dir = get_traceid_dir(options)
     
     run_dir = traceid_dir.split('/traces')[0]
     si_info = get_frame_info(run_dir)
-    
-
-    #% # Load ROIDATA file:
-    print "Loading ROIDATA file..."
-    roidf_fn = [i for i in os.listdir(traceid_dir) if i.endswith('hdf5') and 'ROIDATA' in i and trace_type in i][0]
-    roidata_filepath = os.path.join(traceid_dir, roidf_fn) #'ROIDATA_098054_626d01_raw.hdf5')
-    DATA, datakey = load_roi_dataframe(roidata_filepath)
-
-    transform_dict, object_transformations = vis.get_object_transforms(DATA)
-    trans_types = object_transformations.keys()
-
-    #% Set filter params:
-    if filter_pupil is True:
-        pupil_params = acq.set_pupil_params(radius_min=pupil_radius_min,
-                                            radius_max=pupil_radius_max,
-                                            dist_thr=pupil_dist_thr,
-                                            create_empty=False)
-    elif filter_pupil is False:
-        pupil_params = acq.set_pupil_params(create_empty=True)
-
-
-    ##%% Calculate metrics & get stats ---------------------------------------------
-    #
-    #print "Getting ROI STATS..."
-    #STATS, stats_filepath = cb.get_combined_stats(DATA, datakey, traceid_dir, trace_type=trace_type, filter_pupil=filter_pupil, pupil_params=pupil_params)
-
 
     #% Get stimulus config info:assign_roi_selectivity
     # =============================================================================
@@ -245,49 +959,31 @@ def get_run_details(options, verbose=True):
         stimconfigs = json.load(f)
     print "Loaded %i stimulus configurations." % len(stimconfigs.keys())
 
-    #%
-    if 'gratings' in traceid_dir:
-        stimtype = 'gratings'
-        configs = sorted([k for k in stimconfigs.keys()], key=lambda x: stimconfigs[x]['rotation'])
-        conditions = [stimconfigs[c]['rotation'] for c in configs]
-    else:
-        stimtype = 'image'
-        conditions = stimconfigs.keys()
-    #nconds = len(orientations)
+    transform_dict, object_transformations = get_transforms(stimconfigs)
+    trans_types = object_transformations.keys()
 
-    #%
-    # =============================================================================
-    # Extract data subset:
-    # =============================================================================
-    #
-    #stats = STATS[['roi', 'config', 'trial', 'baseline_df', 'stim_df', 'zscore']] #STATS['zscore']
-    #
-    #std_baseline = stats['stim_df'].values / stats['zscore'].values
-    #zscored_resp = (stats['stim_df'].values - stats['baseline_df'].values ) /std_baseline
-    #
-    #zscore_vals = stats['zscore'].values
+    labels_df, raw_df, _ = load_roiXtrials_df(traceid_dir, trace_type='raw')
+    conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
+    
+    # Get trun info:
+    roi_list = sorted(list(set([r for r in raw_df.columns if not r=='index'])), key=natural_keys)
+    ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
+    trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
+    ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
+    assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
+    nframes_per_trial = list(set(labels_df.groupby(['trial'])['tsec'].count()))[0]
+    nframes_on = list(set(labels_df['stim_dur']))
+    assert len(nframes_on) == 1, "More than 1 unique stim duratoin found in Sdf..."
+    nframes_on = nframes_on[0] * si_info['framerate']
 
-    assert len(list(set(DATA['first_on'])))==1, "More than 1 frame idx found for stimulus ON"
-    assert len(list(set(DATA['nframes_on'])))==1, "More than 1 value found for nframes on."
-
-    stim_on_frame = int(list(set(DATA['first_on']))[0])
-    nframes_on = int(round(list(set(DATA['nframes_on']))[0]))
-
-    # Turn DF values into matrix with rows=trial, cols=df value for each frame:
-    roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
-    nrois = len(roi_list)
-
-    sDATA = DATA[['roi', 'config', 'trial', 'raw', 'df', 'tsec']].reset_index()
-    if stimtype == 'gratings':
-        sDATA.loc[:, 'config'] = [stimconfigs[c]['rotation'] for c in sDATA.loc[:,'config'].values]
-    sDATA = sDATA.sort_values(by=['config', 'trial'], inplace=False)
-    #sDATA.head()
-
-    nframes_per_trial = len(sDATA[sDATA['trial']=='trial00001']['tsec']) / nrois
-    config_list = list(set(sDATA['config']))
-    #ntrials_per_stim = len(list(set(sDATA[sDATA['config']==config_list[0]]['trial']))) # Assumes all stim have same # trials!
-    ntrials_per_stim = [len(list(set(sDATA[sDATA['config']==c]['trial']))) for c in config_list] # Assumes all stim have same # trials!
-    ntrials_total = len(list(set(sDATA['trial'])))
+    # Get stim onset index for all trials:
+    tmat = np.reshape(labels_df['tsec'].values, (ntrials_total,nframes_per_trial))    
+    ons = []
+    for ts in range(tmat.shape[0]):
+        on_idx = [t for t in tmat[ts,:]].index(0)
+        ons.append(on_idx)
+    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
+    stim_on_frame = list(set(ons))[0]
 
     if verbose:
         print "-------------------------------------------"
@@ -296,25 +992,135 @@ def get_run_details(options, verbose=True):
         print "N rois:", len(roi_list)
         print "N trials:", ntrials_total
         print "N frames per trial:", nframes_per_trial
-        print "N trials per stimulus:", ntrials_per_stim
+        print "N trials per stimulus:", ntrials_by_cond
         print "-------------------------------------------"
 
     run_info['roi_list'] = roi_list
     run_info['ntrials_total'] = ntrials_total
     run_info['nframes_per_trial'] = nframes_per_trial
-    run_info['ntrials_per_cond'] = ntrials_per_stim
+    run_info['ntrials_by_cond'] = ntrials_by_cond
     run_info['condition_list'] = conditions
     run_info['stim_on_frame'] = stim_on_frame
     run_info['nframes_on'] = nframes_on
     run_info['traceid_dir'] = traceid_dir
     run_info['trace_type'] = trace_type
     run_info['transforms'] = object_transformations
-    run_info['datakey'] = datakey
+    #run_info['datakey'] = datakey
     run_info['trans_types'] = trans_types
     run_info['framerate'] = si_info['framerate']
 
+    return run_info, stimconfigs, labels_df, raw_df
 
-    return sDATA, run_info, stimconfigs
+
+##%%%
+#def get_run_details(options, verbose=True):
+#    run_info = {}
+#
+#    optsE = extract_options(options)
+#    trace_type = optsE.trace_type
+#    combined = optsE.combined
+#
+#    # Get paths to data source:
+#    traceid_dir = get_traceid_dir(options)
+#    
+#    run_dir = traceid_dir.split('/traces')[0]
+#    si_info = get_frame_info(run_dir)
+#    
+#    #% # Load ROIDATA file:
+#    print "Loading ROIDATA file..."
+#    roidf_fn = [i for i in os.listdir(traceid_dir) if i.endswith('hdf5') and 'ROIDATA' in i and trace_type in i][0]
+#    roidata_filepath = os.path.join(traceid_dir, roidf_fn) #'ROIDATA_098054_626d01_raw.hdf5')
+#    DATA, datakey = load_roi_dataframe(roidata_filepath)
+#
+#    transform_dict, object_transformations = vis.get_object_transforms(DATA)
+#    trans_types = object_transformations.keys()
+#
+#
+#    #% Get stimulus config info:assign_roi_selectivity
+#    # =============================================================================
+#    rundir = traceid_dir.split('/traces')[0] #os.path.join(rootdir, animalid, session, acquisition, runfolder)
+#    if combined is True:
+#        stimconfigs_fpath = os.path.join(traceid_dir, 'stimulus_configs.json')
+#    else:
+#        stimconfigs_fpath = os.path.join(rundir, 'paradigm', 'stimulus_configs.json')
+#    with open(stimconfigs_fpath, 'r') as f:
+#        stimconfigs = json.load(f)
+#    print "Loaded %i stimulus configurations." % len(stimconfigs.keys())
+#
+#    #%
+#    conditions = sorted(stimconfigs.keys(), key=natural_keys)
+#    if 'gratings' in traceid_dir:
+#        stimtype = 'gratings'
+#        #configs = sorted([k for k in stimconfigs.keys()], key=lambda x: stimconfigs[x]['rotation'])
+#        #conditions = [stimconfigs[c]['rotation'] for c in conditions]
+#    else:
+#        stimtype = 'image'
+#        #conditions = stimconfigs.keys()
+#    #nconds = len(orientations)
+#
+#    
+#    #%
+#    # =============================================================================
+#    # Extract data subset:
+#    # =============================================================================
+#    #
+#    #stats = STATS[['roi', 'config', 'trial', 'baseline_df', 'stim_df', 'zscore']] #STATS['zscore']
+#    #
+#    #std_baseline = stats['stim_df'].values / stats['zscore'].values
+#    #zscored_resp = (stats['stim_df'].values - stats['baseline_df'].values ) /std_baseline
+#    #
+#    #zscore_vals = stats['zscore'].values
+#
+#    assert len(list(set(DATA['first_on'])))==1, "More than 1 frame idx found for stimulus ON"
+#    assert len(list(set(DATA['nframes_on'])))==1, "More than 1 value found for nframes on."
+#
+#    stim_on_frame = int(list(set(DATA['first_on']))[0])
+#    nframes_on = int(round(list(set(DATA['nframes_on']))[0]))
+#
+#    # Turn DF values into matrix with rows=trial, cols=df value for each frame:
+#    roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
+#    nrois = len(roi_list)
+#
+#    sDATA = DATA[['roi', 'config', 'trial', 'raw', 'df', 'tsec']].reset_index()
+#    if stimtype == 'gratings' and len(list(set(sDATA['config']))) == 8:
+#        # Gratings are always at 1 location, 8 directions:
+#        #sDATA.loc[:, 'config'] = [stimconfigs[c]['rotation'] for c in sDATA.loc[:,'config'].values]
+#        config_list = sorted(list(set(sDATA['config'])))
+#    else:
+#        config_list = sorted(list(set(sDATA['config'])), key=natural_keys)
+#    sDATA = sDATA.sort_values(by=['config', 'trial'], inplace=False)
+#    #sDATA.head()
+#
+#    nframes_per_trial = len(sDATA[sDATA['trial']=='trial00001']['tsec']) / nrois
+#    #ntrials_per_stim = len(list(set(sDATA[sDATA['config']==config_list[0]]['trial']))) # Assumes all stim have same # trials!
+#    ntrials_by_cond = dict((c, len(list(set(sDATA[sDATA['config']==c]['trial'])))) for c in config_list) # Assumes all stim have same # trials!
+#    ntrials_total = len(list(set(sDATA['trial'])))
+#
+#    if verbose:
+#        print "-------------------------------------------"
+#        print "Run summary:"
+#        print "-------------------------------------------"
+#        print "N rois:", len(roi_list)
+#        print "N trials:", ntrials_total
+#        print "N frames per trial:", nframes_per_trial
+#        print "N trials per stimulus:", ntrials_by_cond
+#        print "-------------------------------------------"
+#
+#    run_info['roi_list'] = roi_list
+#    run_info['ntrials_total'] = ntrials_total
+#    run_info['nframes_per_trial'] = nframes_per_trial
+#    run_info['ntrials_by_cond'] = ntrials_by_cond
+#    run_info['condition_list'] = conditions
+#    run_info['stim_on_frame'] = stim_on_frame
+#    run_info['nframes_on'] = nframes_on
+#    run_info['traceid_dir'] = traceid_dir
+#    run_info['trace_type'] = trace_type
+#    run_info['transforms'] = object_transformations
+#    run_info['datakey'] = datakey
+#    run_info['trans_types'] = trans_types
+#    run_info['framerate'] = si_info['framerate']
+#
+#    return sDATA, run_info, stimconfigs
 
 
 #%% Format data:
@@ -453,89 +1259,140 @@ def rolling_quantile(x, width, quantile):
     return np.asfarray(rolled[wing:-wing])
 
 #%%
-def format_framesXrois(sDATA, roi_list, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
-
-    # Format data: rows = frames, cols = rois
-    raw_xdata = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])[trace].apply(np.array).tolist()).T
     
-    roi_list = sorted(roi_list, key=natural_keys)
-    Xdf = pd.DataFrame(raw_xdata, columns=roi_list)
-    #decay_constant = 71./1000 # in sec -- this is what Romano et al. bioRxiv 2017 do for Fsmooth (decay_constant of indicator * 40)
-    # vs. Dombeck et al. Neuron 2007 methods (15 sec +/- tpoint 8th percentile)
-    
-    window_size_sec = (nframes_on/framerate) * 4 # decay_constant * 40
-    decay_frames = window_size_sec * framerate # decay_constant in frames
-    window_size = int(round(decay_frames))
+def get_rolling_baseline(Xdf, window_size, framerate):
+        
+    #window_size_sec = (nframes_trial/framerate) * 2 # decay_constant * 40
+    #decay_frames = window_size_sec * framerate # decay_constant in frames
+    #window_size = int(round(decay_frames))
     quantile = 0.08
     
     Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
-    Xdata_tmp = (Xdf - Fsmooth)
-    Xdata = np.array(Xdata_tmp)
+    Xdata = (Xdf - Fsmooth)
+    #Xdata = np.array(Xdata_tmp)
     
-    
-    # Get rid of "bad rois" that have np.nan on some of the trials:
-    # NOTE:  This is not exactly the best way, but if the df/f trace is wild, np.nan is set for df value on that trial
-    # Since this is done in traces/get_traces.py, for now, just deal with this by ignoring ROI
-    bad_roi = None
-    if missing == 'drop':
-        ix, iv = np.where(np.isnan(Xdata))
-        bad_roi = list(set(iv))
-        if len(bad_roi) == 0:
-            bad_roi = None
+    return Xdata, Fsmooth
 
-    if bad_roi is not None:
-        Xdata = np.delete(Xdata, bad_roi, 1)
-        roi_list = [r for ri,r in enumerate(roi_list) if ri not in bad_roi]
-
-    tsecs = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['tsec'].apply(np.array).tolist()).T
-    if bad_roi is not None:
-        tsecs = np.delete(tsecs, bad_roi, 1)
-
-    # Get labels: # only need one col, since trial id same for all rois
-    ylabels = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['config'].apply(np.array).tolist()).T[:,0]
-    groups = np.array(sDATA.sort_values(['trial']).groupby(['roi'])['trial'].apply(np.array).tolist()).T[:,0]
-
-    if verbose:
-        print "-------------------------------------------"
-        print "Formatting summary:"
-        print "-------------------------------------------"
-        print "X:", Xdata.shape
-        print "y (labels):", ylabels.shape
-        print "N groupings of trials:", len(list(set(groups)))
-        print "N samples: %i, N features: %i" % (Xdata.shape[0], Xdata.shape[1])
-        print "-------------------------------------------"
-
-    return Xdata, ylabels, groups, tsecs, roi_list
+#
+#def format_framesXrois(Xdf, Sdf, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
+##def format_framesXrois(sDATA, roi_list, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
+#
+#    # Format data: rows = frames, cols = rois
+#    #raw_xdata = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])[trace].apply(np.array).tolist()).T
+#    raw_xdata = np.array(Xdf)
+#    
+#    # Make data non-negative:
+#    if raw_xdata.min() < 0:
+#        print "Making data non-negative"
+#        raw_xdata = raw_xdata - raw_xdata.min()
+#
+#    #roi_list = sorted(list(set(sDATA['roi'])), key=natural_keys) #sorted(roi_list, key=natural_keys)
+#    roi_list = sorted([r for r in Xdf.columns.tolist() if not r=='index'], key=natural_keys) #sorted(roi_list, key=natural_keys)
+#    Xdf = pd.DataFrame(raw_xdata, columns=roi_list)
+#
+#    # Calculate baseline for RUN:
+#    # decay_constant = 71./1000 # in sec -- this is what Romano et al. bioRxiv 2017 do for Fsmooth (decay_constant of indicator * 40)
+#    # vs. Dombeck et al. Neuron 2007 methods (15 sec +/- tpoint 8th percentile)
+#    
+#    window_size_sec = (nframes_on/framerate) * 4 # decay_constant * 40
+#    decay_frames = window_size_sec * framerate # decay_constant in frames
+#    window_size = int(round(decay_frames))
+#    quantile = 0.08
+#    
+#    Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
+#    Xdata_tmp = (Xdf - Fsmooth)
+#    Xdata = np.array(Xdata_tmp)
+#    
+##    fig, axes = pl.subplots(2,1, figsize=(20,5))
+##    axes[0].plot(raw_xdata[0:nframes_per_trial*20, 0], label='raw')
+##    axes[0].plot(fsmooth.values[0:nframes_per_trial*20, 0], label='baseline')
+##    axes[1].plot(Xdata[0:nframes_per_trial*20,0], label='Fmeasured')
+#    
+#    
+##    # Get rid of "bad rois" that have np.nan on some of the trials:
+##    # NOTE:  This is not exactly the best way, but if the df/f trace is wild, np.nan is set for df value on that trial
+##    # Since this is done in traces/get_traces.py, for now, just deal with this by ignoring ROI
+##    bad_roi = None
+##    if missing == 'drop':
+##        ix, iv = np.where(np.isnan(Xdata))
+##        bad_roi = list(set(iv))
+##        if len(bad_roi) == 0:
+##            bad_roi = None
+##
+##    if bad_roi is not None:
+##        Xdata = np.delete(Xdata, bad_roi, 1)
+##        roi_list = [r for ri,r in enumerate(roi_list) if ri not in bad_roi]
+#
+#    #tsecs = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['tsec'].apply(np.array).tolist()).T
+#    tsecs = np.array(Sdf['tsec'].values)
+##    if bad_roi is not None:
+##        tsecs = np.delete(tsecs, bad_roi, 1)
+#
+#    # Get labels: # only need one col, since trial id same for all rois
+#    ylabels = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['config'].apply(np.array).tolist()).T[:,0]
+#    groups = np.array(sDATA.sort_values(['trial']).groupby(['roi'])['trial'].apply(np.array).tolist()).T[:,0]
+#
+#    if verbose:
+#        print "-------------------------------------------"
+#        print "Formatting summary:"
+#        print "-------------------------------------------"
+#        print "X:", Xdata.shape
+#        print "y (labels):", ylabels.shape
+#        print "N groupings of trials:", len(list(set(groups)))
+#        print "N samples: %i, N features: %i" % (Xdata.shape[0], Xdata.shape[1])
+#        print "-------------------------------------------"
+#
+#    return Xdata, ylabels, groups, tsecs, Fsmooth # roi_list, Fsmooth
 
 #%%
-def format_roisXvalue(sDATA, run_info, value_type='meanstimdf', trace='raw'):
+def format_roisXvalue(Xdata, run_info, fsmooth=None, sorted_ixs=None, value_type='meanstim', trace='raw'):
 
+    if isinstance(Xdata, pd.DataFrame):
+        Xdata = np.array(Xdata)
+        
     # Make sure that we only get ROIs in provided list (we are dropping ROIs w/ np.nan dfs on any trials...)
     #sDATA = sDATA[sDATA['roi'].isin(roi_list)]
     stim_on_frame = run_info['stim_on_frame']
     nframes_on = run_info['nframes_on']
     ntrials_total = run_info['ntrials_total']
-    nrois = len(run_info['roi_list'])
+    nframes_per_trial = run_info['nframes_per_trial']
+    nrois = Xdata.shape[-1] #len(run_info['roi_list'])
+    
+    if sorted_ixs is None:
+        print "Trials are sorted by time of occurrence, not stimulus type."
+        sorted_ixs = xrange(ntrials_total) # Just sort in trial order
 
-    trace = 'raw'
-    rawtraces = np.vstack((sDATA.groupby(['roi', 'config', 'trial'])[trace].apply(np.array)).as_matrix())
+    #trace = 'raw'
+    traces = np.reshape(Xdata, (ntrials_total, nframes_per_trial, nrois), order='C')
+    traces = traces[sorted_ixs,:,:]
+    #rawtraces = np.vstack((sDATA.groupby(['roi', 'config', 'trial'])[trace].apply(np.array)).as_matrix())
 
-    std_baseline_values = np.nanstd(rawtraces[:, 0:stim_on_frame], axis=1)
-    mean_baseline_values = np.nanmean(rawtraces[:, 0:stim_on_frame], axis=1)
-    mean_stim_on_values = np.nanmean(rawtraces[:, stim_on_frame:stim_on_frame+nframes_on], axis=1)
+    
+#    if value_type == 'meanstimdff' and fsmooth is not None:
+#        dftraces = np.array(Xdata/fsmooth)
+#        dftraces = np.reshape(dftraces, (ntrials_total, nframes_per_trial, nrois), order='C')
+#        dftraces = dftraces[sorted_ixs,:,:]
+#        mean_stim_dff_values = np.nanmean(dftraces[:, stim_on_frame:stim_on_frame+nframes_on], axis=1)
+
+    std_baseline_values = np.nanstd(traces[:, 0:stim_on_frame], axis=1)
+    mean_baseline_values = np.nanmean(traces[:, 0:stim_on_frame], axis=1)
+    mean_stim_on_values = np.nanmean(traces[:, stim_on_frame:stim_on_frame+nframes_on], axis=1)
+    
 
     #zscore_values_raw = np.array([meanval/stdval for (meanval, stdval) in zip(mean_stim_on_values, std_baseline_values)])
     if value_type == 'zscore':
         values_df = (mean_stim_on_values - mean_baseline_values ) / std_baseline_values
-    else:
+    elif value_type == 'meanstim':
         values_df = mean_stim_on_values #- mean_baseline_values ) / std_baseline_values
-    
-    rois_by_value = np.reshape(values_df, (nrois, ntrials_total))
+#    elif value_type == 'meanstimdff':
+#        values_df = mean_stim_dff_values #- mean_baseline_values ) / std_baseline_values
+        
+    #rois_by_value = np.reshape(values_df, (nrois, ntrials_total))
         
 #    if bad_roi is not None:
 #        rois_by_zscore = np.delete(rois_by_zscore, bad_roi, 0)
 
-    return rois_by_value
+    return values_df #rois_by_value
 
 #%% Preprocess data:
 #%
