@@ -91,42 +91,8 @@ def extract_options(options):
     return options
 
 #%% Formatting functions for raw traces:
-    
 
-
-#def load_roiXtrials(traceid_dir, get_raw=True, smoothed=False, frac=0.001):
-#    
-#    create_new = False
-#    labels_df=None; raw_df=None; processed_df=None; baseline_df=None;
-#
-#    if get_raw:
-#        # Get everything:
-#        raw_df, labels_df = get_raw_df(traceid_dir)
-#    else:
-#        if smoothed is True:
-#            dataframe_fpath = os.path.join(traceid_dir, 'roiXtrials_smoothed.pkl')
-#        else:
-#            dataframe_fpath = os.path.join(traceid_dir, 'roiXtrials_processed.pkl')
-#        try:
-#            print "Loading dataframe: %s" % dataframe_fpath
-#            with open(dataframe_fpath, 'rb') as f:
-#                df = pkl.load(f)
-#                print "Loaded df: (%s)." % str(df.shape)
-#            if smoothed is True:
-#                processed_df = df
-#            else:
-#                processed_df = df['processed']
-#                baseline_df = df['F0']
-#        except Exception as e:
-#            print "Unable to load file..."
-#            
-#            
-#        create_new = True
-#    
-#    if create_new:
-        
-
-#%%
+#%
         
 def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False, frac=0.001):
     
@@ -203,81 +169,8 @@ def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False,
             labels_df, xdata_df, F0_df = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
     
     return labels_df, xdata_df, F0_df
-    
 
-#def get_raw_df(traceid_dir):
-#    
-#    collate = False
-#    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
-#    if not os.path.exists(data_array_dir):
-#        os.makedirs(data_array_dir)
-#
-#    raw_fpath = os.path.join(data_array_dir, 'roiXtrials_raw.pkl')
-#    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
-#    try:
-#        with open(raw_fpath, 'rb') as f:
-#            raw_df = pkl.load(f)
-#        print "Loaded XDATA."
-#        with open(labels_fpath, 'rb') as f:
-#            labels_df = pkl.load(f)
-#        print "Loaded labels."
-#    except Exception as e:
-#        collate = True
-#    
-#    if collate:
-#        # First, create ROI x FRAMES array for full session from individual tif traces:
-#        raw_trace_arrays_dir = os.path.join(traceid_dir, 'files', 'raw_trace_arrays')
-#        if not os.path.exists(raw_trace_arrays_dir):
-#            os.makedirs(raw_trace_arrays_dir)
-#
-#        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
-#        n_raw_dataframes = len([r for r in os.listdir(os.path.join(traceid_dir, 'files', 'raw_trace_arrays')) if 'File' in r])
-#        print n_orig_tiffs
-#        if not n_orig_tiffs == n_raw_dataframes:
-#            raw_hdf_to_dataframe(traceid_dir)
-#    
-#        raw_df, labels_df = collate_trials(traceid_dir, trace_type='raw')
-#    
-#    return raw_df, labels_df
-#
-#
-#def get_processed_df(traceid_dir):
-#    
-#
-#    collate = False
-#    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
-#    if not os.path.exists(data_array_dir):
-#        os.makedirs(data_array_dir)
-#
-#    raw_fpath = os.path.join(data_array_dir, 'roiXtrials_raw.pkl')
-#    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
-#    try:
-#        with open(raw_fpath, 'rb') as f:
-#            raw_df = pkl.load(f)
-#        print "Loaded XDATA."
-#        with open(labels_fpath, 'rb') as f:
-#            labels_df = pkl.load(f)
-#        print "Loaded labels."
-#    except Exception as e:
-#        collate = True
-#    
-#    if collate:
-#        # First, create ROI x FRAMES array for full session from individual tif traces:
-#        raw_trace_arrays_dir = os.path.join(traceid_dir, 'files', 'raw_trace_arrays')
-#        if not os.path.exists(raw_trace_arrays_dir):
-#            os.makedirs(raw_trace_arrays_dir)
-#
-#        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
-#        n_raw_dataframes = len([r for r in os.listdir(os.path.join(traceid_dir, 'files', 'raw_trace_arrays')) if 'File' in r])
-#        print n_orig_tiffs
-#        if not n_orig_tiffs == n_raw_dataframes:
-#            raw_hdf_to_dataframe(traceid_dir)
-#    
-#        processed_df, baseline_df, labels_df = collate_trials(traceid_dir, trace_type='processed')
-#    
-#    return processed_df, baseline_df, labels_df
-#    
-
+#%%
     
 def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt='.pkl', nonnegative=True,):
     xdata_df=None; baseline_df=None; labels_df=None
@@ -887,14 +780,18 @@ def get_traceid_dir(options):
 #%%
 def get_transforms(stimconfigs):
     
-    if 'frequency' in stimconfigs[stimconfigs.keys()[0]]:
+    if 'frequency' in stimconfigs[stimconfigs.keys()[0]] or 'ori' in stimconfigs[stimconfigs.keys()[0]]:
         stimtype = 'grating'
 #    elif 'fps' in stimconfigs[stimconfigs.keys()[0]]:
 #        stimtype = 'movie'
     else:
         stimtype = 'image'
 
-    sconfigs = format_stimconfigs(stimconfigs)
+    if 'position' in stimconfigs[stimconfigs.keys()[0]].keys():
+        # Need to reformat scnofigs:
+        sconfigs = format_stimconfigs(stimconfigs)
+    else:
+        sconfigs = stimconfigs.copy()
     
     transform_dict = {'xpos': list(set([sconfigs[c]['xpos'] for c in sconfigs.keys()])),
                        'ypos': list(set([sconfigs[c]['ypos'] for c in sconfigs.keys()])),
@@ -1010,117 +907,6 @@ def get_run_details(options, verbose=True):
     run_info['framerate'] = si_info['framerate']
 
     return run_info, stimconfigs, labels_df, raw_df
-
-
-##%%%
-#def get_run_details(options, verbose=True):
-#    run_info = {}
-#
-#    optsE = extract_options(options)
-#    trace_type = optsE.trace_type
-#    combined = optsE.combined
-#
-#    # Get paths to data source:
-#    traceid_dir = get_traceid_dir(options)
-#    
-#    run_dir = traceid_dir.split('/traces')[0]
-#    si_info = get_frame_info(run_dir)
-#    
-#    #% # Load ROIDATA file:
-#    print "Loading ROIDATA file..."
-#    roidf_fn = [i for i in os.listdir(traceid_dir) if i.endswith('hdf5') and 'ROIDATA' in i and trace_type in i][0]
-#    roidata_filepath = os.path.join(traceid_dir, roidf_fn) #'ROIDATA_098054_626d01_raw.hdf5')
-#    DATA, datakey = load_roi_dataframe(roidata_filepath)
-#
-#    transform_dict, object_transformations = vis.get_object_transforms(DATA)
-#    trans_types = object_transformations.keys()
-#
-#
-#    #% Get stimulus config info:assign_roi_selectivity
-#    # =============================================================================
-#    rundir = traceid_dir.split('/traces')[0] #os.path.join(rootdir, animalid, session, acquisition, runfolder)
-#    if combined is True:
-#        stimconfigs_fpath = os.path.join(traceid_dir, 'stimulus_configs.json')
-#    else:
-#        stimconfigs_fpath = os.path.join(rundir, 'paradigm', 'stimulus_configs.json')
-#    with open(stimconfigs_fpath, 'r') as f:
-#        stimconfigs = json.load(f)
-#    print "Loaded %i stimulus configurations." % len(stimconfigs.keys())
-#
-#    #%
-#    conditions = sorted(stimconfigs.keys(), key=natural_keys)
-#    if 'gratings' in traceid_dir:
-#        stimtype = 'gratings'
-#        #configs = sorted([k for k in stimconfigs.keys()], key=lambda x: stimconfigs[x]['rotation'])
-#        #conditions = [stimconfigs[c]['rotation'] for c in conditions]
-#    else:
-#        stimtype = 'image'
-#        #conditions = stimconfigs.keys()
-#    #nconds = len(orientations)
-#
-#    
-#    #%
-#    # =============================================================================
-#    # Extract data subset:
-#    # =============================================================================
-#    #
-#    #stats = STATS[['roi', 'config', 'trial', 'baseline_df', 'stim_df', 'zscore']] #STATS['zscore']
-#    #
-#    #std_baseline = stats['stim_df'].values / stats['zscore'].values
-#    #zscored_resp = (stats['stim_df'].values - stats['baseline_df'].values ) /std_baseline
-#    #
-#    #zscore_vals = stats['zscore'].values
-#
-#    assert len(list(set(DATA['first_on'])))==1, "More than 1 frame idx found for stimulus ON"
-#    assert len(list(set(DATA['nframes_on'])))==1, "More than 1 value found for nframes on."
-#
-#    stim_on_frame = int(list(set(DATA['first_on']))[0])
-#    nframes_on = int(round(list(set(DATA['nframes_on']))[0]))
-#
-#    # Turn DF values into matrix with rows=trial, cols=df value for each frame:
-#    roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
-#    nrois = len(roi_list)
-#
-#    sDATA = DATA[['roi', 'config', 'trial', 'raw', 'df', 'tsec']].reset_index()
-#    if stimtype == 'gratings' and len(list(set(sDATA['config']))) == 8:
-#        # Gratings are always at 1 location, 8 directions:
-#        #sDATA.loc[:, 'config'] = [stimconfigs[c]['rotation'] for c in sDATA.loc[:,'config'].values]
-#        config_list = sorted(list(set(sDATA['config'])))
-#    else:
-#        config_list = sorted(list(set(sDATA['config'])), key=natural_keys)
-#    sDATA = sDATA.sort_values(by=['config', 'trial'], inplace=False)
-#    #sDATA.head()
-#
-#    nframes_per_trial = len(sDATA[sDATA['trial']=='trial00001']['tsec']) / nrois
-#    #ntrials_per_stim = len(list(set(sDATA[sDATA['config']==config_list[0]]['trial']))) # Assumes all stim have same # trials!
-#    ntrials_by_cond = dict((c, len(list(set(sDATA[sDATA['config']==c]['trial'])))) for c in config_list) # Assumes all stim have same # trials!
-#    ntrials_total = len(list(set(sDATA['trial'])))
-#
-#    if verbose:
-#        print "-------------------------------------------"
-#        print "Run summary:"
-#        print "-------------------------------------------"
-#        print "N rois:", len(roi_list)
-#        print "N trials:", ntrials_total
-#        print "N frames per trial:", nframes_per_trial
-#        print "N trials per stimulus:", ntrials_by_cond
-#        print "-------------------------------------------"
-#
-#    run_info['roi_list'] = roi_list
-#    run_info['ntrials_total'] = ntrials_total
-#    run_info['nframes_per_trial'] = nframes_per_trial
-#    run_info['ntrials_by_cond'] = ntrials_by_cond
-#    run_info['condition_list'] = conditions
-#    run_info['stim_on_frame'] = stim_on_frame
-#    run_info['nframes_on'] = nframes_on
-#    run_info['traceid_dir'] = traceid_dir
-#    run_info['trace_type'] = trace_type
-#    run_info['transforms'] = object_transformations
-#    run_info['datakey'] = datakey
-#    run_info['trans_types'] = trans_types
-#    run_info['framerate'] = si_info['framerate']
-#
-#    return sDATA, run_info, stimconfigs
 
 
 #%% Format data:
@@ -1572,7 +1358,8 @@ def sort_rois_2D(traceid_dir):
     return sorted_rids, cnts, zproj
 
 #
-def plot_roi_contours(zproj, sorted_rids, cnts):
+def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.03, label=True, 
+                          draw_box=False, thickness=2, roi_color=(0, 255, 0), single_color=False):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
@@ -1580,10 +1367,10 @@ def plot_roi_contours(zproj, sorted_rids, cnts):
     # Use some color map to indicate distance from upper-left corner:
     sorted_colors = sns.color_palette("Spectral", len(sorted_rids)) #masks.shape[-1])
 
-    fig, ax = pl.subplots(1)
+    fig, ax = pl.subplots(1, figsize=(10,10))
 #    p2, p98 = np.percentile(refRGB, (1, 99))
 #    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
-    im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=0.03)
+    im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
     im_adapthist *= 256
     im_adapthist= im_adapthist.astype('uint8')
     ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
@@ -1627,9 +1414,16 @@ def plot_roi_contours(zproj, sorted_rids, cnts):
 
         # draw the contours on the image
         #orig = refRGB.copy()
-        col255 = tuple([cval*255 for cval in sorted_colors[cidx]])
-        cv2.drawContours(orig, [box.astype("int")], -1, col255, 2)
-        cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
+        if single_color:
+            col255 = roi_color
+        else:
+            col255 = tuple([cval*255 for cval in sorted_colors[cidx]])
+        if draw_box:
+            cv2.drawContours(orig, [box.astype("int")], -1, col255, thickness)
+        else:
+            cv2.drawContours(orig, cnt, -1, col255, thickness)
+        if label:
+            cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
         ax.imshow(orig)
 
         # stack the reference coordinates and the object coordinates

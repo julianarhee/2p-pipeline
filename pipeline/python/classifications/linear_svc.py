@@ -58,6 +58,13 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
+
+
+from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
+from sklearn.calibration import CalibratedClassifierCV
+
+
+
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import KFold, cross_val_score
 from sklearn import svm
@@ -65,6 +72,11 @@ from sklearn import cross_validation
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
+#from joblib import Parallel, delayed
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import permutation_test_score
+
 
 from sklearn.preprocessing import StandardScaler
 
@@ -212,7 +224,36 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
 
 #%%
     
-def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', const_trans=None, trans_value=None, data_type='zscores'):
+def split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=10, relabel=False):
+    # Reshape (nframes_per_trial*ntrials_total X nrois) into ntrials_total x nframes_per_trial x nrois)
+    nframes_per_trial = run_info['nframes_per_trial']
+    ntrials_total = run_info['ntrials_total']
+    nrois = len(run_info['roi_list'])
+    print "Reshaping input data into trials (%i) x frames (%i) x rois (%i)" % (ntrials_total, nframes_per_trial, nrois) 
+    cX_r = np.reshape(cX, (ntrials_total, nframes_per_trial, nrois))
+    cy_r = np.reshape(cy, (ntrials_total, nframes_per_trial))
+    
+    # Bin frames into smaller chunks so we don't have to train 300 classifiers...
+    # nframes_on = int(round(run_info['nframes_on']))
+    # stim_on = int(run_info['stim_on_frame'])
+    bin_idxs =  np.arange(0, nframes_per_trial, binsize)
+    bin_idxs = np.append(bin_idxs, nframes_per_trial+1) # Add the last frame 
+ 
+    # Make binned frame data into shape: ntrial_epochs x ntrials_total x nrois.
+    cX_tmp = np.array([np.mean(cX_r[:, bstart:bin_idxs[bi+1], :], axis=1) for bi, bstart in enumerate(bin_idxs[0:-1])])
+    
+    # There will be cX_tmp.shape[0] classifiers, each with ntrials_total x nrois dataset:
+    epochs = dict((epoch, cX_tmp[epoch, :, :]) for epoch in range(cX_tmp.shape[0])) # Each dataset is ntrials x nrois
+    trial_labels = [sconfigs[cv][class_name] for cv in cy_r[:,0]]
+    if relabel:
+        labels = dict((epoch, trial_labels) for epoch in range(cX_tmp.shape[0]))           # Each sample in dataset (ntrials) is labeled by stim type
+    else:
+        labels = dict((epoch, cy_r[:,0]) for epoch in range(cX_tmp.shape[0]))           # Each sample in dataset (ntrials) is labeled by stim type
+
+    return epochs, labels, bin_idxs[0:-1]
+    
+    
+def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', const_trans=None, trans_value=None, relabel=False):
     sconfigs_df = pd.DataFrame(sconfigs).T
 
     # Check that input data is correctly formatted:
@@ -233,22 +274,35 @@ def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', c
         sorted_ixs = [s[0] for s in sorted(enumerate(cy), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
 
         # check that indices are grouped properly:
-        if data_type == 'xcondsub':
-            sidx = 0
-            diffs = []
-            for k in sorted(ordered_configs.keys(), key= lambda d: ordered_configs[d]):
-                diffs.append(len(list(set(np.diff(sorted_ixs[sidx:sidx+nframes_per_trial])))))
-                sidx += nframes_per_trial
-            print diffs
-            assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
+#        if data_type == 'xcondsub':
+#            sidx = 0
+#            diffs = []
+#            for k in sorted(ordered_configs.keys(), key= lambda d: ordered_configs[d]):
+#                diffs.append(len(list(set(np.diff(sorted_ixs[sidx:sidx+nframes_per_trial])))))
+#                sidx += nframes_per_trial
+#            print diffs
+#            assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
 
         # Re-sort class labels and data:
         cy_tmp = cy[sorted_ixs]
         cX_tmp = cX[sorted_ixs, :]
+        
+    elif aggregate_type == 'averagereps':
+        # Group trials of the same condition (repetitions) and average:
+        cy_tmp = []; cX_tmp = [];
+        for k in sconfigs.keys():
+            curr_cys = [ci for ci,cv in enumerate(cy) if cv==k]
+            cy_tmp.append(k)
+            cX_tmp.append(np.mean(cX[curr_cys, :], axis=0))
+    
+        # Re-sort class labels and data:
+        cy_tmp = np.hstack(cy_tmp)
+        cX_tmp = np.vstack(cX_tmp)
             
-    elif aggregate_type == 'average':
-        # Average values for all samples with the same class label (class_name).
-        # If const_trans provided, average classes only across that transform type.
+    elif aggregate_type == 'collapse':
+        # 'Collapse' views of a given object together:
+        # Average values for all samples with the same class label (class_name), OR
+        # If const_trans provided, average trials only across specified transform type.
         stim_grouper = [class_name, const_trans]
         if const_trans is None:
             # Just group by class_name:
@@ -288,16 +342,71 @@ def label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', c
         cy_tmp = np.hstack(cy_tmp)
         cX_tmp = np.vstack(cX_tmp)
         
-    cy = np.array([sconfigs[cv][class_name] for cv in cy_tmp])
+    # Assign CLASS LABEL to each sample:
+    if relabel:
+        cy = np.array([sconfigs[cv][class_name] for cv in cy_tmp])
+    else:
+        cy = cy_tmp.copy()
     cX = cX_tmp.copy()
     
     return cX, cy
 
 
-    
+def get_trial_bins(nframes_per_trial, stim_on_frame, binsize=10):
+    bins = []
+    # Figure out bin size if using FRAMES:
+    nframes_per_trial = run_info['nframes_per_trial']
+    stim_on_frame = run_info['stim_on_frame']
+    try:
+        bins = np.arange(0, nframes_per_trial, binsize)
+        assert stim_on_frame in bins, "Stim on frame %i not in bins: %s" % (stim_on_frame, str(bins))
+    except Exception as e:
+        binsize += 5
+        bins = np.arange(0, nframes_per_trial, binsize)
+        assert stim_on_frame in bins, "Stim on frame %i not in bins: %s" % (stim_on_frame, str(bins))
+        
+    return bins, binsize
 
+
+def plot_decoding_performance_trial_epochs(results, bins, names, scoring='accuracy',    
+                                           stim_on_frame=None, nframes_on=None,
+                                           nclasses=None):
+    # boxplot algorithm comparison
+    fig = pl.figure(figsize=(8,6))
+    ax = fig.add_subplot(111)
+    ax = sns.boxplot(data=results, showmeans=True, linewidth=0.5)
+    # Add transparency to colors
+    for patch in ax.artists:
+     r, g, b, a = patch.get_facecolor()
+     patch.set_facecolor((r, g, b, .3))
+    sns.swarmplot(data=results, ax=ax) #, color="grey")
     
+    #sns.violinplot(data=results)
+    ax.set_xticklabels(names)
+    pl.ylabel(scoring)
+
+    pl.ylim([0, .8])
+    sns.despine(offset=4, trim=True)
+    if stim_on_frame is not None and nframes_on is not None:
+        # Identify the time bin(s) in which the stimulus is on:
+        #stim_on_frame = run_info['stim_on_frame']
+        #nframes_on = int(round(run_info['nframes_on']))
+        last_on_frame = stim_on_frame + nframes_on
+        
+        # Color the bins in which the stimulus is one:
+        stimulus_bins = np.array([bins[i] for i in range(len(bins)) if stim_on_frame <= bins[i] <= last_on_frame])
+        xlabel_colors = ['r' if v in stimulus_bins else 'k' for v in sorted(bins) ]
+        #ax.plot(stimulus_bins, np.ones(stimulus_bins.shape)*-0.05, 'r')
+        [t.set_color(i) for (i,t) in zip(xlabel_colors,ax.xaxis.get_ticklabels())]
     
+    if nclasses is not None:
+        chance_level = float(1./nclasses)
+        ax.axhline(y=chance_level, linestyle='--', linewidth=1.0, color='k')
+    
+    pl.xlabel('trial epoch (bin size %i)' % binsize)
+    pl.show()
+    
+    return fig
 
 #%%
 def extract_options(options):
@@ -401,7 +510,7 @@ opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom
            '-R', 'blobs_dynamic_run1', '-t', 'traces001',
            '-n', '1']
 
-options_list = [opts2] #, opts2]
+options_list = [opts0] #, opts2]
 
 #
 #opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
@@ -416,49 +525,6 @@ test = False
 #load_pretrained = True
 
 #%%
-
-# Load data for training classifier:
-#training_type = 'xpos'
-#
-#if load_pretrained:
-#    if training_type == 'yrot':
-#        output_basedir = '/mnt/odyssey/CE077/20180518/FOV1_zoom1x/blobs_run6/traces/traces002_b55f3a/figures/population'
-#    elif training_type == 'xpos':
-#        output_basedir = '/mnt/odyssey/CE077/20180518/FOV1_zoom1x/blobs_run2/traces/traces002_66774c/figures/population'
-#        
-#    data_fpath = os.path.join(output_basedir, 'datasets.npz')
-#    training_dataset = np.load(data_fpath)
-#    
-#    X = training_dataset['smoothedX']
-#    y = training_dataset['y']
-#    sDATA = training_dataset['sDATA']
-#    run_info = training_dataset['run_info']
-#    
-#    #zscores = training_dataset['zscores']
-#    
-#    
-##    tX_std = training_dataset['cX_std']
-##    ty = training_dataset['cy']
-#    training_labels = training_dataset['conditions']
-#    
-#    visual_rids = training_dataset['visual_rids']
-#    
-#    print training_labels
-#
-#if load_testset:
-#    output_basedir = '/mnt/odyssey/CE077/20180518/FOV1_zoom1x/blobs_dynamic_run3/traces/traces002_43fc94/figures/population'
-#    data_fpath = os.path.join(output_basedir, 'datasets.npz')
-#    testing_dataset = np.load(data_fpath)
-#    
-#    tX_std = testing_dataset['cX_std']
-#    ty = testing_dataset['cy']
-#    training_labels = testing_dataset['conditions']
-#    
-#    visual_rids = testing_dataset['visual_rids']
-#    
-#    print training_labels
-#    
-#%%
 #averages_df = []
 #normed_df= []
 #all_zscores = {}
@@ -468,7 +534,7 @@ test = False
 #options_idx = 1
 #options_idx = 0
 
-test = True
+test = False
 for options_idx in range(len(options_list)):
     #%
     print "**********************************"
@@ -484,6 +550,9 @@ for options_idx in range(len(options_list)):
     if not os.path.exists(output_basedir):
         os.makedirs(output_basedir)
 
+    if not os.path.exists(os.path.join(output_basedir, 'figures')):
+        os.makedirs(os.path.join(output_basedir, 'figures'))
+
     # First check if processed datafile exists:
     reload_data = False
     data_fpath = os.path.join(output_basedir, 'datasets.npz')
@@ -492,34 +561,13 @@ for options_idx in range(len(options_list)):
         print "Loaded existing datafile:\n%s" % data_fpath
         print dataset.keys()
 
-        sconfigs = dataset['sconfigs'][()]
-        roi_list = dataset['run_info'][()]['roi_list']
-        #zscore_values = dataset['zscore']
-        meanstim_values = dataset['meanstim']
-        #meanstimdff_values = dataset['meanstimdff']
-        #X = dataset['smoothedX']
-        ylabels = dataset['ylabels']
-        tsecs = dataset['tsecs']
-        run_info = dataset['run_info'][()]
     except Exception as e:
         reload_data = True
 
     if reload_data:
             
-#        sDATA, run_info, stimconfigs = util.get_run_details(options)
-#        sconfigs = util.format_stimconfigs(stimconfigs)
-
-            
-        #% Load time-course data and format:
-        #roi_list = run_info['roi_list']
-        #Xdata, ylabels, groups, tsecs, roi_list, Fsmooth = util.format_framesXrois(sDATA, roi_list, run_info['nframes_on'], run_info['framerate'], missing='none')
-        #Xdata, ylabels, groups, tsecs, Fsmooth = util.format_framesXrois(sDATA, run_info['nframes_on'], run_info['framerate'], missing='none')
-            
-        #run_info, stimconfigs, labels_df, raw_df, traces_df, baseline = util.get_run_details(options)
         run_info, stimconfigs, labels_df, raw_df = util.get_run_details(options)
 
-
-#        
         # Set up output dir:
         output_basedir = os.path.join(run_info['traceid_dir'],  'classifiers')
         if not os.path.exists(output_basedir):
@@ -650,7 +698,7 @@ for options_idx in range(len(options_list)):
                  meanstimdff=meanstimdff_values,
                  run_info=run_info)
 
-
+    dataset = np.load(data_fpath)
 #    averages_list, normed_list = util.get_xcond_dfs(roi_list, X, y, tsecs, run_info)
 #
 #    #if options_idx == 0:
@@ -688,49 +736,30 @@ if spatial_sort:
 #%%
 # =============================================================================
 # Assign cX -- input data for classifier (nsamples x nfeatures)
+# Get corresponding labels for each sample.
 # =============================================================================
 
-metric = 'meanstimdf'
-
-# TODO:  Need to re-calculate df/f values and all-related usign Fsmooth for baseline across entire run
-# DFF = Fmeasured / Fsmooth  ? -- see utils.format_framesXrois()
-
 roi_selector = 'all' #'all' #'selectiveanova' #'selective'
-data_type = 'meanstim' #'zscore' #zscore' # 'xcondsub'
 
-options_idx = 0
+data_type = 'frames' #'zscore' #zscore' # 'xcondsub'
+inputdata = 'smoothedX'
+
+assert inputdata in dataset.keys(), "Requested input data (%s) not found: %s" % (inputdata, str(dataset.keys()))
 
 # -----------------------------------------------------------------------------
-
-if data_type == 'zscore':
-    cX = zscore_values.copy() #.T
-elif data_type == 'meanstim':
-    cX = meanstim_values.copy() #.T
-elif data_type == 'meanstimdff':
-    cX = meanstimdff_values.copy() #.T
-#elif data_type == 'xcondsub':
-#    cX = normDF.values
-#elif data_type == 'avgconds':
-#    cX = avgDF.values
+cX = dataset[inputdata].copy()
+ylabels = dataset['ylabels'].copy()
 
 # Use subset of ROIs, e.g., VISUAL or SELECTIVE only:
 if roi_selector == 'visual':
-    visual_rids = get_roi_list(run_info, roi_selector=roi_selector, metric=metric)
-else:
-    visual_rids = xrange(cX.shape[1])
-
-
-cX = cX[:, visual_rids]
-print cX.shape
-
+    visual_rids = get_roi_list(run_info, roi_selector=roi_selector, metric='meanstimdf')
+    cX = cX[:, visual_rids]
+#print cX.shape
 #spatial_rids = [s for s in sorted_rids if s in visual_rids]
-
-#%%
 
 nframes_per_trial = run_info['nframes_per_trial']
 ntrials_by_cond = run_info['ntrials_by_cond']
 ntrials_total = sum([val for k,val in ntrials_by_cond.iteritems()])
-#nrois = cX.shape[-1]
 
 # Get default label list for cX (using the values originally assigned to conditions):
 if isinstance(run_info['condition_list'], str):
@@ -738,39 +767,201 @@ if isinstance(run_info['condition_list'], str):
 else:
     cond_labels_all = sorted(run_info['condition_list'])
 
-if data_type == 'zscore' or 'meanstim' in data_type:
-    # Each sample is a TRIAL, total nsamples = ntrials_per_condition * nconditions.
-    # Different conditions might have different num of trials, so assign by n trials:
-    #cy = np.hstack([np.tile(cond, (nt,)) for cond, nt in zip(cond_labels_all, ntrials_by_cond.values())]) #config_labels.copy()
-    cy = np.reshape(ylabels, (ntrials_total, nframes_per_trial))[:,0]
-    
-elif data_type == 'xcondsub':
+if data_type == 'xcondsub':
     # Each sample point is a FRAME, total nsamples = nframe_per_trial * nconditions
     cy = np.hstack([np.tile(cond, (nframes_per_trial,)) for cond in sorted(cond_labels_all, key=natural_keys)]) #config_labels.copy()
+elif not data_type == 'frames':
+    # Each sample is a TRIAL, total nsamples = ntrials_per_condition * nconditions.
+    # Different conditions might have different num of trials, so assign by n trials:
+    cy = np.reshape(ylabels, (ntrials_total, nframes_per_trial))[:,0]
+else:
+    cy = ylabels.copy()
     
 print 'cX (zscores):', cX.shape
 print 'cY (labels):', cy.shape
 
 #%%
 # =============================================================================
-# Assign cy -- labels for classifier to learn (nsamples,)
+# SPECIFIY CLASSIFIER:
 # =============================================================================
 
 # Group configIDs by selected class labels to sort labels in order:
-class_name ='morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-aggregate_type = 'each' #'single' #'each'
-const_trans = None# 'morphlevel' # 'xpos'
-trans_value = None #-5 #None
+class_name ='xpos' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+aggregate_type = 'single' #'each' #'each' # 'single' #'each' #'single' #'each'
+const_trans = 'morphlevel' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+trans_value = '' #16 #None #'-5' #None #-5 #None #-5 #None
 
-class_desc = '%s_%s_%s' % (class_name, aggregate_type, data_type)
+all_trans_types = list(set(sconfigs[sconfigs.keys()[0]].keys()))
+if aggregate_type == 'single':
+    assert const_trans in all_trans_types, "Transform type to hold constant (%s), unspecified: %s" % (const_trans, str(all_trans_types)) 
 
-cX, cy = label_classifier_data(cX, cy, class_name, sconfigs, aggregate_type=aggregate_type, const_trans=const_trans, trans_value=trans_value)
 
-print 'cX (%s):' % data_type, cX.shape
-print 'cY (labels):', cy.shape
+const_trans_values = []
+if not const_trans=='':
+    const_trans_values = sorted(list(set([sconfigs[c][const_trans] for c in sconfigs.keys()])))
+print "Selected subsets of transform: %s. Found values %s" % (const_trans, str(const_trans_values))
 
-class_labels = sorted(list(set(cy)))
-print "Labels:", class_labels
+   
+class_desc = '%s_%s' % (class_name, aggregate_type)
+if const_trans is not '':
+    class_desc = '%s_%s' % (class_desc, const_trans)
+if trans_value is not '':
+    class_desc = '%s%i' % (class_desc, trans_value)
+    
+if data_type == 'frames':
+    binsize=10
+    bins, binsize = get_trial_bins(run_info['nframes_per_trial'], run_info['stim_on_frame'], binsize=binsize)
+    print "Dividing trial into %i epochs (binsize=%i)." % (len(bins), binsize)
+
+
+#% Create output dir for current classifier:
+classifier = 'LinearSVC'
+cv_method = 'kfold'
+class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
+nclasses = len(class_labels)
+classif_identifier = '{dtype}_{roiset}_{clf}_{cv}_{}{class_name}_{grouper}_{preprocess}'.format(
+                                                                             nclasses, 
+                                                                             dtype='%s' % ''.join([data_type, str(binsize)]),
+                                                                             roiset='%srois' % roi_selector,
+                                                                             clf=classifier,
+                                                                             cv=cv_method,
+                                                                             class_name=class_name,
+                                                                             grouper=aggregate_type,
+                                                                             preprocess=inputdata)
+print classif_identifier
+
+view_str = class_desc.split('_')[-1]
+
+classifier_dir = os.path.join(output_basedir, classif_identifier)
+if not os.path.exists(classifier_dir):
+    os.makedirs(classifier_dir)
+
+print "Saving figs to: %s" % classifier_dir
+
+#%%
+# =============================================================================
+# Assign cy -- labels for classifier to learn (nsamples,)
+# =============================================================================
+
+if data_type == 'frames':
+    epochs, labels, bins = split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=binsize, relabel=False)
+    
+    if len(const_trans_values) > 0:
+        decode_dict = dict((trans_value, {}) for trans_value in const_trans_values)
+        for trans_value in const_trans_values:
+            subepochs = epochs.copy() #copy.copy(epochs)
+            sublabels = labels.copy()
+            kept_configs = [c for c in sconfigs.keys() if sconfigs[c][const_trans]==trans_value]
+            config_ixs = [ci for ci,cv in enumerate(labels[0]) if cv in kept_configs]
+            # Take subset of trials:
+            for c in epochs.keys():
+                subepochs[c] = subepochs[c][config_ixs, :]
+                sublabels[c] = sublabels[c][config_ixs]
+                new_labels = np.array([sconfigs[cv][class_name] for cv in sublabels[c]])
+                sublabels[c] = new_labels
+                
+            decode_dict[trans_value]['epochs'] = subepochs
+            decode_dict[trans_value]['labels'] = sublabels
+    else:
+        decode_dict = {'all': {}}
+        new_labels = np.array([sconfigs[cv][class_name] for cv in labels[0]]) # Each classifier has the same labels, since we are comparing epochs
+        labels = dict((k, new_labels) for k in labels.keys())
+        decode_dict['all']['epochs'] = epochs
+        decode_dict['all']['labels'] = labels
+        
+    class_labels = sorted(list(set(decode_dict[decode_dict.keys()[0]]['labels'][0])))
+    print "Labels:", class_labels
+    
+else:
+    cX, cy = group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type=aggregate_type, const_trans=const_trans, trans_value=trans_value, relabel=False)
+    
+    cy = np.array([sconfigs[cv][class_name] for cv in cy])
+    
+    print 'cX (%s):' % data_type, cX.shape
+    print 'cY (labels):', cy.shape
+    
+    class_labels = sorted(list(set(cy)))
+    print "Labels:", class_labels
+
+#%%
+niters = 10
+for view_key in decode_dict.keys():
+    
+    epochs = decode_dict[view_key]['epochs']
+    labels = decode_dict[view_key]['labels']
+    
+    # Create pipeline:
+    # ------------------
+    big_C = 1e9
+    if epochs[0].shape[0] > epochs[0].shape[1]: # nsamples > nfeatures
+        dual = False
+    else:
+        dual = True
+    #pipe_svc = Pipeline([('scl', StandardScaler()),
+    #                     ('clf', LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C))]) #))])
+    
+    for runiter in np.arange(0,niters): #range(5):
+        # evaluate each model in turn
+        results = []
+        names = []
+        scoring = 'accuracy'
+        for idx, curr_epoch in enumerate(sorted(epochs.keys())):
+            model = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+            kfold = StratifiedKFold(n_splits=5, shuffle=True)
+            x_std = StandardScaler().fit_transform(epochs[curr_epoch])
+            cv_results = cross_val_score(model, x_std, labels[curr_epoch], cv=kfold, scoring=scoring)
+            results.append(cv_results)
+            names.append(curr_epoch)
+            msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
+            #print(msg)
+
+        fig = plot_decoding_performance_trial_epochs(results, bins, names, 
+                                                   scoring=scoring, 
+                                                   stim_on_frame=run_info['stim_on_frame'],
+                                                   nframes_on=run_info['nframes_on'],
+                                                   nclasses=len(class_labels))
+
+        fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (aggregate_type, const_trans, str(view_key)))
+        figname = '%s_trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (view_str, binsize, scoring, class_name, runiter)
+        pl.savefig(os.path.join(classifier_dir, figname))
+        pl.close()
+
+#%%
+#result = Parallel(n_jobs=4)(delayed(train_model)(epochs[ename], labels[ename]) for ename in sorted(epochs.keys()))
+
+score, permutation_scores, pvalue = permutation_test_score(
+    model, epochs[13], labels[13], scoring="accuracy", cv=kfold, n_permutations=100, n_jobs=1)
+
+print("Classification score %s (pvalue : %s)" % (score, pvalue))
+
+# #############################################################################
+# How significant is our classification score(s)?
+# Calculate p-value as percentage of runs for which obtained score is greater 
+# than the initial classification score (i.e., repeat classification after
+# randomizing and permuting labels).
+
+n_classes = np.unique(labels[13]).size
+# View histogram of permutation scores
+pl.hist(permutation_scores, 20, label='Permutation scores',
+         edgecolor='black')
+ylim = pl.ylim()
+# BUG: vlines(..., linestyle='--') fails on older versions of matplotlib
+# plt.vlines(score, ylim[0], ylim[1], linestyle='--',
+#          color='g', linewidth=3, label='Classification Score'
+#          ' (pvalue %s)' % pvalue)
+# plt.vlines(1.0 / n_classes, ylim[0], ylim[1], linestyle='--',
+#          color='k', linewidth=3, label='Luck')
+pl.plot(2 * [score], ylim, '--g', linewidth=3,
+         label='Classification Score'
+         ' (pvalue %s)' % pvalue)
+pl.plot(2 * [1. / n_classes], ylim, '--k', linewidth=3, label='Luck')
+
+pl.ylim(ylim)
+pl.legend()
+pl.xlabel('Score')
+pl.show()
+
+
 
 #%%
 
@@ -779,7 +970,12 @@ nframes_per_trial = run_info['nframes_per_trial']
 #nconditions = len(run_info['condition_list'])
 nrois = cX.shape[1]
 
-
+            
+# Also create output dir for population-level figures:
+population_figdir = os.path.join(run_info['traceid_dir'],  'figures', 'population')
+if not os.path.exists(population_figdir):
+    os.makedirs(population_figdir)
+            
 
 # Correlation between stim classes across ROIs -- compute as RDM:
 # -----------------------------------------------------------------------------
@@ -881,7 +1077,7 @@ classifier = 'LinearSVC' #'LinearSVC'# 'LogReg' #'LinearSVC' # 'OneVRest'
 
 
 if data_type == 'zscore' or 'meanstim' in data_type:
-    cv_method = 'kfold' # 'LOO' # "LOGO" "LPGO"
+    cv_method = 'LOO' # 'LOO' # "LOGO" "LPGO"
 elif data_type == 'xcondsub':
     cv_method = 'LOGO' # "LOGO" "LPGO"
 cv_ngroups = 1
@@ -907,9 +1103,9 @@ else:
     dual = True
     
 big_C = 1e9
-
-from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
-from sklearn.calibration import CalibratedClassifierCV
+#
+#from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
+#from sklearn.calibration import CalibratedClassifierCV
 
 
 if classifier == 'LinearSVC':
@@ -983,7 +1179,7 @@ if cv_method=='splithalf':
     y_pred = svc.predict(training_data[n_samples // 2:])
 
 elif cv_method=='kfold':
-    loo = cross_validation.StratifiedKFold(cy, n_folds=10, shuffle=True)
+    loo = cross_validation.StratifiedKFold(cy, n_folds=5, shuffle=True)
     pred_results = []
     pred_true = []
     for train, test in loo: #, groups=groups):
@@ -1475,9 +1671,9 @@ elif decoder == 'ori':
     
 
 
-train_runid = 'blobs_dynamic_run1' #'blobs_run2'
+train_runid = 'blobs_dynamic_run1' #'blobs_dynamic_run1' #'blobs_run2'
 train_traceid = 'traces001'
-classif_identifier = 'all_LinearSVC_meanstim_kfold_4morphlevel_each_meanstim'
+classif_identifier = 'all_LinearSVC_meanstim_kfold_5morphlevel_each_meanstim'
 
     
 # TRAINING DATA:
@@ -1488,6 +1684,8 @@ train_dset = np.load(train_fpath)
 cX_std = train_dset['cX_std']
 cy = train_dset['cy']
 train_labels = list(set(cy))
+print "Training labels:", train_labels
+
 #roi_ids = train_dset['visual_rids']
 
 
@@ -1496,7 +1694,7 @@ train_labels = list(set(cy))
 #train_runid = 'blobs_dynamic_run1'
 #train_testid = 'traces001'
 
-test_runid = 'blobs_run2' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_runid = 'blobs_dynamic_run1' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid = 'traces001'
 
 test_basedir = util.get_traceid_from_acquisition(acquisition_dir, test_runid, test_traceid)
@@ -1506,7 +1704,11 @@ test_fpath = os.path.join(test_basedir, 'classifiers', 'datasets.npz')
 test_dataset = np.load(test_fpath)
 print test_dataset.keys()
 
-X_test = test_dataset['smoothedX']
+
+
+test_data_type = 'smoothedDF' #'smoothedDF'
+
+X_test = test_dataset[test_data_type]
 X_test = StandardScaler().fit_transform(X_test)
 #X_test = test_dataset['corrected'][:, roi_ids]
 
@@ -1518,10 +1720,11 @@ runinfo_test = test_dataset['run_info'][()]
 trial_nframes_test = runinfo_test['nframes_per_trial']
 all_tsecs = np.reshape(test_dataset['tsecs'][:], (sum(runinfo_test['ntrials_by_cond'].values()), trial_nframes_test))
 
-stimvalues = test_dataset[data_type]
+#stimvalues = test_dataset[data_type]
 #stimvalues = stimvalues[:, roi_ids]
 
-data_subset = 'alltrials' #'xpos-5'
+class_name = 'morphlevel'
+data_subset = 'all' # 'xpos-5' # 'alltrials' #'xpos-5'
 
 if 'alltrials' in data_subset:
     if stimtype == 'gratings':
@@ -1536,10 +1739,13 @@ if 'alltrials' in data_subset:
     tsecs = all_tsecs.copy()
 # Get subset of test data (position matched, if trained on y-rotation at single position):
 else:
-    included = np.array([yi for yi, yv in enumerate(y_test) if sconfigs_test[yv]['xpos']==-5 and sconfigs_test[yv]['yrot']==1])
+    included = np.array([yi for yi, yv in enumerate(y_test) if sconfigs_test[yv]['xpos']==-5]) # and sconfigs_test[yv]['yrot']==1])
     test_labels = np.array([sconfigs_test[c][class_name] for c in y_test[included]])
     test_data = X_test[included, :]
-    tsecs = all_tsecs[included,:] # Only need 1 column, since all ROIs have the same tpoints
+    sub_tsecs = test_dataset['tsecs'][included]
+    tsecs = np.reshape(sub_tsecs, (len(sub_tsecs)/trial_nframes_test, trial_nframes_test))
+    
+    #tsecs = all_tsecs[included,:] # Only need 1 column, since all ROIs have the same tpoints
 print "TEST: %s, labels: %s" % (str(test_data.shape), str(test_labels.shape))
 
 
@@ -1557,11 +1763,21 @@ print "LABELS:", object_ids
 #    cclf.fit(X, y)
 #    res = cclf.predict_proba(X_test)[:, 1];
 
+# ------------------
+if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
+    dual = False
+else:
+    dual = True
+svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1e9) #, C=best_C) # C=big_C)
+# ----------------------------------------------------------------------------
+
+
 svc.fit(cX_std, cy)
 clf = CalibratedClassifierCV(svc) 
 clf.fit(cX_std, cy)
 
 
+colorvals = sns.color_palette("PRGn", len(clf.classes_))
 
 mean_pred = {}
 sem_pred = {}
@@ -1625,7 +1841,7 @@ pl.suptitle('Prob of trained classes on trial frames')
 
 pl.ylim(0, 0.6)
 
-figname = 'TRAIN_%s_%s_C_%s_TEST_%s_%s_%s_smoothedX_whiten.png' % (train_runid, train_traceid, classif_identifier, test_runid, test_traceid, data_subset)
+figname = 'TRAIN_%s_%s_C_%s_TEST_%s_%s_%s_%s_whiten.png' % (train_runid, train_traceid, classif_identifier, test_runid, test_traceid, data_subset, test_data_type)
 print figname
 
 pl.savefig(os.path.join(output_dir, figname))
