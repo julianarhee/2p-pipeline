@@ -74,6 +74,7 @@ def extract_options(options):
     parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
+    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
 
 
     # Pupil filtering info:
@@ -94,7 +95,7 @@ def extract_options(options):
 
 #%
         
-def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False, frac=0.001):
+def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False, frac=0.001, create_new=False, window_ntrials=3, quantile=0.08):
     
     collate=False
     # Set up paths to look for saved dataframes:
@@ -115,25 +116,28 @@ def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False,
     
     labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
     F0_fpath=None; F0_df=None
-    if trace_type == 'processed' and smoothed is False:
+    if trace_type == 'processed' and not smoothed:
         # Also get baseline:
         F0_fpath = os.path.join(data_array_dir, 'roiXtrials_F0.pkl')
         
-    try:
-        with open(xdata_fpath, 'rb') as f:
-            xdata_df = pkl.load(f)
-        print "Loaded XDATA."
-        
-        with open(labels_fpath, 'rb') as f:
-            labels_df = pkl.load(f)
-        print "Loaded labels."
-        
-        if F0_fpath is not None:
-            with open(F0_fpath, 'rb') as f:
-                F0_df = pkl.load(f)
-            print "Loaded F0."
+    if create_new is False and dff is True:
+        try:
+            with open(xdata_fpath, 'rb') as f:
+                xdata_df = pkl.load(f)
+            print "Loaded XDATA."
             
-    except Exception as e:
+            with open(labels_fpath, 'rb') as f:
+                labels_df = pkl.load(f)
+            print "Loaded labels."
+            
+            if F0_fpath is not None:
+                with open(F0_fpath, 'rb') as f:
+                    F0_df = pkl.load(f)
+                print "Loaded F0."
+                
+        except Exception as e:
+            collate = True
+    else:
         collate = True
     
     if collate:
@@ -153,15 +157,14 @@ def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False,
             os.makedirs(trace_arrays_dir)
         n_src_dataframes = len([r for r in os.listdir(trace_arrays_dir) if 'File' in r])
 
-        if not n_orig_tiffs == n_src_dataframes:
+        if not n_orig_tiffs == n_src_dataframes or create_new is True:
             if trace_type == 'raw':
                 raw_hdf_to_dataframe(traceid_dir)
             elif trace_type == 'processed':
-                processed_trace_arrays(traceid_dir)
+                processed_trace_arrays(traceid_dir, window_ntrials=window_ntrials, quantile=quantile)
             
             if smoothed:
                 smoothed_trace_arrays(traceid_dir, trace_type=trace_type, dff=dff, frac=frac)
-
 
         if trace_type == 'raw':
             labels_df, xdata_df = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
@@ -172,7 +175,7 @@ def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False,
 
 #%%
     
-def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt='.pkl', nonnegative=True,):
+def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt='.pkl', nonnegative=True):
     xdata_df=None; baseline_df=None; labels_df=None
     
     trace_arrays_type = '%s_trace_arrays' % trace_type
@@ -287,14 +290,15 @@ def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt
         # Get all trials contained in current .tif file:
         trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
 
-        if skip_last_trial:
-            #trials_in_block = trials_in_block[0:-1]
-            # Check if this is a bad tif:
-            frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
-            if frame_indices[-1] > len(frame_tsecs):
-                print "Skipping last trial!"
-                trials_in_block = trials_in_block[0:-1]
-        
+        #if skip_last_trial:
+        #trials_in_block = trials_in_block[0:-1]
+        # Check if this is a bad tif:
+        frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+        if frame_indices[-1] > len(frame_tsecs):
+            print "Skipping last trial!"
+            trials_in_block = trials_in_block[0:-1]
+            skip_last_trial = True
+    
         excluded_params = ['filehash', 'stimulus', 'type']
         curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
         curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
@@ -303,6 +307,11 @@ def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt
     
         # Get frame indices of the full trial (this includes PRE-stim baseline, stim on, and POST-stim iti):
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+#        frames_within = np.array([f for f in frame_indices if f < len(frame_tsecs)])
+#        if len(frame_indices) != len(frames_within):
+#            print "** warning ** Found %i extra frames." % (len(frame_indices) - len(frames_within))
+#            frame_indices = frames_within
+            
         trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block])
         
@@ -490,7 +499,7 @@ def raw_hdf_to_dataframe(traceid_dir, roi_list=[], fmt='pkl'):
     return raw_trace_arrays_dir
 
             
-def processed_trace_arrays(traceid_dir, nframes_on=None, framerate=None, fmt='pkl'):
+def processed_trace_arrays(traceid_dir, window_ntrials=3, nframes_on=None, framerate=None, fmt='pkl', create_new=False, quantile=0.08):
     '''
     Calculate F0 for each ROI by .tif file (continuous time points). These
     trace "chunks" can later be parsed and combined into a dataframe for trial
@@ -528,7 +537,7 @@ def processed_trace_arrays(traceid_dir, nframes_on=None, framerate=None, fmt='pk
     if not os.path.exists(raw_trace_arrays_dir) or len(os.listdir(raw_trace_arrays_dir))==0:
         raw_hdf_to_dataframe(traceid_dir, fmt=fmt)
     processed_trace_arrays_dir = os.path.join(tracefile_dir, 'processed_trace_arrays')
-    if not os.path.exists(processed_trace_arrays_dir):
+    if not os.path.exists(processed_trace_arrays_dir) or create_new:
         os.makedirs(processed_trace_arrays_dir)
         
     # Load raw trace arrays from which to calculate drift:    
@@ -550,8 +559,8 @@ def processed_trace_arrays(traceid_dir, nframes_on=None, framerate=None, fmt='pk
         
         # Get BASELINE from rolling window:
         ntrials_in_file = rawdf.shape[0]/nframes_trial
-        print "... and extracting 8% percentile as F0"
-        corrected_df, baseline_df = get_rolling_baseline(rawdf, nframes_trial*3, framerate)
+        print "... and extracting %i percentile as F0" % (quantile*100)
+        corrected_df, baseline_df = get_rolling_baseline(rawdf, nframes_trial*window_ntrials, framerate, quantile=quantile)
         
         dfs['processed'] = corrected_df
         dfs['F0'] = baseline_df
@@ -614,7 +623,7 @@ def smoothed_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0
     return smooothed_trace_arrays_dir        
     
 
-def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir='/tmp'):
+def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir='/tmp', quantile=0.08):
     '''
     Same as smooth_trace_arrays() but only does 1 file with specified 
     smoothing fraction. Plots figure with user-provided example ROI.
@@ -641,7 +650,7 @@ def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, 
         else:
             print "Creating F0-subtracted arrays for: %s" % acquisition_dir
             print "Run: %s, Trace ID: %s" % (run, traceid)
-            processed_trace_arrays(traceid_dir)
+            processed_trace_arrays(traceid_dir, quantile=quantile)
 
         trace_fns = [f for f in os.listdir(trace_arrays_dir) if 'File' in f]
 
@@ -671,6 +680,7 @@ def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, 
 
     pl.suptitle('%s_%s' % (roi_id, dfn))
     figstring = '%s_%s_smoothed_fmin%s_fmax%s' % (roi_id, dfn, str(fmin)[2:], str(fmax)[2:])
+    pl.show()
     
     if save_and_close:
         pl.savefig(os.path.join(output_dir, '%s.png' % figstring))
@@ -832,12 +842,13 @@ def get_transforms(stimconfigs):
 
 #%%
     
-def get_run_details(options, verbose=True):
+def get_run_details(options, verbose=True, create_new=False):
     run_info = {}
 
     optsE = extract_options(options)
     trace_type = optsE.trace_type
     combined = optsE.combined
+    quantile = float(optsE.quantile)
 
     # Get paths to data source:
     traceid_dir = get_traceid_dir(options)
@@ -859,7 +870,7 @@ def get_run_details(options, verbose=True):
     transform_dict, object_transformations = get_transforms(stimconfigs)
     trans_types = object_transformations.keys()
 
-    labels_df, raw_df, _ = load_roiXtrials_df(traceid_dir, trace_type='raw')
+    labels_df, raw_df, _ = load_roiXtrials_df(traceid_dir, trace_type='raw', create_new=create_new, quantile=quantile)
     conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
     
     # Get trun info:
@@ -905,6 +916,7 @@ def get_run_details(options, verbose=True):
     #run_info['datakey'] = datakey
     run_info['trans_types'] = trans_types
     run_info['framerate'] = si_info['framerate']
+    run_info['nfiles'] = len([i for i in os.listdir(os.path.join(traceid_dir, 'files')) if i.endswith('hdf5')])
 
     return run_info, stimconfigs, labels_df, raw_df
 
@@ -1046,12 +1058,12 @@ def rolling_quantile(x, width, quantile):
 
 #%%
     
-def get_rolling_baseline(Xdf, window_size, framerate):
+def get_rolling_baseline(Xdf, window_size, framerate, quantile=0.08):
         
     #window_size_sec = (nframes_trial/framerate) * 2 # decay_constant * 40
     #decay_frames = window_size_sec * framerate # decay_constant in frames
     #window_size = int(round(decay_frames))
-    quantile = 0.08
+    #quantile = 0.08
     
     Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
     Xdata = (Xdf - Fsmooth)
@@ -1133,13 +1145,13 @@ def get_rolling_baseline(Xdf, window_size, framerate):
 #%%
 def format_roisXvalue(Xdata, run_info, fsmooth=None, sorted_ixs=None, value_type='meanstim', trace='raw'):
 
-    if isinstance(Xdata, pd.DataFrame):
-        Xdata = np.array(Xdata)
+    #if isinstance(Xdata, pd.DataFrame):
+    Xdata = np.array(Xdata)
         
     # Make sure that we only get ROIs in provided list (we are dropping ROIs w/ np.nan dfs on any trials...)
     #sDATA = sDATA[sDATA['roi'].isin(roi_list)]
     stim_on_frame = run_info['stim_on_frame']
-    nframes_on = run_info['nframes_on']
+    nframes_on = int(round(run_info['nframes_on']))
     ntrials_total = run_info['ntrials_total']
     nframes_per_trial = run_info['nframes_per_trial']
     nrois = Xdata.shape[-1] #len(run_info['roi_list'])

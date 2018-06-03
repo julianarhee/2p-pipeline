@@ -197,6 +197,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
         assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
         iti_full = iti_durs[0]
         iti_post = iti_full - iti_pre
+        print "ITI POST: %i" % iti_post
 
         # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
         if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
@@ -1695,7 +1696,8 @@ def create_roi_dataframes(options):
     # Get meta/SI info for RUN:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    si_info = get_frame_info(run_dir)
+    si_info = {'framerate': 44.67, 'volumerate': 44.67 }
+    #si_info = get_frame_info(run_dir)
 
     # Load TRACE ID info:
     # =========================================================================
