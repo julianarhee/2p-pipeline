@@ -1696,8 +1696,8 @@ def create_roi_dataframes(options):
     # Get meta/SI info for RUN:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    si_info = {'framerate': 44.67, 'volumerate': 44.67 }
-    #si_info = get_frame_info(run_dir)
+    #si_info = {'framerate': 44.67, 'volumerate': 44.67 }
+    si_info = get_frame_info(run_dir)
 
     # Load TRACE ID info:
     # =========================================================================
