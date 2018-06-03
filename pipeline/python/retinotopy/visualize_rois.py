@@ -374,10 +374,10 @@ def roi_retinotopy(options):
         rootdir = '/n/coxfs01/2p-data'
 
     boundingbox_runs = options.boundingbox_runs
-    leftedge = options.leftedge
-    rightedge = options.rightedge
-    topedge = options.topedge
-    bottomedge = options.bottomedge
+    leftedge = float(options.leftedge)
+    rightedge = float(options.rightedge)
+    topedge = float(options.topedge)
+    bottomedge = float(options.bottomedge)
     color_position = options.color_position
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
