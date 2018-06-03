@@ -17,6 +17,8 @@ import random
 import itertools
 import scipy.io
 import optparse
+
+import cPickle as pkl
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -253,25 +255,44 @@ def split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=10, relab
     return epochs, labels, bin_idxs[0:-1]
     
     
-def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', const_trans=None, trans_value=None, relabel=False):
+def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', 
+                              subset=None,
+                              const_trans=None, trans_value=None, relabel=False):
     sconfigs_df = pd.DataFrame(sconfigs).T
 
     # Check that input data is correctly formatted:
     assert len(cy)==cX.shape[0], "Incorrect input data sizes. Data (%s), labels (%s)" % (str(cX.shape), str(cy.shape))
     assert sorted(list(set(cy))) == sorted(sconfigs.keys()), "Bad configIDs for label list. Should be the same as sconfigs.keys()."
     
-    if aggregate_type == 'each':
+    if aggregate_type == 'all':
         # Assign labels, but don't group/average values by some shared transform value. 
-        if const_trans is None:
+        if const_trans is '':
             stim_grouper = [class_name]
             other_trans = list(set([k for k in sconfigs['config001'].keys() if not k == class_name]))
             stim_grouper.extend(other_trans)   
         else:
             stim_grouper = [class_name, const_trans]
-    
+        
+        cy_tmp = cy.copy(); cX_tmp = cX.copy();
+        if class_name == 'morphlevel':
+            morphs_in_dataset = sorted(list(set([sconfigs[c]['morphlevel'] for c in sconfigs.keys()])))
+            true_morphs = np.array(sorted([m for m in morphs_in_dataset if m >=0])) # movies have -1 label, so only get true morph *objects*
+            if subset is not None:
+                if subset == 'two_class':
+                    included = [true_morphs[0], true_morphs[-1]] # Take first and last only (anchors)
+                elif subset == 'no_morphing':
+                    included = true_morphs.copy() # Take first and last only (anchors)
+                    
+                configs_included = [c for c in sconfigs.keys() if sconfigs[c]['morphlevel'] in included]
+                cixs = np.array([ci for ci,cv in enumerate(cy) if cv in configs_included])
+                cy_tmp = cy[cixs]
+                cX_tmp = cX[cixs,:]
+                
+            
         sgroups = sconfigs_df.groupby(stim_grouper)                                               # Group stimconfigs with top-level as class-label type
         ordered_configs = {key: i for i, key in enumerate([str(g.index[0]) for k,g in sgroups])}  # Create a mapper for sorting the original configID list
-        sorted_ixs = [s[0] for s in sorted(enumerate(cy), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
+        #sorted_ixs = [s for s, val in sorted(enumerate(cy_tmp), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
+        sorted_ixs = [s for s, val in enumerate(cy_tmp)]   # Get indices with which to sort original configID list
 
         # check that indices are grouped properly:
 #        if data_type == 'xcondsub':
@@ -284,8 +305,8 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', c
 #            assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
 
         # Re-sort class labels and data:
-        cy_tmp = cy[sorted_ixs]
-        cX_tmp = cX[sorted_ixs, :]
+        cy_tmp = cy_tmp[sorted_ixs]
+        cX_tmp = cX_tmp[sorted_ixs, :]
         
     elif aggregate_type == 'averagereps':
         # Group trials of the same condition (repetitions) and average:
@@ -304,7 +325,7 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='each', c
         # Average values for all samples with the same class label (class_name), OR
         # If const_trans provided, average trials only across specified transform type.
         stim_grouper = [class_name, const_trans]
-        if const_trans is None:
+        if const_trans is '':
             # Just group by class_name:
             stim_grouper = [class_name]
             
@@ -510,7 +531,29 @@ opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom
            '-R', 'blobs_dynamic_run1', '-t', 'traces001',
            '-n', '1']
 
-options_list = [opts0] #, opts2]
+
+
+opts4 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'blobs_run2', '-t', 'traces001',
+           '-n', '1']
+
+opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'blobs_run1', '-t', 'traces001',
+           '-n', '1']
+
+opts5 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
+           '-n', '1']
+
+opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_run1', '-t', 'traces001',
+           '-n', '1']
+
+options_list = [opts4, opts5, opts6] #, opts2]
 
 #
 #opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
@@ -533,7 +576,7 @@ test = False
 
 #options_idx = 1
 #options_idx = 0
-
+data_paths = {}
 test = False
 for options_idx in range(len(options_list)):
     #%
@@ -546,16 +589,20 @@ for options_idx in range(len(options_list)):
     traceid_dir = util.get_traceid_dir(options)
     
     # Set up output dir:
-    output_basedir = os.path.join(traceid_dir, 'classifiers')
-    if not os.path.exists(output_basedir):
-        os.makedirs(output_basedir)
+    data_basedir = os.path.join(traceid_dir, 'data_arrays')
+    if not os.path.exists(data_basedir):
+        os.makedirs(data_basedir)
 
-    if not os.path.exists(os.path.join(output_basedir, 'figures')):
-        os.makedirs(os.path.join(output_basedir, 'figures'))
+    clf_basedir = os.path.join(traceid_dir, 'classifiers')
+    if not os.path.exists(os.path.join(clf_basedir, 'figures')):
+        os.makedirs(os.path.join(clf_basedir, 'figures'))
 
     # First check if processed datafile exists:
     reload_data = False
-    data_fpath = os.path.join(output_basedir, 'datasets.npz')
+    data_fpath = os.path.join(data_basedir, 'datasets.npz')
+    
+    data_paths[options_idx] = data_fpath
+
     try:
         dataset = np.load(data_fpath)
         print "Loaded existing datafile:\n%s" % data_fpath
@@ -566,14 +613,16 @@ for options_idx in range(len(options_list)):
 
     if reload_data:
             
-        run_info, stimconfigs, labels_df, raw_df = util.get_run_details(options)
+        run_info, stimconfigs, labels_df, raw_df = util.get_run_details(options, create_new=False)
 
         # Set up output dir:
-        output_basedir = os.path.join(run_info['traceid_dir'],  'classifiers')
-        if not os.path.exists(output_basedir):
-            os.makedirs(output_basedir)
-        if not os.path.exists(os.path.join(output_basedir, 'figures')):
-            os.makedirs(os.path.join(output_basedir, 'figures'))
+        data_basedir = os.path.join(run_info['traceid_dir'], 'data_arrays')
+
+        clf_basedir = os.path.join(run_info['traceid_dir'],  'classifiers')
+        if not os.path.exists(clf_basedir):
+            os.makedirs(clf_basedir)
+        if not os.path.exists(os.path.join(clf_basedir, 'figures')):
+            os.makedirs(os.path.join(clf_basedir, 'figures'))
             
         # Also create output dir for population-level figures:
         population_figdir = os.path.join(run_info['traceid_dir'],  'figures', 'population')
@@ -582,39 +631,44 @@ for options_idx in range(len(options_list)):
 
         # Get processed traces:
         _, traces_df, F0_df = util.load_roiXtrials_df(traceid_dir, trace_type='processed', dff=False, smoothed=False)
-        _, dff_df, _ = util.load_roiXtrials_df(traceid_dir, trace_type='processed', dff=True, smoothed=False)
 
         # Check data:
-        fig = pl.figure(figsize=(80, 20))
+        nframes_per_trial = run_info['nframes_per_trial']
+        ntrials_per_file = run_info['ntrials_total'] / run_info['nfiles']
+        fig = pl.figure(figsize=(60, 10))
         roi = 'roi00001'
-        pl.plot(raw_df[roi], label='raw')
-        pl.plot(F0_df[roi], label='drift')
-        pl.plot(traces_df[roi], label='corrected')
+        pl.plot(raw_df[roi].values[0:nframes_per_trial*ntrials_per_file], label='raw')
+        pl.plot(F0_df[roi][0:nframes_per_trial*ntrials_per_file], label='drift')
+        pl.plot(traces_df[roi][0:nframes_per_trial*ntrials_per_file], label='corrected')
         pl.legend()
         pl.savefig(os.path.join(traceid_dir, '%s_drift_correction.png' % roi))
         
                 
         # Smooth traces: ------------------------------------------------------
-        util.test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=False, output_dir=output_basedir)
-        frac = 0.02
+        util.test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir=clf_basedir)
+        frac = 0.01
         # ---------------------------------------------------------------------
         
+        # Load df/f (F-measured and F-0 already calculated from PROCESSED traces extraction)
+        _, dff_df, _ = util.load_roiXtrials_df(traceid_dir, trace_type='processed', dff=True, smoothed=False)
+
+        # Smooth df/f and measured traces using test value above:
         _, smoothed_df, _ = util.load_roiXtrials_df(traceid_dir, trace_type='processed', dff=True, smoothed=True, frac=frac)
         _, smoothed_X, _ = util.load_roiXtrials_df(traceid_dir, trace_type='processed', dff=False, smoothed=True, frac=frac)
 
 
         # Check smoothing
-        fig = pl.figure(figsize=(80, 20))
+        fig = pl.figure(figsize=(20, 5))
         roi = 'roi00001'
-        pl.plot(dff_df[roi], label='df/f')
-        pl.plot(smoothed_df[roi], label='smoothed')
+        pl.plot(dff_df[roi][0:nframes_per_trial*ntrials_per_file], label='df/f')
+        pl.plot(smoothed_df[roi][0:nframes_per_trial*ntrials_per_file], label='smoothed')
         pl.legend()
         pl.savefig(os.path.join(traceid_dir, '%s_dff_smoothed.png' % roi))
    
-        fig = pl.figure(figsize=(80, 20))
+        fig = pl.figure(figsize=(20, 5))
         roi = 'roi00001'
-        pl.plot(traces_df[roi], label='raw (F0)')
-        pl.plot(smoothed_X[roi], label='smoothed')
+        pl.plot(traces_df[roi][0:nframes_per_trial*ntrials_per_file], label='raw (F0)')
+        pl.plot(smoothed_X[roi][0:nframes_per_trial*ntrials_per_file], label='smoothed')
         pl.legend()
         pl.savefig(os.path.join(traceid_dir, '%s_dff_smoothed.png' % roi))
    
@@ -697,6 +751,7 @@ for options_idx in range(len(options_list)):
                  zscore=zscore_values,
                  meanstimdff=meanstimdff_values,
                  run_info=run_info)
+        
 
     dataset = np.load(data_fpath)
 #    averages_list, normed_list = util.get_xcond_dfs(roi_list, X, y, tsecs, run_info)
@@ -719,6 +774,113 @@ for options_idx in range(len(options_list)):
 #normDF.head()
 
 
+#%% Look at distN of responses:
+    
+d1 = np.load(data_paths[0])
+d2 = np.load(data_paths[1])
+if len(data_paths) > 2:
+    d3 = np.load(data_paths[2])
+
+# Load data:
+
+def get_grand_mean_trace(d1, response_type='dff'):
+    d = {}
+    assert response_type in d1.keys(), "Specified response type (%s) not found. Choose from: %s" % (response_type, str(d1.keys()))
+    d1_meanstims = d1[response_type]
+    d1_run = os.path.split(d1['run_info'][()]['traceid_dir'].split('/traces')[0])[-1]
+    print d1_run, d1_meanstims.shape
+    
+    # Get run info:
+    nrois = d1_meanstims.shape[-1]
+    d1_nframes = d1['run_info'][()]['nframes_per_trial']
+    d1_tmat = np.reshape(d1_meanstims, (d1_meanstims.shape[0]/d1_nframes, d1_nframes, nrois))
+    meantrace_rois1 = np.mean(d1_tmat, axis=0)
+    mean_baselines = np.mean(meantrace_rois1[0:d1['run_info'][()]['stim_on_frame'], :], axis=0)
+    
+    meantrace_rois1 -= mean_baselines
+    
+    meantrace1 = np.mean(meantrace_rois1, axis=1)
+    semtrace1 = stats.sem(meantrace_rois1, axis=1)
+    d1_stim_frames = np.array([d1['run_info'][()]['stim_on_frame'], int(round(d1['run_info'][()]['stim_on_frame'] + d1['run_info'][()]['nframes_on']))])
+    
+    d['run'] = d1_run
+    d['mean'] = meantrace1
+    d['sem'] = semtrace1
+    d['stimframes'] = d1_stim_frames
+    return d
+
+response_type = 'dff'
+d1trace = get_grand_mean_trace(d1, response_type=response_type)
+d2trace = get_grand_mean_trace(d2, response_type=response_type)
+d3trace = get_grand_mean_trace(d3, response_type=response_type)
+
+fig, ax = pl.subplots(1) #pl.figure()
+pl.plot(d1trace['mean'], color='b', label='static objects')
+pl.fill_between(xrange(len(d1trace['mean'])), d1trace['mean']-d1trace['sem'], d1trace['mean']+d1trace['sem'], alpha=0.5, color='b')
+pl.plot(d1trace['stimframes'], np.ones(d1trace['stimframes'].shape) * -0.005, 'b')
+
+pl.plot(d2trace['mean'], color='m', label='dynamic objects')
+pl.fill_between(xrange(len(d2trace['mean'])), d2trace['mean']-d2trace['sem'], d2trace['mean']+d2trace['sem'], alpha=0.5, color='m')
+pl.plot(d2trace['stimframes'], np.ones(d2trace['stimframes'].shape) * -0.005*2, 'm')
+
+pl.plot(d3trace['mean'], color='g', label='drifting gratings')
+pl.fill_between(xrange(len(d3trace['mean'])), d3trace['mean']-d3trace['sem'], d3trace['mean']+d3trace['sem'], alpha=0.5, color='g')
+pl.plot(d3trace['stimframes'], np.ones(d3trace['stimframes'].shape) * -0.005*3, 'g')
+
+#longest_kind = max([len(d1trace['mean']), len(d2trace['mean']), len(d3trace['mean'])])
+#framerates = np.mean([d1['run_info'][()]['framerate'], d2['run_info'][()]['framerate'], d2['run_info'][()]['framerate']])
+#tsecs = (xrange(longest_kind) / framerates)
+#stim_on = int(np.mean([d1trace['stimframes'][0], d2trace['stimframes'][0], d3trace['stimframes'][0]]))
+#relative_t = tsecs - tsecs[stim_on]
+#xlabels = [(i, round(t, 2)) for i, t in enumerate(relative_t)]
+#ax.set(xticks = [])
+#ax.set(xticks = [x[0] for x in xlabels])
+#ax.set(xticklabels = [x[1] for x in xlabels])
+#ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=8)
+ax.set(xticks = [])
+ax.set(xticklabels = [])
+ax.set(yticks = [0, 0.02])
+sns.despine(offset=4, trim=True, bottom=True)
+pl.legend()
+
+
+a_run_dir = data_paths[0].split('/traces')[0]
+acquisition_dir = os.path.split(a_run_dir)[0]
+if len(data_paths) > 2:
+    figname = 'avgtrace_%s_%s_%s_%s.pdf' % (response_type, d1trace['run'], d2trace['run'], d3trace['run'])
+else:
+    figname = 'avgtrace_%s_%s_%s.pdf' % (response_type, d1trace['run'], d2trace['run'])
+    
+pl.savefig(os.path.join(acquisition_dir, figname))
+
+
+mean_trials1 = np.mean(d1_meanstims, axis=0)
+mean_trials2 = np.mean(d2_meanstims, axis=0)
+mean_trials3 = np.mean(d3_meanstims, axis=0)
+avg_data = [np.mean(mean_trials1), np.mean(mean_trials2), np.mean(mean_trials3)]
+sem_data = [stats.sem(mean_trials1), stats.sem(mean_trials2), stats.sem(mean_trials3)]
+labels = [d1_run, d2_run, d3_run]
+
+pl.figure()
+
+xlocations = np.array(range(len(avg_data)))+0.5
+width = 0.5
+pl.bar(xlocations, avg_data, yerr=sem_data, width=width)
+#pl.yticks(range(0, 8))
+pl.xticks(xlocations, labels)
+pl.xlim(0, xlocations[-1]+width*2)
+pl.title("Average responses for each stimulus type")
+pl.gca().get_xaxis().tick_bottom()
+pl.gca().get_yaxis().tick_left()
+
+
+
+#sns.distplot(d1_meanstims.ravel(), rug=True, rug_kws={"color": "g"}, label=d1_run,
+#                 hist_kws={"histtype": "step", "linewidth": 2, "alpha": .5, "color": "g"})
+#sns.distplot(d2_meanstims.ravel(), rug=True, rug_kws={"color": "m"}, label=d2_run,
+#                 hist_kws={"histtype": "step", "linewidth": 2, "alpha": .5, "color": "m"})
+pl.legend()
+
 #%%
 # =============================================================================
 # Load ROI masks to sort ROIs by spatial distance
@@ -730,9 +892,16 @@ if spatial_sort:
     sorted_rids, cnts, zproj = util.sort_rois_2D(traceid_dir)
     util.plot_roi_contours(zproj, sorted_rids, cnts)
     figname = 'spatially_sorted_rois_%s.png' % acquisition
-    pl.savefig(os.path.join(output_basedir, figname))
+    pl.savefig(os.path.join(clf_basedir, figname))
     
 
+#%%
+   
+run_info = dataset['run_info'][()]
+sconfigs = dataset['sconfigs'][()]
+
+print run_info['ntrials_by_cond']
+    
 #%%
 # =============================================================================
 # Assign cX -- input data for classifier (nsamples x nfeatures)
@@ -741,8 +910,8 @@ if spatial_sort:
 
 roi_selector = 'all' #'all' #'selectiveanova' #'selective'
 
-data_type = 'frames' #'zscore' #zscore' # 'xcondsub'
-inputdata = 'smoothedX'
+data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
+inputdata = 'meanstim'
 
 assert inputdata in dataset.keys(), "Requested input data (%s) not found: %s" % (inputdata, str(dataset.keys()))
 
@@ -777,7 +946,7 @@ elif not data_type == 'frames':
 else:
     cy = ylabels.copy()
     
-print 'cX (zscores):', cX.shape
+print 'cX (inputdata):', cX.shape
 print 'cY (labels):', cy.shape
 
 #%%
@@ -786,9 +955,13 @@ print 'cY (labels):', cy.shape
 # =============================================================================
 
 # Group configIDs by selected class labels to sort labels in order:
-class_name ='xpos' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-aggregate_type = 'single' #'each' #'each' # 'single' #'each' #'single' #'each'
-const_trans = 'morphlevel' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+class_name ='yrot' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+aggregate_type = 'all' #'each' #'each' # 'single' #'each' #'single' #'each'
+subset = None #'no_morphing' # None
+#two_class = False
+#no_morphing = True # This is a MOVIE specific parameter (i.., no morphing movies)
+
+const_trans = '' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
 trans_value = '' #16 #None #'-5' #None #-5 #None #-5 #None
 
 all_trans_types = list(set(sconfigs[sconfigs.keys()[0]].keys()))
@@ -799,7 +972,7 @@ if aggregate_type == 'single':
 const_trans_values = []
 if not const_trans=='':
     const_trans_values = sorted(list(set([sconfigs[c][const_trans] for c in sconfigs.keys()])))
-print "Selected subsets of transform: %s. Found values %s" % (const_trans, str(const_trans_values))
+    print "Selected subsets of transform: %s. Found values %s" % (const_trans, str(const_trans_values))
 
    
 class_desc = '%s_%s' % (class_name, aggregate_type)
@@ -807,7 +980,8 @@ if const_trans is not '':
     class_desc = '%s_%s' % (class_desc, const_trans)
 if trans_value is not '':
     class_desc = '%s%i' % (class_desc, trans_value)
-    
+
+binsize=''
 if data_type == 'frames':
     binsize=10
     bins, binsize = get_trial_bins(run_info['nframes_per_trial'], run_info['stim_on_frame'], binsize=binsize)
@@ -818,7 +992,13 @@ if data_type == 'frames':
 classifier = 'LinearSVC'
 cv_method = 'kfold'
 class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
-nclasses = len(class_labels)
+if subset == 'two_classes':
+    nclasses = 2
+elif subset == 'no_morphing':
+    nclasses = len([i for i in class_labels if i >= 0])
+else:
+    nclasses = len(class_labels)
+    
 classif_identifier = '{dtype}_{roiset}_{clf}_{cv}_{}{class_name}_{grouper}_{preprocess}'.format(
                                                                              nclasses, 
                                                                              dtype='%s' % ''.join([data_type, str(binsize)]),
@@ -832,9 +1012,11 @@ print classif_identifier
 
 view_str = class_desc.split('_')[-1]
 
-classifier_dir = os.path.join(output_basedir, classif_identifier)
+classifier_dir = os.path.join(clf_basedir, classif_identifier)
 if not os.path.exists(classifier_dir):
     os.makedirs(classifier_dir)
+else:
+    print "DIR exists!", classifier_dir
 
 print "Saving figs to: %s" % classifier_dir
 
@@ -873,7 +1055,12 @@ if data_type == 'frames':
     print "Labels:", class_labels
     
 else:
-    cX, cy = group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type=aggregate_type, const_trans=const_trans, trans_value=trans_value, relabel=False)
+    cX, cy = group_classifier_data(cX, cy, class_name, sconfigs, 
+                                       subset=subset,
+                                       aggregate_type=aggregate_type, 
+                                       const_trans=const_trans, 
+                                       trans_value=trans_value, 
+                                       relabel=False)
     
     cy = np.array([sconfigs[cv][class_name] for cv in cy])
     
@@ -885,81 +1072,47 @@ else:
 
 #%%
 niters = 10
-for view_key in decode_dict.keys():
+if data_type == 'frames':
+    for view_key in decode_dict.keys():
+        
+        epochs = decode_dict[view_key]['epochs']
+        labels = decode_dict[view_key]['labels']
+        
+        # Create pipeline:
+        # ------------------
+        big_C = 1e9
+        if epochs[0].shape[0] > epochs[0].shape[1]: # nsamples > nfeatures
+            dual = False
+        else:
+            dual = True
+        #pipe_svc = Pipeline([('scl', StandardScaler()),
+        #                     ('clf', LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C))]) #))])
+        
+        for runiter in np.arange(0,niters): #range(5):
+            # evaluate each model in turn
+            results = []
+            names = []
+            scoring = 'accuracy'
+            for idx, curr_epoch in enumerate(sorted(epochs.keys())):
+                model = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+                kfold = StratifiedKFold(n_splits=5, shuffle=True)
+                x_std = StandardScaler().fit_transform(epochs[curr_epoch])
+                cv_results = cross_val_score(model, x_std, labels[curr_epoch], cv=kfold, scoring=scoring)
+                results.append(cv_results)
+                names.append(curr_epoch)
+                msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
+                #print(msg)
     
-    epochs = decode_dict[view_key]['epochs']
-    labels = decode_dict[view_key]['labels']
+            fig = plot_decoding_performance_trial_epochs(results, bins, names, 
+                                                       scoring=scoring, 
+                                                       stim_on_frame=run_info['stim_on_frame'],
+                                                       nframes_on=run_info['nframes_on'],
+                                                       nclasses=len(class_labels))
     
-    # Create pipeline:
-    # ------------------
-    big_C = 1e9
-    if epochs[0].shape[0] > epochs[0].shape[1]: # nsamples > nfeatures
-        dual = False
-    else:
-        dual = True
-    #pipe_svc = Pipeline([('scl', StandardScaler()),
-    #                     ('clf', LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C))]) #))])
-    
-    for runiter in np.arange(0,niters): #range(5):
-        # evaluate each model in turn
-        results = []
-        names = []
-        scoring = 'accuracy'
-        for idx, curr_epoch in enumerate(sorted(epochs.keys())):
-            model = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
-            kfold = StratifiedKFold(n_splits=5, shuffle=True)
-            x_std = StandardScaler().fit_transform(epochs[curr_epoch])
-            cv_results = cross_val_score(model, x_std, labels[curr_epoch], cv=kfold, scoring=scoring)
-            results.append(cv_results)
-            names.append(curr_epoch)
-            msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
-            #print(msg)
-
-        fig = plot_decoding_performance_trial_epochs(results, bins, names, 
-                                                   scoring=scoring, 
-                                                   stim_on_frame=run_info['stim_on_frame'],
-                                                   nframes_on=run_info['nframes_on'],
-                                                   nclasses=len(class_labels))
-
-        fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (aggregate_type, const_trans, str(view_key)))
-        figname = '%s_trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (view_str, binsize, scoring, class_name, runiter)
-        pl.savefig(os.path.join(classifier_dir, figname))
-        pl.close()
-
-#%%
-#result = Parallel(n_jobs=4)(delayed(train_model)(epochs[ename], labels[ename]) for ename in sorted(epochs.keys()))
-
-score, permutation_scores, pvalue = permutation_test_score(
-    model, epochs[13], labels[13], scoring="accuracy", cv=kfold, n_permutations=100, n_jobs=1)
-
-print("Classification score %s (pvalue : %s)" % (score, pvalue))
-
-# #############################################################################
-# How significant is our classification score(s)?
-# Calculate p-value as percentage of runs for which obtained score is greater 
-# than the initial classification score (i.e., repeat classification after
-# randomizing and permuting labels).
-
-n_classes = np.unique(labels[13]).size
-# View histogram of permutation scores
-pl.hist(permutation_scores, 20, label='Permutation scores',
-         edgecolor='black')
-ylim = pl.ylim()
-# BUG: vlines(..., linestyle='--') fails on older versions of matplotlib
-# plt.vlines(score, ylim[0], ylim[1], linestyle='--',
-#          color='g', linewidth=3, label='Classification Score'
-#          ' (pvalue %s)' % pvalue)
-# plt.vlines(1.0 / n_classes, ylim[0], ylim[1], linestyle='--',
-#          color='k', linewidth=3, label='Luck')
-pl.plot(2 * [score], ylim, '--g', linewidth=3,
-         label='Classification Score'
-         ' (pvalue %s)' % pvalue)
-pl.plot(2 * [1. / n_classes], ylim, '--k', linewidth=3, label='Luck')
-
-pl.ylim(ylim)
-pl.legend()
-pl.xlabel('Score')
-pl.show()
+            fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (aggregate_type, const_trans, str(view_key)))
+            figname = '%s_trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (view_str, binsize, scoring, class_name, runiter)
+            pl.savefig(os.path.join(classifier_dir, figname))
+            pl.close()
 
 
 
@@ -1055,16 +1208,16 @@ pl.savefig(os.path.join(population_figdir, figname))
 # Whitening:
 # -----------------------------------------------------------------------------
 
-
-cX_std = StandardScaler().fit_transform(cX)
-print cX_std.shape
-
-pl.figure();
-sns.distplot(cX.ravel(), label=data_type)
-sns.distplot(cX_std.ravel(), label = 'standardized')
-pl.legend()
-pl.title('distN of combined ROIs for FOV1, FOV2')
-pl.savefig(os.path.join(output_basedir, '%s_roi_zscore_distributions.png' % roi_selector))
+#
+#cX_std = StandardScaler().fit_transform(cX)
+#print cX_std.shape
+#
+#pl.figure();
+#sns.distplot(cX.ravel(), label=data_type)
+#sns.distplot(cX_std.ravel(), label = 'standardized')
+#pl.legend()
+#pl.title('distN of combined ROIs for FOV1, FOV2')
+#pl.savefig(os.path.join(clf_basedir, '%s_roi_zscore_distributions.png' % roi_selector))
 
   
 #%% Train and test linear SVM using zscored response values:
@@ -1073,28 +1226,14 @@ pl.savefig(os.path.join(output_basedir, '%s_roi_zscore_distributions.png' % roi_
 # Set classifier type and CV params:
 # -----------------------------------------------------------------------------
 
-classifier = 'LinearSVC' #'LinearSVC'# 'LogReg' #'LinearSVC' # 'OneVRest'
+big_C = 1e9
+#
+scoring = 'accuracy'
+cv_nfolds = 5
 
 
-if data_type == 'zscore' or 'meanstim' in data_type:
-    cv_method = 'LOO' # 'LOO' # "LOGO" "LPGO"
-elif data_type == 'xcondsub':
-    cv_method = 'LOGO' # "LOGO" "LPGO"
-cv_ngroups = 1
-find_C = False
-
-#% Create output dir for current classifier:
-nclasses = len(class_labels)
-classif_identifier = '%s_%s_%s_%s_%i%s' %  (roi_selector, classifier, data_type, cv_method, nclasses, class_desc)
-print classif_identifier
-
-output_dir = os.path.join(output_basedir, classif_identifier)
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-else:
-    print "Classifier dir exists!  Overwrite?"
-
-#%%
+kfold = StratifiedKFold(n_splits=cv_nfolds, shuffle=True)
+cX_std = StandardScaler().fit_transform(cX)
 # Create classifier:
 # ------------------
 if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
@@ -1102,51 +1241,105 @@ if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
 else:
     dual = True
     
-big_C = 1e9
+svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+#svc = LinearSVC(random_state=0, dual=dual, C=big_C)
+
+cv_results = cross_val_score(svc, cX_std, cy, cv=kfold, scoring=scoring)
+
+curr_epoch = '0'
+msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
+
+score, permutation_scores, pvalue = permutation_test_score(
+    svc, cX_std, cy, scoring=scoring, cv=kfold, n_permutations=500, n_jobs=1)
+
+print("Classification score %s (pvalue : %s)" % (score, pvalue))
+
+# #############################################################################
+# How significant is our classification score(s)?
+# Calculate p-value as percentage of runs for which obtained score is greater 
+# than the initial classification score (i.e., repeat classification after
+# randomizing and permuting labels).
+pl.figure()
+n_classes = np.unique([cy]).size
+
+# View histogram of permutation scores
+pl.hist(permutation_scores, 20, label='Permutation scores',
+         edgecolor='black')
+ylim = pl.ylim()
+# BUG: vlines(..., linestyle='--') fails on older versions of matplotlib
+# plt.vlines(score, ylim[0], ylim[1], linestyle='--',
+#          color='g', linewidth=3, label='Classification Score'
+#          ' (pvalue %s)' % pvalue)
+# plt.vlines(1.0 / n_classes, ylim[0], ylim[1], linestyle='--',
+#          color='k', linewidth=3, label='Luck')
+pl.plot(2 * [score], ylim, '--g', linewidth=3,
+         label='Classification Score'
+         ' (pvalue %s)' % round(pvalue, 4))
+pl.plot(2 * [1. / n_classes], ylim, '--k', linewidth=3, label='Luck')
+
+pl.ylim(ylim)
+pl.legend()
+pl.xlabel('Score - %s' % scoring)
+pl.show()
+
+figname = 'cv_permutation_test.png'
+pl.savefig(os.path.join(classifier_dir, figname))
+#pl.close()
+
+
+#%%
+# Create classifier:
+# ------------------
+#if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
+#    dual = False
+#else:
+#    dual = True
+#    
+#big_C = 1e9
+##
+##from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
+##from sklearn.calibration import CalibratedClassifierCV
 #
-#from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
-#from sklearn.calibration import CalibratedClassifierCV
-
-
-if classifier == 'LinearSVC':
-    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr') #, C=best_C) # C=big_C)
-    
-    #svm = LinearSVC(random_state=0, dual=True, multi_class='ovr') #, C=1, penalty='l2', loss='squared_hinge') #, C=best_C) #, C=big_C)
-    #svc = CalibratedClassifierCV(svm) 
- 
-#    cclf = CalibratedClassifierCV(base_estimator=LinearSVC(penalty='l2', dual=False), cv=5)
-#    cclf.fit(X, y)
-#    res = cclf.predict_proba(X_test)[:, 1];
-
-elif classifier == 'SGD':
-    svc = SGDClassifier(loss='log', penalty='l1', max_iter=1000)
-    
-elif classifier == 'LogReg':
-    svc = LogisticRegression(multi_class='ovr', solver='liblinear', C=big_C) #, C=big_C) #, C=big_C)
-
-#    svc = LogisticRegressionCV(multi_class='ovr', solver='liblinear', n_jobs=2, 
-#                               refit=True, cv=loo)
-
-else:
-    svc = OneVsRestClassifier(SVC(kernel='linear', decision_function_shape='ovr', 
-                                      C=1e9, tol=0.0001))
-
-if find_C:
-    best_C = get_best_C(svc, cX_std, cy, output_dir=output_dir, classifier_str=classif_identifier) #classif_identifier)
-    C_val = best_C
-else:
-    C_val = big_C
-    
-
 #
-#svc = LogisticRegressionCV(multi_class='ovr', solver='liblinear', n_jobs=2, 
-#                               refit=True, cv=loo)
-
-#svc.fit(cX_std, cy)
-
-svc.C = C_val
-
-print svc.get_params()
+#if classifier == 'LinearSVC':
+#    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C) #, C=best_C) # C=big_C)
+#    
+#    #svm = LinearSVC(random_state=0, dual=True, multi_class='ovr') #, C=1, penalty='l2', loss='squared_hinge') #, C=best_C) #, C=big_C)
+#    #svc = CalibratedClassifierCV(svm) 
+# 
+##    cclf = CalibratedClassifierCV(base_estimator=LinearSVC(penalty='l2', dual=False), cv=5)
+##    cclf.fit(X, y)
+##    res = cclf.predict_proba(X_test)[:, 1];
+#
+#elif classifier == 'SGD':
+#    svc = SGDClassifier(loss='log', penalty='l1', max_iter=1000)
+#    
+#elif classifier == 'LogReg':
+#    svc = LogisticRegression(multi_class='ovr', solver='liblinear', C=big_C) #, C=big_C) #, C=big_C)
+#
+##    svc = LogisticRegressionCV(multi_class='ovr', solver='liblinear', n_jobs=2, 
+##                               refit=True, cv=loo)
+#
+#else:
+#    svc = OneVsRestClassifier(SVC(kernel='linear', decision_function_shape='ovr', 
+#                                      C=1e9, tol=0.0001))
+#
+#if find_C:
+#    best_C = get_best_C(svc, cX_std, cy, output_dir=output_dir, classifier_str=classif_identifier) #classif_identifier)
+#    C_val = best_C
+#else:
+#    C_val = big_C
+#    
+#
+##
+##svc = LogisticRegressionCV(multi_class='ovr', solver='liblinear', n_jobs=2, 
+##                               refit=True, cv=loo)
+#
+##svc.fit(cX_std, cy)
+#
+##svc.C = C_val
+#
+#print svc.get_params()
 
 #%
 #svc.C = 1 #1e9
@@ -1162,6 +1355,8 @@ print svc.get_params()
 #grid_values = {'penalty': ['l1','l2'], 'C': [0.001,0.01,0.1,1,10,100,1000]}
 #model_lr = GridSearchCV(lr, param_grid=grid_values)
 
+cv_nfolds = 5
+cv_ngroups = 1
 
 training_data = cX_std.copy()
 
@@ -1179,7 +1374,7 @@ if cv_method=='splithalf':
     y_pred = svc.predict(training_data[n_samples // 2:])
 
 elif cv_method=='kfold':
-    loo = cross_validation.StratifiedKFold(cy, n_folds=5, shuffle=True)
+    loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
     pred_results = []
     pred_true = []
     for train, test in loo: #, groups=groups):
@@ -1191,17 +1386,17 @@ elif cv_method=='kfold':
         pred_true.append(y_test)
 
     # Find "best fold"?
-    avg_scores = []
-    for y_pred, y_test in zip(pred_results, pred_true):
-        pred_score = len([i for i in y_pred==y_test if i]) / float(len(y_pred))
-        avg_scores.append(pred_score)
-    best_fold = avg_scores.index(np.max(avg_scores))
-    folds = [i for i in enumerate(loo)]
-    train = folds[best_fold][1][0]
-    test = folds[best_fold][1][1]
-    X_train, X_test = training_data[train], training_data[test]
-    y_train, y_test = cy[train], cy[test]
-    y_pred = pred_results[best_fold]
+#    avg_scores = []
+#    for y_pred, y_test in zip(pred_results, pred_true):
+#        pred_score = len([i for i in y_pred==y_test if i]) / float(len(y_pred))
+#        avg_scores.append(pred_score)
+#    best_fold = avg_scores.index(np.max(avg_scores))
+#    folds = [i for i in enumerate(loo)]
+#    train = folds[best_fold][1][0]
+#    test = folds[best_fold][1][1]
+#    X_train, X_test = training_data[train], training_data[test]
+#    y_train, y_test = cy[train], cy[test]
+#    y_pred = pred_results[best_fold]
 
 else:
     if cv_method=='LOGO':
@@ -1298,17 +1493,17 @@ plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax2, normalize=T
                       title='Normalized')
 
 #%
-figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
-pl.savefig(os.path.join(output_dir, figname))
+figname = '%s__confusion_%s_iters_3objects.png' % (classif_identifier, conf_mat_str)
+pl.savefig(os.path.join(classifier_dir, figname))
 
 
 #%
 
 # Save CV info:
 # -----------------------------------------------------------------------------
-cv_outfile = '%s__CV_report.txt' % classif_identifier
+cv_outfile = '%s__CV_report_2objects.txt' % classif_identifier
 
-f = open(os.path.join(output_dir, cv_outfile), 'w')
+f = open(os.path.join(classifier_dir, cv_outfile), 'w')
 f.write(metrics.classification_report(y_test, y_pred, target_names=[str(c) for c in class_labels]))
 f.close()
 
@@ -1317,10 +1512,10 @@ cv_results = {'predicted': list(y_pred),
               'classifier': classifier,
               'cv_method': cv_method,
               'ngroups': cv_ngroups,
-              'nfolds': 1
+              'nfolds': cv_nfolds
               }
-cv_resultsfile = '%s__CV_results.json' % classif_identifier
-with open(os.path.join(output_dir, cv_resultsfile), 'w') as f:
+cv_resultsfile = '%s__CV_results_3objects.json' % classif_identifier
+with open(os.path.join(classifier_dir, cv_resultsfile), 'w') as f:
     json.dump(cv_results, f, sort_keys=True, indent=4)
 
 
@@ -1329,6 +1524,9 @@ with open(os.path.join(output_dir, cv_resultsfile), 'w') as f:
 #        print ('Max auc_roc:', svc.scores_[c].mean(axis=0).max())
  
 #%% 
+    
+# Visualize feature weights:
+# =============================================================================
     
 # svc.coef_ :  array of shape [n_classes, n_features] (if n_classes=2, shape [n_features])
 # svc.coef_ :  array of shape [n_classes, n_features] (if n_classes=2, shape [n_features])
@@ -1341,48 +1539,229 @@ def print_top10(vectorizer, clf, class_labels):
         print("%s: %s" % (class_label,
               " ".join(feature_names[j] for j in top10)))
 
-def plot_coefficients(classifier, feature_names, top_features=20):
-    coef = classifier.coef_.ravel()
+def plot_coefficients(classifier, feature_names, class_idx=0, top_features=20):
+    if len(classifier.classes_) >= 3:
+        coef = classifier.coef_[class_idx, :].ravel()
+    else:
+        coef = classifier.coef_.ravel()
     top_positive_coefficients = np.argsort(coef)[-top_features:]
     top_negative_coefficients = np.argsort(coef)[:top_features]
     top_coefficients = np.hstack([top_negative_coefficients, top_positive_coefficients])
     # create plot
+    sns.set_style('white')
     pl.figure(figsize=(15, 5))
-    colors = ['red' if c < 0 else 'blue' for c in coef[top_coefficients]]
-    pl.bar(np.arange(2 * top_features), coef[top_coefficients], color=colors)
+    colors = ['r' if c < 0 else 'b' for c in coef[top_coefficients]]
+    sns.barplot(np.arange(2 * top_features), coef[top_coefficients], palette=colors) #colors)
+    sns.despine(offset=4, trim=True)
+
     feature_names = np.array(feature_names)
-    pl.xticks(np.arange(1, 1 + 2 * top_features), feature_names[top_coefficients], rotation=60, ha='right')
+    pl.xticks(np.arange(0, 1 + 2 * top_features), feature_names[top_coefficients], rotation=45, ha='right')
+    pl.title('Sorted weights (top %i), class %i' % (top_features, class_idx))
  #plt.show()
 
 #plot_coefficients(svc, svc.classes_)
 
-weights = svc.coef_[0,:]
-sorted_weights = np.argsort(weights)[::-1]
-#pl.plot(weights[sorted_weights])
-
-
-sorted_weight_matrix = np.empty(svc.coef_.shape)
-for ci,cv in enumerate(svc.classes_):
-    sorted_weight_matrix[ci,:] = svc.coef_[ci,sorted_weights]
+def plot_weight_matrix(svc, absolute_value=True):
+        
+    if absolute_value:
+        weight_values_ref = np.abs(svc.coef_[0,:])
+        cmap='magma'
+    else:
+        weight_values_ref = svc.coef_[0]
+        cmap='RdBu'
+        
+    sorted_weights = np.argsort(weight_values_ref)[::-1]
     
-fig, ax = pl.subplots(figsize=(50,5))
-cbar_ax = fig.add_axes([.905, .3, .005, .5])
-g = sns.heatmap(sorted_weight_matrix, cmap='magma', ax=ax, cbar_ax = cbar_ax, cbar=True)
+    sorted_weight_matrix = np.empty(svc.coef_.shape)
+    if len(svc.classes_) < 3:
+        if absolute_value:
+            sorted_weight_matrix[0,:] = np.abs(svc.coef_[0,sorted_weights])
+        else:
+            sorted_weight_matrix[0,:] = svc.coef_[0,sorted_weights]
+    else:
+        for ci,cv in enumerate(svc.classes_):
+            if absolute_value:
+                sorted_weight_matrix[ci,:] = np.abs(svc.coef_[ci,sorted_weights])
+            else:
+                sorted_weight_matrix[ci,:] = svc.coef_[ci,sorted_weights]
+        
+    fig, ax = pl.subplots(figsize=(50,5))
+    cbar_ax = fig.add_axes([.905, .3, .005, .5])
+    g = sns.heatmap(sorted_weight_matrix, cmap=cmap, ax=ax, cbar_ax = cbar_ax, cbar=True)
+    for li,label in enumerate(g.get_xticklabels()):
+        if li % 20 == 0:
+            continue
+        label.set_visible(False)
+    g.set_xticklabels(g.get_xticklabels(), rotation=45, fontsize=8)
+    box = g.get_position()
+    g.set_position([box.x0, box.y0 + box.height * 0.2,
+                     box.width, box.height * 0.8])
+    g.set_xlabel('features')
+    g.set_ylabel('class')
+    if absolute_value:
+        g.set_title('abs(coef), sorted by class 0')
+    else:
+        g.set_title('coefs, sorted by class 0')
 
-for li,label in enumerate(g.get_xticklabels()):
-    if li % 20 == 0:
-        continue
-    label.set_visible(False)
-g.set_xticklabels(g.get_xticklabels(), rotation=45, fontsize=8)
 
-box = g.get_position()
-g.set_position([box.x0, box.y0 + box.height * 0.2,
-                 box.width, box.height * 0.8])
+#%%
+# Sort the weights by their strength, take out bottom N rois, iterate.
+
+plot_weight_matrix(svc, absolute_value=True)
+pl.savefig(os.path.join(classifier_dir, 'sorted_weights_abs.png'))
+pl.close()
+
+plot_weight_matrix(svc, absolute_value=False)
+pl.savefig(os.path.join(classifier_dir, 'sorted_weights_raw.png'))
+pl.close()
+
+nrois = len(run_info['roi_list'])
+for class_idx in range(len(svc.classes_)):
+    plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
+    pl.savefig(os.path.join(classifier_dir, 'sorted_feature_weights_%s.png' % class_idx))
+    pl.close()
+
+
+
+#%%
+
+#from sklearn.feature_extraction.text import CountVectorizer
+
+#from sklearn.feature_selection import SelectFromModel
+
+#
+#svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C).fit(cX_std, cy)
+#model = SelectFromModel(svc, prefit=True) 
+#X_new = model.transform(cX_std) 
+#print(X_new.shape) 
+#print(model.get_support())
+#
+#nrois_total = cX_std.shape[-1]
+#
+#from sklearn.feature_selection import RFECV
+from sklearn.feature_selection import RFE
+#
+## For each class, only take the top 20 features:
+#svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+#svc.fit(cX_std, cy)
+#abs_weights = np.abs(svc.coef_[0])
+#sorted_rids = np.argsort(abs_weights)[::-1]
+#topN = sorted_rids[0:20]
+#lowN = sorted_rids[-20:]
+#
+#pl.figure()
+#curr_ixs = np.where(cy==0)[0]
+#
+#fig, axes = pl.subplots(1,2)
+#sns.heatmap(cX_std[:, topN], ax=axes[0], vmax=6.0)
+#sns.heatmap(cX_std[:, lowN], ax=axes[1], vmax=6.0)
+#
+#
+#
+#sns.heatmap(cX_std[curr_ixs, topN])
+#
+#sns.heatmap(cX_std[:, topN])
+
+
+#
+#kfold = StratifiedKFold(n_splits=5, shuffle=True)
+#
+## First train on full set:
+#estimator = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+#rfecv = RFECV(estimator, step=1, cv=kfold, scoring=scoring)
+#rfe = RFE(estimator, step=1, n_features_to_select=1)
+#print rfe.ranking_
+
+#rfecv = cross_val_score(estimator, cX_std, cy, cv=kfold, scoring=scoring)
+
+nrois_total = cX_std.shape[-1]
+
+split_half = False
+if split_half:
+    datasubset = 'halfset'
+    # SPlit into halves:
+    train_ixs=[]; test_ixs=[]
+    for c in np.unique(cy):
+        curr_ixs = np.where(cy==c)[0]
+        train_ixs.append(curr_ixs[0::2])
+        test_ixs.append(curr_ixs[1::2])
+        
+    train_ixs = np.hstack(train_ixs)
+    test_ixs = np.hstack(test_ixs)
     
-g.set_xlabel('sorted weights')
-g.set_ylabel('class')
+    train_data = cX_std[train_ixs,:]
+    train_labels = cy[train_ixs]
+    test_data = cX_std[test_ixs, :]
+    test_labels = cy[test_ixs]
 
-pl.savefig(os.path.join(output_dir, 'sorted_weights.png'))
+else:
+    datasubset = 'fullset'
+    train_data = cX_std.copy()
+    train_labels = cy.copy()
+    test_data = cX_std.copy()
+    test_labels = cy.copy()
+
+
+results_topN = []
+orig_rids = xrange(0, nrois_total)
+print len(orig_rids)
+
+svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+kfold = StratifiedKFold(n_splits=5, shuffle=False)
+
+# First, get accuracy with all features:
+rfe = RFE(svc, n_features_to_select=nrois_total)
+rfe.fit(train_data, train_labels)
+cv_results = cross_val_score(rfe, test_data, test_labels, cv=kfold, scoring=scoring)
+results_topN.append(cv_results)
+
+kept_rids_by_iter = []
+nfeatures_to_keep = np.arange(1, nrois_total, 1)
+for nkeep in nfeatures_to_keep[::-1]:
+    rfe = RFE(svc, n_features_to_select=nkeep)
+    #rfe.fit(cX_std, cy)
+    new_y = rfe.fit_transform(train_data, train_labels)
+
+    removed_rids = np.where(rfe.ranking_!=1)[0]
+    kept_rids = np.array([i for i in orig_rids if i not in removed_rids])
+    print "Keeping %i.... (%i)" % (nkeep, len(kept_rids))
+    kept_rids_by_iter.append(kept_rids)
+    cv_results = cross_val_score(rfe, test_data[:, kept_rids], test_labels, cv=kfold, scoring=scoring)
+    results_topN.append(cv_results)
+    
+
+
+
+# Plot number of features VS. cross-validation scores
+fig, ax = pl.subplots(1) #figure()
+pl.xlabel("Number of features selected")
+pl.ylabel("Cross validation score (nb of correct classifications)")
+#pl.plot(range(1, len(rfecv.grid_scores_) + 1), rfecv.grid_scores_)
+means_by_feat = np.mean(results_topN, axis=1)[::-1]
+sems_by_feat = stats.sem(results_topN, axis=1)[::-1]
+
+ax.plot(xrange(len(results_topN)), means_by_feat, linewidth=1, color='k')
+ax.fill_between(xrange(len(results_topN)), means_by_feat-sems_by_feat, means_by_feat+sems_by_feat, color='k', alpha=0.2)
+
+pl.title("Ranked features (recursive elim.)")
+ax.axhline(y=1./nclasses, linestyle='--', linewidth=1, color='k')
+# draw dotted line at chance level:
+
+#print("Optimal number of features : %d" % rfecv.n_features_)
+
+pl.show()
+
+pl.savefig(os.path.join(classifier_dir, 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
+
+# Save info:
+rfe_cv_info = {'kfold': kfold,
+          'rfe': rfe,
+          'results': results_topN,
+          'kept_rids_by_iter': kept_rids}
+
+with open(os.path.join(classifier_dir, 'RFE_cv_output_%s_%s.pkl' %  (scoring, datasubset)), 'wb') as f:
+    pkl.dump(rfe_cv_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+    
 
 
 #%%
@@ -1407,7 +1786,7 @@ pl.title('%s (decision functions)' % data_type)
 
 figname = '%s__decisionfunction.png' % classif_identifier
 
-pl.savefig(os.path.join(output_dir, figname))
+pl.savefig(os.path.join(classifier_dir, figname))
 
 
 #%%
@@ -1433,181 +1812,10 @@ pl.title('%s data proj onto normals' % data_type)
 
 figname = '%s__proj_normals.png' % classif_identifier
 
-pl.savefig(os.path.join(output_dir, figname))
-
-#%%
-
-
-
-# PCA:  reduce zscores projected onto normals
-# -----------------------------------------------------------------------------
-
-from sklearn.decomposition import PCA
-
-#pX = cdata.T # (n_samples, n_features)
-pca_data = 'projdata' #'projdata' # 'inputdata'
-
-if pca_data == 'inputdata':
-    pX = cX_std.copy()
-    py = cy.copy()
-
-elif pca_data == 'projdata':
-    pX = cdata.T #copy()
-    py = cy.copy() #svc.classes_
-    
-ncomps = 2
-
-pca = PCA(n_components=ncomps)
-principal_components = pca.fit_transform(pX)
-
-pca_df = pd.DataFrame(data=principal_components,
-                      columns=['pc%i' % int(i+1) for i in range(ncomps)])
-pca_df.shape
-
-labels_df = pd.DataFrame(data=py,
-                         columns=['target'])
-
-pdf = pd.concat([pca_df, labels_df], axis=1).reset_index()
-
-stimtype = sconfigs['config001']['stimtype']
-if class_name == 'ori':
-    curr_colors = sns.color_palette("hls", len(class_labels))
-else:
-    curr_colors = sns.color_palette("RdBu_r", len(class_labels))
-
-    
-#colors = ['r', 'orange', 'y', 'g', 'b', 'c', 'm', 'k']
-
-# Visualize 2D projection:
-fig = pl.figure(figsize = (8,8))
-ax = fig.add_subplot(1,1,1)
-ax.set_xlabel('Principal Component 1', fontsize = 15)
-ax.set_ylabel('Principal Component 2', fontsize = 15)
-ax.set_title('PCA-reduced k-D neural state for each tpoint', fontsize = 20)
-#for target, color in zip(orientations,colors):
-for target, color in zip(class_labels, curr_colors):
-
-    indicesToKeep = pdf['target'] == target
-    ax.scatter(pdf.loc[indicesToKeep, 'pc1'],
-               pdf.loc[indicesToKeep, 'pc2'],
-               c = color,
-               s = 50,
-               alpha=0.5)
-ax.legend(class_labels)
-ax.grid()
-
-pl.title('PCA, %s (%s)' % (pca_data, data_type))
-
-if pca_data == 'inputdata':
-    figname = 'PCA_%s_%s.png' % (pca_data, data_type)
-    pl.savefig(os.path.join(output_basedir, figname))
-elif pca_data == 'projdata':
-    figname = '%s__PCA_%s.png' % (classif_identifier, pca_data)
-    pl.savefig(os.path.join(output_dir, figname))
+pl.savefig(os.path.join(classifier_dir, figname))
 
 
 #%%
-
-# try t-SNE:
-# -----------------------------------------------------------------------------
-
-from sklearn.manifold import TSNE
-import time
-
-#pX = cdata.T # (n_samples, n_features)
-pca_data ='projdata' # 'inputdata'
-
-if pca_data == 'inputdata':
-    pX = cX_std.copy()
-    py = cy.copy()
-
-elif pca_data == 'projdata':
-    pX = np.array([svc.coef_[c].dot(cX_std.T) + svc.intercept_[c] for c in range(len(svc.classes_))]).T
-
-    py = cy.copy() #svc.classes_
-    
-print pX.shape
-
-
-if pca_data == 'inputdata':
-    tsne_df = pd.DataFrame(data=pX,
-                   index=np.arange(0, pX.shape[0]),
-                   columns=['r%i' % i for i in range(pX.shape[1])]) #(ori) for ori in orientations])
-    
-elif pca_data == 'projdata':
-    # Reduce PROJECTED data
-    tsne_df = pd.DataFrame(data=pX,
-                       index=np.arange(0, pX.shape[0]),
-                       columns=[str(label) for label in class_labels])
-
-feat_cols = [f for f in tsne_df.columns]
-
-# Visualize:
-#target_ids = range(len(digits.target_names))
-target_ids = range(len(class_labels))
-
-multi_run = True
-nruns = 4
-
-if multi_run is False:
-    nruns = 1
-
-perplexity = 100 #100# 40 #100 #5# 100
-niter = 3000 #5000
-
-colors = curr_colors # 'r', 'orange', 'y', 'g', 'c', 'b', 'm', 'k' #, 'purple'
-
-if multi_run:
-    fig, axes = pl.subplots(2, nruns/2, figsize=(12,8))
-    axes = axes.ravel().tolist()
-    for run in range(nruns):
-
-        time_start = time.time()
-        tsne = TSNE(n_components=2, verbose=1, perplexity=perplexity, n_iter=niter)
-        tsne_results = tsne.fit_transform(tsne_df[feat_cols].values)
-        print 't-SNE done! Time elapsed: {} seconds'.format(time.time()-time_start)
-
-        ax = axes[run]
-        print run
-        for i, c, label in zip(target_ids, colors, class_labels):
-            ax.scatter(tsne_results[py == int(label), 0], tsne_results[py == int(label), 1], c=c, label=label, alpha=0.5)
-            box = ax.get_position()
-            ax.set_position([box.x0 + box.width * 0.01, box.y0 + box.height * 0.02,
-                             box.width * 0.98, box.height * 0.98])
-
-else:
-
-    time_start = time.time()
-    tsne = TSNE(n_components=2, verbose=1, perplexity=perplexity, n_iter=niter)
-    tsne_results = tsne.fit_transform(tsne_df[feat_cols].values)
-    print 't-SNE done! Time elapsed: {} seconds'.format(time.time()-time_start)
-
-    fig, ax = pl.subplots(1, figsize=(6, 6))
-    colors = curr_colors # 'r', 'orange', 'y', 'g', 'c', 'b', 'm', 'k' #, 'purple'
-    #for i, c, label in zip(target_ids, colors, digits.target_names):
-    #    plt.scatter(X_2d[y == i, 0], X_2d[y == i, 1], c=c, label=label)
-    for i, c, label in zip(target_ids, colors, class_labels):
-        pl.scatter(tsne_results[cy == int(label), 0], tsne_results[cy == int(label), 1], c=c, label=label)
-        box = ax.get_position()
-        ax.set_position([box.x0 + box.width * 0.01, box.y0 + box.height * 0.02,
-                         box.width * 0.98, box.height * 0.98])
-
-# Put a legend below current axis
-pl.legend(loc=9, bbox_to_anchor=(-0.2, -0.15), ncol=len(class_labels))
-
-if pca_data == 'inputdata':
-    pl.suptitle('t-SNE, proj %s (%i-D rois) | px: %i, ni: %i' % (data_type, nrois, perplexity, niter))
-    figname = 'tSNE_%s_%irois_orderedT_pplex%i_niter%i_%iruns.png' % (data_type, nrois, perplexity, niter, nruns)
-    pl.savefig(os.path.join(output_basedir, figname))
-
-elif pca_data == 'projdata':
-    figname = 'tSNE_proj_onto_norm_%s_pplex%i_niter%i_%iruns_%s.png' % (data_type, perplexity, niter, nruns, classif_identifier)
-
-    if data_type == 'xcondsub':
-        pl.suptitle('t-SNE, proj norm (xcondsub time-series) | px: %i, ni: %i' %  (perplexity, niter))
-    else:
-        pl.suptitle('t-SNE: proj norm (%s) | px: %i, ni: %i' %  (data_type, perplexity, niter))
-    pl.savefig(os.path.join(output_dir, figname))
 
 
 
@@ -1616,14 +1824,13 @@ elif pca_data == 'projdata':
 # Save classifier:
  
     
-clf_fpath = os.path.join(output_dir, '%s_datasets.npz' % classif_identifier)
+clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
 np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
-             visual_rids=visual_rids,
              data_type=data_type,
-             sconfigs=sconfigs, zscore_values=zscore_values, meanstim_values=meanstim_values, meanstimdff_values=meanstimdff_values, run_info=run_info)
+             sconfigs=sconfigs, run_info=run_info)
 
 from sklearn.externals import joblib
-joblib.dump(output_dir, '%s.pkl' % classif_identifier, compress=9)
+joblib.dump(classifier_dir, '%s.pkl' % classif_identifier, compress=9)
  
 import sys
 clf_params = svc.get_params().copy()
@@ -1633,7 +1840,7 @@ if 'base_estimator' in clf_params.keys():
 clf_params['identifier'] = classif_identifier
 clf_params_hash = hash(json.dumps(clf_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
 
-with open(os.path.join(output_dir, 'params_%s.json' % clf_params_hash), 'w') as f:
+with open(os.path.join(classifier_dir, 'params_%s.json' % clf_params_hash), 'w') as f:
     json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
 
 #%%
@@ -1651,23 +1858,23 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
 # Select TRAINING data and classifier:
 # -----------------------------------------------------------------------------
-decoder = 'yrot'
-
-if decoder == 'yrot':
-    train_runid = 'blobs_run2' #'blobs_run2'
-    train_traceid = 'traces001'
-    train_cv= 'LOO'
-    classif_identifier = 'all_LinearSVC_meanstim_%s_5morphlevel_each_meanstim' % train_cv
-    
-elif decoder == 'xpos':
-    train_runid = 'blobs_run2' #'blobs_run2'
-    train_traceid = 'traces001'
-    classif_identifier = 'all_LinearSVC_meanstim_LOO_1groups_classes_25morphlevel_each_meanstim'
-    
-elif decoder == 'ori':
-    # sanity check: train on mean stim, test on frames:
-    train_runid = 'gratings_run1'; train_traceid = 'traces001';
-    test_runid = 'gratings_run1'; test_traceid = 'traces001';
+#decoder = 'yrot'
+#
+#if decoder == 'yrot':
+#    train_runid = 'blobs_run2' #'blobs_run2'
+#    train_traceid = 'traces001'
+#    train_cv= 'LOO'
+#    classif_identifier = 'all_LinearSVC_meanstim_%s_5morphlevel_each_meanstim' % train_cv
+#    
+#elif decoder == 'xpos':
+#    train_runid = 'blobs_run2' #'blobs_run2'
+#    train_traceid = 'traces001'
+#    classif_identifier = 'all_LinearSVC_meanstim_LOO_1groups_classes_25morphlevel_each_meanstim'
+#    
+#elif decoder == 'ori':
+#    # sanity check: train on mean stim, test on frames:
+#    train_runid = 'gratings_run1'; train_traceid = 'traces001';
+#    test_runid = 'gratings_run1'; test_traceid = 'traces001';
     
 
 
