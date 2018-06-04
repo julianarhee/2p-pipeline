@@ -33,6 +33,7 @@ def test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi='roi00
     pl.savefig(os.path.join(run_info['traceid_dir'], '%s_drift_correction.png' % test_roi))
     pl.show()
     
+    
 def test_smooth_frac(trace_df, smoothed_df, run_info, is_dff=True, test_roi='roi00001'):
     
     if is_dff:
@@ -84,6 +85,8 @@ def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.0
     print "Showing initial drift correction (quantile: %.2f)" % quantile
     print "Mean baseline for all ROIs:", np.mean(np.mean(F0_df, axis=0))
     test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi=test_roi)
+    if test_drift is False:
+        pl.close()
     
     if test_drift:
         confirm_drift = raw_input('Press <Y> if F0 drift is good. Otherwise, select NTRIALS to use as window (default: 3).')
@@ -119,7 +122,8 @@ def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.0
         print "Smoothing traces with fraction: ", frac
     else:
         util.test_file_smooth(run_info['traceid_dir'], use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir=data_basedir)
-
+        pl.close()
+        
     smoothed_df = None; smoothed_X = None;
     if smooth:
         print "smoothing..."
@@ -217,6 +221,7 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
     parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
     parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
+    parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
     parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
 
 
@@ -252,18 +257,24 @@ opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1
            '-T', 'np_subtracted', '--no-pupil',
            '-R', 'blobs_run1', '-t', 'traces001',
            '-n', '1']
+#
+#opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_run1', '-t', 'traces001',
+#           '-r', '18', '--smooth', '--iti=1.0', '--test-smooth']
 
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+
+opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_run1', '-t', 'traces001',
-           '-r', '18', '--smooth', '--iti=1.0', '--test-smooth']
-
+           '-R', 'blobs_dynamic_run6', '-t', 'traces001',
+           '-r', '18', '--smooth', '--iti=4.0', '--post=12.0', '--test-smooth']
 
 #%%
 
 def create_rdata_array(opts):
         
     optsE = extract_options(opts)
+    print optsE
     test_roi = 'roi%05d' % int(optsE.test_roi_id) 
     frac = float(optsE.frac)
     test_smoothing = optsE.test_smoothing
@@ -272,6 +283,10 @@ def create_rdata_array(opts):
     align_frames = optsE.align_frames
     create_new = optsE.create_new
     iti_pre = float(optsE.iti_pre)
+    iti_post = optsE.iti_post
+    if iti_post is not None:
+        iti_post = float(iti_post)
+        
     quantile = float(optsE.quantile)
     
     #
@@ -321,7 +336,8 @@ def create_rdata_array(opts):
         # =============================================================================
         paradigm_dir = os.path.join(run_dir, 'paradigm')
         si_info = get_frame_info(run_dir)
-        trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre)
+        trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+        configs, stimtype = acq.get_stimulus_configs(trial_info)
     
         print "-------------------------------------------------------------------"
         print "Getting frame indices for trial epochs..."

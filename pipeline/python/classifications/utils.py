@@ -271,7 +271,7 @@ def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt
     for fidx, dfn in enumerate(trace_fns):
         F0_df = None
         if fmt == 'pkl':
-            print "Loading... %s" % dfn
+            print "Collating... %s" % dfn
             with open(os.path.join(trace_arrays_dir, dfn), 'rb') as f:
                 filedf = pkl.load(f)
 
@@ -294,8 +294,10 @@ def collate_trials(traceid_dir, trace_type='raw', dff=False, smoothed=False, fmt
         #trials_in_block = trials_in_block[0:-1]
         # Check if this is a bad tif:
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+        if block_indexed is False:
+            frame_indices = frame_indices - len(frame_tsecs)*fidx
         if frame_indices[-1] > len(frame_tsecs):
-            print "Skipping last trial!"
+            print "Skipping last trial! %i extra frames" % (frame_indices[-1] - len(frame_tsecs))
             trials_in_block = trials_in_block[0:-1]
             skip_last_trial = True
     
