@@ -123,7 +123,7 @@ def load_parsed_trials(parsed_trials_path):
     return trialdict
 
 #%%
-def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
+def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_order=False):
     trial_epoch_info = {}
     run = os.path.split(os.path.split(paradigm_dir)[0])[-1] #options.run
 
@@ -196,7 +196,8 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, same_order=False):
         iti_durs = [round(trialdict[t]['iti_dur_ms']/1E3, 1) for t in trial_list]
         assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
         iti_full = iti_durs[0]
-        iti_post = iti_full - iti_pre
+        if iti_post is None:
+            iti_post = iti_full - iti_pre
         print "ITI POST: %i" % iti_post
 
         # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
@@ -1462,12 +1463,12 @@ def collate_roi_stats(METRICS, configs):
     return ROISTATS
 
 #%%
-def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0, create_new=False,
+def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0, iti_post=None, create_new=False,
                      filter_pupil=False, pupil_radius_min=None, pupil_radius_max=None, pupil_dist_thr=None):
     # Get paradigm/AUX info:
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
-    trial_info = get_alignment_specs(paradigm_dir, si_info, iti_pre)
+    trial_info = get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
