@@ -746,6 +746,10 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                 # If stimulus is an object, we should parse the image name into
                 # object ID + transform type and level:
                 if stimtype == 'image':
+                    # Figure out Morph IDX for 1st and last anchor image:
+                    mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
+                    anchor1 = mlevels[0]
+                    anchor2 = mlevels[-1]
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     if ('CamRot' in imname) and not('morph' in imname):
                         objectid = imname.split('_CamRot_')[0]
@@ -753,7 +757,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         if 'N1' in imname:
                             morphlevel = 0
                         elif 'N2' in imname:
-                            morphlevel = 22
+                            morphlevel = anchor2
                             
                     elif '_yRot' in imname:
                         # Real-world objects:  format is 'IDENTIFIER_xRot0_yRot0_xRot0'
@@ -778,6 +782,9 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                                 morphlevel = int(imname.split('_y')[0].split('morph')[-1])
                             
                 elif 'movie' in stimtype:
+                    mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
+                    anchor1 = mlevels[0]
+                    anchor2 = mlevels[-1]
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     objectid = imname.split('_movie')[0] #'_'.join(imname.split('_')[0:-1])
                     if 'reverse' in imname:
@@ -787,7 +794,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                     if imname.split('_')[1] == 'D1':
                         morphlevel = 0
                     elif imname.split('_')[1] == 'D2':
-                        morphlevel = 22
+                        morphlevel = anchor2
                     elif imname.split('_')[1][0] == 'M':
                         # Blob_M11_Rot_y_etc.
                         morphlevel = int(imname.split('_')[1][1:])
@@ -1330,6 +1337,9 @@ def format_stimconfigs(configs):
             stimconfigs[config].pop('rotation', None)
         else:
             transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype']
+            mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
+            anchor1 = mlevels[0]
+            anchor2 = mlevels[-1]
             if stimtype == 'image':
                 imname = os.path.splitext(configs[config]['filename'])[0]
                 if ('CamRot' in imname):
@@ -1338,7 +1348,7 @@ def format_stimconfigs(configs):
                     if 'N1' in imname or 'D1' in imname:
                         morphlevel = 0
                     elif 'N2' in imname or 'D2' in imname:
-                        morphlevel = 22
+                        morphlevel = anchor2
                     elif 'morph' in imname:
                         morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])   
                 elif '_zRot' in imname:
@@ -1366,7 +1376,7 @@ def format_stimconfigs(configs):
                 if imname.split('_')[1] == 'D1':
                     morphlevel = 0
                 elif imname.split('_')[1] == 'D2':
-                    morphlevel = 22
+                    morphlevel = anchor2
                 elif imname.split('_')[1][0] == 'M':
                     # Blob_M11_Rot_y_etc.
                     morphlevel = int(imname.split('_')[1][1:])

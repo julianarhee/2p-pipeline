@@ -956,6 +956,11 @@ def format_stimconfigs(configs):
             stimconfigs[config].pop('rotation', None)
         else:
             transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype']
+            # Figure out Morph IDX for 1st and last anchor image:
+            mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
+            anchor1 = mlevels[0]
+            anchor2 = mlevels[-1]
+
             if stimtype == 'image':
                 imname = os.path.splitext(configs[config]['filename'])[0]
                 if ('CamRot' in imname):
@@ -964,7 +969,7 @@ def format_stimconfigs(configs):
                     if 'N1' in imname or 'D1' in imname:
                         morphlevel = 0
                     elif 'N2' in imname or 'D2' in imname:
-                        morphlevel = 22
+                        morphlevel = anchor2
                     elif 'morph' in imname:
                         morphlevel = int(imname.split('_CamRot_y')[0].split('morph')[-1])   
                 elif '_zRot' in imname:
@@ -992,7 +997,7 @@ def format_stimconfigs(configs):
                 if imname.split('_')[1] == 'D1':
                     morphlevel = 0
                 elif imname.split('_')[1] == 'D2':
-                    morphlevel = 22
+                    morphlevel = anchor1
                 elif imname.split('_')[1][0] == 'M':
                     # Blob_M11_Rot_y_etc.
                     morphlevel = int(imname.split('_')[1][1:])
@@ -1372,8 +1377,8 @@ def sort_rois_2D(traceid_dir):
     return sorted_rids, cnts, zproj
 
 #
-def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.03, label=True, 
-                          draw_box=False, thickness=2, roi_color=(0, 255, 0), single_color=False):
+def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, 
+                          draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
