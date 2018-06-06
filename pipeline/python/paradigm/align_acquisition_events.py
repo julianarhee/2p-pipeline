@@ -745,11 +745,18 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
 
                 # If stimulus is an object, we should parse the image name into
                 # object ID + transform type and level:
-                if stimtype == 'image':
+                if stimtype != 'gratings':
                     # Figure out Morph IDX for 1st and last anchor image:
-                    mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
-                    anchor1 = mlevels[0]
+                    if os.path.splitext(configs[configs.keys()[0]]['filename'])[-1] == '.png':
+                        fns = [configs[c]['filename'] for c in configs.keys() if 'morph' in configs[c]['filename']]
+                        mlevels = sorted(list(set([int(fn.split('_')[0][5:]) for fn in fns])))
+                    elif 'fps' in configs[configs.keys()[0]].keys():
+                        fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
+                        mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
+                    #print "FN parsed:", fns[0].split('_')
                     anchor2 = mlevels[-1]
+            
+                if stimtype == 'image':
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     if ('CamRot' in imname) and not('morph' in imname):
                         objectid = imname.split('_CamRot_')[0]
@@ -782,9 +789,6 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                                 morphlevel = int(imname.split('_y')[0].split('morph')[-1])
                             
                 elif 'movie' in stimtype:
-                    mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
-                    anchor1 = mlevels[0]
-                    anchor2 = mlevels[-1]
                     imname = os.path.splitext(configs[configname]['filename'])[0]
                     objectid = imname.split('_movie')[0] #'_'.join(imname.split('_')[0:-1])
                     if 'reverse' in imname:
@@ -1337,9 +1341,17 @@ def format_stimconfigs(configs):
             stimconfigs[config].pop('rotation', None)
         else:
             transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype']
-            mlevels = sorted(list(set(configs[c]['morphlevel'] for c in configs.keys())))
-            anchor1 = mlevels[0]
+            
+            # FIgure out which is the LAST morph, i.e., last anchor:
+            if os.path.splitext(configs[configs.keys()[0]]['filename'])[-1] == '.png':
+                fns = [configs[c]['filename'] for c in configs.keys() if 'morph' in configs[c]['filename']]
+                mlevels = sorted(list(set([int(fn.split('_')[0][5:]) for fn in fns])))
+            elif 'fps' in configs[configs.keys()[0]].keys():
+                fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
+                mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
+            #print "FN parsed:", fns[0].split('_')
             anchor2 = mlevels[-1]
+            
             if stimtype == 'image':
                 imname = os.path.splitext(configs[config]['filename'])[0]
                 if ('CamRot' in imname):
