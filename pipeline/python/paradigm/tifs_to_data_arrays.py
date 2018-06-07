@@ -17,53 +17,114 @@ import seaborn as sns
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.traces.utils import get_frame_info
-from pipeline.python.classifications import utils as util
+from pipeline.python.paradigm import utils as util
+#
+#def test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi='roi00001',):
+#    
+#    #test_roi = 'roi%05d' % int(roi_id)
+#    # Check data:
+#    nframes_per_trial = run_info['nframes_per_trial']
+#    ntrials_per_file = run_info['ntrials_total'] / run_info['nfiles']
+#    fig = pl.figure(figsize=(60, 10))
+#    pl.plot(raw_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='raw')
+#    pl.plot(F0_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='drift')
+#    pl.plot(corrected_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='corrected')
+#    pl.legend()
+#    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_drift_correction.png' % test_roi))
+#    pl.show()
+    
+    
+#def test_smooth_frac(trace_df, smoothed_df, run_info, is_dff=True, test_roi='roi00001'):
+#    
+#    if is_dff:
+#        trace_label = 'df/f'
+#    else:
+#        trace_label = 'raw (F0)'
+#        
+#    nframes_per_trial = run_info['nframes_per_trial']
+#    ntrials_per_file = run_info['ntrials_total'] / run_info['nfiles']
+#    
+#    # Check smoothing
+#    fig = pl.figure(figsize=(20, 5))
+#    pl.plot(trace_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'k', label=trace_label)
+#    pl.plot(smoothed_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'r', label='smoothed')
+#    pl.legend()
+#    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_dff_smoothed.png' % test_roi))
+#    pl.show()
+#   
+#    fig = pl.figure(figsize=(20, 5))
+#    pl.plot(trace_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'k', label=trace_label)
+#    pl.plot(smoothed_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'r', label='smoothed')
+#    pl.legend()
+#    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_dff_smoothed.png' % test_roi))
+#    pl.show()
 
-def test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi='roi00001',):
-    
-    #test_roi = 'roi%05d' % int(roi_id)
-    # Check data:
-    nframes_per_trial = run_info['nframes_per_trial']
-    ntrials_per_file = run_info['ntrials_total'] / run_info['nfiles']
-    fig = pl.figure(figsize=(60, 10))
-    pl.plot(raw_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='raw')
-    pl.plot(F0_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='drift')
-    pl.plot(corrected_df[test_roi][0:nframes_per_trial*ntrials_per_file], label='corrected')
-    pl.legend()
-    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_drift_correction.png' % test_roi))
-    pl.show()
-    
-    
-def test_smooth_frac(trace_df, smoothed_df, run_info, is_dff=True, test_roi='roi00001'):
-    
-    if is_dff:
-        trace_label = 'df/f'
-    else:
-        trace_label = 'raw (F0)'
-        
-    nframes_per_trial = run_info['nframes_per_trial']
-    ntrials_per_file = run_info['ntrials_total'] / run_info['nfiles']
-    
-    # Check smoothing
-    fig = pl.figure(figsize=(20, 5))
-    pl.plot(trace_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'k', label=trace_label)
-    pl.plot(smoothed_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'r', label='smoothed')
-    pl.legend()
-    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_dff_smoothed.png' % test_roi))
-    pl.show()
-   
-    fig = pl.figure(figsize=(20, 5))
-    pl.plot(trace_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'k', label=trace_label)
-    pl.plot(smoothed_df[test_roi][0:nframes_per_trial*ntrials_per_file], 'r', label='smoothed')
-    pl.legend()
-    pl.savefig(os.path.join(run_info['traceid_dir'], '%s_dff_smoothed.png' % test_roi))
-    pl.show()
-   
 
-def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.01, smooth=False, test_roi='roi00001', quantile=0.08):
+
+opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_run3', '-t', 'traces002',
+           '--new', '--align', 
+           '--iti=1.0', '--post=4.8', 
+           '-q', '0.2', 
+           '--frac=0.01', '--raw',
+           '--format=hdf5',
+           '--no-pupil']
+#
+#optsE = extract_options(options)
+#run = optsE.run_list[0]
+#traceid = optsE.traceid_list[0]
+#acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+#traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#
+#
+#quantile = float(optsE.quantile)
+#window_size_sec = optsE.window_size_sec
+#if window_size_sec is not None:
+#    window_size_sec = float(window_size_sec)
+#frac = float(optsE.frac)
+#
+#create_new = optsE.quantile
+#fmt = optsE.format
+#
+#
+#_, corrected_df, F0_df = util.get_processed_run(traceid_dir, quantile=quantile, window_size_sec=window_size_sec, 
+#                                                    create_new=create_new, fmt=fmt, user_test=True)      
+#
+#smoothed_X = util.get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=frac,
+#                                                   create_new=create_new, fmt=fmt, user_test=True)   
+#
+#
+#
+#optsE = extract_options(options)
+#run = optsE.run_list[0]
+#traceid = optsE.traceid_list[0]
+#acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+#traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#
+#
+#quantile = float(optsE.quantile)
+#window_size_sec = optsE.window_size_sec
+#if window_size_sec is not None:
+#    window_size_sec = float(window_size_sec)
+#frac = float(optsE.frac)
+#
+#create_new = optsE.quantile
+#fmt = optsE.format
+#
+
+    
+    
+#%%
+
+    
+def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=False,
+                           quantile=0.2, window_size_sec=None, test_drift=False, 
+                           smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001'):
     
     # Extract raw trace arrays from the hdf5 files (created in traces/get_traces.py)
-    run_info, stimconfigs, labels_df, raw_df = util.get_run_details(options, create_new=True)
+    run_info, stimconfigs, labels_df, raw_df = util.load_raw_run(traceid_dir, trace_type=trace_type, create_new=create_new, fmt=fmt)
+    
     
     # Set data array output dir:
     data_basedir = os.path.join(run_info['traceid_dir'], 'data_arrays')
@@ -78,62 +139,22 @@ def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.0
         
     
     # Get processed traces:
-    print "Getting processed traces!"
-    _, corrected_df, F0_df = util.load_roiXtrials_df(run_info['traceid_dir'], trace_type='processed', dff=False, smoothed=False, quantile=quantile)
+    _, corrected_df, F0_df = util.get_processed_run(traceid_dir, quantile=quantile, window_size_sec=window_size_sec, 
+                                                        create_new=create_new, fmt=fmt, user_test=test_drift)      
+    dumb_dff=True
+    if dumb_dff:
+        dff_df = corrected_df/F0_df
+#    else:
+#        dff_df = calculate_dff_by_trial(corrected_df, F0_df, run_info)
+#        
 
-    # Check data:
-    print "Showing initial drift correction (quantile: %.2f)" % quantile
-    print "Mean baseline for all ROIs:", np.mean(np.mean(F0_df, axis=0))
-    test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi=test_roi)
-    if test_drift is False:
-        pl.close()
-    
-    if test_drift:
-        confirm_drift = raw_input('Press <Y> if F0 drift is good. Otherwise, select NTRIALS to use as window (default: 3).')
-        quantile_sel = raw_input('Press <Y> if F0 drift is good. Otherwise, select QUANTILE to use as baseline (default: 0.08).')
-
-        if confirm_drift=='Y':
-            pl.close()
-        else:
-            while True:
-                window_ntrials = int(confirm_drift)
-                quantile = float(quantile_sel)
-                print "Selected %i trials to use for calculating rolling %.3f percentile..." % (window_ntrials, quantile)
-                _, corrected_df, F0_df = util.load_roiXtrials_df(run_info['traceid_dir'], trace_type='processed', dff=False, smoothed=False, 
-                                                                     window_ntrials=window_ntrials, quantile=quantile, create_new=True)
-                test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi=test_roi)
-                print "Showing initial drift correction (quantile: %.2f)" % quantile
-                print "Mean baseline for all ROIs:", np.mean(np.mean(F0_df, axis=0))
-                confirm_drift = raw_input('Press <Y> if F0 calculation is good. Otherwise, select ntrials to use as window.')
-                quantile_sel = raw_input('Press <Y> if F0 drift is good. Otherwise, select QUANTILE to use as baseline (default: 0.08).')
-
-                if confirm_drift=='Y':
-                    break
-
-    # Get df/f (F-measured and F-0 already calculated from PROCESSED traces extraction)
-    _, dff_df, _ = util.load_roiXtrials_df(run_info['traceid_dir'], trace_type='processed', dff=True, smoothed=False)
-
-    # Test fraction ranges for smoothing trace:
-    if test_smoothing:                
-        util.test_file_smooth(run_info['traceid_dir'], use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=False) #, output_dir=data_basedir)
-        get_frac = input('Enter fraction to use for smoothing: ')
-        print get_frac
-        frac = float(get_frac)
-        print "Smoothing traces with fraction: ", frac
-    else:
-        util.test_file_smooth(run_info['traceid_dir'], use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir=data_basedir)
-        pl.close()
-        
-    smoothed_df = None; smoothed_X = None;
     if smooth:
-        print "smoothing..."
-        # Smooth df/f and measured traces using test value above:
-        _, smoothed_df, _ = util.load_roiXtrials_df(run_info['traceid_dir'], trace_type='processed', dff=True, smoothed=True, frac=frac)
-        _, smoothed_X, _ = util.load_roiXtrials_df(run_info['traceid_dir'], trace_type='processed', dff=False, smoothed=True, frac=frac)
+        smoothed_X = util.get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=frac,
+                                                   create_new=create_new, fmt=fmt, user_test=test_smoothing)   
+        smoothed_DF = util.get_smoothed_run(traceid_dir, trace_type='processed', dff=True, frac=frac,
+                                                   create_new=create_new, fmt=fmt, user_test=test_smoothing)   
+            
 
-        test_smooth_frac(dff_df, smoothed_df, run_info, is_dff=True, test_roi=test_roi)
-
-    
     # Get label info:
     sconfigs = util.format_stimconfigs(stimconfigs)
 
@@ -166,14 +187,16 @@ def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.0
     print "Saving processed data...", data_fpath
     np.savez(data_fpath, 
              raw=raw_df,
-             smoothedDF=smoothed_df,
+             smoothedDF=smoothed_DF,
              smoothedX=smoothed_X,
+             dff=dff_df,
+             corrected=corrected_df,
+             F0=F0_df,
              frac=frac,
+             quantile=quantile,
              tsecs=tsecs,
              groups=groups,
              ylabels=ylabels,
-             dff=dff_df,
-             corrected=corrected_df,
              sconfigs=sconfigs, 
              meanstim=meanstim_values, 
              zscore=zscore_values,
@@ -185,6 +208,12 @@ def create_data_arrays(options, test_drift=False, test_smoothing=False, frac=0.0
     return dataset
 
 
+#%%
+    
+#def calculate_dff_by_trial(corrected_df, F0_df, run_info):
+    
+
+#%%
 def extract_options(options):
 
     parser = optparse.OptionParser()
@@ -201,7 +230,7 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
+                          default='np_subtracted', help="trace type [default: 'np_subtracted']")
     parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
                           action='append',
                           help="run ID in order of runs")
@@ -214,7 +243,7 @@ def extract_options(options):
 
     parser.add_option('--frac', action='store', dest='frac', default=0.01, help="Fraction of trace to use for lowess smoothing [default: 0.01]")
     parser.add_option('-r', '--roi', action='store', dest='test_roi_id', default=1, help="Roi ID to use for tests [default: 1]")
-    parser.add_option('--smooth', action='store_true', dest='smooth', default=False, help="Set flag to smooth traces")
+    parser.add_option('--raw', action='store_false', dest='smooth', default=True, help="Set flag to smooth traces")
     parser.add_option('--test-smooth', action='store_true', dest='test_smoothing', default=False, help="Set flag to test frac ranges for smoothing traces")
     parser.add_option('--test-drift', action='store_true', dest='test_drift', default=False, help="Set flag to inspect drift correction for F0 calculation")
 
@@ -222,7 +251,10 @@ def extract_options(options):
     parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
     parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
     parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
-    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
+    parser.add_option('-q', '--quantile', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
+    parser.add_option('-w', '--window', action='store', dest='window_size_sec', default=None, help="Size of window for F0 calculation (default: 3*trial_dur_sec)")
+
+    parser.add_option('-f', '--format', action='store', dest='format', default='hdf5', help="File format to use for data arrays (default: hdf5)")
 
 
 
@@ -242,72 +274,44 @@ def extract_options(options):
     return options
 
 #%%
-    
-#rootdir = '/mnt/odyssey'
-#animalid = 'CE077'
-#session = '20180521'
-#acquisition = 'FOV2_zoom1x'
-#run = 'gratings_run1'
-#traceid = 'traces001'
-#run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-#iti_pre = 1.0
-#
 
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run1', '-t', 'traces001',
-           '-n', '1']
-#
-#opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_run1', '-t', 'traces001',
-#           '-r', '18', '--smooth', '--iti=1.0', '--test-smooth']
-
-
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_dynamic_run6', '-t', 'traces001',
-           '-r', '18', '--smooth', '--iti=4.0', '--post=12.0', '--test-smooth']
 
 #%%
 
 def create_rdata_array(opts):
         
     optsE = extract_options(opts)
-    print optsE
-    test_roi = 'roi%05d' % int(optsE.test_roi_id) 
-    frac = float(optsE.frac)
+    create_new = optsE.create_new
+
     test_smoothing = optsE.test_smoothing
     test_drift = optsE.test_drift
+
     smooth = optsE.smooth
+    quantile = float(optsE.quantile)
+    window_size_sec = optsE.window_size_sec
+    if window_size_sec is not None:
+        window_size_sec = float(window_size_sec)
+    frac = float(optsE.frac)
+    
     align_frames = optsE.align_frames
-    create_new = optsE.create_new
     iti_pre = float(optsE.iti_pre)
     iti_post = optsE.iti_post
     if iti_post is not None:
         iti_post = float(iti_post)
         
-    quantile = float(optsE.quantile)
-    
-    #
-    options = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session, 
-               '-A', optsE.acquisition,
-               '-T', optsE.trace_type,
-               '-R', optsE.run_list[0], '-t', optsE.traceid_list[0],
-               '-n', optsE.nruns,
-               '-q', optsE.quantile]
-    if optsE.filter_pupil is False:
-        options.extend(['--no-pupil'])
-        
+    run = optsE.run_list[0]
+    traceid = optsE.traceid_list[0]
+    trace_type = optsE.trace_type
 
+    fmt = optsE.format
 
-    #test_roi = 'roi00001'
-    #frac = 0.01
-    #test_smoothing = True
-    #test_drift = True
+    test_roi = 'roi%05d' % int(optsE.test_roi_id) 
     
-    traceid_dir = util.get_traceid_dir(options)
-    
+
+    #% Set up paths:    
+    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+    traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+
     # Set data array output dir:
     data_basedir = os.path.join(traceid_dir, 'data_arrays')
     if not os.path.exists(data_basedir):
@@ -325,28 +329,32 @@ def create_rdata_array(opts):
             dataset = np.load(data_fpath)
             print "Loaded existing datafile:\n%s" % data_fpath
             print dataset.keys()
+            return data_fpath
         except Exception as e:
-            create_new = True
-            
-    if create_new:
-        
-        run_dir = traceid_dir.split('/traces')[0]
-        
-        # Get paradigm/AUX info:
-        # =============================================================================
-        paradigm_dir = os.path.join(run_dir, 'paradigm')
-        si_info = get_frame_info(run_dir)
-        trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
-        configs, stimtype = acq.get_stimulus_configs(trial_info)
-    
-        print "-------------------------------------------------------------------"
-        print "Getting frame indices for trial epochs..."
-        parsed_frames_filepath = acq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=align_frames)
-        print "Finished aligning frames to trial structure (iti pre = %i)" % iti_pre
-        print "Saved parsed frames to: %s" % parsed_frames_filepath
-        
-        dataset = create_data_arrays(options, test_drift=test_drift, test_smoothing=test_smoothing, frac=frac, test_roi=test_roi, smooth=smooth)
+            print "Unable to find dataset.npz."
+            #create_new = True
 
+    
+    run_dir = traceid_dir.split('/traces')[0]
+    
+    # Get paradigm/AUX info:
+    # =============================================================================
+    paradigm_dir = os.path.join(run_dir, 'paradigm')
+    si_info = get_frame_info(run_dir)
+    trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+    configs, stimtype = acq.get_stimulus_configs(trial_info)
+
+    print "-------------------------------------------------------------------"
+    print "Getting frame indices for trial epochs..."
+    parsed_frames_filepath = acq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=align_frames)
+    print "Finished aligning frames to trial structure (iti pre = %i)" % iti_pre
+    print "Saved parsed frames to: %s" % parsed_frames_filepath
+    
+    #dataset = create_data_arrays(options, test_drift=test_drift, test_smoothing=test_smoothing, test_roi=test_roi, smooth=smooth)
+    create_data_arrays(traceid_dir, trace_type=trace_type, fmt=fmt, create_new=create_new,
+                       quantile=quantile, window_size_sec=window_size_sec, test_drift=test_drift, 
+                       smooth=smooth, frac=frac, test_smoothing=test_smoothing, test_roi=test_roi)
+    
     return data_fpath
 #%
 

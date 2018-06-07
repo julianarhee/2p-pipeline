@@ -754,7 +754,12 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
                         mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
                     #print "FN parsed:", fns[0].split('_')
-                    anchor2 = mlevels[-1]
+                    if mlevels[-1] > 22:
+                        anchor2 = 106
+                    else:
+                        anchor2 = 22
+                    assert all([anchor2 > m for m in mlevels]), "Possibly incorrect morphlevel assignment (%i). Found morphs %s." % (anchor2, str(mlevels))
+
             
                 if stimtype == 'image':
                     imname = os.path.splitext(configs[configname]['filename'])[0]
@@ -1350,7 +1355,12 @@ def format_stimconfigs(configs):
                 fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
                 mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
             #print "FN parsed:", fns[0].split('_')
-            anchor2 = mlevels[-1]
+            if mlevels[-1] > 22:
+                anchor2 = 106
+            else:
+                anchor2 = 22
+            assert all([anchor2 > m for m in mlevels]), "Possibly incorrect morphlevel assignment (%i). Found morphs %s." % (anchor2, str(mlevels))
+
             
             if stimtype == 'image':
                 imname = os.path.splitext(configs[config]['filename'])[0]
