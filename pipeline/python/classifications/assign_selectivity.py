@@ -16,6 +16,9 @@ import cv2
 import time
 import math
 import optparse
+import imutils
+import datetime
+
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -866,7 +869,7 @@ def get_reference_config(Cmax_overall, trans_types, transform_dict):
 
 #%% SELECTIVITY -- calculate a sparseness measure:
 
-def assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, 
+def assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, selective_rois_anova, 
                           metric='meanstimdf', plot=True, use_best_ref=False):
     
     trans_types = [trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1]
@@ -899,7 +902,7 @@ def assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual,
     
     if new_sorting or plot:
         hist_sparseness_index(sparseness, metric=metric, sort_dir=sort_dir, save_and_close=True)
-        normalize_rank_ordered_responses(sparseness, sorted_visual, sort_dir=sort_dir, save_and_close=False)
+        normalize_rank_ordered_responses(sparseness, sorted_visual, selective_rois_anova, sort_dir=sort_dir, save_and_close=True)
         
     return sparseness
 
@@ -943,14 +946,6 @@ def calc_sparseness(df, trans_types, transform_dict, metric='meanstimdf', use_be
         for best_trans in Cref.keys():
             if best_trans in object_resp_df.keys().names:
                 object_resp_df = object_resp_df.xs(Cref[best_trans], level=best_trans)  
-    #    if 'xpos' in trans_types:
-    #        object_resp_df = object_resp_df.xs(Cref['xpos'], level='xpos')
-    #    if 'ypos' in trans_types:
-    #        object_resp_df = object_resp_df.xs(Cref['ypos'], level='ypos')
-    #    if 'size' in trans_types:
-    #        object_resp_df = object_resp_df.xs(Cref['size'], level='size')
-    #    if 'sf' in trans_types:
-    #        object_resp_df = object_resp_df.xs(Cref['sf'], level='sf')
 
     # TODO:  what to do if stim_df values are negative??
     if all(object_resp_df.values < 0):
@@ -958,15 +953,15 @@ def calc_sparseness(df, trans_types, transform_dict, metric='meanstimdf', use_be
     else:
         object_list = object_resp_df.index.tolist()
         nobjects = float(len(object_list))
-        t1a = object_resp_df.mean()**2.
-        t1b = sum([ ((object_resp_df[i]**2) / nobjects) for i in object_list])
-        #t1b = object_resp_df.std()**2 + object_resp_df.mean()**2
-        
-#        t1a = f.mean()**2
-#        t1b = sum([((i**2) / nobjects) for i in f])
-        a = t1a/t1b
-        S = (1. - a) / (1. - (1./nobjects) )
-
+        #t1a = object_resp_df.mean()**2.
+        #t1b = sum([ (object_resp_df[i]**2) for i in object_list]) * nobjects
+        #t1b = sum([ (object_resp_df[i]**2)/nobjects for i in object_list])
+        #a = t1a/t1b
+        #S = (1. - a) / (1. - (1./nobjects) )
+        num = sum( [ float(object_resp_df[i])/nobjects for i in object_list ]) **2
+        denom = sum( (object_resp_df[i]**2 / nobjects) for v in object_list )
+        S = (nobjects / (nobjects - 1.)) * (1. - (num/denom))
+    
     sparseness_ref = {'S': S, 'object_responses': object_resp_df}
 
     return sparseness_ref
@@ -1043,7 +1038,8 @@ def hist_sparseness_index(sparseness, metric='meanstimdf', sort_dir='/tmp',
     pl.axvline(x=s_bounds[1], linewidth=2, linestyle='--', color=lowS_color)
     pl.axvline(x=s_bounds[2], linewidth=2, linestyle='--', color=highS_color) #'r')
     pl.xlim([0, 1])
-    figname = 'hist_sparseness_%s.png' % metric
+    datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+    figname = 'hist_sparseness_%s_%s.png' % (metric, datestring)
     
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', figname))
@@ -1051,7 +1047,7 @@ def hist_sparseness_index(sparseness, metric='meanstimdf', sort_dir='/tmp',
     
     return figname
     
-def normalize_rank_ordered_responses(sparseness, sorted_visual, 
+def normalize_rank_ordered_responses(sparseness, sorted_visual, selective_rois_anova,
                                          metric='meanstimdf',
                                          sort_dir='/tmp', 
                                          save_and_close=True, 
@@ -1092,7 +1088,8 @@ def normalize_rank_ordered_responses(sparseness, sorted_visual,
     lowS_exs = strong_rois[sorted_sparse[:5]]
     sparse_examples = {'highS': list(highS_exs), 'lowS': list(lowS_exs)}
     
-    with open(os.path.join(sort_dir, 'figures', 'sparse_examples.json'), 'w') as f:
+    datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+    with open(os.path.join(sort_dir, 'figures', 'sparse_examples_%s.json' % datestring), 'w') as f:
         json.dump(sparse_examples, f, indent=4)
     
     lowS_ex = 'roi00114' #lowS_exs[1]
@@ -1120,7 +1117,7 @@ def normalize_rank_ordered_responses(sparseness, sorted_visual,
     pl.xlim([0, 25])
     
     pl.title('Normalized %s across ranked objects' % metric)
-    figname = 'ranked_normed_dff_%s_L_%s_H_%s.pdf' % (metric, lowS_ex, highS_ex)
+    figname = 'ranked_normed_dff_%s_L_%s_H_%s_%s.pdf' % (metric, lowS_ex, highS_ex, datestring)
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', figname))
         pl.close()
@@ -1128,23 +1125,43 @@ def normalize_rank_ordered_responses(sparseness, sorted_visual,
     
     mean_vals = sparseness[highS_ex]['object_responses'].values
     s = sparseness[highS_ex]['object_responses']
-    val_array = np.reshape(mean_vals, (len(s.index.levels[0]), len(s.index.levels[1])))
+    if hasattr(s.index, 'levels'):
+        val_array = np.reshape(mean_vals, (len(s.index.levels[0]), len(s.index.levels[1])))
+        ylabels = s.index.levels[0]
+        xlabels = s.index.levels[1]
+    else:
+        val_array = np.empty((1, len(mean_vals)))
+        val_array[0,:] = mean_vals.copy()
+        ylabels = s.index.tolist()
+        xlabels = ''
+    print val_array.shape
+
     pl.figure()
     g = sns.heatmap(val_array, vmax=2, cmap='hot')
-    g.set_yticklabels(s.index.levels[0])
-    g.set_xticklabels(s.index.levels[1])
-    pl.savefig(os.path.join(sort_dir, 'figures', 'highS_grid_%s.pdf' % highS_ex))
+    g.set_yticklabels(ylabels)
+    g.set_xticklabels(xlabels)
+    pl.savefig(os.path.join(sort_dir, 'figures', 'highS_grid_%s_%s.pdf' % (highS_ex, datestring)))
     
     
     
     mean_vals = sparseness[lowS_ex]['object_responses'].values
     s = sparseness[lowS_ex]['object_responses']
-    val_array = np.reshape(mean_vals, (len(s.index.levels[0]), len(s.index.levels[1])))
+    if hasattr(s.index, 'levels'):
+        val_array = np.reshape(mean_vals, (len(s.index.levels[0]), len(s.index.levels[1])))
+        ylabels = s.index.levels[0]
+        xlabels = s.index.levels[1]
+    else:
+        val_array = np.empty((1, len(mean_vals)))
+        val_array[0,:] = mean_vals.copy()
+        ylabels = s.index.tolist()
+        xlabels = ''
+    print val_array.shape
+
     pl.figure()
-    g = sns.heatmap(val_array, vmax=2.0, cmap='hot')
-    g.set_yticklabels(s.index.levels[0])
-    g.set_xticklabels(s.index.levels[1])
-    pl.savefig(os.path.join(sort_dir, 'figures', 'lowS_grid_%s.pdf' % highS_ex))
+    g = sns.heatmap(val_array, vmax=2, cmap='hot')
+    g.set_yticklabels(ylabels)
+    g.set_xticklabels(xlabels)
+    pl.savefig(os.path.join(sort_dir, 'figures', 'lowS_grid_%s_%s.pdf' % (highS_ex, datestring)))
 
     
 
@@ -1470,7 +1487,8 @@ def boxplots_visual_cells(DATA, responsive_anova, sorted_visual, topn=10, sort_d
     
     pl.xlabel('eta-squared')
     pl.title("Partial eta-squared (split-plot ANOVA2, p<0.05)")
-    figname = 'vis_responsive_eta2_partial.png'
+    datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+    figname = 'vis_responsive_eta2_partial_%s.png' % datestring
     pl.savefig(os.path.join(os.path.split(vis_responsive_dir)[0], figname))
     
     pl.close()
@@ -1672,9 +1690,29 @@ def heatmap_roi_stimulus_pval(posthoc_results, roi, sort_dir):
     
 
    #%% 
-def color_rois_by_OSI(img, maskarray, OSI, stimconfigs, sorted_selective=[], cmap='hls',
+
+def get_all_contours(mask_array):
+    # Cycle through all ROIs and get their edges
+    # (note:  tried doing this on sum of all ROIs, but fails if ROIs are overlapping at all)
+    cnts = []
+    for ridx in range(mask_array.shape[-1]):
+        im = mask_array[:,:,ridx]
+        im[im>0] = 1
+        im[im==0] = np.nan #1
+        im = im.astype('uint8')
+        edged = cv2.Canny(im, 0, 0.9)
+        tmp_cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        tmp_cnts = tmp_cnts[0] if imutils.is_cv2() else tmp_cnts[1]
+        cnts.append(tmp_cnts[0])
+    print "Created %i contours for rois." % len(cnts)
+    
+    return cnts
+
+def color_rois_by_OSI(img, maskarray, OSI, stimconfigs, sorted_selective=[], cmap='hls', thickness=2,
                           sort_dir='/tmp', metric='meanstimdf', save_and_close=True, label_rois=True, labels=[]):
     
+    datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+
     dims = img.shape
     if len(sorted_selective) == 0:
         sorted_selective = [r for r in OSI.keys() if OSI['OSI_orth'] >= 0.33]
@@ -1702,31 +1740,35 @@ def color_rois_by_OSI(img, maskarray, OSI, stimconfigs, sorted_selective=[], cma
         
     # Plot average img, overlay ROIs with OSI (visual only):
     sns.set_style('white')
-    fig = pl.figure()
-    ax = fig.add_subplot(111)
-    pl.imshow(zproj, cmap='gray')
+    fig, ax = pl.subplots(1, figsize=(10,10))
+    ax.imshow(zproj, cmap='gray')
     outimg = zproj.copy()
     alpha=0.8
+    
+    maskarray_r = np.reshape(maskarray, (dims[0], dims[1], maskarray.shape[-1]))
+    
+    roi_contours = get_all_contours(maskarray_r) 
+    print "MASK ARR:", maskarray.shape
+    print len(roi_contours)
+    
+    # loop over the contours individually
     for roi in OSI.keys():
         ridx = int(roi[3:])-1 #S[roi]['ridx']
-    
+        #cidx, (rid, cnt) in enumerate(zip(sorted_rids, cnts)):
+        cnt = roi_contours[ridx]
+        
         # Select color based on ORIENTATION preference:
         osi = OSI[roi]['pref_ori'] # TODO:  deal with OSI
-        #print osi
         col = colors[osi]
+        #print col
         if not roi in sorted_selective:
             col = (127, 127, 127)
-        msk = np.reshape(maskarray[:, ridx], dims)
-        msk[msk>0] = 1
-        msk[msk==0] = np.nan
-        msk = msk.astype('uint8')
-    
-        # Draw contour for ORIG rois on reference:
-        ret,thresh = cv2.threshold(msk,.5,1,0)
-        orig2,contours,hierarchy = cv2.findContours(thresh, 1, 2)
-        cv2.drawContours(outimg, contours, 0, color=col, thickness=-1)
-        cv2.addWeighted(outimg, alpha, outimg, 1 - alpha, 0, outimg)
-    
+
+        cv2.drawContours(outimg, cnt, -1, col, thickness)
+#        if label:
+#            cv2.putText(outimg, str(ridx+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
+#        ax.imshow(outimg)
+            
         # Label ROI
         if label_rois:
             if len(labels) > 0 and ridx in labels:
@@ -1736,15 +1778,17 @@ def color_rois_by_OSI(img, maskarray, OSI, stimconfigs, sorted_selective=[], cma
             else:
                 label_this = False
             if label_this:
-                [ys, xs] = np.where(msk>0)
-                ax.text(int(xs[0]), int(ys[-1]), str(ridx+1), fontsize=8, weight='light', color='w')
+                cv2.putText(outimg, str(ridx+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
+#                [ys, xs] = np.where(msk>0)
+#                ax.text(int(xs[0]), int(ys[-1]), str(ridx+1), fontsize=8, weight='light', color='w')
         ax.imshow(outimg, alpha=0.5)
+    
     pl.axis('off')
     
     if label_rois:
-        figname = 'visual_rois_OSI_%s_%s_labeled.png' %  (metric, color_code)
+        figname = 'visual_rois_OSI_%s_%s_labeled_%s.png' %  (metric, color_code, datestring)
     else:
-        figname = 'visual_rois_OSI_%s_%s.png' % (metric, color_code)
+        figname = 'visual_rois_OSI_%s_%s_%s.png' % (metric, color_code, datestring)
         
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', figname))
@@ -1755,6 +1799,7 @@ def color_rois_by_OSI(img, maskarray, OSI, stimconfigs, sorted_selective=[], cma
 
 #%%
 def hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir='/tmp', save_and_close=True, thresh=0.33, ori_metric='orth'):
+    datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
     
     best_ori_vals = [OSI[r]['pref_ori'] for r in OSI.keys()]
     best_ori_vals_selective = [OSI[r]['pref_ori'] for r in OSI.keys() if OSI[r]['OSI_%s' % ori_metric] >= thresh]
@@ -1774,7 +1819,7 @@ def hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir='/tmp', sa
     for i, bar in enumerate(ax2.patches):
         bar.set_hatch(hatch)
     ax2.set_yticklabels([])
-    figname = 'counts_per_cond_OSI_%s.png' % metric
+    figname = 'counts_per_cond_OSI_%s_%s.png' % (metric, datestring)
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', figname))
         pl.close()
@@ -1783,7 +1828,7 @@ def hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir='/tmp', sa
     sns.palplot(colorvals)
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', 'legend_OSI.png'))
-        pl.close()
+        #pl.close()
     
     return figname
 
@@ -2134,7 +2179,7 @@ def calculate_selectivity_measures(options):
     # =========================================================================
 
     # Sort ROIs by F ratio:
-    responsive_anova, sorted_visual = find_visual_cells(options, DATA, sort_dir, plot=False)
+    responsive_anova, sorted_visual = find_visual_cells(options, DATA, sort_dir, plot=True)
     roi_list = sorted(list(set(DATA['roi'])), key=natural_keys)
     print("%i out of %i cells pass split-plot ANOVA test for visual responses." % (len(sorted_visual), len(responsive_anova)))
 
@@ -2157,7 +2202,7 @@ def calculate_selectivity_measures(options):
         
     selectivityKW_results, sorted_selective = find_selective_cells_KW(options, DATA, sort_dir, sorted_visual, 
                                                                            post_hoc=post_hoc, metric=metric,
-                                                                           stimlabels=stimlabels, plot=False)
+                                                                           stimlabels=stimlabels, plot=True)
 
     # Update roi stats summary file:
     # ---------------------------------------------------------
@@ -2200,7 +2245,7 @@ def calculate_selectivity_measures(options):
     
     #SI = (Rmost - Rleast) / (Rmost + Rleast)
     
-    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, metric=metric, plot=True)
+    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, selective_rois_anova, metric=metric, plot=True)
 
     # =========================================================================
     # Visualize FOV with color-coded ROIs
@@ -2220,10 +2265,10 @@ def calculate_selectivity_measures(options):
         color_rois_by_OSI(img, maskarray, OSI, sconfigs, cmap=cmap,
                               sorted_selective=sorted_selective, 
                               sort_dir=sort_dir, 
-                              metric=metric, save_and_close=False, label_rois=True, labels=[4, 79, 36])
+                              metric=metric, save_and_close=True, label_rois=True, labels=[])
         
         colorvals = sns.color_palette(cmap, len(sconfigs))
-        hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir=sort_dir, save_and_close=False)
+        hist_preferred_oris(OSI, colorvals, metric='meanstimdf', sort_dir=sort_dir, save_and_close=True)
         
     elif stimtype == 'image':
         # =====================================================================
@@ -2319,7 +2364,7 @@ def calculate_selectivity_measures_orig(options):
         
     selectivityKW_results, sorted_selective = find_selective_cells_KW(options, DATA, sort_dir, sorted_visual, 
                                                                            post_hoc=post_hoc, metric=metric,
-                                                                           stimlabels=stimlabels, plot=False)
+                                                                           stimlabels=stimlabels, plot=True)
 
     # Update roi stats summary file:
     # ---------------------------------------------------------
@@ -2360,13 +2405,13 @@ def calculate_selectivity_measures_orig(options):
     
     #SI = (Rmost - Rleast) / (Rmost + Rleast)
     
-    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, metric=metric, plot=True)
+    sparseness = assign_sparseness(transform_dict, options, DATA, sort_dir, sorted_visual, selective_rois_anova, metric=metric, plot=True)
 
     # =========================================================================
     # Visualize FOV with color-coded ROIs
     # =========================================================================
     maskarray, img = load_masks_and_img(options, INFO)
-
+    print "MASK ARR:", maskarray.shape
 
     if stimtype == 'gratings':
         # =====================================================================
@@ -2405,7 +2450,7 @@ def calculate_selectivity_measures_orig(options):
     #%
 def main(options):
     
-    sort_dir = calculate_selectivity_measures(options)
+    sort_dir = calculate_selectivity_measures_orig(options)
     
     print "*******************************************************************"
     print "DONE!"
