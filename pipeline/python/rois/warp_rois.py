@@ -140,6 +140,8 @@ if rootdir not in src_tiff_dir:
     src_tiff_dir = replace_root(src_tiff_dir, rootdir, animalid, session)
 src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
                     '_%s_deinterleaved' % zproj_type in d and os.path.split(src_tiff_dir)[-1] in d][0]
+print "Using %s reference img." % zproj_type
+
 ref_img_dir = os.path.join(src_proj_dir,
                                 'Channel%02d' % RID['PARAMS']['options']['source']['ref_channel'],
                                 'File%03d' % RID['PARAMS']['options']['source']['ref_file'])
@@ -416,6 +418,7 @@ if plot_warps:
 
 #%% STANDARDIZE
 if plot_masks:
+    print "Creating masks on top of each .tif file..."
     # Save figure:
 #    fig = pl.figure()
 #    ax = fig.add_subplot(1,1,1)
