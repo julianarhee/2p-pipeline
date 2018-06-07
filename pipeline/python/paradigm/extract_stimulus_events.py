@@ -280,6 +280,8 @@ def extract_options(options):
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
+    parser.add_option('--dynamic', action="store_true",
+                      dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
 
     parser.add_option('--retinobar', action="store_true",
                       dest="retinobar", default=False, help="Set flag if stimulus is moving-bar for retinotopy.")
@@ -432,6 +434,8 @@ def parse_acquisition_events(run_dir, blank_start=True):
 #%%
 
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x','-R', 'blobs_dynamic_run7', '--dynamic']
+
 
            #%%
 def main(options):
@@ -454,6 +458,8 @@ def main(options):
     # MW specific options:
     retinobar = options.retinobar
     phasemod = options.phasemod
+    dynamic = options.dynamic
+    
     trigger_varname = options.frametrigger_varname
     single_run = options.single_run
     blank_start = options.blank_start
@@ -464,6 +470,8 @@ def main(options):
     mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx]
     if slurm is True:
         mwopts.extend(['--slurm'])
+    if dynamic is True:
+        mwopts.extend(['--dynamic'])
     if retinobar is True:
         mwopts.extend(['--retinobar'])
     if phasemod is True:

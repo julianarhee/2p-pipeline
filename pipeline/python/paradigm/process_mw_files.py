@@ -385,7 +385,7 @@ def get_session_info(df, stimulus_type=None):
     return info
 
 #%%
-def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
     df, bounds = get_session_bounds(dfn, single_run=single_run, boundidx=boundidx)
     #print bounds
@@ -424,7 +424,27 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, phasemod=False, trigge
 
         ### Get Image events:
         if stimtype=='image':
-            image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+            if dynamic:
+                print "User specified DYNAIMC image stimulus (this is not a movie)."
+                image_evs = []
+                # Identify blank-screen pixel-clock events. A non-dynamic image should not change more than once 
+                # between blank-screen events. There are 2 blank screen events after the first stimulus: 
+                # The first "blank" is stimulus-removal. The second is the beginning of the ITI.
+                blank_pev_idxs = np.array([i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_non_stimuli])
+                find_itis = np.where(np.diff(blank_pev_idxs) > 1)[0]
+                # Find the first stimulus event after the true "iti":
+                for pi, pre_iti_idx in enumerate(find_itis):
+                    pre_iti = blank_pev_idxs[pre_iti_idx]
+                    if pi == len(find_itis)-1:
+                        next_iti = -1
+                    else:
+                        next_iti = blank_pev_idxs[find_itis[pi+1]]
+                    curr_stim_evs = [pev for pev in pixelclock_evs[pre_iti+1:next_iti-1] if len(pev.value)==num_non_stimuli]
+                    # The number of stim events found shoudl equal the stim-dur (sec) after dividing by 60Hz
+                    image_evs.append(curr_stim_evs[0])
+            else:
+                image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+                
         elif 'grating' in stimtype:
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
 
@@ -683,13 +703,13 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
+def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
 
     print "Current file: ", curr_dfn
     if retinobar is True:
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -768,7 +788,7 @@ def extract_trials(curr_dfn, retinobar=False, phasemod=False, trigger_varname='f
 
         # Roughly calculate how many pixel-clock events there should be. For static images, there should be 1 bitcode-event per trial.
         # For drifting gratings, on a 60Hz monitor, there should be 60-61 bitcode-events per trial.
-        if 'grating' in session_info['stimulus']:
+        if 'grating' in session_info['stimulus'] or dynamic:
             nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
         else:
             nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
@@ -994,7 +1014,8 @@ def parse_mw_trials(options):
 
     parser.add_option('-t', '--triggervar', action="store",
                       dest="frametrigger_varname", default='frame_trigger', help="Temp way of dealing with multiple trigger variable names [default: frame_trigger]")
-
+    parser.add_option('--dynamic', action="store_true",
+                      dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
 
     (options, args) = parser.parse_args(options)
 
@@ -1004,8 +1025,11 @@ def parse_mw_trials(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    
+    dynamic = options.dynamic
     retinobar = options.retinobar #'grating'
     phasemod = options.phasemod
+    
     verbose = options.verbose
     single_run = options.single_run
     boundidx = int(options.boundidx)
@@ -1039,7 +1063,8 @@ def parse_mw_trials(options):
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
 
-        trials = extract_trials(curr_dfn, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, 
+                                        verbose=verbose, single_run=single_run, boundidx=boundidx)
 
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 
