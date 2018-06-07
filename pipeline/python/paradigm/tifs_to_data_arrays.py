@@ -271,6 +271,9 @@ def extract_options(options):
 
     (options, args) = parser.parse_args(options)
 
+    if options.slurm:
+        options.rootdir = '/n/coxfs01/2p-data'
+
     return options
 
 #%%
@@ -280,7 +283,7 @@ def extract_options(options):
 
 def create_rdata_array(opts):
         
-    optsE = extract_options(opts)
+    optsE = extract_options(opts) 
     create_new = optsE.create_new
 
     test_smoothing = optsE.test_smoothing

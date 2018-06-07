@@ -19,7 +19,7 @@ import copy
 import scipy.io
 import optparse
 import cPickle as pkl
-import hickle as hkl
+#import hickle as hkl
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -94,6 +94,8 @@ def extract_options(options):
                       dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
 
     (options, args) = parser.parse_args(options)
+    if options.slurm:
+        options.rootdir = '/n/coxfs01/2p-data'
 
     return options
 
