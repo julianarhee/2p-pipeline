@@ -33,7 +33,7 @@ from pipeline.python.traces.utils import get_frame_info
 #           '-R', 'blobs_run2', '-t', 'traces001', '-d', 'dff']
 options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'blobs_dynamic_run6', '-t', 'traces001', '-d', 'dff']
+           '-R', 'blobs_run2', '-t', 'traces002', '-d', 'dff']
 
 
 def extract_options(options):
@@ -200,9 +200,12 @@ def make_clean_psths(options):
     else:
         dfmax = float(dfmax)
         
-    plot_trials = True
-    trace_colors = ['g', 'b']
-    trace_labels = ['%s %i' % (trans_types[other_indices[-1]], v) for v in sorted(transform_dict[trans_types[other_indices[-1]]])]
+    if len(trans_types)==2:
+        trace_colors = ['k']
+        trace_labels = ['']
+    else:
+        trace_colors = ['g', 'b']
+        trace_labels = ['%s %i' % (trans_types[other_indices[-1]], v) for v in sorted(transform_dict[trans_types[other_indices[-1]]])]
 
     for ridx in range(xdata.shape[-1]):
         #%
