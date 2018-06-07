@@ -1163,6 +1163,39 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
       #%%      
 
 
+def test_smoothing_fractions(ridx, Xdata, ylabels, missing='drop',
+                             nframes_per_trial=358, ntrials_per_cond=10,
+                             condlabel=0, fmin=0.0005, fmax=0.05):
+
+    trace_test = Xdata[:, ridx:ridx+1]
+    #print trace_test.shape
+
+#    trace_test_filt = np.apply_along_axis(smooth_traces, 0, trace_test, frac=0.0003)
+#    print trace_test_filt.shape
+
+    # Plot the same trial on top:
+    ixs = np.where(ylabels==condlabel)[0]
+    assert len(ixs) > 0, "No frames found for condition with label: %s" % str(condlabel)
+
+    #frac_range = np.linspace(0.0001, 0.005, num=8)
+    frac_range = np.linspace(fmin, fmax, num=8)
+    fig, axes = pl.subplots(2,4, figsize=(12,8)) #pl.figure()
+    #ax = axes.flat()
+    for i, ax, in enumerate(axes.flat):
+        trace_test_filt = np.apply_along_axis(smooth_traces, 0, trace_test, frac=frac_range[i], missing=missing)
+        #print trace_test_filt.shape
+        tmat = []
+        for tidx in range(ntrials_per_cond):
+            fstart = tidx*nframes_per_trial
+            #pl.plot(xrange(nframes_per_trial), trace_test[ixs[fstart]:ixs[fstart]+nframes_per_trial, 0])
+            tr = trace_test_filt[ixs[fstart]:ixs[fstart]+nframes_per_trial, 0]
+            ax.plot(xrange(nframes_per_trial), trace_test_filt[ixs[fstart]:ixs[fstart]+nframes_per_trial, 0], 'k', linewidth=0.5)
+            tmat.append(tr)
+        ax.plot(xrange(nframes_per_trial), np.nanmean(np.array(tmat), axis=0), 'r', linewidth=1)
+        ax.set_title('%.04f' % frac_range[i])
+        
+        
+
 def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, save_and_close=True, output_dir='/tmp', quantile=0.08):
     '''
     Same as smooth_trace_arrays() but only does 1 file with specified 
@@ -1190,7 +1223,7 @@ def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, 
         else:
             print "Creating F0-subtracted arrays for: %s" % acquisition_dir
             print "Run: %s, Trace ID: %s" % (run, traceid)
-            processed_trace_arrays(traceid_dir, quantile=quantile)
+            process_trace_arrays(traceid_dir, quantile=quantile)
 
         trace_fns = [f for f in os.listdir(trace_arrays_dir) if 'File' in f]
 
@@ -1227,7 +1260,6 @@ def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, 
         pl.close()
     
     return figstring
-#    
 
 
 #%%

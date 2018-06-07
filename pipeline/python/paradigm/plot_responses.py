@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pylab as pl
 from scipy import stats
-from pipeline.python.classifications import utils as util
+from pipeline.python.paradigm import utils as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.traces.utils import get_frame_info
