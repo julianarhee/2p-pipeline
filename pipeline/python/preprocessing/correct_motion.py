@@ -140,7 +140,7 @@ def do_motion(options):
         tmp_pid_fn = 'tmp_pid_%s.json' % pid_hash
         with open(os.path.join(tmp_pid_dir, tmp_pid_fn), 'r') as f:
             PID = json.load(f)
-        do_mc = PID['PARAMS']['motion']['correct_motion']
+        #do_mc = PID['PARAMS']['motion']['correct_motion']
  
     paramspath = os.path.join(tmp_pid_dir, tmp_pid_fn)
     runmeta_path = os.path.join(acquisition_dir, run, '%s.json' % run_info_basename)
