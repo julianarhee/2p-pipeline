@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pylab as pl
 from scipy import stats
-from pipeline.python.classifications import utils as util
+from pipeline.python.paradigm import utils as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.traces.utils import get_frame_info
@@ -33,7 +33,7 @@ from pipeline.python.traces.utils import get_frame_info
 #           '-R', 'blobs_run2', '-t', 'traces001', '-d', 'dff']
 options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'blobs_run2', '-t', 'traces002', '-d', 'dff']
+           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
 
 
 def extract_options(options):
@@ -71,7 +71,8 @@ def extract_options(options):
                           default=None, help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
     parser.add_option('--shade', action='store_false', dest='plot_trials',
                           default=True, help='Set to plot mean and sem as shaded (default plots individual trials)')
-    
+    parser.add_option('-m', '--multi', action='store', dest='multi_plot',
+                          default=None, help='Transform to plot with diff colors on same subplot (only relevant if >2 trans_types)')
     
     (options, args) = parser.parse_args(options)
 
@@ -103,6 +104,7 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
+    multi_plot = optsE.multi_plot
     
     #ridx = 0
     #inputdata = 'dff' #corrected'
@@ -147,7 +149,7 @@ def make_clean_psths(options):
         
     # Get trial and timing info:
     #    trials = np.hstack([np.tile(i, (nframes_per_trial, )) for i in range(ntrials_total)])
-    multi_plot = None
+    #multi_plot = None
     if len(trans_types) == 1:
         stim_grid = (transform_dict[trans_types[0]],)
         sgroups = sconfigs_df.groupby(sorted(trans_types))
@@ -159,12 +161,18 @@ def make_clean_psths(options):
     elif len(trans_types) >= 2:
         object_index = trans_types.index('morphlevel')
         other_indices = [i for i,t in enumerate(trans_types) if t != 'morphlevel']
-        transform_columns = other_indices[0]
+        if multi_plot is None:
+            transform_columns = other_indices[0]
+        else:
+            transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
+        
+        print "COLUMNS:", trans_types[transform_columns]
         stim_grid = (sorted(transform_dict[trans_types[object_index]]), sorted(transform_dict[trans_types[transform_columns]]))
         if len(other_indices) > 1:
             # Use 1 other-trans for grid columns, use the 2nd trans for color:
-            multi_plot = trans_types[other_indices[-1]]
-            sgroups = sconfigs_df.groupby(sorted(trans_types[0:2]))
+            if multi_plot is None:
+                multi_plot = trans_types[other_indices[-1]]
+            sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
         else:
             # Only 1 other trans_type, use as other axis on grid:
             sgroups = sconfigs_df.groupby(sorted(trans_types))
@@ -205,7 +213,7 @@ def make_clean_psths(options):
         trace_labels = ['']
     else:
         trace_colors = ['g', 'b']
-        trace_labels = ['%s %i' % (trans_types[other_indices[-1]], v) for v in sorted(transform_dict[trans_types[other_indices[-1]]])]
+        trace_labels = ['%s %i' % (multi_plot, v) for v in sorted(transform_dict[multi_plot])]
 
     for ridx in range(xdata.shape[-1]):
         #%
