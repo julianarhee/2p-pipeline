@@ -218,12 +218,14 @@ def process_pid(options):
         bidir_options.extend(['--slurm', '-C', cvx_path])
     
     # Check if bidi already done:
-#    bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
-#    if os.path.exists(bidi_output_dir):
-#        bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
-#        if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
-#            print "*** Found existing BIDI corrected files. Skipping..."
-#            execute_bidi = False
+    bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
+    if os.path.exists(bidi_output_dir):
+        bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
+        if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
+            print "*** Found existing BIDI corrected files. Skipping..."
+            execute_bidi = False
+    # -------------------------
+
     if execute_bidi is True:
         bidir_options.extend(['--bidi'])
     if len(repo_path) > 0:
