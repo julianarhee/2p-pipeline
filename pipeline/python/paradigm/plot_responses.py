@@ -177,14 +177,14 @@ def make_clean_psths(options):
             # Only 1 other trans_type, use as other axis on grid:
             sgroups = sconfigs_df.groupby(sorted(trans_types))
         
-    ncols = len(stim_grid[1])
-    columns = trans_types[transform_columns]
-    col_order = sorted(stim_grid[1])
-    nrows = 1; rows = None; row_order=None
-    if len(stim_grid) == 2:
-        nrows = len(stim_grid[0])
-        rows = stim_grid[0]
-        row_order = sorted(stim_grid[0])
+        ncols = len(stim_grid[1])
+        columns = trans_types[transform_columns]
+        col_order = sorted(stim_grid[1])
+        nrows = 1; rows = None; row_order=None
+        if len(stim_grid) == 2:
+            nrows = len(stim_grid[0])
+            rows = stim_grid[0]
+            row_order = sorted(stim_grid[0])
         
     #%
     # Set output dir for nice(r) psth:
@@ -208,7 +208,7 @@ def make_clean_psths(options):
     else:
         dfmax = float(dfmax)
         
-    if len(trans_types)==2:
+    if len(trans_types)==2 or multi_plot is None:
         trace_colors = ['k']
         trace_labels = ['']
     else:
