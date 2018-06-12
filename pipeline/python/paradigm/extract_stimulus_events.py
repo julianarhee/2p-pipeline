@@ -96,7 +96,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     #abstime = serialdata[' abosolute_arduino_time']
     ### Extract events from serialdata:
     frame_triggers = serialdata[' frame_trigger']
-    bitcodes = serialdata[' pixel_clock']
+    all_bitcodes = serialdata[' pixel_clock']
 
     ### Find frame ON triggers (from NIDAQ-SI):
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
@@ -128,144 +128,176 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
-    frame_bitcodes = dict()
+    frame_bitcodes = dict(); ix = 0
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
         if idx==len(frame_on_idxs)-1:
-            bcodes = bitcodes[frameidx:]
+            bcodes = all_bitcodes[frameidx:]
         else:
-            bcodes = bitcodes[frameidx:frame_on_idxs[idx+1]]
-        frame_bitcodes[idx] = bcodes
+            bcodes = all_bitcodes[frameidx:frame_on_idxs[idx+1]]
+        halfmark = int(np.floor(len(bcodes)/2))
+        #frame_bitcodes[idx] = bcodes
+        frame_bitcodes['%i_a' % idx] = bcodes[0:halfmark]
+        frame_bitcodes['%i_b' % idx] = bcodes[halfmark:]
+        ix += 1
 
 
     ### Find first frame of MW experiment start:
-    modes_by_frame = dict()
-    for frame in frame_bitcodes.keys():
-        bitcode_counts = Counter(frame_bitcodes[frame])
-        modes_by_frame[frame] = bitcode_counts.most_common(1)[0][0]
+    modes_by_frame = dict((fr, int(frame_bitcodes[fr].mode()[0])) for fr in sorted(frame_bitcodes.keys(), key=natural_keys)) # range(len(frame_on_idxs)))
+#    modes_by_frame = dict()
+#    for frame in frame_bitcodes.keys():
+#        bitcode_counts = Counter(frame_bitcodes[frame])
+#        modes_by_frame[frame] = bitcode_counts.most_common(1)[0][0]
 
+#%
     # Take the 2nd frame that has the first-stim value (in case bitcode of Image on Trial1 is 0):
     trialnames = sorted(mwtrials.keys(), key=natural_keys)
     if 'grating' in mwtrials[trialnames[0]]['stimuli']['type']:
-        first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][0]
+        first_stim_frame = [k for k in sorted(modes_by_frame.keys(), key=natural_keys) if modes_by_frame[k]>0][0]
     else:
-        first_stim_frame = [k for k in sorted(modes_by_frame.keys()) if modes_by_frame[k]>0][1] #[0]
+        first_stim_frame = [k for k in sorted(modes_by_frame.keys(), key=natural_keys) if modes_by_frame[k]>0][1] #[0]
 
 
     ### Get all bitcodes and corresonding frame-numbers for each trial:
     trialevents = dict()
-    allframes = sorted(frame_bitcodes.keys()) #, key=natural_keys)
-    curr_frames = sorted(allframes[first_stim_frame+1:]) #, key=natural_keys)
+    allframes = sorted(frame_bitcodes.keys(), key=natural_keys) #, key=natural_keys)
+    curr_frames = sorted(allframes[int(first_stim_frame.split('_')[0])+1:]) #, key=natural_keys)
     first_frame = first_stim_frame
 
-#first_frame = 71264 
+#first_frame = 2289 
 #F = copy.copy(curr_frames)
-#
+###
 #curr_frames = copy.copy(F)
 #first_frame = F[0]
+
+    use_loop = False
+    trial_frames = []
+    ntrials = len(mwtrials.keys())
+    prev_trial = 'trial00001'
     durs = []
+    
     for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
         #print trial
+        #assert trial != 'trial00009'
+        
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
 
-
         #print trial
         trialevents[mwtrial_hash] = dict()
-        #trialevents[trial]['mwtrial_hash'] = mwtrial_hash
-        #trialevents[trial]['stiminfo'] = mwtrials[trial]['stimuli']
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
-        #trialevents[trial]['iti_dur_ms'] = mwtrials[trial]['iti_duration']
 
-        # First, check if first "stimulus" bit-code is actually an image(in case frame-trigger  update missed at start)
+        minframes = 4 #5 #4
+
+        bitcodes = mwtrials[trial]['all_bitcodes']
+        
+        # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
         if (blank_start is True) or (int(tidx+1)>1):
             if tidx == 0 and (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
                 nframes_to_skip= 0
+                curr_frames = allframes[allframes.index(first_frame)+nframes_to_skip:]
             else:
-                #nframes_to_skip = 0
-                # Skip a good number of frames from the last "found" index of previous trial.
-                # Since ITI is long (relative to framerate), this is safe to do. Avoids possibility that
-                # first bitcode of trial N happened to be last stimulus bitcode of trial N-1
-                nframes_to_skip = int(((mwtrials[trial]['iti_duration']/1E3) * framerate) - 3) #3)
-            # print 'skipping iti...', nframes_to_skip
-            curr_frames = allframes[first_frame+nframes_to_skip:]
-
+    
+                # Check that LAST trial's ITI is not the same as CURRENT trial's STIM
+                # This can happen in between .tif files, since there is an addition PRE-ITI
+                # at the start of each block.
+                if tidx > 0 and bitcodes[0] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+                    print "Found a repeat! skipping..."
+                    consecutives = []; fiter = 0
+                    while len(consecutives) < minframes:
+                        frame = curr_frames[fiter]
+                        tmp_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v!=bitcodes[0]]
+                        consecutives = [i for i in np.diff(tmp_frames) if i==1]
+                        fiter+=1
+                    curr_frames = curr_frames[fiter+nframes_to_skip:]
+                elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2 * framerate)
+                else:
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
+                    # print 'skipping iti...', nframes_to_skip
+                    curr_frames = allframes[allframes.index(first_frame)+nframes_to_skip:]
+        
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
-        minframes = 4 #5 #4
-#        if mwtrials[trial]['stimuli']['type'] == 'image_directory_movie':
-#            bitcodes = mwtrials[trial]['all_bitcodes'][1:]
-#        else:
-        bitcodes = mwtrials[trial]['all_bitcodes']
-        for bitcode in bitcodes: #mwtrials[trial]['all_bitcodes'][1:]: # 20180516 - FOV1_zoom1x - blobs_movies_run3 is messed up (trial00049 has super long first bitcode??)
-            looking = True
-            while looking is True:
-                if len(curr_frames)==0:
-                    break
-                for frame in sorted(curr_frames):
-                    #print frame
-                    if frame == allframes[-1]: # no ITI period found likely, so just append last frame
-                        first_frame = frame
-                        looking = False
-                        
-                    #print "frame:", frame
-                    tmp_frames = [i for i in frame_bitcodes[frame] if i==bitcode]
-                    consecutives = [i for i in np.diff(tmp_frames) if i==0]
 
-                    if frame>1:
-                        tmp_frames_pre = [i for i in frame_bitcodes[int(frame)-1] if i==bitcode]
-                        consecutives_pre = [i for i in np.diff(tmp_frames_pre) if i==0]
-
-                    if len(mwtrials[trial]['all_bitcodes'])<3:
-                    #Single-image (static images) will only have a single bitcode, plus ITI bitcode,
-                        # Don't look before/after found-frame idx.
-                        if len(consecutives)>=minframes:
-                            first_frame = frame
-                            looking = False
-
-                    else:
-                        if frame>1 and len(consecutives_pre)>=minframes:
-                            if len(consecutives_pre) > len(consecutives):
-                                first_frame = int(frame) - 1
-                            elif len(consecutives)>=minframes:
-                                first_frame = int(frame)
-                            #print "found2...", bitcode, first_frame #len(curr_frames)
-                            looking = False
-
-                        elif len(consecutives)>=minframes:
-                            first_frame = frame
-                            #print "found...", bitcode, first_frame #len(curr_frames)
-                            looking = False
-
-                    if looking is False:
+        if use_loop:
+            for bitcode in bitcodes: #mwtrials[trial]['all_bitcodes'][1:]: # 20180516 - FOV1_zoom1x - blobs_movies_run3 is messed up (trial00049 has super long first bitcode??)
+                looking = True
+                while looking is True:
+                    if len(curr_frames)==0:
                         break
+                    for frame in sorted(curr_frames):
+                        print frame
+                        if frame == allframes[-1]: # no ITI period found likely, so just append last frame
+                            print "No more frames!"
+                            first_frame = frame
+                            looking = False
 
-            first_found_frame.append((bitcode, first_frame)) #first_frame))
-            curr_frames = allframes[first_frame+1:] #curr_frames[idx:] #curr_frames[first_frame:]
+                        #tmp_frames = [i for i in frame_bitcodes[frame] if i==bitcode]
+                        tmp_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v==bitcode]
+                        consecutives = [i for i in np.diff(tmp_frames) if i==1]
+    
+                        if frame>1:
+                            #tmp_frames_pre = [i for i in frame_bitcodes[int(frame)-1] if i==bitcode]
+                            tmp_frames_pre = [k for k,v in zip(frame_bitcodes[frame-1].index.tolist(), frame_bitcodes[frame-1].values) if v==bitcode]
+                            consecutives_pre = [i for i in np.diff(tmp_frames_pre) if i==1]
+    
+                        if len(mwtrials[trial]['all_bitcodes'])<3:
+                            #Single-image (static images) will only have a single bitcode, plus ITI bitcode,
+                            # Don't look before/after found-frame idx.
+                            if len(consecutives)>=minframes: # and (frame - prev_frame)==1:
+                                first_frame = frame #- min_frames_for_stim + 1
+                                looking = False
+    
+                        else:
+                            if frame>1 and len(consecutives_pre)>=minframes:
+                                if len(consecutives_pre) > len(consecutives):
+                                    first_frame = int(frame) - 1
+                                elif len(consecutives)>=minframes:
+                                    first_frame = int(frame)
+                                looking = False
+    
+                            elif len(consecutives)>=minframes:
+                                first_frame = frame
+                                looking = False
+    
+                        if looking is False:
+                            break
+    
+                first_found_frame.append((bitcode, first_frame)) #first_frame))
+                curr_frames = allframes[first_frame+1:] #curr_frames[idx:] #curr_frames[first_frame:]
 
-        #if (first_found_frame[-1][1] - first_found_frame[0][1])/framerate > 2.5:
-        #print "Trial %i dur (s):" % int(trial)
-#        frame_diffs = np.diff([f[1] for f in first_found_frame])
-#        if 'movie' in mwtrials['trial00001']['stimuli']['type']:
-#            weird_diffs = np.where(frame_diffs>10)[0]
-#            if len(weird_diffs) > 0:
-#                print "*** warning ***"
-#                print "%s: frame diffs:" % (trial), weird_diffs
-#                first_found_frame = [f for fi,f in enumerate(first_found_frame) if not fi in weird_diffs]
+        else:
+            for bitcode in bitcodes:
+                #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
+                first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
+
+                first_found_frame.append((bitcode, first_frame))
+                curr_frames = allframes[allframes.index(first_frame)+1:] #curr_frames[found_frame[0]:]
+                
             
-        stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
+        #stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
+        stim_dur_curr = round((int(first_found_frame[-1][1].split('_')[0]) - int(first_found_frame[0][1].split('_')[0]))/framerate, 2)
+
         print stim_dur_curr, '[%s]' % trial
+        assert round(stim_dur_curr, 1) == round(mwtrials[trial]['stim_duration']/1E3, 1), "Bad stim duration..! %s" % trial
+        
         durs.append(stim_dur_curr)
+        trial_frames.append(first_found_frame)
         
 
-        trialevents[mwtrial_hash]['stim_on_idx'] = first_found_frame[0][1]
-        trialevents[mwtrial_hash]['stim_off_idx'] = first_found_frame[-1][1]
+        trialevents[mwtrial_hash]['stim_on_idx'] = int(first_found_frame[0][1].split('_')[0])
+        trialevents[mwtrial_hash]['stim_off_idx'] = int(first_found_frame[-1][1].split('_')[0])
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
-
+        
+        prev_trial = trial
+        
     rounded_durs = list(set([round(d) for d in durs]))
     if len(rounded_durs) > 1:
         print " *** WARNING -- funky stim durs found:", rounded_durs
         
+#%
     return trialevents
+
 #%%
 
 def extract_options(options):
@@ -434,7 +466,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
 #%%
 
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x','-R', 'blobs_dynamic_run7', '--dynamic']
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 
 
            #%%

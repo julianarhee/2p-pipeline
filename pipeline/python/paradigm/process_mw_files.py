@@ -362,7 +362,7 @@ def get_pixelclock_events(df, boundary, trigger_times=[], verbose=False):
     return pixelclock_evs
 
 #%%
-def get_session_info(df, stimulus_type=None):
+def get_session_info(df, stimulus_type=None, boundary=[]):
     info = dict()
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
@@ -373,11 +373,28 @@ def get_session_info(df, stimulus_type=None):
     else:
         stimdurs = df.get_events('distractor_presentation_time')
         info['stimduration'] = stimdurs[-1].value
-        itis = df.get_events('ITI_time')
-        info['ITI'] = itis[-1].value
+        # Save ITI info:
+        iti_standard_dur = [i.value for i in df.get_events('ITI_time') if boundary[0] <= i.time <= boundary[1]]
+        assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
+            
+        codec = df.get_codec() # Get codec to see which ITI var to use:
+        if 'this_ITI_time' in codec.values():
+            tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
+            
+            # Only take ITI durs that are within the max allowed, since I don't know what the others are:
+            # Also, only consider events time-stamped after the first 'this_ITI_time' update.
+            iti_jitter_max = [i.value for i in df.get_events('ITI_jitter_max') if i.time >= tmp_itis[0].time]
+            assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
+            max_iti = iti_standard_dur[0] + iti_jitter_max[0]
+            itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
+            info['ITI'] = [iev.value for iev in itis if iev.value != 0]
+        else:
+            #itis = df.get_events('ITI_time')
+            info['ITI'] = iti_standard_dur[0]
+
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
-        info['ITI'] = itis[-1].value
+        #info['ITI'] = itis[-1].value
         info['stimulus'] = stimulus_type
 
         # stimulus types?
@@ -385,9 +402,9 @@ def get_session_info(df, stimulus_type=None):
     return info
 
 #%%
-def get_stimulus_events(dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
-    df, bounds = get_session_bounds(dfn, single_run=single_run, boundidx=boundidx)
+    df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx)
     #print bounds
     codec = df.get_codec()
 
@@ -541,7 +558,7 @@ def get_stimulus_events(dfn, single_run=True, boundidx=0, dynamic=False, phasemo
         trialevents.append(trial_evs)
         triggertimes.append(trigg_times)
 
-        session_info = get_session_info(df, stimulus_type=stimtype)
+        session_info = get_session_info(df, stimulus_type=stimtype, boundary=boundary)
         session_info['tboundary'] = boundary
         info.append(session_info)
 
@@ -726,6 +743,14 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     trigger_times = check_nested(trigger_times)
     session_info = check_nested(session_info)
     print session_info
+    
+    # If variable ITI, the number of ITI values that pass the duration test (see get_session_info())
+    # should equal the number of trials, i.e., the number of stimulus events:
+    if isinstance(session_info['ITI'], list): #len(stim_info['ITI']) > 1:
+        assert len(session_info['ITI']) == len(stimevents), "N variable ITIs (%i) does not match N stim events (%i)!" % (len(session_info['ITI']), len(stimevents))
+        iti_durs = session_info['ITI']
+    else:
+        iti_durs = [session_info['ITI'] for i in range(len(stimevents))]
 
     if verbose is True:
         print "================================================================"
@@ -802,14 +827,14 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         stimevents = sorted(stimevents, key=get_timekey)
         trialevents = sorted(trialevents, key=get_timekey)
         run_start_time = trialevents[0].time
-        for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
+        for trialidx,(stim,iti,iti_dur) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey), iti_durs)):
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
 
             # blankidx = trialidx*2 + 1
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
-            trial[trialname]['end_time_ms'] = round((iti.time/1E3 + session_info['ITI']))
+            trial[trialname]['end_time_ms'] = round((iti.time/1E3 + iti_dur)) # session_info['ITI']))
             stimtype = stim.value[1]['type']
             stimname = stim.value[1]['name']
             if 'grating' in stimtype:
@@ -892,8 +917,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname]['all_bitcodes'] = bitcodes_by_trial[trialnum]
             #if stim.value[-1]['name']=='pixel clock':
             trial[trialname]['stim_bitcode'] = stim.value[-1]['bit_code']
+            trial[trialname]['stim_duration'] = round((iti.time - stim.time)/1E3)
             trial[trialname]['iti_bitcode'] = iti.value[-1]['bit_code']
-            trial[trialname]['iti_duration'] = session_info['ITI']
+            trial[trialname]['iti_duration'] = iti_dur #session_info['ITI']
             trial[trialname]['run_start_time'] = run_start_time
             trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
             trial[trialname]['block_start'] = [tval[0] for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
