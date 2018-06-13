@@ -344,7 +344,7 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all',
         # Re-sort class labels and data:
         #cy_tmp = np.hstack(cy_tmp)
         #cX_tmp = np.vstack(cX_tmp)
-        f
+        
     elif aggregate_type == 'averagereps':
         # Group trials of the same condition (repetitions) and average:
         cy_tmp = []; cX_tmp = [];
@@ -716,7 +716,7 @@ def load_dataset_from_opts(options_list, test=False):
 
 #%%
     
-def get_classifier_id(classifier='LinearSVC', cv_method='kfold', inputdata='meanstim', 
+def get_classifier_id(class_labels, classifier='LinearSVC', cv_method='kfold', inputdata='meanstim', 
                           data_type='stat', binsize='', roi_selector='all', 
                           class_name='', aggregate_type='all', const_trans='', trans_value=''):
         
@@ -1072,9 +1072,13 @@ opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom
 #%%
 
 
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x',
+#opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run3', '-t', 'traces001',
+#           '-n', '1']
+opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run3', '-t', 'traces001',
+           '-R', 'objects_run2', '-t', 'traces001',
            '-n', '1']
 
 options_list = [opts] #, opts2]
@@ -1153,14 +1157,20 @@ data_type = 'stat'
 roi_selector = 'all'
 inputdata = 'meanstim'
     
-class_name = 'xpos'
+class_name = 'object'
 
 aggregate_type = 'half'
+subset = None
+
 const_trans = ''
 trans_value = ''
 
 # Create output dir:
-classif_identifier = get_classifier_id(inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
+
+class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
+print class_labels
+
+classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
                                            class_name=class_name, aggregate_type=aggregate_type,
                                            const_trans=const_trans, trans_value=trans_value)
 
@@ -1203,10 +1213,14 @@ nconds = len(means[0])
 
 #cmap255 = [tuple(i*255 for i in cmap[c]) for c in range(nconds)]
 cmap = sns.cubehelix_palette(as_cmap=True)
-
+if isinstance(class_labels[0], str) or isinstance(class_labels[0], unicode):
+    color_levels = xrange(len(class_labels))
+else:
+    color_levels = class_labels
+    
 fig, ax = pl.subplots()
 for idx, nsamples in enumerate(sorted(nsamples_test)):    
-    pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=class_labels, cmap=cmap)
+    pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=color_levels, cmap=cmap)
     #ax.errorbar(np.ones(means[idx].shape)*nsamples, means[idx], yerr=sems[idx])
 fig.colorbar(pts)
 
@@ -1216,7 +1230,7 @@ fig.colorbar(pts)
 cmap1 = sns.color_palette("magma", nconds)
 fig, ax = pl.subplots()
 for idx in range(len(nsamples_test)):
-    ax.errorbar(class_labels, means[idx], yerr=sems[idx], c=cmap1[idx], label=nsamples_test[idx], capsize=5)
+    ax.errorbar(color_levels, means[idx], yerr=sems[idx], c=cmap1[idx], label=nsamples_test[idx], capsize=5)
     ax.xaxis.set_major_locator(pl.MaxNLocator(nconds))
     
 pl.legend()
@@ -1245,18 +1259,18 @@ inputdata = 'meanstim'
 cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
 
 
-#%%
+#%
 # =============================================================================
 # SPECIFIY CLASSIFIER:
 # =============================================================================
 
 # Group configIDs by selected class labels to sort labels in order:
-class_name = 'morphlevel' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-aggregate_type = 'all' #'all' #'half' #all' #'each' #'each' # 'single' #'each' #'single' #'each'
-subset = 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
+class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+aggregate_type = 'all' #'all' #'all' #'half' #all' #'each' #'each' # 'single' #'each' #'single' #'each'
+subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
 
-const_trans = '' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
-trans_value = '' #-5 #16 #None #'-5' #None #-5 #None #-5 #None
+const_trans = '' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+trans_value = '' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
 
 binsize=''
 
@@ -1285,11 +1299,16 @@ else:
      cX_std = StandardScaler().fit_transform(cX)
      
 #% Create output dir for current classifier:
-classif_identifier = get_classifier_id(inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
+classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
                                            class_name=class_name, aggregate_type=aggregate_type,
                                            const_trans=const_trans, trans_value=trans_value)
 
 classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
+
+if aggregate_type == 'single':
+    clf_subdir = '%s_%s' % (const_trans, str(trans_value))
+    classifier_dir = os.path.join(classifier_dir, clf_subdir)
+    
 if not os.path.exists(classifier_dir):
     os.makedirs(classifier_dir)
 else:
@@ -1704,7 +1723,7 @@ ax2 = fig.add_subplot(1,2,2)
 plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax2, normalize=True,
                       title='Normalized')
 
-#%
+#%%
 figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
 pl.savefig(os.path.join(classifier_dir, figname))
 
