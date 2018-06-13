@@ -31,9 +31,15 @@ from pipeline.python.traces.utils import get_frame_info
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
 #           '-T', 'np_subtracted',
 #           '-R', 'blobs_run2', '-t', 'traces001', '-d', 'dff']
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted',
+#           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
+
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
+           '-R', 'objects_run2', '-t', 'traces001', '-d', 'dff']
+
 
 
 def extract_options(options):
@@ -159,23 +165,27 @@ def make_clean_psths(options):
         nrows = 1; rows = None; row_order=None
         
     elif len(trans_types) >= 2:
-        object_index = trans_types.index('morphlevel')
-        other_indices = [i for i,t in enumerate(trans_types) if t != 'morphlevel']
-        if multi_plot is None:
-            transform_columns = other_indices[0]
-        else:
-            transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
-        
-        print "COLUMNS:", trans_types[transform_columns]
-        stim_grid = (sorted(transform_dict[trans_types[object_index]]), sorted(transform_dict[trans_types[transform_columns]]))
-        if len(other_indices) > 1:
-            # Use 1 other-trans for grid columns, use the 2nd trans for color:
+        if 'morphlevel' in trans_types:
+            # We always do 5x5xN, where one axis is morphlevel, so use rows for morphs
+            # Use the other axis (xpos, yrot, etc.) as columns.
+            # Can plot 3rd axis, if exists, as hue, if multi_plot specified.
+            object_index = trans_types.index('morphlevel')                              # Index in transform list for morphlevel
+            other_indices = [i for i,t in enumerate(trans_types) if t != 'morphlevel']  # Transform types that are NOT morphlevel
             if multi_plot is None:
-                multi_plot = trans_types[other_indices[-1]]
-            sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
-        else:
-            # Only 1 other trans_type, use as other axis on grid:
-            sgroups = sconfigs_df.groupby(sorted(trans_types))
+                transform_columns = other_indices[0]
+            else:
+                transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
+                
+            print "COLUMNS:", trans_types[transform_columns]
+            stim_grid = (sorted(transform_dict[trans_types[object_index]]), sorted(transform_dict[trans_types[transform_columns]]))
+            if len(other_indices) > 1:
+                # Use 1 other-trans for grid columns, use the 2nd trans for color:
+                if multi_plot is None:
+                    multi_plot = trans_types[other_indices[-1]]
+                sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
+            else:
+                # Only 1 other trans_type, use as other axis on grid:
+                sgroups = sconfigs_df.groupby(sorted(trans_types))
         
         ncols = len(stim_grid[1])
         columns = trans_types[transform_columns]
