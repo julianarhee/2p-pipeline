@@ -5,7 +5,8 @@ Created on Fri Jun  1 13:22:15 2018
 
 @author: juliana
 """
-
+import matplotlib
+matplotlib.use('agg')
 import sys
 import optparse
 import os

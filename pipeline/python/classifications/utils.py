@@ -6,7 +6,8 @@ Created on Thu May 17 12:31:35 2018
 @author: juliana
 """
 
-
+import matplotlib as mpl
+mpl.use('agg')
 import h5py
 import os
 import json
@@ -22,7 +23,6 @@ import cPickle as pkl
 import pandas as pd
 import numpy as np
 import pylab as pl
-import matplotlib as mpl
 import seaborn as sns
 import pyvttbl as pt
 import multiprocessing as mp
