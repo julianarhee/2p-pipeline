@@ -1455,10 +1455,12 @@ def format_stimconfigs(configs):
                 fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
                 mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
             #print "FN parsed:", fns[0].split('_')
-            if mlevels[-1] > 22:
-                anchor2 = 106
-            else:
-                anchor2 = 22
+            anchor2 = None
+            if len(mlevels) > 0:
+                if mlevels[-1] > 22:
+                    anchor2 = 106
+                else:
+                    anchor2 = 22
             assert all([anchor2 > m for m in mlevels]), "Possibly incorrect morphlevel assignment (%i). Found morphs %s." % (anchor2, str(mlevels))
 
             if stimtype == 'image':
