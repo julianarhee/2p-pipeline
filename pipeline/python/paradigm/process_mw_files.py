@@ -387,7 +387,12 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
             assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
             max_iti = iti_standard_dur[0] + iti_jitter_max[0]
             itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
-            info['ITI'] = [iev.value for iev in itis if iev.value != 0]
+            if len(boundary) > 0:
+                info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
+            else:
+                info['ITI'] = [iev.value for iev in itis if iev.value != 0]
+
+
         else:
             #itis = df.get_events('ITI_time')
             info['ITI'] = iti_standard_dur[0]
@@ -744,14 +749,6 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     session_info = check_nested(session_info)
     print session_info
     
-    # If variable ITI, the number of ITI values that pass the duration test (see get_session_info())
-    # should equal the number of trials, i.e., the number of stimulus events:
-    if isinstance(session_info['ITI'], list): #len(stim_info['ITI']) > 1:
-        assert len(session_info['ITI']) == len(stimevents), "N variable ITIs (%i) does not match N stim events (%i)!" % (len(session_info['ITI']), len(stimevents))
-        iti_durs = session_info['ITI']
-    else:
-        iti_durs = [session_info['ITI'] for i in range(len(stimevents))]
-
     if verbose is True:
         print "================================================================"
         print "MW parsing summary:"
@@ -794,6 +791,15 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialnum]['stim_on_times'] = round(stimevents[mvname].states[0][0]/1E3)
             trial[trialnum]['stim_off_times'] = round(stimevents[mvname].states[-1][0]/1E3)
     else:
+
+        # If variable ITI, the number of ITI values that pass the duration test (see get_session_info())
+        # should equal the number of trials, i.e., the number of stimulus events:
+        if isinstance(session_info['ITI'], list): #len(stim_info['ITI']) > 1:
+            assert len(session_info['ITI']) == len(stimevents), "N variable ITIs (%i) does not match N stim events (%i)!" % (len(session_info['ITI']), len(stimevents))
+            iti_durs = session_info['ITI']
+        else:
+            iti_durs = [session_info['ITI'] for i in range(len(stimevents))]
+
 
         ntrials = len(stimevents)
         post_itis = sorted(trialevents[2::2], key=get_timekey) # 0=pre-blank period, 1=first-static-stim-ON, 2=first-post-stim-ITI
