@@ -374,7 +374,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         stimdurs = df.get_events('distractor_presentation_time')
         info['stimduration'] = stimdurs[-1].value
         # Save ITI info:
-        iti_standard_dur = [i.value for i in df.get_events('ITI_time') if boundary[0] <= i.time <= boundary[1]]
+        iti_standard_dur = [i.value for i in df.get_events('ITI_time')]
         assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
             
         codec = df.get_codec() # Get codec to see which ITI var to use:
@@ -429,6 +429,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         print "................................................................"
 
         trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        #print "trigger times:", trigg_times
 
         ### Get all pixel-clock events in current run:
        # print "selected runs:", user_run_selection
@@ -563,7 +564,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         trialevents.append(trial_evs)
         triggertimes.append(trigg_times)
 
-        session_info = get_session_info(df, stimulus_type=stimtype, boundary=boundary)
+        session_info = get_session_info(df, stimulus_type=stimtype, boundary=[trigg_times[0][0], trigg_times[-1][-1]])
         session_info['tboundary'] = boundary
         info.append(session_info)
 
