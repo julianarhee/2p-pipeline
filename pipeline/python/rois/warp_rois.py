@@ -413,6 +413,7 @@ if plot_warps:
 #        ax3.imshow(wimRGB)
 #    
     figname = 'aligned_rois.png'
+    print figname
     pl.savefig(os.path.join(warp_output_dir, figname))
     pl.close()
 
@@ -452,6 +453,7 @@ if plot_masks:
         rid_figdir = replace_root(rid_figdir, rootdir, animalid, session)
     if not os.path.exists(rid_figdir):
         os.makedirs(rid_figdir)
+    print std_figname
     
     pl.savefig(os.path.join(rid_figdir, std_figname))
     pl.close()
