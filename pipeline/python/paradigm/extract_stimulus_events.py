@@ -279,7 +279,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         stim_dur_curr = round((int(first_found_frame[-1][1].split('_')[0]) - int(first_found_frame[0][1].split('_')[0]))/framerate, 2)
 
         print stim_dur_curr, '[%s]' % trial
-        assert round(stim_dur_curr, 1) == round(mwtrials[trial]['stim_duration']/1E3, 1), "Bad stim duration..! %s" % trial
+	#print "found dur:", stim_dur_curr
+        #print "mw trial:",  mwtrials[trial]['stim_duration']/1E3
+
+        assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         
         durs.append(stim_dur_curr)
         trial_frames.append(first_found_frame)

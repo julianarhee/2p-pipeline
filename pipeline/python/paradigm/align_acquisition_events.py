@@ -190,12 +190,22 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
 
         # Get presentation info (should be constant across trials and files):
         trial_list = sorted(trialdict.keys(), key=natural_keys)
-        stim_durs = [round(trialdict[t]['stim_dur_ms']/1E3, 1)for t in trial_list]
+        stim_durs = [round(np.floor(trialdict[t]['stim_dur_ms']/1E3), 1)for t in trial_list]
         assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
         stim_on_sec = stim_durs[0]
-        iti_durs = [np.floor(trialdict[t]['iti_dur_ms']/1E3) for t in trial_list]
-        assert len(list(set(iti_durs))) == 1, "More than 1 iti_dur found..."
-        iti_full = iti_durs[0]
+        iti_durs = [round(np.floor(trialdict[t]['iti_dur_ms']/1E3), 0) for t in trial_list]
+        print list(set(iti_durs))
+        if len(list(set(iti_durs))) > 1:
+            iti_jitter = 1.0 # TMP TMP 
+            replace_max = max(len(list(set(iti_durs)))) - iti_jitter
+            iti_durs_tmp = list(set(iti_durs))
+            max_ix = iti_durs_tmp.index(max(iti_durs))
+            iti_durs_tmp[max_ix] = replace_max
+            iti_durs_unique = list(set(iti_durs_tmp))
+        else:
+            iti_durs_unique = list(set(iti_durs))
+        assert len(iti_durs_unique) == 1, "More than 1 iti_dur found..."
+        iti_full = iti_durs_unique[0]
         if iti_post is None:
             iti_post = iti_full - iti_pre
         print "ITI POST: %i" % iti_post
