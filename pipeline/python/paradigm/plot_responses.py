@@ -184,12 +184,13 @@ def make_clean_psths(options):
     traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     print "Loaded data from: %s" % traceid_dir
-    dataset = np.load(data_fpath)
-    print dataset.keys()
-        
+#    dataset = np.load(data_fpath)
+#    print dataset.keys()
+#        
     #%
     #optsE = extract_options(options)
     inputdata = optsE.datatype
+    correct_offset = optsE.correct_offset
     filetype = optsE.filetype
         
     dfmax = optsE.dfmax
@@ -199,7 +200,9 @@ def make_clean_psths(options):
     rows = optsE.rows
     columns = optsE.columns
     
-    
+    dataset = np.load(data_fpath)
+    print dataset.keys()
+        
     #ridx = 0
     #inputdata = 'dff' #corrected'
     assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
@@ -207,6 +210,9 @@ def make_clean_psths(options):
         ylabel = 'intensity'
     elif inputdata == 'dff' or inputdata=='smoothedDF':
         ylabel = 'df/f'
+    elif inputdata == 'spikes':
+        ylabel = 'inferred'
+        
         
     xdata = dataset[inputdata]
     ydata = dataset['ylabels']
@@ -288,12 +294,14 @@ def make_clean_psths(options):
 #    
 #    dfmax = xdata.max()
 #    #scale_y = False
+    
+    
     if dfmax is None:
         dfmax = xdata.max()
     else:
         dfmax = float(dfmax)
         
-    if len(trans_types)==2 and subplot_hue is None:
+    if len(trans_types)<=2 and subplot_hue is None:
         trace_colors = ['k']
         trace_labels = ['']
     else:
@@ -326,11 +334,18 @@ def make_clean_psths(options):
         pi = 0
         for k,g in sgroups:
             #print k
-            curr_configs = g.sort_values(subplot_hue).index.tolist()
+            if subplot_hue is not None:
+                curr_configs = g.sort_values(subplot_hue).index.tolist()
+            else:
+                curr_configs = sorted(g.index.tolist())
             for cf_idx, curr_config in enumerate(curr_configs):
                 #print cf_idx, curr_config
                 config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
-                subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
+                if correct_offset:
+                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
+                else:
+                    subdata = tracemat[config_ixs, :]
+                    
                 trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
