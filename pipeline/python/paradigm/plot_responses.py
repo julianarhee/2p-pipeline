@@ -5,6 +5,8 @@ Created on Wed May 30 20:36:25 2018
 
 @author: juliana
 """
+import matplotlib as mpl
+mpl.use('agg')
 import os
 import sys
 import optparse
@@ -50,6 +52,8 @@ def extract_options(options):
     parser.add_option('-D', '--root', action='store', dest='rootdir',
                           default='/nas/volume1/2photon/data',
                           help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
 
@@ -86,7 +90,9 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     
     (options, args) = parser.parse_args(options)
-
+    if options.slurm:
+        options.rootdir = '/n/coxfs01/2p-data'
+    
     return options
 
 
@@ -287,15 +293,23 @@ def make_clean_psths(options):
     else:
         dfmax = float(dfmax)
         
-    if len(trans_types)==2 or subplot_hue is None:
+    if len(trans_types)==2 and subplot_hue is None:
         trace_colors = ['k']
         trace_labels = ['']
     else:
-        if len(transform_dict[subplot_hue]) <= 2:
+        print "Subplot hue: %s" % subplot_hue
+        if subplot_hue in transform_dict.keys():
+            hues = transform_dict[subplot_hue]
+            trace_labels = ['%s %i' % (subplot_hue, v) for v in sorted(transform_dict[subplot_hue])]
+        else:
+            print "Hue is OBJECT"
+            hues = object_transformations[rows]
+            trace_labels = hues
+        if len(hues) <= 2:
             trace_colors = ['g', 'b']
         else:
-            trace_colors = ['r', 'orange', 'g', 'b', 'm']
-        trace_labels = ['%s %i' % (subplot_hue, v) for v in sorted(transform_dict[subplot_hue])]
+            trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
+    print trace_labels #rows, object_transformations[rows] #trace_labels
 
     for ridx in range(xdata.shape[-1]):
         #%%
@@ -312,6 +326,7 @@ def make_clean_psths(options):
             #print k
             curr_configs = g.sort_values(subplot_hue).index.tolist()
             for cf_idx, curr_config in enumerate(curr_configs):
+                print cf_idx, curr_config
                 config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
                 subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
                 trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
