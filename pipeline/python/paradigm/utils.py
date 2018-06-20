@@ -158,6 +158,69 @@ def df_to_sarray(df):
 
 #%% Formatting functions for raw traces:
 
+def run_info_from_dfs(rundir, raw_df, labels_df, traceid_dir='', trace_type='np_subtracted', ntiffs=None, verbose=True):
+    
+    conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
+    
+    # Get SI info:
+    si_info = get_frame_info(rundir)
+    if ntiffs is None:
+        ntiffs = si_info['ntiffs']
+        
+    
+    # Get stimulus info:
+    stimconfigs_fpath = os.path.join(rundir, 'paradigm', 'stimulus_configs.json')
+    with open(stimconfigs_fpath, 'r') as f:
+        stimconfigs = json.load(f)
+    print "Loaded %i stimulus configurations." % len(stimconfigs.keys())
+
+    transform_dict, object_transformations = get_transforms(stimconfigs)
+    trans_types = object_transformations.keys()
+
+    # Get trun info:
+    roi_list = sorted(list(set([r for r in raw_df.columns if not r=='index'])), key=natural_keys)
+    ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
+    trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
+    ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
+    assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
+    nframes_per_trial = list(set(labels_df.groupby(['trial'])['tsec'].count()))[0]
+    nframes_on = list(set(labels_df['stim_dur']))
+    assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
+    nframes_on = nframes_on[0] * si_info['framerate']
+
+    # Get stim onset index for all trials:
+    tmat = np.reshape(labels_df['tsec'].values, (ntrials_total,nframes_per_trial))    
+    ons = []
+    for ts in range(tmat.shape[0]):
+        on_idx = [t for t in tmat[ts,:]].index(0)
+        ons.append(on_idx)
+    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
+    stim_on_frame = list(set(ons))[0]
+
+    if verbose:
+        print "-------------------------------------------"
+        print "Run summary:"
+        print "-------------------------------------------"
+        print "N rois:", len(roi_list)
+        print "N trials:", ntrials_total
+        print "N frames per trial:", nframes_per_trial
+        print "N trials per stimulus:", ntrials_by_cond
+        print "-------------------------------------------"
+
+    run_info = {'roi_list': roi_list,
+                'ntrials_total': ntrials_total,
+                'nframes_per_trial': nframes_per_trial,
+                'ntrials_by_cond': ntrials_by_cond,
+                'condition_list': conditions,
+                'stim_on_frame': stim_on_frame,
+                'nframes_on': nframes_on,
+                'traceid_dir': traceid_dir, 
+                'transforms': object_transformations,
+                'trans_types': trans_types,
+                'framerate': si_info['framerate'],
+                'nfiles': ntiffs} #len([i for i in os.listdir(os.path.join(traceid_dir, 'files')) if i.endswith('hdf5')])
+
+    return run_info
 
 #%
 def load_raw_run(traceid_dir, trace_type='np_subtracted', combined=False, create_new=False, fmt='hdf5', verbose=True):
@@ -699,6 +762,7 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
                 pl.ion()
                 pl.show()
                 test_drift_correction(raw_df, F0_df, corrected_df, nframes_to_show, test_roi=test_roi)
+                pl.show()
                 pl.pause(0.001)
                 print "Showing initial drift correction (quantile: %.2f)" % quantile
                 print "Mean baseline for all ROIs:", np.mean(np.mean(F0_df, axis=0))
