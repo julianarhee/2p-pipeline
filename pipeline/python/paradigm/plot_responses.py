@@ -313,6 +313,8 @@ def make_clean_psths(options):
 
     for ridx in range(xdata.shape[-1]):
         #%%
+        if ridx % 20 == 0:
+            print "Plotting %i of %i rois." % (ridx, xdata.shape[-1])
         roi_id = 'roi%05d' % int(ridx+1)
 
         tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
@@ -326,7 +328,7 @@ def make_clean_psths(options):
             #print k
             curr_configs = g.sort_values(subplot_hue).index.tolist()
             for cf_idx, curr_config in enumerate(curr_configs):
-                print cf_idx, curr_config
+                #print cf_idx, curr_config
                 config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
                 subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
                 trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
