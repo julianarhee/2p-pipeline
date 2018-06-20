@@ -74,6 +74,8 @@ def extract_options(options):
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
                           default='corrected', help='Traces to plot (must be in dataset.npz [default: corrected]')
+    parser.add_option('--offset', action='store_true', dest='correct_offset',
+                          default=False, help='Set to correct df/f offset after drift correction')           
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='png', help='File type for images [default: png]')
     parser.add_option('--scale', action='store_true', dest='scale_y',
