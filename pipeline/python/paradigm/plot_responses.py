@@ -36,9 +36,10 @@ from pipeline.python.traces.utils import get_frame_info
 #           '-T', 'np_subtracted',
 #           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516', '-A', 'FOV1_zoom1x',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'objects_run2', '-t', 'traces001', '-d', 'dff']
+           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
+           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
 
 
@@ -77,16 +78,91 @@ def extract_options(options):
                           default=None, help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
     parser.add_option('--shade', action='store_false', dest='plot_trials',
                           default=True, help='Set to plot mean and sem as shaded (default plots individual trials)')
-    parser.add_option('-m', '--multi', action='store', dest='multi_plot',
-                          default=None, help='Transform to plot with diff colors on same subplot (only relevant if >2 trans_types)')
-    parser.add_option('-a', '--alt', action='store', dest='alt_axis',
-                          default=None, help='Specify as -- object -- if want to plot object ID as axis on grid, rather than transform')
-    
+    parser.add_option('-r', '--rows', action='store', dest='rows',
+                          default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types) - default uses objects or morphlevel')
+    parser.add_option('-c', '--columns', action='store', dest='columns',
+                          default=None, help='Transform to plot along COLUMNS')
+    parser.add_option('-H', '--hue', action='store', dest='subplot_hue',
+                          default=None, help='Transform to plot by HUE within each subplot')
     
     (options, args) = parser.parse_args(options)
 
     return options
 
+
+##%%
+#    
+#    if len(trans_types) == 1:
+#        stim_grid = (transform_dict[trans_types[0]],)
+#        sgroups = sconfigs_df.groupby(sorted(trans_types))
+#        ncols = len(stim_grid[0])
+#        columns = trans_types[0]
+#        col_order = sorted(stim_grid[0])
+#        nrows = 1; rows = None; row_order=None
+#        
+#    elif len(trans_types) >= 2:
+#        object_list = list(set([sconfigs[c]['object'] for c in sconfigs.keys()]))
+#        nobjects = len(object_list)
+#        
+#        if 'morphlevel' in trans_types or nobjects > 1:
+#            # We always do 5x5xN, where one axis is morphlevel, so use rows for morphs
+#            # Use the other axis (xpos, yrot, etc.) as columns.
+#            # Can plot 3rd axis, if exists, as hue, if multi_plot specified.
+#            if multi_plot is None:
+#                if 'morphlevel' in trans_types:
+#                    plot_by = 'morphlevel'
+#                else:
+#                    plot_by = 'object'
+#                other_transforms = [t for i,t in enumerate(trans_types) if t != plot_by]  # Transform types that are NOT morphlevel=
+#                plot_columns = other_transforms[0]
+#            else:
+#                plot_by = [i for i in trans_types if i != multi_plot][0]
+#                other_transforms = [t for i,t in enumerate(trans_types) if t != plot_by and t != multi_plot]  # Transform types that are NOT morphlevel=
+#                plot_columns = [t for t in other_transforms if t != multi_plot][0]
+#                
+#            print "COLUMNS:", plot_columns #trans_types[plot_columns]
+#            stim_grid = (sorted(transform_dict[plot_by]), sorted(transform_dict[plot_columns]))
+#            if len(other_transforms) > 0:
+#                # Use 1 other-trans for grid columns, use the 2nd trans for color:
+#                if multi_plot is None:
+#                    multi_plot = [t for t in other_transforms if t != plot_columns][0] #trans_types[other_indices[-1]]
+#                sgroups = sconfigs_df.groupby(sorted([plot_by, plot_columns]))
+#            else:
+#                # Only 1 other trans_type, use as other axis on grid:
+#                sgroups = sconfigs_df.groupby(sorted(trans_types))
+#                
+#        elif alt_axis is not None:
+#            real_transform = [t for t in trans_types if t != alt_axis][0]
+#            alt_axis_values = object_transformations[real_transform]
+#            
+#            other_indices = [i for i,t in enumerate(trans_types) if t != alt_axis]  # Transform types that are NOT morphlevel
+#            if multi_plot is None:
+#                transform_columns = other_indices[0]
+#            else:
+#                transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
+#                
+#            print "COLUMNS:", trans_types[transform_columns]
+#            stim_grid = (sorted(alt_axis_values), sorted(transform_dict[trans_types[transform_columns]]))
+#            if len(other_indices) > 1:
+#                # Use 1 other-trans for grid columns, use the 2nd trans for color:
+#                if multi_plot is None:
+#                    multi_plot = trans_types[other_indices[-1]]
+#                sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
+#            else:
+#                # Only 1 other trans_type, use as other axis on grid:
+#                sgroups = sconfigs_df.groupby(sorted(trans_types))
+#                
+#                
+#                
+#        ncols = len(stim_grid[1])
+#        columns = plot_columns #trans_types[transform_columns]
+#        col_order = sorted(stim_grid[1])
+#        nrows = 1; rows = None; row_order=None
+#        if len(stim_grid) == 2:
+#            nrows = len(stim_grid[0])
+#            rows = stim_grid[0]
+#            row_order = sorted(stim_grid[0])
+            
 #%%
                           
                           
@@ -113,8 +189,10 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
-    multi_plot = optsE.multi_plot
-    alt_axis = optsE.alt_axis
+    subplot_hue = optsE.subplot_hue
+    rows = optsE.rows
+    columns = optsE.columns
+    
     
     #ridx = 0
     #inputdata = 'dff' #corrected'
@@ -150,9 +228,9 @@ def make_clean_psths(options):
     transform_dict, object_transformations = util.get_transforms(sconfigs)
     trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])
     print "Trans:", trans_types
-
-    if alt_axis is not None:
-        trans_types.extend([alt_axis])
+#
+#    if alt_axis is not None:
+#        trans_types.extend([alt_axis])
 
     tpoints = np.reshape(tsecs, (ntrials_total, nframes_per_trial))[0,:]
     labeled_trials = np.reshape(ydata, (ntrials_total, nframes_per_trial))[:,0]
@@ -169,61 +247,23 @@ def make_clean_psths(options):
         columns = trans_types[0]
         col_order = sorted(stim_grid[0])
         nrows = 1; rows = None; row_order=None
+    else:
+        if rows is None:
+            if 'morphlevel' in trans_types and subplot_hue != 'morphlevel':
+                rows = 'morphlevel'
+            else:
+                rows = 'object'
+        if columns is None:
+            other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
+            columns = other_trans_types[0]
+        if subplot_hue is None and len(other_trans_types) > 1:
+            subplot_hue = [t for t in other_trans_types if t != columns][0]
+        nrows = len(transform_dict[rows])
+        ncols = len(transform_dict[columns])
         
-    elif len(trans_types) >= 2:
-        if 'morphlevel' in trans_types:
-            # We always do 5x5xN, where one axis is morphlevel, so use rows for morphs
-            # Use the other axis (xpos, yrot, etc.) as columns.
-            # Can plot 3rd axis, if exists, as hue, if multi_plot specified.
-            object_index = trans_types.index('morphlevel')                              # Index in transform list for morphlevel
-            other_indices = [i for i,t in enumerate(trans_types) if t != 'morphlevel']  # Transform types that are NOT morphlevel
-            if multi_plot is None:
-                transform_columns = other_indices[0]
-            else:
-                transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
-                
-            print "COLUMNS:", trans_types[transform_columns]
-            stim_grid = (sorted(transform_dict[trans_types[object_index]]), sorted(transform_dict[trans_types[transform_columns]]))
-            if len(other_indices) > 1:
-                # Use 1 other-trans for grid columns, use the 2nd trans for color:
-                if multi_plot is None:
-                    multi_plot = trans_types[other_indices[-1]]
-                sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
-            else:
-                # Only 1 other trans_type, use as other axis on grid:
-                sgroups = sconfigs_df.groupby(sorted(trans_types))
-                
-        elif alt_axis is not None:
-            real_transform = [t for t in trans_types if t != alt_axis][0]
-            alt_axis_values = object_transformations[real_transform]
-            
-            other_indices = [i for i,t in enumerate(trans_types) if t != alt_axis]  # Transform types that are NOT morphlevel
-            if multi_plot is None:
-                transform_columns = other_indices[0]
-            else:
-                transform_columns = [i for i in other_indices if trans_types[i] != multi_plot][0]
-                
-            print "COLUMNS:", trans_types[transform_columns]
-            stim_grid = (sorted(alt_axis_values), sorted(transform_dict[trans_types[transform_columns]]))
-            if len(other_indices) > 1:
-                # Use 1 other-trans for grid columns, use the 2nd trans for color:
-                if multi_plot is None:
-                    multi_plot = trans_types[other_indices[-1]]
-                sgroups = sconfigs_df.groupby(sorted(['morphlevel', trans_types[transform_columns]]))
-            else:
-                # Only 1 other trans_type, use as other axis on grid:
-                sgroups = sconfigs_df.groupby(sorted(trans_types))
-                
-                
-                
-        ncols = len(stim_grid[1])
-        columns = trans_types[transform_columns]
-        col_order = sorted(stim_grid[1])
-        nrows = 1; rows = None; row_order=None
-        if len(stim_grid) == 2:
-            nrows = len(stim_grid[0])
-            rows = stim_grid[0]
-            row_order = sorted(stim_grid[0])
+        stim_grid = (transform_dict[rows], transform_dict[columns])
+        sgroups = sconfigs_df.groupby([rows, columns])
+        
         
     #%
     # Set output dir for nice(r) psth:
@@ -247,15 +287,18 @@ def make_clean_psths(options):
     else:
         dfmax = float(dfmax)
         
-    if len(trans_types)==2 or multi_plot is None:
+    if len(trans_types)==2 or subplot_hue is None:
         trace_colors = ['k']
         trace_labels = ['']
     else:
-        trace_colors = ['g', 'b']
-        trace_labels = ['%s %i' % (multi_plot, v) for v in sorted(transform_dict[multi_plot])]
+        if len(transform_dict[subplot_hue]) <= 2:
+            trace_colors = ['g', 'b']
+        else:
+            trace_colors = ['r', 'orange', 'g', 'b', 'm']
+        trace_labels = ['%s %i' % (subplot_hue, v) for v in sorted(transform_dict[subplot_hue])]
 
     for ridx in range(xdata.shape[-1]):
-        #%
+        #%%
         roi_id = 'roi%05d' % int(ridx+1)
 
         tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
@@ -267,7 +310,7 @@ def make_clean_psths(options):
         pi = 0
         for k,g in sgroups:
             #print k
-            curr_configs = g.index.tolist()
+            curr_configs = g.sort_values(subplot_hue).index.tolist()
             for cf_idx, curr_config in enumerate(curr_configs):
                 config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
                 subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
@@ -275,6 +318,7 @@ def make_clean_psths(options):
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
                 axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, label=trace_labels[cf_idx], alpha=0.8)
+                #axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, label=g.loc[curr_config, subplot_hue], alpha=0.8)
                 if plot_trials:
                     for ti in range(subdata.shape[0]):
                         axesf[pi].plot(tpoints, subdata[ti,:], color=trace_colors[cf_idx], linewidth=0.5, alpha=0.2)
@@ -308,10 +352,10 @@ def make_clean_psths(options):
             ax.yaxis.set_visible(False)
                 
     
-        pl.subplots_adjust(top=0.78)
+        pl.subplots_adjust(top=0.85)
         pl.suptitle("%s" % (roi_id))
-        pl.legend()
-        #%
+        pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+        #%%
         figname = '%s_psth_%s.%s' % (roi_id, inputdata, filetype)
         pl.savefig(os.path.join(psth_dir, figname))
         pl.close()
