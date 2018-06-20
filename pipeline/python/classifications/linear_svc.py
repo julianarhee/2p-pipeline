@@ -2007,6 +2007,14 @@ sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
 
 #%%
 
+  
+#%%
+
+# #############################################################################
+# Learning curves
+# #############################################################################
+
+
 # Modified from http://scikit-learn.org/stable/auto_examples/plot_learning_curve.html
 from sklearn.learning_curve import learning_curve
 def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
@@ -2064,14 +2072,7 @@ def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
     if ylim:
         pl.ylim(ylim)
     pl.title(title)
-  
-#%%
-
-# #############################################################################
-# Learning curves
-# #############################################################################
-
-
+    
 # 
 rand_order = random.sample(xrange(len(cy)), len(cy))
 
