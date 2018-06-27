@@ -302,6 +302,7 @@ def create_rdata_array(opts):
     iti_post = optsE.iti_post
     if iti_post is not None:
         iti_post = float(iti_post)
+    print "User specfied ITI post:", iti_post
         
     run = optsE.run_list[0]
     traceid = optsE.traceid_list[0]

@@ -973,6 +973,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     with open(os.path.join(run_dir, '%s.json' % run), 'r') as fr:
         scan_info = json.load(fr)
     frame_tsecs = np.array(scan_info['frame_tstamps_sec'])
+    if scan_info['nchannels']==2:
+        frame_tsecs = np.array(frame_tsecs[0::2])
     framerate = scan_info['frame_rate']
 
 
@@ -1066,14 +1068,15 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
         trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
 
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+        print len(frame_tsecs), frame_indices[-20:]
+
         if block_indexed is False:
             frame_indices = frame_indices - len(frame_tsecs)*fidx
-
         # Check that we have all frames needed (no cut off frames from end):
-        if frame_indices[-1] > len(frame_tsecs):
-            print "Skipping last trial! %i extra frames" % (frame_indices[-1] - len(frame_tsecs))
-            trials_in_block = trials_in_block[0:-1]
-            skip_last_trial = True
+#        if frame_indices[-1] > len(frame_tsecs):
+#            print "Skipping last trial! %i extra frames" % (frame_indices[-1] - len(frame_tsecs))
+#            trials_in_block = trials_in_block[0:-1]
+#            skip_last_trial = True
     
         excluded_params = ['filehash', 'stimulus', 'type']
         curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
@@ -1083,10 +1086,10 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     
         # Get frame indices of the full trial (this includes PRE-stim baseline, stim on, and POST-stim iti):
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
-#        frames_within = np.array([f for f in frame_indices if f < len(frame_tsecs)])
-#        if len(frame_indices) != len(frames_within):
-#            print "** warning ** Found %i extra frames." % (len(frame_indices) - len(frames_within))
-#            frame_indices = frames_within
+        frames_within = np.array([f for f in frame_indices if f < len(frame_tsecs)])
+        if len(frame_indices) != len(frames_within):
+            print "** warning ** Found %i extra frames." % (len(frame_indices) - len(frames_within))
+            frame_indices = frames_within
             
         trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block])
@@ -1102,6 +1105,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
             currbaseline_df = file_F0_df.loc[frame_indices,:]
         
         # Turn time-stamp array into (ntrials x nframes_per_trial) array:
+        print "frame_indices:", frame_indices.dtype, frame_indices.shape
         trial_tstamps = frame_tsecs[frame_indices]        
         nframes_per_trial = len(frame_indices) / len(trials_in_block)
         tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
