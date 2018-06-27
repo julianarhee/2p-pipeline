@@ -543,6 +543,9 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                     zproj_source_dir = zproj_source_dir.replace('_mean_slices', '_mean_deinterleaved')
                 elif '_std_' in zproj_source_dir:
                     zproj_source_dir = zproj_source_dir.replace('_std_slices', '_std_deinterleaved')
+            # Always use MEAN image to do warping... 
+            if 'std_' in zproj_source_dir:
+                zproj_source_dir = zproj_source_dir.replace('std_', 'mean_')
 
             curr_zproj_dir = os.path.join(zproj_source_dir, curr_file)
             # Check root:
@@ -584,11 +587,15 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                             print "... loading ROI src reference img to warp."
                             ref_img_fpath = [os.path.join(maskinfo['roi_source_dir'], f)
                                                 for f in os.listdir(maskinfo['roi_source_dir']) if f.endswith('tif')][0]
-                            print "... %s" % ref_img_fpath
                         else:
                             zproj_base = os.path.split(curr_zproj_dir)[0]; ref = maskinfo['ref_file']
                             ref_img_fpath = [os.path.join(zproj_base, ref, m)
                                                 for m in os.listdir(os.path.join(zproj_base, ref)) if curr_slice in m][0]
+		        if '_mean' not in ref_img_fpath:
+			    ref_img_fpath = ref_img_fpath.replace('std_', 'mean_')
+                        if '_std' in ref_img_fpath:
+                            ref_img_fpath = ref_img_fpath.replace('std_', 'mean_')
+		        print "... %s" % ref_img_fpath
 
                         ref_img = tf.imread(ref_img_fpath)
 
@@ -818,14 +825,14 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, do_neuropil_correction=True
         # Load input tiff file:
         print "-- -- Reading tiff... %s" % currtiff_path
         tiff = tf.imread(currtiff_path)
-        print tiff.shape
+        #print tiff.shape
         T, d1, d2 = tiff.shape
         d = d1*d2
         tiffR = np.reshape(tiff, (T, d), order='C'); del tiff
 
         # First get signal channel only:
         tiffR = tiffR[signal_channel_idx::nchannels,:]
-
+        print tiffR.shape
         # Apply masks to each slice:
         file_grp = h5py.File(filetraces_filepath, 'w')
         file_grp.attrs['source_file'] = currtiff_path
@@ -1062,11 +1069,14 @@ def get_roi_timecourses(TID, RID, si_info, input_filedir='/tmp', rootdir='', cre
         nslices_full = si_info['nslices_full']
         dims = tmp_tracestruct.attrs['dims']
         all_frames_tsec = np.array(si_info['frames_tsec'])
+        if si_info['nchannels'] == 2:
+            all_frames_tsec = all_frames_tsec[0::2]
         #total_nframes_in_run = tmp_tracestruct.attrs['dims'][-1] * ntiffs * nslices_full
         tmp_tracestruct.close(); del tmp_tracestruct
 
         #nframes_in_file = si_info['nframes_per_file'] #uninfo['nvolumes']
         nframes_in_file_raw = si_info['nframes_per_file']
+        print "Nframes per file:", nframes_in_file_raw
         nframes_per_chunk = int(round(nframes_in_file_raw / nslices_full))
         total_nframes_in_run = nframes_per_chunk * ntiffs
 
