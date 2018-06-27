@@ -375,23 +375,28 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         info['stimduration'] = stimdurs[-1].value
         # Save ITI info:
         iti_standard_dur = [i.value for i in df.get_events('ITI_time')]
+        print "standard ITIs:", iti_standard_dur
         assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
             
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
-            
-            # Only take ITI durs that are within the max allowed, since I don't know what the others are:
-            # Also, only consider events time-stamped after the first 'this_ITI_time' update.
-            iti_jitter_max = [i.value for i in df.get_events('ITI_jitter_max') if i.time >= tmp_itis[0].time]
-            assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
-            max_iti = iti_standard_dur[0] + iti_jitter_max[0]
-            itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
-            if len(boundary) > 0:
-                info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
+            if len(tmp_itis) == 0 or len(tmp_itis)==len(iti_standard_dur):
+                # jitter var exists, but not actually used.
+                info['ITI'] = iti_standard_dur[0]
             else:
-                info['ITI'] = [iev.value for iev in itis if iev.value != 0]
-
+                
+                # Only take ITI durs that are within the max allowed, since I don't know what the others are:
+                # Also, only consider events time-stamped after the first 'this_ITI_time' update.
+                iti_jitter_max = [i.value for i in df.get_events('ITI_jitter_max') if i.time >= tmp_itis[0].time]
+                assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
+                max_iti = iti_standard_dur[0] + iti_jitter_max[0]
+                itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
+                if len(boundary) > 0:
+                    info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
+                else:
+                    info['ITI'] = [iev.value for iev in itis if iev.value != 0]
+    
 
         else:
             #itis = df.get_events('ITI_time')
@@ -429,6 +434,11 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         print "................................................................"
 
         trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        # CHeck if should add ITI:
+        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
+        if len(check_durs) > 0:
+            iti_to_add = int(check_durs)
+            trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
         #print "trigger times:", trigg_times
 
         ### Get all pixel-clock events in current run:
@@ -473,6 +483,19 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
 
             # Find ITI indices:
             iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value)==2]
+            if len(list(set(np.diff(iti_idxs)))) > 1:
+                seconds = np.diff(iti_idxs)[0::2]
+                firsts = np.diff(iti_idxs)[1::2]
+                if abs( len(seconds) - len(firsts) ) <= 3:
+                    print "*** Warning: extra ITI pixel evnt found! ***"
+                    if np.diff(iti_idxs)[0] == 1:
+                        # There is an extra 'off' pixel clock event that doesn't correpsond to the actual ITI event:
+                        iti_idxs = iti_idxs[1::2]
+                        skip_first_repeat_iti = False
+                    elif np.diff(iti_idxs)[1] == 1:
+                        iti_idxs = iti_idxs[0::2]
+                        skip_first_repeat_iti = True
+                    
 
 	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
@@ -517,6 +540,13 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         for im in im_idx:
             try:
                 next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
+#                if skip_first_repeat_iti:
+#                    first_found = pixelclock_evs.index(next_iti)
+#                    if first_found == len(pixelclock_evs)-1:
+#                        next_iti = pixelclock_evs[first_found]
+#                    else:
+#                        next_iti = pixelclock_evs[first_found+1]
+
                 iti_evs.append(next_iti)
             except StopIteration:
                 # First, see if theer is an extra p-clock event missed because of missed triggers:
@@ -804,13 +834,14 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
 
         ntrials = len(stimevents)
         post_itis = sorted(trialevents[2::2], key=get_timekey) # 0=pre-blank period, 1=first-static-stim-ON, 2=first-post-stim-ITI
-
+        
         # Get dynamic-grating bicode events:
         dynamic_stim_bitcodes = []
         bitcodes_by_trial = dict((i+1, dict()) for i in range(len(stimevents)))
         #for stim,iti in zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey)):
         for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
             trialnum = trialidx + 1
+            assert stim.time < iti.time
             # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
             # display-update events related to that trial:
             current_bitcode_evs = [p for p in sorted(pixelevents, key=get_timekey) if p.time>=stim.time and p.time<=iti.time] # p.time<=iti.time to get bit-code for post-stimulus ITI
