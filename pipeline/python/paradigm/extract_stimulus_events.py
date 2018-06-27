@@ -122,48 +122,48 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 #        interp_idxs = list(set([int(f) for f in np.arange(frame_on_idxs[trigg], frame_on_idxs[trigg+1]-nreads_per_frame, nreads_per_frame)])) # Make sure no repeats
 #        print len(interp_idxs)
 #        frame_on_idxs.extend(interp_idxs)
+            
 #    # Re-sort frame_idxs:
     frame_on_idxs = sorted(list(set(frame_on_idxs)))
     
-#    print "Final: %i frame-triggers." % len(frame_on_idxs)
-
     use_loop =False# True 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
-    frame_bitcodes = dict(); ix = 0; ncodes = [];
+    frame_bitcodes = dict(); ix = 0; #codes = [];
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
         if idx==len(frame_on_idxs)-1:
             bcodes = all_bitcodes[frameidx:]
         else:
             bcodes = all_bitcodes[frameidx:frame_on_idxs[idx+1]]
+#        ncodes.append(len(bcodes))
+#        
+#        # Check that this isn't a missed trigger period:
+#        if len(bcodes) > nreads_per_frame*10:
+#            print idx, frameidx
+#            nsplits = int(np.floor(len(bcodes) / nreads_per_frame))
+#            starting_indices = np.arange(0, len(bcodes), nreads_per_frame/2)
+#            tmp_bcodes = copy.copy(bcodes)
+#            for n, starting_index in enumerate(starting_indices): #range(nsplits):
+#                fcounter = 'p%i' % n
+#                if n == nsplits-1:
+#                    curr_bcodes = tmp_bcodes[starting_index:]
+#                else:
+#                    curr_bcodes = tmp_bcodes[starting_index:starting_index+nreads_per_frame]
+#                frame_bitcodes['%i_%s' % (idx, fcounter)] = curr_bcodes
+#                if n % 2 == 0:
+#                    ix += 1
+#                
+#        else:
             
-        ncodes.append(len(bcodes))
-        
-        # Check that this isn't a missed trigger period:
-        if len(bcodes) > nreads_per_frame*10:
-            print idx, frameidx
-            nsplits = int(np.floor(len(bcodes) / nreads_per_frame))
-            starting_indices = np.arange(0, len(bcodes), nreads_per_frame/2)
-            tmp_bcodes = copy.copy(bcodes)
-            for n, starting_index in enumerate(starting_indices): #range(nsplits):
-                fcounter = 'p%i' % n
-                if n == nsplits-1:
-                    curr_bcodes = tmp_bcodes[starting_index:]
-                else:
-                    curr_bcodes = tmp_bcodes[starting_index:starting_index+nreads_per_frame]
-                frame_bitcodes['%i_%s' % (ix, fcounter)] = curr_bcodes
-                if n % 2 == 0:
-                    ix += 1
-                
-        else:
-            halfmark = int(np.floor(len(bcodes)/2))
-    #        if use_loop:
-    #            frame_bitcodes[idx] = bcodes
-    #        else:
-            frame_bitcodes['%i_p0' % ix] = bcodes[0:halfmark]
-            frame_bitcodes['%i_p1' % ix] = bcodes[halfmark:]
-            ix += 1
+    #### Split bitcodes per frame in half for higher "resolution" of bcodes per frame
+        halfmark = int(np.floor(len(bcodes)/2))
+#        if use_loop:
+#            frame_bitcodes[idx] = bcodes
+#        else:
+        frame_bitcodes['%i_p0' % idx] = bcodes[0:halfmark]
+        frame_bitcodes['%i_p1' % idx] = bcodes[halfmark:]
+        ix += 1
 
 
     ### Find first frame of MW experiment start:
@@ -227,16 +227,15 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         bitcodes = mwtrials[trial]['all_bitcodes']
         
         # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
-        if (blank_start is True) or (int(tidx+1)>1):
+        if (blank_start is True):
             if tidx == 0 and (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
+                # If this is the first trial, don't skip anything
                 nframes_to_skip= 0
                 curr_frames = sorted(allframes[allframes.index(first_frame)+nframes_to_skip:], key=natural_keys)
-            else:
-    
-                # Check that LAST trial's ITI is not the same as CURRENT trial's STIM
-                # This can happen in between .tif files, since there is an addition PRE-ITI
-                # at the start of each block.
-                if tidx > 0 and bitcodes[0] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+            elif tidx > 0:
+                if bitcodes[0] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+                    # Check that LAST trial's ITI is not the same as CURRENT trial's STIM
+                    # This can happen in between .tif files, since there is an additional PRE-ITI at start of each block.
                     print "Found a repeat! skipping..."
                     consecutives = []; fiter = 0
                     while len(consecutives) < minframes:
@@ -246,14 +245,15 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                         fiter+=1
                     curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
+                    # Skip extra frames if start of new block (back to back ITIs in serial data):
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2 * framerate)
                 else:
+                    # Only skip 1 ITI's worth of frames:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
-                    # print 'skipping iti...', nframes_to_skip
                     curr_frames = sorted(allframes[allframes.index(first_frame)+nframes_to_skip:], key=natural_keys)
         
+        #### For each bitcode of current trial, get the correpsonding frame(s):
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
-
         if use_loop:
             for bitcode in bitcodes: #mwtrials[trial]['all_bitcodes'][1:]: # 20180516 - FOV1_zoom1x - blobs_movies_run3 is messed up (trial00049 has super long first bitcode??)
                 looking = True
@@ -312,38 +312,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                 first_found_frame.append((bitcode, first_frame))
                 curr_frames = sorted(allframes[allframes.index(first_frame)+1:], key=natural_keys) #curr_frames[found_frame[0]:]
                 
-#                # (11, '2678_a'),
-# (11, '2678_a'),
-# (7, '2870_a'),
-# (14, '2905_b'),
-# (6, '2928_b'),
-# (4, '2934_b'),
-# (13, '2948_a'),
-# (5, '3151_b'),
-# (12, '3152_b'),
-# (9, '3154_b'),
-# (14, '3164_b'),
-# (10, '3177_a'),
-# (1, '3182_a'),
-# (0, '3187_b'),
-# (11, '3217_a'),
-# (4, '3405_a'),
-# (7, '3416_b'),
-# (1, '3422_a'),
-# (12, '3423_b'),
-# (1, '3432_b'),
-# (9, '3464_b'),
-# (8, '3473_a'),
-# (0, '3481_a'),
-# (15, '3490_a'),
-# (5, '3678_b')]
-#    
         #stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
         stim_dur_curr = round((int(first_found_frame[-1][1].split('_')[0]) - int(first_found_frame[0][1].split('_')[0]))/framerate, 2)
 
         print stim_dur_curr, '[%s]' % trial
-	#print "found dur:", stim_dur_curr
-        #print "mw trial:",  mwtrials[trial]['stim_duration']/1E3
 
         try:
             assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
@@ -353,7 +325,6 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         durs.append(stim_dur_curr)
         trial_frames.append(first_found_frame)
         
-
         trialevents[mwtrial_hash]['stim_on_idx'] = int(first_found_frame[0][1].split('_')[0])
         trialevents[mwtrial_hash]['stim_off_idx'] = int(first_found_frame[-1][1].split('_')[0])
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
