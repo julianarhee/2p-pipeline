@@ -696,25 +696,25 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
     framerate = scan_info['frame_rate']
     print "Got framerate from RUN INFO:", framerate
         
-    if window_size_sec is None:
-        paradigm_dir = os.path.join(traceid_dir.split('/traces')[0], 'paradigm')
-        parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
-        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
-    
-        trial_list = sorted(parsed_frames.keys(), key=natural_keys)
-        print "There are %i total trials across all .tif files." % len(trial_list)
-        stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
-        itidurs = list(set([parsed_frames[t]['frames_in_run'].attrs['iti_dur_sec'] for t in trial_list]))
-        assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
-        assert len(itidurs)==1, "More than 1 unique value for iti dur found in parsed_frames_ file!"
-        trial_dur_sec = stimdurs[0] + itidurs[0]
-        window_size_sec = trial_dur_sec * 3
-        #nframes_on = round(int(stimdurs[0] * framerate))
-        #nframes_iti = round(int(itidurs[0] * framerate))
-        #nframes_trial = nframes_on + nframes_iti
-        parsed_frames.close()
-        print "Using default window size of 3 trials (total is %i sec)" % trial_dur_sec
-        
+#    if window_size_sec is None:
+#        paradigm_dir = os.path.join(traceid_dir.split('/traces')[0], 'paradigm')
+#        parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
+#        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
+#    
+#        trial_list = sorted(parsed_frames.keys(), key=natural_keys)
+#        print "There are %i total trials across all .tif files." % len(trial_list)
+#        stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
+#        itidurs = list(set([parsed_frames[t]['frames_in_run'].attrs['iti_dur_sec'] for t in trial_list]))
+#        assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
+#        assert len(itidurs)==1, "More than 1 unique value for iti dur found in parsed_frames_ file!"
+#        trial_dur_sec = stimdurs[0] + itidurs[0]
+#        window_size_sec = trial_dur_sec * 3
+#        #nframes_on = round(int(stimdurs[0] * framerate))
+#        #nframes_iti = round(int(itidurs[0] * framerate))
+#        #nframes_trial = nframes_on + nframes_iti
+#        parsed_frames.close()
+#        print "Using default window size of 3 trials (total is %i sec)" % trial_dur_sec
+#        
     # Create output dir to save processed trace_arrays:
     processed_trace_arrays_dir = os.path.join(traceid_dir, 'files', 'trace_arrays_processed')
     if not os.path.exists(processed_trace_arrays_dir) or create_new:
@@ -973,6 +973,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     with open(os.path.join(run_dir, '%s.json' % run), 'r') as fr:
         scan_info = json.load(fr)
     frame_tsecs = np.array(scan_info['frame_tstamps_sec'])
+    print "N tsecs:", len(frame_tsecs)
     if scan_info['nchannels']==2:
         frame_tsecs = np.array(frame_tsecs[0::2])
     framerate = scan_info['frame_rate']
@@ -1013,9 +1014,9 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     print "There are %i total trials across all .tif files." % len(trial_list)
 
 
-    stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
-    assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
-    nframes_on = round(int(stimdurs[0] * framerate))
+    #stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
+    #assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
+    #nframes_on = round(int(stimdurs[0] * framerate))
     
     print "Collating trials across all files from %s" % trace_arrays_type
     trace_arrays_dir = os.path.join(traceid_dir, 'files', trace_arrays_type)
@@ -1025,6 +1026,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     block_indexed = True
     if all([all(parsed_frames[t]['frames_in_run'][:] == parsed_frames[t]['frames_in_file'][:]) for t in trial_list]):
         block_indexed = False
+        print "Frame indices are NOT block indexed"
         
     trace_fns = sorted([f for f in os.listdir(trace_arrays_dir) if 'File' in f and f.endswith(fmt)], key=natural_keys)
     print "Found %i files to collate." % len(trace_fns)
@@ -1066,12 +1068,12 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
 
         # Get all trials contained in current .tif file:
         trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
-
+        print "Last trial:", trials_in_block[-1]
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
-        print len(frame_tsecs), frame_indices[-20:]
+        #print len(frame_tsecs), frame_indices[-20:]
 
-        if block_indexed is False:
-            frame_indices = frame_indices - len(frame_tsecs)*fidx
+#        if block_indexed is False:
+#            frame_indices = frame_indices - len(frame_tsecs)*fidx
         # Check that we have all frames needed (no cut off frames from end):
 #        if frame_indices[-1] > len(frame_tsecs):
 #            print "Skipping last trial! %i extra frames" % (frame_indices[-1] - len(frame_tsecs))
@@ -1082,23 +1084,28 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
         curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
         curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
         config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
-        
-    
+            
         # Get frame indices of the full trial (this includes PRE-stim baseline, stim on, and POST-stim iti):
-        frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
-        frames_within = np.array([f for f in frame_indices if f < len(frame_tsecs)])
-        if len(frame_indices) != len(frames_within):
-            print "** warning ** Found %i extra frames." % (len(frame_indices) - len(frames_within))
-            frame_indices = frames_within
+#        frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) for t in trials_in_block])
+#        frames_within = np.array([f for f in frame_indices if f < len(frame_tsecs)])
+#        if len(frame_indices) != len(frames_within):
+#            print "** warning ** Found %i extra frames." % (len(frame_indices) - len(frames_within))
+#            frame_indices = frames_within
             
         trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block])
-        
+        #curr_stim_durs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_sec'] for t in sorted(trials_in_block, key=natural_keys)])
+        #curr_nframes_ons = np.array(round(int(stim_dur * framerate)) for stim_dur in stim_durs])
         # Subtract off appropriate number of frames if frame indices are relative
         # to FULL set of blocks:
+        print len(frame_tsecs), frame_indices[-20:]
+
         if block_indexed is False:
-            frame_indices -= fidx*file_df.shape[0]
-            stim_onset_idxs -= fidx*file_df.shape[0]
+            frame_indices = frame_indices - len(frame_tsecs)*fidx
+            stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx
+            #frame_indices -= fidx*file_df.shape[0]
+            #stim_onset_idxs -= fidx*file_df.shape[0]
+        print len(frame_tsecs), frame_indices[-20:]
 
         currtrials_df = file_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
         if file_F0_df is not None:
@@ -1132,6 +1139,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
         frame_times.append(relative_tsecs)
         trial_ids.append(trial_labels)
         config_ids.append(config_labels)
+        #all_stim_durs.append(stim_durs)
+        #all_nframes_ons.append(nframes_ons)
 
     xdata_df = pd.concat(frame_df_list, axis=0).reset_index(drop=True)
     if len(drift_df_list)>0:
@@ -1141,10 +1150,19 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     tstamps = np.hstack(frame_times)
     trials = np.hstack(trial_ids)
     configs = np.hstack(config_ids)
+    #stim_durs = np.hstack(all_stim_durs)
+    #nframes_ons = np.hstack(all_nframes_ons)
     
     stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
-    assert len(stim_dur_sec)==1, "more than 1 unique stim duration found in MW file!"
-    stim_dur = stim_dur_sec[0]
+    if len(stim_dur_sec) > 1:
+        print "More than 1 unique stim dur."
+        stim_durs = [round(mwinfo[t]['stim_dur_ms']/1e3) for t in sorted(trial_list, key=natural_keys)]
+    else:
+        stim_dur = stim_dur_sec[0]
+        stim_durs = np.tile(stim_dur, trials.shape)
+
+    #assert len(stim_dur_sec)==1, "more than 1 unique stim duration found in MW file!"
+    #stim_dur = stim_dur_sec[0]
     
     
     if skip_last_trial:
@@ -1202,7 +1220,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='.pkl', nonn
     labels_df = pd.DataFrame({'tsec': tstamps, 
                               'config': configs,
                               'trial': trials,
-                              'stim_dur': np.tile(stim_dur, trials.shape)
+                              'stim_dur': stim_durs, #np.tile(stim_dur, trials.shape)
                               }, index=xdata_df.index)
     
     if fmt == 'pkl':
