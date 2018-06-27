@@ -1870,7 +1870,7 @@ def extract_traces(options):
     # Neuropil correction:
     append_trace_type = options.append_trace_type
     np_method = options.np_method
-    np_niterations = options.np_niterations
+    np_niterations = int(options.np_niterations)
     do_neuropil_correction = options.neuropil
     if do_neuropil_correction:
         plot_neuropil = True

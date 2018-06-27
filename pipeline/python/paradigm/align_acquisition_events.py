@@ -208,7 +208,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         iti_full = iti_durs_unique[0]
         if iti_post is None:
             iti_post = iti_full - iti_pre
-        print "ITI POST: %i" % iti_post
+        print "ITI POST:", iti_post
 
         # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
         if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
