@@ -190,9 +190,14 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
 
         # Get presentation info (should be constant across trials and files):
         trial_list = sorted(trialdict.keys(), key=natural_keys)
-        stim_durs = [round(np.floor(trialdict[t]['stim_dur_ms']/1E3), 1)for t in trial_list]
-        assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
-        stim_on_sec = stim_durs[0]
+        stim_durs = [round(np.floor(trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
+        #assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
+        if len(list(set(stim_durs))) > 1:
+            print "more than 1 stim_dur found..."
+            stim_on_sec = dict((t, round(trialdict[t]['stim_dur_ms']/1E3, 1)) for t in trial_list)
+        else:
+            stim_on_sec = stim_durs[0]
+       
         iti_durs = [round(np.floor(trialdict[t]['iti_dur_ms']/1E3), 0) for t in trial_list]
         print list(set(iti_durs))
         if len(list(set(iti_durs))) > 1:
@@ -224,12 +229,17 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         print "---------------------------------------------------------------"
 
     try:
-        nframes_on = stim_on_sec * si_info['framerate'] #framerate #int(round(stim_on_sec * volumerate))
         nframes_iti_pre = iti_pre * si_info['framerate'] #framerate
         nframes_iti_post = iti_post*si_info['framerate'] #framerate # int(round(iti_post * volumerate))
         nframes_iti_full = iti_full * si_info['framerate'] #framerate #int(round(iti_full * volumerate))
-        nframes_post_onset = (stim_on_sec + iti_post) * si_info['framerate'] #framerate
-        vols_per_trial = (iti_pre + stim_on_sec + iti_post) * si_info['volumerate']
+        if isinstance(stim_on_sec, dict):
+            nframes_on = dict((t, stim_on_sec[t] * si_info['framerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys)) #framerate #int(round(stim_on_sec * volumerate))
+            nframes_post_onset = dict((t, (stim_on_sec[t] + iti_post) * si_info['framerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+            vols_per_trial = dict((t, (iti_pre + stim_on_sec[t] + iti_post) * si_info['volumerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+        else:
+            nframes_on = stim_on_sec * si_info['framerate'] #framerate #int(round(stim_on_sec * volumerate))
+            nframes_post_onset = (stim_on_sec + iti_post) * si_info['framerate'] #framerat
+            vols_per_trial = (iti_pre + stim_on_sec + iti_post) * si_info['volumerate']
     except Exception as e:
         print "Problem calcuating nframes for trial epochs..."
         traceback.print_exc()
@@ -304,7 +314,6 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                 stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
                                  if trialdict[t]['block_idx'] == tiffnum]
                 trials_in_run = sorted([t for t in trial_list if trialdict[t]['block_idx'] == tiffnum], key=natural_keys)
-
             for trialidx,trialstim in enumerate(sorted(stimorder, key=natural_keys)):
                 trial_counter += 1
                 trial_in_file += 1
@@ -345,7 +354,10 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
         #                    print "------------------------------------------------------------------"
 
                 preframes = list(np.arange(int(first_frame_on - trial_info['nframes_iti_pre']), first_frame_on, 1))
-                postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset']))))
+                if isinstance(trial_info['nframes_post_onset'], dict):
+                    postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset'][currtrial_in_run]))))
+                else:
+                    postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset']))))
                 # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
                 if postframes[-1] > len(si_info['vol_idxs']):
                     extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
@@ -378,7 +390,10 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                 fridxs.attrs['trial'] = currtrial_in_run
                 fridxs.attrs['aux_file_idx'] = tiffnum
                 fridxs.attrs['stim_on_idx'] = abs_stim_on_idx
-                fridxs.attrs['stim_dur_sec'] = trial_info['stim_on_sec']
+                if isinstance(trial_info['stim_on_sec'], dict):
+                    fridxs.attrs['stim_dur_sec'] = trial_info['stim_on_sec'][currtrial_in_run]
+                else: 
+                    fridxs.attrs['stim_dur_sec'] = trial_info['stim_on_sec']
                 fridxs.attrs['iti_dur_sec'] = trial_info['iti_full']
                 fridxs.attrs['baseline_dur_sec'] = trial_info['iti_pre']
     except Exception as e:
@@ -826,9 +841,7 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                     if trial in last_trials_in_block:
                         continue
                     
-                    #print trial
                     frame_idxs = roi_trials[configname][roi][trial].attrs['frame_idxs']
-                    #print frame_idxs
                     adj_frame_idxs = frame_idxs - roi_trials[configname][roi][trial].attrs['aux_file_idx'] * len(all_frame_idxs)
 
                     # Check if last calculated frame is actually not included (can happend at end of .tif file):
@@ -837,6 +850,11 @@ def traces_to_trials(trial_info, si_info, configs, roi_trials_by_stim_path, trac
                         trailing_frames = np.arange(last_idx, len(adj_frame_idxs))
                         print "**WARNING: %i extra frames calculated for %s" % (len(trailing_frames), trial)
                         adj_frame_idxs = adj_frame_idxs[0:last_idx]
+
+                    # Get stim_dur and iti_dur:
+                    if isinstance(trial_info['stim_on_sec'], dict):
+                        stim_dur = trial_info['stim_on_sec'][trial]
+                        nframes_on = trial_info['nframes_on'][trial] 
 
                     tsecs = all_frame_idxs[adj_frame_idxs] - all_frame_idxs[adj_frame_idxs][first_on]
                     if not (round(tsecs[0]) == -1*iti_pre and round(tsecs[-1]) == (stim_dur+iti_post)):
