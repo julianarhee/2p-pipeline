@@ -152,15 +152,17 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                     curr_bcodes = tmp_bcodes[starting_index:]
                 else:
                     curr_bcodes = tmp_bcodes[starting_index:starting_index+nreads_per_frame]
-                frame_bitcodes['%i_%s' % (idx, fcounter)] = curr_bcodes
+                frame_bitcodes['%i_%s' % (ix, fcounter)] = curr_bcodes
+                if n % 2 == 0:
+                    ix += 1
                 
         else:
             halfmark = int(np.floor(len(bcodes)/2))
     #        if use_loop:
     #            frame_bitcodes[idx] = bcodes
     #        else:
-            frame_bitcodes['%i_p0' % idx] = bcodes[0:halfmark]
-            frame_bitcodes['%i_p1' % idx] = bcodes[halfmark:]
+            frame_bitcodes['%i_p0' % ix] = bcodes[0:halfmark]
+            frame_bitcodes['%i_p1' % ix] = bcodes[halfmark:]
             ix += 1
 
 
@@ -359,8 +361,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         prev_trial = trial
         
     rounded_durs = list(set([round(d) for d in durs]))
-    if len(rounded_durs) > 1:
+    unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3) for t in mwtrials.keys()]))
+    if len(rounded_durs) != len(unique_mw_stim_durs):
         print " *** WARNING -- funky stim durs found:", rounded_durs
+        print " --- found MW stim durs:", unique_mw_stim_durs
         
 #%
     return trialevents
