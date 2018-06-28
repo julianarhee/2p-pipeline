@@ -201,7 +201,8 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
              meanstim=meanstim_values, 
              zscore=zscore_values,
              meanstimdff=meanstimdff_values,
-             labels = labels_df,
+             labels_data=labels_df,
+             labels_columns=labels_df.columns.tolist(),
              run_info=run_info)
 
     dataset = np.load(data_fpath)
@@ -400,7 +401,10 @@ def get_rdata_dataframe(data_fpath):
     nrois = rawdata.shape[-1]
     ydata = dataset['ylabels']
     tsecs = dataset['tsecs']
-    labels_df = dataset['labels']
+    labels_data = dataset['labels_data']
+    labels_columns = dataset['labels_columns']
+    labels_df = pd.DataFrame(data=labels_data, columns=labels_columns)
+    print labels_df.head()
     
     run_info = dataset['run_info'][()]
     nframes_per_trial = run_info['nframes_per_trial']
@@ -417,9 +421,9 @@ def get_rdata_dataframe(data_fpath):
     #trials = np.hstack([np.tile('trial%05d' % int(i+1), (nframes_per_trial, )) for i in range(ntrials_total)])
     #nframes_on = np.hstack([np.tile(run_info['nframes_on'], (nframes_per_trial, )) for i in range(ntrials_total)])
     #first_on = np.hstack([np.tile(run_info['stim_on_frame'], (nframes_per_trial, )) for i in range(ntrials_total)])
-    trials = labels_df['trial']
-    nframes_on = labels_df['nframes_on']
-    first_on = labels_df['stim_on_frame']
+    trials = labels_df['trial'].values
+    nframes_on = labels_df['nframes_on'].values
+    first_on = labels_df['stim_on_frame'].values
     
     #tsecs = np.reshape(tsecs, (ntrials_total, nframes_per_trial))
     #print tsecs.shape
@@ -427,7 +431,10 @@ def get_rdata_dataframe(data_fpath):
     # Create raw dataframe:
     new_columns=[]
     for trans in trans_types:
-        trans_vals = [sconfigs[c][trans] for c in ydata]
+        if trans == 'duration':
+            trans_vals = [sconfigs[c]['stim_dur'] for c in ydata]
+        else:
+            trans_vals = [sconfigs[c][trans] for c in ydata]
         new_columns.append(pd.DataFrame(data=trans_vals, columns=[trans], index=xrange(len(ydata))))
     new_columns.append(pd.DataFrame(data=trials, columns=['trial'], index=xrange(len(ydata))))
     new_columns.append(pd.DataFrame(data=tsecs, columns=['tsec'], index=xrange(len(ydata))))
@@ -436,6 +443,7 @@ def get_rdata_dataframe(data_fpath):
     new_columns.append(pd.DataFrame(data=ydata, columns=['config'], index=xrange(len(ydata))))
     
     config_df = pd.concat(new_columns, axis=1)
+    print config_df.head()
     
     df_list = []
     for ridx in range(nrois):
