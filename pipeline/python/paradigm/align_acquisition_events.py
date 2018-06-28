@@ -445,18 +445,18 @@ def get_stimulus_configs(trial_info):
         stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if not (k=='stimulus' or k=='type' or k=='filehash')]
 
     # Determine whether there are varying stimulus durations to be included as cond:
-    unique_stim_durs = list(set([round(trialdict[t]['stim_dur_ms']/1E3) for t in trial_list]))
-    if len(unique_stim_durs) > 1:
-        stimparams.append('stim_dur')
+#    unique_stim_durs = list(set([round(trialdict[t]['stim_dur_ms']/1E3) for t in trial_list]))
+#    if len(unique_stim_durs) > 1:
+#        stimparams.append('stim_dur')
     stimparams = sorted(stimparams, key=natural_keys)
     
     # Get all unique stimulus configurations (ID, filehash, position, size, rotation):
     allparams = []
     for param in stimparams:
-        if param == 'stim_dur':
-            # Stim DUR:
-            currvals = [round(trialdict[trial]['stim_dur_ms']/1E3) for trial in trial_list]
-        elif isinstance(trialdict[trial_list[0]]['stimuli'][param], list):
+#        if param == 'stim_dur':
+#            # Stim DUR:
+#            currvals = [round(trialdict[trial]['stim_dur_ms']/1E3) for trial in trial_list]
+        if isinstance(trialdict[trial_list[0]]['stimuli'][param], list):
             currvals = [tuple(trialdict[trial]['stimuli'][param]) for trial in trial_list]
         else:
             currvals = [trialdict[trial]['stimuli'][param] for trial in trial_list]
@@ -475,6 +475,7 @@ def get_stimulus_configs(trial_info):
                 configs[configname][param] = [transform_combos[configidx][pidx][0], transform_combos[configidx][pidx][1]]
             else:
                 configs[configname][param] = transform_combos[configidx][pidx]
+
                 
     if stimtype=='image':
         stimids = sorted(list(set([os.path.split(trialdict[t]['stimuli']['filepath'])[1] for t in trial_list])), key=natural_keys)
