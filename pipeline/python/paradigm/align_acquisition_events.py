@@ -437,23 +437,32 @@ def get_stimulus_configs(trial_info):
     # Get presentation info (should be constant across trials and files):
     trial_list = sorted(trialdict.keys(), key=natural_keys)
 
+    # Get all varying stimulus parameters:
     stimtype = trialdict[trial_list[0]]['stimuli']['type']
     if 'grating' in stimtype:
-        # Likely varying gabor types...
         stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if not (k=='stimulus' or k=='type')]
     else:
         stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if not (k=='stimulus' or k=='type' or k=='filehash')]
 
+    # Determine whether there are varying stimulus durations to be included as cond:
+    unique_stim_durs = list(set([round(trialdict[t]['stim_dur_ms']/1E3) for t in trial_list]))
+    if len(unique_stim_durs) > 1:
+        stimparams.append('stim_dur')
     stimparams = sorted(stimparams, key=natural_keys)
+    
     # Get all unique stimulus configurations (ID, filehash, position, size, rotation):
     allparams = []
     for param in stimparams:
-        if isinstance(trialdict[trial_list[0]]['stimuli'][param], list):
+        if param == 'stim_dur':
+            # Stim DUR:
+            currvals = [round(trialdict[trial]['stim_dur_ms']/1E3) for trial in trial_list]
+        elif isinstance(trialdict[trial_list[0]]['stimuli'][param], list):
             currvals = [tuple(trialdict[trial]['stimuli'][param]) for trial in trial_list]
         else:
             currvals = [trialdict[trial]['stimuli'][param] for trial in trial_list]
         allparams.append([i for i in list(set(currvals))])
 
+    # Get all combinations of stimulus params:
     transform_combos = list(itertools.product(*allparams))
     ncombinations = len(transform_combos)
 
@@ -466,9 +475,8 @@ def get_stimulus_configs(trial_info):
                 configs[configname][param] = [transform_combos[configidx][pidx][0], transform_combos[configidx][pidx][1]]
             else:
                 configs[configname][param] = transform_combos[configidx][pidx]
-
+                
     if stimtype=='image':
-        #stimids = sorted(list(set([trialdict[t]['stimuli']['stimulus'] for t in trial_list])), key=natural_keys)
         stimids = sorted(list(set([os.path.split(trialdict[t]['stimuli']['filepath'])[1] for t in trial_list])), key=natural_keys)
     elif 'movie' in stimtype:
         stimids = sorted(list(set([os.path.split(os.path.split(trialdict[t]['stimuli']['filepath'])[0])[1] for t in trial_list])), key=natural_keys)
