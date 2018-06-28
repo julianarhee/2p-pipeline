@@ -62,14 +62,12 @@ from pipeline.python.paradigm import utils as util
 
 
 
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_run3', '-t', 'traces002',
+           '-R', 'gratings_rotating_static', '-t', 'traces001',
            '--new', '--align', 
-           '--iti=1.0', '--post=4.8', 
-           '-q', '0.2', 
-           '--frac=0.01', '--raw',
-           '--format=hdf5',
+           '--iti=1.0', '--post=2.8', 
+           '-q', '0.1', '-w', '30.',
            '--no-pupil']
 #
 #optsE = extract_options(options)
@@ -124,7 +122,8 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
                            smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001'):
     
     # Extract raw trace arrays from the hdf5 files (created in traces/get_traces.py)
-    run_info, stimconfigs, labels_df, raw_df = util.load_raw_run(traceid_dir, trace_type=trace_type, create_new=create_new, fmt=fmt)
+    run_info, stimconfigs, labels_df, raw_df = util.load_raw_run(traceid_dir, trace_type=trace_type, 
+                                                                 create_new=create_new, fmt=fmt)
     
     
     # Set data array output dir:
@@ -165,9 +164,9 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
     
     
     # Get single-valued training data for each trial:
-    meanstim_values = util.format_roisXvalue(corrected_df, run_info, value_type='meanstim')
-    zscore_values = util.format_roisXvalue(corrected_df, run_info, value_type='zscore')
-    meanstimdff_values = util.format_roisXvalue(dff_df, run_info, value_type='meanstim')
+    meanstim_values = util.format_roisXvalue(corrected_df, run_info, labels_df=labels_df, value_type='meanstim')
+    zscore_values = util.format_roisXvalue(corrected_df, run_info, labels_df=labels_df, value_type='zscore')
+    meanstimdff_values = util.format_roisXvalue(dff_df, run_info, labels_df=labels_df, value_type='meanstim')
     
     pl.figure(figsize=(20,5)); 
     pl.subplot(1,3,1); ax=sns.heatmap(meanstim_values); pl.title('mean stim (raw)')
@@ -202,6 +201,7 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
              meanstim=meanstim_values, 
              zscore=zscore_values,
              meanstimdff=meanstimdff_values,
+             labels = labels_df,
              run_info=run_info)
 
     dataset = np.load(data_fpath)
@@ -400,6 +400,7 @@ def get_rdata_dataframe(data_fpath):
     nrois = rawdata.shape[-1]
     ydata = dataset['ylabels']
     tsecs = dataset['tsecs']
+    labels_df = dataset['labels']
     
     run_info = dataset['run_info'][()]
     nframes_per_trial = run_info['nframes_per_trial']
@@ -413,10 +414,12 @@ def get_rdata_dataframe(data_fpath):
     trans_types = [trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1]
     
     # Get trial and timing info:
-    trials = np.hstack([np.tile('trial%05d' % int(i+1), (nframes_per_trial, )) for i in range(ntrials_total)])
-    nframes_on = np.hstack([np.tile(run_info['nframes_on'], (nframes_per_trial, )) for i in range(ntrials_total)])
-    first_on = np.hstack([np.tile(run_info['stim_on_frame'], (nframes_per_trial, )) for i in range(ntrials_total)])
-    
+    #trials = np.hstack([np.tile('trial%05d' % int(i+1), (nframes_per_trial, )) for i in range(ntrials_total)])
+    #nframes_on = np.hstack([np.tile(run_info['nframes_on'], (nframes_per_trial, )) for i in range(ntrials_total)])
+    #first_on = np.hstack([np.tile(run_info['stim_on_frame'], (nframes_per_trial, )) for i in range(ntrials_total)])
+    trials = labels_df['trial']
+    nframes_on = labels_df['nframes_on']
+    first_on = labels_df['stim_on_frame']
     
     #tsecs = np.reshape(tsecs, (ntrials_total, nframes_per_trial))
     #print tsecs.shape
