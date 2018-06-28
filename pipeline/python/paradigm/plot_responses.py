@@ -38,11 +38,14 @@ from pipeline.python.traces.utils import get_frame_info
 #           '-T', 'np_subtracted',
 #           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted',
-           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
-           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted',
+#           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
+#           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted',
+           '-R', 'gratings_rotating_drifting', '-t', 'traces001', '-d', 'dff']
 
 
 def extract_options(options):
@@ -229,25 +232,40 @@ def make_clean_psths(options):
     nrois = xdata.shape[-1]
 #    xdata = dataset['corrected']
 #    F0 = dataset['raw'] - dataset['corrected']
-    xmat = np.reshape(xdata, (ntrials_total, nframes_per_trial, nrois))    
-    print xmat.shape
-    stim_on = dataset['run_info'][()]['stim_on_frame']
-    bas_frames = xmat[:, 0:stim_on, :]
-    bas_means = np.mean(bas_frames, axis=1)
-    bas_grand_mean = np.mean(bas_means, axis=0)
+    
+    
+    labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
+    
+#    
+#    xmat = np.reshape(xdata, (ntrials_total, nframes_per_trial, nrois))    
+#    print xmat.shape
+#    stim_on = dataset['run_info'][()]['stim_on_frame']
+#    bas_frames = xmat[:, 0:stim_on, :]
+#    bas_means = np.mean(bas_frames, axis=1)
+#    bas_grand_mean = np.mean(bas_means, axis=0)
 
     
     # Get stimulus info:
     sconfigs = dataset['sconfigs'][()]
     transform_dict, object_transformations = util.get_transforms(sconfigs)
-    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])
+    # replace duration:
+    if 'duration' in transform_dict.keys():
+        transform_dict['stim_dur'] = transform_dict['duration']
+        transform_dict.pop('duration')
+    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])        
     print "Trans:", trans_types
 #
 #    if alt_axis is not None:
 #        trans_types.extend([alt_axis])
 
-    tpoints = np.reshape(tsecs, (ntrials_total, nframes_per_trial))[0,:]
-    labeled_trials = np.reshape(ydata, (ntrials_total, nframes_per_trial))[:,0]
+#    tpoints = np.reshape(tsecs, (ntrials_total, nframes_per_trial))[0,:]
+#    labeled_trials = np.reshape(ydata, (ntrials_total, nframes_per_trial))[:,0]
+    
+    tested_configs = list(set(labels_df['config']))
+    for c in sconfigs.keys():
+        if c not in tested_configs:
+            sconfigs.pop(c)
+            
     sconfigs_df = pd.DataFrame(sconfigs).T
         
         
@@ -277,7 +295,9 @@ def make_clean_psths(options):
         
         stim_grid = (transform_dict[rows], transform_dict[columns])
         sgroups = sconfigs_df.groupby([rows, columns])
-        
+    
+    if len(sgroups.groups) == 3:
+        nrows = 1; ncols=3;
         
     #%
     # Set output dir for nice(r) psth:
@@ -327,10 +347,19 @@ def make_clean_psths(options):
             print "Plotting %i of %i rois." % (ridx, xdata.shape[-1])
         roi_id = 'roi%05d' % int(ridx+1)
 
-        tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
+    
+        rdata = labels_df.copy()
+        rdata['data'] = xdata[:, ridx]
+        
+        stim_on = list(set(rdata['stim_on_frame']))[0]
+        bas_grand_mean = np.mean([np.mean(vals[0:stim_on]) for vals in rdata.groupby('trial')['data'].apply(np.array)])
+        
+        #stim_on = run_info['stim_on_frame']
+        #nframes_on = run_info['nframes_on']
+        #tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
         
         sns.set_style('ticks')
-        fig, axes = pl.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(20,3*nrows))
+        fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(20,3*nrows+5))
         axesf = axes.flat    
         traces_list = []
         pi = 0
@@ -340,13 +369,21 @@ def make_clean_psths(options):
                 curr_configs = g.sort_values(subplot_hue).index.tolist()
             else:
                 curr_configs = sorted(g.index.tolist())
+                
             for cf_idx, curr_config in enumerate(curr_configs):
-                #print cf_idx, curr_config
-                config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
+                sub_df = rdata[rdata['config']==str(curr_config)]
+                tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
+                tpoints = np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
+                nframes_on = list(set(sub_df['nframes_on']))[0]
                 if correct_offset:
-                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
+                    subdata = tracemat - bas_grand_mean
                 else:
-                    subdata = tracemat[config_ixs, :]
+                    subdata = tracemat
+#                config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
+#                if correct_offset:
+#                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
+#                else:
+#                    subdata = tracemat[config_ixs, :]
                     
                 trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
@@ -360,17 +397,19 @@ def make_clean_psths(options):
                     # fill between with sem:
                     axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=trace_colors[cf_idx], alpha=0.2)
                 
-            # Set x-axis to only show stimulus ON bar:
-            start_val = tpoints[run_info['stim_on_frame']]
-            end_val = tpoints[run_info['stim_on_frame'] + int(round(run_info['nframes_on']))]
-            axesf[pi].set_xticks((start_val, int(round(end_val))))
-            axesf[pi].set_xticklabels(())
-            axesf[pi].tick_params(axis='x', which='both',length=0)
-            axesf[pi].set_title(k, fontsize=8)
-                
+                # Set x-axis to only show stimulus ON bar:
+                start_val = tpoints[stim_on]
+                end_val = tpoints[stim_on + int(round(nframes_on))]
+                axesf[pi].set_xticks((start_val, int(round(end_val))))
+                axesf[pi].set_xticklabels(())
+                axesf[pi].tick_params(axis='x', which='both',length=0)
+                axesf[pi].set_title(k, fontsize=8)
+                    
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
+                pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+
                 
             if pi==0:
                 axesf[pi].set_ylabel(ylabel)
