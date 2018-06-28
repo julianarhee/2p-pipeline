@@ -487,7 +487,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                 seconds = np.diff(iti_idxs)[0::2]
                 firsts = np.diff(iti_idxs)[1::2]
                 if abs( len(seconds) - len(firsts) ) <= 3:
-                    print "*** Warning: extra ITI pixel evnt found! ***"
+                    print "*** Warning: extra ITI pixel event found! ***"
                     if np.diff(iti_idxs)[0] == 1:
                         # There is an extra 'off' pixel clock event that doesn't correpsond to the actual ITI event:
                         iti_idxs = iti_idxs[1::2]
@@ -757,7 +757,12 @@ def check_nested(evs):
 
 #%%
 def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
-
+    
+    '''
+    Extract relevant stimulus info for each trial across blocks.
+    TODO:  Some tmp fixes to format trial struct info for specific experiment types (movies)
+    '''
+    
     print "Current file: ", curr_dfn
     if retinobar is True:
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx)
@@ -925,30 +930,6 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                                               'rotation': stimrotation
                                               }
 
-            #stimtype = stim.value[1]['type']
-#            if stimtype == 'image':
-#                stimfile = stim.value[1]['filename']
-#                stimhash = stim.value[1]['file_hash']
-#                phase = 0
-#                freq = 0
-#                speed = 0
-#                direction = 0
-#            else:
-#                stimfile = 'NA'
-#                stimhash = 'NA'
-#
-#            trial[trialname]['stimuli'] = {'stimulus': stimname,
-#                                          'position': stimpos,
-#                                          'scale': stimsize,
-#                                          'type': stimtype,
-#                                          'filepath': stimfile,
-#                                          'filehash': stimhash,
-#                                          'rotation': stimrotation,
-#                                          'phase': phase,
-#                                          'frequency': freq,
-#                                          'speed': speed,
-#                                          'direction': direction}
-
 
             trial[trialname]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialname]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
@@ -991,8 +972,6 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         print idx, (t[1] - t[0])/1E6
 
 
-
-
     # TODO:  RETINOBAR-specific extraction....
     # -------------------------------------------------------------------------
     # Create "pydict" to store all MW stimulus/trial info in matlab-accessible format for GUI:
@@ -1010,6 +989,37 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                           'MWtriggertimes': stimevents[run].triggers}
             print "run %i: %s ms" % (ridx+1, str(pydict[run]['offset']/1E3))
 
+
+    # Rename MW trial info to make sense for 'rotating gratings':
+    # -------------------------------------------------------------------------
+    unique_stim_durs = list(set([round(trial[t]['stim_duration']/1E3) for t in trial.keys()]))
+    
+    if len(unique_stim_durs) > 1 and 'grating' in stimtype:
+        print "***This is a moving-rotating grating experiment.***"
+        full_dur = max(unique_stim_durs)
+        half_dur = min(unique_stim_durs)
+        # For each "trial" we want not just the first stim, but also the last, to get direction:
+        for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
+            trialnum = trialidx + 1
+            trialname = 'trial%05d' % int(trialnum)
+            last_pixel_ev = pixelevents[pixelevents.index(iti) - 1]
+            assert len(last_pixel_ev.value) == 3, "Not enough stimulus values in trial %s" % trialname
+            start_rot = stim.value[1]['rotation']
+            end_rot = last_pixel_ev.value[1]['rotation']
+            if start_rot > end_rot:
+                trial[trialname]['stimuli']['direction'] = 1 # CW
+            else:
+                trial[trialname]['stimuli']['direction'] = -1 # CCW
+            
+            if round(trial[trialname]['stim_duration']/1E3) == full_dur:
+                trial[trialname]['stimuli']['rotation'] = 0
+                trial[trialname]['stimuli']['stim_dur'] = full_dur
+            else:
+                trial[trialname]['stimuli']['stim_dur'] = half_dur
+                # Half dur.
+                if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    trial[trialname]['stimuli']['rotation'] = 0
+                    
 
     return trial
 
