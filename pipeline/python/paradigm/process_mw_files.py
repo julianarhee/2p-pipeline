@@ -992,20 +992,42 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
 
     # Rename MW trial info to make sense for 'rotating gratings':
     # -------------------------------------------------------------------------
-    unique_stim_durs = list(set([round(trial[t]['stim_duration']/1E3) for t in trial.keys()]))
+    unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3) for t in trial.keys()])))
     
     if len(unique_stim_durs) > 1 and 'grating' in stimtype:
         print "***This is a moving-rotating grating experiment.***"
-        full_dur = max(unique_stim_durs)
-        half_dur = min(unique_stim_durs)
+        if len(unique_stim_durs) == 2:
+            full_dur = max(unique_stim_durs)
+            half_dur = min(unique_stim_durs)
+        elif len(unique_stim_durs) == 3:
+            full_dur = unique_stim_durs[-1]
+            half_dur = unique_stim_durs[1]
+            quarter_dur = unique_stim_durs[0]
+            
         # For each "trial" we want not just the first stim, but also the last, to get direction:
         for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
             last_pixel_ev = pixelevents[pixelevents.index(iti) - 1]
             assert len(last_pixel_ev.value) == 3, "Not enough stimulus values in trial %s" % trialname
+            
             start_rot = stim.value[1]['rotation']
             end_rot = last_pixel_ev.value[1]['rotation']
+            trial[trialname]['stimuli']['rotation_range'] = '%.2f_%.2f' % (start_rot, end_rot)
+
+            start_index = pixelevents.index(stim)
+            end_index = pixelevents.index(last_pixel_ev)
+            
+            rotation_values = [pixelevents[pix].value[1]['rotation'] for pix in np.arange(start_index, end_index+1)]
+            trial[trialname]['rotation_values'] = rotation_values
+#            if rotation_values[0] == 360:
+#                if rotation_values[-1] > 360:
+#                    trial[trialname]['rotation_values'] = list(np.array(rotation_values) - 360) # 0 to 360, CCW
+#                elif rotatioN_values[-1] < 360:
+#                    trial[trialname]['rotation_values'] = list(np.array(rotation_values) + 360) # 360 to 0, CW 
+#            elif rotation_values[0] == 
+#                        
+            
             if start_rot > end_rot:
                 trial[trialname]['stimuli']['direction'] = 1 # CW
             else:
@@ -1014,12 +1036,15 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             if round(trial[trialname]['stim_duration']/1E3) == full_dur:
                 trial[trialname]['stimuli']['rotation'] = 0
                 trial[trialname]['stimuli']['stim_dur'] = full_dur
-            else:
+            elif round(trial[trialname]['stim_duration']/1E3) == half_dur:
                 trial[trialname]['stimuli']['stim_dur'] = half_dur
                 # Half dur.
                 if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
                     trial[trialname]['stimuli']['rotation'] = 0
-                    
+            elif round(trial[trialname]['stim_duration']/1E3) == quarter_dur:
+                trial[trialname]['stimuli']['stim_dur'] = quarter_dur
+                if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    trial[trialname]['stimuli']['rotation'] = 0
 
     return trial
 
@@ -1148,6 +1173,7 @@ def parse_mw_trials(options):
     return paradigm_outdir
 
 
+#%%
 def main(options):
     parse_mw_trials(options)
 
