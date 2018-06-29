@@ -477,7 +477,22 @@ def get_stimulus_configs(trial_info):
             else:
                 configs[configname][param] = transform_combos[configidx][pidx]
 
+    # Cycle thru gratings (variable stim dur) to ignore configs that don't exist:
+    if 'grating' in stimtype and 'stimdur' in stimparams:
+        subparams_dicts = [dict(k,v) for k,v in trialdict[t]['stimuli'].items() if k not in exclude_params for t in trialdict.keys()]
+        for config in configs.keys():
+            if configs[config] not in subparams_dicts:
+                remove_configs.append(config)
+            else:
+                keep_configs.append(config)
+        tmp_configs = {}; 
+        for configidx, config in enumerate(keep_configs):
+            configname = 'config%03d' % int(configidx+1)
+            tmp_configs[configname] = configs[config]
+        configs = tmp_configs
+            
                 
+        
     if stimtype=='image':
         stimids = sorted(list(set([os.path.split(trialdict[t]['stimuli']['filepath'])[1] for t in trial_list])), key=natural_keys)
     elif 'movie' in stimtype:
