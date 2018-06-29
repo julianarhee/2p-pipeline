@@ -381,7 +381,8 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
-            if len(tmp_itis) == 0 or len(tmp_itis)==len(iti_standard_dur):
+            tmp_iti_vals = [i.value for i in tmp_itis]
+            if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==len(list(set(iti_standard_dur))):
                 # jitter var exists, but not actually used.
                 info['ITI'] = iti_standard_dur[0]
             else:
