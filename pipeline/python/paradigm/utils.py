@@ -1169,9 +1169,12 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     tstamps = np.hstack(frame_times)
     trials = np.hstack(trial_ids)
     configs = np.hstack(config_ids)
-    stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
+    if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+        stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
+    else:
+        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
     nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
-    
+   
 #    stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
 #    if len(stim_dur_sec) > 1:
 #        print "More than 1 unique stim dur."
