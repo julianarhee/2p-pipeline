@@ -1095,7 +1095,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx #stim_onset_idxs -= fidx*file_df.shape[0]
 
         # Get Stimulus info for each trial:        
-        excluded_params = ['filehash', 'stimulus', 'type'] # Only include param keys saved in stimconfigs
+        excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range'] # Only include param keys saved in stimconfigs
         curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
                                        if k not in excluded_params) for t in trials_in_block]
         varying_stim_dur = False
@@ -1103,9 +1103,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
             varying_stim_dur = True
             for ti, trial in enumerate(trials_in_block):
+                #print curr_trial_stimconfigs[ti]
                 curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3)
         
         # Get corresponding configXXX label:
+        #print curr_trial_stimconfigs
         curr_config_ids = [k for trial_configs in curr_trial_stimconfigs \
                                for k,v in stimconfigs.iteritems() if v==trial_configs]
         # Combine into array that matches size of curr file_df:
