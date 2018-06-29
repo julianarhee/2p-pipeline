@@ -478,8 +478,9 @@ def get_stimulus_configs(trial_info):
                 configs[configname][param] = transform_combos[configidx][pidx]
 
     # Cycle thru gratings (variable stim dur) to ignore configs that don't exist:
-    if 'grating' in stimtype and 'stimdur' in stimparams:
-        subparams_dicts = [dict(k,v) for k,v in trialdict[t]['stimuli'].items() if k not in exclude_params for t in trialdict.keys()]
+    if 'grating' in stimtype and 'stim_dur' in stimparams:
+        subparams_dicts = [dict((k,v) for k,v in trialdict[t]['stimuli'].items() if k not in exclude_params) for t in trialdict.keys()]
+        keep_configs=[]; remove_configs=[];
         for config in configs.keys():
             if configs[config] not in subparams_dicts:
                 remove_configs.append(config)
