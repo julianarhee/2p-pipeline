@@ -54,6 +54,8 @@ def extract_options(options):
     parser.add_option('-c', '--channel', action='store', dest='signal_channel', default=1, help="Signal channel [default: 1]")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
+    parser.add_option('-x', '--exclude', action="store", dest="excluded_tiffs", default='', help="User-selected tiff numbers to exclude (comma-separated) - 1 indexed")
+
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True:
@@ -93,6 +95,13 @@ def create_tid(options):
     make_unsigned = options.make_unsigned
     convert_uint16 = options.convert_uint16
 
+
+    exclude_str = options.excluded_tiffs
+    manually_excluded_tiffs = []
+    if len(exclude_str) > 0:
+        manually_excluded_tiffs = ['File%03d' % int(x) for x in exclude_str.split(',')]
+
+
     # Get paths to tiffs from which to create ROIs:
     tiffpaths = get_tiff_paths(rootdir=homedir, animalid=animalid, session=session,
                                acquisition=acquisition, run=run,
@@ -131,6 +140,7 @@ def create_tid(options):
     with open(os.path.join(rparams_dir, 'roiparams.json'), 'r') as f:
         roiparams = json.load(f)
     excluded_tiffs = roiparams['excluded_tiffs']
+    excluded_tiffs.extend(manually_excluded_tiffs)
 
     PARAMS = get_params_dict(signal_channel, tiff_sourcedir, RID, excluded_tiffs=excluded_tiffs,
                              notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto, make_nonnegative=make_nonnegative, make_unsigned=make_unsigned, convert_uint16=convert_uint16)
