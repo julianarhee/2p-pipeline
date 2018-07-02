@@ -969,6 +969,16 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     
     xdata_df=None; F0_df=None; labels_df=None
     
+    # Load TID params to see if any excluded tifs:
+    traceid_dir = os.path.split(trace_arrays_dir)[0]
+    print "Loading TID params from dir: %s" % traceid_dir
+    traceid = os.path.split(traceid_dir)[-1].split('_')[0]
+    trace_basedir = os.path.split(traceid_dir)[0] 
+    tid_fpath = glob.glob(os.path.join(trace_basedir, 'traces*.json'))[0]
+    with open(tid_fpath, 'r') as f:
+        tids = json.load(f)
+    excluded_tifs = tids[traceid]['PARAMS']['excluded_tiffs']
+    print "*** Excluding:", excluded_tifs
 
     # Set up output dir for collated trials (combine all trials from each .tif file)
     trace_arrays_type = os.path.split(trace_arrays_dir)[-1]    
@@ -1053,6 +1063,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     trial_ids = []
     config_ids = []
     for fidx, dfn in enumerate(trace_fns):
+        curr_file = str(re.search(r"File\d{3}", currtiff_path).group())
+        if curr_file in excluded_tifs:
+            print "... skipping..."
+            continue
+
         file_F0_df = None; file_df = None;
         if fmt == 'pkl':
             print "Collating... %s" % dfn
