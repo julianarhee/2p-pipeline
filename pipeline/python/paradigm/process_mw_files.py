@@ -1001,7 +1001,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             full_dur = max(unique_stim_durs)
             half_dur = min(unique_stim_durs)
         elif len(unique_stim_durs) == 3:
-            full_dur = unique_stim_durs[-1]
+            full_dur = unique_stim_durs[2]
             half_dur = unique_stim_durs[1]
             quarter_dur = unique_stim_durs[0]
             
