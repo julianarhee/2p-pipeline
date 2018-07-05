@@ -5,8 +5,8 @@ Created on Thu May 17 12:31:35 2018
 
 @author: juliana
 """
-
-
+import re
+import glob
 import h5py
 import os
 import json
@@ -970,11 +970,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     xdata_df=None; F0_df=None; labels_df=None
     
     # Load TID params to see if any excluded tifs:
-    traceid_dir = os.path.split(trace_arrays_dir)[0]
-    print "Loading TID params from dir: %s" % traceid_dir
+    traceid_dir = trace_arrays_dir.split('/files')[0] #os.path.split(trace_arrays_dir)[0]
     traceid = os.path.split(traceid_dir)[-1].split('_')[0]
     trace_basedir = os.path.split(traceid_dir)[0] 
-    tid_fpath = glob.glob(os.path.join(trace_basedir, 'traces*.json'))[0]
+    print "Loading %s from dir: %s" % (traceid, trace_basedir)
+    tid_fpath = glob.glob(os.path.join(trace_basedir, '*.json'))[0]
     with open(tid_fpath, 'r') as f:
         tids = json.load(f)
     excluded_tifs = tids[traceid]['PARAMS']['excluded_tiffs']
@@ -1063,7 +1063,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     trial_ids = []
     config_ids = []
     for fidx, dfn in enumerate(trace_fns):
-        curr_file = str(re.search(r"File\d{3}", currtiff_path).group())
+        curr_file = str(re.search(r"File\d{3}", dfn).group())
         if curr_file in excluded_tifs:
             print "... skipping..."
             continue
