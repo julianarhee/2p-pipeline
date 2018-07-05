@@ -440,7 +440,7 @@ def get_stimulus_configs(trial_info):
     # Get all varying stimulus parameters:
     stimtype = trialdict[trial_list[0]]['stimuli']['type']
     if 'grating' in stimtype:
-        exclude_params = ['stimulus', 'type', 'rotation_range']
+        exclude_params = ['stimulus', 'type', 'rotation_range', 'phase']
         stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if k not in exclude_params]
     else:
         stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if not (k=='stimulus' or k=='type' or k=='filehash')]
