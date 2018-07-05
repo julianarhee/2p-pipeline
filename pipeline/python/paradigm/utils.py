@@ -544,6 +544,12 @@ def smooth_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.0
                     pl.close()
         else:
             smoothed_df = trace_df.apply(smooth_traces, frac=frac, missing='drop')
+            nframes_to_show = int(round(1500.))
+            pl.figure(figsize=(15,6))
+            test_smooth_frac(trace_df, smoothed_df, nframes_to_show, dff=dff, test_roi=test_roi)
+            pl.savefig(os.path.join(traceid_dir, '%s_smoothing_%s_%s.png' % (test_roi, str(frac), os.path.splitext(dfn)[0])))
+            pl.close()
+            print "saved smoothing example, %s" % test_roi
         
         out_fname = dfn.replace(trace_type, 'smoothed%s' % str(frac).split('.')[-1])
         if fmt == 'pkl':
@@ -563,7 +569,7 @@ def smooth_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.0
 
 #%
     
-def get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=0.01, create_new=False, fmt='hdf5', user_test=False):
+def get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=0.01, create_new=False, fmt='hdf5', user_test=False, test_roi='roi00001'):
     xdata_df=None;
     # Set up paths to look for saved dataframes:
     data_array_dir = os.path.join(traceid_dir, 'data_arrays')
@@ -588,7 +594,7 @@ def get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=0.01, 
     n_src_dataframes = len([r for r in os.listdir(trace_arrays_dir) if 'File' in r and r.endswith(fmt)])
     if not n_orig_tiffs == n_src_dataframes or create_new is True:
         print "SMOOTHING trace arrays from .tif files (smoothing frac: %.2f)" % frac
-        smooth_trace_arrays(traceid_dir, trace_type='processed', frac=frac,  dff=dff, fmt=fmt, user_test=user_test)
+        smooth_trace_arrays(traceid_dir, trace_type='processed', frac=frac,  dff=dff, fmt=fmt, user_test=user_test, test_roi=test_roi)
         
     if not create_new:
         try:
