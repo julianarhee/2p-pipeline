@@ -204,6 +204,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                         tmp_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v!=bitcodes[0]]
                         consecutives = [i for i in np.diff(tmp_frames) if i==1]
                         fiter+=1
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
+
                     curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                     # Skip extra frames if start of new block (back to back ITIs in serial data):
