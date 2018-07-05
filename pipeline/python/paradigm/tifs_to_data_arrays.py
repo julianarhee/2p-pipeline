@@ -15,7 +15,8 @@ import pandas as pd
 import numpy as np
 import pylab as pl
 import seaborn as sns
-
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.paradigm import utils as util
@@ -349,6 +350,7 @@ def create_rdata_array(opts):
     si_info = get_frame_info(run_dir)
     trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
     configs, stimtype = acq.get_stimulus_configs(trial_info)
+    pp.pprint(configs)
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
