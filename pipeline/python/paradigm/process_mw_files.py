@@ -1037,16 +1037,21 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             if round(trial[trialname]['stim_duration']/1E3) == full_dur:
                 trial[trialname]['stimuli']['rotation'] = 0
                 trial[trialname]['stimuli']['stim_dur'] = full_dur
+                
             elif round(trial[trialname]['stim_duration']/1E3) == half_dur:
                 trial[trialname]['stimuli']['stim_dur'] = half_dur
                 # Half dur.
                 if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
                     trial[trialname]['stimuli']['rotation'] = 0
+                elif trial[trialname]['stimuli']['direction']  == 1 and trial[trialname]['stimuli']['rotation'] == -90:
+                    trial[trialname]['stimuli']['rotation'] = 90
+                    
             elif round(trial[trialname]['stim_duration']/1E3) == quarter_dur:
                 trial[trialname]['stimuli']['stim_dur'] = quarter_dur
                 if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
                     trial[trialname]['stimuli']['rotation'] = 0
-
+                elif trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == -90:
+                    trial[trialname]['stimuli']['rotation'] = 90
     return trial
 
 #%%
@@ -1165,7 +1170,7 @@ def parse_mw_trials(options):
 
         trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, 
                                         verbose=verbose, single_run=single_run, boundidx=boundidx)
-
+        print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 
 
