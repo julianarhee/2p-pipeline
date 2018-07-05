@@ -530,7 +530,12 @@ def get_grand_mean_trace(d1, response_type='dff'):
     
     # Get run info:
     nrois = d1_meanstims.shape[-1]
-    d1_nframes = d1['run_info'][()]['nframes_per_trial']
+    assert len(d1['run_info'][()]['nframes_per_trial']) == 1, "More than 1 val for nframes_per_trial! -- %s" % str(d1['run_info'][()]['nframes_per_trial'])
+    assert len(d1['run_info'][()]['nframes_on']) == 1, "More than 1 val for nframes_on! -- %s" % str(d1['run_info'][()]['nframes_on'])
+
+    nframes_per_trial = d1['run_info'][()]['nframes_per_trial'][0]
+    nframes_on = d1['run_info'][()]['nframes_on'][0]
+    d1_nframes = nframes_per_trial
     d1_tmat = np.reshape(d1_meanstims, (d1_meanstims.shape[0]/d1_nframes, d1_nframes, nrois))
     meantrace_rois1 = np.mean(d1_tmat, axis=0)
     mean_baselines = np.mean(meantrace_rois1[0:d1['run_info'][()]['stim_on_frame'], :], axis=0)
@@ -539,7 +544,7 @@ def get_grand_mean_trace(d1, response_type='dff'):
     
     meantrace1 = np.mean(meantrace_rois1, axis=1)
     semtrace1 = stats.sem(meantrace_rois1, axis=1)
-    d1_stim_frames = np.array([d1['run_info'][()]['stim_on_frame'], int(round(d1['run_info'][()]['stim_on_frame'] + d1['run_info'][()]['nframes_on']))])
+    d1_stim_frames = np.array([d1['run_info'][()]['stim_on_frame'], int(round(d1['run_info'][()]['stim_on_frame'] + nframes_on))])
     
     d['run'] = d1_run
     d['mean'] = meantrace1
@@ -567,6 +572,9 @@ def get_input_data(dataset, roi_selector='all', data_type='stat', inputdata='mea
     #spatial_rids = [s for s in sorted_rids if s in visual_rids]
     
     nframes_per_trial = dataset['run_info'][()]['nframes_per_trial']
+    if not isinstance(nframes_per_trial, int):
+        assert len(nframes_per_trial) == 1, "More than 1 nframes per trial found: %s" % str(nframes_per_trial)
+        nframes_per_trial = int(nframes_per_trial[0])
     ntrials_by_cond = dataset['run_info'][()]['ntrials_by_cond']
     ntrials_total = sum([val for k,val in ntrials_by_cond.iteritems()])
     
@@ -727,7 +735,7 @@ def get_classifier_id(class_labels, classifier='LinearSVC', cv_method='kfold', i
         class_desc = '%s%i' % (class_desc, trans_value)
         
         
-    classifier = 'LinearSVC'
+    #classifier = 'LinearSVC'
     cv_method = 'kfold'
     #class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
     if subset == 'two_class':
@@ -935,7 +943,22 @@ def bootstrap_subsets_confusion(dataset, class_name, svc=None,
     return cmats, class_labels
 
 
-
+#%%
+def spatially_sort_from_opts(options_list):
+    
+    for opts in options_list:
+        optsE = extract_options(opts)
+    
+        traceid_dir = dataset['run_info'][()]['traceid_dir']
+        sorted_rids, cnts, zproj = util.sort_rois_2D(traceid_dir)
+        util.plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.005, label=False)
+        figname = 'spatially_sorted_rois_%s.png' % optsE.acquisition
+        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+        pl.savefig(os.path.join(acquisition_dir, figname))
+        
+        print "Done with spatial sort: %s [%s]" % (optsE.run, optsE.session)
+        
+        
 #%%
 def extract_options(options):
 
@@ -1069,34 +1092,81 @@ opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom
            '-R', 'blobs_dynamic_run6', '-t', 'traces001',
            '-n', '1']
 
-#%%
+#%
 
 
 #opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x',
 #           '-T', 'np_subtracted', '--no-pupil',
 #           '-R', 'blobs_run3', '-t', 'traces001',
 #           '-n', '1']
-opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180516', '-A', 'FOV1_zoom1x',
+
+opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'objects_run2', '-t', 'traces001',
+           '-R', 'gratings_drifting_black', '-t', 'traces001',
+           '-n', '1']
+opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_drifting', '-t', 'traces001',
+           '-n', '1']
+opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_static', '-t', 'traces001',
            '-n', '1']
 
-options_list = [opts] #, opts2]
+#options_list = [opts1, opts2, opts3] #, opts2]
+
+
+#%%
+
+#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_drifting', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_rotating_drifting', '-t', 'traces001',
+#           '-n', '1']
+
+
+#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180702', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_drifting', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180702', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_rotating_drifting', '-t', 'traces001',
+#           '-n', '1']
 
 
 
+opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180704', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_phasemod', '-t', 'traces001',
+           '-n', '1']
+
+opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180704', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_static', '-t', 'traces001',
+           '-n', '1']
 
 
+options_list = [opts2]
 
+#optsE = extract_options(opts)
+#if len(optsE.run_list) != len(optsE.traceid_list):
+#    assert len(optsE.run_list) > len(optsE.traceid_list), "Unexpected run num and traceids specified..."
+#    optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
+#    
 #%%
     
 dataset, data_paths = load_dataset_from_opts(options_list)
 
 #%% Look at distN of responses:
 
-plot_grand = False
+if len(data_paths.keys()) > 1:
 
-if plot_grand:
     dset_list = []
     response_type = 'dff'
     
@@ -1114,10 +1184,7 @@ if plot_grand:
                                          label_list=[dtrace['run'] for dtrace in dset_list], 
                                          output_dir=acquisition_dir, 
                                          save_and_close=False)
-    
     pl.savefig(os.path.join(acquisition_dir, figname))
-    
-
 
 #%%
 # =============================================================================
@@ -1125,17 +1192,11 @@ if plot_grand:
 # =============================================================================
 
 spatial_sort = False
-optsE = extract_options(options_list[0])
 
 if spatial_sort:
-    traceid_dir = dataset['run_info'][()]['traceid_dir']
-    sorted_rids, cnts, zproj = util.sort_rois_2D(traceid_dir)
-    util.plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.005, label=False)
-    figname = 'spatially_sorted_rois_%s.png' % optsE.acquisition
-    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    pl.savefig(os.path.join(acquisition_dir, figname))
+    spatially_sort_from_opts(options_list)
     
-
+    
 #%%
    
 run_info = dataset['run_info'][()]
@@ -1147,101 +1208,105 @@ traceid_dir = run_info['traceid_dir']
 optsE = extract_options(options_list[0])
 if optsE.rootdir not in traceid_dir:
     traceid_dir = replace_root(traceid_dir, optsE.rootdir, optsE.animalid, optsE.session)
+    
 #%%
 
 # #############################################################################
 # Randomly sample N trials per condition and compare classifier performance
 # #############################################################################
-
-data_type = 'stat'
-roi_selector = 'all'
-inputdata = 'meanstim'
     
-class_name = 'object'
+bootstrap_cv = False
 
-aggregate_type = 'half'
-subset = None
-
-const_trans = ''
-trans_value = ''
-
-# Create output dir:
-
-class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
-print class_labels
-
-classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
-                                           class_name=class_name, aggregate_type=aggregate_type,
-                                           const_trans=const_trans, trans_value=trans_value)
-
-classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
-if not os.path.exists(classifier_dir):
-    os.makedirs(classifier_dir)
-else:
-    print "DIR exists!", classifier_dir
-
-niters = 100
-#nsamples_test = [5, 10, 15, 20]
-nsamples_test = [4, 6, 8, 10]
-
-#svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1E9)
-means = []; sems = []
-for nsamples in nsamples_test:
-    cmat, class_labels = bootstrap_subsets_confusion(dataset, class_name, svc=None,
-                                                     aggregate_type=aggregate_type,
-                                                     nsamples=nsamples,
-                                                     n_iterations=niters,
-                                                     roi_selector=roi_selector, 
-                                                     data_type=data_type, 
-                                                     inputdata=inputdata)
+if bootstrap_cv:
+    data_type = 'stat'
+    roi_selector = 'all'
+    inputdata = 'meanstim'
+        
+    class_name = 'ori'
     
-    normed_cms = [cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] for cm in cmat]
+    aggregate_type = None #'half'
+    subset = None
     
-    gmean = np.mean(np.dstack(normed_cms), axis=-1)
-    gstd = np.std(np.dstack(normed_cms), axis=-1)
+    const_trans = ''
+    trans_value = ''
     
-    mean_correct = np.diagonal(gmean)
-    sem_correct = np.diagonal(gstd)
-
-    means.append(mean_correct)
-    sems.append(sem_correct)
-
-print("Normalized confusion matrix")
-
-nconds = len(means[0])
-
-
-#cmap255 = [tuple(i*255 for i in cmap[c]) for c in range(nconds)]
-cmap = sns.cubehelix_palette(as_cmap=True)
-if isinstance(class_labels[0], str) or isinstance(class_labels[0], unicode):
-    color_levels = xrange(len(class_labels))
-else:
-    color_levels = class_labels
+    # Create output dir:
     
-fig, ax = pl.subplots()
-for idx, nsamples in enumerate(sorted(nsamples_test)):    
-    pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=color_levels, cmap=cmap)
-    #ax.errorbar(np.ones(means[idx].shape)*nsamples, means[idx], yerr=sems[idx])
-fig.colorbar(pts)
-
-
+    class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
+    print class_labels
     
-#cmap1 = sns.color_palette("Blues", nconds)
-cmap1 = sns.color_palette("magma", nconds)
-fig, ax = pl.subplots()
-for idx in range(len(nsamples_test)):
-    ax.errorbar(color_levels, means[idx], yerr=sems[idx], c=cmap1[idx], label=nsamples_test[idx], capsize=5)
-    ax.xaxis.set_major_locator(pl.MaxNLocator(nconds))
+    classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
+                                               class_name=class_name, aggregate_type=aggregate_type,
+                                               const_trans=const_trans, trans_value=trans_value)
     
-pl.legend()
-sns.despine(offset=4, trim=True)
-pl.ylabel('accuracy')
-pl.xlabel('labels')
-
-figname = 'accuracy_%iiters_%itiers.png' % (niters, len(nsamples_test))
-pl.savefig(os.path.join(classifier_dir, figname))
-
-
+    classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
+    if not os.path.exists(classifier_dir):
+        os.makedirs(classifier_dir)
+    else:
+        print "DIR exists!", classifier_dir
+    
+    niters = 100
+    #nsamples_test = [5, 10, 15, 20]
+    nsamples_test = [4, 6, 8, 10]
+    
+    #svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1E9)
+    means = []; sems = []
+    for nsamples in nsamples_test:
+        cmat, class_labels = bootstrap_subsets_confusion(dataset, class_name, svc=None,
+                                                         aggregate_type=aggregate_type,
+                                                         nsamples=nsamples,
+                                                         n_iterations=niters,
+                                                         roi_selector=roi_selector, 
+                                                         data_type=data_type, 
+                                                         inputdata=inputdata)
+        
+        normed_cms = [cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] for cm in cmat]
+        
+        gmean = np.mean(np.dstack(normed_cms), axis=-1)
+        gstd = np.std(np.dstack(normed_cms), axis=-1)
+        
+        mean_correct = np.diagonal(gmean)
+        sem_correct = np.diagonal(gstd)
+    
+        means.append(mean_correct)
+        sems.append(sem_correct)
+    
+    print("Normalized confusion matrix")
+    
+    nconds = len(means[0])
+    
+    
+    #cmap255 = [tuple(i*255 for i in cmap[c]) for c in range(nconds)]
+    cmap = sns.cubehelix_palette(as_cmap=True)
+    if isinstance(class_labels[0], str) or isinstance(class_labels[0], unicode):
+        color_levels = xrange(len(class_labels))
+    else:
+        color_levels = class_labels
+        
+    fig, ax = pl.subplots()
+    for idx, nsamples in enumerate(sorted(nsamples_test)):    
+        pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=color_levels, cmap=cmap)
+        #ax.errorbar(np.ones(means[idx].shape)*nsamples, means[idx], yerr=sems[idx])
+    fig.colorbar(pts)
+    
+    
+        
+    #cmap1 = sns.color_palette("Blues", nconds)
+    cmap1 = sns.color_palette("magma", nconds)
+    fig, ax = pl.subplots()
+    for idx in range(len(nsamples_test)):
+        ax.errorbar(color_levels, means[idx], yerr=sems[idx], c=cmap1[idx], label=nsamples_test[idx], capsize=5)
+        ax.xaxis.set_major_locator(pl.MaxNLocator(nconds))
+        
+    pl.legend()
+    sns.despine(offset=4, trim=True)
+    pl.ylabel('accuracy')
+    pl.xlabel('labels')
+    
+    figname = 'accuracy_%iiters_%itiers.png' % (niters, len(nsamples_test))
+    pl.savefig(os.path.join(classifier_dir, figname))
+    
+    
 #%
 
 
@@ -1265,7 +1330,7 @@ cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type,
 # =============================================================================
 
 # Group configIDs by selected class labels to sort labels in order:
-class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+class_name = 'ori' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
 aggregate_type = 'all' #'all' #'all' #'half' #all' #'each' #'each' # 'single' #'each' #'single' #'each'
 subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
 
@@ -1299,7 +1364,8 @@ else:
      cX_std = StandardScaler().fit_transform(cX)
      
 #% Create output dir for current classifier:
-classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
+classif_identifier = get_classifier_id(class_labels, classifier=classifier,
+                                           inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
                                            class_name=class_name, aggregate_type=aggregate_type,
                                            const_trans=const_trans, trans_value=trans_value)
 
@@ -1312,7 +1378,9 @@ if aggregate_type == 'single':
 if not os.path.exists(classifier_dir):
     os.makedirs(classifier_dir)
 else:
-    print "DIR exists!", classifier_dir
+    print "DIR exists!"
+   
+print "Saving to:", classifier_dir
 
 
 #%%
@@ -1538,13 +1606,15 @@ pl.close()
   
 #%% Train and test linear SVM using zscored response values:
 
+from sklearn.svm import SVR #LinearSVR
+
 # #############################################################################
 # Set classifier type and CV params:
 # #############################################################################
 
 big_C = 1e9
 #
-scoring = 'accuracy'
+scoring = 'accuracy' #'neg_mean_squared_error'
 cv_nfolds = 5
 
 
@@ -1557,7 +1627,11 @@ if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
 else:
     dual = True
     
-svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+if classifier == 'LinearSVC':
+    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+else:
+    svc = SVR(kernel='linear', C=1e3)
+    
 #svc = LinearSVC(random_state=0, dual=dual, C=big_C)
 
 cv_results = cross_val_score(svc, cX_std, cy, cv=kfold, scoring=scoring)
@@ -1685,49 +1759,52 @@ else:
     avg_score = np.array([int(p==t) for p,t in zip(pred_results, pred_true)]).mean()
 
 
-print("Classification report for classifier %s:\n%s\n"
-      % (svc, metrics.classification_report(y_test, y_pred)))
+#print("Classification report for classifier %s:\n%s\n"
+#      % (svc, metrics.classification_report(y_test, y_pred)))
 
 #%
 
 # Compute confusion matrix:
 # -----------------------------------------------------------------------------
 
-average_iters = True
-
-if (cv_method == 'LOO' or cv_method == 'splithalf') and (data_type != 'xcondsub'):
-    cmatrix_tframes = confusion_matrix(y_test, y_pred, labels=class_labels)
-    conf_mat_str = 'trials'
-else:
-    if average_iters:
-        cmatrix_tframes = confusion_matrix(pred_true[0], pred_results[0], labels=class_labels)
-        for iter_idx in range(len(pred_results))[1:]:
-            print "adding iter %i" % iter_idx
-            cmatrix_tframes += confusion_matrix(pred_true[iter_idx], pred_results[iter_idx], labels=class_labels)
-        conf_mat_str = 'AVG'
-        #cmatrix_tframes /= float(len(pred_results))
+if classifier == 'LinearSVC':
+    average_iters = True
+    
+    if (cv_method == 'LOO' or cv_method == 'splithalf') and (data_type != 'xcondsub'):
+        cmatrix_tframes = confusion_matrix(y_test, y_pred, labels=class_labels)
+        conf_mat_str = 'trials'
     else:
-        cmatrix_tframes = confusion_matrix(pred_true[best_fold], pred_results[best_fold], labels=class_labels)
-        conf_mat_str = 'best'
+        if average_iters:
+            cmatrix_tframes = confusion_matrix(pred_true[0], pred_results[0], labels=class_labels)
+            for iter_idx in range(len(pred_results))[1:]:
+                print "adding iter %i" % iter_idx
+                cmatrix_tframes += confusion_matrix(pred_true[iter_idx], pred_results[iter_idx], labels=class_labels)
+            conf_mat_str = 'AVG'
+            #cmatrix_tframes /= float(len(pred_results))
+        else:
+            cmatrix_tframes = confusion_matrix(pred_true[best_fold], pred_results[best_fold], labels=class_labels)
+            conf_mat_str = 'best'
+    
+    
+    #% Plot confusion matrix:
+    # -----------------------------------------------------------------------------
+    sns.set_style('white')
+    fig = pl.figure(figsize=(10,4))
+    ax1 = fig.add_subplot(1,2,1)
+    plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax1, normalize=False,
+                      title='Confusion matrix (%s, %s)' % (conf_mat_str, cv_method))
+    
+    ax2 = fig.add_subplot(1,2,2)
+    plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax2, normalize=True,
+                          title='Normalized')
+    
+    #%
+    figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
+    pl.savefig(os.path.join(classifier_dir, figname))
 
-
-#% Plot confusion matrix:
-# -----------------------------------------------------------------------------
-sns.set_style('white')
-fig = pl.figure(figsize=(10,4))
-ax1 = fig.add_subplot(1,2,1)
-plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax1, normalize=False,
-                  title='Confusion matrix (%s, %s)' % (conf_mat_str, cv_method))
-
-ax2 = fig.add_subplot(1,2,2)
-plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax2, normalize=True,
-                      title='Normalized')
-
-#%%
-figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
-pl.savefig(os.path.join(classifier_dir, figname))
-
-
+#elif classifier == 'SVR':
+    #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]
+    
 #%
 
 # Save CV info:
@@ -1738,8 +1815,8 @@ f = open(os.path.join(classifier_dir, cv_outfile), 'w')
 f.write(metrics.classification_report(y_test, y_pred, target_names=[str(c) for c in class_labels]))
 f.close()
 
-cv_results = {'predicted': list(y_pred),
-              'true': list(y_test),
+cv_results = {'predicted': [list(p) for p in pred_results], #.tolist(), #list(y_pred),
+              'true': [list(p) for i in pred_true], # list(y_test),
               'classifier': classifier,
               'cv_method': cv_method,
               'ngroups': cv_ngroups,
@@ -1750,13 +1827,38 @@ with open(os.path.join(classifier_dir, cv_resultsfile), 'w') as f:
     json.dump(cv_results, f, sort_keys=True, indent=4)
 
 
+#%%
+# -----------------------------------------------------------------------------
+# Save classifier and formatted data:
+# -----------------------------------------------------------------------------
+    
+clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
+np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
+             data_type=data_type,
+             sconfigs=sconfigs, run_info=run_info)
+
+from sklearn.externals import joblib
+joblib.dump(classifier_dir, '%s.pkl' % classif_identifier, compress=9)
+ 
+import sys
+clf_params = svc.get_params().copy()
+if 'base_estimator' in clf_params.keys():
+    clf_params['base_estimator'] = str(clf_params['base_estimator'] )
+#clf_params['cv'] = str(clf_params['cv'])
+clf_params['identifier'] = classif_identifier
+clf_params_hash = hash(json.dumps(clf_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
+
+with open(os.path.join(classifier_dir, 'params_%s.json' % clf_params_hash), 'w') as f:
+    json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
+
+
 #%% 
     
 # Visualize feature weights:
 # =============================================================================
     
-# svc.coef_ :  array of shape [n_classes, n_features] (if n_classes=2, shape [n_features])
-# svc.coef_ :  array of shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+# svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+# svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
 
 def print_top10(vectorizer, clf, class_labels):
     """Prints features with the highest coefficient values, per class"""
@@ -1784,9 +1886,8 @@ def plot_coefficients(classifier, feature_names, class_idx=0, top_features=20):
     feature_names = np.array(feature_names)
     pl.xticks(np.arange(0, 1 + 2 * top_features), feature_names[top_coefficients], rotation=45, ha='right')
     pl.title('Sorted weights (top %i), class %i' % (top_features, class_idx))
- #plt.show()
 
-#plot_coefficients(svc, svc.classes_)
+
 
 def plot_weight_matrix(svc, absolute_value=True):
         
@@ -1847,28 +1948,6 @@ for class_idx in range(len(svc.classes_)):
     plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
     pl.savefig(os.path.join(classifier_dir, 'sorted_feature_weights_%s.png' % class_idx))
     pl.close()
-
-#%%
-# Save classifier:
-    
-clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
-np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
-             data_type=data_type,
-             sconfigs=sconfigs, run_info=run_info)
-
-from sklearn.externals import joblib
-joblib.dump(classifier_dir, '%s.pkl' % classif_identifier, compress=9)
- 
-import sys
-clf_params = svc.get_params().copy()
-if 'base_estimator' in clf_params.keys():
-    clf_params['base_estimator'] = str(clf_params['base_estimator'] )
-#clf_params['cv'] = str(clf_params['cv'])
-clf_params['identifier'] = classif_identifier
-clf_params_hash = hash(json.dumps(clf_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
-
-with open(os.path.join(classifier_dir, 'params_%s.json' % clf_params_hash), 'w') as f:
-    json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
 
 #%%
 
@@ -2003,9 +2082,6 @@ cmap = sns.diverging_palette(220, 10, as_cmap=True)
 sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
             square=True, linewidths=.5, cbar_kws={"shrink": .5})
 
-
-
-#%%
 
   
 #%%
