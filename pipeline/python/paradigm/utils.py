@@ -1110,7 +1110,10 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx #stim_onset_idxs -= fidx*file_df.shape[0]
 
         # Get Stimulus info for each trial:        
-        excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range'] # Only include param keys saved in stimconfigs
+        #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
+        excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range', 'phase'] # Only include param keys saved in stimconfigs
+        #print "---- ---- EXCLUDED PARAMS:", excluded_params
+
         curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
                                        if k not in excluded_params) for t in trials_in_block]
         varying_stim_dur = False
