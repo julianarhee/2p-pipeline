@@ -285,8 +285,8 @@ def make_clean_psths(options):
                 rows = 'morphlevel'
             else:
                 rows = 'object'
+        other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
         if columns is None:
-            other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
             columns = other_trans_types[0]
         if subplot_hue is None and len(other_trans_types) > 1:
             subplot_hue = [t for t in other_trans_types if t != columns][0]
