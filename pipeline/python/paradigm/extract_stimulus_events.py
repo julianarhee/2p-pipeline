@@ -186,12 +186,17 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         bitcodes = mwtrials[trial]['all_bitcodes']
 
         # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
-        minframes = 4 #5 #4
+        minframes = 5 #4 #5 #4
         if (blank_start is True):
-            if tidx == 0 and (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
-                # If this is the first trial, don't skip anything
-                nframes_to_skip= 0
+            if tidx == 0:
+                if (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
+                    # If this is the first trial, don't skip anything
+                    print "FIRST TRIAL"
+                    nframes_to_skip= 0
                 #curr_frames = sorted(allframes[allframes.index(first_frame)+nframes_to_skip:], key=natural_keys)
+                else:
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
+
                 curr_frames = sorted(curr_frames[nframes_to_skip:], key=natural_keys)
             elif tidx > 0:
                 if bitcodes[0] == mwtrials[prev_trial]['all_bitcodes'][-1]:
@@ -204,12 +209,16 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                         tmp_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v!=bitcodes[0]]
                         consecutives = [i for i in np.diff(tmp_frames) if i==1]
                         fiter+=1
-                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
+                    if mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
+                        print "... and skipping extra ITI for block start"
+                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) - int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
+                    else:
+                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
 
                     curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                     # Skip extra frames if start of new block (back to back ITIs in serial data):
-                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2 * framerate)
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate)
                 else:
                     # Only skip 1 ITI's worth of frames:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
