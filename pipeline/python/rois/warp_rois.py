@@ -379,7 +379,8 @@ if plot_warps:
     aligned_cnts = get_all_contours(masks_aligned)
     
     for cidx,(o_cnt, a_cnt) in enumerate(zip(orig_cnts, aligned_cnts)):
-    
+        if cidx % 20 == 0:
+            print "... drawing %i of %i rois." % (cidx, len(orig_cnts))    
         cv2.drawContours(refRGB, o_cnt, -1, (0,255,0), 1)
         ax1.imshow(refRGB)
         
