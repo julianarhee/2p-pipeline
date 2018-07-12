@@ -1004,6 +1004,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                 full_dur = unique_stim_durs[2]
                 half_dur = unique_stim_durs[1]
                 quarter_dur = unique_stim_durs[0]
+                print "Full: %i, Half: %i, Quarter: %i" % (full_dur, half_dur, quarter_dur)
                 
             # For each "trial" we want not just the first stim, but also the last, to get direction:
             for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
@@ -1028,7 +1029,10 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     #                    trial[trialname]['rotation_values'] = list(np.array(rotation_values) + 360) # 360 to 0, CW 
     #            elif rotation_values[0] == 
     #                        
-                
+                '''
+                In MW protocols, direction = 1 is CW (subtract from start pos)
+                                 direction = -1 is CCW (add to start pos)
+                '''
                 if start_rot > end_rot:
                     trial[trialname]['stimuli']['direction'] = 1 # CW
                 else:
