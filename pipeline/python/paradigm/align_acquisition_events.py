@@ -193,7 +193,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         stim_durs = [round(np.floor(trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
         #assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
         if len(list(set(stim_durs))) > 1:
-            print "more than 1 stim_dur found..."
+            print "more than 1 stim_dur found:", list(set(stim_durs))
             stim_on_sec = dict((t, round(trialdict[t]['stim_dur_ms']/1E3, 1)) for t in trial_list)
         else:
             stim_on_sec = stim_durs[0]

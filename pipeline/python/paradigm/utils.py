@@ -1109,12 +1109,15 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                                    for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
                                     for t in trials_in_block])
-        
+    
+        stim_offset_idxs = np.array([mwinfo[t]['frame_stim_off'] for t in trials_in_block])
+
         # Subtract off frame indices by value to make them relative to BLOCK:
         if block_indexed is False:
             frame_indices = frame_indices - len(frame_tsecs)*fidx #frame_indices -= fidx*file_df.shape[0]
             stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx #stim_onset_idxs -= fidx*file_df.shape[0]
-
+            stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx
+            
         # Get Stimulus info for each trial:        
         #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
         excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range', 'phase'] # Only include param keys saved in stimconfigs
@@ -1126,7 +1129,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         # Add stim_dur if included in stim params:
         if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
             varying_stim_dur = True
-            for ti, trial in enumerate(trials_in_block):
+            for ti, trial in enumerate(sorted(trials_in_block, key=natural_keys)):
                 #print curr_trial_stimconfigs[ti]
                 curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3)
         
@@ -1149,21 +1152,33 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             currbaseline_df = file_F0_df.loc[frame_indices,:]
         
         # Turn time-stamp array into RELATIVE time stamps (relative to stim onset):
+        pre_iti = 1.0
         trial_tstamps = frame_tsecs[frame_indices]  
         if varying_stim_dur:
             
+
+            iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti
+            stimdurs = [int(round(np.floor(mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+            
             # Each trial has a different stim dur structure:
-            trial_ends = np.where(np.diff(trial_tstamps) > 1./framerate*2)[0]# Find where tstamp differences are > 2 frames apart
-            trial_ends = np.append(trial_ends, len(trial_tstamps)-1) # Subtract 2 because +1 in loop
+            #trial_ends = np.where(np.diff(trial_tstamps) > (1./framerate)*2)[0]# Find where tstamp differences are > 2 frames apart
+            #trial_ends = np.append(trial_ends, len(trial_tstamps)-1) # Subtract 2 because +1 in loop
+            trial_ends = [ stimoff + int(np.floor(iti * framerate)) - 1 for stimoff in stim_offset_idxs]
+            trial_end_idxs = [[i for i in frame_indices].index(te) for te in trial_ends]
             
             relative_tsecs = []; curr_trial_start_ix = 0;
-            for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_ends):         
+            for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_end_idxs):    
+                #print (trial_end_ix - stim_on_ix ) / 44.69
+                #print (frame_tsecs[trial_end_ix] - frame_tsecs[stim_on_ix])
                 if trial_end_ix==trial_ends[-1]:
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:]
                 else:
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
+                #print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
+                
                 relative_tsecs.append(curr_tstamps - frame_tsecs[stim_on_ix])
                 curr_trial_start_ix = trial_end_ix+1
+                
             relative_tsecs = np.hstack(relative_tsecs)
 
         else:
