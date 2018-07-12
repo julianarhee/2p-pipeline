@@ -254,8 +254,8 @@ def extract_options(options):
     parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
     parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
     parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
-    parser.add_option('-q', '--quantile', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
-    parser.add_option('-w', '--window', action='store', dest='window_size_sec', default=None, help="Size of window for F0 calculation (default: 3*trial_dur_sec)")
+    parser.add_option('-q', '--quantile', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.10)")
+    parser.add_option('-w', '--window', action='store', dest='window_size_sec', default=30.0, help="Size of window for F0 calculation (default: 30 sec)")
 
     parser.add_option('-f', '--format', action='store', dest='format', default='hdf5', help="File format to use for data arrays (default: hdf5)")
 
