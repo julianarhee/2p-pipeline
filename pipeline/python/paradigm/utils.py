@@ -1163,8 +1163,17 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             # Each trial has a different stim dur structure:
             #trial_ends = np.where(np.diff(trial_tstamps) > (1./framerate)*2)[0]# Find where tstamp differences are > 2 frames apart
             #trial_ends = np.append(trial_ends, len(trial_tstamps)-1) # Subtract 2 because +1 in loop
-            trial_ends = [ stimoff + int(np.floor(iti * framerate)) - 1 for stimoff in stim_offset_idxs]
-            trial_end_idxs = [[i for i in frame_indices].index(te) for te in trial_ends]
+            trial_ends = [ stimoff + int(np.floor(iti * framerate)) for stimoff in stim_offset_idxs]
+            #trial_end_idxs = [[i for i in frame_indices].index(te) for te in trial_ends]
+            trial_end_idxs = []
+            for te in trial_ends:
+                if te not in frame_indices:
+                    eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
+                    #print frame_indices[eix]
+                else:
+                    eix = [i for i in frame_indices].index(te)
+                trial_end_idxs.append(eix)
+                    
             
             relative_tsecs = []; curr_trial_start_ix = 0;
             for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_end_idxs):    
@@ -1174,7 +1183,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:]
                 else:
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
-                #print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
+                print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
                 
                 relative_tsecs.append(curr_tstamps - frame_tsecs[stim_on_ix])
                 curr_trial_start_ix = trial_end_ix+1
