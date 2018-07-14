@@ -432,6 +432,7 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
 #%%
 def get_stimulus_configs(trial_info):
     paradigm_dir = os.path.split(trial_info['parsed_trials_source'])[0]
+    print paradigm_dir
     trialdict = load_parsed_trials(trial_info['parsed_trials_source'])
 
     # Get presentation info (should be constant across trials and files):
