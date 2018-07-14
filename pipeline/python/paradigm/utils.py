@@ -367,6 +367,7 @@ def raw_hdf_to_dataframe(traceid_dir, roi_list=[], fmt='pkl'):
     print "Saving to: %s" % raw_trace_arrays_dir
     
     for f in trace_fns:
+        print os.path.join(filetraces_dir, f)
         tfile = h5py.File(os.path.join(filetraces_dir, f), 'r')
         tracemat = np.array(tfile['Slice01']['traces']['np_subtracted'])  # (nframes_in_tif x nrois)
         if len(roi_list)==0:
@@ -1115,9 +1116,15 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         # Subtract off frame indices by value to make them relative to BLOCK:
         if block_indexed is False:
             frame_indices = frame_indices - len(frame_tsecs)*fidx #frame_indices -= fidx*file_df.shape[0]
+            if frame_indices[-1] > len(frame_tsecs):
+                print "*** %i extra frames removed." % (frame_indices[-1] - len(frame_tsecs))
+                print frame_indices[-10:]
+                last_ix = np.where(frame_indices==len(frame_tsecs)-1)[0][0]
+                frame_indices = frame_indices[0:last_ix]
             stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx #stim_onset_idxs -= fidx*file_df.shape[0]
             stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx
-            
+        #print frame_indices[-10:]    
+        
         # Get Stimulus info for each trial:        
         #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
         excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range', 'phase'] # Only include param keys saved in stimconfigs
