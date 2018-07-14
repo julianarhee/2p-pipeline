@@ -1045,14 +1045,16 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                 elif round(trial[trialname]['stim_duration']/1E3) == half_dur:
                     trial[trialname]['stimuli']['stim_dur'] = half_dur
                     # Half dur.
-                    if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    #if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    if trial[trialname]['stimuli']['rotation'] == 360:
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == 1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
                         
                 elif round(trial[trialname]['stim_duration']/1E3) == quarter_dur:
                     trial[trialname]['stimuli']['stim_dur'] = quarter_dur
-                    if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    #if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
+                    if trial[trialname]['stimuli']['rotation'] == 360:
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
