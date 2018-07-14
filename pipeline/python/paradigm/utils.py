@@ -1183,7 +1183,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:]
                 else:
                     curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
-                print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
+                #print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
                 
                 relative_tsecs.append(curr_tstamps - frame_tsecs[stim_on_ix])
                 curr_trial_start_ix = trial_end_ix+1
