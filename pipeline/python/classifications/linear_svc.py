@@ -1039,58 +1039,58 @@ def extract_options(options):
 
 # 20180521 -- CE077 datasets:
 # -----------------------------------------------------------------------------
-opts0 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_run1', '-t', 'traces001',
-           '-n', '1']
-
-opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run2', '-t', 'traces001',
-           '-n', '1']
-
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run1', '-t', 'traces001',
-           '-n', '1']
-
-opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
-           '-n', '1']
+#opts0 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_run1', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run2', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run1', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
+#           '-n', '1']
 
 
 # 20180523 -- CE077 datasets:
 # -----------------------------------------------------------------------------
 
-opts4 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run2', '-t', 'traces001',
-           '-n', '1']
-
-opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run1', '-t', 'traces001',
-           '-n', '1']
-
-opts5 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
-           '-n', '1']
+#opts4 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run2', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run1', '-t', 'traces001',
+#           '-n', '1']
+#
+#opts5 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
+#           '-n', '1']
 
 
 
 # 20180602 -- CE077 datasets:
 # -----------------------------------------------------------------------------
-opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_run2', '-t', 'traces002',
-           '-n', '1']
-
-opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'blobs_dynamic_run6', '-t', 'traces001',
-           '-n', '1']
+#opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_run2', '-t', 'traces002',
+#           '-n', '1']
+#
+#opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'blobs_dynamic_run6', '-t', 'traces001',
+#           '-n', '1']
 
 #%
 
@@ -1100,18 +1100,18 @@ opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom
 #           '-R', 'blobs_run3', '-t', 'traces001',
 #           '-n', '1']
 
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_drifting_black', '-t', 'traces001',
-           '-n', '1']
-opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_drifting', '-t', 'traces001',
-           '-n', '1']
-opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_static', '-t', 'traces001',
-           '-n', '1']
+#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_drifting_black', '-t', 'traces001',
+#           '-n', '1']
+#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_drifting', '-t', 'traces001',
+#           '-n', '1']
+#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_static', '-t', 'traces001',
+#           '-n', '1']
 
 #options_list = [opts1, opts2, opts3] #, opts2]
 
@@ -1141,18 +1141,20 @@ opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom
 
 
 
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180704', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_phasemod', '-t', 'traces001',
-           '-n', '1']
-
-opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180704', '-A', 'FOV1_zoom1x',
+opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180712', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
            '-R', 'gratings_static', '-t', 'traces001',
            '-n', '1']
 
+opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180712', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_static_phasemod', '-t', 'traces001',
+           '-n', '1']
 
 options_list = [opts2]
+
+
+#options_list = [opts1, opts2]
 
 #optsE = extract_options(opts)
 #if len(optsE.run_list) != len(optsE.traceid_list):
@@ -1640,7 +1642,7 @@ curr_epoch = '0'
 msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
 
 score, permutation_scores, pvalue = permutation_test_score(
-    svc, cX_std, cy, scoring=scoring, cv=kfold, n_permutations=250, n_jobs=4)
+    svc, cX_std, cy, scoring=scoring, cv=kfold, n_permutations=500, n_jobs=4)
 
 print("Classification score %s (pvalue : %s)" % (score, pvalue))
 
