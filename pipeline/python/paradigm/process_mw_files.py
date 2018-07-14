@@ -1047,6 +1047,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                     # Half dur.
                     #if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
                     if trial[trialname]['stimuli']['rotation'] == 360:
+                        print "replacing 360"
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == 1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
@@ -1055,6 +1056,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                     trial[trialname]['stimuli']['stim_dur'] = quarter_dur
                     #if trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == 360:
                     if trial[trialname]['stimuli']['rotation'] == 360:
+                        print "replacing 360"
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
