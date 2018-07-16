@@ -66,6 +66,8 @@ import json
 import h5py
 import datetime
 import copy
+import hashlib
+
 import cPickle as pkl
 import numpy as np
 import tifffile as tf
@@ -75,244 +77,94 @@ from pipeline.python.utils import natural_keys
 from pipeline.python.paradigm import utils as util
 
 
-
-#%% start cluster for efficient computation
-single_thread=False
-
-
-# frame rate in Hz
-#final_frate=10 
-##backend='SLURM'
-#backend='local'
-#if backend == 'SLURM':
-#    n_processes = np.int(os.environ.get('SLURM_NPROCS'))
-#else:
-#    # roughly number of cores on your machine minus 1
-#    n_processes = np.maximum(np.int(psutil.cpu_count()),1) 
-#print('using ' + str(n_processes) + ' processes')
-
-
-#if single_thread:
-#    dview=None
-#else:    
-#    try:
-#        c.close()
-#    except:
-#        print('C was not existing, creating one')
-#    print("Stopping  cluster to avoid unnencessary use of memory....")
-#    sys.stdout.flush()  
-##     if backend == 'SLURM':
-##         try:
-##             cm.stop_server(is_slurm=True)
-##         except:
-##             print('Nothing to stop')
-##         slurm_script='/mnt/xfs1/home/agiovann/SOFTWARE/Constrained_NMF/SLURM/slurmStart.sh'
-##         cm.start_server(slurm_script=slurm_script)
-##         pdir, profile = os.environ['IPPPDIR'], os.environ['IPPPROFILE']
-##         c = Client(ipython_dir=pdir, profile=profile)        
-##     else:
-#    cm.stop_server()
-#    cm.start_server()        
-#    c=Client()
-#
-#    print('Using '+ str(len(c)) + ' processes')
-#    dview=c[:len(c)]
-
-
-
-# Start cluster:
-n_processes = 4
-
-c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=n_processes, single_thread=False)
-    
-
-print n_processes
-print dview
-
-
-#%% ### Get TIF source
-
-rootdir = '/mnt/odyssey'
-
-#rootdir = '/n/coxfs01/2p-data'
-
-animalid = 'CE077'
-session = '20180523'
-acquisition = 'FOV1_zoom1x'
-run = 'gratings_run1'
-
-acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-
-tif_src_dir = os.path.join(acquisition_dir, 'caiman_test_data')
-fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
-print "Found %i tifs in src: %s" % (len(fnames), tif_src_dir)
-
-run_dir = os.path.join(acquisition_dir, run)
-
-fr = 44.69
-
-#%% Set output dir for figures and results:
-
-datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
-#output_dir = os.path.join(tif_src_dir, 'cnmf_%s' % datestr)
-
-output_dir = os.path.join(tif_src_dir, 'results_seed')
-
-if not os.path.exists(os.path.join(output_dir, 'figures')):
-    os.makedirs(os.path.join(output_dir, 'figures'))
-if not os.path.exists(os.path.join(output_dir, 'results')):
-    os.makedirs(os.path.join(output_dir, 'results'))
-print output_dir
-    
-#%% ### Create memmapped files:
-
-do_mmap = False
-mmap_dir = os.path.join(acquisition_dir, 'caiman_test_data', 'memmap2')
-
-if do_mmap:
-    mmap_dir = os.path.join(acquisition_dir, 'caiman_test_data', 'memmap2')
-    if not os.path.exists(mmap_dir):
-        os.makedirs(mmap_dir)
-        
-    # Determind min value of dataset:
-    add_to_movie = np.min([-np.min(tf.imread(fname, pages=[5])) for fname in fnames])
+def tifs_to_mmaps(fnames, dview=None, base_name='Yr', downsample_factor=(1, 1, 1), border_to_0=0):
+    # read first few pages of each tif and find the min value to add:
+    print "Finding min value to add..."
+    min_values = [-np.min(tf.imread(fname, pages=[5])) for fname in fnames]
+    add_to_movie = np.min([m for m in min_values if m > 0]) # Make sure we are only adding if min value is negative
     print add_to_movie
-
-    # Params for mmap:
-    downsample_factor = 1 # use .2 or .1 if file is large and you want a quick answer
-    border_to_0 = 2
-    base_name = os.path.join(mmap_dir, 'gratings') #'Yr'
-    print base_name
-
+    name_new=cm.save_memmap_each(fnames, dview=dview,
+                                 base_name=base_name, 
+                                 resize_fact=downsample_factor, 
+                                 remove_init=0, 
+                                 idx_xy=None, 
+                                 add_to_movie=add_to_movie,
+                                 border_to_0=border_to_0 )
+    return name_new
     
-    final_frate = fr * downsample_factor
+#%%
+def get_mmap_file(fnames, excluded_files=[], 
+                  dview=None, file_base='run', 
+                  downsample_factor=(1, 1, 1), border_to_0=0, create_new=False):
     
-    name_new=cm.save_memmap_each(fnames
-             , dview=dview, base_name=base_name, resize_fact=(1, 1, downsample_factor)
-             , remove_init=0, idx_xy=None, border_to_0=border_to_0 )
-    name_new.sort()
-
-
-#% In[33]:
-
-
-# Run on cluster, rename (memory...)
-name_new = glob.glob(os.path.join(mmap_dir, '*.mmap'))
-print "Found mmap files:", name_new
-
-if len(name_new)==0 or do_mmap:
-    for ni, n in enumerate(name_new):
-        mdir = os.path.split(n)[0]
-        mfile = '%s%s' % ('gratings_%i' % int(ni+1000), os.path.split(n)[1].split('File%03d' % int(ni+1))[-1])
-        print(mfile)
-        os.rename(n, os.path.join(mdir, mfile))
-    # 
-
-    ##%% Join into one giant mmap if needed
-    name_new = glob.glob(os.path.join(mmap_dir, '*.mmap'))
-    if len(name_new) > 1:
-        fname_new = cm.save_memmap_join(
-            name_new, base_name='Yr', n_chunks=20, dview=dview)
-    else:
-        print('One file only, not saving!')
-        fname_new = name_new[0]
-
-
-#% In[38]:
-
-
-fname_new = glob.glob(os.path.join(mmap_dir, 'Yr_*'))[0]
-print "Full mmapped file for run: ", fname_new
-
-
-#%% ### Load memmapped file (all runs):
-
-#% LOAD MEMMAP FILE
-Yr, dims, T = cm.load_memmap(fname_new)
-d1, d2 = dims
-images = np.reshape(Yr.T, [T] + list(dims), order='F')
-Y = np.reshape(Yr, dims + (T,), order='F')
-
-
-#%% Get correlation image:
-
-cn_path = os.path.join(output_dir, 'Cn.npz')
-if not os.path.exists(cn_path):
-    print "Cn not found, calculating new..."
-    # Look at correlation image:
-    Cn = cm.movie(images).local_correlations(swap_dim=False) #cm.local_correlations(Y)
-    #Cn[np.isnan(Cn)] = 0
+    # Get tifs to convert into mmapped files:
+    #fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
+    tif_src_dir = os.path.split(fnames[0])[0]
+    print "Found %i tifs in src: %s" % (len(fnames), tif_src_dir)
     
-    # #In[60]:
-    np.savez(os.path.join(output_dir, 'Cn.npz'), Cn=Cn)
-else:
-    tmpd = np.load(cn_path)
-    Cn = tmpd['Cn']
-    print "Loaded Cn, shape:", Cn.shape
-
-fig, ax = pl.subplots(1)
-ax.imshow(Cn, cmap='gray') #, vmax=.35)
-fig.savefig(os.path.join(output_dir, 'figures', 'Cn.png'))
-pl.close()
-
-
-#%% 
-
-# #############################################################################
-# cNMF: Extract from patches:
-# #############################################################################
-
-K=20
-gSig=[3, 3]
-#dview=None
-Ain=None
-rf=25
-stride_cnmf = 6
-init_method='greedy_roi'
-alpha_snmf=None
-final_frate=fr
-p=2
-merge_thresh=0.8
-gnb = 1
-
-cnmf_params = {'K': K, 
-               'gSig': gSig,
-               'rf': rf,
-               'stride_cnmf': stride_cnmf,
-               'init_method': init_method,
-               'alpha_snmf': alpha_snmf,
-               'final_frate': final_frate,
-               'p': p,
-               'merge_thresh': merge_thresh,
-               'gnb': gnb,
-               'spatial_dist': 2,
-               'spatial_method': 'ellipse',
-               'temporal_method': 'cvxpy',
-               'fname_new': fname_new}
-
-with open(os.path.join(output_dir, 'results', 'cnmf_params.json'), 'w') as f:
-    json.dump(cnmf_params, f, indent=4, sort_keys=True)
+    # Re-use exiting mmapped files, but may want to concatenate differing .tif files
+    # Add prefix showing which files excluded, if any, so as not to overwrite.
+    if len(excluded_files) > 0:
+        print "** Excluding tif idxs:", excluded_files
+    prefix = 'Yr%s' % 'x'.join([str(f) for f in excluded_files])
     
+    # Use memmap input params as unique id for current files:
+    mmap_info = {'source': tif_src_dir, 
+                 'downsample_factor': downsample_factor,
+                 'border_to_0': border_to_0}
+    
+    mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
+        
+    # Create output dir:
+    mmap_basedir = '%s_memmap_%s' % (os.path.split(fnames[0])[0], mhash[0:6])
+    mmap_filedir = os.path.join(mmap_basedir, 'files')
+    if not os.path.exists(mmap_filedir):
+        os.makedirs(mmap_filedir)
+
+    # Check for existing mmap files, and create them if not found:
+    existing_files = glob.glob(os.path.join(mmap_filedir, '%s*.mmap' % file_base))
+    if create_new is False:
+        try:
+            assert len(existing_files) == len(fnames), "Incorrect num .mmap files found (%i)" % len(existing_files)
+            mmap_files = False
+        except:
+            mmap_files = True # If assertion fails, mmap_files
+
+    if mmap_files:
+        
+        # Basename should include path, otherwise will be saved in current dir
+        base_name = os.path.join(mmap_filedir, file_base) 
+        print "Creating mmap files with base: %s" % base_name
+        mmap_names = tifs_to_mmaps(fnames, dview=dview, base_name=base_name, 
+                                   downsample_factor=downsample_factor,
+                                   border_to_0=border_to_0)
+    
+    try:
+        final_mmap = glob.glob(os.path.join(mmap_basedir, '%s*.mmap' % prefix))
+        assert len(final_mmap)==1, "Full concatenated .mmap not found."
+        return final_mmap[0]
+    
+    except Exception as e:
+        # Join mmap files into 1:
+        mmap_names = sorted(glob.glob(os.path.join(mmap_filedir, '%s*.mmap' % file_base)), key=natural_keys)
+        mmap_names = sorted([m for mi, m in enumerate(mmap_names) if mi not in excluded_files], key=natural_keys)
+        print "*** Combining %i of %i files. ***" % (len(mmap_names), len(fnames))
+        
+        if len(mmap_names) > 1:
+            final_mmap = cm.save_memmap_join(mmap_names, base_name=os.path.join(mmap_basedir, prefix), n_chunks=20, dview=dview)
+        else:
+            print('One file only, not saving!')
+            final_mmap = mmap_names[0]
+        return final_mmap
+
 #%%
 
 def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None, verbose=True):
     
-
-    #% Extract spatial and temporal components on patches
-#    K=20
-#    gSig=[3, 3]
-#    #dview=None
-#    Ain=None
-#    rf=25
-#    stride_cnmf = 6
-#    init_method='greedy_roi'
-#    alpha_snmf=None
-#    final_frate=fr
-#    p=2
-#    merge_thresh=0.8
-#    gnb = 2
-        
+    '''
+    Extract spatial and temporal components on patches
+    '''
+    
     # Create cnmf object:
     cnm = cnmf.CNMF(n_processes, 
                     k=cnmf_params['K'],
@@ -363,7 +215,9 @@ def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None,
 
 
 def seed_cnmf(images, cnmf_params, A_in, C_in, b_in, f_in, n_processes=1, dview=None, verbose=True):
-    
+    '''
+    Run cNMF extraction on seeded components
+    '''
     cnm = cnmf.CNMF(n_processes, 
                     k=A_in.shape[-1], 
                     gSig=cnmf_params['gSig'], 
@@ -396,92 +250,188 @@ def seed_cnmf(images, cnmf_params, A_in, C_in, b_in, f_in, n_processes=1, dview=
     
     return cnm
 
-
 #%%
-    
-patch_path = os.path.join(output_dir, 'results_test_1a.npz')
+def get_cnmf_seeds(output_dir, cnmf_params, n_processes=None, dview=None, create_new=False):
 
-if not os.path.exists(patch_path):
-    print "Patch results not found! Creating new."
-    
+    patch_fpath = os.path.join(output_dir, 'results_patch.pkl')
 
-    cnm = fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=n_processes, dview=dview)
+    if create_new or not os.path.exists(patch_fpath):
+        print "Patch results not found! Creating new."
         
-    ##%%
-    A_tot = cnm.A
-    C_tot = cnm.C
-    YrA_tot = cnm.YrA
-    b_tot = cnm.b
-    f_tot = cnm.f
-    sn_tot = cnm.sn
-    #t2 = time.time() - t1
-    
-    #%%
-else:
-    cnm = np.load(patch_path)
-    A_tot = cnm['A_tot'][()]
-    C_tot = cnm['C_tot']
-    YrA_tot = cnm['YrA_tot']
-    b_tot = cnm['b_tot']
-    f_tot = cnm['f_tot']
-    sn_tot = cnm['sn_tot']
+        cnm = fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=n_processes, dview=dview)
+        
+        cnm.dview = None
+        with open(patch_fpath, 'wb') as f:
+            pkl.dump(cnm, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print "Save CNMF object to disk: %s" % patch_fpath
+        
+        # reassign dview before returning:
+        cnm.dview = dview
 
-print(('Number of components:' + str(A_tot.shape[-1])))
+    else:
+        with open(patch_fpath, 'rb') as f:
+            cnm = pkl.load(f)
+    
+    print(('Number of components:' + str(A_tot.shape[-1])))
+
+    return cnm #A_tot, C_tot, YrA_tot, b_tot, f_tot, sn_tot
+
+
+#%% start cluster for efficient computation
+single_thread=False
+
+
+# frame rate in Hz
+#final_frate=10 
+##backend='SLURM'
+#backend='local'
+#if backend == 'SLURM':
+#    n_processes = np.int(os.environ.get('SLURM_NPROCS'))
+#else:
+#    # roughly number of cores on your machine minus 1
+#    n_processes = np.maximum(np.int(psutil.cpu_count()),1) 
+#print('using ' + str(n_processes) + ' processes')
+
+
+#if single_thread:
+#    dview=None
+#else:    
+#    try:
+#        c.close()
+#    except:
+#        print('C was not existing, creating one')
+#    print("Stopping  cluster to avoid unnencessary use of memory....")
+#    sys.stdout.flush()  
+##     if backend == 'SLURM':
+##         try:
+##             cm.stop_server(is_slurm=True)
+##         except:
+##             print('Nothing to stop')
+##         slurm_script='/mnt/xfs1/home/agiovann/SOFTWARE/Constrained_NMF/SLURM/slurmStart.sh'
+##         cm.start_server(slurm_script=slurm_script)
+##         pdir, profile = os.environ['IPPPDIR'], os.environ['IPPPROFILE']
+##         c = Client(ipython_dir=pdir, profile=profile)        
+##     else:
+#    cm.stop_server()
+#    cm.start_server()        
+#    c=Client()
+#
+#    print('Using '+ str(len(c)) + ' processes')
+#    dview=c[:len(c)]
+
+
+
+# Start cluster:
+n_processes = 12
+
+c, dview, n_processes = cm.cluster.setup_cluster(
+    backend='local', n_processes=n_processes, single_thread=False)
+    
+
+print n_processes
+print dview
+
+
+#%% ### Get TIF source
+
+rootdir = '/mnt/odyssey'
+rootdir = '/n/coxfs01/2p-data'
+
+#rootdir = '/Volumes/coxfs01/2p-data'
+
+animalid = 'CE077'
+session = '20180523'
+acquisition = 'FOV1_zoom1x'
+run = 'gratings_run1'
+create_new = False
+
+acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+
+#tif_src_dir = os.path.join(acquisition_dir, 'caiman_test_data')
+
+
+fnames = sorted(glob.glob(os.path.join(acquisition_dir, run, 'processed', 'processed001*', 'mcorrected_*', '*.tif')), key=natural_keys)
+
+#tif_src_dir = os.path.split(fnames[0])[0]
+#
+#
+#fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
+#print "Found %i tifs in src: %s" % (len(fnames), tif_src_dir)
+#
+#run_dir = os.path.join(acquisition_dir, run)
+
+si_info_path = (os.path.join(acquisition_dir, run, '%s.json' % run))
+with open(si_info_path, 'r') as f:
+    si_info = json.load(f)
+fr = si_info['frame_rate'] # 44.69
 
 
 #%%
-# #### Evaluate components:
+
+datestr = '20180622_17_24_42' #None #'20180622_15_26_53'
+excluded_files = []
 
 
-fr = 44.69             # approximate frame rate of data
-decay_time = 4.0 #.0    # length of transient
-min_SNR = 2.0      # peak SNR for accepted components (if above this, acept)
-rval_thr = 0.5     # space correlation threshold (if above this, accept)
-use_cnn = False # use the CNN classifier
-min_cnn_thr = None  # if cnn classifier predicts below this value, reject
-dims = [d1, d2]
-gSig = (3, 3)
+#% Set output dir for figures and results:
 
-idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds =     cm.components_evaluation.estimate_components_quality_auto(
-                                    images, A_tot, C_tot, b_tot, f_tot,
-                                     YrA_tot, fr, decay_time, gSig, dims,
-                                     dview=dview, min_SNR=min_SNR,
-                                     r_values_min=rval_thr, use_cnn=use_cnn,
-                                     thresh_cnn_min=min_cnn_thr)
+output_basedir = os.path.join(acquisition_dir, run, 'cnmf')
+if not os.path.exists(output_basedir):
+    os.makedirs(output_basedir)
+    
+if datestr is None:
+    datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+#output_dir = os.path.join(tif_src_dir, 'cnmf_%s' % datestr)
 
-#crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=0.9)
+output_dir = os.path.join(output_basedir, 'cnmf_%s' % datestr)
 
-eval_params = {'fr': fr, 'decay_time': decay_time,
-               'min_SNR': min_SNR, 'rval_thr': rval_thr,
-               'use_cnn': use_cnn, 'min_cnn_thr': min_cnn_thr,
-               'dims': dims, 'gSig': gSig}
+if not os.path.exists(os.path.join(output_dir, 'figures')):
+    os.makedirs(os.path.join(output_dir, 'figures'))
+if not os.path.exists(os.path.join(output_dir, 'results')):
+    os.makedirs(os.path.join(output_dir, 'results'))
+print output_dir
+    
+#%% ### Create memmapped files:
+    
+downsample_factor = (1,1,1) # Use fractions if want to downsample
+border_to_0 = 4
+
+#fnames = [f for f in fnames if fi not in excluded_files]
+fbase = run.split('_')[0]
+
+fname_new = get_mmap_file(fnames, excluded_files=excluded_files, file_base=fbase, 
+                              dview=dview, 
+                              downsample_factor=downsample_factor, 
+                              border_to_0=border_to_0)
 
 
-eval_datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+#%% ### Load memmapped file (all runs):
 
-# Save evaluation results (plus all info we want to keep):
-np.savez(os.path.join(output_dir, 'evaluation_patch_%s.npz' % eval_datestr), 
-             A_tot=A_tot, C_tot=C_tot, YrA_tot=YrA_tot, b_tot=b_tot, f_tot=f_tot, sn_tot=sn_tot,
-             idx_components=idx_components, idx_components_bad=idx_components_bad,
-             SNR_comp=SNR_comp, r_values=r_values, 
-            options=cnm.options, evalparams=eval_params)
+#% LOAD MEMMAP FILE
+Yr, dims, T = cm.load_memmap(fname_new)
+d1, d2 = dims
+images = np.reshape(Yr.T, [T] + list(dims), order='F')
+Y = np.reshape(Yr, dims + (T,), order='F')
 
-# Save params in easy-read format:
-with open(os.path.join(output_dir, 'figures', 'evalparams_patch_%s.json' % eval_datestr), 'w') as f:
-    json.dump(eval_params, f, indent=4, sort_keys=True)
+#%% Get correlation image:
 
-# Save correposnding eval results figure:
-pl.figure(figsize=(15,5))
-pl.subplot(1,2,1)
-crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=0.9)
-pl.subplot(1,2,2)
-crd = plot_contours(A_tot.tocsc()[:, idx_components_bad], Cn, thr=0.9)
+cn_path = os.path.join(output_dir, 'Cn.npz')
+if not os.path.exists(cn_path):
+    print "Cn not found, calculating new..."
+    # Look at correlation image:
+    Cn = cm.movie(images).local_correlations(swap_dim=False) #cm.local_correlations(Y)
+    #Cn[np.isnan(Cn)] = 0
+    
+    # #In[60]:
+    np.savez(os.path.join(output_dir, 'Cn.npz'), Cn=Cn)
+else:
+    tmpd = np.load(cn_path)
+    Cn = tmpd['Cn']
+    print "Loaded Cn, shape:", Cn.shape
 
-pl.savefig(os.path.join(output_dir, 'figures', 'evaluation_patch_%s.png' % eval_datestr))
+fig, ax = pl.subplots(1)
+ax.imshow(Cn, cmap='gray') #, vmax=.35)
+fig.savefig(os.path.join(output_dir, 'figures', 'Cn.png'))
 pl.close()
-
-
-print "Keeping %i components." % len(idx_components)
 
 #%%
 
@@ -508,7 +458,7 @@ print "Keeping %i components." % len(idx_components)
 # #############################################################################
 
 if manual_seed:
-    results_basename = 'results_seed'
+    #results_basename = 'results_seed'
     rid = 'rois001'
     rid_dir = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rid))[0]
     print rid_dir
@@ -525,7 +475,9 @@ if manual_seed:
     # Binarze and reshape:
     nrois, d1, d2 = masks.shape
     
-    A_in = np.reshape(masks, (nrois, d1*d2)).astype(bool).T # A_in should be of shape (npixels, nrois)
+    A_in = np.reshape(masks, (nrois, d1*d2))
+    A_in[A_in>0] = 1
+    A_in = A_in.astype(bool).T # A_in should be of shape (npixels, nrois)
     print "Reshaped seeded spatial comps:", A_in.shape
     
     C_in = None; b_in = None; f_in = None; 
@@ -535,11 +487,117 @@ if manual_seed:
 #    p = 2
 
 else:
+    #%%
+    # #############################################################################
+    # cNMF: Extract from patches:
+    # #############################################################################
+    
+    K=20
+    gSig=[3, 3]
+    #dview=None
+    Ain=None
+    rf=25
+    stride_cnmf = 6
+    init_method='greedy_roi'
+    alpha_snmf=None
+    final_frate=fr
+    p=2
+    merge_thresh=0.8
+    gnb = 1
+    
+    cnmf_params = {'K': K, 
+                   'gSig': gSig,
+                   'rf': rf,
+                   'stride_cnmf': stride_cnmf,
+                   'init_method': init_method,
+                   'alpha_snmf': alpha_snmf,
+                   'final_frate': final_frate,
+                   'p': p,
+                   'merge_thresh': merge_thresh,
+                   'gnb': gnb,
+                   'spatial_dist': 2,
+                   'spatial_method': 'ellipse',
+                   'temporal_method': 'cvxpy',
+                   'fname_new': fname_new,
+                   'excluded_files': excluded_files}
+    
+    with open(os.path.join(output_dir, 'results', 'cnmf_params.json'), 'w') as f:
+        json.dump(cnmf_params, f, indent=4, sort_keys=True)
+        
+    cnm = get_cnmf_seeds(output_dir, cnmf_params, n_processes=n_processes, dview=dview, create_new=create_new)
+    
+    #%%
+    # #### Evaluate components:
+    
+    #fr = 44.69             # approximate frame rate of data
+    decay_time = 4.0 #.0    # length of transient
+    min_SNR = 1.2      # peak SNR for accepted components (if above this, acept)
+    rval_thr = 0.7     # space correlation threshold (if above this, accept)
+    use_cnn = False # use the CNN classifier
+    min_cnn_thr = None  # if cnn classifier predicts below this value, reject
+    dims = [d1, d2]
+    gSig = (3, 3)
+    
+    
+    # NOTE:  additional methods not pulled from source as of 2018/06/22...
+    #cnm.evaluate_components(fr=fr, decay_time=decay_time, min_SNR=min_SNR,
+    #                        rval_thr=rval_thr, use_cnn=use_cnn, min_cnn_thr=min_cnn_thr)
+    
+    idx_components, idx_components_bad, SNR_comp, r_values, cnn_preds = cm.components_evaluation.estimate_components_quality_auto(
+                                        images, cnm.A, cnm.C, cnm.b, cnm.f,
+                                         cnm.YrA, fr, decay_time, gSig, dims,
+                                         dview=dview, min_SNR=min_SNR,
+                                         r_values_min=rval_thr, use_cnn=use_cnn,
+                                         thresh_cnn_min=min_cnn_thr)
+    
+    # Save results, params, and figure with unique datestr:
+    eval_datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+    
+    # Save json for params:
+    eval_params = {'fr': fr, 
+                   'decay_time': decay_time,
+                   'min_SNR': min_SNR, 
+                   'rval_thr': rval_thr,
+                   'use_cnn': use_cnn, 
+                   'min_cnn_thr': min_cnn_thr,
+                   'dims': dims, 
+                   'gSig': gSig, 
+                   'n_passed': len(idx_components)}
+    
+    # Save params in easy-read format:
+    with open(os.path.join(output_dir, 'figures', 'evalparams_patch_%s.json' % eval_datestr), 'w') as f:
+        json.dump(eval_params, f, indent=4, sort_keys=True)
+    
+    # Save evaluation results (plus all info we want to keep):
+    np.savez(os.path.join(output_dir, 'evaluation_patch_%s.npz' % eval_datestr), 
+                 A_tot=A_tot, C_tot=C_tot, YrA_tot=YrA_tot, b_tot=b_tot, f_tot=f_tot, sn_tot=sn_tot,
+                 idx_components=idx_components, idx_components_bad=idx_components_bad,
+                 SNR_comp=SNR_comp, r_values=r_values, 
+                options=cnm.options, evalparams=eval_params)
+    
+    
+    # Save correposnding eval results figure:
+    pl.figure(figsize=(15,5))
+    pl.subplot(1,2,1)
+    crd = plot_contours(A_tot.tocsc()[:, idx_components], Cn, thr=0.9)
+    pl.subplot(1,2,2)
+    crd = plot_contours(A_tot.tocsc()[:, idx_components_bad], Cn, thr=0.9)
+    pl.savefig(os.path.join(output_dir, 'figures', 'evaluation_patch_%s.png' % eval_datestr))
+    pl.close()
+    
+    
+    print "Keeping %i components." % len(idx_components)
+
     # Run patches above to get initial components:
-    results_basename = 'results_cnmf'
+    #results_basename = 'results_cnmf'
     A_in, C_in, b_in, f_in = cnm.A[:, idx_components], cnm.C[idx_components], cnm.b, cnm.f
     
 #%% 
+
+# #############################################################################
+# REFINE seeded components:
+# #############################################################################
+
 
 crd = plot_contours(A_in, Cn, thr=0.9)
 pl.savefig(os.path.join(output_dir, 'figures', 'seed_components.png'))
@@ -571,22 +629,32 @@ print "S:", cnm2.S.shape
 
 # #### Extract DFF: 
 
-quantile = 8
-frames_window = int(round(15.*fr))
+quantileMin = 10
+frames_window = int(round(30.*fr))
 F_dff = detrend_df_f(cnm2.A, cnm2.b, cnm2.C, cnm2.f, YrA=cnm2.YrA,
-                     quantileMin=quantile, frames_window=frames_window)
+                     quantileMin=quantileMin, frames_window=frames_window)
+pl.figure(figsize=(15,5)); 
+pl.plot(F_dff[0,:]); 
+pl.savefig(os.path.join(output_dir, 'figures', 'example_roi0_dff.png'));
+pl.close()
+cnm2.F_dff = F_dff
+cnm2.quantileMin = quantileMin
+cnm2.frames_window = frames_window
 
+
+#% Save refined cnm with dff and S:
+cnm2.dview = None
+with open(os.path.join(output_dir, 'results', 'results_refined_%s.pkl' % refined_datestr), 'wb') as f:
+    pkl.dump(cnm2, f, protocol=pkl.HIGHEST_PROTOCOL)
+cnm2.dview = dview
 
 # #### Save refined run:
-
+cnm2.dview=None
 np.savez(os.path.join(output_dir, 'results', 'results_refined_%s.npz' % refined_datestr), 
-         Cn=Cn, 
-         A=cnm2.A.todense(), C=cnm2.C, b=cnm2.b, f=cnm2.f, 
-         YrA=cnm2.YrA, 
-         sn=cnm2.sn, 
-         bl = cnm2.bl,
-         d1=d1, d2=d2, 
-         S=cnm2.S, F_dff=F_dff, quantileMin=quantile, frames_window=frames_window)
+         cnm=cnm2)
+cnm2.dview=dview
+
+
 
 #%%
 # #### Evaluate refined run:
@@ -595,7 +663,7 @@ np.savez(os.path.join(output_dir, 'results', 'results_refined_%s.npz' % refined_
 ## In[ ]:
 
 print "*** Evaluating final run ***"
-fr = 44.69             # approximate frame rate of data
+#fr = 44.69             # approximate frame rate of data
 decay_time = 4.0    # length of transient
 min_SNR = 2.0      # peak SNR for accepted components (if above this, acept)
 rval_thr = 0.6     # space correlation threshold (if above this, accept)
@@ -638,15 +706,29 @@ print "Keeping %i components." % len(idx_components)
 
 #% Save results
 
-np.savez(os.path.join(output_dir, 'evaluation_refined_%s.npz' % eval2_datestr), 
-         Cn=Cn, 
-         A=cnm2.A.todense(), C=cnm2.C, b=cnm2.b, f=cnm2.f, YrA=cnm2.YrA, sn=cnm2.sn, 
-         bl = cnm2.bl,
-         d1=d1, d2=d2, 
-         eval_params = eval_params,
-         idx_components=idx_components, idx_components_bad=idx_components_bad,
-         SNR_comp=SNR_comp, r_values=r_values,
-         S=cnm2.S, F_dff=F_dff, quantileMin=quantile, frames_window=frames_window)
+
+cnm2.idx_components = idx_components
+cnm2.idx_components_bad = idx_components_bad
+cnm2.SNR_comp = SNR_comp
+cnm2.r_values = r_values
+cnm2.options['quality'] = eval_params
+cnm2.Cn = Cn
+
+cnm2.dview=None
+results_fpath = os.path.join(output_dir, 'results', 'results_refined_%s.npz' % refined_datestr)
+np.savez(results_fpath, cnm=cnm2)
+cnm2.dview=dview
+
+#
+#np.savez(os.path.join(output_dir, 'evaluation_refined_%s.npz' % eval2_datestr), 
+#         Cn=Cn, 
+#         A=cnm2.A.todense(), C=cnm2.C, b=cnm2.b, f=cnm2.f, YrA=cnm2.YrA, sn=cnm2.sn, 
+#         bl = cnm2.bl,
+#         d1=d1, d2=d2, 
+#         eval_params = eval_params,
+#         idx_components=idx_components, idx_components_bad=idx_components_bad,
+#         SNR_comp=SNR_comp, r_values=r_values,
+#         S=cnm2.S, F_dff=F_dff, quantileMin=quantile, frames_window=frames_window)
 
 
 #%%
@@ -655,30 +737,27 @@ np.savez(os.path.join(output_dir, 'evaluation_refined_%s.npz' % eval2_datestr),
 
 
 #results_fpath = os.path.join(output_dir, 'results', 'eval_final.npz')
-results_fpath = glob.glob(os.path.join(output_dir, 'results_final_*.npz'))[0]
+results_fpath = glob.glob(os.path.join(output_dir, 'results', 'results_refined_*.npz'))[0]
 
 remove_bad_components = False
 
 cnmd = np.load(results_fpath)
+cnm = cnmd['cnm'][()]
 
 
-if '_patch' in results_fpath:
-    append = '_tot'
-else:
-    append = ''
-    
 if remove_bad_components:
-    A = cnmd['A%s' % append][()][:, cnmd['idx_components']]
-    C = cnmd['C%s' % append][cnmd['idx_components']]
+    A = cnm.A[:, cnm.idx_components]
+    C =cnm.C[cnm.idx_components]
+    mov_fn_append = '_idxcomp'
 else:
-    A = cnmd['A%s' % append][()]
-    C = cnmd['C%s' % append]
+    A = cnm.A
+    C = cnm.C
+    mov_fn_append = '_all'
 
-
-b = cnmd['b%s' % append]
-f = cnmd['f%s' % append]
+b = cnm.b
+f = cnm.f
     
-Cn = cnmd['Cn']
+Cn = cnm.Cn
 
 crd = plot_contours(A, Cn, thr_method='nrg', nrgthr=0.5)
 pl.savefig(os.path.join(output_dir, 'figures', 'final_idxcomps_nrg.png'))
@@ -687,45 +766,21 @@ pl.close()
 
 
 #%% reconstruct denoised movie
-#
-#results_fpath = glob.glob(os.path.join(output_dir, 'results_final_*.npz'))[0]
-#print results_fpath
-#cnmd = np.load(results_fpath)
 
-ntiffs = 4
+
+ntiffs = 8
 nvolumes = T/ntiffs
 C = C[:, 0:int(nvolumes)]
 f = f[:, 0:int(nvolumes)]
-
-#A = cnm2.A.tocsc()[:, idx_components]
-#C = cnm2.C[idx_components]
-#C = C[:, 0:int(nvolumes)]
-#
-#b = cnm2.b
-#f = cnm2.f[0:int(nvolumes)]
-
-
 
 #denoised = cm.movie(cnm2.A.dot(cnm2.C) +
 #                    cnm2.b.dot(cnm2.f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
 #
 
-if remove_bad_components:
-#    A = cnm2.A.tocsc()[:, idx_components]
-#    C = cnm2.C[idx_components, 0:nvolumes]
-#    b = cnm2.b
-#    f = cnm2.f[:, 0:int(nvolumes)]
-    mov_fn_append = '_idxcomp'
-else:
-#    A = cnm2.A.tocsc()
-#    C = cnm2.C[:, 0:nvolumes]
-#    b = cnm2.b
-#    f = cnm2.f[:, 0:int(nvolumes)]
-    mov_fn_append = '_all'
 
-denoised = cm.movie(A.dot(C) + b.dot(f)).reshape(dims + (-1,), order='F').transpose([2, 0, 1])
+denoised = cm.movie(A.dot(C) + b.dot(f)).reshape(tuple(dims) + (-1,), order='F').transpose([2, 0, 1])
 
-denoised.save(os.path.join(output_dir, 'figures', 'denoised_refined_File005%s.tif' % mov_fn_append))
+denoised.save(os.path.join(output_dir, 'figures', 'denoised_refined_File001%s.tif' % mov_fn_append))
 
 
 
@@ -770,6 +825,7 @@ cnm2.view_patches(Yr, dims=dims, img=Cn)
 cm.stop_server(dview=dview)
 log_files = glob.glob('*_LOG_*')
 for log_file in log_files:
+    print log_file
     os.remove(log_file)
 
 
@@ -783,40 +839,37 @@ for log_file in log_files:
 
 #results_fpath = os.path.join(output_dir, 'results', 'eval_final.npz')
 
-results_fpath = glob.glob(os.path.join(output_dir, 'evaluation_refined_*.npz'))[0]
+results_fpath = glob.glob(os.path.join(output_dir, 'results', 'results_refined_*.npz'))[0]
 print "Loading results: %s" % results_fpath
 
-c = np.load(results_fpath)
-
-A = c['A'][()]
-C = c['C']
-YrA = c['YrA']
-idx_components = c['idx_components']
-
-#traces = cnm.C[idx_components] + cnm.YrA[idx_components]
+cnmd = np.load(results_fpath)
+cnm = cnmd['cnm'][()]
 
 
-# Get RAW df:
+
+nrois = cnm.A.shape[-1]
+F_raw = cnm.C + cnm.YrA
+A = cnm.A
+C = cnm.C
+YrA = cnm.YrA
+S = cnm.S
+F_dff = cnm.F_dff
+b = cnm.b
+f = cnm.f
+
 if remove_bad_components:
+    idx_components = cnm.idx_components
     nrois = len(idx_components)
     F_raw = C[idx_components] + YrA[idx_components]
     A = A[:, idx_components]
     C = C[idx_components]
-    S = c['S'][idx_components]
-    F_dff = c['F_dff'][idx_components]
+    S = S[idx_components]
+    F_dff = F_dff[idx_components]
     YrA = YrA[idx_components]
-else:
-    nrois = A.shape[-1]
-    F_raw = C + YrA
-    F_dff = c['F_dff']
-    S = c['S']
+
 print F_raw.shape
 raw_df = pd.DataFrame(data=F_raw.T, columns=[['roi%05d' % int(i+1) for i in range(nrois)]])
 
-
-
-b = c['b']
-f = c['f']
 
 # Get baseline:
 B = A.T.dot(b).dot(f)
@@ -830,8 +883,8 @@ print dFF_df.shape
 
 
 # Get Drift-Corrected "raw":
-quantileMin = 8 # c['quantile']
-frames_window =  int(round(15.*fr)) #c['frames_window']
+quantileMin = cnm.quantileMin # c['quantile']
+frames_window = cnm.frames_window # int(round(15.*fr)) #c['frames_window']
 
 Fd = scipy.ndimage.percentile_filter(
             F_raw, quantileMin, (frames_window, 1))
@@ -848,11 +901,21 @@ S_df = pd.DataFrame(data=S.T, columns=raw_df.columns)
 
 run_dir = os.path.join(acquisition_dir, run)
 
-# Turn all this info into "standard" data frame arrays:
-labels_df, raw_df, corrected_df, F0_df, dFF_df, spikes_df = caiman_to_darrays(run_dir, raw_df, corrected_df=corrected_df, dFF_df=dFF_df, F0_df=F0_df, S_df=S_df, output_dir=output_dir, ntiffs=4)
 
+ntiffs = 8
 
-run_info = util.run_info_from_dfs(run_dir, raw_df, labels_df, traceid_dir=output_dir, trace_type='caiman', ntiffs=4)
+#%% Turn all this info into "standard" data frame arrays:
+labels_df, raw_df, corrected_df, F0_df, dFF_df, spikes_df = caiman_to_darrays(run_dir, raw_df, 
+                                                                              corrected_df=corrected_df, 
+                                                                              dFF_df=dFF_df, 
+                                                                              F0_df=F0_df, 
+                                                                              S_df=S_df, 
+                                                                              output_dir=output_dir, 
+                                                                              ntiffs=ntiffs,
+                                                                              excluded_files=excluded_files)
+
+# Get stimulus / trial info:
+run_info = util.run_info_from_dfs(run_dir, raw_df, labels_df, traceid_dir=output_dir, trace_type='caiman', ntiffs=ntiffs)
 
 stimconfigs_fpath = os.path.join(run_dir, 'paradigm', 'stimulus_configs.json')
 with open(stimconfigs_fpath, 'r') as f:
@@ -872,7 +935,7 @@ if not os.path.exists(data_basedir):
     os.makedirs(data_basedir)
 data_fpath = os.path.join(data_basedir, 'datasets.npz')
 
-#%%
+#%
 
 print "Saving processed data...", data_fpath
 np.savez(data_fpath, 
@@ -898,7 +961,9 @@ np.savez(data_fpath,
 
 
 #%%
-def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=None, S_df=None, output_dir='tmp', ntiffs=None, fmt='hdf5', trace_arrays_type='caiman'):
+def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, 
+                      F0_df=None, S_df=None, output_dir='tmp', ntiffs=None, excluded_files=[],
+                      fmt='hdf5', trace_arrays_type='caiman'):
     
     xdata_df=None; labels_df=None; #F0_df=None; dFF_df=None; S_df=None;
     
@@ -906,7 +971,6 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
 
     # Get SCAN IMAGE info for run:
     # -------------------------------------------------------------------------
-    #run_dir = os.path.join(acquisition_dir, run)
     run = os.path.split(run_dir)[-1]
     with open(os.path.join(run_dir, '%s.json' % run), 'r') as fr:
         scan_info = json.load(fr)
@@ -915,12 +979,9 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
     ntiffs_total = scan_info['ntiffs']
     if ntiffs is None:
         ntiffs = int(ntiffs_total)
-        
-    nvolumes_per_tiff = scan_info['nvolumes']
-    
+            
     # Need to make frame_tsecs span all TIFs:
     frame_tsecs_ext = np.hstack([frame_tsecs for i in range(ntiffs)])
-
 
     # Load MW info to get stimulus details:
     # -------------------------------------------------------------------------
@@ -945,7 +1006,8 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
     
     # Load aligned frames--trial info:
     # -------------------------------------------------------------------------
-    parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
+    #parsed_frames_fpath = [os.path.join(paradigm_dir, pfn) for pfn in os.listdir(paradigm_dir) if 'parsed_frames_' in pfn][0]
+    parsed_frames_fpath = glob.glob(os.path.join(paradigm_dir, 'parsed_frames_*.hdf5'))[0]
     parsed_frames = h5py.File(parsed_frames_fpath, 'r')
     
     # Get trial info:
@@ -956,18 +1018,9 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
     assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
     nframes_on = round(int(stimdurs[0] * framerate))
     
-
-#    
-#    frame_df_list = []
-#    drift_df_list = []
-#    frame_times = []
-#    trial_ids = []
-#    config_ids = []
-
-#    file_F0_df = None; #file_df = None;
-
     # Get all trials contained in current .tif file:
-    trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] >= 4], key=natural_keys)
+    #trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] >= 4], key=natural_keys)
+    trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] not in excluded_files], key=natural_keys)
 
 
     # Get frame indices of the full trial 
@@ -1035,15 +1088,7 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
     curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
     config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
     
-    # Add current block of trial info:
-#    frame_df_list.append(currtrials_df)
-#    if file_F0_df is not None:
-#        drift_df_list.append(currbaseline_df)
-    
-#    frame_times.append(relative_tsecs)
-#    trial_ids.append(trial_labels)
-#    config_ids.append(config_labels)
-
+    # Format pd DataFrames:
     xdata_df = currtrials_df.reset_index(drop=True)
     if dFF_df is not None:
         dFF_df = dFF_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
@@ -1100,11 +1145,8 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, F0_df=Non
         if corrected_df is not None:
             sa_labels, saType_labels = util.df_to_sarray(corrected_df)
             f.create_dataset('corrected', data=sa_labels, dtype=saType_labels)
-        
-    
         f.close()
     
-
     return labels_df, xdata_df, corrected_df, F0_df, dFF_df, S_df
 
 # In[ ]:
