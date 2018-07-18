@@ -376,8 +376,12 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         # Save ITI info:
         iti_standard_dur = [i.value for i in df.get_events('ITI_time')]
         print "standard ITIs:", iti_standard_dur
-        assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
-            
+        #assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
+        if len(list(set(iti_standard_dur))) > 1:
+            print "***More than 1 unique ITI standard found."
+            selected_iti = raw_input("Select ITI dur to use: ")
+            iti_standard_dur = [float(selected_iti)]
+           
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
