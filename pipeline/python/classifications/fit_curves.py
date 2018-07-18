@@ -26,13 +26,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR, LinearSVR
 from sklearn.feature_selection import RFE
+from scipy.optimize import curve_fit
 
 
 #%%
 
-rootdir = '/Volumes/coxfs01/2p-data' #'/mnt/odyssey'
+rootdir = '/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #'/mnt/odyssey'
 animalid = 'CE077'
-session = '20180713' #'20180629'
+session = '20180629' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -41,13 +42,13 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'gratings_static' #'blobs_run2'
+train_runid = 'gratings_drifting' #'blobs_run2'
 train_traceid = 'traces001'
 traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, train_runid, train_traceid)
 
 #%%
 
-classif_identifier = 'stat_allrois_LinearSVC_kfold_6ori_all_meanstim'
+classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_meanstim'
 
 clf_pts = classif_identifier.split('_')
 decoder = clf_pts[4][1:]
@@ -73,7 +74,7 @@ print "Training labels:", train_labels
 
 use_regression = False
 fit_best = True
-nfeatures_select = 50 #'all' #75 # 'all' #75
+nfeatures_select = 50 #50 #'all' #75 # 'all' #75
 
 # FIT CLASSIFIER: #############################################################
 if train_X.shape[0] > train_X.shape[1]: # nsamples > nfeatures
@@ -91,8 +92,10 @@ if 'LinearSVC' in classif_identifier:
         kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
         train_X = train_X[:, kept_rids]
         print "Found %i best ROIs:" % nfeatures_select, train_X.shape
+        roiset = 'best%i' % nfeatures_select
     else:
         print "Using ALL rois selected."
+        roiset = 'all'
 
     svc.fit(train_X, train_y)
     clf = CalibratedClassifierCV(svc) 
@@ -102,7 +105,7 @@ if 'LinearSVC' in classif_identifier:
 
 
 #%%
-sim_dir = os.path.join(acquisition_dir, train_runid, train_traceid, 'simulations')
+sim_dir = os.path.join(traceid_dir, 'simulations')
 if not os.path.exists(sim_dir):
     os.makedirs(sim_dir)
             
@@ -113,7 +116,7 @@ if not os.path.exists(sim_dir):
 fit_best = True
         
 if fit_best:
-    train_data_type = 'corrected'
+    train_data_type = 'smoothedX'
     # Also load Training Data to look at traces:
     training_data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     training_data = np.load(training_data_fpath)
@@ -135,7 +138,7 @@ if fit_best:
     train_configs = training_data['sconfigs'][()]
     
     config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
-    traces = {}
+    train_traces = {}
     for cf in config_list:
         print cf, train_configs[cf]['ori']
         
@@ -144,20 +147,30 @@ if fit_best:
         print curr_frames.shape
         nframes_per_trial = len(cixs) / ntrials_per_cond
         
-        tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
-        traces[cf] = tmat
+        #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
+        tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
+        tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
+        bs = np.mean(tmat[0:train_stim_on, :, :], axis=0)
+        dfmat = (tmat - bs) / bs
+        
+        train_traces[cf] = dfmat
     
     responses = []; baselines = [];
     for cf in config_list:
-        tmat = traces[cf]
+        tmat = train_traces[cf]
         print cf
-        baselines_per_trial = np.mean(tmat[:, 0:train_stim_on, :], axis=1) # ntrials x nrois -- baseline val for each trial
-        meanstims_per_trial = np.mean(tmat[:, train_stim_on:train_stim_on+train_nframes_on, :], axis=1) # ntrials x nrois -- baseline val for each trial
+        baselines_per_trial = np.mean(tmat[0:train_stim_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
+        meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
 
-        dffs_per_trial = ( meanstims_per_trial - baselines_per_trial) / baselines_per_trial
-        mean_dff_config = np.mean(dffs_per_trial, axis=0)
-        mean_config = np.mean(meanstims_per_trial, axis=0)
-        baseline_config = np.mean(baselines_per_trial, axis=0)
+#        dffs_per_trial = ( meanstims_per_trial - baselines_per_trial) / baselines_per_trial
+#        
+#        for ridx in range(dffs_per_trial.shape[0]):
+#            dffs_per_trial[ridx, :] -= dffs_per_trial[ridx, :].min()
+#            
+#        mean_dff_config = np.mean(dffs_per_trial, axis=-1)
+#        
+        mean_config = np.mean(meanstims_per_trial, axis=-1)
+        baseline_config = np.mean(baselines_per_trial, axis=-1)
         
         responses.append(mean_config)
         baselines.append(baseline_config)
@@ -167,267 +180,88 @@ if fit_best:
     
 #%%
 
-def wrapped_gaussian(theta, *params):
-    (Rpreferred, Rnulll, theta_preferred, sigma, offset) = params
-#    a = theta - theta_preferred 
-#    b = theta + 180 - theta_preferred
-#    wrap_a = min( [a, a-360, a+360] )
-#    wrap_b = min( [b, b-360, b+360] )
-
-    wrap_as = theta[:, 0]
-    wrap_bs = theta[:, 1]
-    pref_term = Rpreferred * np.exp( - (wrap_as**2) / (2.0 * sigma**2.0) )
-    null_term = Rnull * np.exp( - (wrap_bs**2) / (2.0 * sigma**2.0) )
-    R = offset + pref_term +  null_term
-    
-    return R
-
-
-def wrapped_curve(theta, *params):
-    (Rpreferred, theta_preferred, sigma) = params
-    v = 0
-    for n in [-2, 2]:
-        v += np.exp( -((theta - theta_preferred + 180*n)**2) / (2 * sigma**2) )
-    return Rpreferred * v
-
-
-def von_mises_double(theta, *params):
-    (Rpreferred, Rnull, theta_preferred, k1, k2) = params
-    pterm = Rpreferred * np.exp(k1 * ( np.cos( thetas*(math.pi/180.)- theta_preferred*(math.pi/180.) ) - 1))
-    nterm = Rnull * np.exp(k2 * ( np.cos( theta*(math.pi/180.)- theta_preferred*(math.pi/180.) ) - 1))
-    return pterm + nterm
-
-
-def von_mises(theta, *params):
-    (Rpreferred, theta_preferred, sigma, offset) = params
-    R = Rpreferred * np.exp( sigma * (np.cos( 2*(theta*(math.pi/180.) - theta_preferred*(math.pi/180.)) ) - 1) )
-    return R + offset
-
-
-#def double_gaussian( x, params ):
-#    (c1, mu1, sigma1, c2, mu2, sigma2) = params
-#    res =   c1 * np.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) \
-#          + c2 * np.exp( - (x - mu2)**2.0 / (2.0 * sigma2**2.0) )
-#    return res
-
-def double_gaussian_fit( params ):
-    fit = wrapped_gaussian( xvals, params )
-    return (fit - y_proc)
-
-
-from scipy.optimize import curve_fit
-from scipy.optimize import leastsq
-
-
 #%%
-
-# TRY von mises for NON-drifiting (0, 180)
-
-drifting = False
+ # Just make linear fit:
 thetas = [train_configs[cf]['ori'] for cf in config_list]
+upsampled_thetas = np.linspace(thetas[0], thetas[-1], num=1000)
 
 
-nrows = 5
-ncols = 10
-
-nrois = responses.shape[-1]
-fig, axes = pl.subplots(figsize=(12,12), nrows=nrows, ncols=ncols)
+nrows = 5 #5 #5
+ncols = 10 #10 #10
 
 nrois = responses.shape[-1]
-#ridx = 2
+fig, axes = pl.subplots(figsize=(25,10), nrows=nrows, ncols=ncols)
 
+nrois = responses.shape[-1]
+
+interp_curves = []
 for ridx, ax in zip(range(nrois), axes.flat):
     tuning = responses[:, ridx]
-    offset = np.mean(offsets[:, ridx]) #np.mean(offsets[:, ridx])
-    max_ix = np.where(tuning==tuning.max())[0][0]
-    Rpreferred = tuning[max_ix]
-    theta_preferred = thetas[max_ix]
     
-    if drifting:
-        if theta_preferred >=180:
-            theta_null = theta_preferred - 180
-        else:
-            theta_null = theta_preferred + 180
-        null_ix = thetas.index(theta_null)
-        Rnull = tuning[null_ix]
-    
-        print "Rpref: %.3f (%i) | Rnull: %.3f (%i)" % (Rpreferred, theta_preferred, Rnull, theta_null)
-    
-    else:
-        print "Rpref: %.3f (%i) " % (Rpreferred, theta_preferred)
-    
-    #pl.figure()
-    sigma_diffs = []
-    test_sigmas = np.arange(5, 60, 5)
-    for sigma in np.arange(5, 30, 5):
-        
-        try:
-            popt=None; pcov=None;
-            params = [Rpreferred, theta_preferred, sigma, offset]
-            popt, pcov = curve_fit(von_mises, thetas, tuning, p0=params )
-            sigma_diffs.append(np.abs(popt[2] - sigma))
-            
-            y_fit = von_mises(upsampled_thetas, *popt)
-        except Exception as e:
-            print "%i no fit" % ridx
-        #pl.plot(thetas, tuning, 'ko')
-        #pl.plot(upsampled_thetas, y_fit, label=sigma)
-        
-    #pl.legend()
-    if popt is not None:
-        best_ix = sigma_diffs.index(min(sigma_diffs))
-        best_sigma = test_sigmas[best_ix]  
-        print best_sigma
-    
-        params = [Rpreferred, theta_preferred, best_sigma, offset]
-        popt, pcov = curve_fit(von_mises, thetas, tuning, p0=params )
-        sigma_diffs.append(np.abs(popt[2] - sigma))
-        
-        y_fit = von_mises(upsampled_thetas, *popt)
-        ax.plot(thetas, tuning, 'ko')
-        ax.plot(upsampled_thetas, y_fit, label=sigma)
-        
+    y_fit = np.interp(upsampled_thetas, thetas, tuning)
+    interp_curves.append(y_fit)
 
-#def get_wrap(thetas):
-#    xvals = np.empty((len(thetas), 2))
-#    #print xvals.shape
-#    for ti, theta in enumerate(thetas):
-#        a = theta - theta_preferred 
-#        b = theta + 180 - theta_preferred
-#        wrap_a = min( [a, a-360, a+360] )
-#        wrap_b = min( [b, b-360, b+360] )
-#        xvals[ti, :] = np.array([wrap_a, wrap_b])
-#    #print xvals[:, 0]
-#    #print xvals[:, 1]
-#    return xvals
-#   
-#ofset = 0
-#for sigma in np.arange(45*(math.pi/180)/4, 45*(math.pi/180)*2, 10*(math.pi/180)):
-#    
-#    params = [Rpreferred, Rnull, theta_preferred, sigma, offset]
-#    popt, pcov = curve_fit(wrapped_gaussian, xvals, tuning, p0=params )
-#    
-#    y_fit = wrapped_gaussian(get_wrap(upsampled_thetas), *popt)
-#    pl.figure()
-#    pl.plot(thetas, tuning, 'ko')
-#    pl.plot(upsampled_thetas, y_fit)
+    ax.plot(thetas, tuning, 'ko')
+    ax.plot(upsampled_thetas, y_fit)
+    
+    ax.set_title(kept_rids[ridx]+1)
+    #ax.set_ylim([0, ax.get_ylim()[1]])
+    
+sns.despine(offset=4, trim=True)
+
+pl.savefig(os.path.join(sim_dir, '%s_linear_interp_dff.png' % roiset))
+
+interp_curves = np.vstack(interp_curves) # Nrois x N-sampled points
 
 
 #%%
 
-# Try bimodal with drifting:
-    
-upsampled_thetas = np.linspace(thetas[0], thetas[-1], num=100)
+import matplotlib as mpl
 
-nrows = 5
-ncols = 10
 
-nrois = responses.shape[-1]
-fig, axes = pl.subplots(figsize=(12,12), nrows=nrows, ncols=ncols)
+thetas_r = [theta*(math.pi/180) for theta in thetas]
+#thetas_r = thetas
+fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
+appended_thetas = np.append(thetas, math.pi)
 
 for ridx, ax in zip(range(nrois), axes.flat):
-    
-    tuning = responses[:, ridx]
-    max_ix = np.where(tuning==tuning.max())[0][0]
-    Rpreferred = tuning[max_ix]
-    theta_preferred = thetas[max_ix]
-#    if theta_preferred >=180:
-#        theta_null = theta_preferred - 180
-#    else:
-#        theta_null = theta_preferred + 180
-#    null_ix = thetas.index(theta_null)
-#    Rnull = tuning[null_ix]
-    print "%i - Rpref: %.3f (%i)" % (ridx, Rpreferred, theta_preferred)
-    
-    
-    # Find best sigma:
-    k1_fits=[]; k2_fits=[];
-    #test_sigmas = np.arange(2.5*(math.pi/180), 45*(math.pi/180)*2, 2.5*(math.pi/180))
-    test_sigmas = np.arange(5, 45*2, 5)
-    for k in test_sigmas:
-        try:
-            popt=None; pcov=None;
-            k1 = k; k2 = k;
-            params = [Rpreferred, theta_preferred, k1, k2]
-            popt, pcov = curve_fit(bimodal_curve, np.array(thetas), tuning, p0=params )
-            k1_fits.append(k1-popt[3])
-            k2_fits.append(k2-popt[4])        
-        except Exception as e:
-            print "%i - NO FIT" % ridx
-            continue
-    pl.legend()  
-    
-    if popt is not None:
-        small_k = min([min(k1_fits), min(k2_fits)])
-        if small_k in k1_fits:
-            best_k = k1_fits.index(small_k)
-        else:
-            best_k = k2_fits.index(small_k)
-        #print test_sigmas[best_k] * (180./math.pi)
+    print ridx
+    radii = responses[:, ridx]
+    if radii.min() < 0:
+        radii -= radii.min()
+    polygon = mpl.patches.Polygon(zip(thetas_r, radii), fill=True, alpha=0.5, color='mediumorchid')
+    ax.add_line(polygon)
+    #ax.autoscale()
+    ax.grid(True)
+    ax.set_theta_zero_location("N")
+    ax.set_xticklabels([])
+    #ax.set_title(ridx)
+    max_angle_ix = np.where(radii==radii.max())[0][0]
+    ax.plot([0, thetas_r[max_angle_ix]], [0, radii[max_angle_ix]],'k', lw=1)
+    ax.set_title(kept_rids[ridx]+1, fontsize=8)
+    ax.set_xticks([t for t in thetas_r])
+#    ax.set_thetamin(0)
+#    ax.set_thetamax(math.pi) #([0, math.pi])
+#    
+pl.rc('ytick', labelsize=8)
         
-        del popt
-        del pcov
-        best_sigma = test_sigmas[best_k] 
-        k1 = best_sigma; k2 = best_sigma;
-        params = [Rpreferred, Rnull, theta_preferred, k1, k2]
-        popt, pcov = curve_fit(bimodal_curve, np.array(thetas), tuning, p0=params , maxfev=5000)
-        y_fit = bimodal_curve(np.array(upsampled_thetas), *popt)
-        ax.plot(thetas, tuning, 'ko')
-        ax.plot(upsampled_thetas, y_fit) #, label=k*(180./math.pi))
-        ax.set_title("sigma = %.2f" % best_sigma, fontsize=8)
-        ax.set_xticks(thetas)
+    #ax.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=6)
+    #ax#.yaxis.grid(False); legend.set_yticklabels([])
+    #ax.spines["polar"].set_visible(False)
 
-sns.despine(trim=True, offset=4)
     
 
+figname = '%s_polar_plots_traindata_dff.png' % (roiset)
+pl.savefig(os.path.join(sim_dir, figname))
+    
 
-
-#%%
-
-# Thin plate spline interp?
-
-ridx = 15
-tuning = responses[:, ridx]
-from scipy.interpolate import splprep, splev
-
-
-tck, u = splprep([thetas, tuning], k=5, t=-1, s=1000)
-new_points = splev(u, tck)
-
-fig, ax = pl.subplots()
-ax.plot(thetas, tuning, 'ro')
-ax.plot(new_points[0], new_points[1], 'r-')
-pl.show()
-
-# Just fit a polynomial...
-
-def _polynomial(x, *p):
-    """Polynomial fitting function of arbitrary degree."""
-    poly = 0.
-    for i, n in enumerate(p):
-        poly += n * x**i
-    return poly
-
-p0 = np.ones(6,)
-
-coeff, var_matrix = curve_fit(_polynomial, thetas, tuning, p0=p0)
-
-yfit = [_polynomial(xx, *tuple(coeff)) for xx in upsampled_thetas] # I'm sure there is a better
-                                                    # way of doing this
-pl.figure()
-pl.plot(thetas, tuning, 'ko', label='Test data', )
-pl.plot(upsampled_thetas, yfit, label='fitted data')
-
-
-
-#%%
 
 #%%
 
 # #############################################################################
 # Select TESTING data:
 # #############################################################################
-test_runid = 'gratings_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_runid = 'gratings_rotating_drifting' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid = 'traces001'
 
 #%
@@ -435,7 +269,7 @@ test_traceid = 'traces001'
 # LOAD TEST DATA:
 # -----------------------------------------------------------------------------
 
-test_data_type = 'corrected' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 test_basedir = util.get_traceid_from_acquisition(acquisition_dir, test_runid, test_traceid)
 test_fpath = os.path.join(test_basedir, 'data_arrays', 'datasets.npz')
 test_dataset = np.load(test_fpath)
@@ -465,8 +299,249 @@ with open(paradigm_fpath, 'r') as f:
 
 
 #%%
-# g(t) = exp(−t/tau_decay) − exp(−t/tau_rise)
+
+# =============================================================================
+# Get TEST DATA traces and predictions from trained classifier:
+# =============================================================================
+    
+shuffle_frames = False
+#
+#if fit_best:
+#    with open(os.path.join(output_dir, 'fit_RFE_results.txt'), 'wb') as f:
+#        f.write(str(svc))
+#        f.write('\n%s' % str({'kept_rids': kept_rids}))
+#    f.close()
+    
+mean_pred = {}
+sem_pred = {}
+all_preds = {}
+test_traces = {}
+predicted = []
+for k,g in cgroups:
+
+    y_proba = []; tvals = [];
+    for kk,gg in g.groupby('trial'):
+        #print kk
         
+        trial_ixs = gg.index.tolist()
+        if shuffle_frames:
+            shuffle(trial_ixs)
+
+        curr_test = X_test[trial_ixs,:]
+        orig_test_traces = X_test_orig[trial_ixs,:]
+        
+        if fit_best:
+            curr_test = curr_test[:, kept_rids]
+            orig_test_traces = orig_test_traces[:, kept_rids]
+            
+            roiset = 'best%i' % nfeatures_select
+        else:
+            roiset = 'all'
+            
+        if isinstance(clf, CalibratedClassifierCV):
+            curr_proba = clf.predict_proba(curr_test)
+        elif isinstance(clf, MLPRegressor):
+            proba_tmp = clf.predict(curr_test)
+            curr_proba = np.arctan2(proba_tmp[:, 0], proba_tmp[:, 1])
+        else:
+            curr_proba = clf.predict(curr_test)
+        
+        y_proba.append(curr_proba)
+        tvals.append(orig_test_traces)
+        
+    y_proba = np.dstack(y_proba)
+    curr_traces = np.dstack(tvals)
+    
+    means_by_class = np.mean(y_proba, axis=-1)
+    stds_by_class = stats.sem(y_proba, axis=-1) #np.std(y_proba, axis=-1)
+        
+        
+    mean_pred[k] = means_by_class
+    sem_pred[k] = stds_by_class
+    all_preds[k] = y_proba
+    test_traces[k] = curr_traces
+
+#%% 
+    
+# Calculate DFF if not using mean_stim_dff:
+sorted_test_configs = sorted([c for c in test_configs.keys()], key=lambda x: test_configs[c]['ori'])
+
+for ix, config in enumerate(sorted_test_configs):
+            
+    currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+    currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+    
+    start_rot = currconfig_angles[0]
+    end_rot = currconfig_angles[-1]
+    
+    stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+    nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+            
+    nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+    
+    # Simulation params:
+    framerate = 44.69
+    nsecs = test_configs[config]['stim_dur']
+    tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+    # Generate fake instantaneous response for each frame in trial using tuning curve:
+    
+    # Get angle shown for each frame:
+    stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+    stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+
+    traces_real_data = test_traces[config][:, :, :]
+    baselines = np.mean(test_traces[config][0:stim_on, :, :], axis=0)
+    test_traces[config] = (traces_real_data - baselines) / baselines
+    
+    
+    
+#%%
+    
+#%%
+def double_exponential(tpoints, A0=1, tau_rise=0.068, tau_decay=0.135):    
+#def double_exponential(tpoints, A0=1, A1=1, tau_rise=0.068, tau_decay=0.135):
+    # g(t) = exp(−t/tau_decay) − exp(−t/tau_rise)
+    t0 = tpoints[0]
+    #response = np.array([ A0*np.exp(-t/tau_decay) - A1*np.exp(-t/tau_rise) for t in tpoints])
+    response = np.array([ A0 * ( 1 - np.exp(-(t-t0)/tau_rise) ) * np.exp( -(t-t0) / tau_decay) for t in tpoints])
+    return response
+#
+##A0 = 64.1 # 2.0 #dff_real_data.max()
+##A1 = 0.3 #curr_offset
+##tau_rise = 0.068 #* framerate # sec
+##tau_decay = 0.135 #* framerate # sec
+#
+#tau_rise = 0.0156
+#tau_decay = 0.076 
+#
+#tpoints = np.linspace(0, 1, 44.69*6)
+#
+#response = double_exponential(tpoints, A0=A1, A1=A0, tau_rise=tau_rise, tau_decay=tau_decay)
+#
+#pl.figure(); pl.plot(response)
+#    
+
+from scipy import signal
+
+#%%
+# Current config / trial info:
+config = 'config002'
+
+currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+
+start_rot = currconfig_angles[0]
+end_rot = currconfig_angles[-1]
+
+stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+        
+nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+
+# Simulation params:
+framerate = 44.69
+nsecs = test_configs[config]['stim_dur']
+#tau_rise = 0.068 #* framerate # sec
+#tau_decay = 0.135 #* framerate # sec
+tau_rise = 0.0156
+tau_decay = 0.150 #0.150 #0.076 #0.48 #0.76 
+
+tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+#%%
+# Generate fake instantaneous response for each frame in trial using tuning curve:
+
+# Get angle shown for each frame:
+stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+
+
+
+sim_data_dir  = os.path.join(sim_dir, 'simulated_calcium_traces', 'test_kernel')
+if not os.path.exists(sim_data_dir):
+    os.makedirs(sim_data_dir)
+
+sim_params = {'tau_rise': tau_rise, 
+              'tau_decay': tau_decay, 
+              'tuning': 'linear',
+              'nsecs': nsecs,
+              'framerate': framerate}
+
+with open(os.path.join(sim_data_dir, 'simulation_params.json'), 'w') as f:
+    json.dump(sim_params, f, indent=4)
+    
+
+# Get real response for neuron:
+#ridx = 0
+
+for ridx in range(nrois):
+    #bas_real_data = np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)
+    #dff_real_data = (test_traces[config][:, ridx, :] - bas_real_data) / bas_real_data
+    #true_response = np.mean(dff_real_data, axis=1)
+
+    traces_real_data = test_traces[config][:, ridx, :] #- np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)        
+    mean_data = np.mean(traces_real_data, axis=1)
+    if mean_data.min() < 0:
+        mean_data -= mean_data.min()
+    #curr_offset = np.mean(offsets[:, ridx])
+
+    interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] if not np.isnan(s) else np.nan for s in stimulus_values]
+    inst_response = [interp_curves[ridx, i] if not np.isnan(i) else 0 for i in interp_angle_ixs]
+    
+    A0 = mean_data[stim_on:stim_on+nframes_on].max() #/ np.mean(mean_data[0:stim_on], axis=0)
+    #true_response.max()
+    #A1 = A0 #np.mean(mean_data[0:stim_on]) #A0 #0
+    
+    gcamp = double_exponential(tpoints, A0=A0, tau_rise=tau_rise, tau_decay=tau_decay)
+    sim_trace = signal.convolve(inst_response, gcamp, mode='full') / sum(gcamp)
+    #sim_trace = sim_trace[0:len(inst_response)]
+    #sim_trace = np.pad(sim_trace, (stim_on-1,), mode='constant', constant_values=(curr_offset,) )
+    
+    
+    fig, (ax_orig, ax_win, ax_filt) = pl.subplots(3, 1, sharex=True)
+    ax_orig.plot(inst_response); ax_orig.set_title('Interpolated inst. response')
+    ax_win.plot(gcamp); ax_win.set_title('GCaMP kernel')
+    ax_filt.plot(sim_trace); ax_filt.set_title('Simulated Ca2+ trace')
+    ax_filt.plot(mean_data)
+    ax_filt.plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+    fig.tight_layout()
+    
+    pl.savefig(os.path.join(sim_data_dir, '%i_roi%i_simulated_testconfig%s.png' % (ridx, kept_rids[ridx]+1, config)))
+    pl.close()
+
+
+#
+#dff_real_data = test_traces[config][:, ridx, :]
+#true_response = np.mean(dff_real_data, axis=1)
+#
+#pl.figure();
+#for t in range(dff_real_data.shape[1]):
+#    pl.plot(dff_real_data[:, t], 'k', linewidth=0.5)
+#pl.plot(true_response, 'k', linewidth=1)
+
+#%%
+    
+# Plot "simulated" trace against real trace for each neuron:
+    
+sorted_test_configs = sorted([c for c in test_configs.keys()], \
+                              key=lambda x: (test_configs[x]['stim_dur'], test_configs[x]['direction'], test_configs[x]['ori']))
+for c in sorted_test_configs: print c, test_configs[c]['ori'], test_configs[c]['stim_dur'], test_configs[c]['direction']
+
+
+curr_sim_tuning_dir = os.path.join(os.path.split(sim_data_dir)[0], 'configs')
+if not os.path.exists(curr_sim_tuning_dir): os.makedirs(curr_sim_tuning_dir)
+
+
+for ridx in range(nrois):
+    #bas_real_data = np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)
+    #dff_real_data = (test_traces[config][:, ridx, :] - bas_real_data) / bas_real_data
+    #true_response = np.mean(dff_real_data, axis=1)
+    
+    fig, axes = pl.subplots(1, len(sorted_test_configs), sharex=True, sharey=True, figsize=(24,4))
+
+    for ix, (config, ax) in enumerate(zip(sorted_test_configs, axes.flat)):
+                
         currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
         currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
         
@@ -475,30 +550,916 @@ with open(paradigm_fpath, 'r') as f:
         
         stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
         nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+                
+        nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
         
-        nframes_in_trial = np.squeeze(mean_pred[config]).shape[0]
+        # Simulation params:
+        framerate = 44.69
+        nsecs = test_configs[config]['stim_dur']
+        tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+        # Generate fake instantaneous response for each frame in trial using tuning curve:
         
-        interp_angles = np.ones(predicted_vals.shape) * np.nan
-        interp_angles[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+        # Get angle shown for each frame:
+        stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+        stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+
+        traces_real_data = test_traces[config][:, ridx, :] #- np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)
+        mean_data = np.mean(traces_real_data, axis=1)
+        #curr_offset = np.mean(offsets[:, ridx])
+    
+        interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] if not np.isnan(s) else np.nan for s in stimulus_values]
+        inst_response = [interp_curves[ridx, i] if not np.isnan(i) else 0 for i in interp_angle_ixs]
         
-        # Convert to rads:
-        interp_angles = np.array([ v*(math.pi/180) for v in interp_angles])
+        A0 = mean_data.max() #/ np.mean(np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)) #true_response.max()
+        #print "%s:"% config, A0
+        A1 = A0 #0
+        
+        #gcamp = double_exponential(tpoints, A0=A0, A1=A1, tau_rise=tau_rise, tau_decay=tau_decay)
+        gcamp = double_exponential(tpoints, A0=A0, tau_rise=tau_rise, tau_decay=tau_decay)
+
+        sim_trace = signal.convolve(inst_response, gcamp, mode='full') / sum(gcamp)
+        sim_trace = sim_trace[0:len(inst_response)]
+        #sim_trace = np.pad(sim_trace, (stim_on-1,), mode='constant', constant_values=(curr_offset,) )
+        
+    
+        # Plot simulated and real trace(s):
+        ax.plot(sim_trace, 'cornflowerblue', linewidth=2); ax_filt.set_title('Simulated Ca2+ trace')
+        ax.plot(mean_data, 'k', linewidth=2)
+        for t in range(traces_real_data.shape[1]):
+            ax.plot(traces_real_data[:, t], 'k', linewidth=0.5, alpha=0.3)
+        
+        # stimbar    
+        ax.plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+
+        # Use x-axis for time scale bar
+        ax.set_xticks((stim_on, stim_on+nframes_on))
+        ax.set_xticklabels((0, test_configs[config]['stim_dur']))
+        ax.tick_params(axis='x', which='both',length=0)
+        
+        if ix > 0:
+            for label in ax.get_yticklabels():
+                label.set_visible(False)
+            ax.yaxis.offsetText.set_visible(False)
+            ax.yaxis.set_visible(False)
+            for label in ax.get_xticklabels():
+                label.set_visible(False)
+            ax.xaxis.offsetText.set_visible(False)
+            ax.xaxis.set_visible(False)
+            
+        if test_configs[config]['direction'] == 1:
+            rot_direction = 'CW'
+        else:
+            rot_direction = 'CCW'
+        
+        ax.set_title('%i %s (%.1f s)' % (test_configs[config]['ori'], rot_direction, test_configs[config]['stim_dur']), fontsize=8)
+        
+    sns.despine(offset=4, trim=True)
+    fig.tight_layout()
+    pl.subplots_adjust(top=0.85)
+    pl.suptitle('roi %i' % (kept_rids[ridx]+1))
 
 
-        # Generate a fake repsonse trace:
-        curr_trace = 
-        [v + 0.1*(random.random()*2. - 1.) for v in currtrace]
+    
+    pl.savefig(os.path.join(curr_sim_tuning_dir, '%i_roi%i_simulated.png' % (ridx, kept_rids[ridx]+1)))
+    pl.close()
+    
+
+
+#%%
+
+from random import gauss, seed
+seed(1) # seed random number generator
+
+
+framerate = 44.69
+ntrials = 10
+
+
+#%%  
+# =============================================================================
+# Generate simulated TESTING DATASET:
+# =============================================================================
+
+max_noise = max([np.std(test_traces[c][0:stim_on, :])*2 for c,stim_on in \
+                 zip(test_traces.keys(), [list(set(labels_df[labels_df['config']==c]['stim_on_frame']))[0] \
+                     for c in test_traces.keys()])]) 
+
+sim_traces = {}
+#ridx = 18
+ntrials = list(set([test_traces[c].shape[-1] for c in test_traces.keys()]))[0]
+class_list = sorted([test_configs[c]['ori'] for c in sorted_test_configs])
+print class_list
+
+for config in test_configs.keys():
+    # Get STIMULUS info:
+    currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+    currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+    start_rot = currconfig_angles[0]
+    end_rot = currconfig_angles[-1]
+    
+    if end_rot < 0:
+        print config
+        if len([i for i in class_list if i> 300]) > 0:
+            start_rot += 360
+            end_rot += 360
+        else:
+            start_rot += 180
+            end_rot += 180
+    
+    # Get TRIAL info for current config:
+    stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+    nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+    nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+
+    # Get angle shown for each frame:
+    stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+    stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+        
+    # Simulation params:
+    nsecs = test_configs[config]['stim_dur']
+    tpoints = np.linspace(0, 1, 44.69*nsecs)
+    
+    # Generate fake instantaneous response for each frame in trial using tuning curve:
+    traces_real_data = test_traces[config][:, :, :] #/ np.mean(test_traces[config][0:stim_on, :, :], axis=0) # Subtract offset
+    #traces_real_data /= np.mean(test_traces[config][0:stim_on, :, :], axis=0)
+    mean_data = np.mean(traces_real_data, axis=-1) # Shape Nframes_in_trial x Nrois)
+    #curr_offset = np.mean(offsets[:, ridx])
+    
+    # Get indices of upsampled angle values to match currently shown angles:
+    #interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] if not np.isnan(s) else np.nan for s in stimulus_values]
+    interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] for s in stimulus_values[stim_on:stim_on+nframes_on]]
+
+
+    # Select a big noise level that isn't totally random:
+    #max_noise = test_traces[config][0:stim_on, ridx, :].max()  # Using actual STD is too clean...
+    #max_noise = max([np.std(test_traces[c][0:stim_on, :])*2 for c in test_traces.keys()])
+    roi_noise = np.array([np.std(test_traces[config][stim_on:stim_on+nframes_on, ridx, :])*2 for ridx in range(nrois)])
+    
+    sim_traces_roi = []
+    for t in range(ntrials):
+        # Get "instantaneous response" from tuning curve:
+        inst_response = interp_curves[:, interp_angle_ixs]
+        inst_response = np.pad(inst_response, [(0, 0), (stim_on, nframes_in_trial-nframes_on-stim_on)], mode='constant', constant_values=0) # Pad pre- and post-stim
+        
+        # add generic noise:
+        noise = np.random.normal(0, max_noise, (inst_response.shape))
+        inst_response += noise #[i+n for i,n in zip(inst_response, noise)]
+             
+        # Add noise to generated trace
+        #noise = [gauss(0, max_noise) for i in range(len(inst_response))]
+        roi_variability = np.array([np.random.normal(0, roi_noise_level, (nframes_in_trial,)) for roi_noise_level in roi_noise])
+        #noise = np.random.normal(0, max_noise, (inst_response.shape))
+
+        simulated_response = inst_response + roi_variability #[s+n for s,n in zip(inst_response, noise)]   # Shape (Nrois, Nframes_in_trial)
+        #pl.figure(); pl.plot(inst_response); pl.plot(simulated_response)
+
+        # For each neuron, create GCaMP kernel using current config params and each neuron's A0:
+        A0 = mean_data[stim_on:stim_on+nframes_on].max(axis=0) #/ np.mean(np.mean(test_traces[config][0:stim_on, :, :], axis=0), axis=-1) #true_response.max()
+        gcamp_kernels = np.array([double_exponential(tpoints, A0=amplitude_val, tau_rise=tau_rise, tau_decay=tau_decay) for amplitude_val in A0])
+
+        # Convolve noisy-instantaneous trace w/ kernel:
+        sim_trace = np.array([signal.convolve(simulated_response[r, :], gcamp_kernels[r, :], mode='full') / sum(gcamp_kernels[r,:]) for r in range(simulated_response.shape[0])])
+        sim_trace = sim_trace[:, 0:nframes_in_trial].T #.T # swap axes to fit with test_traces convention
+        sim_traces_roi.append(sim_trace)
+        
+    sim_traces_roi = np.dstack(sim_traces_roi)
+    
+#    pl.figure()
+#    for t in range(ntrials):
+#        pl.plot(sim_traces_roi[:, 18, t], 'k', linewidth=0.3)
+#    pl.plot(np.mean(sim_traces_roi[:, 18, :], axis=-1), 'k', linewidth=1.0)
+#        
+    sim_traces[config] = sim_traces_roi
+
+#%%
+    
+# #############################################################################
+# Plot all generated TEST data to comapre against real data:
+# #############################################################################
+    
+curr_sim_traces_dir = os.path.join(os.path.split(sim_data_dir)[0], 'test_data')
+if not os.path.exists(curr_sim_traces_dir): os.makedirs(curr_sim_traces_dir)
+
+
+sorted_test_configs = sorted([c for c in test_configs.keys()], \
+                              key=lambda x: (test_configs[x]['stim_dur'], test_configs[x]['direction'], test_configs[x]['ori']))
+for c in sorted_test_configs: print c, test_configs[c]['ori'], test_configs[c]['stim_dur'], test_configs[c]['direction']
+
+
+curr_sim_tuning_dir = os.path.join(sim_data_dir, 'configs')
+if not os.path.exists(curr_sim_tuning_dir): os.makedirs(curr_sim_tuning_dir)
+
+
+for ridx in range(nrois):
+    
+    fig, axes = pl.subplots(2, len(sorted_test_configs), sharex=True, sharey=True, figsize=(24,4))
+    
+    for ix, config in enumerate(sorted_test_configs):
+                
+        currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+        currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+        
+        start_rot = currconfig_angles[0]
+        end_rot = currconfig_angles[-1]
+        
+        stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+        nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+                
+        nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+        
+        # Simulation params:
+        framerate = 44.69
+        nsecs = test_configs[config]['stim_dur']
+        tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+        # Plot REAL traces:
+        axes[0, ix].plot(np.mean(test_traces[config][:, ridx, :], axis=-1), 'k', linewidth=2)
+        for t in range(test_traces[config].shape[-1]):
+            axes[0, ix].plot(test_traces[config][:, ridx, t], 'k', linewidth=0.5, alpha=0.3)
+        
+        # Plot SIMULATED traces:
+        axes[1, ix].plot(np.mean(sim_traces[config][:, ridx, :], axis=-1), 'cornflowerblue', linewidth=2)
+        for t in range(sim_traces[config].shape[-1]):
+            axes[1, ix].plot(sim_traces[config][:, ridx, t], 'cornflowerblue', linewidth=0.5, alpha=0.3)
+        
+        # stimbar    
+        axes[0, ix].plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+        axes[1, ix].plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+
+        # Use x-axis for time scale bar
+        axes[0,ix].set_xticks((stim_on, stim_on+nframes_on))
+        axes[0,ix].set_xticklabels((0, test_configs[config]['stim_dur']))
+        axes[0,ix].tick_params(axis='x', which='both',length=0)
+        
+        if ix > 0:
+            for label in ax.get_yticklabels():
+                label.set_visible(False)
+            axes[0,ix].yaxis.offsetText.set_visible(False); axes[1,ix].yaxis.offsetText.set_visible(False);
+            axes[0,ix].yaxis.set_visible(False); axes[1,ix].yaxis.set_visible(False);
+            for label1, label2 in zip(axes[0, ix].get_xticklabels(), axes[1, ix].get_xticklabels()):
+                label1.set_visible(False); label2.set_visible(False)
+            axes[0,ix].xaxis.offsetText.set_visible(False); axes[1,ix].xaxis.offsetText.set_visible(False)
+            axes[0,ix].xaxis.set_visible(False); axes[1,ix].xaxis.set_visible(False)
+                
+        if test_configs[config]['direction'] == 1:
+            rot_direction = 'CW'
+        else:
+            rot_direction = 'CCW'
+        
+        axes[0,ix].set_title('%i %s (%.1f s)' % (test_configs[config]['ori'], rot_direction, test_configs[config]['stim_dur']), fontsize=8)
+        
+    sns.despine(offset=4, trim=True)
+    fig.tight_layout()
+    pl.subplots_adjust(top=0.85)
+    pl.suptitle('roi %i' % (kept_rids[ridx]+1))
+
+    pl.savefig(os.path.join(curr_sim_traces_dir, '%i_roi%i_simulated.png' % (ridx, kept_rids[ridx]+1)))
+    pl.close()
+    
+
+#%%
+    
+# #############################################################################
+# Generate TRAINING data:
+# #############################################################################
+ 
+ntrials = list(set([v for k,v in training_data['run_info'][()]['ntrials_by_cond'].items()]))[0]
+
+stim_on = list(set([list(set(train_labels_df[train_labels_df['config']==config]['stim_on_frame']))[0] for config in train_traces.keys()]))
+assert len(stim_on) == 1, "more than 1 stim ON frame found in TRAIN data set"
+stim_on = stim_on[0]
+
+max_noise = max([np.std(train_traces[c][0:stim_on, :])*2 for c in train_traces.keys()])
 
 
 
+sim_traces_train = {}
+#ridx = 18
+
+for ci, config in enumerate(sorted(train_configs.keys(), key=lambda x: train_configs[x]['ori'])):
+    
+    # Get STIMULUS info:
+    currtrials = list(set(train_labels_df[train_labels_df['config']==config]['trial']))
+
+    # Get TRIAL info for current config:
+    stim_on = list(set(train_labels_df[train_labels_df['config']==config]['stim_on_frame']))[0]
+    nframes_on = list(set(train_labels_df[train_labels_df['config']==config]['nframes_on']))[0]
+    nframes_in_trial = train_traces[config].shape[0]
+
+    # Get angle shown for each frame:
+    stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+    stimulus_values[stim_on:stim_on + nframes_on] = np.ones((nframes_on,)) * train_configs[config]['ori']
+        
+    # Simulation params:
+    nsecs = round(nframes_on/framerate) # train_configs[config]['stim_dur']
+    tpoints = np.linspace(0, 1, 44.69*nsecs)
+    
+    # Generate fake instantaneous response for each frame in trial using tuning curve:
+    traces_real_data = train_traces[config][:, :, :] #- np.mean(train_traces[config][0:stim_on, :, :], axis=0) # Subtract offset
+    mean_data = np.mean(traces_real_data, axis=-1) # Shape Nframes_in_trial x Nrois)
+    #curr_offset = np.mean(offsets[:, ridx])
+    
+    # Get indices of upsampled angle values to match currently shown angles:
+    #interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] if not np.isnan(s) else np.nan for s in stimulus_values]
+    #interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] for s in stimulus_values[stim_on:stim_on+nframes_on]]
 
 
+    # Select a big noise level that isn't totally random:
+    #max_noise = test_traces[config][0:stim_on, ridx, :].max()  # Using actual STD is too clean...
+    #max_noise = max([np.std(test_traces[c][0:stim_on, :])*2 for c in test_traces.keys()])
+    roi_noise = np.array([np.std(train_traces[config][stim_on:stim_on+nframes_on, ridx, :])*2 for ridx in range(nrois)])
+    
+    sim_traces_roi = []
+    for t in range(ntrials):
+        # Get "instantaneous response" from tuning curve:
+        inst_response = np.squeeze(np.dstack([[float(responses[ci, roi] + np.random.normal(0, roi_noise[roi], 1)) for roi in range(nrois)] for f in range(nframes_on)]))
+
+        inst_response = np.pad(inst_response, [(0, 0), (stim_on, nframes_in_trial-nframes_on-stim_on)], mode='constant', constant_values=0) # Pad pre- and post-stim
+        
+        # add generic noise:
+        noise = np.random.normal(0, max_noise, (inst_response.shape))
+        inst_response += noise #[i+n for i,n in zip(inst_response, noise)]
+             
+        # Add noise to generated trace
+        #noise = [gauss(0, max_noise) for i in range(len(inst_response))]
+        roi_variability = np.array([np.random.normal(0, roi_noise_level, (nframes_in_trial,)) for roi_noise_level in roi_noise])
+        #noise = np.random.normal(0, max_noise, (inst_response.shape))
+
+        simulated_response = inst_response + roi_variability #[s+n for s,n in zip(inst_response, noise)]   # Shape (Nrois, Nframes_in_trial)
+        #pl.figure(); pl.plot(inst_response); pl.plot(simulated_response)
+
+        # For each neuron, create GCaMP kernel using current config params and each neuron's A0:
+        A0 = mean_data[stim_on:stim_on+nframes_on].max(axis=0) #/ np.mean(np.mean(train_traces[config][0:stim_on, :, :], axis=0), axis=-1) #true_response.max()
+        gcamp_kernels = np.array([double_exponential(tpoints, A0=amplitude_val, tau_rise=tau_rise, tau_decay=tau_decay) for amplitude_val in A0])
+
+        # Convolve noisy-instantaneous trace w/ kernel:
+        sim_trace = np.array([signal.convolve(simulated_response[r, :], gcamp_kernels[r, :], mode='full') / sum(gcamp_kernels[r,:]) for r in range(simulated_response.shape[0])])
+        sim_trace = sim_trace[:, 0:nframes_in_trial].T #.T # swap axes to fit with test_traces convention
+        sim_traces_roi.append(sim_trace)
+        
+    sim_traces_roi = np.dstack(sim_traces_roi)
+    
+#    pl.figure()
+#    for t in range(ntrials):
+#        pl.plot(sim_traces_roi[:, 18, t], 'k', linewidth=0.3)
+#    pl.plot(np.mean(sim_traces_roi[:, 18, :], axis=-1), 'k', linewidth=1.0)
+        
+    sim_traces_train[config] = sim_traces_roi
+
+#%%
+# #############################################################################
+# Plot all generated TRAIN data to comapre against real data:
+# #############################################################################
+
+curr_sim_traces_dir = os.path.join(os.path.split(sim_data_dir)[0], 'train_data')
+if not os.path.exists(curr_sim_traces_dir): os.makedirs(curr_sim_traces_dir)
 
 
+sorted_train_configs = sorted([c for c in train_configs.keys()], \
+                              key=lambda x: train_configs[x]['ori'])
+for c in sorted_train_configs: print c, train_configs[c]['ori']
 
 
+for ridx in range(nrois):
+    
+    fig, axes = pl.subplots(2, len(sorted_train_configs), sharex=True, sharey=True, figsize=(24/2,4))
+    
+    for ix, config in enumerate(sorted_train_configs):
+                
+        currtrials = list(set(train_labels_df[train_labels_df['config']==config]['trial']))
+
+        stim_on = list(set(train_labels_df[train_labels_df['config']==config]['stim_on_frame']))[0]
+        nframes_on = list(set(train_labels_df[train_labels_df['config']==config]['nframes_on']))[0]
+                
+        nframes_in_trial = train_traces[config].shape[0]
+        
+        # Simulation params:
+        framerate = 44.69
+        nsecs = round(nframes_on/framerate)
+        tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+        # Plot REAL traces:
+        axes[0, ix].plot(np.mean(train_traces[config][:, ridx, :], axis=-1), 'k', linewidth=2)
+        for t in range(train_traces[config].shape[-1]):
+            axes[0, ix].plot(train_traces[config][:, ridx, t], 'k', linewidth=0.5, alpha=0.3)
+        
+        # Plot SIMULATED traces:
+        axes[1, ix].plot(np.mean(sim_traces_train[config][:, ridx, :], axis=-1), 'cornflowerblue', linewidth=2)
+        for t in range(sim_traces_train[config].shape[-1]):
+            axes[1, ix].plot(sim_traces_train[config][:, ridx, t], 'cornflowerblue', linewidth=0.5, alpha=0.3)
+        
+        # stimbar    
+        axes[0, ix].plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+        axes[1, ix].plot([stim_on, stim_on+nframes_on], np.zeros(2,)-0.01, 'r')
+
+        # Use x-axis for time scale bar
+        axes[0,ix].set_xticks((stim_on, stim_on+nframes_on))
+        axes[0,ix].set_xticklabels((0, nsecs))
+        axes[0,ix].tick_params(axis='x', which='both',length=0)
+        
+        if ix > 0:
+            for label in ax.get_yticklabels():
+                label.set_visible(False)
+            axes[0,ix].yaxis.offsetText.set_visible(False); axes[1,ix].yaxis.offsetText.set_visible(False);
+            axes[0,ix].yaxis.set_visible(False); axes[1,ix].yaxis.set_visible(False);
+            for label1, label2 in zip(axes[0, ix].get_xticklabels(), axes[1, ix].get_xticklabels()):
+                label1.set_visible(False); label2.set_visible(False)
+            axes[0,ix].xaxis.offsetText.set_visible(False); axes[1,ix].xaxis.offsetText.set_visible(False)
+            axes[0,ix].xaxis.set_visible(False); axes[1,ix].xaxis.set_visible(False)
+                
+        if train_configs[config]['direction'] == 1:
+            rot_direction = 'CW'
+        else:
+            rot_direction = 'CCW'
+        
+        axes[0,ix].set_title('%i' % train_configs[config]['ori'], fontsize=8)
+        
+    sns.despine(offset=4, trim=True)
+    fig.tight_layout()
+    pl.subplots_adjust(top=0.85)
+    pl.suptitle('roi %i' % (kept_rids[ridx]+1))
+
+    pl.savefig(os.path.join(curr_sim_traces_dir, '%i_roi%i_simulated.png' % (ridx, kept_rids[ridx]+1)))
+    pl.close()
+    
+    
+#%% 
+
+# =============================================================================
+# SIMULATED DATA -- TRAIN classifier:
+# =============================================================================
+print train_dset[train_dtype].shape
+if train_dtype == 'cX_std':
+    use_mean_stim = True
+else:
+    use_mean_stim = False
+    
+# First, reformat trace arrays to be nsamples x nfeatures:
+train_X = []; train_y = [];
+for cf in sorted(train_configs.keys(), key = lambda x: train_configs[x]['ori']):
+    curr_traces = sim_traces_train[cf]
+    if use_mean_stim:
+       curr_train_values = np.mean(curr_traces[stim_on:stim_on+nframes_on, :, :], axis=0)
+    
+    train_X.append(curr_train_values)
+    train_y.append(np.array([train_configs[cf]['ori'] for s in range(curr_train_values.shape[-1])]))
+    train_labels_df 
+
+train_X = np.hstack(train_X).T  # Shape:  Ntrials x Nrois
+train_y = np.hstack(train_y)
+
+#%%
+
+use_regression = False
+
+# FIT CLASSIFIER: #############################################################
+if train_X.shape[0] > train_X.shape[1]: # nsamples > nfeatures
+    dual = False
+else:
+    dual = True
+
+nrois = train_X.shape[-1]
+if 'LinearSVC' in classif_identifier:
+    if use_regression is False:
+        svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1) #, C=best_C) # C=big_C)
+        if fit_best:
+            # First, get accuracy with all features:
+            print "Using all %i ROIs selected from RFE step." % nrois
+            
+        svc.fit(train_X, train_y)
+        clf = CalibratedClassifierCV(svc) 
+        clf.fit(train_X, train_y)
+        sim_classifier_dir = os.path.join(sim_dir, 'classifiers', classif_identifier)
+        if not os.path.exists(sim_classifier_dir): os.makedirs(sim_classifier_dir)
+        print "Saving output for simulations to:\n%s" % sim_classifier_dir
+        
+        
+#%%
+
+# SIMULATION:  Re-format TEST data:
+        
+sim_X_test = []; sim_labels_list = [];
+for config in sorted_test_configs:
+    # Get STIMULUS info:
+    currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+    currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+    start_rot = currconfig_angles[0]
+    end_rot = currconfig_angles[-1]
+    
+    if end_rot < 0:
+        if max(class_list) < 300:
+            start_rot += 180
+            end_rot += 180
+        else:
+            start_rot += 360
+            end_rot += 360
+    
+    # Get TRIAL info for current config:
+    stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+    nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+    nframes_in_trial = test_traces[config].shape[0]
+
+    # Get angle shown for each frame:
+    stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+    stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
+        
+    # Simulation params:
+    nsecs = test_configs[config]['stim_dur']
+    tpoints = np.linspace(0, 1, 44.69*nsecs)
+    
+    tarray_tmp = np.swapaxes(sim_traces[config], 1, 2) # Re-swap axes so that shape is Nframes x Ntrials Nrois
+    curr_nframes, curr_ntrials, nrois = tarray_tmp.shape
+    tarray = np.reshape(tarray_tmp, (curr_nframes*curr_ntrials, nrois), order='f')
+    sim_X_test.append(tarray)
+    
+    sim_labels_list.append(labels_df[labels_df['config']==config].sort_values(['trial', 'tsec']))
+    
+sim_labels_df = pd.concat(sim_labels_list).reset_index(drop=True)
+X_test_orig = np.vstack(sim_X_test)
+X_test = StandardScaler().fit_transform(X_test_orig)
 
 
+#
+#X_test_orig = test_dataset[test_data_type]
+#X_test = StandardScaler().fit_transform(X_test_orig)
+#
+#test_configs = test_dataset['sconfigs'][()]
+#labels_df = pd.DataFrame(data=test_dataset['labels_data'], columns=test_dataset['labels_columns'])
+#
+## just look at 1 config for now:
+sim_cgroups = sim_labels_df.groupby('config')
 
 
+#%%
+# =============================================================================
+# SIMULATION:  Get TEST DATA traces and predictions from trained classifier:
+# =============================================================================
+    
+shuffle_frames = False
+
+mean_pred = {}
+sem_pred = {}
+all_preds = {}
+test_traces = {}
+predicted = []
+for k,g in sim_cgroups:
+
+    y_proba = []; tvals = [];
+    for kk,gg in g.groupby('trial'):
+        #print kk
+        
+        trial_ixs = gg.index.tolist()
+        if shuffle_frames:
+            shuffle(trial_ixs)
+
+        curr_test = X_test[trial_ixs,:]
+        orig_test_traces = X_test_orig[trial_ixs,:]
+        
+#        if fit_best:
+#            curr_test = curr_test[:, kept_rids]
+#            orig_test_traces = orig_test_traces[:, kept_rids]
+#            
+#            roiset = 'best%i' % nfeatures_select
+#        else:
+#            roiset = 'all'
+            
+        if isinstance(clf, CalibratedClassifierCV):
+            curr_proba = clf.predict_proba(curr_test)
+        elif isinstance(clf, MLPRegressor):
+            proba_tmp = clf.predict(curr_test)
+            curr_proba = np.arctan2(proba_tmp[:, 0], proba_tmp[:, 1])
+        else:
+            curr_proba = clf.predict(curr_test)
+        
+        y_proba.append(curr_proba)
+        tvals.append(orig_test_traces)
+        
+    y_proba = np.dstack(y_proba)
+    curr_traces = np.dstack(tvals)
+    
+    means_by_class = np.mean(y_proba, axis=-1)
+    stds_by_class = stats.sem(y_proba, axis=-1) #np.std(y_proba, axis=-1)
+        
+        
+    mean_pred[k] = means_by_class
+    sem_pred[k] = stds_by_class
+    all_preds[k] = y_proba
+    test_traces[k] = curr_traces
+
+
+#%%
+from matplotlib.colors import ListedColormap
+from matplotlib.collections import LineCollection
+
+if not os.path.exists(os.path.join(sim_classifier_dir, 'testdata')): os.makedirs(os.path.join(sim_classifier_dir, 'testdata'))
+print "Saving SIMULATED probability decoding curves to:\n%s" % os.path.join(sim_classifier_dir, 'testdata')
+
+
+#%%
+# #############################################################################
+# SIMULATION:  Plot probability of each trained angle, if using CLASSIFIER:
+# #############################################################################
+
+plot_trials = True
+if plot_trials:
+    mean_lw = 2
+    trial_lw=0.4
+else:
+    mean_lw = 1.0
+    trial_lw=0.2
+    
+#drifting = False
+linear_legend = False
+    
+if isinstance(clf, CalibratedClassifierCV):
+
+    configs_tested = sorted(list(set(sim_labels_df['config'])), key=natural_keys)
+    #maxval = 0.2 #max([all_preds[config].max() for config in mean_pred.keys()])
+    
+    stimdurs = sorted(list(set([test_configs[cf]['stim_dur'] for cf in test_configs.keys()])))
+    print stimdurs
+    if len(stimdurs) > 1:
+        full_dur = stimdurs[-1]
+        half_dur = stimdurs[-2]
+        if len(stimdurs) > 2:
+            quarter_dur = stimdurs[0]
+    
+    for config in configs_tested:
+        #%
+        print config
+        minval = all_preds[config].min()
+        maxval = all_preds[config].max()
+        
+        # Plot each CLASS's probability on a subplot:
+        # -----------------------------------------------------------------------------
+
+        # Get trial structure:
+        stim_on = list(set(sim_labels_df[sim_labels_df['config']==config]['stim_on_frame']))[0]
+        nframes_on = list(set(sim_labels_df[sim_labels_df['config']==config]['nframes_on']))[0]
+        stim_frames = np.arange(stim_on, stim_on+nframes_on)
+
+        nframes_in_trial = np.squeeze(all_preds[config]).shape[0]
+        nclasses_total = np.squeeze(all_preds[config]).shape[1]
+        ntrials_curr_config =  np.squeeze(all_preds[config]).shape[-1]
+        
+        # Get color-cycle order based on angle:
+        colorvals = sns.color_palette("hls", len(svc.classes_))
+        angle_step = list(set(np.diff(train_labels)))[0]
+        if test_configs[config]['direction'] == 1:  # CW, values should be decreasing
+            class_list = sorted(train_labels, reverse=True)
+            shift_sign = -1
+        else:
+            class_list = sorted(train_labels, reverse=False)
+            shift_sign = 1
+        start_angle_ix = class_list.index(test_configs[config]['ori'])
+        class_list = np.roll(class_list, shift_sign*start_angle_ix)
+        class_indices = [[v for v in svc.classes_].index(c) for c in class_list]
+
+
+        # PLOT:
+        fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
+
+        for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
+            
+            # Mean trace:  Plot stimulus frames in class color:
+            cvals = [colorvals[class_index] if frameix in stim_frames else (0.0, 0.0, 0.0) for frameix in range(nframes_in_trial)]
+            
+            axes[lix].plot(np.arange(0, stim_frames[0]), mean_pred[config][0:stim_frames[0], class_index],
+                                color='k', linewidth=mean_lw, alpha=1.0)
+            axes[lix].plot(stim_frames, mean_pred[config][stim_frames, class_index], 
+                                color=colorvals[class_index], linewidth=mean_lw, alpha=1.0)
+            axes[lix].plot(np.arange(stim_frames[-1]+1, nframes_in_trial), mean_pred[config][stim_frames[-1]+1:, class_index], 
+                                color='k', linewidth=mean_lw, alpha=1.0)
+    
+            if plot_trials:
+                plot_type = 'trials'
+                for trialn in range(ntrials_curr_config):
+                    axes[lix].plot(np.arange(0, stim_frames[0]), all_preds[config][0:stim_frames[0], class_index, trialn],
+                                        color='k', linewidth=trial_lw, alpha=0.5)
+                    axes[lix].plot(stim_frames, all_preds[config][stim_frames, class_index, trialn], 
+                                        color=colorvals[class_index], linewidth=trial_lw, alpha=0.5)
+                    axes[lix].plot(np.arange(stim_frames[-1]+1, nframes_in_trial), all_preds[config][stim_frames[-1]+1:, class_index, trialn], 
+                                        color='k', linewidth=trial_lw, alpha=0.5)
+                    
+            else:
+                plot_type = 'fillstd'
+                axes[lix].fill_between(range(nframes_in_trial), mean_pred[config][:,class_index]+sem_pred[config][:, class_index],
+                                            mean_pred[config][:,class_index]-sem_pred[config][:, class_index], alpha=0.2,
+                                            color='k')
+
+            
+            #axes[lix].set_ylim([0.1, maxval])
+            
+
+            axes[lix].axes.xaxis.set_ticks([])
+            #axes[lix].set_title(class_label)
+                        
+            # show stim dur, using class labels as color key:
+            #pl.plot([stim_on, stim_on+nframes_on], np.ones((2,1))*0, 'r', linewidth=3)
+            stimframes = np.arange(stim_on, stim_on+nframes_on)
+            if test_configs[config]['stim_dur'] == quarter_dur:
+                nclasses_shown = int(len(class_indices) * (1/4.)) + 1
+            elif test_configs[config]['stim_dur'] == half_dur:
+                nclasses_shown = int(len(class_indices) * (1/2.)) + 1
+            else:
+                nclasses_shown = len(class_indices)
+            ordered_indices = np.array(class_indices[0:nclasses_shown])
+            ordered_colors = [colorvals[c] for c in ordered_indices]
+            
+            bar_offset = 0.1
+            curr_ylim = axes[lix].get_ylim()[0] - bar_offset
+            
+            axes[lix].set_ylim([minval-bar_offset*2, maxval])
+            
+            # Plot chance line:
+            chance = 1/len(class_list)
+            axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
+            
+            
+        sns.despine(trim=True, offset=4, ax=axes[lix])
+
+
+        for lix in range(len(class_list)):
+            # Create color bar:
+#            currmax = axes[lix].get_ylim()[1]
+#            currmin = axes[lix].get_ylim()[0]
+#            axes[lix].set_ylim([currmin-0.02, currmax])
+            cy = np.ones(stimframes.shape) * (axes[lix].get_ylim()[0]/2)
+            z = stimframes.copy()
+            points = np.array([stimframes, cy]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            cmap = ListedColormap(ordered_colors)
+            lc = LineCollection(segments, cmap=cmap)
+            lc.set_array(z)
+            lc.set_linewidth(5)
+            axes[lix].add_collection(lc)
+            
+            if lix == len(class_list)-1:
+                axes[lix].set_xticks((stim_on, stim_on + framerate))
+                axes[lix].set_xticklabels([0, 1])
+                axes[lix].set_xlabel('sec', horizontalalignment='right', x=0.25)        
+                for axside in ['top', 'right']:
+                    axes[lix].spines[axside].set_visible(False)
+                sns.despine(trim=True, offset=4, ax=axes[lix])
+
+            else:
+                axes[lix].axes.xaxis.set_ticks([])
+                for axside in ['bottom', 'top', 'right']:
+                    axes[lix].spines[axside].set_visible(False)
+                axes[lix].axes.xaxis.set_visible(False) #([])
+            axes[lix].set_ylabel('prob (%i)' % class_list[lix])
+
+        
+        #pl.plot(stimframes, np.ones(stimframes.shape), color=ordered_colors, linewidth=5)
+        pl.subplots_adjust(top=0.85)
+        
+        # Custom legend:
+        if linear_legend:
+            from matplotlib.lines import Line2D
+            custom_lines = []
+            for lix, c_ori in enumerate(svc.classes_):
+                custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
+            pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
+        else:
+            legend = fig.add_axes([0.82, 0.75, 0.2, 0.3],
+                          projection='polar')
+        
+            thetas = sorted(np.array([ori_deg*(math.pi/180) for ori_deg in class_list]))
+            if max(class_list) < 300: # not in class_list:
+                thetas = np.append(thetas, 180*(math.pi/180))
+            
+            for tix, theta in enumerate(thetas):
+                print theta
+                if theta == math.pi and max(class_list) < 300:
+                    color_ix = 0
+                else:
+                    color_ix = [t for t in thetas].index(theta)
+                legend.plot([theta, theta], [0, 1], color=colorvals[color_ix], lw=3)
+            legend.set_theta_zero_location("N")
+            legend.set_xlim([0, math.pi])
+            legend.grid(False); 
+            legend.set_xticks(thetas)
+            if max(class_list) < 300:
+                thetas[-1] = 0
+            legend.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=8)
+            legend.yaxis.grid(False); legend.set_yticklabels([])
+            legend.spines["polar"].set_visible(False)
+
+
+        #%
+        if test_configs[config]['direction']==1:
+            rot_direction = 'CW'
+        else:
+            rot_direction = 'CCW'
+            
+        if test_configs[config]['stim_dur'] == half_dur:
+            rot_duration = 'half'
+        elif test_configs[config]['stim_dur'] == quarter_dur:
+            rot_duration = 'quarter'
+        else:
+            rot_duration = 'full'
+        starting_rot = test_configs[config]['ori']
+        config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+        pl.suptitle(config_english)
+        
+        #%
+        #train_savedir = os.path.split(train_fpath)[0]
+        
+        
+        if shuffle_frames:
+            figname = '%s_SIM_TEST_%s_%s_start_%i_%s_%s_%s_%s_shuffled.png' % (roiset, test_runid, config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+        else:
+            figname = '%s_sim_TEST_%s_%s_start_%i_%s_%s_%s_%s.png' % (roiset, test_runid, config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+        pl.savefig(os.path.join(sim_classifier_dir, 'testdata', figname))
+        pl.close()
+    
+
+#%%
+    
+# SIMULATED DATA:  PLOT Average and Trial curves for ROIs sorted by orientation preference:
+    
+        
+thetas = [train_configs[cf]['ori'] for cf in config_list]
+
+pdirections = []
+for ridx in range(nrois):
+    #print ridx
+    radii = responses[:, ridx]
+    if radii.min() < 0:
+        radii -= radii.min()
+    max_angle_ix = np.where(radii==radii.max())[0][0]
+
+    pdirections.append((ridx, thetas[max_angle_ix], radii[max_angle_ix]))
+        
+
+if not os.path.exists(os.path.join(sim_classifier_dir, 'traindata')): os.makedirs(os.path.join(sim_classifier_dir, 'traindata'))
+print "Saving SIMULATED training data to:\n%s" % os.path.join(sim_classifier_dir, 'traindata')
+
+        
+plot_trials = True
+
+config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
+class_indices = np.arange(0, len(config_list))
+
+fig, axes = pl.subplots(len(config_list), 1, figsize=(6,15))
+for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)):
+    #print lix
+    
+    #grand_meantrace_across_rois = np.mean(np.mean(traces[class_label], axis=-1), axis=0)
+    rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==train_configs[class_label]['ori']]
+    print "Found %i cells with preferred dir %i" % (len(rois_preferred), train_configs[class_label]['ori'])
+    stim_on = list(set(train_labels_df[train_labels_df['config']==class_label]['stim_on_frame']))[0]
+    nframes_on = list(set(train_labels_df[train_labels_df['config']==class_label]['nframes_on']))[0]
+    stim_frames = np.arange(stim_on, stim_on+nframes_on)
+        
+    for ridx in rois_preferred:
+        roi_traces = sim_traces_train[class_label][:, ridx, :]
+        mean_roi_trace = np.mean(roi_traces, axis=-1)
+        std_roi_trace = np.std(roi_traces, axis=-1)
+        ntrials_curr_config = roi_traces.shape[-1] # original array is:  Ntrials x Nframes x Nrois
+
+        cvals = [colorvals[class_index] if frameix in stim_frames else (0.0, 0.0, 0.0) for frameix in range(len(mean_roi_trace))]
+
+        axes[lix].plot(np.arange(0, stim_frames[0]), mean_roi_trace[0:stim_frames[0]],
+                            color='k', linewidth=1.5, alpha=1.0)
+        axes[lix].plot(stim_frames, mean_roi_trace[stim_frames], 
+                            color=colorvals[class_index], linewidth=1.5, alpha=1.0)
+        axes[lix].plot(np.arange(stim_frames[-1]+1, len(mean_roi_trace)), mean_roi_trace[stim_frames[-1]+1:], 
+                            color='k', linewidth=1.5, alpha=1.0)
+
+        # PLOT std:
+        if plot_trials:
+            plot_type = 'trials'
+            for trialn in range(ntrials_curr_config):
+                axes[lix].plot(np.arange(0, stim_frames[0]), roi_traces[0:stim_frames[0], trialn],
+                                    color='k', linewidth=0.3, alpha=0.5)
+                
+                axes[lix].plot(stim_frames, roi_traces[stim_frames, trialn], 
+                                    color=colorvals[class_index], linewidth=0.3, alpha=0.5)
+                
+                axes[lix].plot(np.arange(stim_frames[-1]+1, len(mean_roi_trace)), roi_traces[stim_frames[-1]+1:, trialn], 
+                                    color='k', linewidth=0.3, alpha=0.5)
+        else:
+            axes[lix].fill_between(range(len(mean_roi_trace)), mean_roi_trace+std_roi_trace,
+                                    mean_roi_trace-std_roi_trace, alpha=0.2,
+                                    color='k')
+    if lix < len(config_list):
+        axes[lix].axes.xaxis.set_visible(True) #([])
+        axes[lix].axes.xaxis.set_ticks([])
+        
+
+sns.despine(trim=True, offset=4, bottom=True)
+
+# Custom legend:
+from matplotlib.lines import Line2D
+custom_lines = []
+for lix, c_ori in enumerate(svc.classes_):
+    custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
+pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
+pl.suptitle('%s: Training set' % roiset)
+
+figname = '%s_SIM_TRAIN_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
+
+pl.savefig(os.path.join(sim_classifier_dir, 'traindata', figname))
 
