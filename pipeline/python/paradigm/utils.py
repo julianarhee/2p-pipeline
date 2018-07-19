@@ -805,7 +805,7 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
             nframes_to_show = int(round(window_size_sec*framerate*10))
             pl.figure(figsize=(20,6))
             test_drift_correction(raw_df, F0_df, corrected_df, nframes_to_show, test_roi=test_roi)
-            pl.savefig(os.path.join(drift_fig_dir, '%s_drift_correction.png' % test_roi))
+            pl.savefig(os.path.join(drift_fig_dir, '%s_drift_correction_%s.png' % (test_roi, os.path.splitext(dfn)[0])))
             pl.close()
             print "saved drift-correction example, %s" % test_roi
         
