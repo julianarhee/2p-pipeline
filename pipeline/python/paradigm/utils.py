@@ -482,6 +482,11 @@ def smooth_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.0
     analyses, but smoothing should be done within continuous periods of shutter
     on/off (i.e., a literal 'acquisition' in SI).
     '''
+    
+    # Create output dir for smoothing examples:
+    smooth_fig_dir = os.path.join(traceid_dir, 'files', 'processing_examples', 'smoothing')
+    if not os.path.exists(smooth_fig_dir):
+        os.makedirs(smooth_fig_dir)
 
     # Get source data:
     trace_arrays_src = os.path.join(traceid_dir, 'files', 'trace_arrays_%s' % trace_type)
@@ -536,7 +541,7 @@ def smooth_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.0
                 frac_sel = raw_input('Press <Y> if smoothing is good. Otherwise, select FRAC to use as smoothing window: ')
                 
                 if frac_sel=='Y':
-                    pl.savefig(os.path.join(traceid_dir, '%s_smoothing_%s.png' % (test_roi, str(frac))))
+                    pl.savefig(os.path.join(smooth_fig_dir, '%s_smoothing_%s.png' % (test_roi, str(frac))))
                     pl.close()
                     user_test=False
                     break
@@ -548,7 +553,7 @@ def smooth_trace_arrays(traceid_dir, trace_type='processed', dff=False, frac=0.0
             nframes_to_show = int(round(1500.))
             pl.figure(figsize=(15,6))
             test_smooth_frac(trace_df, smoothed_df, nframes_to_show, dff=dff, test_roi=test_roi)
-            pl.savefig(os.path.join(traceid_dir, '%s_smoothing_%s_%s.png' % (test_roi, str(frac), os.path.splitext(dfn)[0])))
+            pl.savefig(os.path.join(smooth_fig_dir, '%s_smoothing_%s_%s.png' % (test_roi, str(frac), os.path.splitext(dfn)[0])))
             pl.close()
             print "saved smoothing example, %s" % test_roi
         
@@ -699,6 +704,12 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
     
     If window_size_sec unspecified, then default is to use 3 trials for window size.
     '''
+    
+    # Create fig dir to save example traces of drift-correction:
+    drift_fig_dir = os.path.join(traceid_dir, 'files', 'processing_examples', 'drift_correction')
+    if not os.path.exists(drift_fig_dir):
+        os.makedirs(drift_fig_dir)
+        
     # Get frame rate from SI info:
     run_dir = traceid_dir.split('/traces')[0]
     run = os.path.split(run_dir)[-1]
@@ -781,7 +792,7 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
                 quantile_sel = raw_input('Press <Y> if F0 drift is good. Otherwise, select QUANTILE to use as baseline (default: 0.08): ')
                 
                 if window_sel=='Y' and quantile_sel=='Y':
-                    pl.savefig(os.path.join(traceid_dir, '%s_drift_correction.png' % test_roi))
+                    pl.savefig(os.path.join(drift_fig_dir, '%s_drift_correction.png' % test_roi))
                     pl.close()
                     user_test=False
                     break
@@ -791,6 +802,13 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
                     pl.close()
         else:
             corrected_df, F0_df = get_rolling_baseline(raw_df, window_size_sec*framerate, quantile=quantile)
+            nframes_to_show = int(round(window_size_sec*framerate*10))
+            pl.figure(figsize=(20,6))
+            test_drift_correction(raw_df, F0_df, corrected_df, nframes_to_show, test_roi=test_roi)
+            pl.savefig(os.path.join(drift_fig_dir, '%s_drift_correction.png' % test_roi))
+            pl.close()
+            print "saved drift-correction example, %s" % test_roi
+        
 
                 
         processing_info = {'window_size': window_size_sec*framerate,
