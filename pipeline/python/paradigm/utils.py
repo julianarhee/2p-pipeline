@@ -802,6 +802,9 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
                     pl.close()
         else:
             corrected_df, F0_df = get_rolling_baseline(raw_df, window_size_sec*framerate, quantile=quantile)
+            print "Showing initial drift correction (quantile: %.2f)" % quantile
+            print "Min value for all ROIs:", np.min(np.min(corrected_df, axis=0))
+
             nframes_to_show = int(round(window_size_sec*framerate*10))
             pl.figure(figsize=(20,6))
             test_drift_correction(raw_df, F0_df, corrected_df, nframes_to_show, test_roi=test_roi)
