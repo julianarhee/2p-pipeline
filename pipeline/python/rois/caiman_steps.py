@@ -54,7 +54,7 @@ from IPython.display import display, clear_output
 import matplotlib.cm as cmap
 import numpy as np
 
-bpl.output_notebook()
+#bpl.output_notebook()
 
 
 # In[24]:
@@ -278,7 +278,6 @@ def get_cnmf_seeds(output_dir, cnmf_params, n_processes=None, dview=None, create
 
 
 #%% start cluster for efficient computation
-single_thread=False
 
 
 # frame rate in Hz
@@ -320,6 +319,7 @@ single_thread=False
 #    dview=c[:len(c)]
 
 
+single_thread=False
 
 # Start cluster:
 n_processes = 12
@@ -335,14 +335,15 @@ print dview
 #%% ### Get TIF source
 
 rootdir = '/mnt/odyssey'
+
 rootdir = '/n/coxfs01/2p-data'
 
 #rootdir = '/Volumes/coxfs01/2p-data'
 
 animalid = 'CE077'
-session = '20180523'
+session = '20180629'
 acquisition = 'FOV1_zoom1x'
-run = 'gratings_run1'
+run = 'gratings_rotating_drifting'
 create_new = False
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -368,13 +369,14 @@ fr = si_info['frame_rate'] # 44.69
 
 #%%
 
-datestr = '20180622_17_24_42' #None #'20180622_15_26_53'
+#datestr = '20180622_17_24_42' #None #'20180622_15_26_53'
+datestr = None # '20180720_12_10_07'
 excluded_files = []
 
 
 #% Set output dir for figures and results:
 
-output_basedir = os.path.join(acquisition_dir, run, 'cnmf')
+output_basedir = os.path.join(acquisition_dir, run, 'traces', 'cnmf')
 if not os.path.exists(output_basedir):
     os.makedirs(output_basedir)
     
@@ -393,7 +395,7 @@ print output_dir
 #%% ### Create memmapped files:
     
 downsample_factor = (1,1,1) # Use fractions if want to downsample
-border_to_0 = 4
+border_to_0 = 2
 
 #fnames = [f for f in fnames if fi not in excluded_files]
 fbase = run.split('_')[0]
@@ -456,28 +458,40 @@ pl.close()
 # Load MANUAL rois, and use these to seed cNMF
 # (instead of using patches to initilaize):
 # #############################################################################
-
+manual_seed = True
 if manual_seed:
     #results_basename = 'results_seed'
-    rid = 'rois001'
-    rid_dir = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rid))[0]
-    print rid_dir
     
-    mask_fpath = os.path.join(rid_dir, 'masks.hdf5')
+    if original_source:
+        rid = 'rois001'
+        rid_dir = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rid))[0]
+        print rid_dir
+        
+        mask_fpath = os.path.join(rid_dir, 'masks.hdf5')
+    else:
+        mask_fpath = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'traces001*', 'MASKS.hdf5'))[0]
     
     # Load masks:
     maskfile = h5py.File(mask_fpath, 'r')
     print "Loaded maskfile:", maskfile.keys()
-    ref_file = maskfile.keys()[0]
-    masks = maskfile[ref_file]['masks']['Slice01']
-    print masks.shape
+    if original_source:
+        ref_file = maskfile.keys()[0]
+        masks = maskfile[ref_file]['masks']['Slice01']
+        # Binarze and reshape:
+        nrois, d1, d2 = masks.shape
+        A_in = np.reshape(masks, (nrois, d1*d2))
+        A_in[A_in>0] = 1
+        A_in = A_in.astype(bool).T # A_in should be of shape (npixels, nrois)
+    else:
+        ref_file = 'File005'
+        A_in = maskfile[ref_file]['Slice01']['maskarray'][:] # Already in shape npixels x nrois
+        A_in[A_in>0] = 1
+        A_in = A_in.astype(bool)
+    print A_in.shape
     
-    # Binarze and reshape:
-    nrois, d1, d2 = masks.shape
+
     
-    A_in = np.reshape(masks, (nrois, d1*d2))
-    A_in[A_in>0] = 1
-    A_in = A_in.astype(bool).T # A_in should be of shape (npixels, nrois)
+
     print "Reshaped seeded spatial comps:", A_in.shape
     
     C_in = None; b_in = None; f_in = None; 
@@ -627,16 +641,21 @@ print "Final C:", cnm2.C.shape
 print "Final YrA:", cnm2.YrA.shape
 print "S:", cnm2.S.shape
 
+
+
+
 # #### Extract DFF: 
 
 quantileMin = 10
 frames_window = int(round(30.*fr))
 F_dff = detrend_df_f(cnm2.A, cnm2.b, cnm2.C, cnm2.f, YrA=cnm2.YrA,
                      quantileMin=quantileMin, frames_window=frames_window)
-pl.figure(figsize=(15,5)); 
-pl.plot(F_dff[0,:]); 
+
+pl.figure(figsize=(20,5))
+pl.plot(F_dff[0,:])
 pl.savefig(os.path.join(output_dir, 'figures', 'example_roi0_dff.png'));
 pl.close()
+
 cnm2.F_dff = F_dff
 cnm2.quantileMin = quantileMin
 cnm2.frames_window = frames_window
@@ -704,6 +723,7 @@ pl.close()
 
 print "Keeping %i components." % len(idx_components)
 
+
 #% Save results
 
 
@@ -768,7 +788,8 @@ pl.close()
 #%% reconstruct denoised movie
 
 
-ntiffs = 8
+ntiffs = si_info['ntiffs'] - len(excluded_files)
+print "Creating movie for 1 out of %i tiffs." % ntiffs
 nvolumes = T/ntiffs
 C = C[:, 0:int(nvolumes)]
 f = f[:, 0:int(nvolumes)]
@@ -901,8 +922,9 @@ S_df = pd.DataFrame(data=S.T, columns=raw_df.columns)
 
 run_dir = os.path.join(acquisition_dir, run)
 
+ntiffs = si_info['ntiffs'] - len(excluded_files)
 
-ntiffs = 8
+
 
 #%% Turn all this info into "standard" data frame arrays:
 labels_df, raw_df, corrected_df, F0_df, dFF_df, spikes_df = caiman_to_darrays(run_dir, raw_df, 
@@ -938,6 +960,22 @@ data_fpath = os.path.join(data_basedir, 'datasets.npz')
 #%
 
 print "Saving processed data...", data_fpath
+#np.savez(data_fpath, 
+#         raw=raw_df,
+##             smoothedDF=smoothed_DF,
+##             smoothedX=smoothed_X,
+#         dff=dFF_df,
+#         corrected=corrected_df,
+#         F0=F0_df,
+##             frac=frac,
+##             quantile=quantile,
+#         spikes=spikes_df,
+#         tsecs=tsecs,
+#         groups=groups,
+#         ylabels=ylabels,
+#         sconfigs=sconfigs,
+#         run_info=run_info)
+
 np.savez(data_fpath, 
          raw=raw_df,
 #             smoothedDF=smoothed_DF,
@@ -951,9 +989,13 @@ np.savez(data_fpath,
          tsecs=tsecs,
          groups=groups,
          ylabels=ylabels,
-         sconfigs=sconfigs,
+         sconfigs=sconfigs, 
+#             meanstim=meanstim_values, 
+#             zscore=zscore_values,
+#             meanstimdff=meanstimdff_values,
+         labels_data=labels_df,
+         labels_columns=labels_df.columns.tolist(),
          run_info=run_info)
-
 
 
 
@@ -1015,26 +1057,44 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     print "There are %i total trials across all .tif files." % len(trial_list)
     
     stimdurs = list(set([parsed_frames[t]['frames_in_run'].attrs['stim_dur_sec'] for t in trial_list]))
-    assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
-    nframes_on = round(int(stimdurs[0] * framerate))
+    #assert len(stimdurs)==1, "More than 1 unique value for stim dur found in parsed_frames_ file!"
+    if len(stimdurs) > 1:
+        print "Multiple stim durations found. This is a MOVING stim expmt."
+    #nframes_on = round(int(stimdurs[0] * framerate))
+    
+    frame_df_list = []
+    frame_times = []
+    trial_ids = []
+    config_ids = []
+    
+    
     
     # Get all trials contained in current .tif file:
     #trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] >= 4], key=natural_keys)
     trials_in_block = sorted([t for t in trial_list if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] not in excluded_files], key=natural_keys)
-
+        
+  
 
     # Get frame indices of the full trial 
     # -------------------------------------------------------------------------
     # (this includes PRE-stim baseline, stim on, and POST-stim iti):
     frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
-                                   for t in trials_in_block])
+                               for t in trials_in_block])
+    stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
+                                for t in trials_in_block])
+
+    stim_offset_idxs = np.array([mwinfo[t]['frame_stim_off'] for t in trials_in_block])
+    
+    sdurs = []
+    for on,off in zip(stim_onset_idxs, stim_offset_idxs):
+        sdurs.append(stim_offset_idxs - stim_onset_idxs)
+    print "unique durs:", [list(set(sdur)) for sdur in sdurs]
 
     # Check if frame indices are indexed relative to full run (all .tif files)
     # or relative to within-tif frames (i.e., a "block")
     block_indexed = True
     if all([all(parsed_frames[t]['frames_in_run'][:] == parsed_frames[t]['frames_in_file'][:]) for t in trial_list]):
         block_indexed = False
-
 
     # If frame indices are relative, make them absolute (full run):
     if block_indexed is True:
@@ -1053,71 +1113,191 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     
     
     
-    # Get relevant info for trial labels:
-    # -------------------------------------------------------------------------
-    excluded_params = ['filehash', 'stimulus', 'type']
-    curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
-    curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
-    config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+    # Get Stimulus info for each trial:        
+    #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
+    excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range', 'phase'] # Only include param keys saved in stimconfigs
+    #print "---- ---- EXCLUDED PARAMS:", excluded_params
+
+    curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
+                                   if k not in excluded_params) for t in trials_in_block]
+    varying_stim_dur = False
+    # Add stim_dur if included in stim params:
+    if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+        varying_stim_dur = True
+        for ti, trial in enumerate(sorted(trials_in_block, key=natural_keys)):
+            #print curr_trial_stimconfigs[ti]
+            curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3)
     
-    trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
-    stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block]) - frame_index_adjust
+    # Get corresponding configXXX label:
+    #print curr_trial_stimconfigs
+    curr_config_ids = [k for trial_configs in curr_trial_stimconfigs \
+                           for k,v in stimconfigs.iteritems() if v==trial_configs]
+    # Combine into array that matches size of curr file_df:
+    config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) \
+                               for conf, t in zip(curr_config_ids, trials_in_block)])
+    trial_labels = np.hstack(\
+                    [np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) \
+                     for t in trials_in_block])
     
+    assert len(config_labels)==len(trial_labels), "Mismatch in n frames per trial, %s" % dfn
+
+    # #### Parse full file into "trial" structure using frame indices:
     currtrials_df = raw_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
-#    if file_F0_df is not None:
-#        currbaseline_df = file_F0_df.loc[frame_indices,:]
-#    
-    # Turn time-stamp array into (ntrials x nframes_per_trial) array:
-    #trial_tstamps = frame_tsecs[frame_indices]        
-    trial_tstamps = frame_tsecs_ext[frame_indices]
-    nframes_per_trial = len(frame_indices) / len(trials_in_block)
-    tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
-    
-    # Subtract frame_onset timestamp from each frame for each trial to get
-    # time relative to stim ON:
-    #tsec_mat -= np.tile(frame_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
-    tsec_mat -= np.tile(frame_tsecs_ext[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
-    relative_tsecs = np.reshape(tsec_mat, (len(trials_in_block)*nframes_per_trial, ))
-    
-    # Get corresponding STIM CONFIG ids:
-    if stimtype == 'grating' or stimtype=='gratings':
-        excluded_params = ['stimulus', 'type']
+
+    # Turn time-stamp array into RELATIVE time stamps (relative to stim onset):
+    pre_iti = 1.0
+    trial_tstamps = frame_tsecs_ext[frame_indices]  
+    if varying_stim_dur:
+        
+
+        iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti
+        stimdurs = [int(round(np.floor(mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+        
+        # Each trial has a different stim dur structure:
+        trial_ends = [ stimoff + int(round(iti * framerate)) for stimoff in stim_offset_idxs]
+        trial_end_idxs = []
+        for te in trial_ends:
+            if te not in frame_indices:
+                eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
+                #print frame_indices[eix]
+            else:
+                eix = [i for i in frame_indices].index(te)
+            trial_end_idxs.append(eix)
+                
+        relative_tsecs = []; curr_trial_start_ix = 0;
+        for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_end_idxs):    
+            #print (trial_end_ix - stim_on_ix ) / 44.69
+            #print (frame_tsecs[trial_end_ix] - frame_tsecs[stim_on_ix])
+            if trial_end_ix==trial_ends[-1]:
+                curr_tstamps = trial_tstamps[curr_trial_start_ix:]
+            else:
+                curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
+                
+            relative_tsecs.append(curr_tstamps - frame_tsecs_ext[stim_on_ix])
+            curr_trial_start_ix = trial_end_ix+1
+            
+        relative_tsecs = np.hstack(relative_tsecs)
+
     else:
-        excluded_params = ['filehash', 'stimulus', 'type']
-    curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
-    curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
-    config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+        # All trials have the same structure:
+        nframes_per_trial = len(frame_indices) / len(trials_in_block)
+        tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
+        
+        # Subtract frame_onset timestamp from each frame for each trial to get
+        # time relative to stim ON:
+        tsec_mat -= np.tile(frame_tsecs_ext[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+        relative_tsecs = np.reshape(tsec_mat, (len(trials_in_block)*nframes_per_trial, ))
     
+
+    # Add current block of trial info:
+    frame_df_list.append(currtrials_df)
+
+    frame_times.append(relative_tsecs)
+    trial_ids.append(trial_labels)
+    config_ids.append(config_labels)
+    
+    
+
+    xdata_df = pd.concat(frame_df_list, axis=0).reset_index(drop=True)
+
+    # Also collate relevant frame info (i.e., labels):
+    tstamps = np.hstack(frame_times)
+    trials = np.hstack(trial_ids)
+    configs = np.hstack(config_ids)
+    if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+        stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
+    else:
+        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
+    nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
+   
+    
+    
+#    
+#    
+#    # Get relevant info for trial labels:
+#    # -------------------------------------------------------------------------
+#    #excluded_params = ['filehash', 'stimulus', 'type']
+#    excluded_params = ['stimulus', 'type', 'rotation_range', 'phase']
+#
+#    curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
+#    curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
+#    config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+#    
+#    trial_labels = np.hstack([np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) for t in trials_in_block])
+#    stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] for t in trials_in_block]) - frame_index_adjust
+#    
+#    currtrials_df = raw_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
+##    if file_F0_df is not None:
+##        currbaseline_df = file_F0_df.loc[frame_indices,:]
+##    
+#    # Turn time-stamp array into (ntrials x nframes_per_trial) array:
+#    #trial_tstamps = frame_tsecs[frame_indices]        
+#    trial_tstamps = frame_tsecs_ext[frame_indices]
+#    nframes_per_trial = len(frame_indices) / len(trials_in_block)
+#    tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
+#    
+#    # Subtract frame_onset timestamp from each frame for each trial to get
+#    # time relative to stim ON:
+#    #tsec_mat -= np.tile(frame_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+#    tsec_mat -= np.tile(frame_tsecs_ext[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+#    relative_tsecs = np.reshape(tsec_mat, (len(trials_in_block)*nframes_per_trial, ))
+#    
+#    # Get corresponding STIM CONFIG ids:
+#    if stimtype == 'grating' or stimtype=='gratings':
+#        excluded_params = ['stimulus', 'type', 'rotation_range', 'phase']
+#    else:
+#        excluded_params = ['filehash', 'stimulus', 'type']
+#    curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() if k not in excluded_params) for t in trials_in_block]
+#    curr_config_ids = [k for trial_configs in curr_trial_stimconfigs for k,v in stimconfigs.iteritems() if v==trial_configs]
+#    config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) for conf,trial in zip(curr_config_ids, trials_in_block)])
+#    
     # Format pd DataFrames:
     xdata_df = currtrials_df.reset_index(drop=True)
     if dFF_df is not None:
-        dFF_df = dFF_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
-        dFF_df = dFF_df.reset_index(drop=True)
+        currtrials_df = dFF_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
+        dFF_df = currtrials_df.reset_index(drop=True)
     if F0_df is not None:
-        F0_df = F0_df.loc[frame_indices,:]
-        F0_df = F0_df.reset_index(drop=True)
+        currtrials_df = F0_df.loc[frame_indices,:]
+        F0_df = currtrials_df.reset_index(drop=True)
     if S_df is not None:
-        S_df = S_df.loc[frame_indices,:]
-        S_df = S_df.reset_index(drop=True)        
+        currtrials_df = S_df.loc[frame_indices,:]
+        S_df = currtrials_df.reset_index(drop=True)        
     if corrected_df is not None:
-        corrected_df = corrected_df.loc[frame_indices,:]
-        corrected_df = corrected_df.reset_index(drop=True)   
+        currtrials_df = corrected_df.loc[frame_indices,:]
+        corrected_df = currtrials_df.reset_index(drop=True)   
         
-    # Also collate relevant frame info (i.e., labels):
-    tstamps = relative_tsecs
-    trials = trial_labels
-    configs = config_labels 
-    
-    stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
-    assert len(stim_dur_sec)==1, "more than 1 unique stim duration found in MW file!"
-    stim_dur = stim_dur_sec[0]
+#    # Also collate relevant frame info (i.e., labels):
+#    tstamps = relative_tsecs
+#    trials = trial_labels
+#    configs = config_labels 
+#    
+#    if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+#        stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
+#    else:
+#        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
+#        assert len(stim_durs)==1, "more than 1 unique stim duration found in MW file!"
+#    
+#    nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
+#   
+#    
+
         
     # Turn paradigm info into dataframe:
     labels_df = pd.DataFrame({'tsec': tstamps, 
                               'config': configs,
                               'trial': trials,
-                              'stim_dur': np.tile(stim_dur, trials.shape)
+                              'stim_dur': stim_durs #np.tile(stim_dur, trials.shape)
                               }, index=xdata_df.index)
+    
+    ons = [int(np.where(t==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+    assert len(list(set(ons))) == 1, "Stim onset index has multiple values..."
+    stim_on_frame = list(set(ons))[0]
+    stim_ons_df = pd.DataFrame({'stim_on_frame': np.tile(stim_on_frame, (len(tstamps),)),
+                                'nframes_on': nframes_on,
+                                }, index=labels_df.index)
+    labels_df = pd.concat([stim_ons_df, labels_df], axis=1)
+    
+    
     
     if fmt == 'pkl':
         dfile = {'xdata': xdata_df, 'labels': labels_df}
