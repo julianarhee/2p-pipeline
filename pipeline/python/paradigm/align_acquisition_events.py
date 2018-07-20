@@ -394,7 +394,7 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                     fridxs.attrs['stim_dur_sec'] = trial_info['stim_on_sec'][currtrial_in_run]
                 else: 
                     fridxs.attrs['stim_dur_sec'] = trial_info['stim_on_sec']
-                fridxs.attrs['iti_dur_sec'] = trial_info['iti_full']
+                fridxs.attrs['iti_dur_sec'] = trial_info['iti_post']
                 fridxs.attrs['baseline_dur_sec'] = trial_info['iti_pre']
     except Exception as e:
         print "Error parsing frames into trials: current file - %s" % currfile
