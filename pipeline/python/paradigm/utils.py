@@ -182,17 +182,26 @@ def run_info_from_dfs(rundir, raw_df, labels_df, traceid_dir='', trace_type='np_
     ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
     trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
     ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
-    assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
-    nframes_per_trial = list(set(labels_df.groupby(['trial'])['tsec'].count()))[0]
+    #assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
+    nframes_per_trial = list(set(labels_df.groupby(['trial'])['tsec'].count())) #[0]
+    if len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) > 1:
+        print "Multiple nframes per trial found:", nframes_per_trial
+        
     nframes_on = list(set(labels_df['stim_dur']))
-    assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
-    nframes_on = nframes_on[0] * si_info['framerate']
+    if len(nframes_on) > 1:
+        print "More than 1 stim dur found:", nframes_on
+    nframes_on = [nf * si_info['framerate'] for nf in nframes_on]
+    
+    #assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
+    #nframes_on = nframes_on[0] * si_info['framerate']
 
     # Get stim onset index for all trials:
-    tmat = np.reshape(labels_df['tsec'].values, (ntrials_total,nframes_per_trial))    
+    #tmat = np.reshape(labels_df['tsec'].values, (ntrials_total,nframes_per_trial))    
     ons = []
-    for ts in range(tmat.shape[0]):
-        on_idx = [t for t in tmat[ts,:]].index(0)
+    all_trials = sorted(list(set(labels_df['trial'])), key=natural_keys)
+    for trial in all_trials: #range(tmat.shape[0]):
+        curr_tsecs = labels_df[labels_df['trial']==trial]['tsec'].values
+        on_idx = [t for t in curr_tsecs].index(0)
         ons.append(on_idx)
     assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
     stim_on_frame = list(set(ons))[0]
@@ -1135,6 +1144,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         stim_offset_idxs = np.array([mwinfo[t]['frame_stim_off'] for t in trials_in_block])
 
         # Subtract off frame indices by value to make them relative to BLOCK:
+        # Since we are cycling thru FILES (i.e., blocks), we need to readjust frame indices.
         if block_indexed is False:
             frame_indices = frame_indices - len(frame_tsecs)*fidx #frame_indices -= fidx*file_df.shape[0]
             if frame_indices[-1] > len(frame_tsecs):
@@ -1180,41 +1190,50 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             currbaseline_df = file_F0_df.loc[frame_indices,:]
         
         # Turn time-stamp array into RELATIVE time stamps (relative to stim onset):
-        pre_iti = 1.0
+        #pre_iti = 1.0
         trial_tstamps = frame_tsecs[frame_indices]  
         if varying_stim_dur:
             
-
-            iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti
-            stimdurs = [int(round(np.floor(mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+    
+    #        iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti - 0.05
+    #        stimdurs = [int(round((mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+    #        
+    #        # Each trial has a different stim dur structure:
+    #        trial_ends = [ stimoff + int(round(iti * framerate)) for stimoff in stim_offset_idxs]
+    #        trial_end_idxs = []
+    #        for te in trial_ends:
+    #            if te not in frame_indices:
+    #                eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
+    #                #print frame_indices[eix]
+    #            else:
+    #                eix = [i for i in frame_indices].index(te)
+    #            trial_end_idxs.append(eix)
             
-            # Each trial has a different stim dur structure:
-            #trial_ends = np.where(np.diff(trial_tstamps) > (1./framerate)*2)[0]# Find where tstamp differences are > 2 frames apart
-            #trial_ends = np.append(trial_ends, len(trial_tstamps)-1) # Subtract 2 because +1 in loop
-            trial_ends = [ stimoff + int(np.floor(iti * framerate)) for stimoff in stim_offset_idxs]
-            #trial_end_idxs = [[i for i in frame_indices].index(te) for te in trial_ends]
-            trial_end_idxs = []
-            for te in trial_ends:
-                if te not in frame_indices:
-                    eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
-                    #print frame_indices[eix]
-                else:
-                    eix = [i for i in frame_indices].index(te)
-                trial_end_idxs.append(eix)
-                    
+            trial_end_idxs = np.where(np.diff(frame_indices) > 1)[0]
+            trial_end_idxs = np.append(trial_end_idxs, len(trial_tstamps)-1)
+            trial_start_idxs = [0]
+            trial_start_idxs.extend([i+1 for i in trial_end_idxs[0:-1]])
             
-            relative_tsecs = []; curr_trial_start_ix = 0;
-            for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_end_idxs):    
-                #print (trial_end_ix - stim_on_ix ) / 44.69
-                #print (frame_tsecs[trial_end_ix] - frame_tsecs[stim_on_ix])
-                if trial_end_ix==trial_ends[-1]:
-                    curr_tstamps = trial_tstamps[curr_trial_start_ix:]
-                else:
-                    curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
-                #print curr_tstamps[0:50]- frame_tsecs[stim_on_ix] 
+            
+            relative_tsecs = []; #curr_trial_start_ix = 0;
+            #prev_trial_end = 0;
+            #for ti, (stim_on_ix, trial_end_ix) in enumerate(zip(sorted(stim_onset_idxs), sorted(trial_end_idxs))):    
+            for ti, (trial_start_ix, trial_end_ix) in enumerate(zip(sorted(trial_start_idxs), sorted(trial_end_idxs))):
                 
-                relative_tsecs.append(curr_tstamps - frame_tsecs[stim_on_ix])
-                curr_trial_start_ix = trial_end_ix+1
+                stim_on_ix = stim_onset_idxs[ti]
+                #assert curr_trial_start_ix > prev_trial_end, "Current start is %i frames prior to end!" % (prev_trial_end - curr_trial_start_ix)
+                #print ti, trial_end_ix - trial_start_ix
+                
+                
+    #            if trial_end_ix==trial_ends[-1]:
+    #                curr_tstamps = trial_tstamps[trial_start_ix:]
+    #            else:
+                curr_tstamps = trial_tstamps[trial_start_ix:trial_end_ix+1]
+                
+                zeroed_tstamps = curr_tstamps - frame_tsecs_ext[stim_on_ix]
+                print ti, zeroed_tstamps[0]
+                relative_tsecs.append(zeroed_tstamps)
+                #prev_trial_end = trial_end_ix
                 
             relative_tsecs = np.hstack(relative_tsecs)
 

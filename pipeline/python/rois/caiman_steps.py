@@ -1087,8 +1087,9 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     
     sdurs = []
     for on,off in zip(stim_onset_idxs, stim_offset_idxs):
-        sdurs.append(stim_offset_idxs - stim_onset_idxs)
-    print "unique durs:", [list(set(sdur)) for sdur in sdurs]
+        dur = round((off - on) / framerate)
+        sdurs.append(dur)
+    print "unique durs:", list(set(sdurs))
 
     # Check if frame indices are indexed relative to full run (all .tif files)
     # or relative to within-tif frames (i.e., a "block")
@@ -1145,36 +1146,50 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     currtrials_df = raw_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
 
     # Turn time-stamp array into RELATIVE time stamps (relative to stim onset):
-    pre_iti = 1.0
+    #pre_iti = 1.0
     trial_tstamps = frame_tsecs_ext[frame_indices]  
     if varying_stim_dur:
         
 
-        iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti
-        stimdurs = [int(round(np.floor(mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+#        iti = list(set([round(mwinfo[t]['iti_dur_ms']/1E3) for t in trials_in_block]))[0] - pre_iti - 0.05
+#        stimdurs = [int(round((mwinfo[t]['stim_dur_ms']/1E3) * framerate)) for t in trials_in_block]
+#        
+#        # Each trial has a different stim dur structure:
+#        trial_ends = [ stimoff + int(round(iti * framerate)) for stimoff in stim_offset_idxs]
+#        trial_end_idxs = []
+#        for te in trial_ends:
+#            if te not in frame_indices:
+#                eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
+#                #print frame_indices[eix]
+#            else:
+#                eix = [i for i in frame_indices].index(te)
+#            trial_end_idxs.append(eix)
         
-        # Each trial has a different stim dur structure:
-        trial_ends = [ stimoff + int(round(iti * framerate)) for stimoff in stim_offset_idxs]
-        trial_end_idxs = []
-        for te in trial_ends:
-            if te not in frame_indices:
-                eix = np.where(abs(frame_indices-te)==min(abs(frame_indices-te)))[0][0]
-                #print frame_indices[eix]
-            else:
-                eix = [i for i in frame_indices].index(te)
-            trial_end_idxs.append(eix)
-                
-        relative_tsecs = []; curr_trial_start_ix = 0;
-        for stim_on_ix, trial_end_ix in zip(stim_onset_idxs, trial_end_idxs):    
-            #print (trial_end_ix - stim_on_ix ) / 44.69
-            #print (frame_tsecs[trial_end_ix] - frame_tsecs[stim_on_ix])
-            if trial_end_ix==trial_ends[-1]:
-                curr_tstamps = trial_tstamps[curr_trial_start_ix:]
-            else:
-                curr_tstamps = trial_tstamps[curr_trial_start_ix:trial_end_ix+1]
-                
-            relative_tsecs.append(curr_tstamps - frame_tsecs_ext[stim_on_ix])
-            curr_trial_start_ix = trial_end_ix+1
+        trial_end_idxs = np.where(np.diff(frame_indices) > 1)[0]
+        trial_end_idxs = np.append(trial_end_idxs, len(trial_tstamps)-1)
+        trial_start_idxs = [0]
+        trial_start_idxs.extend([i+1 for i in trial_end_idxs[0:-1]])
+        
+        
+        relative_tsecs = []; #curr_trial_start_ix = 0;
+        #prev_trial_end = 0;
+        #for ti, (stim_on_ix, trial_end_ix) in enumerate(zip(sorted(stim_onset_idxs), sorted(trial_end_idxs))):    
+        for ti, (trial_start_ix, trial_end_ix) in enumerate(zip(sorted(trial_start_idxs), sorted(trial_end_idxs))):
+            
+            stim_on_ix = stim_onset_idxs[ti]
+            #assert curr_trial_start_ix > prev_trial_end, "Current start is %i frames prior to end!" % (prev_trial_end - curr_trial_start_ix)
+            #print ti, trial_end_ix - trial_start_ix
+            
+            
+#            if trial_end_ix==trial_ends[-1]:
+#                curr_tstamps = trial_tstamps[trial_start_ix:]
+#            else:
+            curr_tstamps = trial_tstamps[trial_start_ix:trial_end_ix+1]
+            
+            zeroed_tstamps = curr_tstamps - frame_tsecs_ext[stim_on_ix]
+            print ti, zeroed_tstamps[0]
+            relative_tsecs.append(zeroed_tstamps)
+            #prev_trial_end = trial_end_ix
             
         relative_tsecs = np.hstack(relative_tsecs)
 
@@ -1296,7 +1311,6 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
                                 'nframes_on': nframes_on,
                                 }, index=labels_df.index)
     labels_df = pd.concat([stim_ons_df, labels_df], axis=1)
-    
     
     
     if fmt == 'pkl':
