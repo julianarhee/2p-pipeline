@@ -5,6 +5,8 @@ Created on Wed May 30 20:36:25 2018
 
 @author: juliana
 """
+
+
 import matplotlib as mpl
 mpl.use('agg')
 import os
@@ -43,9 +45,10 @@ from pipeline.python.traces.utils import get_frame_info
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1x',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'gratings_rotating_drifting', '-t', 'traces001', '-d', 'dff']
+           '-R', 'gratings_rotating_drifting', '-t', 'traces001', '-d', 'dff',
+           '-r', 'stim_dur', '-c', 'ori', '-H', 'direction']
 
 
 def extract_options(options):
@@ -374,6 +377,8 @@ def make_clean_psths(options):
                 sub_df = rdata[rdata['config']==str(curr_config)]
                 tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
                 tpoints = np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
+                assert len(list(set(sub_df['nframes_on']))) == 1, "More than 1 stimdur parsed for current config..."
+                
                 nframes_on = list(set(sub_df['nframes_on']))[0]
                 if correct_offset:
                     subdata = tracemat - bas_grand_mean
@@ -388,10 +393,14 @@ def make_clean_psths(options):
                 trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
-                axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, label=trace_labels[cf_idx], alpha=0.8)
+                axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, 
+                             label=trace_labels[cf_idx], alpha=0.8)
                 #axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, label=g.loc[curr_config, subplot_hue], alpha=0.8)
                 if plot_trials:
                     for ti in range(subdata.shape[0]):
+                        if len(np.where(np.isnan(subdata[ti, :]))[0]) > 0:
+                            print "-- NaN: Trial %i, %i" % (ti+1, len(np.where(np.isnan(subdata[ti, :]))[0]))
+                            continue
                         axesf[pi].plot(tpoints, subdata[ti,:], color=trace_colors[cf_idx], linewidth=0.5, alpha=0.2)
                 else:
                     # fill between with sem:
@@ -408,9 +417,9 @@ def make_clean_psths(options):
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
-                pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+            
+            pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
 
-                
             if pi==0:
                 axesf[pi].set_ylabel(ylabel)
             pi += 1
