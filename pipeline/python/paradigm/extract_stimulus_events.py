@@ -211,10 +211,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                         fiter+=1
                     if mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                         print "... and skipping extra ITI for block start"
-                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) - int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
+                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate) #- int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
                     else:
                         nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
-
+                    print "Skipping %.2f sec worth of frames." % (nframes_to_skip/framerate)
                     curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                     # Skip extra frames if start of new block (back to back ITIs in serial data):
@@ -248,12 +248,12 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         #stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
         stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
 
-        print stim_dur_curr, '[%s]' % trial
+        print round(stim_dur_curr), '[%s]' % trial
 
         try:
             assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         except Exception as e:
-            assert np.ceil(stim_dur_curr) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
+            assert round(stim_dur_curr) == round(np.floor(mwtrials[trial]['stim_duration']/1E3)), "Bad stim duration..! %s:" % trial 
 
         durs.append(stim_dur_curr)
         trial_frames.append(first_found_frame)
