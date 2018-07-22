@@ -1514,11 +1514,25 @@ def load_roi_dataframe(roidata_filepath):
 def get_traceid_from_acquisition(acquisition_dir, run, traceid):
     # Get paths to data source:
     print "Getting path info for single run dataset..."
-    with open(os.path.join(acquisition_dir, run, 'traces', 'traceids_%s.json' % run), 'r') as f:
-        tdict = json.load(f)
-    tracefolder = '%s_%s' % (traceid, tdict[traceid]['trace_hash'])
-    traceid_dir = os.path.join(acquisition_dir, run, 'traces', tracefolder)
-    
+    if 'cnmf' in traceid:
+        cnmf_dirs = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'cnmf', 'cnmf_*'))
+        cnmf_dir = [c for c in cnmf_dirs if os.path.split(c)[-1] == traceid]
+        if len(cnmf_dir) == 0:
+            print "Specified dir %s not found." % traceid
+            cnmf_dirs = sorted(cnmf_dirs)
+            for ci, cdir in enumerate(cnmf_dirs):
+                print ci, os.path.split(cdir)[-1]
+            selected_idx = input("Select IDX of dir to use: ")
+            traceid_dir = cnmf_dirs[int(selected_idx)]
+        else:
+            assert len(cnmf_dir) == 1, "More than 1 unique cnmf datestr found...\n %s" % str(cnmf_dirs)
+            traceid_dir = cnmf_dirs[0]
+    else:
+        with open(os.path.join(acquisition_dir, run, 'traces', 'traceids_%s.json' % run), 'r') as f:
+            tdict = json.load(f)
+        tracefolder = '%s_%s' % (traceid, tdict[traceid]['trace_hash'])
+        traceid_dir = os.path.join(acquisition_dir, run, 'traces', tracefolder)
+        
     return traceid_dir
 
 
