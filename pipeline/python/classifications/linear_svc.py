@@ -554,6 +554,76 @@ def get_grand_mean_trace(d1, response_type='dff'):
     return d
 
 
+
+#%%
+
+def get_training_data_cnmf(Xdata, labels_df, run_info):
+    
+    value_type = 'meanstim'
+    
+    #if isinstance(Xdata, pd.DataFrame):
+    Xdata = np.array(Xdata)
+        
+    # Make sure that we only get ROIs in provided list (we are dropping ROIs w/ np.nan dfs on any trials...)
+    #sDATA = sDATA[sDATA['roi'].isin(roi_list)]
+    stim_on_frame = run_info['stim_on_frame']
+    if isinstance(run_info['nframes_on'], list):
+        nframes_on = [int(round(nf)) for nf in run_info['nframes_on']]
+        nframes_per_trial = run_info['nframes_per_trial']   
+        multiple_durs = True
+    else:
+        nframes_on = int(round(run_info['nframes_on']))
+        nframes_per_trial = run_info['nframes_per_trial']
+        multiple_durs = False
+
+    ntrials_total = run_info['ntrials_total']
+    nrois = Xdata.shape[-1] #len(run_info['roi_list'])
+    
+    print "Trials are sorted by time of occurrence, not stimulus type."
+    sorted_ixs = xrange(ntrials_total) # Just sort in trial order
+
+    # Get baseline and stimulus indices for each trial:
+    trial_labels = []
+    if multiple_durs:
+        assert labels_df is not None, "LABELS_DF must be provided if multiple stim durs..."
+        tgroups = labels_df.groupby('trial')
+        
+        stim_durs = list(set(labels_df['stim_dur']))
+        nframes_dict = dict((k,v) for k,v in zip(sorted(stim_durs), sorted(nframes_on)))
+        std_baseline_values=[]; mean_baseline_values=[]; mean_stimulus_values=[];
+        for k,g in tgroups:
+            print k
+            curr_baseline_stds = np.nanstd(Xdata[g['tsec'][0:stim_on_frame].index.tolist(), :], axis=0)
+            curr_baseline_means = np.nanmean(Xdata[g['tsec'][0:stim_on_frame].index.tolist(), :], axis=0)
+            curr_dur = list(set(g['stim_dur']))[0]
+            curr_stimulus_means = np.nanmean(Xdata[g['tsec'][stim_on_frame:stim_on_frame+nframes_dict[curr_dur]].index.tolist(), :], axis=0)
+            
+            std_baseline_values.append(curr_baseline_stds)
+            mean_baseline_values.append(curr_baseline_means)
+            mean_stimulus_values.append(curr_stimulus_means)
+            
+            curr_config = list(set(g['config'].values))[0]
+            trial_labels.append(curr_config)
+        
+        mean_stim_on_values = np.vstack(mean_stimulus_values)
+        mean_baseline_values = np.vstack(mean_baseline_values)
+        std_baseline_values = np.vstack(std_baseline_values)
+            
+    else:
+        traces = np.reshape(Xdata, (ntrials_total, nframes_per_trial, nrois), order='C')
+        traces = traces[sorted_ixs,:,:]    
+    
+        std_baseline_values = np.nanstd(traces[:, 0:stim_on_frame], axis=1)
+        mean_baseline_values = np.nanmean(traces[:, 0:stim_on_frame], axis=1)
+        mean_stim_on_values = np.nanmean(traces[:, stim_on_frame:stim_on_frame+nframes_on], axis=1)
+        
+    if value_type == 'zscore':
+        values_df = (mean_stim_on_values - mean_baseline_values ) / std_baseline_values
+    elif value_type == 'meanstim':
+        values_df = mean_stim_on_values #- mean_baseline_values ) / std_baseline_values
+    
+    return values_df, trial_labels
+    
 #%%
     
 
@@ -882,7 +952,7 @@ def bootstrap_subsets_confusion(dataset, class_name, svc=None,
             print "... running iter %i of %i." % (niter, n_iterations)
                 
         cX, cy, class_labels = format_stat_dataset(cX_full, cy_full, sconfigs, 
-                                                     inputdata='meanstim',
+                                                     inputdata=inputdata,
                                                      class_name=class_name,
                                                      nsamples=nsamples,
                                                      subset=subset,
@@ -1158,6 +1228,12 @@ opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom
 options_list = [opts1]
 
 
+opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
+           '-n', '1']
+
+
 #%%
 
 
@@ -1172,8 +1248,21 @@ options_list = [opts1]
 
 def train_linear_classifier(options_list): 
     #%%
-    dataset, data_paths = load_dataset_from_opts(options_list)
+    optsE = extract_options(options_list[0])
     
+    if 'cnmf' in optsE.traceid_list[0]:
+    
+        data_paths = {}
+        for idx, opts in enumerate(options_list):
+            optsE = extract_options(opts)
+            data_paths[idx] = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list[idx], 'traces', 'cnmf', optsE.traceid_list[idx], 'data_arrays', 'datasets.npz'))[0]
+            dataset = np.load(data_paths[idx])
+            
+    else:
+        dataset, data_paths = load_dataset_from_opts(options_list)
+
+
+        
     #%% Look at distN of responses:
     
     if len(data_paths.keys()) > 1:
@@ -1330,10 +1419,19 @@ def train_linear_classifier(options_list):
     
     roi_selector = 'all' #'all' #'selectiveanova' #'selective'
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
-    inputdata = 'meanstim'
+    inputdata_type = 'spikes'
     
-    cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
-    
+    if 'cnmf' in optsE.traceid_list[0]:
+        Xdata = dataset[inputdata_type]
+        labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
+        run_info = dataset['run_info'][()]
+        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info)
+        cy = np.array(cy)
+        inputdata = 'meanstim'
+        is_cnmf = True
+    else:
+        cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
+        is_cnmf = False
     
     #%
     # =============================================================================
@@ -1364,7 +1462,7 @@ def train_linear_classifier(options_list):
                                                                       const_trans_values=const_trans_values)
     else:
          cX, cy, class_labels = format_stat_dataset(cX, cy, sconfigs, 
-                                                     inputdata='meanstim',
+                                                     inputdata=inputdata,
                                                      class_name=class_name,
                                                      subset=subset,
                                                      aggregate_type=aggregate_type, 
@@ -1380,11 +1478,17 @@ def train_linear_classifier(options_list):
                                                class_name=class_name, aggregate_type=aggregate_type,
                                                const_trans=const_trans, trans_value=trans_value)
     
+    if is_cnmf:
+        classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
     classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
-    
+
+        
     if aggregate_type == 'single':
         clf_subdir = '%s_%s' % (const_trans, str(trans_value))
         classifier_dir = os.path.join(classifier_dir, clf_subdir)
+    
+    if is_cnmf:
+        classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
         
     if not os.path.exists(classifier_dir):
         os.makedirs(classifier_dir)
@@ -1393,6 +1497,8 @@ def train_linear_classifier(options_list):
        
     print "Saving to:", classifier_dir
     
+    # Also create dir for figures:
+    if not os.path.exists(os.path.join(classifier_dir, 'figures')): os.makedirs(os.path.join(classifier_dir, 'figures'))
     
     #%%
     # =============================================================================
@@ -1416,7 +1522,7 @@ def train_linear_classifier(options_list):
     #                new_labels = np.array([sconfigs[cv][class_name] for cv in sublabels[c]])
     #                sublabels[c] = new_labels
     #                
-    #            decode_dict[trans_value]['epochs'] = subepochs
+    #            decode_dict[trans_value]['mepochs'] = subepochs
     #            decode_dict[trans_value]['labels'] = sublabels
     #    else:
     #        decode_dict = {'all': {}}
@@ -1678,9 +1784,17 @@ def train_linear_classifier(options_list):
     pl.xlabel('Score - %s' % scoring)
     pl.show()
     
-    figname = 'cv_permutation_test3.png'
-    pl.savefig(os.path.join(classifier_dir, figname))
-    #pl.close()
+    if svc.C == 1:
+        Cstring = 'C1'
+    elif svc.C == big_C:
+        Cstring = 'bigC'
+    else:
+        Cstring = 'C%i' % svc.C
+        
+    figname = 'cv_permutation_test_%s.png' % Cstring
+    
+    pl.savefig(os.path.join(classifier_dir, 'figures', figname))
+    pl.close()
     
     #%%
     # -----------------------------------------------------------------------------
@@ -1811,8 +1925,10 @@ def train_linear_classifier(options_list):
         
         #%
         figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
-        pl.savefig(os.path.join(classifier_dir, figname))
-    
+        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
+        pl.close()
+        
+        
     #elif classifier == 'SVR':
         #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]
         
@@ -1865,6 +1981,8 @@ def train_linear_classifier(options_list):
     
     #%% 
         
+    classifier_fig_dir = os.path.join(classifier_dir, 'figures')
+    if not os.path.exists(classifier_fig_dir): os.makedirs(classifier_fig_dir)
     # Visualize feature weights:
     # =============================================================================
         
@@ -1947,7 +2065,7 @@ def train_linear_classifier(options_list):
     # Sort the weights by their strength, take out bottom N rois, iterate.
     
     plot_weight_matrix(svc, absolute_value=True)
-    pl.savefig(os.path.join(classifier_dir, 'sorted_weights_abs.png'))
+    pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
     pl.close()
     
     plot_weight_matrix(svc, absolute_value=False)
@@ -1957,7 +2075,7 @@ def train_linear_classifier(options_list):
     nrois = len(run_info['roi_list'])
     for class_idx in range(len(svc.classes_)):
         plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
-        pl.savefig(os.path.join(classifier_dir, 'sorted_feature_weights_%s.png' % class_idx))
+        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
         pl.close()
     
     #%%
@@ -2043,7 +2161,8 @@ def train_linear_classifier(options_list):
     
     pl.show()
     
-    pl.savefig(os.path.join(classifier_dir, 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
+    pl.savefig(os.path.join(classifier_dir, 'figures', 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
+    pl.close()
     
     # Save info:
     rfe_cv_info = {'kfold': kfold,
@@ -2057,172 +2176,172 @@ def train_linear_classifier(options_list):
     
     #%%
         
-    # #############################################################################
-    # Visualize the data
-    # #############################################################################
-    
-        
-    # Look at a few neurons to see what the data looks like for binary classif:
-    ddf = pd.DataFrame(data=cX_std,
-                          columns=range(nrois))
-    labels_df = pd.DataFrame(data=cy,
-                             columns=['class'])
-    
-    df = pd.concat([ddf, labels_df], axis=1).reset_index(drop=True)
-    
-    _ = sns.pairplot(df[:50], vars=[8, 11, 12, 14, 19], hue="class", size=1.5)
-    
-    
-    
-    # How correlated are the features (neurons) to class labels?  
-    # -----------------------------------------------------------------------------
-    
-    corr = ddf.corr()
-    
-    # Generate a mask for the upper triangle
-    mask = np.zeros_like(corr, dtype=np.bool)
-    mask[np.triu_indices_from(mask)] = True
-    
-    # Set up the matplotlib figure
-    f, ax = pl.subplots(figsize=(11, 9))
-    
-    # Generate a custom diverging colormap
-    cmap = sns.diverging_palette(220, 10, as_cmap=True)
-    
-    # Draw the heatmap with the mask and correct aspect ratio
-    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
-                square=True, linewidths=.5, cbar_kws={"shrink": .5})
-    
-    
-      
-    #%%
-    
-    # #############################################################################
-    # Learning curves
-    # #############################################################################
-    
-    
-    # Modified from http://scikit-learn.org/stable/auto_examples/plot_learning_curve.html
-    from sklearn.learning_curve import learning_curve
-    def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
-                            train_sizes=np.linspace(.1, 1.0, 5)):
-        """
-        Generate a simple plot of the test and traning learning curve.
-    
-        Parameters
-        ----------
-        estimator : object type that implements the "fit" and "predict" methods
-            An object of that type which is cloned for each validation.
-    
-        title : string
-            Title for the chart.
-    
-        X : array-like, shape (n_samples, n_features)
-            Training vector, where n_samples is the number of samples and
-            n_features is the number of features.
-    
-        y : array-like, shape (n_samples) or (n_samples, n_features), optional
-            Target relative to X for classification or regression;
-            None for unsupervised learning.
-    
-        ylim : tuple, shape (ymin, ymax), optional
-            Defines minimum and maximum yvalues plotted.
-    
-        cv : integer, cross-validation generator, optional
-            If an integer is passed, it is the number of folds (defaults to 3).
-            Specific cross-validation objects can be passed, see
-            sklearn.cross_validation module for the list of possible objects
-        """
-        
-        pl.figure()
-        train_sizes, train_scores, test_scores = learning_curve(
-            estimator, X, y, cv=5, n_jobs=1, train_sizes=train_sizes)
-        train_scores_mean = np.mean(train_scores, axis=1)
-        train_scores_std = np.std(train_scores, axis=1)
-        test_scores_mean = np.mean(test_scores, axis=1)
-        test_scores_std = np.std(test_scores, axis=1)
-    
-        pl.fill_between(train_sizes, train_scores_mean - train_scores_std,
-                         train_scores_mean + train_scores_std, alpha=0.1,
-                         color="r")
-        pl.fill_between(train_sizes, test_scores_mean - test_scores_std,
-                         test_scores_mean + test_scores_std, alpha=0.1, color="g")
-        pl.plot(train_sizes, train_scores_mean, 'o-', color="r", alpha=0.8,
-                 label="Training score")
-        pl.plot(train_sizes, test_scores_mean, 'o-', color="g", alpha=0.8,
-                 label="Cross-validation score")
-    
-        pl.xlabel("Training examples")
-        pl.ylabel("Score")
-        pl.legend(loc="best")
-        pl.grid("on") 
-        if ylim:
-            pl.ylim(ylim)
-        pl.title(title)
-        
-    # 
-    rand_order = random.sample(xrange(len(cy)), len(cy))
-    
-    
-    # 1.  Look at Training score vs. CV score.
-    # -----------------------------------------------------------------------------
-    # Training score is always at max, regardless of N training examples 
-    # --> OVERFITTING.
-    # CV score increases over time?  
-    # Gap between CV and training scores -- big gap ~ high variance!
-    # -----------------------------------------------------------------------------
-    plot_learning_curve(LinearSVC(C=.10), "LinearSVC(C=10.0)",
-                        cX_std, cy, ylim=(0.0, 1.01),
-                        cv = 5)
-    
-    
-    # 2.  Reduce the complexity -- fewer features.
-    # -----------------------------------------------------------------------------
-    # SelectKBest(f_classif, k=2) will select the k=2 best features according to their Anova F-value
-     
-    from sklearn.pipeline import Pipeline
-    from sklearn.feature_selection import SelectKBest, f_classif
-    
-    nfeatures = 10
-    C_val = 1E9
-    plot_learning_curve(Pipeline([("fs", SelectKBest(f_classif, k=nfeatures)),
-                                   ("svc", svc)]),
-                        "SelectKBest(f_classif, k=%i) + LinearSVC(C=%.2f)" % (nfeatures, C_val),
-                        cX_std, cy, ylim=(0.0, 1.0))
-    
-        
-    # 3.  Use better regularization term. 
-    # -----------------------------------------------------------------------------
-    # Increase classifier regularization (smaller C).
-    # Or, select C automatically w/ grid-search.
-    
-    from sklearn.grid_search import GridSearchCV
-    est = GridSearchCV(LinearSVC(), 
-                       param_grid={"C": [0.001, 0.01, 0.1, 1.0, 10.0]})
-    plot_learning_curve(est, "LinearSVC(C=AUTO)", 
-                        cX_std, cy, ylim=(0.0, 1.0))
-    print "Chosen parameter on 100 datapoints: %s" % est.fit(cX_std[:100], cy[:100]).best_params_
-    
-    
-    # 4.  Try L1 penalty for a sparser solution.
-    # -----------------------------------------------------------------------------
-    # With L1 penalty, implicit feature selection. Can look at learned coefficients
-    # to see how many are 0 (ignored feature), and which have the stongest weights.
-    
-    plot_learning_curve(LinearSVC(C=0.1, penalty='l1', dual=False), 
-                        "LinearSVC(C=0.1, penalty='l1')", 
-                        cX_std, cy, ylim=(0.0, 1.0))
-    
-    est = LinearSVC(C=0.1, penalty='l1', dual=False)
-    est.fit(cX_std[:100], cy[:100])  # fit on 100 datapoints
-    print "Coefficients learned: %s" % est.coef_
-    print "Non-zero coefficients: %s" % np.nonzero(est.coef_)[1]
-    
-    strongest_weights = np.where(np.abs(est.coef_) == np.abs(est.coef_).max())
-    print "Best features: %s" % str(strongest_weights)
-    
-    pl.figure()
-    sns.heatmap(est.coef_)
+#    # #############################################################################
+#    # Visualize the data
+#    # #############################################################################
+#    
+#        
+#    # Look at a few neurons to see what the data looks like for binary classif:
+#    ddf = pd.DataFrame(data=cX_std,
+#                          columns=range(nrois))
+#    labels_df = pd.DataFrame(data=cy,
+#                             columns=['class'])
+#    
+#    df = pd.concat([ddf, labels_df], axis=1).reset_index(drop=True)
+#    
+#    _ = sns.pairplot(df[:50], vars=[8, 11, 12, 14, 19], hue="class", size=1.5)
+#    
+#    
+#    
+#    # How correlated are the features (neurons) to class labels?  
+#    # -----------------------------------------------------------------------------
+#    
+#    corr = ddf.corr()
+#    
+#    # Generate a mask for the upper triangle
+#    mask = np.zeros_like(corr, dtype=np.bool)
+#    mask[np.triu_indices_from(mask)] = True
+#    
+#    # Set up the matplotlib figure
+#    f, ax = pl.subplots(figsize=(11, 9))
+#    
+#    # Generate a custom diverging colormap
+#    cmap = sns.diverging_palette(220, 10, as_cmap=True)
+#    
+#    # Draw the heatmap with the mask and correct aspect ratio
+#    sns.heatmap(corr, mask=mask, cmap=cmap, vmax=.3, center=0,
+#                square=True, linewidths=.5, cbar_kws={"shrink": .5})
+#    
+#    
+#      
+#    #%%
+#    
+#    # #############################################################################
+#    # Learning curves
+#    # #############################################################################
+#    
+#    
+#    # Modified from http://scikit-learn.org/stable/auto_examples/plot_learning_curve.html
+#    from sklearn.learning_curve import learning_curve
+#    def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
+#                            train_sizes=np.linspace(.1, 1.0, 5)):
+#        """
+#        Generate a simple plot of the test and traning learning curve.
+#    
+#        Parameters
+#        ----------
+#        estimator : object type that implements the "fit" and "predict" methods
+#            An object of that type which is cloned for each validation.
+#    
+#        title : string
+#            Title for the chart.
+#    
+#        X : array-like, shape (n_samples, n_features)
+#            Training vector, where n_samples is the number of samples and
+#            n_features is the number of features.
+#    
+#        y : array-like, shape (n_samples) or (n_samples, n_features), optional
+#            Target relative to X for classification or regression;
+#            None for unsupervised learning.
+#    
+#        ylim : tuple, shape (ymin, ymax), optional
+#            Defines minimum and maximum yvalues plotted.
+#    
+#        cv : integer, cross-validation generator, optional
+#            If an integer is passed, it is the number of folds (defaults to 3).
+#            Specific cross-validation objects can be passed, see
+#            sklearn.cross_validation module for the list of possible objects
+#        """
+#        
+#        pl.figure()
+#        train_sizes, train_scores, test_scores = learning_curve(
+#            estimator, X, y, cv=5, n_jobs=1, train_sizes=train_sizes)
+#        train_scores_mean = np.mean(train_scores, axis=1)
+#        train_scores_std = np.std(train_scores, axis=1)
+#        test_scores_mean = np.mean(test_scores, axis=1)
+#        test_scores_std = np.std(test_scores, axis=1)
+#    
+#        pl.fill_between(train_sizes, train_scores_mean - train_scores_std,
+#                         train_scores_mean + train_scores_std, alpha=0.1,
+#                         color="r")
+#        pl.fill_between(train_sizes, test_scores_mean - test_scores_std,
+#                         test_scores_mean + test_scores_std, alpha=0.1, color="g")
+#        pl.plot(train_sizes, train_scores_mean, 'o-', color="r", alpha=0.8,
+#                 label="Training score")
+#        pl.plot(train_sizes, test_scores_mean, 'o-', color="g", alpha=0.8,
+#                 label="Cross-validation score")
+#    
+#        pl.xlabel("Training examples")
+#        pl.ylabel("Score")
+#        pl.legend(loc="best")
+#        pl.grid("on") 
+#        if ylim:
+#            pl.ylim(ylim)
+#        pl.title(title)
+#        
+#    # 
+#    rand_order = random.sample(xrange(len(cy)), len(cy))
+#    
+#    
+#    # 1.  Look at Training score vs. CV score.
+#    # -----------------------------------------------------------------------------
+#    # Training score is always at max, regardless of N training examples 
+#    # --> OVERFITTING.
+#    # CV score increases over time?  
+#    # Gap between CV and training scores -- big gap ~ high variance!
+#    # -----------------------------------------------------------------------------
+#    plot_learning_curve(LinearSVC(C=.10), "LinearSVC(C=10.0)",
+#                        cX_std, cy, ylim=(0.0, 1.01),
+#                        cv = 5)
+#    
+#    
+#    # 2.  Reduce the complexity -- fewer features.
+#    # -----------------------------------------------------------------------------
+#    # SelectKBest(f_classif, k=2) will select the k=2 best features according to their Anova F-value
+#     
+#    from sklearn.pipeline import Pipeline
+#    from sklearn.feature_selection import SelectKBest, f_classif
+#    
+#    nfeatures = 10
+#    C_val = 1E9
+#    plot_learning_curve(Pipeline([("fs", SelectKBest(f_classif, k=nfeatures)),
+#                                   ("svc", svc)]),
+#                        "SelectKBest(f_classif, k=%i) + LinearSVC(C=%.2f)" % (nfeatures, C_val),
+#                        cX_std, cy, ylim=(0.0, 1.0))
+#    
+#        
+#    # 3.  Use better regularization term. 
+#    # -----------------------------------------------------------------------------
+#    # Increase classifier regularization (smaller C).
+#    # Or, select C automatically w/ grid-search.
+#    
+#    from sklearn.grid_search import GridSearchCV
+#    est = GridSearchCV(LinearSVC(), 
+#                       param_grid={"C": [0.001, 0.01, 0.1, 1.0, 10.0]})
+#    plot_learning_curve(est, "LinearSVC(C=AUTO)", 
+#                        cX_std, cy, ylim=(0.0, 1.0))
+#    print "Chosen parameter on 100 datapoints: %s" % est.fit(cX_std[:100], cy[:100]).best_params_
+#    
+#    
+#    # 4.  Try L1 penalty for a sparser solution.
+#    # -----------------------------------------------------------------------------
+#    # With L1 penalty, implicit feature selection. Can look at learned coefficients
+#    # to see how many are 0 (ignored feature), and which have the stongest weights.
+#    
+#    plot_learning_curve(LinearSVC(C=0.1, penalty='l1', dual=False), 
+#                        "LinearSVC(C=0.1, penalty='l1')", 
+#                        cX_std, cy, ylim=(0.0, 1.0))
+#    
+#    est = LinearSVC(C=0.1, penalty='l1', dual=False)
+#    est.fit(cX_std[:100], cy[:100])  # fit on 100 datapoints
+#    print "Coefficients learned: %s" % est.coef_
+#    print "Non-zero coefficients: %s" % np.nonzero(est.coef_)[1]
+#    
+#    strongest_weights = np.where(np.abs(est.coef_) == np.abs(est.coef_).max())
+#    print "Best features: %s" % str(strongest_weights)
+#    
+#    pl.figure()
+#    sns.heatmap(est.coef_)
 
 #%%
 ##%%
