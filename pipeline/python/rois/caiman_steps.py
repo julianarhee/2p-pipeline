@@ -1368,13 +1368,17 @@ def main(options):
     results_fpath = run_cnmf(options)
     data_fpath = format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=False)
     
-    optsE = pplot.extract_options(options)
+    optsE = extract_options(options)
     cnmf_traceid = os.path.split(results_fpath.split('/results')[0])[-1]
     plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
                  '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
-                 ']
-    psth_dir = pplot.make_clean_psths(options)
-    
+                 '-d', 'dff']
+    psth_dir = pplot.make_clean_psths(plot_opts)
+    plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
+                 '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
+                 '-d', 'spikes']
+    psth_dir = pplot.make_clean_psths(plot_opts)
+
     print "*******************************************************************"
     print "DONE!"
     print "All output saved to: %s" % psth_dir
