@@ -1382,9 +1382,10 @@ def main(options):
                  '-d', 'dff']
     if 'rotating' in optsE.run:
         plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
+    psth_dir = pplot.make_clean_psths(plot_opts)
+
         
     # Plot PSTHs with inferred spikes to compare:
-    psth_dir = pplot.make_clean_psths(plot_opts)
     plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
                  '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
                  '-d', 'spikes']
