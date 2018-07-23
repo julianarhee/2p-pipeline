@@ -253,7 +253,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         try:
             assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         except Exception as e:
-            assert round(stim_dur_curr) == round(np.floor(mwtrials[trial]['stim_duration']/1E3)), "Bad stim duration..! %s:" % trial 
+            assert round(stim_dur_curr) == round(mwtrials[trial]['stim_duration']/1E3), "Bad stim duration..! %s:" % trial 
 
         durs.append(stim_dur_curr)
         trial_frames.append(first_found_frame)
