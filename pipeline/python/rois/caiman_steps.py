@@ -631,7 +631,10 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
                                                   dview=dview,
                                                   decay_time=decay_time,
                                                   min_SNR=min_SNR, rval_thr=rval_thr, Cn=Cn)
-    
+        
+        crd = plot_contours(A_in.astype(int), Cn, thr=0.9)
+        pl.savefig(os.path.join(traceid_dir, 'figures', 'seed_components.png'))
+        pl.close()
 
     return A_in, C_in, b_in, f_in, cnmf_params
 
@@ -706,10 +709,10 @@ def evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir,
 #create_new = False
 #excluded_files = []
 #datestr = None
-
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
-           '-R', 'gratings_drifting', '--nproc=12', '--seed', '-r', 'rois001',
-           '--border=2']
+#
+#options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
+#           '-R', 'gratings_rotating_drifting', '--nproc=12', '--seed', '-r', 'rois001',
+#           '--border=2']
 
     
 def run_cnmf(options):
@@ -770,9 +773,6 @@ def run_cnmf(options):
                                                     traceid_dir, n_processes=n_processes, dview=dview,
                                                     images=images)
 
-    crd = plot_contours(A_in.astype(int), Cn, thr=0.9)
-    pl.savefig(os.path.join(traceid_dir, 'figures', 'seed_components.png'))
-    pl.close()
     
     #%% 
     
@@ -1364,19 +1364,33 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
 # In[ ]:
 
 
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
+           '-R', 'gratings_rotating_drifting', '--nproc=12', '--seed', '-r', 'rois001',
+           '--border=2']
+
+#%%
 def main(options):
+    # Extract rois and traces:
     results_fpath = run_cnmf(options)
     data_fpath = format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=False)
     
+    # Plot df/f PSTH figures for each ROI:
     optsE = extract_options(options)
     cnmf_traceid = os.path.split(results_fpath.split('/results')[0])[-1]
     plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
                  '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
                  '-d', 'dff']
+    if 'rotating' in optsE.run:
+        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
+        
+    # Plot PSTHs with inferred spikes to compare:
     psth_dir = pplot.make_clean_psths(plot_opts)
     plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
                  '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
                  '-d', 'spikes']
+    if 'rotating' in optsE.run:
+        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
+        
     psth_dir = pplot.make_clean_psths(plot_opts)
 
     print "*******************************************************************"
