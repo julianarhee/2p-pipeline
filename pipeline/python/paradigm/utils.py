@@ -1526,7 +1526,7 @@ def get_traceid_from_acquisition(acquisition_dir, run, traceid):
             traceid_dir = cnmf_dirs[int(selected_idx)]
         else:
             assert len(cnmf_dir) == 1, "More than 1 unique cnmf datestr found...\n %s" % str(cnmf_dirs)
-            traceid_dir = cnmf_dirs[0]
+            traceid_dir = cnmf_dir[0]
     else:
         with open(os.path.join(acquisition_dir, run, 'traces', 'traceids_%s.json' % run), 'r') as f:
             tdict = json.load(f)
