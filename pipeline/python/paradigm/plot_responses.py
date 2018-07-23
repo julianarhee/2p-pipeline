@@ -70,13 +70,15 @@ def extract_options(options):
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
                           default='raw', help="trace type [default: 'raw']")
-    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-                          action='append',
-                          help="run ID in order of runs")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-                          action='append',
-                          help="trace ID in order of runs")
-    
+#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
+#                          action='append',
+#                          help="run ID in order of runs")
+#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
+#                          action='append',
+#                          help="trace ID in order of runs")
+    parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
+    parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
+
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
                           default='corrected', help='Traces to plot (must be in dataset.npz [default: corrected]')
@@ -185,8 +187,8 @@ def make_clean_psths(options):
     optsE = extract_options(options)
     
     #traceid_dir = util.get_traceid_dir(options)
-    run = optsE.run_list[0]
-    traceid = optsE.traceid_list[0]
+    run = optsE.run #run_list[0]
+    traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     
     traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
