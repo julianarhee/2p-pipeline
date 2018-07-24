@@ -1380,7 +1380,7 @@ def main(options):
     optsE = extract_options(options)
     check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
                                            optsE.acquisition, optsE.run, 'traces', 'cnmf', 
-                                           optsE.traceid, 'results', 'results_refined_*.npz'))
+                                           optsE.datestr, 'results', 'results_refined_*.npz'))
     if len(check_results) > 0:
         print "Found results:\n%s" % str(check_results)
     if len(check_results) == 1 and optsE.create_new is False:
