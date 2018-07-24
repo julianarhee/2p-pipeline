@@ -1375,8 +1375,20 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
 
 #%%
 def main(options):
-    # Extract rois and traces:
-    results_fpath = run_cnmf(options)
+    
+    # First check that we don't need to re-extract:
+    optsE = extract_options(options)
+    check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
+                                           optsE.acquisition, optsE.run, 'traces', 'cnmf', 
+                                           optsE.traceid, 'results', 'results_refined_*.npz'))
+    if len(check_results) > 0:
+        print "Found results:\n%s" % str(check_results)
+    if len(check_results) == 1 and optsE.create_new is False:
+        results_fpath = check_results[0]
+    else:
+        # Extract rois and traces:
+        results_fpath = run_cnmf(options)
+        
     data_fpath = format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=False)
     
     # Plot df/f PSTH figures for each ROI:
