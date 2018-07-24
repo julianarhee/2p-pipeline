@@ -1189,6 +1189,9 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     # Get Stimulus info for each trial:        
     #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
     excluded_params = ['filehash', 'stimulus', 'type', 'rotation_range'] #, 'phase'] # Only include param keys saved in stimconfigs
+    if 'phase' not in stimconfigs['config001'].keys():
+        excluded_params.append('phase')
+        
     #print "---- ---- EXCLUDED PARAMS:", excluded_params
 
     curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
@@ -1207,6 +1210,8 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     #print curr_trial_stimconfigs
     curr_config_ids = [k for trial_configs in curr_trial_stimconfigs \
                            for k,v in stimconfigs.iteritems() if v==trial_configs]
+    
+    
     # Combine into array that matches size of curr file_df:
     config_labels = np.hstack([np.tile(conf, parsed_frames[t]['frames_in_file'].shape) \
                                for conf, t in zip(curr_config_ids, trials_in_block)])
