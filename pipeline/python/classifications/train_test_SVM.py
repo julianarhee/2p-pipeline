@@ -16,9 +16,14 @@ import pandas as pd
 import json
 import glob
 import math
+import datetime
+from sklearn.feature_selection import RFE
 
 from pipeline.python.paradigm import utils as util
-from pipeline.python.utils import natural_keys, replace_root
+from pipeline.python.utils import natural_keys, replace_root, label_figure
+from matplotlib.colors import ListedColormap
+from matplotlib.collections import LineCollection
+
 
 from scipy import stats
 from sklearn.calibration import CalibratedClassifierCV
@@ -107,7 +112,7 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 rootdir = '/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180629' #'20180713' #'20180629'
+session = '20180724' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -116,23 +121,26 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'gratings_drifting' #'blobs_run2'
-train_traceid = 'cnmf_'
+train_runid = 'gratings_drifting_static' #'blobs_run2'
+train_traceid = 'traces001'
 
 train_data_type = 'meanstim'
-input_data_type = 'spikes'
+
+if 'cnmf' in train_traceid:
+    input_data_type = 'spikes'
+    classif_identifier = 'stat_allrois_LinearSVC_kfold_6ori_all_%s_%s' % (train_data_type, input_data_type)
+else:
+    classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s' % (train_data_type)
 
 
-classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s' % (train_data_type, input_data_type)
+data_identifier = '_'.join((animalid, session, acquisition))
 
-#classif_identifier = 'stat_allrois_LinearSVC_kfold_5morphlevel_all_meanstim'
+#%%
 
-clf_pts = classif_identifier.split('_')
-decoder = clf_pts[4][1:]
-print "Decoding: %s" % decoder
-
+# #############################################################################
 # LOAD TRAINING DATA:
-# -------------------
+# #############################################################################
+
 train_basedir = util.get_traceid_from_acquisition(acquisition_dir, train_runid, train_traceid)
     
 train_fpath = os.path.join(train_basedir, 'classifiers', classif_identifier, '%s_datasets.npz' % classif_identifier)
@@ -144,33 +152,23 @@ train_X = train_dset[train_dtype]
 train_y = train_dset['cy']
 
 
-#if orientations:
-#    tmp_y = train_y.copy()
-#    train_y = 
-
-#replace_mnum = np.where(cy == 53)[0] # make this 11
-#cy[replace_mnum] = 11
-
 train_labels = sorted(list(set(train_y)))
 print "Training labels:", train_labels
-# #############################################################################
 
-
-
-#%%
-
-
+#%%  Classifier Parameters:
+    
 use_regression = False
 fit_best = True
 nfeatures_select = 50 #'all' #75 # 'all' #75
-
 big_C = 1e9
+
 
 #%%
 
-from sklearn.feature_selection import RFE
+# #############################################################################
+# Fit classifier - get N best features, if applicable:
+# #############################################################################
 
-# FIT CLASSIFIER: #############################################################
 if train_X.shape[0] > train_X.shape[1]: # nsamples > nfeatures
     dual = False
 else:
@@ -187,16 +185,12 @@ if 'LinearSVC' in classif_identifier:
             kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
             train_X = train_X[:, kept_rids]
             print "Found %i best ROIs:" % nfeatures_select, train_X.shape
-
-                
         else:
             print "Using ALL rois selected."
             
         svc.fit(train_X, train_y)
         clf = CalibratedClassifierCV(svc) 
-        clf.fit(train_X, train_y)
-        #output_dir = os.path.join(train_basedir, 'classifiers', classif_identifier, 'testdata')
-        
+        clf.fit(train_X, train_y)        
     else:
         print "Using regression..."
         clf = SVR(kernel='linear', C=1, tol=1e-9)
@@ -204,14 +198,10 @@ if 'LinearSVC' in classif_identifier:
     
         classif_identifier_new = classif_identifier.replace('LinearSVC', 'SVRegression')
         
-        #output_dir = os.path.join(train_basedir, 'classifiers', classif_identifier_new, 'testdata')
-
-
-#if not os.path.exists(output_dir):
-#    os.makedirs(output_dir)
-#print "Saving TEST results to %s" % output_dir        
 # #############################################################################
 
+# Set output directories:
+# -----------------------
 classifier_dir = os.path.join(train_basedir, 'classifiers', classif_identifier)
 test_results_dir = os.path.join(classifier_dir, 'testdata')
 if not os.path.exists(test_results_dir): os.makedirs(test_results_dir)
@@ -220,28 +210,24 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 
 
 #%%
-
 # #############################################################################
 # Select TESTING data:
 # #############################################################################
-test_runid = 'gratings_rotating_drifting' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
-test_traceid = 'cnmf_20180720_14_36_24'
+test_runid = 'gratings_drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_traceid = 'traces001' #'cnmf_20180720_14_36_24'
+test_data_type = 'smoothedDF' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
-#%% Load test data
+#%%
+# #############################################################################
+# LOAD TEST DATA:
+# #############################################################################
 
 test_basedir = util.get_traceid_from_acquisition(acquisition_dir, test_runid, test_traceid)
     
 test_fpath = os.path.join(test_basedir, 'data_arrays', 'datasets.npz')
 test_dataset = np.load(test_fpath)
     
-
 #%%
-
-# LOAD TEST DATA:
-# -----------------------------------------------------------------------------
-
-test_data_type = 'raw' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
-
 assert test_data_type in test_dataset.keys(), "Specified d-type (%s) not found. Choose from: %s" % (test_data_type, str(test_dataset.keys()))
 assert len(test_dataset[test_data_type].shape)>0, "D-type is empty!"
 
@@ -251,9 +237,6 @@ assert len(test_dataset[test_data_type].shape)>0, "D-type is empty!"
 
 X_test_orig = test_dataset[test_data_type]
 
-for ri in range(X_test_orig.shape[-1]):
-    X_test_orig[X_test_orig[:, ri] < X_test_orig[:, ri].max()*0.50, ri] = 0
-    
 
 test_configs = test_dataset['sconfigs'][()]
 labels_df = pd.DataFrame(data=test_dataset['labels_data'], columns=test_dataset['labels_columns'])
@@ -266,11 +249,21 @@ framerate = test_dataset['run_info'][()]['framerate']
 
 # Downsample to ~5 Hz (44.69 / 10)
 downsample = False
-if test_data_type == 'spikes' and downsample:
+threshold = False
+
+if downsample:
     downsample_factor = 0.2
     
     X_test_orig, labels_df = downsample_data(X_test_orig, labels_df, downsample_factor=downsample_factor)
-        
+
+if test_data_type == 'spikes' and threshold:
+    
+    threshold_factor = 0.8
+    
+    for rid in range(X_test_orig.shape[-1]):
+        ixs = np.where(X_test_orig[:, rid] < X_test_orig[:, rid].max()*threshold_factor)[0]
+        X_test_orig[ixs, rid] = 0
+    
     
 # Whiten data:
 X_test = StandardScaler().fit_transform(X_test_orig)
@@ -290,9 +283,6 @@ with open(paradigm_fpath, 'r') as f:
 
 
 
-
-
-
 #%%
 shuffle_frames = False
 
@@ -303,7 +293,12 @@ if fit_best:
         f.write('\n%s' % str({'kept_rids': kept_rids}))
     f.close()
     
-    #%%
+#%%
+
+# #############################################################################
+# Test the classifier:
+# #############################################################################
+
 mean_pred = {}
 sem_pred = {}
 all_preds = {}
@@ -352,23 +347,19 @@ for k,g in cgroups:
     sem_pred[k] = stds_by_class
     all_preds[k] = y_proba
     test_traces[k] = curr_traces
-    
-
-#
-#fig, axes = pl.subplots(1, len(mean_pred.keys()) + 1)
-#for ax,config in zip(axes.flat, sorted(mean_pred.keys())):
-#    for lix in range(8):
-#        ax.plot(range(len(mean_pred[config])), mean_pred[config][:,lix], color=colorvals[lix])
-#
-#        #ax.errorbar(range(len(mean_pred[morph])), mean_pred[morph][:,lix], yerr=sem_pred[morph][:,lix], color=colorvals[lix])
 
 
 #%%
+#for config in test_traces.keys():
+#    tracemat = test_traces[config]
+#    for rid in range(tracemat.shape[1]):
+#        curr_rid_trace = tracemat[:, rid, :]
+#        curr_rid_trace[curr_rid_trace < curr_rid_trace.min()] = 0
+#        tracemat[:, rid, :] = curr_rid_trace
+#        
+#    test_traces[config] = tracemat
 
 #%%
-from matplotlib.colors import ListedColormap
-from matplotlib.collections import LineCollection
-
 
 # #############################################################################
 # Plot probability of each trained angle, if using CLASSIFIER:
@@ -383,7 +374,7 @@ if not os.path.exists(decoding_dir): os.makedirs(decoding_dir)
 plot_trials = True
 if plot_trials:
     mean_lw = 2
-    trial_lw=0.4
+    trial_lw=0.2
 else:
     mean_lw = 1.0
     trial_lw=0.2
@@ -394,10 +385,6 @@ linear_legend = False
 
 
 if isinstance(clf, CalibratedClassifierCV):
-    
-    
-    #config = 'config004' #'config001' -- start 180, CW
-    #config = 'config008' # -- start 180, CCW
     
     configs_tested = sorted(list(set(labels_df['config'])), key=natural_keys)
     #maxval = 0.6 #max([all_preds[config].max() for config in mean_pred.keys()])
@@ -593,6 +580,7 @@ if isinstance(clf, CalibratedClassifierCV):
         config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
         pl.suptitle(config_english)
         
+        label_figure(fig, data_identifier)
         #%
         #train_savedir = os.path.split(train_fpath)[0]
         
@@ -606,7 +594,6 @@ if isinstance(clf, CalibratedClassifierCV):
 
 #%%
         
-
 # #############################################################################
 # Load TRAINING DATA and plot traces:
 # #############################################################################
@@ -619,7 +606,7 @@ print training_data.keys()
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
 
 #%%
-train_data_type = 'spikes'
+train_data_type = 'smoothedDF'
 trainingX = training_data[train_data_type][:, kept_rids]
 print trainingX.shape
 nrois = trainingX.shape[-1]
@@ -628,7 +615,10 @@ F0 = training_data['F0'][:, kept_rids]
 use_dff = False
 
 
-#%%
+#%% FORMAT TRAINING DATA for easier plotting and comparison with true TESTING data:
+
+threhsold = False
+threshold_factor = 0.5
         
 if fit_best:
 
@@ -656,9 +646,9 @@ if fit_best:
         #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
         tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
         tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
-        if train_data_type == 'spikes':
+        if train_data_type == 'spikes' and threshold:
             print "... thresholding spikes"
-            tmat[tmat <= tmat.max()*0.3] = 0.
+            tmat[tmat <= tmat.max()*threshold_factor] = 0.
             
         if use_dff:
 #            bmat = np.reshape(F0[cixs, :], (nframes_per_trial, ntrials_per_cond, nrois), order='f')
@@ -702,7 +692,7 @@ if fit_best:
     
 #%%
 
-# Plot POLAR plots to show direction tuning:
+# INPUT DATA:  Plot POLAR plots to show direction tuning:
 # =============================================================================
     
 thetas = [train_configs[cf]['ori'] * (math.pi/180) for cf in config_list]
@@ -714,31 +704,12 @@ import matplotlib as mpl
 nrows = 5 #4
 ncols = 10 #5
 
-#
-#ridx = 4
-#radii = responses[:, ridx]
-#np.append(radii, responses[0, ridx])
-#fig = pl.figure()
-#polygon = mpl.patches.Polygon(zip(thetas, radii), fill=False)
-#polar = fig.add_subplot(111, projection='polar')
-#polar.add_line(polygon)
-#polar.set_rmax(radii.max())
-##polar.autoscale()
-#polar.set_theta_zero_location("N")
-#pl.plot([0, thetas[max_angle_ix]*(180/math.pi)], [0, radii[max_angle_ix]],'r', lw=5)
-#pl.show()
-
-
-#train_figdir = os.path.join(train_basedir, 'classifiers', classif_identifier, 'traindata')
-#if not os.path.exists(train_figdir):
-#    os.makedirs(train_figdir)
-#    
 
 fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
 appended_thetas = np.append(thetas, math.pi)
 
 for ridx, ax in zip(range(nrois), axes.flat):
-    print ridx
+    #print ridx
     radii = responses[:, ridx]
     if radii.min() < 0:
         print "%i - fixing offset" % ridx
@@ -763,7 +734,7 @@ pl.rc('ytick', labelsize=8)
     #ax#.yaxis.grid(False); legend.set_yticklabels([])
     #ax.spines["polar"].set_visible(False)
 
-    
+label_figure(fig, data_identifier)
 
 figname = '%s_polar_plots_%s.png' % (roiset, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
@@ -780,7 +751,9 @@ for ridx in range(nrois):
     #print ridx
     radii = responses[:, ridx]
     if radii.min() < 0:
-        radii -= radii.min()
+        print "ROI %i has negative response. SKIPPING." % (kept_rids[ridx]+1)
+        continue
+        #radii -= radii.min()
     max_angle_ix = np.where(radii==radii.max())[0][0]
 
     pdirections.append((ridx, thetas[max_angle_ix], radii[max_angle_ix]))
@@ -849,7 +822,7 @@ for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)
         axes[lix].axes.xaxis.set_visible(True) #([])
         axes[lix].axes.xaxis.set_ticks([])
         
-    axes[lix].set_title(str(rois_preferred))
+    axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]))
         
 
 sns.despine(trim=True, offset=4, bottom=True)
@@ -862,6 +835,7 @@ for lix, c_ori in enumerate(svc.classes_):
 pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
 pl.suptitle('%s: Training set' % roiset)
 
+label_figure(fig, data_identifier)
 
 
 figname = '%s_TRAIN_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
@@ -874,14 +848,13 @@ pl.savefig(os.path.join(train_results_dir, figname))
 # Plot mean traces for ROIs sorted by ANGLE: TESTING DATA
 # #############################################################################
 
-
 # Create decoder-style plots for ROI responses to test data
 # Each group of cells in preferred-direction group serves as "classifier"
 
 plot_trials = True
 if plot_trials:
-    mean_lw = 2
-    trial_lw=0.4
+    mean_lw = 1|
+    trial_lw=0.1
 else:
     mean_lw = 1.0
     trial_lw=0.2
@@ -889,7 +862,11 @@ else:
 #drifting = False
 framerate = 44.69
 linear_legend = False
-
+if 'DF' in test_data_type:
+    yaxis_label = 'df/f'
+else:
+    yaxis_label = 'intensity'
+    
 response_classif_dir = os.path.join(train_results_dir, 'test_data_responses')
 if not os.path.exists(response_classif_dir):
     os.makedirs(response_classif_dir)
@@ -933,6 +910,7 @@ for test_config in configs_tested:
         
     class_indices = [[v for v in svc.classes_].index(c) for c in class_list]
     
+    #%
     fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
     #for lix in range(8):
     #    curr_ori = svc.classes_[lix]
@@ -963,13 +941,13 @@ for test_config in configs_tested:
                 plot_type = 'trials'
                 for trialn in range(ntrials_curr_config):
                     axes[lix].plot(np.arange(0, stim_frames[0]), test_traces[test_config][0:stim_frames[0], ridx, trialn],
-                                        color='k', linewidth=0.4, alpha=0.5)
+                                        color='k', linewidth=0.4, alpha=0.3)
                     
                     axes[lix].plot(stim_frames, test_traces[test_config][stim_frames, ridx, trialn], 
-                                        color=colorvals[class_index], linewidth=0.4, alpha=0.5)
+                                        color=colorvals[class_index], linewidth=0.4, alpha=0.3)
                     
                     axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), test_traces[test_config][stim_frames[-1]:, ridx, trialn], 
-                                        color='k', linewidth=0.4, alpha=0.5)
+                                        color='k', linewidth=0.4, alpha=0.3)
                     
             else:
                 plot_type = 'fillstd'
@@ -977,6 +955,7 @@ for test_config in configs_tested:
                                             mean_roi_trace - std_roi_trace, alpha=0.2,
                                             color='k')
 
+        axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]))
         axes[lix].axes.xaxis.set_ticks([])
         #axes[lix].set_title(class_label)
                     
@@ -1029,7 +1008,7 @@ for test_config in configs_tested:
             for axside in ['bottom', 'top', 'right']:
                 axes[lix].spines[axside].set_visible(False)
             axes[lix].axes.xaxis.set_visible(False) #([])
-        axes[lix].set_ylabel('intensity (%i)' % class_list[lix])
+        axes[lix].set_ylabel('%s (%i)' % (yaxis_label, class_list[lix]))
 
     
     #pl.plot(stimframes, np.ones(stimframes.shape), color=ordered_colors, linewidth=5)
@@ -1079,6 +1058,9 @@ for test_config in configs_tested:
         rot_duration = 'full'
     starting_rot = test_configs[test_config]['ori']
     config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+    
+    label_figure(fig, data_identifier)
+    
     pl.suptitle(config_english)
     
     #%

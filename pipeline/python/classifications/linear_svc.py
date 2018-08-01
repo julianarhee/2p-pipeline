@@ -31,12 +31,11 @@ import tifffile as tf
 from collections import namedtuple
 from scipy import stats
 from statsmodels.formula.api import ols
-from statsmodels.stats.anova import anova_lm
 import scikit_posthocs as sp
 from statsmodels.stats.multicomp import pairwise_tukeyhsd, MultiComparison
 from ast import literal_eval
 
-from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
+from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time, label_figure
 import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
@@ -513,7 +512,7 @@ def plot_grand_mean_traces(dset_list, response_type='dff', label_list=[], color_
     pl.legend()
     
     figname_base = 'avgtrace_%s' % (response_type)
-    run_str = '_'.join([dtrace['run'] for dtrace in dset_list])
+    run_str = '_'.join(['%s_%s' % (dtrace['run'], dtrace['traceid']) for dtrace in dset_list])
     figname = '%s_%s.pdf' % (figname_base, run_str)
 
     if save_and_close:
@@ -551,6 +550,7 @@ def get_grand_mean_trace(d1, response_type='dff'):
     d['mean'] = meantrace1
     d['sem'] = semtrace1
     d['stimframes'] = d1_stim_frames
+    d['traceid'] = d1['run_info'][()]['traceid_dir'].split('/traces/')[-1].split('/')[-1]
     return d
 
 
@@ -696,7 +696,12 @@ def load_dataset_from_opts(options_list, test=False):
     
         #%
         options = options_list[options_idx]
-        traceid_dir = fmt.get_traceid_dir(options)
+        #traceid_dir = fmt.get_traceid_dir(options)
+        optsE = extract_options(options)
+        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+        run = optsE.run_list[0]
+        traceid = optsE.traceid_list[0]
+        traceid_dir = fmt.get_traceid_from_acquisition(acquisition_dir, run, traceid)
         
         # Set up output dir:
         data_basedir = os.path.join(traceid_dir, 'data_arrays')
@@ -774,7 +779,7 @@ def load_dataset_from_opts(options_list, test=False):
             #zscores = util.format_roisXvalue(sDATA, run_info, value_type='zscore')
             
     
-        dataset = np.load(data_fpath)
+        #dataset = np.load(data_fpath)
     #    averages_list, normed_list = util.get_xcond_dfs(roi_list, X, y, tsecs, run_info)
     #
     #    #if options_idx == 0:
@@ -793,7 +798,7 @@ def load_dataset_from_opts(options_list, test=False):
     #
     #normDF = pd.concat(normed_df, axis=1)
     #normDF.head()
-    return dataset, data_paths
+    return data_paths
 
 
 #%%
@@ -1079,159 +1084,31 @@ def extract_options(options):
 
     return options
 
-#%%
-
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV2_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_run1', '-t', 'traces001',
-#           '-n', '1']
-
-
-# 20180518 -- CE077 data:
-# -----------------------------------------------------------------------------
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_run1', '-t', 'traces002',
-#           '-n', '1']
-#
-#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_dynamic_run3', '-t', 'traces002',
-#           '-n', '1']
-#
-#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run6', '-t', 'traces002',
-#           '-n', '1']
-#
-#
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180518', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run2', '-t', 'traces002',
-#           '-n', '1']
-
-
-# 20180521 -- CE077 datasets:
-# -----------------------------------------------------------------------------
-#opts0 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_run1', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run2', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run1', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
-#           '-n', '1']
-
-
-# 20180523 -- CE077 datasets:
-# -----------------------------------------------------------------------------
-
-#opts4 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run2', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run1', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts5 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_dynamic_run1', '-t', 'traces001',
-#           '-n', '1']
-
-
-
-# 20180602 -- CE077 datasets:
-# -----------------------------------------------------------------------------
-#opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run2', '-t', 'traces002',
-#           '-n', '1']
-#
-#opts6 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_dynamic_run6', '-t', 'traces001',
-#           '-n', '1']
-
-#%
-
-
-#opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'blobs_run3', '-t', 'traces001',
-#           '-n', '1']
-
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_drifting_black', '-t', 'traces001',
-#           '-n', '1']
-#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_drifting', '-t', 'traces001',
-#           '-n', '1']
-#opts3 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_static', '-t', 'traces001',
-#           '-n', '1']
-
-#options_list = [opts1, opts2, opts3] #, opts2]
-
 
 #%%
 
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_drifting', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_rotating_drifting', '-t', 'traces001',
-#           '-n', '1']
-
-
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180702', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_drifting', '-t', 'traces001',
-#           '-n', '1']
-#
-#opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180702', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_rotating_drifting', '-t', 'traces001',
-#           '-n', '1']
-
-
-
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_static_drifting', '-t', 'traces001',
+           '-R', 'gratings_static', '-t', 'cnmf_',
            '-n', '1']
 
-opts2 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_static', '-t', 'traces001',
-           '-n', '1']
+#opts2 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_rotating', '-t', 'cnmf_',
+#           '-n', '1']
 #
+
+
+#opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
+#           '-n', '1']
+opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180724', '-A', 'FOV1_zoom1x',
+           '-T', 'np_subtracted', '--no-pupil',
+           '-R', 'gratings_drifting_static', '-t', 'traces001',
+           '-n', '1']
+
 options_list = [opts1]
-
-
-opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
-           '-n', '1']
 
 
 #%%
@@ -1248,19 +1125,20 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A'
 
 def train_linear_classifier(options_list): 
     #%%
-    optsE = extract_options(options_list[0])
+#    optsE = extract_options(options_list[0])
     
-    if 'cnmf' in optsE.traceid_list[0]:
+#    if 'cnmf' in optsE.traceid_list[0]:
+#    
+#        data_paths = {}
+#        for idx, opts in enumerate(options_list):
+#            optsE = extract_options(opts)
+#            data_paths[idx] = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list[idx], 'traces', 'cnmf', optsE.traceid_list[idx], 'data_arrays', 'datasets.npz'))[0]
+#            dataset = np.load(data_paths[idx])
+#            
+#    else:
+    data_paths = load_dataset_from_opts(options_list)
+    dataset = np.load(data_paths[0])
     
-        data_paths = {}
-        for idx, opts in enumerate(options_list):
-            optsE = extract_options(opts)
-            data_paths[idx] = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list[idx], 'traces', 'cnmf', optsE.traceid_list[idx], 'data_arrays', 'datasets.npz'))[0]
-            dataset = np.load(data_paths[idx])
-            
-    else:
-        dataset, data_paths = load_dataset_from_opts(options_list)
-
 
         
     #%% Look at distN of responses:
@@ -1281,7 +1159,7 @@ def train_linear_classifier(options_list):
         a_run_dir = data_paths[0].split('/traces')[0]
         acquisition_dir = os.path.split(a_run_dir)[0]
         figname = plot_grand_mean_traces(dset_list, response_type=response_type,
-                                             label_list=[dtrace['run'] for dtrace in dset_list], 
+                                             label_list=['%s_%s' % (dtrace['run'], dtrace['traceid']) for dtrace in dset_list], 
                                              output_dir=acquisition_dir, 
                                              save_and_close=False)
         pl.savefig(os.path.join(acquisition_dir, figname))
@@ -1308,7 +1186,9 @@ def train_linear_classifier(options_list):
     optsE = extract_options(options_list[0])
     if optsE.rootdir not in traceid_dir:
         traceid_dir = replace_root(traceid_dir, optsE.rootdir, optsE.animalid, optsE.session)
-        
+    
+    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition))
+
     #%%
     
     # #############################################################################
@@ -1403,6 +1283,8 @@ def train_linear_classifier(options_list):
         pl.ylabel('accuracy')
         pl.xlabel('labels')
         
+        label_figure(fig, data_identifier)
+        
         figname = 'accuracy_%iiters_%itiers.png' % (niters, len(nsamples_test))
         pl.savefig(os.path.join(classifier_dir, figname))
         
@@ -1419,7 +1301,8 @@ def train_linear_classifier(options_list):
     
     roi_selector = 'all' #'all' #'selectiveanova' #'selective'
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
-    inputdata_type = 'spikes'
+    inputdata = 'meanstim'
+    inputdata_type = None #'spikes'
     
     if 'cnmf' in optsE.traceid_list[0]:
         Xdata = dataset[inputdata_type]
@@ -1591,33 +1474,12 @@ def train_linear_classifier(options_list):
         
                 fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (aggregate_type, const_trans, str(view_key)))
                 figname = '%s_trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (view_str, binsize, scoring, class_name, runiter)
+                label_figure(fig, data_identifier)
+                
                 pl.savefig(os.path.join(classifier_dir, figname))
                 pl.close()
     
-    
-    
-    #%%
-    #    data_X = dataset['meanstim']
-    #    data_X = StandardScaler().fit(data_X)
-    #    data_y = dataset['ylabels']
-    #    ntrials_total = dataset['run_info'][()]['ntrials_total']
-    #    nframes_per_trial= dataset['run_info'][()]['nframes_per_trial']
-    #    
-    #    if data_type != 'frames':
-    #        data_y = np.reshape(data_y, (ntrials_total, nframes_per_trial))[:,0]
-    #    sconfigs = dataset['sconfigs'][()]
-        
-    #    X, y = group_classifier_data(data_X, data_y, class_name, sconfigs, 
-    #                                       subset=subset,
-    #                                       aggregate_type=aggregate_type, 
-    #                                       const_trans=const_trans, 
-    #                                       trans_value=trans_value, 
-    #                                       relabel=relabel)
-    #    
-    #    y = np.array([sconfigs[cv][class_name] for cv in y])
-    #    
-    #    class_labels = sorted(list(set(y)))
-                
+    #%% Look at input data:
                 
     # Get dimensions of session dataset:
     nframes_per_trial = run_info['nframes_per_trial']
@@ -1647,12 +1509,13 @@ def train_linear_classifier(options_list):
     df.head()
     
     corrs = df.corr(method='pearson')
-    pl.figure()
+    fig = pl.figure()
     sns.heatmap(1-corrs, cmap=zdf_cmap, vmax=2.0)
     #sns.heatmap(1-corrs, cmap=zdf_cmap, vmin=0.7, vmax=1.3)
     
     pl.title('RDM (%s) - %s: %s' % (data_type, class_name, aggregate_type))
     figname = 'RDM_%srois_%s_classes_%i%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type)
+    label_figure(fig, data_identifier)
     
     pl.savefig(os.path.join(population_figdir, figname))
     pl.close()
@@ -1683,7 +1546,7 @@ def train_linear_classifier(options_list):
     df_trials = pd.concat(df_list, axis=1)
     
     corrs = df_trials.corr(method='pearson')
-    pl.figure()
+    fig = pl.figure()
     ax = sns.heatmap(1-corrs, vmax=2, cmap=zdf_cmap) #, vmax=1)
     
     indices = { value : [ i for i, v in enumerate(cnames) if v == value ] for value in list(set(cnames)) }
@@ -1700,6 +1563,7 @@ def train_linear_classifier(options_list):
     
     pl.title('RDM (%s, %s)' % (data_type, cell_unit))
     figname = 'RDM_%srois_%s_classes_%i%s_%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, cell_unit)
+    label_figure(fig, data_identifier)
     pl.savefig(os.path.join(population_figdir, figname))
     pl.close()
     
@@ -1767,7 +1631,7 @@ def train_linear_classifier(options_list):
     # than the initial classification score (i.e., repeat classification after
     # randomizing and permuting labels).
     # -----------------------------------------------------------------------------
-    pl.figure()
+    fig = pl.figure()
     n_classes = np.unique([cy]).size
     
     # View histogram of permutation scores
@@ -1792,9 +1656,10 @@ def train_linear_classifier(options_list):
         Cstring = 'C%i' % svc.C
         
     figname = 'cv_permutation_test_%s.png' % Cstring
+    label_figure(fig, data_identifier)
     
     pl.savefig(os.path.join(classifier_dir, 'figures', figname))
-    pl.close()
+    #pl.close()
     
     #%%
     # -----------------------------------------------------------------------------
@@ -1925,9 +1790,12 @@ def train_linear_classifier(options_list):
         
         #%
         figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
-        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
-        pl.close()
         
+        label_figure(fig, data_identifier)
+        
+        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
+        #pl.close()
+        #%
         
     #elif classifier == 'SVR':
         #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]

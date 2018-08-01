@@ -16,6 +16,10 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
+def label_figure(fig, data_identifier):
+    fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
+
+
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
 # -----------------------------------------------------------------------------
