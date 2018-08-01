@@ -1378,17 +1378,18 @@ def main(options):
     
     # First check that we don't need to re-extract:
     optsE = extract_options(options)
-    check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
+    if optsE.datestr is not None:
+        check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
                                            optsE.acquisition, optsE.run, 'traces', 'cnmf', 
                                            optsE.datestr, 'results', 'results_refined_*.npz'))
-    if len(check_results) > 0:
-        print "Found results:\n%s" % str(check_results)
-    if len(check_results) == 1 and optsE.create_new is False:
-        results_fpath = check_results[0]
-    elif len(check_results) > 1 and otpsE.create_new is False:
-        results_fpath = sorted(check_results)[-1]
-        print "*** Loading: %s" % results_fpath
-        
+        if len(check_results) > 0:
+            print "Found results:\n%s" % str(check_results)
+        if len(check_results) == 1 and optsE.create_new is False:
+            results_fpath = check_results[0]
+        elif len(check_results) > 1 and optsE.create_new is False:
+            results_fpath = sorted(check_results)[-1]
+            print "*** Loading: %s" % results_fpath
+            
     else:
         # Extract rois and traces:
         results_fpath = run_cnmf(options)
