@@ -173,7 +173,7 @@ def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None,
                     gSig=cnmf_params['gSig'], 
                     merge_thresh=cnmf_params['merge_thresh'], 
                     p=0, 
-                    noise_range=cnmf_params['noise_range'],
+                    #noise_range=cnmf_params['noise_range'],
                     dview=dview, 
                     Ain=None, 
                     rf=cnmf_params['rf'],
@@ -188,6 +188,8 @@ def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None,
     cnm.options['spatial_params']['method'] = cnmf_params['spatial_method'] # 'ellipse'
     cnm.options['temporal_params']['method'] = cnmf_params['temporal_method'] #'cvxpy'
     cnm.options['preprocess_params']['noise_range'] = cnmf_params['noise_range']
+    cnm.options['temporal_params']['noise_range'] = cnmf_params['noise_range']
+
     if verbose:
         pp.pprint(cnm.options)
     
@@ -227,7 +229,7 @@ def seed_cnmf(images, cnmf_params, A_in, C_in, b_in, f_in, n_processes=1, dview=
                     gSig=cnmf_params['gSig'], 
                     p=cnmf_params['p'], 
                     dview=dview,
-                    noise_range=cnmf_params['noise_range'],
+                    #noise_range=cnmf_params['noise_range'],
                     merge_thresh=cnmf_params['merge_thresh'], 
                     Ain=A_in, 
                     Cin=C_in, 
@@ -243,6 +245,7 @@ def seed_cnmf(images, cnmf_params, A_in, C_in, b_in, f_in, n_processes=1, dview=
     cnm.options['spatial_params']['dist'] = 2
     cnm.options['spatial_params']['method'] = 'ellipse'
     cnm.options['preprocess_params']['noise_range'] = cnmf_params['noise_range']
+    cnm.options['temporal_params']['noise_range'] = cnmf_params['noise_range']
 
     if verbose:
         print cnm.options
@@ -555,7 +558,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
     run = optsE.run
 
     K = optsE.K
-    p = optsE.p
+    p = int(optsE.p)
     noise_range_str = optsE.noise_range
     noise_range = [float(s) for s in noise_range_str.split(',')]
     print "Noise Range: ", noise_range
