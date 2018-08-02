@@ -189,6 +189,8 @@ def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None,
     cnm.options['temporal_params']['method'] = cnmf_params['temporal_method'] #'cvxpy'
     cnm.options['preprocess_params']['noise_range'] = cnmf_params['noise_range']
     cnm.options['temporal_params']['noise_range'] = cnmf_params['noise_range']
+    cnm.options['temporal_params']['s_min'] = cnmf_params['s_min']
+
 
     if verbose:
         pp.pprint(cnm.options)
@@ -246,6 +248,7 @@ def seed_cnmf(images, cnmf_params, A_in, C_in, b_in, f_in, n_processes=1, dview=
     cnm.options['spatial_params']['method'] = 'ellipse'
     cnm.options['preprocess_params']['noise_range'] = cnmf_params['noise_range']
     cnm.options['temporal_params']['noise_range'] = cnmf_params['noise_range']
+    cnm.options['temporal_params']['s_min'] = cnmf_params['s_min']
 
     if verbose:
         print cnm.options
@@ -379,6 +382,7 @@ def extract_options(options):
     parser.add_option('--p', action='store', dest='p', default=2, help='[nmf]: Order of autoregressive system [default: 2]')
     parser.add_option('--border', action='store', dest='border_to_0', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
     parser.add_option('--noise', action='store', dest='noise_range', default='0.25,0.5', help='[nmf]: Noise range for PSD [default: 0.25,0.5]')
+    parser.add_option('--smin', action='store', dest='s_min', default=None, help='[nmf]: Min spike level [default: None]')
 
     parser.add_option('--nproc', action='store', dest='n_processes', default=4, help='[nmf]: N processes (default: 4)')
     parser.add_option('--seed', action='store_true', dest='manual_seed', default=False, help='Set true if seed ROIs with manual')
@@ -436,6 +440,7 @@ def get_cnmf_params(fname_new, excluded_files=[], final_frate=44.69,
                         init_method='greedy_roi', alpha_snmf=None, p=2,
                         merge_thresh=0.8, gnb=1,
                         noise_range=[0.25, 0.5],
+                        s_min=None,
                         manual_seed=False, roi_source=None):
 #    K=20
 #    gSig=[3, 3]
@@ -467,7 +472,8 @@ def get_cnmf_params(fname_new, excluded_files=[], final_frate=44.69,
                    'excluded_files': excluded_files,
                    'manual_seeds': manual_seed,
                    'roi_source': roi_source,
-                   'noise_range': noise_range}
+                   'noise_range': noise_range,
+                   's_min': s_min}
     
     return cnmf_params
 
@@ -562,7 +568,10 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
     noise_range_str = optsE.noise_range
     noise_range = [float(s) for s in noise_range_str.split(',')]
     print "Noise Range: ", noise_range
-    
+    s_min = optsE.s_min
+    if s_min is not None:
+        s_min = float(s_min)
+     
     gSig = (optsE.gSig, optsE.gSig)
     rf = optsE.rf
     stride_cnmf = optsE.stride_cnmf
@@ -574,7 +583,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
         roi_source = None
         
     cnmf_params = get_cnmf_params(fname_new, final_frate=fr, K=K, gSig=gSig,
-                              rf=rf, stride_cnmf=stride_cnmf, p=p, noise_range=noise_range,
+                              rf=rf, stride_cnmf=stride_cnmf, p=p, noise_range=noise_range, s_min=s_min,
                               manual_seed=optsE.manual_seed, roi_source=roi_source)
     
     
