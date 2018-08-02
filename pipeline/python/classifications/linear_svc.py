@@ -1103,9 +1103,9 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-T', 'np_subtracted', '--no-pupil',
 #           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
 #           '-n', '1']
-opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180724', '-A', 'FOV1_zoom1x',
+opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
            '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_drifting_static', '-t', 'traces001',
+           '-R', 'gratings_drifting', '-t', 'traces001',
            '-n', '1']
 
 options_list = [opts1]
@@ -1286,7 +1286,7 @@ def train_linear_classifier(options_list):
         label_figure(fig, data_identifier)
         
         figname = 'accuracy_%iiters_%itiers.png' % (niters, len(nsamples_test))
-        pl.savefig(os.path.join(classifier_dir, figname))
+        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
         
         
     #%
@@ -1303,6 +1303,9 @@ def train_linear_classifier(options_list):
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
     inputdata = 'meanstim'
     inputdata_type = None #'spikes'
+    
+    assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
+    
     
     if 'cnmf' in optsE.traceid_list[0]:
         Xdata = dataset[inputdata_type]
@@ -1382,6 +1385,7 @@ def train_linear_classifier(options_list):
     
     # Also create dir for figures:
     if not os.path.exists(os.path.join(classifier_dir, 'figures')): os.makedirs(os.path.join(classifier_dir, 'figures'))
+    if not os.path.exists(os.path.join(classifier_dir, 'results')): os.makedirs(os.path.join(classifier_dir, 'results'))
     
     #%%
     # =============================================================================
@@ -1806,7 +1810,7 @@ def train_linear_classifier(options_list):
     # -----------------------------------------------------------------------------
     cv_outfile = '%s__CV_report.txt' % classif_identifier
     
-    f = open(os.path.join(classifier_dir, cv_outfile), 'w')
+    f = open(os.path.join(classifier_dir, 'results', cv_outfile), 'w')
     f.write(metrics.classification_report(y_test, y_pred, target_names=[str(c) for c in class_labels]))
     f.close()
     
@@ -1818,7 +1822,7 @@ def train_linear_classifier(options_list):
                   'nfolds': cv_nfolds
                   }
     cv_resultsfile = '%s__CV_results.json' % classif_identifier
-    with open(os.path.join(classifier_dir, cv_resultsfile), 'w') as f:
+    with open(os.path.join(classifier_dir, 'results', cv_resultsfile), 'w') as f:
         json.dump(cv_results, f, sort_keys=True, indent=4)
     
     
@@ -1849,8 +1853,6 @@ def train_linear_classifier(options_list):
     
     #%% 
         
-    classifier_fig_dir = os.path.join(classifier_dir, 'figures')
-    if not os.path.exists(classifier_fig_dir): os.makedirs(classifier_fig_dir)
     # Visualize feature weights:
     # =============================================================================
         
@@ -1933,16 +1935,19 @@ def train_linear_classifier(options_list):
     # Sort the weights by their strength, take out bottom N rois, iterate.
     
     plot_weight_matrix(svc, absolute_value=True)
+    label_figure(fig, data_identifier)
     pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
     pl.close()
     
     plot_weight_matrix(svc, absolute_value=False)
-    pl.savefig(os.path.join(classifier_dir, 'sorted_weights_raw.png'))
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_raw.png'))
     pl.close()
     
     nrois = len(run_info['roi_list'])
     for class_idx in range(len(svc.classes_)):
         plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
+        label_figure(fig, data_identifier)
         pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
         pl.close()
     
@@ -2026,7 +2031,7 @@ def train_linear_classifier(options_list):
     # draw dotted line at chance level:
     
     #print("Optimal number of features : %d" % rfecv.n_features_)
-    
+    label_figure(fig, data_identifier)
     pl.show()
     
     pl.savefig(os.path.join(classifier_dir, 'figures', 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
@@ -2038,7 +2043,7 @@ def train_linear_classifier(options_list):
               'results': results_topN,
               'kept_rids_by_iter': kept_rids_by_iter}
     
-    with open(os.path.join(classifier_dir, 'RFE_cv_output_%s_%s.pkl' %  (scoring, datasubset)), 'wb') as f:
+    with open(os.path.join(classifier_dir, 'results', 'RFE_cv_output_%s_%s.pkl' %  (scoring, datasubset)), 'wb') as f:
         pkl.dump(rfe_cv_info, f, protocol=pkl.HIGHEST_PROTOCOL)
         
     

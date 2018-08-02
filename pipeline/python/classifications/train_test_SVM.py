@@ -32,6 +32,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR, LinearSVR
 
+#%%
 def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
     chunk_size = int(round(1./downsample_factor))
 
@@ -112,7 +113,7 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 rootdir = '/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180724' #'20180713' #'20180629'
+session = '20180629' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -121,7 +122,7 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'gratings_drifting_static' #'blobs_run2'
+train_runid = 'gratings_drifting' #_static' #'blobs_run2'
 train_traceid = 'traces001'
 
 train_data_type = 'meanstim'
@@ -159,7 +160,7 @@ print "Training labels:", train_labels
     
 use_regression = False
 fit_best = True
-nfeatures_select = 50 #'all' #75 # 'all' #75
+nfeatures_select = 20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -185,8 +186,11 @@ if 'LinearSVC' in classif_identifier:
             kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
             train_X = train_X[:, kept_rids]
             print "Found %i best ROIs:" % nfeatures_select, train_X.shape
+            roiset = 'best%i' % nfeatures_select
+
         else:
             print "Using ALL rois selected."
+            roiset = 'all'
             
         svc.fit(train_X, train_y)
         clf = CalibratedClassifierCV(svc) 
@@ -197,7 +201,7 @@ if 'LinearSVC' in classif_identifier:
         clf.fit(train_X, train_y)
     
         classif_identifier_new = classif_identifier.replace('LinearSVC', 'SVRegression')
-        
+            
 # #############################################################################
 
 # Set output directories:
@@ -213,9 +217,9 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # #############################################################################
 # Select TESTING data:
 # #############################################################################
-test_runid = 'gratings_drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_runid = 'gratings_rotating_drifting' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid = 'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'smoothedDF' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
 # #############################################################################
@@ -288,7 +292,7 @@ shuffle_frames = False
 
 if fit_best:
     datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
-    with open(os.path.join(classifier_dir, 'fit_RFE_results_%s.txt' % datestr), 'wb') as f:
+    with open(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results_%s.txt' % (roiset, datestr)), 'wb') as f:
         f.write(str(svc))
         f.write('\n%s' % str({'kept_rids': kept_rids}))
     f.close()
@@ -320,10 +324,6 @@ for k,g in cgroups:
         if fit_best:
             curr_test = curr_test[:, kept_rids]
             orig_test_traces = orig_test_traces[:, kept_rids]
-            
-            roiset = 'best%i' % nfeatures_select
-        else:
-            roiset = 'all'
             
         if isinstance(clf, CalibratedClassifierCV):
             curr_proba = clf.predict_proba(curr_test)
@@ -606,7 +606,7 @@ print training_data.keys()
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
 
 #%%
-train_data_type = 'smoothedDF'
+train_data_type = 'smoothedX'
 trainingX = training_data[train_data_type][:, kept_rids]
 print trainingX.shape
 nrois = trainingX.shape[-1]
@@ -701,9 +701,12 @@ print thetas
 
 import matplotlib as mpl
 
-nrows = 5 #4
-ncols = 10 #5
-
+if nfeatures_select == 50:
+    nrows = 5 #4
+    ncols = 10 #5
+else:
+    nrows = 4
+    ncols = 5
 
 fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
 appended_thetas = np.append(thetas, math.pi)
@@ -853,7 +856,7 @@ pl.savefig(os.path.join(train_results_dir, figname))
 
 plot_trials = True
 if plot_trials:
-    mean_lw = 1|
+    mean_lw = 1
     trial_lw=0.1
 else:
     mean_lw = 1.0
