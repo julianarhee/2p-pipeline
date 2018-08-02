@@ -31,7 +31,7 @@ from scipy.optimize import curve_fit
 
 #%%
 
-rootdir = '/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #'/mnt/odyssey'
+rootdir = '/Volumes/coxfs01/2p-data' #'/mnt/odyssey'
 animalid = 'CE077'
 session = '20180629' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
@@ -74,7 +74,8 @@ print "Training labels:", train_labels
 
 use_regression = False
 fit_best = True
-nfeatures_select = 50 #50 #'all' #75 # 'all' #75
+nfeatures_select = 20 #50 #'all' #75 # 'all' #75
+best_C = 1 #1e9
 
 # FIT CLASSIFIER: #############################################################
 if train_X.shape[0] > train_X.shape[1]: # nsamples > nfeatures
@@ -83,7 +84,7 @@ else:
     dual = True
 
 if 'LinearSVC' in classif_identifier:
-    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1) #, C=best_C) # C=big_C)
+    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=best_C) #, C=best_C) # C=big_C)
     if fit_best:
         # First, get accuracy with all features:
         rfe = RFE(svc, n_features_to_select=nfeatures_select)
@@ -112,20 +113,29 @@ if not os.path.exists(sim_dir):
 # #############################################################################
 # Load TRAINING DATA and plot traces:
 # #############################################################################
+# Also load Training Data to look at traces:
+training_data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
+training_data = np.load(training_data_fpath)
+print training_data.keys()
+train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
+
+
+
+#%%
 
 fit_best = True
+use_dff = False
+
+train_data_type = 'corrected'
+trainingX = training_data[train_data_type][:, kept_rids]
+print trainingX.shape
+nrois = trainingX.shape[-1]
+
+F0 = training_data['F0'][:, kept_rids]
+
         
 if fit_best:
-    train_data_type = 'smoothedX'
-    # Also load Training Data to look at traces:
-    training_data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    training_data = np.load(training_data_fpath)
-    print training_data.keys()
-    train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
-    trainingX = training_data[train_data_type][:, kept_rids]
-    print trainingX.shape
-    nrois = trainingX.shape[-1]
-    
+
     # Get trial structure:
     assert len(list(set(train_labels_df['nframes_on']))) == 1, "More than 1 nframes_on found in TRAIN set..."
     train_nframes_on = list(set(train_labels_df['nframes_on']))[0]
@@ -150,18 +160,31 @@ if fit_best:
         #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
         tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
         tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
-        bs = np.mean(tmat[0:train_stim_on, :, :], axis=0)
-        dfmat = (tmat - bs) / bs
         
-        train_traces[cf] = dfmat
+        if use_dff:
+#            bmat = np.reshape(F0[cixs, :], (nframes_per_trial, ntrials_per_cond, nrois), order='f')
+#            bmat = np.swapaxes(bmat, 1, 2)
+#            dfmat = tmat / bmat
+            
+            bs = np.mean(tmat[0:train_stim_on, :, :], axis=0)
+            dfmat = (tmat - bs) / bs
+            #dfmat = tmat / bs
+            train_traces[cf] = dfmat
+        else:
+            train_traces[cf] = tmat
     
     responses = []; baselines = [];
     for cf in config_list:
         tmat = train_traces[cf]
         print cf
         baselines_per_trial = np.mean(tmat[0:train_stim_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
-        meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
-
+        #meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
+        #mean_config = np.mean(meanstims_per_trial, axis=-1)
+        baseline_config = np.max(baselines_per_trial, axis=-1)
+                
+        # Use Max value of the MEAN trace during stim period:
+        mean_config = np.max(np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=-1), axis=0) # ntrials x nrois -- baseline val for each trial
+        
 #        dffs_per_trial = ( meanstims_per_trial - baselines_per_trial) / baselines_per_trial
 #        
 #        for ridx in range(dffs_per_trial.shape[0]):
@@ -169,9 +192,7 @@ if fit_best:
 #            
 #        mean_dff_config = np.mean(dffs_per_trial, axis=-1)
 #        
-        mean_config = np.mean(meanstims_per_trial, axis=-1)
-        baseline_config = np.mean(baselines_per_trial, axis=-1)
-        
+
         responses.append(mean_config)
         baselines.append(baseline_config)
         
@@ -179,6 +200,92 @@ if fit_best:
     offsets = np.vstack(baselines)
     
 #%%
+from scipy import signal
+
+# For each neuron, take the responses to each angle from its tuning curve:
+
+ridx = 0
+config = 'config002'
+config = 'config002'
+
+currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+
+start_rot = currconfig_angles[0]
+end_rot = currconfig_angles[-1]
+
+stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+        
+nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+
+# Simulation params:
+framerate = 44.69
+nsecs = round(nframes_on / framerate) #test_configs[config]['stim_dur']
+tau_rise = 0.0156
+tau_decay = 0.150 #0.150 #0.076 #0.48 #0.76 
+
+tpoints = np.linspace(0, 1, 44.69*nsecs)
+
+tpoints = np.arange(0, 1, 1./framerate)
+
+#%%
+def exp2(tau_rise=0.068, tau_decay=0.135, ksize=50):    
+#def double_exponential(tpoints, A0=1, A1=1, tau_rise=0.068, tau_decay=0.135):
+    # g(t) = exp(−t/tau_decay) − exp(−t/tau_rise)
+    tpoints = np.arange(0, ksize)
+    
+    response = np.array([( np.exp(-t/tau_decay) - np.exp(-t/tau_rise) ) \
+                / ( (1-np.exp(-ksize/tau_decay)) / (1-np.exp(-1/tau_decay)) \
+                   - (1-np.exp(-ksize/tau_rise)) / (1-np.exp(-1/tau_rise)) ) \
+                   for t in tpoints])
+    return response
+
+tmat = train_traces[config]
+traces = tmat[:, ridx, :]
+meantrace = np.mean(traces, axis=-1) 
+meantrace /= sum(meantrace)
+
+stim_function = np.zeros(nframes_per_trial) + 0.01
+stim_function[stim_on:stim_on+nframes_on] = np.ones((nframes_on,)) 
+
+
+A0 = responses[cf_idx, ridx] / offsets[cf_idx, ridx] #mean_data[stim_on:stim_on+nframes_on].max() #/ np.mean(mean_data[0:stim_on], axis=0)
+
+gcamp = exp2(tau_rise=1.0, tau_decay=6., ksize=100) + offsets[cf_idx, ridx]
+pl.plot(gcamp)
+
+filtered = np.convolve(stim_function, gcamp, mode='full') / sum(gcamp)
+pl.figure(); pl.plot(filtered)
+
+impulse_response, _ = signal.deconvolve(filtered, gcamp)
+pl.plot(impulse_response)
+
+
+fig, axes = pl.subplots(3,1)
+axes[0].plot(stim_function, 'k'); axes[0].set_title('stimulus')
+axes[1].plot(meantrace, 'b'); axes[1].set_title('mean response (roi %i)' % int(kept_rids[ridx]+1))
+axes[2].plot(impulse_response, 'r'); axes[2].set_title('impulse response')
+
+
+
+fig, axes = pl.subplots(3, 1)
+axes[0].plot(responses[:, ridx]); 
+axes[0].set_xticks(list(np.arange(0, len(train_labels))))
+axes[0].set_xticklabels(train_labels)
+axes[0].set_ylim([0, responses.max()])
+
+
+
+ntrials = train_traces['config001'].shape[-1]
+
+fig, axes = pl.subplots(1, len(config_list), sharex=True, sharey=True)
+i = 0
+for config in config_list:
+    for t in range(ntrials):
+        axes[i].plot(train_traces[config][:, ridx, t], 'k', linewidth=0.3, alpha=0.5)
+    axes[i].plot(np.mean(train_traces[config][:, ridx, :], axis=-1), 'r', linewidth=1)
+    i += 1
 
 #%%
  # Just make linear fit:
@@ -186,13 +293,13 @@ thetas = [train_configs[cf]['ori'] for cf in config_list]
 upsampled_thetas = np.linspace(thetas[0], thetas[-1], num=1000)
 
 
-nrows = 5 #5 #5
-ncols = 10 #10 #10
+nrows = 4 #5 #5
+ncols = 5 #10 #10 #10
 
 nrois = responses.shape[-1]
 fig, axes = pl.subplots(figsize=(25,10), nrows=nrows, ncols=ncols)
 
-nrois = responses.shape[-1]
+max_val = responses.max()
 
 interp_curves = []
 for ridx, ax in zip(range(nrois), axes.flat):
@@ -202,14 +309,15 @@ for ridx, ax in zip(range(nrois), axes.flat):
     interp_curves.append(y_fit)
 
     ax.plot(thetas, tuning, 'ko')
+    ax.plot(thetas, offsets[:, ridx], 'bo')
     ax.plot(upsampled_thetas, y_fit)
     
     ax.set_title(kept_rids[ridx]+1)
-    #ax.set_ylim([0, ax.get_ylim()[1]])
+    ax.set_ylim([0, max_val]) # ax.get_ylim()[1]])
     
 sns.despine(offset=4, trim=True)
 
-pl.savefig(os.path.join(sim_dir, '%s_linear_interp_dff.png' % roiset))
+#pl.savefig(os.path.join(sim_dir, '%s_linear_interp_meanstim_zerod.png' % roiset))
 
 interp_curves = np.vstack(interp_curves) # Nrois x N-sampled points
 
@@ -221,14 +329,17 @@ import matplotlib as mpl
 
 thetas_r = [theta*(math.pi/180) for theta in thetas]
 #thetas_r = thetas
+nrows = 4
+ncols = 5
 fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
 appended_thetas = np.append(thetas, math.pi)
 
+max_val = responses.max()
+
 for ridx, ax in zip(range(nrois), axes.flat):
-    print ridx
     radii = responses[:, ridx]
-    if radii.min() < 0:
-        radii -= radii.min()
+#    if radii.min() < 0:
+#        radii -= radii.min()
     polygon = mpl.patches.Polygon(zip(thetas_r, radii), fill=True, alpha=0.5, color='mediumorchid')
     ax.add_line(polygon)
     #ax.autoscale()
@@ -240,9 +351,9 @@ for ridx, ax in zip(range(nrois), axes.flat):
     ax.plot([0, thetas_r[max_angle_ix]], [0, radii[max_angle_ix]],'k', lw=1)
     ax.set_title(kept_rids[ridx]+1, fontsize=8)
     ax.set_xticks([t for t in thetas_r])
+    #ax.set_ylim([0, max_val])
 #    ax.set_thetamin(0)
 #    ax.set_thetamax(math.pi) #([0, math.pi])
-#    
 pl.rc('ytick', labelsize=8)
         
     #ax.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=6)
@@ -366,34 +477,35 @@ for k,g in cgroups:
 # Calculate DFF if not using mean_stim_dff:
 sorted_test_configs = sorted([c for c in test_configs.keys()], key=lambda x: test_configs[c]['ori'])
 
-for ix, config in enumerate(sorted_test_configs):
-            
-    currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
-    currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+if use_dff:
+    for ix, config in enumerate(sorted_test_configs):
+                
+        currtrials = list(set(labels_df[labels_df['config']==config]['trial']))
+        currconfig_angles = np.mean(np.vstack([mwtrials[trial]['rotation_values'] for trial in currtrials]), axis=0)
+        
+        start_rot = currconfig_angles[0]
+        end_rot = currconfig_angles[-1]
+        
+        stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
+        nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
+                
+        nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
+        
+        # Simulation params:
+        framerate = 44.69
+        nsecs = test_configs[config]['stim_dur']
+        tpoints = np.linspace(0, 1, 44.69*nsecs)
     
-    start_rot = currconfig_angles[0]
-    end_rot = currconfig_angles[-1]
+        # Generate fake instantaneous response for each frame in trial using tuning curve:
+        
+        # Get angle shown for each frame:
+        stimulus_values = np.ones((nframes_in_trial,)) * np.nan
+        stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
     
-    stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
-    nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
-            
-    nframes_in_trial = np.squeeze(test_traces[config]).shape[0]
-    
-    # Simulation params:
-    framerate = 44.69
-    nsecs = test_configs[config]['stim_dur']
-    tpoints = np.linspace(0, 1, 44.69*nsecs)
-
-    # Generate fake instantaneous response for each frame in trial using tuning curve:
-    
-    # Get angle shown for each frame:
-    stimulus_values = np.ones((nframes_in_trial,)) * np.nan
-    stimulus_values[stim_on:stim_on + nframes_on] = np.linspace(start_rot, end_rot, num=nframes_on)
-
-    traces_real_data = test_traces[config][:, :, :]
-    baselines = np.mean(test_traces[config][0:stim_on, :, :], axis=0)
-    test_traces[config] = (traces_real_data - baselines) / baselines
-    
+        traces_real_data = test_traces[config][:, :, :]
+        baselines = np.mean(test_traces[config][0:stim_on, :, :], axis=0)
+        test_traces[config] = (traces_real_data - baselines) / baselines
+        
     
     
 #%%
@@ -449,6 +561,8 @@ tau_decay = 0.150 #0.150 #0.076 #0.48 #0.76
 
 tpoints = np.linspace(0, 1, 44.69*nsecs)
 
+
+
 #%%
 # Generate fake instantaneous response for each frame in trial using tuning curve:
 
@@ -475,6 +589,8 @@ with open(os.path.join(sim_data_dir, 'simulation_params.json'), 'w') as f:
 # Get real response for neuron:
 #ridx = 0
 
+cf_idx = config_list.index(config)
+
 for ridx in range(nrois):
     #bas_real_data = np.mean(test_traces[config][0:stim_on, ridx, :], axis=0)
     #dff_real_data = (test_traces[config][:, ridx, :] - bas_real_data) / bas_real_data
@@ -487,9 +603,11 @@ for ridx in range(nrois):
     #curr_offset = np.mean(offsets[:, ridx])
 
     interp_angle_ixs = [np.where(abs(upsampled_thetas-s) == min(abs(upsampled_thetas-s)))[0][0] if not np.isnan(s) else np.nan for s in stimulus_values]
-    inst_response = [interp_curves[ridx, i] if not np.isnan(i) else 0 for i in interp_angle_ixs]
+    #inst_response = [interp_curves[ridx, i] if not np.isnan(i) else 0 for i in interp_angle_ixs]
+    inst_response = [interp_curves[ridx, i] if not np.isnan(i) else max(offsets[:, ridx]) for i in interp_angle_ixs]
     
-    A0 = mean_data[stim_on:stim_on+nframes_on].max() #/ np.mean(mean_data[0:stim_on], axis=0)
+    
+    A0 = responses[cf_idx, ridx] / np.abs(offsets[cf_idx, ridx]) #mean_data[stim_on:stim_on+nframes_on].max() #/ np.mean(mean_data[0:stim_on], axis=0)
     #true_response.max()
     #A1 = A0 #np.mean(mean_data[0:stim_on]) #A0 #0
     
