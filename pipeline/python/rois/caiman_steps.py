@@ -1006,10 +1006,10 @@ def format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=
     quantileMin = cnm.quantileMin # c['quantile']
     frames_window = cnm.frames_window # int(round(15.*fr)) #c['frames_window']
     
-    Fd = scipy.ndimage.percentile_filter(
-                F_raw, quantileMin, (frames_window, 1))
-    corrected = F_raw - Fd    
-    corrected_df = pd.DataFrame(data=corrected.T, columns=raw_df.columns)
+#    Fd = scipy.ndimage.percentile_filter(
+#                F_raw, quantileMin, (frames_window, 1))
+#    corrected = F_raw - Fd    
+    corrected_df = pd.DataFrame(data=C.T, columns=raw_df.columns)
 
     # Get deconvolved traces (spikes):
     S_df = pd.DataFrame(data=S.T, columns=raw_df.columns)
