@@ -98,7 +98,9 @@ def extract_options(options):
                           default=None, help='Transform to plot along COLUMNS')
     parser.add_option('-H', '--hue', action='store', dest='subplot_hue',
                           default=None, help='Transform to plot by HUE within each subplot')
-    
+    parser.add_option('--filter', action='store_true', dest='filter_noise',
+                          default=False, help='Set to filter our noisy spikes') 
+    filter_noise
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -203,12 +205,15 @@ def make_clean_psths(options):
     correct_offset = optsE.correct_offset
     filetype = optsE.filetype
         
+    filter_noise = optsE.filter_noise
+    
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
     columns = optsE.columns
+    
     
     dataset = np.load(data_fpath)
     print dataset.keys()
@@ -225,6 +230,14 @@ def make_clean_psths(options):
         
         
     xdata = dataset[inputdata]
+    
+    # Filter out noisy spikes:
+    figdir_append = ''
+    if inputdata == 'spikes' and filter_noise:
+        xdata[xdata<=0.0002] = 0.
+        figdir_append = '_filtered'
+    
+    
     ydata = dataset['ylabels']
     tsecs = dataset['tsecs']
     
@@ -310,7 +323,7 @@ def make_clean_psths(options):
         plot_type = 'trials'
     else:
         plot_type = 'shade'
-    psth_dir = os.path.join(traceid_dir, 'figures', 'psth_%s_%s' % (inputdata, plot_type))
+    psth_dir = os.path.join(traceid_dir, 'figures', 'psth_%s_%s%s' % (inputdata, plot_type, figdir_append))
     if filetype == 'pdf':
         psth_dir = '%s_hq' % psth_dir
         
