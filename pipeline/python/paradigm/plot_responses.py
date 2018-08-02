@@ -100,7 +100,7 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     parser.add_option('--filter', action='store_true', dest='filter_noise',
                           default=False, help='Set to filter our noisy spikes') 
-    filter_noise
+
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -234,7 +234,7 @@ def make_clean_psths(options):
     # Filter out noisy spikes:
     figdir_append = ''
     if inputdata == 'spikes' and filter_noise:
-        xdata[xdata<=0.0002] = 0.
+        xdata[xdata<=0.0004] = 0.
         figdir_append = '_filtered'
     
     
