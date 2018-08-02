@@ -795,8 +795,10 @@ def run_cnmf(options):
 
     # #### Extract DFF: 
     
-    quantileMin = optsE.quantile_min
-    frames_window = int(round(optsE.window_size*fr))
+    quantileMin = float(optsE.quantile_min)
+    frames_window = int(round(float(optsE.window_size)*fr))
+    print "quant MIN: %i, window size %i" % (quantileMin, frames_window) 
+
     F_dff = detrend_df_f(cnm2.A, cnm2.b, cnm2.C, cnm2.f, YrA=cnm2.YrA,
                          quantileMin=quantileMin, frames_window=frames_window)
     
@@ -1378,19 +1380,24 @@ def main(options):
     
     # First check that we don't need to re-extract:
     optsE = extract_options(options)
+    check_results = [] 
     if optsE.datestr is not None:
         check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
                                            optsE.acquisition, optsE.run, 'traces', 'cnmf', 
                                            optsE.datestr, 'results', 'results_refined_*.npz'))
         if len(check_results) > 0:
             print "Found results:\n%s" % str(check_results)
+            create_new = False
+        else:
+            print "No results found. Creating new."
+            create_new = True
         if len(check_results) == 1 and optsE.create_new is False:
             results_fpath = check_results[0]
         elif len(check_results) > 1 and optsE.create_new is False:
             results_fpath = sorted(check_results)[-1]
             print "*** Loading: %s" % results_fpath
             
-    else:
+    if optsE.create_new or len(check_results)==0: #lse:
         # Extract rois and traces:
         results_fpath = run_cnmf(options)
         
