@@ -1276,10 +1276,13 @@ def make_unsigned(images_dir):
 
         # Make tif nonnegative:
         #if tiff.min() < 0:
-        tiff = tiff + 32768 #- tiff.min()
+        tiff_tmp = np.zeros(tiff.shape, dtype='uint16')
+        tiff_tmp[:] = tiff + 32768
+        #tiff += 32768 #- tiff.min()
+        #tiff = tiff.astype('uint16') # img_as_uint(tiff)
 
         # Write tif to new directory:
-        tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff)
+        tf.imsave(os.path.join(images_dir_nonneg, tiff_list[i]), tiff_tmp)
 
     return images_dir_nonneg
 
@@ -1295,8 +1298,7 @@ def convert_uint16(images_dir):
         print "Processing %i of %i tiffs." % (int(i+1), len(tiff_list))
         tiff = tf.imread(os.path.join(images_dir, tiff_list[i]))
 
-        # Make tif nonnegative:
-        #if tiff.min() < 0:
+        # Make tif uint16:
         tiff = img_as_uint(tiff)
 
         # Write tif to new directory:
