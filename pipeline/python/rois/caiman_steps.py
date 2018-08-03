@@ -79,25 +79,27 @@ from pipeline.python.paradigm import utils as util
 from pipeline.python.paradigm import plot_responses as pplot
 
 
-def tifs_to_mmaps(fnames, dview=None, base_name='Yr', downsample_factor=(1, 1, 1), border_to_0=0):
+def tifs_to_mmaps(fnames, dview=None, base_name='Yr', downsample_factor=(1, 1, 1), border_to_0=0, add_offset=False):
     # read first few pages of each tif and find the min value to add:
-    print "Finding min value to add..."
-    min_values = [-np.min(tf.imread(fname, pages=[5])) for fname in fnames]
-    add_to_movie = np.min([m for m in min_values if m > 0]) # Make sure we are only adding if min value is negative
-    print add_to_movie
+    add_to_movie = 0
+    if add_offset:
+        print "Finding min value to add..."
+        min_values = [-np.min(tf.imread(fname, pages=[5])) for fname in fnames]
+        add_to_movie = np.min([m for m in min_values if m > 0]) # Make sure we are only adding if min value is negative
+        print add_to_movie
     name_new=cm.save_memmap_each(fnames, dview=dview,
                                  base_name=base_name, 
                                  resize_fact=downsample_factor, 
                                  remove_init=0, 
                                  idx_xy=None, 
-                                 add_to_movie=add_to_movie,
+                                 #add_to_movie=add_to_movie,
                                  border_to_0=border_to_0 )
     return name_new
     
 #%%
 def get_mmap_file(fnames, excluded_files=[], 
                   dview=None, file_base='run', 
-                  downsample_factor=(1, 1, 1), border_to_0=0, create_new=False):
+                  downsample_factor=(1, 1, 1), border_to_0=0, create_new=False, add_offset=False):
     
     # Get tifs to convert into mmapped files:
     #fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
@@ -125,6 +127,7 @@ def get_mmap_file(fnames, excluded_files=[],
 
     # Check for existing mmap files, and create them if not found:
     existing_files = glob.glob(os.path.join(mmap_filedir, '%s*.mmap' % file_base))
+    mmap_files = True
     if create_new is False:
         try:
             assert len(existing_files) == len(fnames), "Incorrect num .mmap files found (%i)" % len(existing_files)
@@ -137,7 +140,7 @@ def get_mmap_file(fnames, excluded_files=[],
         # Basename should include path, otherwise will be saved in current dir
         base_name = os.path.join(mmap_filedir, file_base) 
         print "Creating mmap files with base: %s" % base_name
-        mmap_names = tifs_to_mmaps(fnames, dview=dview, base_name=base_name, 
+        mmap_names = tifs_to_mmaps(fnames, dview=dview, base_name=base_name, add_offset=add_offset, 
                                    downsample_factor=downsample_factor,
                                    border_to_0=border_to_0)
     
@@ -386,7 +389,9 @@ def extract_options(options):
 
     parser.add_option('--nproc', action='store', dest='n_processes', default=4, help='[nmf]: N processes (default: 4)')
     parser.add_option('--seed', action='store_true', dest='manual_seed', default=False, help='Set true if seed ROIs with manual')
-    
+    parser.add_option('--offset', action='store_true', dest='add_offset', default=False, help='Set true if add min value to all movies to make (mostly) nonneg')
+    parser.add_option('--suffix', action='store', dest='tif_suffix', default='', help='suffix to add to mcorrected_ dir, if relevant (e.g., unsigned)')
+  
     parser.add_option('-r', '--rois', action='store', dest='roi_source', default='rois001', help='Manual ROI set to use as seeds (must set --seed, default: rois001)')
     parser.add_option('-q', action='store', dest='quantile_min', default=10, help='Quantile min for drift correction (default: 10)')
     parser.add_option('-w', action='store', dest='window_size', default=30, help='Window size for drift correction (default: 30)')
@@ -398,7 +403,7 @@ def extract_options(options):
     
     return options
 
-def get_mmap(fnames, run, excluded_files=[], dview=None, border_to_0=0, downsample_factor=(1,1,1)):
+def get_mmap(fnames, run, excluded_files=[], dview=None, border_to_0=0, downsample_factor=(1,1,1), add_offset=False):
     
     
     #downsample_factor = (1,1,1) # Use fractions if want to downsample
@@ -408,7 +413,7 @@ def get_mmap(fnames, run, excluded_files=[], dview=None, border_to_0=0, downsamp
     fname_new = get_mmap_file(fnames, excluded_files=excluded_files, file_base=fbase, 
                                   dview=dview, 
                                   downsample_factor=downsample_factor, 
-                                  border_to_0=border_to_0)
+                                  border_to_0=border_to_0, add_offset=add_offset)
 
     return fname_new
 
@@ -747,7 +752,9 @@ def run_cnmf(options):
     single_thread=False
     n_processes = int(optsE.n_processes)
     excluded_files = optsE.excluded_files
-    
+    add_offset = optsE.add_offset
+    tif_suffix = optsE.tif_suffix
+ 
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=n_processes, single_thread=False)
         
@@ -758,12 +765,12 @@ def run_cnmf(options):
 
 #%  ### Create memmapped files:
     # -------------------------------------------------------------------------
-    fnames = sorted(glob.glob(os.path.join(acquisition_dir, optsE.run, 'processed', 'processed001*', 'mcorrected_*', '*.tif')), key=natural_keys)
+    fnames = sorted(glob.glob(os.path.join(acquisition_dir, optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
     fname_new = get_mmap(fnames, optsE.run, excluded_files=excluded_files, dview=dview, 
-                         border_to_0=border_to_0, downsample_factor=downsample_factor)
+                         border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
     
     # Get SI info:
     # -------------------------------------------------------------------------
