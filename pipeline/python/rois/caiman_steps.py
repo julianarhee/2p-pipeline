@@ -386,6 +386,7 @@ def extract_options(options):
     parser.add_option('--border', action='store', dest='border_to_0', default=0, help='[nmf]: N pixels to exclude for border (from motion correcting)[default: 0]')
     parser.add_option('--noise', action='store', dest='noise_range', default='0.25,0.5', help='[nmf]: Noise range for PSD [default: 0.25,0.5]')
     parser.add_option('--smin', action='store', dest='s_min', default=None, help='[nmf]: Min spike level [default: None]')
+    parser.add_option('--gnb', action='store', dest='gnb', default=1, help='[nmf]: N background components [default: 1]')
 
     parser.add_option('--nproc', action='store', dest='n_processes', default=4, help='[nmf]: N processes (default: 4)')
     parser.add_option('--seed', action='store_true', dest='manual_seed', default=False, help='Set true if seed ROIs with manual')
@@ -576,6 +577,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
     s_min = optsE.s_min
     if s_min is not None:
         s_min = float(s_min)
+    gnb = int(optsE.gnb)
      
     gSig = (optsE.gSig, optsE.gSig)
     rf = optsE.rf
@@ -588,7 +590,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
         roi_source = None
         
     cnmf_params = get_cnmf_params(fname_new, final_frate=fr, K=K, gSig=gSig,
-                              rf=rf, stride_cnmf=stride_cnmf, p=p, noise_range=noise_range, s_min=s_min,
+                              rf=rf, stride_cnmf=stride_cnmf, p=p, noise_range=noise_range, s_min=s_min, gnb=gnb,
                               manual_seed=optsE.manual_seed, roi_source=roi_source)
     
     
@@ -833,11 +835,11 @@ def run_cnmf(options):
     F_dff = detrend_df_f(cnm2.A, cnm2.b, cnm2.C, cnm2.f, YrA=cnm2.YrA,
                          quantileMin=quantileMin, frames_window=frames_window)
     
-    pl.figure(figsize=(20,5))
-    pl.plot(F_dff[0,:])
-    pl.savefig(os.path.join(traceid_dir, 'figures', 'example_roi0_dff.png'));
-    pl.close()
-    
+#    pl.figure(figsize=(20,5))
+#    pl.plot(F_dff[0,:])
+#    pl.savefig(os.path.join(traceid_dir, 'figures', 'example_roi0_dff.png'));
+#    pl.close()
+#    
     cnm2.F_dff = F_dff
     cnm2.quantileMin = quantileMin
     cnm2.frames_window = frames_window
