@@ -582,12 +582,9 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
     gSig = (optsE.gSig, optsE.gSig)
     rf = optsE.rf
     stride_cnmf = optsE.stride_cnmf
+    roi_source = None
     if optsE.manual_seed:
         roi_source = optsE.roi_source
-        rid_dir = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, 'ROIs', '%s*' % roi_source))
-        assert len(rid_dir) > 0, "Specified ROI src not found: %s" % optE.roi_source
-    else:
-        roi_source = None
         
     cnmf_params = get_cnmf_params(fname_new, final_frate=fr, K=K, gSig=gSig,
                               rf=rf, stride_cnmf=stride_cnmf, p=p, noise_range=noise_range, s_min=s_min, gnb=gnb,
@@ -599,35 +596,49 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
         
     if optsE.manual_seed:
         #results_basename = 'results_seed'
-        
-        if original_source:
-            rid = optsE.roi_source #'rois001'
-            rid_dir = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, 'ROIs', '%s*' % rid))[0]
-            print "Seeding NMF from manual ROIs: %s" % rid 
-            print "Source ROIs from: %s" % rid_dir
-            mask_fpath = os.path.join(rid_dir, 'masks.hdf5')
-        else:
-            mask_fpath = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'traces001*', 'MASKS.hdf5'))[0]
-        
-        # Load masks:
-        maskfile = h5py.File(mask_fpath, 'r')
-        print "Loaded maskfile:", maskfile.keys()
-        if original_source:
-            ref_file = maskfile.keys()[0]
-            masks = maskfile[ref_file]['masks']['Slice01']
-            # Binarze and reshape:
-            nrois, d1, d2 = masks.shape
-            A_in = np.reshape(masks, (nrois, d1*d2))
-            A_in[A_in>0] = 1
-            A_in = A_in.astype(bool).T # A_in should be of shape (npixels, nrois)
-        else:
-            # Use motion-corrected tiff:
-            pid_fpath = glob.glob(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run))[0]
-            with open(pid_fpath, 'r') as f: pids = json.load(f)
-            ref_file = pids['processed001']['PARAMS']['motion']['ref_file'] # Just always default to processed001...
-            A_in = maskfile[ref_file]['Slice01']['maskarray'][:] # Already in shape npixels x nrois -- but x-y dims are flipped@**
-            A_in[A_in>0] = 1
-            A_in = A_in.astype(bool)
+        if 'rois' in roi_source:
+            if original_source:
+                rid_dirs = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, 'ROIs', '%s*' % roi_source))
+                assert len(rid_dirs) > 0, "Specified ROI src not found: %s" % optsE.roi_source
+                rid_dir = sorted(rid_dirs)[-1]
+                mask_fpath = os.path.join(rid_dir, 'masks.hdf5')
+                print "Seeding NMF from manual ROIs: %s" % roi_source 
+                print "Source ROIs from: %s" % rid_dir
+            else:
+                mask_fpath = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'traces001*', 'MASKS.hdf5'))[0]
+    
+            # Load masks:
+            maskfile = h5py.File(mask_fpath, 'r')
+            print "Loaded maskfile:", maskfile.keys()
+            if original_source:
+                ref_file = maskfile.keys()[0]
+                masks = maskfile[ref_file]['masks']['Slice01']
+                # Binarze and reshape:
+                nrois, d1, d2 = masks.shape
+                A_in = np.reshape(masks, (nrois, d1*d2))
+                A_in[A_in>0] = 1
+                A_in = A_in.astype(bool).T # A_in should be of shape (npixels, nrois)
+            else:
+                # Use motion-corrected tiff:
+                pid_fpath = glob.glob(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run))[0]
+                with open(pid_fpath, 'r') as f: pids = json.load(f)
+                ref_file = pids['processed001']['PARAMS']['motion']['ref_file'] # Just always default to processed001...
+                A_in = maskfile[ref_file]['Slice01']['maskarray'][:] # Already in shape npixels x nrois -- but x-y dims are flipped@**
+                A_in[A_in>0] = 1
+                A_in = A_in.astype(bool)
+            
+        elif 'cnmf_' in roi_source:
+            rid_dirs = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, \
+                                              optsE.run, 'traces', 'cnmf', roi_source, 'results', '*.npz'))
+            print rid_dirs
+            assert len(rid_dirs) > 0, "Specified ROI src not found: %s" % optsE.roi_source
+            cnmf_fpath = sorted(rid_dirs)[-1]
+            cnmf = np.load(cnmf_fpath)
+            cnm = cnmf['cnm'][()]
+
+            print "Loaded %s" % cnmf_fpath
+            A_in = cnm.A
+    
         print A_in.shape
         print "Reshaped seeded spatial comps:", A_in.shape
         
