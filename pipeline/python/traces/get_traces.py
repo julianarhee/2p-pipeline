@@ -1263,12 +1263,19 @@ def make_nonnegative(images_dir):
 
 #%%
 def make_unsigned(images_dir):
+    offset = 32768
 
     tiff_list = sorted([t for t in os.listdir(images_dir) if t.endswith('tif')], key=natural_keys)
 
-    images_dir_nonneg = '%s_unsigned' % images_dir
+    images_dir_nonneg = '%s_offset' % images_dir
     if not os.path.exists(images_dir_nonneg):
         os.makedirs(images_dir_nonneg)
+
+    # Write info to file:
+    tmpnotes = os.path.join(images_dir_nonneg, 'info.txt')
+    with open(tmpnotes, 'w') as f:
+        f.write(str('offset added: %i' % offset))
+    f.close()
 
     for i in range(len(tiff_list)):
         print "Processing %i of %i tiffs." % (int(i+1), len(tiff_list))
@@ -1277,7 +1284,7 @@ def make_unsigned(images_dir):
         # Make tif nonnegative:
         #if tiff.min() < 0:
         tiff_tmp = np.zeros(tiff.shape, dtype='uint16')
-        tiff_tmp[:] = tiff + 32768
+        tiff_tmp[:] = tiff + offset #32768
         #tiff += 32768 #- tiff.min()
         #tiff = tiff.astype('uint16') # img_as_uint(tiff)
 
