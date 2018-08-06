@@ -218,7 +218,7 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     found_trigger_evs = [[first_on_ev, first_off_ev]] # placeholder for off ev
     chunkidx = 0
-    print "Chunk %i: dur (s): %.2f" % (chunkidx, (first_off_ev.time-first_on_ev.time)/1E6)
+    #print "Chunk %i: dur (s): %.2f" % (chunkidx, (first_off_ev.time-first_on_ev.time)/1E6)
     start_idx = copy.copy(first_off_idx)
     #print trigg_evs
     if start_idx<len(trigg_evs)-1:
@@ -279,12 +279,13 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     # Remove trigger periods < 1sec (shorter than a trial):
     trigger_times = [t for t in trigger_times if (t[1]-t[0])/1E6>1.0]
+    verbose=True
     if verbose is True and len(trigger_times) > 1:
         print "........................................................................................"
         print "Found %i chunks from frame-on/-off triggers:" % len(trigger_times)
         print "........................................................................................"
         for tidx,trigger in enumerate(trigger_times):
-            print tidx, ": ", (trigger[1]-trigger[0])/1E6
+            print "Chunk", tidx, ": ", (trigger[1]-trigger[0])/1E6
         print "........................................................................................"
 
     if len(trigger_times)==1:
@@ -300,13 +301,13 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
             # if any([i>= len(trigger_times) for i in user_run_selection]):
             if len(tmp_user_run_selection)==1 or ',' in tmp_user_run_selection:
                 user_run_selection = [int(i) for i in tmp_user_run_selection.split(',')]
-                if any([i>= len(trigger_times) for i in user_run_selection]):
-                    print len(user_run_selection)
+                if any([i> len(trigger_times) for i in user_run_selection]):
+                    print len(trigger_times), len(user_run_selection)
                     print "Bad index selected, try again."
                     continue
                 else:
                     for i in user_run_selection:
-                        print "Run:", i
+                        print "Run:", i, trigger_times[i]
                     confirm_selection = raw_input("Press <enter> to accept. Press 'r' to re-try.")
                     if confirm_selection=='':
                         runs_selected = 1
