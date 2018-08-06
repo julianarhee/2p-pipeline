@@ -123,18 +123,18 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # Select TRAINING data and classifier:
 # #############################################################################
 train_runid = 'gratings_drifting' #_static' #'blobs_run2'
-train_traceid = 'traces001'
+train_traceid = 'cnmf_' #'traces001'
 
 train_data_type = 'meanstim'
+input_data_type = 'corrected'
 
 if 'cnmf' in train_traceid:
-    input_data_type = 'spikes'
-    classif_identifier = 'stat_allrois_LinearSVC_kfold_6ori_all_%s_%s' % (train_data_type, input_data_type)
+    classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s_%s' % (train_data_type, input_data_type)
 else:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s' % (train_data_type)
 
 
-data_identifier = '_'.join((animalid, session, acquisition))
+#data_identifier = '_'.join((animalid, session, acquisition))
 
 #%%
 
@@ -156,11 +156,18 @@ train_y = train_dset['cy']
 train_labels = sorted(list(set(train_y)))
 print "Training labels:", train_labels
 
+data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_basedir)[-1]))
+
+#%%
+#if train_X.shape[-1] > X_test_orig.shape[-1]:
+#    print "Lost some ROIs somewhere..."
+#    train_X = train_X[:, 0:X_test_orig.shape[-1]]
+
 #%%  Classifier Parameters:
     
 use_regression = False
 fit_best = True
-nfeatures_select = 20 #50 #'all' #75 # 'all' #75
+nfeatures_select = 150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -184,6 +191,11 @@ if 'LinearSVC' in classif_identifier:
             rfe.fit(train_X, train_y)
             removed_rids = np.where(rfe.ranking_!=1)[0]
             kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
+            
+#            # tmp hack because cnmf discards empty components:
+#            if X_test_orig.shape[-1] < kept_rids.max():
+#                kept_rids = [k for k in kept_rids if k < X_test_orig.shape[-1]]
+#                
             train_X = train_X[:, kept_rids]
             print "Found %i best ROIs:" % nfeatures_select, train_X.shape
             roiset = 'best%i' % nfeatures_select
@@ -191,6 +203,7 @@ if 'LinearSVC' in classif_identifier:
         else:
             print "Using ALL rois selected."
             roiset = 'all'
+            kept_rids = np.arange(0, train_X.shape[-1])
             
         svc.fit(train_X, train_y)
         clf = CalibratedClassifierCV(svc) 
@@ -216,10 +229,10 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 #%%
 # #############################################################################
 # Select TESTING data:
-# #############################################################################
+# ###################### #######################################################
 test_runid = 'gratings_rotating_drifting' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
-test_traceid = 'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_traceid =  'cnmf_' #'traces001' #'cnmf_20180720_14_36_24'
+test_data_type = 'dff' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
 # #############################################################################
@@ -248,6 +261,11 @@ labels_df = pd.DataFrame(data=test_dataset['labels_data'], columns=test_dataset[
 test_info = test_dataset['run_info'][()]
 framerate = test_dataset['run_info'][()]['framerate']
 
+#%%
+filter_noise = False
+min_spikes = 0.0002
+if filter_noise:
+    X_test_orig[X_test_orig <= min_spikes] = 0.
 
 #%% # Format TEST data:
 
@@ -285,14 +303,16 @@ paradigm_fpath = glob.glob(os.path.join(test_rundir, 'paradigm', 'files', '*.jso
 with open(paradigm_fpath, 'r') as f:
     mwtrials = json.load(f)
 
-
+#if X_test_orig.shape[-1] < kept_rids.max():
+#    kept_rids = [k for k in kept_rids if k < X_test_orig.shape[-1]]
+#    
 
 #%%
 shuffle_frames = False
 
 if fit_best:
     datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
-    with open(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results_%s.txt' % (roiset, datestr)), 'wb') as f:
+    with open(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results_%s_subset.txt' % (roiset, datestr)), 'wb') as f:
         f.write(str(svc))
         f.write('\n%s' % str({'kept_rids': kept_rids}))
     f.close()
@@ -383,7 +403,7 @@ else:
 framerate = 44.69
 linear_legend = False
 
-
+#%%
 if isinstance(clf, CalibratedClassifierCV):
     
     configs_tested = sorted(list(set(labels_df['config'])), key=natural_keys)
@@ -606,7 +626,10 @@ print training_data.keys()
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
 
 #%%
-train_data_type = 'smoothedX'
+train_data_type = 'dff' #'smoothedX'
+if fit_best is False:
+    kept_rids = np.arange(0, X_test_orig.shape[-1])
+
 trainingX = training_data[train_data_type][:, kept_rids]
 print trainingX.shape
 nrois = trainingX.shape[-1]
@@ -617,63 +640,70 @@ use_dff = False
 
 #%% FORMAT TRAINING DATA for easier plotting and comparison with true TESTING data:
 
-threhsold = False
+threshold = False
 threshold_factor = 0.5
-        
-if fit_best:
+min_spikes = 0.0005
 
-    # Get trial structure:
-    assert len(list(set(train_labels_df['nframes_on']))) == 1, "More than 1 nframes_on found in TRAIN set..."
-    train_nframes_on = list(set(train_labels_df['nframes_on']))[0]
-    assert len(list(set(train_labels_df['stim_on_frame']))) == 1, "More than 1 stim_on_frame val found in TRAIN set..."
-    train_stim_on = list(set(train_labels_df['stim_on_frame']))[0]
-    ntrials_by_cond = [v for k,v in training_data['run_info'][()]['ntrials_by_cond'].items()]
-    assert len(list(set(ntrials_by_cond)))==1, "More than 1 rep values found in TRAIN set"
-    ntrials_per_cond = list(set(ntrials_by_cond))[0]
+if threshold:
+    figs_append = '_filtered'
+else:
+    figs_append = ''
     
-    train_configs = training_data['sconfigs'][()]
+#if fit_best:
+
+# Get trial structure:
+assert len(list(set(train_labels_df['nframes_on']))) == 1, "More than 1 nframes_on found in TRAIN set..."
+train_nframes_on = list(set(train_labels_df['nframes_on']))[0]
+assert len(list(set(train_labels_df['stim_on_frame']))) == 1, "More than 1 stim_on_frame val found in TRAIN set..."
+train_stim_on = list(set(train_labels_df['stim_on_frame']))[0]
+ntrials_by_cond = [v for k,v in training_data['run_info'][()]['ntrials_by_cond'].items()]
+assert len(list(set(ntrials_by_cond)))==1, "More than 1 rep values found in TRAIN set"
+ntrials_per_cond = list(set(ntrials_by_cond))[0]
+
+train_configs = training_data['sconfigs'][()]
+
+config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
+train_traces = {}
+for cf in config_list:
+    print cf, train_configs[cf]['ori']
     
-    config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
-    train_traces = {}
-    for cf in config_list:
-        print cf, train_configs[cf]['ori']
+    cixs = train_labels_df[train_labels_df['config']==cf].index.tolist()
+    curr_frames = trainingX[cixs, :]
+    print curr_frames.shape
+    nframes_per_trial = len(cixs) / ntrials_per_cond
+    
+    #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
+    tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
+    tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
+    if train_data_type == 'spikes' and threshold:
+        print "... thresholding spikes"
+        #tmat[tmat <= tmat.max()*threshold_factor] = 0.
+        tmat[tmat <= min_spikes] = 0.
         
-        cixs = train_labels_df[train_labels_df['config']==cf].index.tolist()
-        curr_frames = trainingX[cixs, :]
-        print curr_frames.shape
-        nframes_per_trial = len(cixs) / ntrials_per_cond
-        
-        #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
-        tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
-        tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
-        if train_data_type == 'spikes' and threshold:
-            print "... thresholding spikes"
-            tmat[tmat <= tmat.max()*threshold_factor] = 0.
-            
-        if use_dff:
+    if use_dff:
 #            bmat = np.reshape(F0[cixs, :], (nframes_per_trial, ntrials_per_cond, nrois), order='f')
 #            bmat = np.swapaxes(bmat, 1, 2)
 #            dfmat = tmat / bmat
-            
-            bs = np.mean(tmat[0:train_stim_on, :, :], axis=0)
-            dfmat = (tmat - bs) / bs
-            #dfmat = tmat / bs
-            train_traces[cf] = dfmat
-        else:
-            train_traces[cf] = tmat
-    
-    responses = []; baselines = [];
-    for cf in config_list:
-        tmat = train_traces[cf]
-        print cf
-        baselines_per_trial = np.mean(tmat[0:train_stim_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
-        #meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
-        #mean_config = np.mean(meanstims_per_trial, axis=-1)
-        baseline_config = np.max(baselines_per_trial, axis=-1)
-                
-        # Use Max value of the MEAN trace during stim period:
-        mean_config = np.max(np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=-1), axis=0) # ntrials x nrois -- baseline val for each trial
         
+        bs = np.mean(tmat[0:train_stim_on, :, :], axis=0)
+        dfmat = (tmat - bs) / bs
+        #dfmat = tmat / bs
+        train_traces[cf] = dfmat
+    else:
+        train_traces[cf] = tmat
+
+responses = []; baselines = [];
+for cf in config_list:
+    tmat = train_traces[cf]
+    print cf
+    baselines_per_trial = np.mean(tmat[0:train_stim_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
+    #meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
+    #mean_config = np.mean(meanstims_per_trial, axis=-1)
+    baseline_config = np.max(baselines_per_trial, axis=-1)
+            
+    # Use Max value of the MEAN trace during stim period:
+    mean_config = np.max(np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=-1), axis=0) # ntrials x nrois -- baseline val for each trial
+    
 #        dffs_per_trial = ( meanstims_per_trial - baselines_per_trial) / baselines_per_trial
 #        
 #        for ridx in range(dffs_per_trial.shape[0]):
@@ -682,12 +712,12 @@ if fit_best:
 #        mean_dff_config = np.mean(dffs_per_trial, axis=-1)
 #        
 
-        responses.append(mean_config)
-        baselines.append(baseline_config)
-        
-    responses = np.vstack(responses) # Reshape into NCONFIGS x NROIS array
-    offsets = np.vstack(baselines)
+    responses.append(mean_config)
+    baselines.append(baseline_config)
     
+responses = np.vstack(responses) # Reshape into NCONFIGS x NROIS array
+offsets = np.vstack(baselines)
+
     
     
 #%%
@@ -711,7 +741,7 @@ else:
 fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
 appended_thetas = np.append(thetas, math.pi)
 
-for ridx, ax in zip(range(nrois), axes.flat):
+for ridx, ax in zip(range(len(kept_rids)), axes.flat):
     #print ridx
     radii = responses[:, ridx]
     if radii.min() < 0:
@@ -724,6 +754,7 @@ for ridx, ax in zip(range(nrois), axes.flat):
     ax.set_theta_zero_location("N")
     ax.set_xticklabels([])
     #ax.set_title(ridx)
+    radii[np.isnan(radii)] = 0
     max_angle_ix = np.where(radii==radii.max())[0][0]
     ax.plot([0, thetas[max_angle_ix]], [0, radii[max_angle_ix]],'k', lw=1)
     ax.set_title(kept_rids[ridx]+1, fontsize=8)
@@ -739,7 +770,7 @@ pl.rc('ytick', labelsize=8)
 
 label_figure(fig, data_identifier)
 
-figname = '%s_polar_plots_%s.png' % (roiset, train_data_type)
+figname = '%s_polar_plots_%s%s.png' % (roiset, train_data_type, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
     
 #%%
@@ -757,6 +788,7 @@ for ridx in range(nrois):
         print "ROI %i has negative response. SKIPPING." % (kept_rids[ridx]+1)
         continue
         #radii -= radii.min()
+    radii[np.isnan(radii)] = 0
     max_angle_ix = np.where(radii==radii.max())[0][0]
 
     pdirections.append((ridx, thetas[max_angle_ix], radii[max_angle_ix]))
@@ -841,7 +873,7 @@ pl.suptitle('%s: Training set' % roiset)
 label_figure(fig, data_identifier)
 
 
-figname = '%s_TRAIN_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
+figname = '%s_TRAIN_traces_%s_%s%s.png' % (roiset, train_runid, train_data_type, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 

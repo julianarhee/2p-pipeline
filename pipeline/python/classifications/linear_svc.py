@@ -1104,8 +1104,8 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
 #           '-n', '1']
 opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_drifting', '-t', 'traces001',
+           '--no-pupil',
+           '-R', 'gratings_drifting', '-t', 'cnmf_',
            '-n', '1']
 
 options_list = [opts1]
@@ -1302,12 +1302,13 @@ def train_linear_classifier(options_list):
     roi_selector = 'all' #'all' #'selectiveanova' #'selective'
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
     inputdata = 'meanstim'
-    inputdata_type = None #'spikes'
+    inputdata_type = 'corrected' # None #'spikes'
     
-    assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
     
     
     if 'cnmf' in optsE.traceid_list[0]:
+        assert inputdata_type in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
+
         Xdata = dataset[inputdata_type]
         labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
         run_info = dataset['run_info'][()]
@@ -1316,10 +1317,11 @@ def train_linear_classifier(options_list):
         inputdata = 'meanstim'
         is_cnmf = True
     else:
+        assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
         cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
         is_cnmf = False
     
-    #%
+    #%%
     # =============================================================================
     # SPECIFIY CLASSIFIER:
     # =============================================================================
@@ -1373,9 +1375,6 @@ def train_linear_classifier(options_list):
         clf_subdir = '%s_%s' % (const_trans, str(trans_value))
         classifier_dir = os.path.join(classifier_dir, clf_subdir)
     
-    if is_cnmf:
-        classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
-        
     if not os.path.exists(classifier_dir):
         os.makedirs(classifier_dir)
     else:
@@ -1951,7 +1950,7 @@ def train_linear_classifier(options_list):
         pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
         pl.close()
     
-    #%%
+    #%
     
     # Identify top N (most informative) features (neurons) and test classification performance:
         
@@ -2035,7 +2034,7 @@ def train_linear_classifier(options_list):
     pl.show()
     
     pl.savefig(os.path.join(classifier_dir, 'figures', 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
-    pl.close()
+    #pl.close()
     
     # Save info:
     rfe_cv_info = {'kfold': kfold,
