@@ -95,7 +95,12 @@ for tiff_idx = 1:length(tiffs)
     end
     [d1,d2,~] = size(Yt);
     fprintf('Size loaded tiff: %s\n', mat2str(size(Yt)))
-
+    sz = size(Yt);
+    if length(sz) == 3 && (sz(end) > (nvolumes * nchannels))
+        fprintf('Accidental saving of 2 channels... splittin...\n');
+        Yt = Yt(:, :, 1:2:end);
+        fprintf('Taking every other slice, final size: %s\n', mat2str(size(Yt)))
+    end
     % Check filename for formatting:
     fi = strfind(filename, 'File');
     if isempty(fi)
