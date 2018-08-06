@@ -628,11 +628,8 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
                 A_in = A_in.astype(bool)
             
         elif 'cnmf_' in roi_source:
-            rid_dirs = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, \
-                                              optsE.run, 'traces', 'cnmf', roi_source, 'results', '*.npz'))
-            print rid_dirs
-            assert len(rid_dirs) > 0, "Specified ROI src not found: %s" % optsE.roi_source
-            cnmf_fpath = sorted(rid_dirs)[-1]
+            assert os.path.existS(roi_source), "Specified ROI src not found: %s" % optsE.roi_source
+            cnmf_fpath = roi_source # sorted(rid_dirs)[-1]
             cnmf = np.load(cnmf_fpath)
             cnm = cnmf['cnm'][()]
 
