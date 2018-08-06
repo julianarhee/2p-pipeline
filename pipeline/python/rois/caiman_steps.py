@@ -834,7 +834,8 @@ def run_cnmf(options):
 
     F_dff = detrend_df_f(cnm2.A, cnm2.b, cnm2.C, cnm2.f, YrA=cnm2.YrA,
                          quantileMin=quantileMin, frames_window=frames_window)
-    
+    print "Extracted DFF"
+ 
 #    pl.figure(figsize=(20,5))
 #    pl.plot(F_dff[0,:])
 #    pl.savefig(os.path.join(traceid_dir, 'figures', 'example_roi0_dff.png'));
@@ -850,13 +851,14 @@ def run_cnmf(options):
     with open(os.path.join(traceid_dir, 'results', 'results_refined_%s.pkl' % refined_datestr), 'wb') as f:
         pkl.dump(cnm2, f, protocol=pkl.HIGHEST_PROTOCOL)
     cnm2.dview = dview
+    print "Saved pkl..."
     
     # #### Save refined run:
     cnm2.dview=None
     np.savez(os.path.join(traceid_dir, 'results', 'results_refined_%s.npz' % refined_datestr), 
              cnm=cnm2)
     cnm2.dview=dview
-
+    print "... and npz"
     #%%
     # #### Evaluate refined run:
     print "*** Evaluating final run ***"
