@@ -634,7 +634,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
             cnm = cnmf['cnm'][()]
 
             print "Loaded %s" % cnmf_fpath
-            A_in = cnm.A.todense()
+            A_in = np.array(cnm.A.todense())
             A_in[A_in>0] = 1
             A_in = A_in.astype(bool)
    
@@ -755,7 +755,14 @@ def evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir,
 #options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
 #           '-R', 'gratings_rotating_drifting', '--nproc=12', '--seed', '-r', 'rois001',
 #           '--border=2']
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629',
+'-A', 'FOV1_zoom1x', '-R', 'gratings_drifting', '--seed',
+'-r', '/n/coxfs01/2p-data/CE077/20180629/FOV1_zoom1x/gratings_rotating_drifting/traces/cnmf/cnmf_20180803_17_04_21/results/results_refined_20180803_17_13_07.npz',
+'--border=2', '--nproc=4', '--suffix=offset', '-q', 20, '-w', 30, '-t', '20180807_10_38_14']
 
+
+
+#%%
     
 def run_cnmf(options):
     
