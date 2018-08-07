@@ -217,7 +217,7 @@ def fit_cnmf_patches(images, cnmf_params, output_dir, n_processes=1, dview=None,
     cnmf_results_path = os.path.join(output_dir, 'results', 'results_patch.npz')
     np.savez(cnmf_results_path, 
              A_tot=cnm.A, C_tot=cnm.C, YrA_tot=cnm.YrA, b_tot=cnm.b, f_tot=cnm.f, sn_tot=cnm.sn,
-             S_tot=cnm.S, Cn=Cn,
+             S_tot=cnm.S, #Cn=Cn,
             options=cnm.options)
     
     print "cNMF patch results saved to: %s" % cnmf_results_path
