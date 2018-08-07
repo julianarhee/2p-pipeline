@@ -287,7 +287,7 @@ def get_cnmf_seeds(images, cnmf_params, output_dir, n_processes=None, dview=None
         with open(patch_fpath, 'rb') as f:
             cnm = pkl.load(f)
     
-    print(('Number of components:' + str(A_tot.shape[-1])))
+    #print(('Number of components:' + str(A_tot.shape[-1])))
 
     return cnm #A_tot, C_tot, YrA_tot, b_tot, f_tot, sn_tot
 
@@ -628,14 +628,16 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
                 A_in = A_in.astype(bool)
             
         elif 'cnmf_' in roi_source:
-            assert os.path.existS(roi_source), "Specified ROI src not found: %s" % optsE.roi_source
+            assert os.path.exists(roi_source), "Specified ROI src not found: %s" % optsE.roi_source
             cnmf_fpath = roi_source # sorted(rid_dirs)[-1]
             cnmf = np.load(cnmf_fpath)
             cnm = cnmf['cnm'][()]
 
             print "Loaded %s" % cnmf_fpath
-            A_in = cnm.A
-    
+            A_in = cnm.A.todense()
+            A_in[A_in>0] = 1
+            A_in = A_in.astype(bool)
+   
         print A_in.shape
         print "Reshaped seeded spatial comps:", A_in.shape
         
@@ -646,6 +648,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
         # #############################################################################
         # cNMF: Extract from patches:
         # #############################################################################
+        print "Estimating components with patches."
         Yr, dims, T = cm.load_memmap(fname_new)
         d1, d2 = dims
         images = np.reshape(Yr.T, [T] + list(dims), order='F') 
