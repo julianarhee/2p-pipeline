@@ -54,33 +54,36 @@ tiffs = dir(fullfile(source, '*.tif'));
 tiffs = {tiffs(:).name}';
 
 fprintf('Found %i TIFF files in source:\n  %s\n', length(tiffs), source);
-
-if length(A.slices)>1 || A.nchannels>1
-    do_deinterleave = true;
-else
-    do_deinterleave = false;
-end
-
-if do_deinterleave
-    write_dir_deinterleaved = sprintf('%s_deinterleaved', dest)
-    fprintf('Writing deinterleaved files to: %s\n', write_dir_deinterleaved)
-    if ~exist(write_dir_deinterleaved)
-        mkdir(write_dir_deinterleaved)
-    end
-end
-
-write_dir_interleaved = dest; %fullfile(mcparams.source_dir, mcparams.dest_dir);
-if ~exist(write_dir_interleaved)
-    mkdir(write_dir_interleaved)
-end
-
 fprintf('Starting BIDI correction...\n')
-fprintf('Writing interleaved files to: %s\n', write_dir_interleaved)
 
 for tiff_idx = 1:length(tiffs)
     currfile = sprintf('File%03d', tiff_idx); 
     nvolumes = simeta.(currfile).SI.hFastZ.numVolumes;
- 
+    nchannels = simeta.(currfile).SI.hChannels.channelSave;
+    nslices = simeta.(currfile).SI.hFastZ.numFramesPerVolumes;
+
+    if nslices > 1 || nchannels > 1 %length(A.slices)>1 || A.nchannels>1
+        do_deinterleave = true;
+    else
+        do_deinterleave = false;
+    end
+    
+    if do_deinterleave
+        write_dir_deinterleaved = sprintf('%s_deinterleaved', dest)
+        fprintf('Writing deinterleaved files to: %s\n', write_dir_deinterleaved)
+        if ~exist(write_dir_deinterleaved)
+            mkdir(write_dir_deinterleaved)
+        end
+    end
+    
+    write_dir_interleaved = dest; %fullfile(mcparams.source_dir, mcparams.dest_dir);
+    if ~exist(write_dir_interleaved)
+        mkdir(write_dir_interleaved)
+    end
+    
+    fprintf('Writing interleaved files to: %s\n', write_dir_interleaved)
+    
+
     tpath = fullfile(source, tiffs{tiff_idx});
     fprintf('Processing tiff %i of %i...\n', tiff_idx, length(tiffs));
     [parent, filename, ext] = fileparts(tpath);
@@ -96,11 +99,11 @@ for tiff_idx = 1:length(tiffs)
     [d1,d2,~] = size(Yt);
     fprintf('Size loaded tiff: %s\n', mat2str(size(Yt)))
     sz = size(Yt);
-    if length(sz) == 3 && (sz(end) > (nvolumes * nchannels))
-        fprintf('Accidental saving of 2 channels... splittin...\n');
-        Yt = Yt(:, :, 1:2:end);
-        fprintf('Taking every other slice, final size: %s\n', mat2str(size(Yt)))
-    end
+%    if length(sz) == 3 && (sz(end) > (nvolumes * nchannels))
+%        fprintf('Accidental saving of 2 channels... splittin...\n');
+%        Yt = Yt(:, :, 1:2:end);
+%        fprintf('Taking every other slice, final size: %s\n', mat2str(size(Yt)))
+%    end
     % Check filename for formatting:
     fi = strfind(filename, 'File');
     if isempty(fi)
