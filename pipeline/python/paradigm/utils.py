@@ -1136,18 +1136,20 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         # Get all trials contained in current .tif file:
         trials_in_block = sorted([t for t in trial_list \
                                   if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
+        print "N trials in block: %i" % len(trials_in_block)
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
                                    for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
                                     for t in trials_in_block])
     
         stim_offset_idxs = np.array([mwinfo[t]['frame_stim_off'] for t in trials_in_block])
-
+     
         # Subtract off frame indices by value to make them relative to BLOCK:
         # Since we are cycling thru FILES (i.e., blocks), we need to readjust frame indices.
         if block_indexed is False:
             frame_indices = frame_indices - len(frame_tsecs)*fidx #frame_indices -= fidx*file_df.shape[0]
             if frame_indices[-1] > len(frame_tsecs):
+                print 'File: %i' % fidx, len(frame_tsecs)
                 print "*** %i extra frames removed." % (frame_indices[-1] - len(frame_tsecs))
                 print frame_indices[-10:]
                 last_ix = np.where(frame_indices==len(frame_tsecs)-1)[0][0]

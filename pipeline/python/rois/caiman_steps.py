@@ -811,7 +811,8 @@ def run_cnmf(options):
     d1, d2 = dims
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
     Y = np.reshape(Yr, dims + (T,), order='F')
-    
+    print "dims:", dims
+    print "Getting correlation..." 
     #% Get correlation image:    
     Cn = get_Cn(images, traceid_dir)
         
