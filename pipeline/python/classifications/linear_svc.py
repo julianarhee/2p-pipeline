@@ -557,7 +557,7 @@ def get_grand_mean_trace(d1, response_type='dff'):
 
 #%%
 
-def get_training_data_cnmf(Xdata, labels_df, run_info):
+def get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False):
     
     value_type = 'meanstim'
     
@@ -622,7 +622,10 @@ def get_training_data_cnmf(Xdata, labels_df, run_info):
     elif value_type == 'meanstim':
         values_df = mean_stim_on_values #- mean_baseline_values ) / std_baseline_values
     
-    return values_df, trial_labels
+    if get_null:
+        return values_df, trial_labels, mean_baseline_values
+    else:
+        return values_df, trial_labels
     
 #%%
     
@@ -1103,7 +1106,7 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-T', 'np_subtracted', '--no-pupil',
 #           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
 #           '-n', '1']
-opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
            '--no-pupil',
            '-R', 'gratings_drifting', '-t', 'cnmf_',
            '-n', '1']
@@ -1302,8 +1305,8 @@ def train_linear_classifier(options_list):
     roi_selector = 'all' #'all' #'selectiveanova' #'selective'
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
     inputdata = 'meanstim'
-    inputdata_type = 'corrected' # None #'spikes'
-    
+    inputdata_type = 'spikes' # None #'spikes'
+    get_null = True
     
     
     if 'cnmf' in optsE.traceid_list[0]:
@@ -1312,13 +1315,14 @@ def train_linear_classifier(options_list):
         Xdata = dataset[inputdata_type]
         labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
         run_info = dataset['run_info'][()]
-        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info)
+        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
         cy = np.array(cy)
         inputdata = 'meanstim'
         is_cnmf = True
     else:
         assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
         cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
+        cy = np.array(cy)
         is_cnmf = False
     
     #%%
@@ -1358,6 +1362,21 @@ def train_linear_classifier(options_list):
                                                      trans_value=trans_value, 
                                                      relabel=False)
          
+         if get_null and 'cnmf' in optsE.traceid_list[0]:
+            
+            _, _, cnull = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=True)
+            #cy = np.array(cy)
+            # Make sure num of cnull examples matches n samples per condition:
+            nconds_per = np.unique(Counter(cy).values())
+            assert len(nconds_per)==1, "Multiple reps found for conditions"
+            cnull_tmp = []
+            for conf in np.unique(cy):
+                cnull_tmp.append(cnull[np.where(cy==conf)[0], :])
+            cnull_tmp = np.mean(np.dstack(cnull_tmp), axis=-1) # average across conditions to get 20 reps x nrois
+            cX = np.vstack((cX, cnull_tmp))
+            cy = np.append(cy, ['bas' for _ in range(nconds_per[0])])
+            class_labels.append('bas')
+            
          cX_std = StandardScaler().fit_transform(cX)
          
     #% Create output dir for current classifier:
@@ -1365,6 +1384,10 @@ def train_linear_classifier(options_list):
                                                inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
                                                class_name=class_name, aggregate_type=aggregate_type,
                                                const_trans=const_trans, trans_value=trans_value)
+    
+    
+    if get_null:
+        classif_identifier = "%s_plusnull" % (classif_identifier)
     
     if is_cnmf:
         classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
@@ -1803,7 +1826,7 @@ def train_linear_classifier(options_list):
     #elif classifier == 'SVR':
         #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]
         
-    #%
+    #%%
     
     # Save CV info:
     # -----------------------------------------------------------------------------
@@ -1825,7 +1848,7 @@ def train_linear_classifier(options_list):
         json.dump(cv_results, f, sort_keys=True, indent=4)
     
     
-    #%%
+    #%
     # -----------------------------------------------------------------------------
     # Save classifier and formatted data:
     # -----------------------------------------------------------------------------
@@ -1850,7 +1873,7 @@ def train_linear_classifier(options_list):
         json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
     
     
-    #%% 
+    #%
         
     # Visualize feature weights:
     # =============================================================================
