@@ -1106,12 +1106,17 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-T', 'np_subtracted', '--no-pupil',
 #           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
 #           '-n', '1']
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-           '--no-pupil',
-           '-R', 'gratings_drifting', '-t', 'cnmf_',
-           '-n', '1']
 
-options_list = [opts1]
+rootdir = '/Volumes/coxfs01/2p-data'
+opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+           '--no-pupil',
+           '-R', 'gratings_static_drifting', '-t', 'traces001',
+           '-n', '1']
+opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+           '--no-pupil',
+           '-R', 'gratings_static_drifting2', '-t', 'traces001',
+           '-n', '1']
+options_list = [opts1, opts2]
 
 
 #%%
@@ -1125,6 +1130,92 @@ options_list = [opts1]
 #    optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
 #   
 
+#%%
+
+def combine_dataset(data_paths, combo_name='combo'):
+    excluded_keys = ['traceid_dir', 'ntrials_by_cond', 'nfiles', 'ntrials_total']
+    
+    # Load the first dataset's run_info, and use as reference for all other dsets:
+    d1 = np.load(data_paths[0])
+    s1 = d1['sconfigs'][()]
+
+    ref_info = d1['run_info'][()]
+    info_keys = ref_info.keys()
+    non_array_keys = ['frac', 'tsecs', 'quantile', 'sconfigs', 'run_info']
+
+    summed_info = dict((k, [ref_info[k]]) for k in excluded_keys)
+    concat_arrays = dict((k, d1[k]) for k in d1.keys() if k not in non_array_keys)
+    
+    # Initialize trial counter to update trial number in labels:
+    trial_counter = ref_info['ntrials_total']
+    trial_labels_col = [i for i in d1['labels_data'][0, :]].index('trial00001') # should be col 4
+    
+    for di,dpath in data_paths.items():
+        if di==0:
+            continue
+        d = np.load(dpath)
+        currblock_ntrials = d['run_info'][()]['ntrials_total']
+        print "Adding %i trials to combined dset" % currblock_ntrials
+        
+        # Make sure we're combining the same trial types together:
+        assert all([ref_info[k]==d['run_info'][()][k] for k in info_keys if k not in excluded_keys]), "Trying to combine unequal runs!"
+        
+        # Make sure stimulus configs are the exact same:
+        assert d['sconfigs'][()]==s1, "Stim configs are different!"
+        
+        # Make sure preprocessing parameters are the same:
+        assert d1['frac'] == d['frac'], "Smoothing fractions differ: ref %d, %s %d" % (d1['frac'], dpath, d['frac'])
+        assert d1['quantile'] == d['quantile'], "Quantile values differ: ref %d, %s %d" % (d1['quantile'], dpath, d['quantile'])
+        
+        # Append data arrays for combo:
+        for array_key in [k for k in d1.keys() if k not in non_array_keys]:
+            if array_key == 'labels_data':
+                # Need to replace trial labels to be relative to first trial of first run
+                tlabels = d[array_key][:, trial_labels_col]
+                d[array_key][:, trial_labels_col] = ['trial%05d' % (int(t[5:])+trial_counter) for t in tlabels]
+                
+            if len(concat_arrays[array_key].shape) == 2:
+                tmp = np.vstack((concat_arrays[array_key], d[array_key]))
+            else:
+                tmp = np.hstack((concat_arrays[array_key], d[array_key]))
+            concat_arrays[array_key] = tmp
+            
+        # Append run info for combo:
+        for exk in excluded_keys:
+            summed_info[exk].append(d['run_info'][()][exk])
+            
+        trial_counter += currblock_ntrials  # Increment last trial num
+    
+    # Combined info that represents combo:
+    for k,v in summed_info.items():
+        if isinstance(v[0], dict):
+            tmp_entry = dict((kk, sum([v[i][kk] for i in range(len(v))])) for kk in v[0].keys())
+            summed_info[k] = tmp_entry
+        elif isinstance(v[0], (float, int)):
+            summed_info[k] = sum(v)
+    combined_run_info = dict((k, summed_info[k]) if k in excluded_keys else (k, v) for k,v in ref_info.items())
+
+    # Combine data arrays:
+        
+    dataset = dict((k, v) if k in non_array_keys else (k, concat_arrays[k]) for k,v in d1.items())
+    dataset['run_info'] = combined_run_info
+    orig_srcs = dataset['traceid_dir']
+    dataset['source_paths'] = orig_srcs
+    
+    # Save to new trace dir:
+    tid_str = '_'.join([tdir.split('/traces')[-1].split('/')[0] for tdir in data_paths.values()])
+    acquisition_dir = os.path.split(data_paths[0].split('/traces')[0])[0]
+    combined_darray_dir = os.path.join(acquisition_dir, 'combined_%s' % combo_name, 'traces', tid_str, 'data_arrays')
+    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+    data_fpath = os.path.join(combined_darray_dir, 'datasets.npz')
+    dataset['traceid_dir'] = data_fpath
+    
+    np.savez(data_fpath, dataset)
+    
+    
+    return dataset
+
+#%%
 
 def train_linear_classifier(options_list): 
     #%%
@@ -1166,6 +1257,10 @@ def train_linear_classifier(options_list):
                                              output_dir=acquisition_dir, 
                                              save_and_close=False)
         pl.savefig(os.path.join(acquisition_dir, figname))
+    
+    
+        data_path = combine_datasets(data_paths)
+        
     
     #%%
     # =============================================================================
