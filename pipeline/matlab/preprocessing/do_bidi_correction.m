@@ -59,8 +59,12 @@ fprintf('Starting BIDI correction...\n')
 for tiff_idx = 1:length(tiffs)
     currfile = sprintf('File%03d', tiff_idx); 
     nvolumes = simeta.(currfile).SI.hFastZ.numVolumes;
-    nchannels = simeta.(currfile).SI.hChannels.channelSave;
-    nslices = simeta.(currfile).SI.hFastZ.numFramesPerVolumes;
+    nchannels = numel(simeta.(currfile).SI.hChannels.channelSave);
+    nslices = simeta.(currfile).SI.hFastZ.numFramesPerVolume;
+    fprintf('N frames per volume: %i\n', nslices);
+    if nslices == length(A.slices) + ndiscard
+        nslices = nslices - ndiscard
+    end
 
     if nslices > 1 || nchannels > 1 %length(A.slices)>1 || A.nchannels>1
         do_deinterleave = true;
