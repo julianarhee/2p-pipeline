@@ -111,7 +111,7 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 
 
-rootdir = '/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
+rootdir = '/Volumes/coxfs01/2p-data' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
 session = '20180629' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
@@ -125,14 +125,14 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 train_runid = 'gratings_drifting' #_static' #'blobs_run2'
 train_traceid = 'cnmf_' #'traces001'
 
-train_data_type = 'meanstim_plusnull'
-input_data_type = 'spikes'
-class_desc = '9ori'
+train_data_type = 'meanstim' #_plusnull'
+input_data_type = 'corrected'
+class_desc = '8ori'
 
 if 'cnmf' in train_traceid:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s_%s' % (class_desc, train_data_type, input_data_type)
 else:
-    classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s' % (train_data_type)
+    classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s' % (class_desc, train_data_type)
 
 
 #data_identifier = '_'.join((animalid, session, acquisition))
@@ -235,7 +235,7 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # ###################### #######################################################
 test_runid = 'gratings_rotating_drifting' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid =  'cnmf_' #'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'spikes' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_data_type = 'corrected' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
 # #############################################################################
@@ -717,7 +717,17 @@ trained_classes = list(np.copy(train_labels))
 trained_classes.append('bas')
 
 
-
+if any([isinstance(v, str) for v in clf.classes_]):
+    class_indices = [[v for v in clf.classes_].index(str(c)) for c in train_labels]
+else:
+    class_indices = [[v for v in clf.classes_].index(c) for c in train_labels]
+    
+if 'bas' in clf.classes_:
+    colorvals = sns.color_palette("hls", len(clf.classes_)-1)
+else:
+    colorvals = sns.color_palette("hls", len(clf.classes_))
+    
+    
 fig, axes = pl.subplots(len(train_labels), 1, figsize=(6,15))
 
 
@@ -762,9 +772,9 @@ sns.despine(trim=True, offset=4, ax=axes[lix])
 
 for lix in range(len(train_labels)):
     # Create color bar:
-    cy = np.ones(stimframes.shape) * axes[lix].get_ylim()[0]/2.0
-    z = stimframes.copy()
-    points = np.array([stimframes, cy]).T.reshape(-1, 1, 2)
+    cy = np.ones(stim_frames.shape) * axes[lix].get_ylim()[0]/2.0
+    z = stim_frames.copy()
+    points = np.array([stim_frames, cy]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
     cmap = ListedColormap(colorvals[lix])
     lc = LineCollection(segments, cmap=cmap)
@@ -808,7 +818,7 @@ pl.suptitle('%s: Decoding training set' % roiset)
 label_figure(fig, data_identifier)
 
 
-figname = '%s_decoded_training_traces_%s_%s%s.png' % (roiset, train_runid, train_data_type, figs_append)
+figname = '%s_decoded_training_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
