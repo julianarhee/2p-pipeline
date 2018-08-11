@@ -487,13 +487,13 @@ def plot_decoding_performance_trial_epochs(results, bins, names, scoring='accura
 #%%
 def plot_grand_mean_traces(dset_list, response_type='dff', label_list=[], color_list=['b','m','g'], output_dir='/tmp', save_and_close=True):
         
-        
+    mval = []
     fig, ax = pl.subplots(1) #pl.figure()
     for di,dtrace in enumerate(dset_list):
         pl.plot(dtrace['mean'], color=color_list[di], label=label_list[di])
         pl.fill_between(xrange(len(dtrace['mean'])), dtrace['mean']-dtrace['sem'], dtrace['mean']+dtrace['sem'], alpha=0.5, color=color_list[di])
         pl.plot(dtrace['stimframes'], np.ones(dtrace['stimframes'].shape) * -0.005*(di+1), color=color_list[di])
-        
+        mval.append(dtrace['mean'].max())
         #longest_kind = max([len(d1trace['mean']), len(d2trace['mean']), len(d3trace['mean'])])
         #framerates = np.mean([d1['run_info'][()]['framerate'], d2['run_info'][()]['framerate'], d2['run_info'][()]['framerate']])
         #tsecs = (xrange(longest_kind) / framerates)
@@ -506,7 +506,7 @@ def plot_grand_mean_traces(dset_list, response_type='dff', label_list=[], color_
         #ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=8)
     ax.set(xticks = [])
     ax.set(xticklabels = [])
-    ax.set(yticks = [0, 0.1])
+    ax.set(yticks = [0,max(mval)])
     ax.set(ylabel=response_type)
     sns.despine(offset=4, trim=True, bottom=True)
     pl.legend()
@@ -1106,13 +1106,29 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-T', 'np_subtracted', '--no-pupil',
 #           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
 #           '-n', '1']
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+
+rootdir = '/Volumes/coxfs01/2p-data'
+opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
            '--no-pupil',
-           '-R', 'gratings_drifting', '-t', 'cnmf_',
+           '-R', 'gratings_static_drifting', '-t', 'traces001',
+           '-n', '1']
+opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+           '--no-pupil',
+           '-R', 'gratings_static_drifting2', '-t', 'traces001',
            '-n', '1']
 
-options_list = [opts1]
 
+rootdir = '/mnt/odyssey'
+opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+           '--no-pupil',
+           '-R', 'gratings_static_drifting', '-t', 'cnmf_',
+           '-n', '1']
+opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+           '--no-pupil',
+           '-R', 'gratings_static_drifting2', '-t', 'cnmf_',
+           '-n', '1']
+options_list = [opts1, opts2]
+combo = True
 
 #%%
 
@@ -1125,6 +1141,101 @@ options_list = [opts1]
 #    optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
 #   
 
+#%%
+
+def combine_datasets(data_paths, combo_name='combo'):
+    excluded_keys = ['traceid_dir', 'ntrials_by_cond', 'nfiles', 'ntrials_total']
+    
+    # Load the first dataset's run_info, and use as reference for all other dsets:
+    d1 = np.load(data_paths[0])
+    s1 = d1['sconfigs'][()]
+
+    ref_info = d1['run_info'][()]
+    info_keys = ref_info.keys()
+    non_array_keys = ['frac', 'tsecs', 'quantile', 'sconfigs', 'run_info', 'labels_columns']
+
+    summed_info = dict((k, [ref_info[k]]) for k in excluded_keys)
+    concat_arrays = dict((k, d1[k]) for k in d1.keys() if k not in non_array_keys)
+    
+    # Initialize trial counter to update trial number in labels:
+    trial_counter = ref_info['ntrials_total']
+    trial_labels_col = [i for i in d1['labels_data'][0, :]].index('trial00001') # should be col 4
+    
+    for di,dpath in data_paths.items():
+        if di==0:
+            continue
+        d = np.load(dpath)
+        currblock_ntrials = d['run_info'][()]['ntrials_total']
+        print "Run %i of %i:  Adding %i trials to combined dset" % (di, len(data_paths), currblock_ntrials)
+        
+        # Make sure we're combining the same trial types together:
+        assert all([ref_info[k]==d['run_info'][()][k] for k in info_keys if k not in excluded_keys]), "Trying to combine unequal runs!"
+        
+        # Make sure stimulus configs are the exact same:
+        assert d['sconfigs'][()]==s1, "Stim configs are different!"
+        
+        # Make sure preprocessing parameters are the same:
+        if 'frac' in d.keys():
+            assert d1['frac'] == d['frac'], "Smoothing fractions differ: ref %d, %s %d" % (d1['frac'], dpath, d['frac'])
+        if 'quantile' in d.keys():
+            assert d1['quantile'] == d['quantile'], "Quantile values differ: ref %d, %s %d" % (d1['quantile'], dpath, d['quantile'])
+        
+        # Append data arrays for combo:
+        for array_key in [k for k in d1.keys() if k not in non_array_keys]:
+            #print "Array for comb: %s" % array_key
+            darray = d[array_key]
+            if array_key == 'labels_data':
+                # Need to replace trial labels to be relative to first trial of first run
+                tlabels = d[array_key][:, trial_labels_col]
+                darray[:, trial_labels_col] = np.array(['trial%05d' % (int(t[5:])+trial_counter) for t in tlabels], dtype=d[array_key].dtype)
+
+            if len(concat_arrays[array_key].shape) == 2:
+                tmp = np.vstack((concat_arrays[array_key], darray))
+            else:
+                tmp = np.hstack((concat_arrays[array_key], darray))
+            concat_arrays[array_key] = tmp
+            
+        # Append run info for combo:
+        for exk in excluded_keys:
+            summed_info[exk].append(d['run_info'][()][exk])
+            
+        trial_counter += currblock_ntrials  # Increment last trial num
+    
+    # Combined info that represents combo:
+    for k,v in summed_info.items():
+        if isinstance(v[0], dict):
+            tmp_entry = dict((kk, sum([v[i][kk] for i in range(len(v))])) for kk in v[0].keys())
+            summed_info[k] = tmp_entry
+        elif isinstance(v[0], (float, int)):
+            summed_info[k] = sum(v)
+    combined_run_info = dict((k, summed_info[k]) if k in excluded_keys else (k, v) for k,v in ref_info.items())
+
+    # Combine data arrays:
+        
+    dataset = dict((k, v) if k in non_array_keys else (k, concat_arrays[k]) for k,v in d1.items())
+    dataset['run_info'] = combined_run_info
+    orig_srcs = dataset['run_info']['traceid_dir']
+    dataset['source_paths'] = orig_srcs
+    
+    # Save to new trace dir:
+    if 'traces00' in data_paths.values()[0]:
+        tid_str = '_'.join([tdir.split('/traces')[-1].split('/')[0] for tdir in data_paths.values()])
+    else:
+        tid_str = '_'.join([tdir.split('/cnmf/')[-1].split('/')[0] for tdir in data_paths.values()])
+    acquisition_dir = os.path.split(data_paths[0].split('/traces')[0])[0]
+    combined_darray_dir = os.path.join(acquisition_dir, combo_name, 'traces', tid_str, 'data_arrays')
+    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+    data_fpath = os.path.join(combined_darray_dir, 'datasets.npz')
+    dataset['run_info']['traceid_dir'] = data_fpath.split('/data_arrays')[0]
+    
+    print "Saving combined dataset to:\n%s" % data_fpath
+    np.savez(data_fpath, dataset)
+    
+    
+    
+    return data_fpath
+
+#%%
 
 def train_linear_classifier(options_list): 
     #%%
@@ -1167,6 +1278,13 @@ def train_linear_classifier(options_list):
                                              save_and_close=False)
         pl.savefig(os.path.join(acquisition_dir, figname))
     
+    
+        if combo is True:
+            data_fpath = combine_datasets(data_paths, combo_name='combined_gratings_drifting_static')
+            
+            dt = np.load(data_fpath)
+            dataset = dt['arr_0'][()]
+        
     #%%
     # =============================================================================
     # Load ROI masks to sort ROIs by spatial distance
@@ -1179,10 +1297,17 @@ def train_linear_classifier(options_list):
         
         
     #%%
-       
-    run_info = dataset['run_info'][()]
-    sconfigs = dataset['sconfigs'][()]
-    
+    opts_ix = 0
+    if isinstance(dataset['run_info'], dict):
+        run_info = dataset['run_info']
+    else:
+        run_info = dataset['run_info'][()]
+        
+    if isinstance(dataset['sconfigs'], dict):    
+        sconfigs = dataset['sconfigs']
+    else:
+        sconfigs = dataset['sconfigs'][()]
+        
     print run_info['ntrials_by_cond']
     
     traceid_dir = run_info['traceid_dir']
@@ -1190,7 +1315,15 @@ def train_linear_classifier(options_list):
     if optsE.rootdir not in traceid_dir:
         traceid_dir = replace_root(traceid_dir, optsE.rootdir, optsE.animalid, optsE.session)
     
-    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition))
+    if optsE.traceid_list[opts_ix] == 'cnmf_':
+        if combo is True:
+            trace_id = traceid_dir.split('/traces/')[-1].split('/')[0]
+        else:
+            trace_id = traceid_dir.split('/cnmf/')[-1].split('/')[0]
+    else:
+        trace_id = optsE.traceid_list[opts_ix]
+        
+    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, trace_id))
 
     #%%
     
@@ -1305,8 +1438,8 @@ def train_linear_classifier(options_list):
     roi_selector = 'all' #'all' #'selectiveanova' #'selective'
     data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
     inputdata = 'meanstim'
-    inputdata_type = 'spikes' # None #'spikes'
-    get_null = True
+    inputdata_type = 'corrected' #'spikes' # None #'spikes'
+    get_null = False #True
     
     
     if 'cnmf' in optsE.traceid_list[0]:
@@ -1314,7 +1447,6 @@ def train_linear_classifier(options_list):
 
         Xdata = dataset[inputdata_type]
         labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
-        run_info = dataset['run_info'][()]
         cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
         cy = np.array(cy)
         inputdata = 'meanstim'
@@ -1332,10 +1464,10 @@ def train_linear_classifier(options_list):
     
     # Group configIDs by selected class labels to sort labels in order:
     class_name = 'ori' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-    aggregate_type = 'all' #'all' #'all' #'half' #all' #'each' #'each' # 'single' #'each' #'single' #'each'
+    aggregate_type = 'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
     subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
     
-    const_trans = '' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+    const_trans = '' #'' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
     trans_value = '' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
     
     binsize=''
@@ -1539,8 +1671,13 @@ def train_linear_classifier(options_list):
     sns.heatmap(1-corrs, cmap=zdf_cmap, vmax=2.0)
     #sns.heatmap(1-corrs, cmap=zdf_cmap, vmin=0.7, vmax=1.3)
     
-    pl.title('RDM (%s) - %s: %s' % (data_type, class_name, aggregate_type))
-    figname = 'RDM_%srois_%s_classes_%i%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type)
+    if aggregate_type == 'single':
+        pl.title('RDM (%s) - %s: %s (%s %i)' % (data_type, class_name, aggregate_type, const_trans, trans_value))
+        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s%i.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, const_trans, trans_value)
+
+    else:
+        pl.title('RDM (%s) - %s: %s' % (data_type, class_name, aggregate_type))
+        figname = 'RDM_%srois_%s_classes_%i%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type)
     label_figure(fig, data_identifier)
     
     pl.savefig(os.path.join(population_figdir, figname))
@@ -1588,7 +1725,10 @@ def train_linear_classifier(options_list):
     ax.set(xlabel=cell_unit)
     
     pl.title('RDM (%s, %s)' % (data_type, cell_unit))
-    figname = 'RDM_%srois_%s_classes_%i%s_%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, cell_unit)
+    if aggregate_type == 'single':
+        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s%i_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, const_trans, trans_value, cell_unit)
+    else:
+        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, cell_unit)
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(population_figdir, figname))
     pl.close()
@@ -1687,7 +1827,7 @@ def train_linear_classifier(options_list):
     pl.savefig(os.path.join(classifier_dir, 'figures', figname))
     #pl.close()
     
-    #%%
+    #%
     # -----------------------------------------------------------------------------
     # Format cross-validation data
     # -----------------------------------------------------------------------------
@@ -1826,7 +1966,7 @@ def train_linear_classifier(options_list):
     #elif classifier == 'SVR':
         #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]
         
-    #%%
+    #%
     
     # Save CV info:
     # -----------------------------------------------------------------------------
@@ -1873,7 +2013,7 @@ def train_linear_classifier(options_list):
         json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
     
     
-    #%
+    #%%
         
     # Visualize feature weights:
     # =============================================================================

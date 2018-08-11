@@ -21,6 +21,7 @@ from pipeline.python.paradigm import utils as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.traces.utils import get_frame_info
+from pipeline.python.utils import label_figure
 
 #rootdir = '/mnt/odyssey'
 #animalid = 'CE077'
@@ -214,6 +215,8 @@ def make_clean_psths(options):
     rows = optsE.rows
     columns = optsE.columns
     
+    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, optsE.traceid))
+
     
     dataset = np.load(data_fpath)
     print dataset.keys()
@@ -452,6 +455,8 @@ def make_clean_psths(options):
         pl.subplots_adjust(top=0.85)
         pl.suptitle("%s" % (roi_id))
         pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+        label_figure(fig, data_identifier)
+        
         #%%
         figname = '%s_psth_%s.%s' % (roi_id, inputdata, filetype)
         pl.savefig(os.path.join(psth_dir, figname))

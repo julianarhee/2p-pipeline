@@ -1517,7 +1517,11 @@ def get_traceid_from_acquisition(acquisition_dir, run, traceid):
     # Get paths to data source:
     print "Getting path info for single run dataset..."
     if 'cnmf' in traceid:
-        cnmf_dirs = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'cnmf', 'cnmf_*'))
+        if 'comb' in run:
+            print "Combo run!"
+            cnmf_dirs = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'cnmf_*'))
+        else:
+            cnmf_dirs = glob.glob(os.path.join(acquisition_dir, run, 'traces', 'cnmf', 'cnmf_*'))
         cnmf_dir = [c for c in cnmf_dirs if os.path.split(c)[-1] == traceid]
         if len(cnmf_dir) == 0:
             print "Specified dir %s not found." % traceid

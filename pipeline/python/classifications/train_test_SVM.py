@@ -111,9 +111,9 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 
 
-rootdir = '/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
+rootdir = '/mnt/odyssey' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180629' #'20180713' #'20180629'
+session = '20180713' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -122,17 +122,17 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'gratings_drifting' #_static' #'blobs_run2'
+train_runid = 'combined_gratings_drifting_static' #_static' #'blobs_run2'
 train_traceid = 'cnmf_' #'traces001'
 
-train_data_type = 'meanstim_plusnull'
-input_data_type = 'spikes'
-class_desc = '9ori'
+train_data_type = 'meanstim' #_plusnull'
+input_data_type = 'corrected'
+class_desc = '6ori'
 
 if 'cnmf' in train_traceid:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s_%s' % (class_desc, train_data_type, input_data_type)
 else:
-    classif_identifier = 'stat_allrois_LinearSVC_kfold_8ori_all_%s' % (train_data_type)
+    classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s' % (class_desc, train_data_type)
 
 
 #data_identifier = '_'.join((animalid, session, acquisition))
@@ -142,6 +142,8 @@ else:
 # #############################################################################
 # LOAD TRAINING DATA:
 # #############################################################################
+
+glob.glob(os.path.join(acquisition_dir, train_runid, 'traces', 'cnmf_*'))
 
 train_basedir = util.get_traceid_from_acquisition(acquisition_dir, train_runid, train_traceid)
     
@@ -170,7 +172,7 @@ data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_
     
 use_regression = False
 fit_best = True
-nfeatures_select = 20 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+nfeatures_select = 50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -235,7 +237,7 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # ###################### #######################################################
 test_runid = 'gratings_rotating_drifting' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid =  'cnmf_' #'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'spikes' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_data_type = 'corrected' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
 # #############################################################################
@@ -633,7 +635,14 @@ if isinstance(clf, CalibratedClassifierCV):
 
 # 
 training_data_fpath = os.path.join(train_basedir, 'data_arrays', 'datasets.npz')
-training_data = np.load(training_data_fpath)
+if 'comb' in train_runid:
+    tmpd = np.load(training_data_fpath)
+    training_data = tmpd['arr_0'][()]
+    train_run_info = training_data['run_info']
+else:
+    training_data = np.load(training_data_fpath)
+    train_info = training_data['run_info'][()]
+
 print training_data.keys()
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
 
@@ -717,7 +726,17 @@ trained_classes = list(np.copy(train_labels))
 trained_classes.append('bas')
 
 
-
+if any([isinstance(v, str) for v in clf.classes_]):
+    class_indices = [[v for v in clf.classes_].index(str(c)) for c in train_labels]
+else:
+    class_indices = [[v for v in clf.classes_].index(c) for c in train_labels]
+    
+if 'bas' in clf.classes_:
+    colorvals = sns.color_palette("hls", len(clf.classes_)-1)
+else:
+    colorvals = sns.color_palette("hls", len(clf.classes_))
+    
+    
 fig, axes = pl.subplots(len(train_labels), 1, figsize=(6,15))
 
 
@@ -762,9 +781,9 @@ sns.despine(trim=True, offset=4, ax=axes[lix])
 
 for lix in range(len(train_labels)):
     # Create color bar:
-    cy = np.ones(stimframes.shape) * axes[lix].get_ylim()[0]/2.0
-    z = stimframes.copy()
-    points = np.array([stimframes, cy]).T.reshape(-1, 1, 2)
+    cy = np.ones(stim_frames.shape) * axes[lix].get_ylim()[0]/2.0
+    z = stim_frames.copy()
+    points = np.array([stim_frames, cy]).T.reshape(-1, 1, 2)
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
     cmap = ListedColormap(colorvals[lix])
     lc = LineCollection(segments, cmap=cmap)
@@ -808,7 +827,7 @@ pl.suptitle('%s: Decoding training set' % roiset)
 label_figure(fig, data_identifier)
 
 
-figname = '%s_decoded_training_traces_%s_%s%s.png' % (roiset, train_runid, train_data_type, figs_append)
+figname = '%s_decoded_training_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
@@ -831,7 +850,7 @@ assert len(list(set(train_labels_df['nframes_on']))) == 1, "More than 1 nframes_
 train_nframes_on = list(set(train_labels_df['nframes_on']))[0]
 assert len(list(set(train_labels_df['stim_on_frame']))) == 1, "More than 1 stim_on_frame val found in TRAIN set..."
 train_stim_on = list(set(train_labels_df['stim_on_frame']))[0]
-ntrials_by_cond = [v for k,v in training_data['run_info'][()]['ntrials_by_cond'].items()]
+ntrials_by_cond = [v for k,v in train_run_info['ntrials_by_cond'].items()]
 assert len(list(set(ntrials_by_cond)))==1, "More than 1 rep values found in TRAIN set"
 ntrials_per_cond = list(set(ntrials_by_cond))[0]
 
