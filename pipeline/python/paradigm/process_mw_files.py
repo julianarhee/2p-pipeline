@@ -91,6 +91,7 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
 
     # First, find experiment start, stop, or pause events:
     modes = df.get_events('#state_system_mode')                                      # Find timestamps for run-time start and end (2=run)
+    print "Modes:", modes
     start_ev = [i for i in modes if i['value']==2][0]                                # 2=running, 0 or 1 = stopped
 
     run_idxs = [i for i,e in enumerate(modes) if e['time']>start_ev['time']]         # Get all "run states" if more than 1 found
