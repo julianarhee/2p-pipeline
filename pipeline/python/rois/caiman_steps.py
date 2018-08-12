@@ -115,8 +115,12 @@ def get_mmap_file(fnames, excluded_files=[],
     # Use memmap input params as unique id for current files:
     mmap_info = {'source': tif_src_dir, 
                  'downsample_factor': downsample_factor,
-                 'border_to_0': border_to_0}
-    
+                 'border_to_0': border_to_0,
+                 'excluded_files': list(excluded_files),
+                 'add_offset': add_offset}
+    with open(os.path.join(mmap_basedir, 'mmap_info.json'), 'w') as f:
+        json.dump(mmap_info, f, indent=4, sort_keys=True)
+ 
     mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
         
     # Create output dir:
@@ -1434,6 +1438,7 @@ def main(options):
     
     # First check that we don't need to re-extract:
     optsE = extract_options(options)
+    create_new = optsE.create_new
     check_results = [] 
     if optsE.datestr is not None:
         check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
@@ -1451,7 +1456,7 @@ def main(options):
             results_fpath = sorted(check_results)[-1]
             print "*** Loading: %s" % results_fpath
             
-    if optsE.create_new or len(check_results)==0: #lse:
+    if create_new or len(check_results)==0: #lse:
         # Extract rois and traces:
         results_fpath = run_cnmf(options)
         
