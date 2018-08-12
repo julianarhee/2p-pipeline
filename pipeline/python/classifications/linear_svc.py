@@ -1108,13 +1108,9 @@ opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A'
 #           '-n', '1']
 
 rootdir = '/Volumes/coxfs01/2p-data'
-opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180724', '-A', 'FOV1_zoom1x',
            '--no-pupil',
-           '-R', 'gratings_static_drifting', '-t', 'traces001',
-           '-n', '1']
-opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-           '--no-pupil',
-           '-R', 'gratings_static_drifting2', '-t', 'traces001',
+           '-R', 'gratings_drifting_static', '-t', 'cnmf_',
            '-n', '1']
 
 
@@ -1127,8 +1123,9 @@ opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
            '--no-pupil',
            '-R', 'gratings_static_drifting2', '-t', 'cnmf_',
            '-n', '1']
-options_list = [opts1, opts2]
-combo = True
+options_list = [opts1] #, opts2]
+combo = False
+
 
 #%%
 
