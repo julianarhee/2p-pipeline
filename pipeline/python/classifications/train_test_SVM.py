@@ -122,7 +122,7 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'combined_gratings_drifting_static' #_static' #'blobs_run2'
+train_runid = 'combined_gratings_static' #_static' #'blobs_run2'
 train_traceid = 'cnmf_' #'traces001'
 
 train_data_type = 'meanstim' #_plusnull'
@@ -163,16 +163,11 @@ print "Training labels:", train_labels
 
 data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_basedir)[-1]))
 
-#%%
-#if train_X.shape[-1] > X_test_orig.shape[-1]:
-#    print "Lost some ROIs somewhere..."
-#    train_X = train_X[:, 0:X_test_orig.shape[-1]]
-
 #%%  Classifier Parameters:
     
 use_regression = False
 fit_best = True
-nfeatures_select = 50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+nfeatures_select = 80 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -450,8 +445,12 @@ if isinstance(clf, CalibratedClassifierCV):
         else:
             class_list = sorted(train_labels, reverse=False)
             shift_sign = 1
+        
+        if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
+            start_angle_ix = class_list.index(0)
+        else:
+            start_angle_ix = class_list.index(test_configs[config]['ori'])
             
-        start_angle_ix = class_list.index(test_configs[config]['ori'])
         class_list = np.roll(class_list, shift_sign*start_angle_ix)
 
         if any([isinstance(v, str) for v in svc.classes_]):
@@ -927,6 +926,9 @@ import matplotlib as mpl
 if nfeatures_select == 50:
     nrows = 5 #4
     ncols = 10 #5
+elif nfeatures_select == 80:
+    nrows = 8
+    ncols = 10
 else:
     nrows = 4
     ncols = 5
@@ -1132,8 +1134,11 @@ for test_config in configs_tested:
     else:
         class_list = sorted(train_labels, reverse=False)
         shift_sign = 1
-        
-    start_angle_ix = class_list.index(test_configs[test_config]['ori'])
+
+    if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
+        start_angle_ix = class_list.index(0)
+    else:
+        start_angle_ix = class_list.index(test_configs[config]['ori'])
     class_list = np.roll(class_list, shift_sign*start_angle_ix)
     
     if 'bas' in clf.classes_:
