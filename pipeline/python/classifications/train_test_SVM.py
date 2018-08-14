@@ -665,10 +665,6 @@ train_configs = training_data['sconfigs'][()]
 train_cgroups = train_labels_df.groupby('config')
 trainingX_std = StandardScaler().fit_transform(trainingX)
 
-train_decode_dir = os.path.join(train_results_dir, 'train_data_decoding')
-if not os.path.exists(train_decode_dir): os.makedirs(train_decode_dir)
-
-
 # How good can the classifier "decode" its own training data:
 mean_preds_train = {}
 sem_preds_train = {}
@@ -1062,7 +1058,7 @@ for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)
         axes[lix].axes.xaxis.set_visible(True) #([])
         axes[lix].axes.xaxis.set_ticks([])
         
-    axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]))
+    axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]), fontsize=8)
         
 
 sns.despine(trim=True, offset=4, bottom=True)
