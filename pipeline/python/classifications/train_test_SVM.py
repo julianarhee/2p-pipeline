@@ -122,8 +122,8 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'combined_gratings_static' #_static' #'blobs_run2'
-train_traceid = 'cnmf_' #'traces001'
+train_runid = 'gratings_static' #_static' #'blobs_run2'
+train_traceid = 'traces001' #'traces001'
 
 train_data_type = 'meanstim' #_plusnull'
 input_data_type = 'corrected'
@@ -143,7 +143,7 @@ else:
 # LOAD TRAINING DATA:
 # #############################################################################
 
-glob.glob(os.path.join(acquisition_dir, train_runid, 'traces', 'cnmf_*'))
+#glob.glob(os.path.join(acquisition_dir, train_runid, 'traces', 'cnmf_*'))
 
 train_basedir = util.get_traceid_from_acquisition(acquisition_dir, train_runid, train_traceid)
     
@@ -167,7 +167,7 @@ data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_
     
 use_regression = False
 fit_best = True
-nfeatures_select = 80 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+nfeatures_select = 50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -230,9 +230,9 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # #############################################################################
 # Select TESTING data:
 # ###################### #######################################################
-test_runid = 'gratings_rotating_drifting' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
-test_traceid =  'cnmf_' #'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'corrected' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+test_runid = 'gratings_rotating' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_traceid =  'traces001' #'traces001' #'cnmf_20180720_14_36_24'
+test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
 # #############################################################################
@@ -858,11 +858,21 @@ config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_conf
 train_traces = {}
 for cf in config_list:
     print cf, train_configs[cf]['ori']
+    curr_config = [k for k,v in train_configs.items() if v['ori'] == class_label][0]
     
+    stim_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['stim_on_frame']))[0]
+    nframes_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['nframes_on']))[0]
+    stim_frames = np.arange(stim_on, stim_on+nframes_on)
+
+    nframes_per_trial = np.squeeze(all_preds_train[curr_config]).shape[0]
+    #nclasses_total = np.squeeze(all_preds_train[curr_config]).shape[1]
+    ntrials_per_cond =  np.squeeze(all_preds_train[curr_config]).shape[-1]
+
+
     cixs = train_labels_df[train_labels_df['config']==cf].index.tolist()
     curr_frames = trainingX[cixs, :]
     print curr_frames.shape
-    nframes_per_trial = len(cixs) / ntrials_per_cond
+    #nframes_per_trial = len(cixs) / ntrials_per_cond
     
     #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
     tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
