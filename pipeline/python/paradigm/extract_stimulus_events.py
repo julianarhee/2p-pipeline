@@ -134,7 +134,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     use_loop = False # True 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
-    frame_bitcodes = dict(); ix = 0; #codes = [];
+    frame_bitcodes = dict(); #ix = 0; #codes = [];
     missed_triggers = 0
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
@@ -159,10 +159,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         else:
             frame_bitcodes['%i_p0' % idx] = tmp_codes_0
             frame_bitcodes['%i_p1' % idx] = tmp_codes_1
-        
+
+        # ix += 1
+       
     print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
-            
-        ix += 1
+    print frame_bitcodes.keys()[0:5]        
 
     ### Find first frame of MW experiment start:
     modes_by_frame = dict((fr, int(frame_bitcodes[fr].mode()[0])) \
@@ -196,15 +197,15 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 #    tidx = 286
 #    curr_frames = tmp_frames['starting_frame_set']
 #    prev_trial = 'trial00286' #'trial00001'
-
+    prev_trial = 'trial00001'
     skip_trial = False
     trial_frames = []
     ntrials = len(mwtrials.keys())
     durs = []
     skipped = {}
-    #for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
     
-    for tidx, trial in zip(np.arange(286, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[286:]):
+    #for tidx, trial in zip(np.arange(286, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[286:]):
     
         print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
@@ -272,7 +273,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                         fiter+=1
                     if mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                         print "... and skipping extra ITI for block start"
-                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate) #- int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
+                        nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 1.0 * framerate) #- int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
                     else:
                         nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
                     print "Skipping %.2f sec worth of frames." % (nframes_to_skip/framerate)
@@ -308,7 +309,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             curr_frame_vals = tuple((k, modes_by_frame[k]) for k in curr_frames)
             first_frame = [(fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode][0]
             #first_frame = next(((fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode), None)
-            if bi > 0:
+            if bi > 0 and len(bitcodes) > 2:
                 # ** CHeck for skipped frames -- should be relatively consecutive, otherwise we're frame-shifting.
                 currframe = int(first_frame[1][0].split('_')[0])
                 prevframe = int(first_found_frame[bi-1][0].split('_')[0])
