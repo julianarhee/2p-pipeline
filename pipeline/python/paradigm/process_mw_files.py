@@ -421,6 +421,12 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
 #%%
 def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
 
+    # Load run info:
+    rundir = curr_dfn.split('/raw_')[0]
+    run = os.path.split(rundir)[-1]
+    runinfo_path = os.path.join(rundir, '%s.json' % run)
+    with open(runinfo_path, 'r') as f: runinfo = json.load(f)
+    
     df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx)
     #print bounds
     codec = df.get_codec()
@@ -447,7 +453,41 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             iti_to_add = int(check_durs)
             trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
         #print "trigger times:", trigg_times
+        
+        
+        # Check trigger durs to determine whether any "chunks" should combine to 1 run:
+        expected_dur = round(runinfo['nvolumes'] / runinfo['frame_rate'])
+        partials = [ti for ti,trigg in enumerate(trigg_times) if round((trigg[1]-trigg[0])/1E6) < expected_dur]
+        if len(partials) > 0:
+            nconsecs = np.where(np.diff(partials) > 1)[0]
+            
+            if len(nconsecs) > 0:
+                subdivs = [partials[nc+1:nconsecs[ni+1]+1] if ni < len(nconsecs)-1 else partials[nc+1:] for ni,nc in enumerate(nconsecs)]
+                subdivs.append(partials[0:nconsecs[0]+1])
+                subdivs = sorted(subdivs)
+            else:
+                subdivs = [partials]
 
+        trigg_times_tmp = []; curr_chunk = []
+        for triggix, trigger_sect in enumerate(trigg_times):
+            if triggix in partials:
+                if triggix in curr_chunk:
+                    continue
+                print "Detected split tif chunks, starting at File %i" % (triggix+1)
+
+                subchunk_ix = [subix for subix in range(len(subdivs)) if triggix in subdivs[subix]][0]
+                curr_chunk = subdivs[subchunk_ix]
+                first_file_in_chunk = curr_chunk[0]
+                last_file_in_chunk = curr_chunk[-1]
+                
+                trigg_times_tmp.append([trigg_times[first_file_in_chunk][0], trigg_times[last_file_in_chunk][-1]])
+            else:
+                trigg_times_tmp.append(trigger_sect)
+        assert len(trigg_times_tmp) == runinfo['ntiffs'], "Even with subdivs, funky n chunks (%i) found..." % len(trigg_times_tmp)
+        trigg_times = trigg_times_tmp
+        
+    
+            
         ### Get all pixel-clock events in current run:
        # print "selected runs:", user_run_selection
         if pixelclock:
@@ -880,7 +920,14 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         for trialidx,(stim,iti,iti_dur) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey), iti_durs)):
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
-
+            print trialname
+            
+            corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]]
+            corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) if iti.time > tval[0] and iti.time <= tval[1]]
+            if len(corresponding_tif_stim) == 0 or len(corresponding_tif_iti) == 0:
+                print "*** %s -- time does not fall within SI triggers, skipping." % trialname
+                continue
+            
             # blankidx = trialidx*2 + 1
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
