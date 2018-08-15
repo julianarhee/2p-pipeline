@@ -117,16 +117,24 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     long_breaks = np.where(diffs>nreads_per_frame*2)[0]
     for lix, lval in enumerate(long_breaks):
         subintervals = list(set(frame_on_idxs[lval+1:long_breaks[lix]]))
-        if any(subintervals > nreads_per_frame+2) or any(subintervals < nreads_per_frame-2):
+        if any(subintervals > nreads_per_frame+1) or any(subintervals < nreads_per_frame-1):
             print "WARNING -- extra missed frame-triggers in tif %i." % lix+1
+
 
 #    # Re-sort frame_idxs:
     frame_on_idxs = sorted(list(set(frame_on_idxs)))
     
+    nexpected_frames = runinfo['nvolumes'] * runinfo['ntiffs']
+    nfound_frames = len(frame_on_idxs)
+    if nexpected_frames != nfound_frames:
+        print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nexpected_frames - nfound_frames)
+        
+        
     use_loop = False # True 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
     frame_bitcodes = dict(); ix = 0; #codes = [];
+    missed_triggers = 0
     for idx,frameidx in enumerate(frame_on_idxs):
         #framenum = 'frame'+str(idx)
         if idx==len(frame_on_idxs)-1:
@@ -137,8 +145,21 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
     #### Split bitcodes per frame in half for higher "resolution" of bcodes per frame
         halfmark = int(np.floor(len(bcodes)/2))
 
-        frame_bitcodes['%i_p0' % idx] = bcodes[0:halfmark]
-        frame_bitcodes['%i_p1' % idx] = bcodes[halfmark:]
+        tmp_codes_0 = bcodes[0:halfmark]
+        tmp_codes_1 = bcodes[halfmark:]
+        
+        if (nreads_per_frame/2)+1 < len(tmp_codes_0) < 100:
+            missed_triggers += 1
+            print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
+            # This is a missed trigger, and not a inter-block mark
+            frame_bitcodes['%i_p0a' % idx] = bcodes[0:halfmark/2]
+            frame_bitcodes['%i_p0b' % idx] = bcodes[halfmark/2:halfmark]
+            frame_bitcodes['%i_p1a' % idx] = bcodes[halfmark:halfmark+halfmark/2]
+            frame_bitcodes['%i_p1b' % idx] = bcodes[halfmark+halfmark/2:]
+        else:
+            frame_bitcodes['%i_p0' % idx] = tmp_codes_0
+            frame_bitcodes['%i_p1' % idx] = tmp_codes_1
+            
         ix += 1
 
     ### Find first frame of MW experiment start:
@@ -235,6 +256,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         print "N bitcodes:", len(bitcodes)
         for bi, bitcode in enumerate(bitcodes):
+            print bi
             #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
             
             #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
@@ -289,6 +311,16 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 #%
     return trialevents
 
+
+#%%
+gaps = []
+for fi in np.arange(0, len(first_found_frame)-1):
+    nsec_diff = (float(first_found_frame[fi+1][0].split('_')[0]) - float(first_found_frame[fi][0].split('_')[0])) / framerate
+    nframes_diff = int(first_found_frame[fi+1][0].split('_')[0]) - int(first_found_frame[fi][0].split('_')[0])
+    if nframes_diff > 1:
+        print "%i: %i, %i" % (fi, nsec_diff, nframes_diff)
+        gaps.append(first_found_frame[fi][0])
+    
 #%%
 
 def extract_options(options):
