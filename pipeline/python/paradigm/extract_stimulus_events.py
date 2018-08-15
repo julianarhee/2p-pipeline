@@ -181,6 +181,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         #print trial
         trialevents[mwtrial_hash] = dict()
+        trialevents[mwtrial_hash]['trial'] = trial
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
 
         bitcodes = mwtrials[trial]['all_bitcodes']
@@ -218,7 +219,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
                     curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                     # Skip extra frames if start of new block (back to back ITIs in serial data):
-                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate)
+                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate) 
                 else:
                     # Only skip 1 ITI's worth of frames:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
@@ -230,9 +231,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         #curr_frame_vals = dict((k, modes_by_frame[v]) for k in curr_frames)
         #first_found_frame = [(bitcode, curr_frame_vals.keys()[curr_frame_vals.values().index(bitcode)]) for bitcode in bitcodes] 
+        starting_frame_set = np.copy(curr_frames)
 
+        print "N bitcodes:", len(bitcodes)
         for bi, bitcode in enumerate(bitcodes):
-            #print bitcode
             #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
             
             #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
@@ -249,6 +251,20 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
         stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
 
         print round(stim_dur_curr), '[%s]' % trial
+        curr_state = {'last_trial': trial,
+                          'starting_frame_set': starting_frame_set,
+                          'first_found_frame': first_found_frame,
+                          'bitcodes': bitcodes,
+                          'modes_by_frame': modes_by_frame,
+                          'frame_bitcodes': frame_bitcodes,
+                          'mwtrial_path': mwtrial_path,
+                          'serialfn_path': serialfn_path}
+            
+        with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_trial_events.pkl'), 'w') as f:
+            pkl.dump(trialevents, f, protocol=pkl.HIGHEST_PROTOCOL)
+        with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_curr_frames.pkl'), 'wb') as f:
+            pkl.dump(curr_state, f, protocol=pkl.HIGHEST_PROTOCOL)           
+
 
         try:
             assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
