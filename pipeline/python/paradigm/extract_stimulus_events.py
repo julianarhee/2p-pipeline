@@ -192,12 +192,20 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 # all_bitcodes[58390:58420]
     #%%
     #use_loop = True# False
+#    trial = 'trial00287'
+#    tidx = 286
+#    curr_frames = tmp_frames['starting_frame_set']
+#    prev_trial = 'trial00286' #'trial00001'
+
+    skip_trial = False
     trial_frames = []
     ntrials = len(mwtrials.keys())
-    prev_trial = 'trial00001'
     durs = []
+    skipped = {}
+    #for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
     
-    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
+    for tidx, trial in zip(np.arange(286, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[286:]):
+    
         print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
@@ -211,17 +219,46 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 
         # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
         minframes = 5 #4 #5 #4
-        if (blank_start is True):
+        
+#        if trial == 'trial00289':
+#            break
+        
+        if skip_trial: # Skip the PREVIOUS trials, so jump full trial's worth of frame indices:
+            print "... Skipping previous trials' frames (%s)..." % prev_trial
+            iti_frames = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) 
+            stim_frames = int(np.floor(mwtrials[prev_trial]['stim_duration']/1E3) * framerate) 
+            # NOTE:  Trials skipped if massive frame-shift error in bitcodes
+            # This is likely an indication of funky behavior during acquisition - we should skip these trials
+            # Based on 20180814 - JC008 gratings data, we don't want to skip full trial's worth of frames.
+            nframes_to_skip = int((stim_frames + iti_frames)) / 2
+            # Add nframes to actual frame index:
+            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
+            # Get the subdivided frame key that this new frame corresponds to:
+            relative_frame_ix = [int(fr.split('_')[0]) for fr in curr_frames].index(new_start_ix)
+            curr_frames = sorted(curr_frames[relative_frame_ix:], key=natural_keys)
+            
+#        # Also check whether the current trial is sequentially after the previous:
+#        if int(trial[5:]) != int(prev_trial[5:])+1:
+#            print "... MW skipped a trial between %s and %s." % (prev_trial, trial)
+#            skip_trial = True
+#            iti_frames = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
+#            stim_frames = int(np.floor(mwtrials[prev_trial]['stim_duration']/1E3) * framerate) #3)
+#            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
+#            # Add nframes to actual frame index:
+#            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
+#            # Get the subdivided frame key that this new frame corresponds to:
+#            relative_frame_ix = [int(fr.split('_')[0]) for fr in curr_frames].index(new_start_ix)
+#            curr_frames = sorted(curr_frames[relative_frame_ix:], key=natural_keys)
+            
+        
+        elif (blank_start is True):
             if tidx == 0:
                 if (np.median(frame_bitcodes[first_frame]) == mwtrials[trial]['stim_bitcode']):
                     # If this is the first trial, don't skip anything
                     print "FIRST TRIAL"
                     nframes_to_skip= 0
-                #curr_frames = sorted(allframes[allframes.index(first_frame)+nframes_to_skip:], key=natural_keys)
                 else:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
-
-                curr_frames = sorted(curr_frames[nframes_to_skip:], key=natural_keys)
             elif tidx > 0:
                 if bitcodes[0] == mwtrials[prev_trial]['all_bitcodes'][-1]:
                     # Check that LAST trial's ITI is not the same as CURRENT trial's STIM
@@ -230,8 +267,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     consecutives = []; fiter = 0
                     while len(consecutives) < minframes:
                         frame = curr_frames[fiter]
-                        tmp_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v!=bitcodes[0]]
-                        consecutives = [i for i in np.diff(tmp_frames) if i==1]
+                        tmp_curr_frames = [k for k,v in zip(frame_bitcodes[frame].index.tolist(), frame_bitcodes[frame].values) if v!=bitcodes[0]]
+                        consecutives = [i for i in np.diff(tmp_curr_frames) if i==1]
                         fiter+=1
                     if mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
                         print "... and skipping extra ITI for block start"
@@ -239,16 +276,21 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     else:
                         nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
                     print "Skipping %.2f sec worth of frames." % (nframes_to_skip/framerate)
-                    curr_frames = sorted(curr_frames[fiter+nframes_to_skip:], key=natural_keys)
+                    nframes_to_skip = fiter + nframes_to_skip 
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
-                    # Skip extra frames if start of new block (back to back ITIs in serial data):
+                    # Skip 2 (start and end block) ITIs -- extra frames if start of new block (back to back ITIs in serial data):
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate) 
                 else:
                     # Only skip 1 ITI's worth of frames:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
-                    #curr_frames = sorted(allframes[allframes.index(first_frame)+nframes_to_skip:], key=natural_keys)
-                    curr_frames = sorted(curr_frames[nframes_to_skip:], key=natural_keys)
-
+    
+            #curr_frames = sorted(curr_frames[nframes_to_skip:], key=natural_keys)
+            # Add nframes to actual frame index:
+            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
+            # Get the subdivided frame key that this new frame corresponds to:
+            relative_frame_ix = [int(fr.split('_')[0]) for fr in curr_frames].index(new_start_ix)
+            curr_frames = sorted(curr_frames[relative_frame_ix:], key=natural_keys)
+            
         #### For each bitcode of current trial, get the correpsonding frame(s):
         first_found_frame = [] #8542 [(14, 8547), (6, 8592)]
 
@@ -257,23 +299,39 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         starting_frame_set = np.copy(curr_frames)
 
         print "N bitcodes:", len(bitcodes)
+        skip_trial = False
         for bi, bitcode in enumerate(bitcodes):
-            #print bi
+            #print "%s -- %i" % (trial, bi)
             #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
             
             #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
             curr_frame_vals = tuple((k, modes_by_frame[k]) for k in curr_frames)
             first_frame = [(fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode][0]
             #first_frame = next(((fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode), None)
-            
-            #first_frame = curr_frame_vals.keys()[curr_frame_vals.values().index(bitcode)]
-            #first_found_frame.append((bitcode, first_frame))
+            if bi > 0:
+                # ** CHeck for skipped frames -- should be relatively consecutive, otherwise we're frame-shifting.
+                currframe = int(first_frame[1][0].split('_')[0])
+                prevframe = int(first_found_frame[bi-1][0].split('_')[0])
+                if (currframe - prevframe)/framerate >= (2./framerate):
+                    print "Massive break found within %s. Skipping!" % trial
+                    # Flag skip_trial TRUE so that on the next trial's parsing, we know to skip a portion of the frames...
+                    skip_trial = True 
+                    curr_frames = starting_frame_set.copy() # Revert incrementally-shortened frame-bank
+                    break
             first_found_frame.append(first_frame[1])
             curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
-            
-        #stim_dur_curr = round((first_found_frame[-1][1] - first_found_frame[0][1])/framerate, 2)
-        stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
+        
+        prev_trial = trial
+        
+        if skip_trial:
+            # Store skip info to remove from MW dicts and trialevents dict.
+            # Continue to skip bitcode/trial-duration checks for skipped trial.
+            skipped.update({mwtrial_hash: trial})
+            print "** SKIPPED: %s" % trial            
+            continue
 
+        # Do checks for stimulus duration:        
+        stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
         print round(stim_dur_curr), '[%s]' % trial
 
         try:
@@ -295,6 +353,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 
             assert round(stim_dur_curr) == round(mwtrials[trial]['stim_duration']/1E3), "Bad stim duration..! %s:" % trial 
 
+        # Append current trial's info to main trialevents dict:
         durs.append(stim_dur_curr)
         trial_frames.append(first_found_frame)
         
@@ -302,8 +361,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         trialevents[mwtrial_hash]['stim_off_idx'] = int(first_found_frame[-1][0].split('_')[0])
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
         
-        prev_trial = trial
-        
+        #prev_trial = trial
+    
+    # Do a final check of all stim durs:
     rounded_durs = list(set([round(d) for d in durs]))
     unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3) for t in mwtrials.keys()]))
     if len(rounded_durs) != len(unique_mw_stim_durs):
