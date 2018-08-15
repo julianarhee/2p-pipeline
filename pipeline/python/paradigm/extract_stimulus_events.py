@@ -93,7 +93,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     ### LOAD MW DATA.
     with open(mwtrial_path, 'r') as f:
         mwtrials = json.load(f)
-    print len(mwtrials)
+    print "N parsed trials (MW):", len(mwtrials)
 
     ### LOAD SERIAL DATA.
     serialdata = pd.read_csv(serialfn_path, sep='\t')
@@ -151,7 +151,6 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         if (nreads_per_frame/2)+1 < len(tmp_codes_0) < 100:
             missed_triggers += 1
-            print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
             # This is a missed trigger, and not a inter-block mark
             frame_bitcodes['%i_p0a' % idx] = bcodes[0:halfmark/2]
             frame_bitcodes['%i_p0b' % idx] = bcodes[halfmark/2:halfmark]
@@ -160,6 +159,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         else:
             frame_bitcodes['%i_p0' % idx] = tmp_codes_0
             frame_bitcodes['%i_p1' % idx] = tmp_codes_1
+        
+    print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
             
         ix += 1
 
@@ -189,7 +190,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 #first_frame = F[0]
     
 # all_bitcodes[58390:58420]
-    
+    #%%
     #use_loop = True# False
     trial_frames = []
     ntrials = len(mwtrials.keys())
@@ -197,7 +198,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     durs = []
     
     for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
-
+        print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
 
@@ -274,7 +275,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
 
         print round(stim_dur_curr), '[%s]' % trial
-        curr_state = {'last_trial': trial,
+
+        try:
+            assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
+        except Exception as e:
+            curr_state = {'last_trial': trial,
                           'starting_frame_set': starting_frame_set,
                           'first_found_frame': first_found_frame,
                           'bitcodes': bitcodes,
@@ -283,15 +288,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                           'mwtrial_path': mwtrial_path,
                           'serialfn_path': serialfn_path}
             
-        with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_trial_events.pkl'), 'w') as f:
-            pkl.dump(trialevents, f, protocol=pkl.HIGHEST_PROTOCOL)
-        with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_curr_frames.pkl'), 'wb') as f:
-            pkl.dump(curr_state, f, protocol=pkl.HIGHEST_PROTOCOL)           
+            with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_trial_events.pkl'), 'w') as f:
+                pkl.dump(trialevents, f, protocol=pkl.HIGHEST_PROTOCOL)
+            with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_curr_frames.pkl'), 'wb') as f:
+                pkl.dump(curr_state, f, protocol=pkl.HIGHEST_PROTOCOL)           
 
-
-        try:
-            assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
-        except Exception as e:
             assert round(stim_dur_curr) == round(mwtrials[trial]['stim_duration']/1E3), "Bad stim duration..! %s:" % trial 
 
         durs.append(stim_dur_curr)
@@ -309,7 +310,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         print " *** WARNING -- funky stim durs found:", rounded_durs
         print " --- found MW stim durs:", unique_mw_stim_durs
         
-#%
+#%%
     return trialevents
 
 
