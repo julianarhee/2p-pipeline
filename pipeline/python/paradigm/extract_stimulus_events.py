@@ -80,13 +80,14 @@ def natural_keys(text):
 
 #%%
 
-def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start=True, verbose=False):
+def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False):
     '''
     For every bitcode of every trial, find corresponding SI frame.
     
     TODO:  this is slow, make it faster...
     
     '''
+    framerate = runinfo['frame_rate']
     trialevents = None
 
     ### LOAD MW DATA.
@@ -256,7 +257,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
         print "N bitcodes:", len(bitcodes)
         for bi, bitcode in enumerate(bitcodes):
-            print bi
+            #print bi
             #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
             
             #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
@@ -313,13 +314,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start
 
 
 #%%
-gaps = []
-for fi in np.arange(0, len(first_found_frame)-1):
-    nsec_diff = (float(first_found_frame[fi+1][0].split('_')[0]) - float(first_found_frame[fi][0].split('_')[0])) / framerate
-    nframes_diff = int(first_found_frame[fi+1][0].split('_')[0]) - int(first_found_frame[fi][0].split('_')[0])
-    if nframes_diff > 1:
-        print "%i: %i, %i" % (fi, nsec_diff, nframes_diff)
-        gaps.append(first_found_frame[fi][0])
+#gaps = []
+#for fi in np.arange(0, len(first_found_frame)-1):
+#    nsec_diff = (float(first_found_frame[fi+1][0].split('_')[0]) - float(first_found_frame[fi][0].split('_')[0])) / framerate
+#    nframes_diff = int(first_found_frame[fi+1][0].split('_')[0]) - int(first_found_frame[fi][0].split('_')[0])
+#    if nframes_diff > 1:
+#        print "%i: %i, %i" % (fi, nsec_diff, nframes_diff)
+#        gaps.append(first_found_frame[fi][0])
     
 #%%
 
@@ -426,7 +427,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
         serialfn_path = os.path.join(paradigm_rawdir, serialfn)
 
         # Align MW events to frame-events from serialdata:
-        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, framerate, blank_start=blank_start, verbose=False)
+        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=blank_start, verbose=False)
 
         # Sort trials in run by time:
         sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
