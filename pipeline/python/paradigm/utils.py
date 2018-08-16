@@ -48,56 +48,56 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
 
 #%% Load Datasets:
-
-def extract_options(options):
-
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
-                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid',
-                          default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session',
-                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
-    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-                          action='append',
-                          help="run ID in order of runs")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-                          action='append',
-                          help="trace ID in order of runs")
-    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
-
-    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
-    parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
-    parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
-    parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
-    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
-
-
-    # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-s', '--radius-min', action="store",
-                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-    parser.add_option('-B', '--radius-max', action="store",
-                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-
-    (options, args) = parser.parse_args(options)
-    if options.slurm:
-        options.rootdir = '/n/coxfs01/2p-data'
-
-    return options
+#
+#def extract_options(options):
+#
+#    parser = optparse.OptionParser()
+#
+#    parser.add_option('-D', '--root', action='store', dest='rootdir',
+#                          default='/nas/volume1/2photon/data',
+#                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+#    parser.add_option('-i', '--animalid', action='store', dest='animalid',
+#                          default='', help='Animal ID')
+#
+#    # Set specific session/run for current animal:
+#    parser.add_option('-S', '--session', action='store', dest='session',
+#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
+#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
+#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+#                          default='raw', help="trace type [default: 'raw']")
+#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
+#                          action='append',
+#                          help="run ID in order of runs")
+#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
+#                          action='append',
+#                          help="trace ID in order of runs")
+#    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
+#    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+#    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
+#
+#    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
+#    parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
+#    parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
+#    parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
+#    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
+#
+#
+#    # Pupil filtering info:
+#    parser.add_option('--no-pupil', action="store_false",
+#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+#    parser.add_option('-s', '--radius-min', action="store",
+#                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+#    parser.add_option('-B', '--radius-max', action="store",
+#                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
+#    parser.add_option('-d', '--dist', action="store",
+#                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#
+#    (options, args) = parser.parse_args(options)
+#    if options.slurm:
+#        options.rootdir = '/n/coxfs01/2p-data'
+#
+#    return options
 
 
 #%%
