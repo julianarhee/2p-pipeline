@@ -216,6 +216,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
+        starting_frame_set = np.copy(curr_frames)
 
         #print trial
         trialevents[mwtrial_hash] = dict()
@@ -311,7 +312,6 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 
         #curr_frame_vals = dict((k, modes_by_frame[v]) for k in curr_frames)
         #first_found_frame = [(bitcode, curr_frame_vals.keys()[curr_frame_vals.values().index(bitcode)]) for bitcode in bitcodes] 
-        starting_frame_set = np.copy(curr_frames)
 
         print "N bitcodes:", len(bitcodes)
         skip_trial = False
