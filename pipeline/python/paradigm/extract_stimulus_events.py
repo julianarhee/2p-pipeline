@@ -214,8 +214,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     durs = []
     skipped = {}
     
-    #for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
-    for tidx, trial in zip(np.arange(tidx, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[tidx:]):
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
+    #for tidx, trial in zip(np.arange(tidx, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[tidx:]):
     
         print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
@@ -325,7 +325,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         print "N bitcodes:", len(bitcodes)
         skip_trial = False
         for bi, bitcode in enumerate(bitcodes):
-            print "%s -- %i" % (trial, bi)
+            #print "%s -- %i" % (trial, bi)
             #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
             
             #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
