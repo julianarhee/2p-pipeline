@@ -227,8 +227,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
         minframes = 5 #4 #5 #4
         
-        if trial == 'trial00006':
-            break
+        #if trial == 'trial00006':
+        #    break
         
         if skip_trial: # Skip the PREVIOUS trials, so jump full trial's worth of frame indices:
             print "... Skipping previous trials' frames (%s)..." % prev_trial
