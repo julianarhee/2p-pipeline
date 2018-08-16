@@ -514,7 +514,11 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
     nfiles = runinfo['ntiffs']
     nchannels = runinfo['nchannels']
     nslices = len(runinfo['slices'])
-    nvolumes = runinfo['nvolumes']
+    rundir = os.path.split(runinfo_path)[0]
+    raw_meta = glob.glob(os.path.join(rundir, 'raw_*', 'SI_*.json'))[0]
+    print "Loading raw SI info from: \n%s" % raw_meta
+    with open(raw_meta_path, 'r') as f: simeta = json.load(f)
+    #nvolumes = runinfo['nvolumes']
     ntotalframes = nslices * nvolumes * nchannels
     basename = runinfo['base_filename']
 
@@ -536,34 +540,34 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
         currtiff = tf.imread(os.path.join(source_dir, tfn))
         nslices_actual = currtiff.shape[0]/(nchannels*nvolumes)
 	ndiscard = nslices_actual - nslices
-        if currtiff.shape[0] == nchannels*(nslices+ndiscard)*nvolumes:
-            for ch in range(nchannels):
-                channelnum = int(ch+1)
-                ch_tiff = currtiff[ch::nchannels]
-                for sl in range(nslices):
-                    slicenum = int(sl+1)
-                    sl_tiff = ch_tiff[sl::(nslices+ndiscard)]
-		    print "Slice tiff shape:", sl_tiff.shape
-                    if filter3D:
-                        if filter_type == 'median':
-                            print "Median filtering, size %i" % filter_size
-                            sl_tiff = ndimage.median_filter(sl_tiff, size=filter_size)
-                    if zproj_type == 'mean' or zproj_type == 'average':
-                        zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
-                    elif zproj_type == 'std':
-                        zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
-                    curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
-                    tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj_type, curr_slice_fn)), zprojslice)
-
-                    # Save visible too:
-                    byteimg = img_as_ubyte(zprojslice)
-                    zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
-                    tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
-
-                    print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
-        else:
-            print "Loaded tiff shape does not match dims expected:", os.path.join(source_dir, tfn)
+        if currtiff.shape[0] != nchannels*(nslices+ndiscard)*nvolumes:
+            print "*** WARNING: Loaded tiff shape does not match dims expected:", os.path.join(source_dir, tfn)
             print "nchannels: %i, nslices: %i, ndiscard: %i, nvolumes: %i" % (nchannels, nslices, ndiscard, nvolumes)
+
+    for ch in range(nchannels):
+	channelnum = int(ch+1)
+	ch_tiff = currtiff[ch::nchannels]
+	for sl in range(nslices):
+	    slicenum = int(sl+1)
+	    sl_tiff = ch_tiff[sl::(nslices+ndiscard)]
+	    print "Slice tiff shape:", sl_tiff.shape
+	    if filter3D:
+		if filter_type == 'median':
+		    print "Median filtering, size %i" % filter_size
+		    sl_tiff = ndimage.median_filter(sl_tiff, size=filter_size)
+	    if zproj_type == 'mean' or zproj_type == 'average':
+		zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
+	    elif zproj_type == 'std':
+		zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
+	    curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
+	    tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj_type, curr_slice_fn)), zprojslice)
+
+	    # Save visible too:
+	    byteimg = img_as_ubyte(zprojslice)
+	    zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
+	    tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
+
+	    print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
     #sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)
