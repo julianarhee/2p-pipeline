@@ -463,7 +463,7 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
 
 #%%
 
-def create_neuropil_masks(masks, niterations=3):
+def create_neuropil_masks(masks, niterations=10):
     # Create kernel for dilating ROIs:
     kernel = np.ones((3,3),masks.dtype)
 
@@ -472,10 +472,11 @@ def create_neuropil_masks(masks, niterations=3):
 
     for ridx in range(nrois):
         rmask = masks[:,:,ridx]
+        gap = cv2.dilate(rmask, kernel, iterations=4)
         dilated = cv2.dilate(rmask, kernel, iterations=niterations)
 
         # Subtract to get annulus region:
-        annulus = (dilated - rmask)
+        annulus = (dilated - gap)
 
         # Get full mask image to subtract overlaps:
         allmasks = np.sum(masks, axis=-1)
@@ -491,7 +492,7 @@ def create_neuropil_masks(masks, niterations=3):
 
 
 #%%
-def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropil_correction=True, niter=3, rootdir=''):
+def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropil_correction=True, niter=10, rootdir=''):
     '''
     This function takes a masks.hdf5 file and formats it into a dict that standardizes how
     mask arrays are called. This was a tmp fix to deal with the fact that
@@ -1708,7 +1709,7 @@ def extract_options(options):
 
     # Neuropil options:
     parser.add_option('-a', '--halo', action="store",
-                      dest="np_niterations", default=3, help="[np-subtract]:  N iterations for ROI dilation when creating annulus for neuropil [default: 3]")
+                      dest="np_niterations", default=10, help="[np-subtract]:  N iterations for ROI dilation when creating annulus for neuropil [default: 10]")
     parser.add_option('-c', '--cfactor', action="store",
                       dest="np_correction_factor", default=0.5, help="[np-subtract]: Correction factor for neuropil subtraction [default: 0.5]")
     parser.add_option('--neuropil', action="store_true",
