@@ -20,7 +20,7 @@ import numpy as np
 from pipeline.python.utils import natural_keys
 
 #%%
-def plot_movie_timecourse_for_stimconfig(roi_df, TRIALS, configs, curr_roi_figdir='/tmp'): #, roi_trials=None):
+def plot_movie_timecourse_for_stimconfig(roi_df, TRIALS, configs, trace_type='raw', curr_roi_figdir='/tmp'): #, roi_trials=None):
     """
     For user-specified ROI, create a plot of timecourse for EACH file. Create a new
     plot for each stimulus-config, s.t. each repetition of a given stim-config in a given file
@@ -391,8 +391,8 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
         if len(values) < max_nframes:
             # Pad:
             pad_size = max_nframes - len(values)
-            values = np.pad(values, (pad_size,0), 'constant', constant_values=np.nan) 
-            raw_values = np.pad(raw_values, (pad_size,0), 'constant', constant_values=np.nan) 
+            values = np.pad(values, (0, pad_size), 'constant', constant_values=np.nan) 
+            raw_values = np.pad(raw_values, (0, pad_size), 'constant', constant_values=np.nan) 
         for ridx, roi in enumerate(roi_list):
 #            if len(traces.keys()) > 1:
             trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'][:], # + fidx*secs_per_file,
