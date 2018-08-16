@@ -360,11 +360,24 @@ maskinfo = h5py.File(os.path.join(traceid_dir, 'MASKS.hdf5'), 'r')
 
 rawtrace_dfs = []
 trace_dfs = []
+nframes = []
 for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
     curr_file = file_names[fidx]
 
     # Load extrated TRACES from extracted timecourse mats [T,nrois]:
     traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
+    nframes.append(traces['Slice01']['traces'][trace_type].shape[0])
+
+nvolumes_unique = list(set(nframes))
+max_nframes = max(nvolumes_unique)
+
+
+for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
+    curr_file = file_names[fidx]
+
+    # Load extrated TRACES from extracted timecourse mats [T,nrois]:
+    traces = h5py.File(os.path.join(traceid_dir, 'files', trace_fn), 'r')
+
     for sidx, curr_slice in enumerate(traces.keys()):
         print "trace types:", traces[curr_slice]['traces'].keys()
 
@@ -373,14 +386,20 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
 
         roi_list = ['roi%05d' % int(ridx+1) for ridx in range(nr)] #traces[curr_slice]['masks'].attrs['roi_idxs']]
         roi_list.extend(['bg%02d' % int(bidx+1) for bidx in range(nb)]) # Make sure background comps are at END Of list, since indexing thru:
-
+        values = traces[curr_slice]['traces'][trace_type][:, ridx]
+        raw_values = traces[curr_slice]['traces']['raw'][:, ridx]
+        if len(values) < max_nframes:
+            # Pad:
+            pad_size = max_nframes - len(values)
+            values = np.pad(values, (pad_size,0), 'constant', constant_values=np.nan) 
+            raw_values = np.pad(raw_values, (pad_size,0), 'constant', constant_values=np.nan) 
         for ridx, roi in enumerate(roi_list):
 #            if len(traces.keys()) > 1:
             trace_dfs.append(pd.DataFrame({'tsec': traces[curr_slice]['frames_tsec'][:], # + fidx*secs_per_file,
                                      'file': curr_file,
                                      'block': fidx + 1,
                                      'slice': curr_slice,
-                                     'values': traces[curr_slice]['traces'][trace_type][:, ridx],
+                                     'values': values, #traces[curr_slice]['traces'][trace_type][:, ridx],
                                      'roi': roi_list[ridx]
                                      }))
             if not trace_type == 'raw':
@@ -388,7 +407,7 @@ for fidx, trace_fn in enumerate(sorted(trace_files, key=natural_keys)):
                                      'file': curr_file,
                                      'block': fidx + 1,
                                      'slice': curr_slice,
-                                     'values': traces[curr_slice]['traces']['raw'][:, ridx],
+                                     'values': raw_values, #traces[curr_slice]['traces']['raw'][:, ridx],
                                      'roi': roi_list[ridx]
                                      }))
     
