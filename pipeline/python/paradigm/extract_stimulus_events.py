@@ -186,10 +186,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     first_frame = first_stim_frame
 
 ##first_frame = 2289 
-F = copy.copy(curr_frames)
+#F = copy.copy(curr_frames)
 #####
-curr_frames = copy.copy(F)
-first_frame = F[0]
+#curr_frames = copy.copy(F)
+#first_frame = F[0]
     
 # all_bitcodes[58390:58420]
     #%%
@@ -203,15 +203,15 @@ first_frame = F[0]
 #    with open(mwtrial_path, 'r') as f: mwtrials = json.load(f)
 #    first_frame = '%i_p0' % int(curr_frames[0].split('_')[0])
 ##    
-    #prev_trial = 'trial00001'
+    prev_trial = 'trial00001'
     skip_trial = False
     trial_frames = []
     ntrials = len(mwtrials.keys())
     durs = []
     skipped = {}
     
-    #for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
-    for tidx, trial in zip(np.arange(tidx, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[tidx:]):
+    for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
+    #for tidx, trial in zip(np.arange(tidx, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[tidx:]):
     
         print "- - parsing %s" % trial
         # Create hash of current MWTRIAL dict:
