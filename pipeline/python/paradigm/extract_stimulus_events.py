@@ -290,8 +290,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     print "Skipping %.2f sec worth of frames." % (nframes_to_skip/framerate)
                     #nframes_to_skip = fiter + nframes_to_skip 
                 elif mwtrials[prev_trial]['block_idx'] != mwtrials[trial]['block_idx']:
+                    print "BLOCK start found, skipping extra..."
                     # Skip 2 (start and end block) ITIs -- extra frames if start of new block (back to back ITIs in serial data):
-                    nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 2.0 * framerate) 
+                    nframes_to_skip = int((np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 3.5) * framerate) 
+                    print "Skipping %.2f sec worth of frames." % (nframes_to_skip/framerate)
+
                 else:
                     # Only skip 1 ITI's worth of frames:
                     nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
@@ -325,6 +328,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                 currframe = int(first_frame[1][0].split('_')[0])
                 prevframe = int(first_found_frame[bi-1][0].split('_')[0])
                 if (currframe - prevframe)/framerate >= (2./framerate):
+                    print "%i -- Prev: %i, Curr: %i" % (bi, prevframe, currframe)
+                    print "bitcodes:", bitcodes
                     print "Massive break found within %s. Skipping!" % trial
                     # Flag skip_trial TRUE so that on the next trial's parsing, we know to skip a portion of the frames...
                     skip_trial = True 
@@ -387,7 +392,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         del trialevents[hkey]
         del mwtrials[nkey]
         with open(mwtrial_path, 'w') as f:
-            json.dump(mwtrials)
+            json.dump(mwtrials, f)
         print "Updated MWtrials and trial events."
         print "TOTAL N trials:", len(mwtrials.keys())
 #%%
