@@ -100,7 +100,11 @@ for tiff_idx = 1:length(tiffs)
     else
         Yt = read_imgdata(currtiffpath);
     end
-    [d1,d2,~] = size(Yt);
+    [d1,d2,d3] = size(Yt);
+    if d3 ~= nvolumes
+        fprintf('*** %s - Warning: fewer volumes found than specified...\n', curr_file_name) 
+        nvolumes = d3;
+    end
     fprintf('Size loaded tiff: %s\n', mat2str(size(Yt)))
     sz = size(Yt);
 %    if length(sz) == 3 && (sz(end) > (nvolumes * nchannels))
