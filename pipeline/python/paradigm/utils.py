@@ -1686,14 +1686,19 @@ def format_stimconfigs(configs):
             transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype']
             
             # Figure out Morph IDX for 1st and last anchor image:
+            image_names = list(set([configs[c]['filename'] for c in configs.keys()]))
             if os.path.splitext(configs[configs.keys()[0]]['filename'])[-1] == '.png':
-                fns = [configs[c]['filename'] for c in configs.keys() if 'morph' in configs[c]['filename']]
-                mlevels = sorted(list(set([int(fn.split('_')[0][5:]) for fn in fns])))
+                if len(image_names) == 2:
+                    if any(['Blob_N1' in i for i in image_names]) and any(['Blob_N2' in i for i in image_names]):
+                        mlevels = []
+                        anchor1 = 0; anchor2 = 106
+                else:
+                    fns = [configs[c]['filename'] for c in configs.keys() if 'morph' in configs[c]['filename']]
+                    mlevels = sorted(list(set([int(fn.split('_')[0][5:]) for fn in fns])))
             elif 'fps' in configs[configs.keys()[0]].keys():
                 fns = [configs[c]['filename'] for c in configs.keys() if 'Blob_M' in configs[c]['filename']]
                 mlevels = sorted(list(set([int(fn.split('_')[1][1:]) for fn in fns])))   
             #print "FN parsed:", fns[0].split('_')
-            anchor2 = None
             if len(mlevels) > 0:
                 if mlevels[-1] > 22:
                     anchor2 = 106
