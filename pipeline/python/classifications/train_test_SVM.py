@@ -113,8 +113,8 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 rootdir = '/mnt/odyssey' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180713' #'20180713' #'20180629'
-acquisition = 'FOV1_zoom1x'
+session = '20180817' #'20180713' #'20180629'
+acquisition = 'FOV2_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
@@ -122,12 +122,12 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'gratings_static' #_static' #'blobs_run2'
+train_runid = 'blobs_static_xpos' #_static' #'blobs_run2'
 train_traceid = 'traces001' #'traces001'
 
 train_data_type = 'meanstim' #_plusnull'
 input_data_type = 'corrected'
-class_desc = '6ori'
+class_desc = '3xpos'
 
 if 'cnmf' in train_traceid:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s_%s' % (class_desc, train_data_type, input_data_type)
@@ -166,8 +166,8 @@ data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_
 #%%  Classifier Parameters:
     
 use_regression = False
-fit_best = True
-nfeatures_select = 50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+fit_best = False
+nfeatures_select = 'all' #50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -230,7 +230,7 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # #############################################################################
 # Select TESTING data:
 # ###################### #######################################################
-test_runid = 'gratings_rotating' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_runid = 'blobs_dynamic_xpos2' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
 test_traceid =  'traces001' #'traces001' #'cnmf_20180720_14_36_24'
 test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
@@ -413,13 +413,18 @@ if isinstance(clf, CalibratedClassifierCV):
     configs_tested = sorted(list(set(labels_df['config'])), key=natural_keys)
     #maxval = 0.6 #max([all_preds[config].max() for config in mean_pred.keys()])
  
-    stimdurs = sorted(list(set([test_configs[cf]['stim_dur'] for cf in test_configs.keys()])))
-    print stimdurs
-    if len(stimdurs) > 1:
-        full_dur = stimdurs[-1]
-        half_dur = stimdurs[-2]
-        if len(stimdurs) > 2:
-            quarter_dur = stimdurs[0]
+    if any('stim_dur' in test_configs[cf].keys() for cf in test_configs.keys()): 
+        stimdurs = sorted(list(set([test_configs[cf]['stim_dur'] for cf in test_configs.keys()])))
+        print stimdurs
+        stim_vary = True
+        if len(stimdurs) > 1:
+            full_dur = stimdurs[-1]
+            half_dur = stimdurs[-2]
+            if len(stimdurs) > 2:
+                quarter_dur = stimdurs[0]
+    else:
+        stimdurs = None
+        stim_vary = False
     
     for config in configs_tested:
         #%
@@ -439,19 +444,27 @@ if isinstance(clf, CalibratedClassifierCV):
         stim_frames = np.arange(stim_on, stim_on+nframes_on)
         
         angle_step = list(set(np.diff(train_labels)))[0]
-        if test_configs[config]['direction'] == 1:  # CW, values should be decreasing
+        if 'xpos' in class_desc:
+            direction_label = 'xpos'
+            is_grating = False
+        else:
+            direction_label = 'direction'
+            is_grating = True
+            
+        if test_configs[config][direction_label] > 0: #== 1:  # CW, values should be decreasing
             class_list = sorted(train_labels, reverse=True)
             shift_sign = -1
         else:
             class_list = sorted(train_labels, reverse=False)
             shift_sign = 1
         
-        if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
-            start_angle_ix = class_list.index(0)
-        else:
-            start_angle_ix = class_list.index(test_configs[config]['ori'])
-            
-        class_list = np.roll(class_list, shift_sign*start_angle_ix)
+        if is_grating:
+            if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
+                start_angle_ix = class_list.index(0)
+            else:
+                start_angle_ix = class_list.index(test_configs[config]['ori'])
+                        
+            class_list = np.roll(class_list, shift_sign*start_angle_ix)
 
         if any([isinstance(v, str) for v in svc.classes_]):
             class_indices = [[v for v in svc.classes_].index(str(c)) for c in class_list]
@@ -502,10 +515,13 @@ if isinstance(clf, CalibratedClassifierCV):
             # show stim dur, using class labels as color key:
             #pl.plot([stim_on, stim_on+nframes_on], np.ones((2,1))*0, 'r', linewidth=3)
             stimframes = np.arange(stim_on, stim_on+nframes_on)
-            if test_configs[config]['stim_dur'] == quarter_dur:
-                nclasses_shown = int(len(class_indices) * (1/4.)) + 1
-            elif test_configs[config]['stim_dur'] == half_dur:
-                nclasses_shown = int(len(class_indices) * (1/2.)) + 1
+            if stim_vary:
+                if test_configs[config]['stim_dur'] == quarter_dur:
+                    nclasses_shown = int(len(class_indices) * (1/4.)) + 1
+                elif test_configs[config]['stim_dur'] == half_dur:
+                    nclasses_shown = int(len(class_indices) * (1/2.)) + 1
+                else:
+                    nclasses_shown = len(class_indices)
             else:
                 nclasses_shown = len(class_indices)
             ordered_indices = np.array(class_indices[0:nclasses_shown])
@@ -597,19 +613,29 @@ if isinstance(clf, CalibratedClassifierCV):
             legend.yaxis.grid(False); legend.set_yticklabels([])
             legend.spines["polar"].set_visible(False)
 
-
-        if test_configs[config]['direction']==1:
-            rot_direction = 'CW'
+        if is_grating:
+            if test_configs[config]['direction']==1:
+                rot_direction = 'CW'
+            else:
+                rot_direction = 'CCW'
+        
+        if stim_vary:
+            if test_configs[config]['stim_dur'] == half_dur:
+                rot_duration = 'half'
+            elif test_configs[config]['stim_dur'] == quarter_dur:
+                rot_duration = 'quarter'
+            else:
+                rot_duration = 'full'
+            starting_rot = test_configs[config]['ori']
         else:
-            rot_direction = 'CCW'
-            
-        if test_configs[config]['stim_dur'] == half_dur:
-            rot_duration = 'half'
-        elif test_configs[config]['stim_dur'] == quarter_dur:
-            rot_duration = 'quarter'
-        else:
+            if test_configs[config]['xpos'] < 0:
+                rot_direction = 'rightward'
+            else:
+                rot_direction = 'leftward'
             rot_duration = 'full'
-        starting_rot = test_configs[config]['ori']
+            starting_rot = test_configs[config]['xpos']
+            
+        
         config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
         pl.suptitle(config_english)
         
@@ -640,7 +666,7 @@ if 'comb' in train_runid:
     train_run_info = training_data['run_info']
 else:
     training_data = np.load(training_data_fpath)
-    train_info = training_data['run_info'][()]
+    train_run_info = training_data['run_info'][()]
 
 print training_data.keys()
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
@@ -713,6 +739,7 @@ for k,g in train_cgroups:
 # Plot mean traces for ROIs sorted by ANGLE: TRAINING DATA
 # #############################################################################
 
+train_feature = 'xpos'
 plot_trials = True
 trial_lw = 0.2
 mean_lw = 1
@@ -738,7 +765,7 @@ fig, axes = pl.subplots(len(train_labels), 1, figsize=(6,15))
 #class_indices = [[i for i in svc.classes_].index(str(v)) for v in train_labels]
 
 for lix, (class_label, class_index) in enumerate(zip(train_labels, class_indices)):
-    curr_config = [k for k,v in train_configs.items() if v['ori'] == class_label][0]
+    curr_config = [k for k,v in train_configs.items() if v[train_feature] == class_label][0]
     
     stim_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['stim_on_frame']))[0]
     nframes_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['nframes_on']))[0]
@@ -822,12 +849,15 @@ pl.suptitle('%s: Decoding training set' % roiset)
 label_figure(fig, data_identifier)
 
 
-figname = '%s_decoded_training_traces_%s_%s.png' % (roiset, train_runid, train_data_type)
+figname = '%s_decoded_training_traces_%s_%s_%s.png' % (roiset, train_runid, train_feature, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
 
 #%% FORMAT TRAINING DATA for easier plotting and comparison with true TESTING data:
+
+# TODO:  Fix parsing of training data to allow for grouping configs together (for ex., group object IDs if training xpos)
+
 
 threshold = False
 threshold_factor = 0.5
@@ -850,11 +880,11 @@ assert len(list(set(ntrials_by_cond)))==1, "More than 1 rep values found in TRAI
 ntrials_per_cond = list(set(ntrials_by_cond))[0]
 
 
-config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
+config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x][train_feature])
 train_traces = {}
 for cf in config_list:
-    print cf, train_configs[cf]['ori']
-    curr_config = [k for k,v in train_configs.items() if v['ori'] == class_label][0]
+    print cf, train_configs[cf][train_feature]
+    curr_config = [k for k,v in train_configs.items() if v[train_feature] == class_label][0]
     
     stim_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['stim_on_frame']))[0]
     nframes_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['nframes_on']))[0]
@@ -922,9 +952,12 @@ offsets = np.vstack(baselines)
 
 # INPUT DATA:  Plot POLAR plots to show direction tuning:
 # =============================================================================
-    
-thetas = [train_configs[cf]['ori'] * (math.pi/180) for cf in config_list]
-
+if train_feature == 'ori':
+    thetas = [train_configs[cf]['ori'] * (math.pi/180) for cf in config_list]
+    use_polar = True
+else:
+    thetas = [train_configs[cf][train_feature] * (math.pi/180) for cf in config_list]
+    use_polar = False
 print thetas
 
 import matplotlib as mpl
@@ -939,8 +972,8 @@ else:
     nrows = 4
     ncols = 5
 
-fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=True))
-appended_thetas = np.append(thetas, math.pi)
+fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=use_polar))
+#appended_thetas = np.append(thetas, math.pi)
 
 for ridx, ax in zip(range(len(kept_rids)), axes.flat):
     #print ridx
@@ -952,7 +985,8 @@ for ridx, ax in zip(range(len(kept_rids)), axes.flat):
     ax.add_line(polygon)
     #ax.autoscale()
     ax.grid(True)
-    ax.set_theta_zero_location("N")
+    if use_polar:
+        ax.set_theta_zero_location("N")
     ax.set_xticklabels([])
     #ax.set_title(ridx)
     radii[np.isnan(radii)] = 0

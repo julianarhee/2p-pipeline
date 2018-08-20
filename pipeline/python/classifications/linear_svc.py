@@ -1123,6 +1123,13 @@ opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
            '--no-pupil',
            '-R', 'gratings_static_drifting2', '-t', 'cnmf_',
            '-n', '1']
+
+opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
+           '--no-pupil',
+           '-R', 'blobs_static_xpos', '-t', 'traces001',
+           '-n', '1']
+
+
 options_list = [opts1] #, opts2]
 combo = False
 
@@ -1460,7 +1467,7 @@ def train_linear_classifier(options_list):
     # =============================================================================
     
     # Group configIDs by selected class labels to sort labels in order:
-    class_name = 'ori' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+    class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
     aggregate_type = 'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
     subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
     
