@@ -14,7 +14,7 @@ Meta info is also updated for relevant params.
 
 If --correct-flyback is flagged, flyback-corrected TIFFs are saved to: <acquisition_dir>/<run>/processed/<process_id>/raw/
 '''
-
+import glob
 import os
 import json
 import optparse
@@ -244,7 +244,7 @@ def process_pid(options):
     print "PID %s: BIDIR finished." % pid_hash
 
     # Create average slices for viewing:
-    if get_zproj is True and execute_bidi is True:
+    if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved', PID['PARAMS']['preprocessing']['destdir'], 'visible', '*.tif')))==0: #execute_bidi is True:
         print "PID %s -- Done with BIDI. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
 
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
@@ -266,6 +266,17 @@ def process_pid(options):
         mc_options.extend(['--default'])
     if slurm is True:
         bidir_options.extend(['--slurm', '-C', cvx_path]) #, '-P', repo_path])
+
+    # Check if motion already done:
+    mc_output_dir = PID['PARAMS']['motion']['destdir']
+    if os.path.exists(mc_output_dir):
+        mc_tiffs = [t for t in os.listdir(mc_output_dir) if t.endswith('tif')]
+        if len(mc_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
+            print "*** Found existing MC files. Skipping..."
+            execute_motion = False
+    # -------------------------
+
+
     if execute_motion is True:
         mc_options.extend(['--motion'])
     if len(repo_path) > 0:
@@ -277,7 +288,7 @@ def process_pid(options):
     print "PID %s: MC finished." % pid_hash
  
     # Create average slices for viewing:
-    if get_zproj is True and execute_motion is True:
+    if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved', PID['PARAMS']['motion']['destdir'], 'visible', '*.tif')))==0:
         print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
             currpid = json.load(f)
