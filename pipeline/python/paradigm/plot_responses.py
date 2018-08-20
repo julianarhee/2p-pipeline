@@ -46,10 +46,10 @@ from pipeline.python.utils import label_figure
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
            '-T', 'np_subtracted',
-           '-R', 'gratings_rotating_drifting', '-t', 'traces001', '-d', 'dff',
-           '-r', 'stim_dur', '-c', 'ori', '-H', 'direction']
+           '-R', 'blobs_dynamic_xpos2', '-t', 'traces001', '-d', 'dff',
+           '-r', 'morphlevel', '-c', 'yrot', '-H', 'xpos']
 
 
 def extract_options(options):
@@ -436,7 +436,7 @@ def make_clean_psths(options):
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
             
-            pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+            #pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
 
             if pi==0:
                 axesf[pi].set_ylabel(ylabel)
@@ -454,7 +454,7 @@ def make_clean_psths(options):
     
         pl.subplots_adjust(top=0.85)
         pl.suptitle("%s" % (roi_id))
-        pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
+        pl.legend(loc=9, bbox_to_anchor=(0, 0), ncol=len(trace_labels))
         label_figure(fig, data_identifier)
         
         #%%
