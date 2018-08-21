@@ -18,6 +18,8 @@ import itertools
 import scipy.io
 import optparse
 import sys
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 import cPickle as pkl
 import pandas as pd
@@ -42,12 +44,10 @@ import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
 from pipeline.python.paradigm import utils as fmt
 from pipeline.python.classifications import utils as util
-
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from collections import Counter
 
 from sklearn.manifold import MDS
-#%
 from sklearn import datasets
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -61,7 +61,9 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
-
+from sklearn.feature_selection import RFE
+from sklearn.svm import SVR #LinearSVR
+from sklearn.externals import joblib
 
 from sklearn.linear_model import SGDClassifier, LogisticRegression, LogisticRegressionCV
 from sklearn.calibration import CalibratedClassifierCV
@@ -115,6 +117,7 @@ def get_best_C(svc, X, y, output_dir='/tmp', classifier_str=''):
 
     figname = 'crossval_scores_by_C_%s.png' % classifier_str
     pl.savefig(os.path.join(output_dir, figname))
+    pl.close()
 
     return best_C
 
@@ -177,6 +180,7 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
 #        datakey = datakey[1:]
 #    sort_dir = os.path.join(traceid_dir, 'sorted_%s' % datakey)
 
+    traceid_dir = run_info['traceid_dir']
     sorted_dirs = [s for s in os.listdir(traceid_dir) if 'sorted_' in s and os.path.isdir(os.path.join(traceid_dir, s))]
     sort_dir = os.path.join(traceid_dir, sorted_dirs[0])
     
@@ -230,6 +234,9 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
 def split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=10, relabel=False):
     # Reshape (nframes_per_trial*ntrials_total X nrois) into ntrials_total x nframes_per_trial x nrois)
     nframes_per_trial = run_info['nframes_per_trial']
+    if isinstance(nframes_per_trial, list):
+        assert len(nframes_per_trial) == 1, "More than 1 unique value found for n frames per trial..."
+        nframes_per_trial = nframes_per_trial[0]
     ntrials_total = run_info['ntrials_total']
     nrois = len(run_info['roi_list'])
     print "Reshaping input data into trials (%i) x frames (%i) x rois (%i)" % (ntrials_total, nframes_per_trial, nrois) 
@@ -256,14 +263,23 @@ def split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=10, relab
     return epochs, labels, bin_idxs[0:-1]
     
 #%%
-def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all', 
-                              subset=None, nsamples=None,
-                              const_trans=None, trans_value=None, relabel=False):
+def group_classifier_data(clfparams, cX, cy, sconfigs, relabel=False):
+    
+    class_name = clfparams['class_name']
+    aggregate_type = clfparams['aggregate_type']
+    const_trans = clfparams['const_trans']
+    subset = clfparams['subset']
+    subset_nsamples = clfparams['subset_nsamples']
+    trans_value = clfparams['trans_value']
+    
     sconfigs_df = pd.DataFrame(sconfigs).T
 
     # Check that input data is correctly formatted:
     assert len(cy)==cX.shape[0], "Incorrect input data sizes. Data (%s), labels (%s)" % (str(cX.shape), str(cy.shape))
-    assert sorted(list(set(cy))) == sorted(sconfigs.keys()), "Bad configIDs for label list. Should be the same as sconfigs.keys()."
+    check_configs = sconfigs.keys()
+    if clfparams['get_null']:
+        check_configs.append('bas')
+    assert list(set(cy)) == check_configs, "Bad configIDs for label list. Should be the same as sconfigs.keys()."
     
     if aggregate_type == 'all':
         # Assign labels, but don't group/average values by some shared transform value. 
@@ -276,35 +292,24 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all',
         
         cy_tmp = cy.copy(); cX_tmp = cX.copy();
         
-        if class_name == 'morphlevel':
+        if class_name == 'morphlevel' and subset is not None:
             morphs_in_dataset = sorted(list(set([sconfigs[c]['morphlevel'] for c in sconfigs.keys()])))
             true_morphs = np.array(sorted([m for m in morphs_in_dataset if m >=0])) # movies have -1 label, so only get true morph *objects*
-            if subset is not None:
-                if subset == 'two_class':
-                    included = [true_morphs[0], true_morphs[-1]] # Take first and last only (anchors)
-                elif subset == 'no_morphing':
-                    included = true_morphs.copy() # Take first and last only (anchors)
-                    
-                configs_included = [c for c in sconfigs.keys() if sconfigs[c]['morphlevel'] in included]
-                cixs = np.array([ci for ci,cv in enumerate(cy) if cv in configs_included])
-                cy_tmp = cy[cixs]
-                cX_tmp = cX[cixs,:]
+            if subset == 'two_class':
+                included = [true_morphs[0], true_morphs[-1]] # Take first and last only (anchors)
+            elif subset == 'no_morphing':
+                included = true_morphs.copy() # Take first and last only (anchors)
+                
+            configs_included = [c for c in sconfigs.keys() if sconfigs[c]['morphlevel'] in included]
+            cixs = np.array([ci for ci,cv in enumerate(cy) if cv in configs_included])
+            cy_tmp = cy[cixs]
+            cX_tmp = cX[cixs,:]
                 
             
         sgroups = sconfigs_df.groupby(stim_grouper)                                               # Group stimconfigs with top-level as class-label type
         ordered_configs = {key: i for i, key in enumerate([str(g.index[0]) for k,g in sgroups])}  # Create a mapper for sorting the original configID list
         #sorted_ixs = [s for s, val in sorted(enumerate(cy_tmp), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
         sorted_ixs = [s for s, val in enumerate(cy_tmp)]   # Get indices with which to sort original configID list
-
-        # check that indices are grouped properly:
-#        if data_type == 'xcondsub':
-#            sidx = 0
-#            diffs = []
-#            for k in sorted(ordered_configs.keys(), key= lambda d: ordered_configs[d]):
-#                diffs.append(len(list(set(np.diff(sorted_ixs[sidx:sidx+nframes_per_trial])))))
-#                sidx += nframes_per_trial
-#            print diffs
-#            assert len(list(set(diffs)))==1 and list(set(diffs))[0]==1, "Incorrect index grouping!"
 
         # Re-sort class labels and data:
         cy_tmp = cy_tmp[sorted_ixs]
@@ -314,15 +319,14 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all',
         
         cy_tmp = cy.copy(); cX_tmp = cX.copy();
         
-        if class_name == 'morphlevel':
+        if class_name == 'morphlevel' and subset is not None:
             morphs_in_dataset = sorted(list(set([sconfigs[c]['morphlevel'] for c in sconfigs.keys()])))
             true_morphs = np.array(sorted([m for m in morphs_in_dataset if m >=0])) # movies have -1 label, so only get true morph *objects*
-            if subset is not None:
-                if subset == 'two_class':
-                    included = [true_morphs[0], true_morphs[-1]] # Take first and last only (anchors)
-                elif subset == 'no_morphing':
-                    included = true_morphs.copy() # Take first and last only (anchors)
-                configs_included = [c for c in sconfigs.keys() if sconfigs[c]['morphlevel'] in included]
+            if subset == 'two_class':
+                included = [true_morphs[0], true_morphs[-1]] # Take first and last only (anchors)
+            elif subset == 'no_morphing':
+                included = true_morphs.copy() # Take first and last only (anchors)
+            configs_included = [c for c in sconfigs.keys() if sconfigs[c]['morphlevel'] in included]
         else:
             configs_included = [c for c in sconfigs.keys()]
                 
@@ -331,20 +335,15 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all',
         for k in configs_included: #sconfigs.keys():
             curr_cys = [ci for ci,cv in enumerate(cy) if cv==k]
             random.shuffle(curr_cys)
-            if nsamples is None:
-                nsamples = int(round(len(curr_cys)/2))
-            curr_cys = curr_cys[0:nsamples]
+            if subset_nsamples is None:
+                subset_nsamples = int(round(len(curr_cys)/2))
+            curr_cys = curr_cys[0:subset_nsamples]
             cixs.append(curr_cys)
         cixs = np.hstack(cixs)
         
         cy_tmp = cy_tmp[cixs]
         cX_tmp = cX_tmp[cixs,:]
-        #cX_tmp.append(np.mean(cX[curr_cys, :], axis=0))
-    
-        # Re-sort class labels and data:
-        #cy_tmp = np.hstack(cy_tmp)
-        #cX_tmp = np.vstack(cX_tmp)
-        
+
     elif aggregate_type == 'averagereps':
         # Group trials of the same condition (repetitions) and average:
         cy_tmp = []; cX_tmp = [];
@@ -428,10 +427,14 @@ def group_classifier_data(cX, cy, class_name, sconfigs, aggregate_type='all',
     return cX, cy
 
 #%%
-def get_trial_bins(nframes_per_trial, stim_on_frame, binsize=10):
+def get_trial_bins(run_info, binsize=10):
     bins = []
     # Figure out bin size if using FRAMES:
     nframes_per_trial = run_info['nframes_per_trial']
+    if isinstance(nframes_per_trial, list):
+        assert len(nframes_per_trial) == 1, "More than 1 value found for nframes_per_trial: %s" % str(nframes_per_trial)
+        nframes_per_trial = nframes_per_trial[0]
+        
     stim_on_frame = run_info['stim_on_frame']
     try:
         bins = np.arange(0, nframes_per_trial, binsize)
@@ -446,7 +449,7 @@ def get_trial_bins(nframes_per_trial, stim_on_frame, binsize=10):
 #%%%
 def plot_decoding_performance_trial_epochs(results, bins, names, scoring='accuracy',    
                                            stim_on_frame=None, nframes_on=None,
-                                           nclasses=None):
+                                           nclasses=None, binsize=10):
     # boxplot algorithm comparison
     fig = pl.figure(figsize=(8,6))
     ax = fig.add_subplot(111)
@@ -461,9 +464,15 @@ def plot_decoding_performance_trial_epochs(results, bins, names, scoring='accura
     ax.set_xticklabels(names)
     pl.ylabel(scoring)
 
-    pl.ylim([0, .8])
+    pl.ylim([0, 1])
     sns.despine(offset=4, trim=True)
     if stim_on_frame is not None and nframes_on is not None:
+        if isinstance(stim_on_frame, list):
+            assert len(stim_on_frame)==1, "More than 1 val found for stim_on frame: %s" % str(stim_on_frame)
+            stim_on_frame = stim_on_frame[0]
+        if isinstance(nframes_on, list):
+            assert len(nframes_on)==1, "More than 1 val found for nframes_on: %s" % str(nframes_on)
+            nframes_on = nframes_on[0]
         # Identify the time bin(s) in which the stimulus is on:
         #stim_on_frame = run_info['stim_on_frame']
         #nframes_on = int(round(run_info['nframes_on']))
@@ -480,7 +489,7 @@ def plot_decoding_performance_trial_epochs(results, bins, names, scoring='accura
         ax.axhline(y=chance_level, linestyle='--', linewidth=1.0, color='k')
     
     pl.xlabel('trial epoch (bin size %i)' % binsize)
-    pl.show()
+    #pl.show()
     
     return fig
 
@@ -630,12 +639,18 @@ def get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False):
 #%%
     
 
-def get_input_data(dataset, roi_selector='all', data_type='stat', inputdata='meanstim'):
+def get_input_data(dataset, run_info, clfparams):
+
+    roi_selector = clfparams['roi_selector']
+    data_type = clfparams['data_type']
+    inputdata = clfparams['inputdata']
+    get_null = clfparams['get_null']
         
     assert inputdata in dataset.keys(), "Requested input data (%s) not found: %s" % (inputdata, str(dataset.keys()))
     
     # -----------------------------------------------------------------------------
     cX = dataset[inputdata].copy()
+    nrois = cX.shape[-1]
     ylabels = dataset['ylabels'].copy()
     
     # Use subset of ROIs, e.g., VISUAL or SELECTIVE only:
@@ -645,14 +660,16 @@ def get_input_data(dataset, roi_selector='all', data_type='stat', inputdata='mea
     #print cX.shape
     #spatial_rids = [s for s in sorted_rids if s in visual_rids]
     
-    nframes_per_trial = dataset['run_info'][()]['nframes_per_trial']
+    nframes_per_trial = run_info['nframes_per_trial']
     if not isinstance(nframes_per_trial, int):
         assert len(nframes_per_trial) == 1, "More than 1 nframes per trial found: %s" % str(nframes_per_trial)
         nframes_per_trial = int(nframes_per_trial[0])
-    ntrials_by_cond = dataset['run_info'][()]['ntrials_by_cond']
+    ntrials_by_cond = run_info['ntrials_by_cond']
+    ntrials_tmp = list(set([v for k, v in ntrials_by_cond.items()]))
+    assert len(ntrials_tmp)==1, "Unequal reps per condition!"
+    ntrials = ntrials_tmp[0]
     ntrials_total = sum([val for k,val in ntrials_by_cond.iteritems()])
     
-    run_info = dataset['run_info'][()]
     # Get default label list for cX (using the values originally assigned to conditions):
     if isinstance(run_info['condition_list'], str):
         cond_labels_all = sorted(run_info['condition_list'], key=natural_keys)
@@ -668,6 +685,24 @@ def get_input_data(dataset, roi_selector='all', data_type='stat', inputdata='mea
         cy = np.reshape(ylabels, (ntrials_total, nframes_per_trial))[:,0]
     else:
         cy = ylabels.copy()
+        
+    random_draw = True
+    if get_null:
+        if inputdata == 'meanstim':
+            Xdata = dataset['corrected']
+        elif inputdata == 'meanstimdff':
+            Xdata = dataset['dff']
+            
+        traces = np.reshape(Xdata, (ntrials_total, nframes_per_trial, nrois), order='C')
+        #traces = traces[sorted_ixs,:,:]        
+        mean_baseline_values = np.nanmean(traces[:, 0:run_info['stim_on_frame']], axis=1)
+        
+        # Only get subset (or averaged) null sample to match conditions nums:
+        if random_draw:
+            selected_trials = random.sample(range(0, mean_baseline_values.shape[0]), ntrials)
+        bas = mean_baseline_values[selected_trials, :]
+        cX = np.append(cX, bas, axis=0)
+        cy = np.append(cy, np.array(['bas' for _ in range(ntrials)]), axis=0)
         
     print 'cX (inputdata):', cX.shape
     print 'cY (labels):', cy.shape
@@ -806,91 +841,60 @@ def load_dataset_from_opts(options_list, test=False):
 
 #%%
     
-def get_classifier_id(class_labels, classifier='LinearSVC', cv_method='kfold', inputdata='meanstim', 
-                          data_type='stat', binsize='', roi_selector='all', subset=None, 
-                          class_name='', aggregate_type='all', const_trans='', trans_value=''):
-        
-    class_desc = '%s_%s' % (class_name, aggregate_type)
-    if const_trans is not '':
-        class_desc = '%s_%s' % (class_desc, const_trans)
-    if trans_value is not '':
-        class_desc = '%s%i' % (class_desc, trans_value)
+def get_classifier_id(class_labels, clfparams):
+    
+    
+    class_desc = '%s_%s' % (clfparams['class_name'], clfparams['aggregate_type'])
+    if clfparams['const_trans'] is not '':
+        class_desc = '%s_%s' % (class_desc, clfparams['const_trans'])
+    if clfparams['trans_value'] is not '':
+        class_desc = '%s%i' % (class_desc, clfparams['trans_value'])
         
         
     #classifier = 'LinearSVC'
-    cv_method = 'kfold'
     #class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
-    if subset == 'two_class':
+    if clfparams['subset'] == 'two_class':
         nclasses = 2
-    elif subset == 'no_morphing':
+    elif clfparams['subset'] == 'no_morphing':
         nclasses = len([i for i in class_labels if i >= 0])
     else:
         nclasses = len(class_labels)
+    
+    if clfparams['get_null']:
+        nclasses = nclasses - 1
         
     classif_identifier = '{dtype}_{roiset}_{clf}_{cv}_{}{class_name}_{grouper}_{preprocess}'.format(
                                                                              nclasses, 
-                                                                             dtype='%s' % ''.join([data_type, str(binsize)]),
-                                                                             roiset='%srois' % roi_selector,
-                                                                             clf=classifier,
-                                                                             cv=cv_method,
-                                                                             class_name=class_name,
-                                                                             grouper=aggregate_type,
-                                                                             preprocess=inputdata)
+                                                                             dtype='%s' % ''.join([clfparams['data_type'], str(clfparams['binsize'])]),
+                                                                             roiset='%srois' % clfparams['roi_selector'],
+                                                                             clf=clfparams['classifier'],
+                                                                             cv=clfparams['cv_method'],
+                                                                             class_name=clfparams['class_name'],
+                                                                             grouper=clfparams['aggregate_type'],
+                                                                             preprocess=clfparams['inputdata'])
 
     return classif_identifier
 
 #%%
-def format_stat_dataset(cX, cy, sconfigs, inputdata='meanstim',
-                                          class_name='morphlevel', 
-                                          aggregate_type='all', 
-                                          subset=None,
-                                          nsamples=None,
-                                          const_trans='', 
-                                          trans_value='', 
-                                          relabel=False):
+def format_stat_dataset(clfparams, cX, cy, sconfigs, relabel=False):
     '''
-    Specified ways to group and label classifier data.
-    
-    Params:
-    =======
-    'class_name':  (str) 
-        - stimulus parameter to decode (e.g., 'morphlevel', 'yrot', 'ori', etc.)
-    
-    'aggregate_type':  (str)
-        - method of grouping (averaging) trials together
-        - options:
-            'all' = label each trial 
-            'single' :  Only include trials of a specific transform type and value,
-                        Use this if want to decode 'morphlevel' on trials in which 'xpos'=5.0, for ex.
-    
-    'subset': (str) or None
-        - Different from aggregate_type because no averaging or grouping is done across classes.
-        - This is used for taking only a subset of classes *within* the class_name specified.
-        - options:
-            'two_class' :  This is specific to morphlevel, i.e., only take anchor1 and anchor2 to do a binary classification.
-            'no_morphing' :  This is specific to rotating movies, i.e., don't take the funky A-B/B-A morphs (just single object movies)
-
-    'const_trans':  (str) 
-        - Transform type to keep constant (i.e., only label instances in which const_trans = trans_value)
-    
-    'trans_value':  (int, float)
-        - Value to set 'const_trans' to.
-
+    Use classifier params (clfparams) to format input data with corresponding labels.
     '''
-
+    #inputdata=clfparams['inputdata']; 
+    class_name=clfparams['class_name']
+    aggregate_type=clfparams['aggregate_type']
+    #subset=clfparams['subset']; nsamples=clfparams['nsamples'] # default is half
+    const_trans=clfparams['const_trans']
+    #trans_value=clfparams['trans_value']
+    
+    
     all_trans_types = list(set(sconfigs[sconfigs.keys()[0]].keys()))
     if aggregate_type == 'single':
         assert const_trans in all_trans_types, "Transform type to hold constant (%s), unspecified: %s" % (const_trans, str(all_trans_types)) 
 
-    cX, cy = group_classifier_data(cX, cy, class_name, sconfigs, 
-                                       subset=subset,
-                                       nsamples=nsamples,
-                                       aggregate_type=aggregate_type, 
-                                       const_trans=const_trans, 
-                                       trans_value=trans_value, 
-                                       relabel=False)
+    cX, cy = group_classifier_data(clfparams, cX, cy, sconfigs, relabel=False)
     
-    cy = np.array([sconfigs[cv][class_name] for cv in cy])
+    cy = np.array([sconfigs[cv][class_name] if cv != 'bas' else 'bas' for cv in cy])
     
     print 'cX (input data):', cX.shape
     print 'cY (labels):', cy.shape
@@ -902,13 +906,19 @@ def format_stat_dataset(cX, cy, sconfigs, inputdata='meanstim',
 
 #%%
 
-def format_epoch_dataset(cX, cy, run_info, class_name, sconfigs, binsize=10, const_trans_values=[]):
-#if data_type == 'frames':
-#    binsize=10
-    bins, binsize = get_trial_bins(run_info['nframes_per_trial'], run_info['stim_on_frame'], binsize=binsize)
-    print "Dividing trial into %i epochs (binsize=%i)." % (len(bins), binsize)
+def format_epoch_dataset(clfparams, cX, cy, run_info, sconfigs):
 
-#if data_type == 'frames':
+    class_name = clfparams['class_name']
+    binsize = clfparams['binsize']; const_trans=clfparams['const_trans']
+    bins, binsize = get_trial_bins(run_info, binsize=binsize) #run_info['nframes_per_trial'], run_info['stim_on_frame'], binsize=binsize)
+    print "Dividing trial into %i epochs (binsize=%i)." % (len(bins), binsize)
+    
+    # Get values for specified const-trans value:
+    const_trans_values = []
+    if not const_trans=='':
+        const_trans_values = sorted(list(set([sconfigs[c][const_trans] for c in sconfigs.keys()])))
+        print "Selected subsets of transform: %s. Found values %s" % (const_trans, str(const_trans_values))
+        
     epochs, labels, bins = split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=binsize, relabel=False)
     
     if len(const_trans_values) > 0:
@@ -941,33 +951,18 @@ def format_epoch_dataset(cX, cy, run_info, class_name, sconfigs, binsize=10, con
     
 #%%
     
-def bootstrap_subsets_confusion(dataset, class_name, svc=None,
-                                            aggregate_type='half',
+def bootstrap_subsets_confusion(clfparams, dataset, run_info, sconfigs, svc=None,
                                             nsamples=None,
-                                            n_iterations=100,
-                                            roi_selector='all', 
-                                            data_type='stat', 
-                                            inputdata='meanstim',
-                                            subset=None,
-                                            const_trans='', 
-                                            trans_value=''):
+                                            n_iterations=100):
     
     cmats = []
-    cX_full, cy_full = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
+    cX_full, cy_full = get_input_data(dataset, run_info, clfparams)
     
     for niter in range(n_iterations):
         if niter % 100 == 0:
             print "... running iter %i of %i." % (niter, n_iterations)
                 
-        cX, cy, class_labels = format_stat_dataset(cX_full, cy_full, sconfigs, 
-                                                     inputdata=inputdata,
-                                                     class_name=class_name,
-                                                     nsamples=nsamples,
-                                                     subset=subset,
-                                                     aggregate_type=aggregate_type, 
-                                                     const_trans=const_trans, 
-                                                     trans_value=trans_value, 
-                                                     relabel=False)
+        cX, cy, class_labels = format_stat_dataset(clfparams, cX_full, cy_full, sconfigs, relabel=False)
         cX_std = StandardScaler().fit_transform(cX)
         
         cv_nfolds = 5        
@@ -984,7 +979,7 @@ def bootstrap_subsets_confusion(dataset, class_name, svc=None,
             else:
                 dual = True
                 
-            svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1E9)
+            svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=clfparams['C'])
             #svc = LinearSVC(random_state=0, dual=dual, C=big_C)
         
         loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
@@ -1026,126 +1021,125 @@ def bootstrap_subsets_confusion(dataset, class_name, svc=None,
 
 
 #%%
-def spatially_sort_from_opts(options_list):
+def spatially_sort_rois(traceid_dirs):
     
-    for opts in options_list:
-        optsE = extract_options(opts)
-    
-        traceid_dir = dataset['run_info'][()]['traceid_dir']
+    # =========================================================================
+    # Load ROI masks to sort ROIs by spatial distance
+    # =========================================================================
+        
+    for traceid_dir in traceid_dirs: #opts in options_list:
+        #optsE = extract_options(opts)
+        run_dir = traceid_dir.split('/traces/')[0]
+        acquisition_dir = os.path.split(run_dir)[0]
+        acquisition = os.path.split(acquisition_dir)[-1]
+        
+        #traceid_dir = dataset['run_info'][()]['traceid_dir']
         sorted_rids, cnts, zproj = util.sort_rois_2D(traceid_dir)
         util.plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.005, label=False)
-        figname = 'spatially_sorted_rois_%s.png' % optsE.acquisition
-        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+        
+        figname = 'spatially_sorted_rois_%s.png' % acquisition
         pl.savefig(os.path.join(acquisition_dir, figname))
+        pl.close()
         
-        print "Done with spatial sort: %s [%s]" % (optsE.run, optsE.session)
+    return sorted_rids
+
+#%%
+    
+def bootstrap_classifier_performance(clfparams, dataset, run_info, sconfigs, 
+                                     n_iterations=100, n_test_samples = [4, 6, 8, 10],
+                                     data_identifier=''):
+    '''
+    Draw N samples, train classifier. Look at average classifier performance
+    across n_iterations. 
+    '''
+#        class_name = 'ori'
+#        inputdata = 'meanstim'
+#        data_type = 'stat'
+#        roi_selector = 'all'
+#        aggregate_type = None
+#        subset = None
+#        const_trans = ''
+#        trans_value = ''
+    
+    # Create output dir:
+    traceid_dir = dataset['traceid_dir']
+    
+    class_labels = sorted(list(set([sconfigs[c][clfparams['class_name']] for c in sconfigs.keys()])))
+    print class_labels
+    
+    classif_identifier = get_classifier_id(class_labels, clfparams)
+    
+    classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
+    if not os.path.exists(classifier_dir):
+        os.makedirs(classifier_dir)
+    else:
+        print "DIR exists!", classifier_dir
+    
+    #niters = 100
+    #nsamples_test = [5, 10, 15, 20]
+    #nsamples_test = [4, 6, 8, 10]
+    
+    #svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1E9)
+    means = []; sems = []
+    for nsamples in n_test_samples:
+        cmat, class_labels = bootstrap_subsets_confusion(clfparams, dataset, run_info, 
+                                                         sconfigs, 
+                                                         svc=None,
+                                                         nsamples=nsamples,
+                                                         n_iterations=n_iterations)
         
+        normed_cms = [cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] for cm in cmat]
         
+        gmean = np.mean(np.dstack(normed_cms), axis=-1)
+        gstd = np.std(np.dstack(normed_cms), axis=-1)
+        
+        mean_correct = np.diagonal(gmean)
+        sem_correct = np.diagonal(gstd)
+    
+        means.append(mean_correct)
+        sems.append(sem_correct)
+    
+    print("Normalized confusion matrix")
+    
+    nconds = len(means[0])
+    
+    
+    #cmap255 = [tuple(i*255 for i in cmap[c]) for c in range(nconds)]
+    cmap = sns.cubehelix_palette(as_cmap=True)
+    if isinstance(class_labels[0], str) or isinstance(class_labels[0], unicode):
+        color_levels = xrange(len(class_labels))
+    else:
+        color_levels = class_labels
+        
+    fig, ax = pl.subplots()
+    for idx, nsamples in enumerate(sorted(n_test_samples)):    
+        pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=color_levels, cmap=cmap)
+        #ax.errorbar(np.ones(means[idx].shape)*nsamples, means[idx], yerr=sems[idx])
+    fig.colorbar(pts)
+    
+    #cmap1 = sns.color_palette("Blues", nconds)
+    cmap1 = sns.color_palette("magma", nconds)
+    fig, ax = pl.subplots()
+    for idx in range(len(n_test_samples)):
+        ax.errorbar(color_levels, means[idx], yerr=sems[idx], c=cmap1[idx], label=n_test_samples[idx], capsize=5)
+        ax.xaxis.set_major_locator(pl.MaxNLocator(nconds))
+        
+    pl.legend()
+    sns.despine(offset=4, trim=True)
+    pl.ylabel('accuracy')
+    pl.xlabel('labels')
+    
+    if len(data_identifier) == 0:
+        data_identifier = str(traceid_dir)
+    label_figure(fig, data_identifier)
+    
+    figname = 'accuracy_%iiters_%itiers.png' % (n_iterations, len(n_test_samples))
+    pl.savefig(os.path.join(classifier_dir, 'figures', figname))
+    pl.close()
+    
+    
 #%%
-def extract_options(options):
-
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
-                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid',
-                          default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session',
-                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
-    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-                          action='append',
-                          help="run ID in order of runs")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-                          action='append',
-                          help="trace ID in order of runs")
-    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
-    parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
-
-    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
-
-
-    # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-s', '--radius-min', action="store",
-                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-    parser.add_option('-B', '--radius-max', action="store",
-                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-
-    (options, args) = parser.parse_args(options)
-
-    return options
-
-
-#%%
-
-opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-           '-T', 'np_subtracted', '--no-pupil',
-           '-R', 'gratings_static', '-t', 'cnmf_',
-           '-n', '1']
-
-#opts2 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_rotating', '-t', 'cnmf_',
-#           '-n', '1']
-#
-
-
-#opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
-#           '-n', '1']
-
-rootdir = '/Volumes/coxfs01/2p-data'
-opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180724', '-A', 'FOV1_zoom1x',
-           '--no-pupil',
-           '-R', 'gratings_drifting_static', '-t', 'cnmf_',
-           '-n', '1']
-
-
-rootdir = '/mnt/odyssey'
-opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-           '--no-pupil',
-           '-R', 'gratings_static_drifting', '-t', 'cnmf_',
-           '-n', '1']
-opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
-           '--no-pupil',
-           '-R', 'gratings_static_drifting2', '-t', 'cnmf_',
-           '-n', '1']
-
-opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
-           '--no-pupil',
-           '-R', 'blobs_static_xpos', '-t', 'traces001',
-           '-n', '1']
-
-
-options_list = [opts1] #, opts2]
-combo = False
-
-
-#%%
-
-
-#options_list = [opts1, opts2]
-
-#optsE = extract_options(opts)
-#if len(optsE.run_list) != len(optsE.traceid_list):
-#    assert len(optsE.run_list) > len(optsE.traceid_list), "Unexpected run num and traceids specified..."
-#    optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
-#   
-
-#%%
+    
 
 def combine_datasets(data_paths, combo_name='combo'):
     excluded_keys = ['traceid_dir', 'ntrials_by_cond', 'nfiles', 'ntrials_total']
@@ -1239,425 +1233,86 @@ def combine_datasets(data_paths, combo_name='combo'):
     
     return data_fpath
 
+
+def compare_grand_mean_traces(data_paths):
+    assert len(data_paths.keys()) > 1, "Only 1 data path specified, nothing to compare..."
+    
+    dset_list = []
+    response_type = 'dff'
+
+    for di, dpath in data_paths.items():
+        d1 = np.load(dpath)
+        # Load data:
+        dtrace = get_grand_mean_trace(d1, response_type=response_type)
+        dset_list.append(dtrace)
+    
+    # PLOT:
+    a_run_dir = data_paths[0].split('/traces')[0]
+    acquisition_dir = os.path.split(a_run_dir)[0]
+    figname = plot_grand_mean_traces(dset_list, response_type=response_type,
+                                         label_list=['%s_%s' % (dtrace['run'], dtrace['traceid']) for dtrace in dset_list], 
+                                         output_dir=acquisition_dir, 
+                                         save_and_close=False)
+    pl.savefig(os.path.join(acquisition_dir, figname))
+    pl.close()
+
+def get_classifier_params(**cparams):
+    '''
+    Specified ways to group and label classifier data.
+    
+    Params:
+    =======
+    'data_type': (str)
+        - 'frames' :  Classify frames (or binned frames)
+        - 'stat'   :  Classify some statistic taken across frames/trials (e.g., mean, zscore, etc.)
+        
+    'inputdata': (str)
+        - 'meanstim'    :  Use mean of the stimulus period (raw/corrected values)
+        - 'meanstimdff' :  Use df/f of stimulus period
+    
+    'inputdata_type':  (str)
+        - only relevant for cnmf datasets
+        - if we use a stat-based dataset, need to specify which raw input type to use (e.g., spikes, corrected, dff, etc.)
+        
+    'class_name':  (str) 
+        - stimulus parameter to decode (e.g., 'morphlevel', 'yrot', 'ori', etc.)
+    
+    'aggregate_type':  (str)
+        - method of grouping (averaging) trials together
+        - options:
+            'all' = label each trial 
+            'single' :  Only include trials of a specific transform type and value,
+                        Use this if want to decode 'morphlevel' on trials in which 'xpos'=5.0, for ex.
+    
+    'subset': (str) or None
+        - Different from aggregate_type because no averaging or grouping is done across classes.
+        - This is used for taking only a subset of classes *within* the class_name specified.
+        - options:
+            'two_class' :  This is specific to morphlevel, i.e., only take anchor1 and anchor2 to do a binary classification.
+            'no_morphing' :  This is specific to rotating movies, i.e., don't take the funky A-B/B-A morphs (just single object movies)
+
+    'subset_nsamples': int or None
+        - number of samples to combine together if averaging subset halves (aggregate_type='half')
+        - use this param to draw specified number of repetitions to average together (default is half)
+
+    'const_trans':  (str) 
+        - Transform type to keep constant (i.e., only label instances in which const_trans = trans_value)
+    
+    'trans_value':  (int, float)
+        - Value to set 'const_trans' to.
+    '''
+    
+    clfparams = dict((k,v) for k,v in cparams.items())
+    
+    return clfparams
+
+
 #%%
 
-def train_linear_classifier(options_list): 
-    #%%
-#    optsE = extract_options(options_list[0])
-    
-#    if 'cnmf' in optsE.traceid_list[0]:
-#    
-#        data_paths = {}
-#        for idx, opts in enumerate(options_list):
-#            optsE = extract_options(opts)
-#            data_paths[idx] = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list[idx], 'traces', 'cnmf', optsE.traceid_list[idx], 'data_arrays', 'datasets.npz'))[0]
-#            dataset = np.load(data_paths[idx])
-#            
-#    else:
-    data_paths = load_dataset_from_opts(options_list)
-    dataset = np.load(data_paths[0])
-    
-
-        
-    #%% Look at distN of responses:
-    
-    if len(data_paths.keys()) > 1:
-    
-        dset_list = []
-        response_type = 'dff'
-        
-    #    if len(data_paths.keys()) > 1:
-        for di, dpath in data_paths.items():
-            d1 = np.load(dpath)
-            # Load data:
-            dtrace = get_grand_mean_trace(d1, response_type=response_type)
-            dset_list.append(dtrace)
-        
-        # PLOT:
-        a_run_dir = data_paths[0].split('/traces')[0]
-        acquisition_dir = os.path.split(a_run_dir)[0]
-        figname = plot_grand_mean_traces(dset_list, response_type=response_type,
-                                             label_list=['%s_%s' % (dtrace['run'], dtrace['traceid']) for dtrace in dset_list], 
-                                             output_dir=acquisition_dir, 
-                                             save_and_close=False)
-        pl.savefig(os.path.join(acquisition_dir, figname))
-    
-    
-        if combo is True:
-            data_fpath = combine_datasets(data_paths, combo_name='combined_gratings_drifting_static')
-            
-            dt = np.load(data_fpath)
-            dataset = dt['arr_0'][()]
-        
-    #%%
-    # =============================================================================
-    # Load ROI masks to sort ROIs by spatial distance
-    # =============================================================================
-    
-    spatial_sort = False
-    
-    if spatial_sort:
-        spatially_sort_from_opts(options_list)
-        
-        
-    #%%
-    opts_ix = 0
-    if isinstance(dataset['run_info'], dict):
-        run_info = dataset['run_info']
-    else:
-        run_info = dataset['run_info'][()]
-        
-    if isinstance(dataset['sconfigs'], dict):    
-        sconfigs = dataset['sconfigs']
-    else:
-        sconfigs = dataset['sconfigs'][()]
-        
-    print run_info['ntrials_by_cond']
-    
-    traceid_dir = run_info['traceid_dir']
-    optsE = extract_options(options_list[0])
-    if optsE.rootdir not in traceid_dir:
-        traceid_dir = replace_root(traceid_dir, optsE.rootdir, optsE.animalid, optsE.session)
-    
-    if optsE.traceid_list[opts_ix] == 'cnmf_':
-        if combo is True:
-            trace_id = traceid_dir.split('/traces/')[-1].split('/')[0]
-        else:
-            trace_id = traceid_dir.split('/cnmf/')[-1].split('/')[0]
-    else:
-        trace_id = optsE.traceid_list[opts_ix]
-        
-    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, trace_id))
-
-    #%%
-    
-    # #############################################################################
-    # Randomly sample N trials per condition and compare classifier performance
-    # #############################################################################
-        
-    bootstrap_cv = False
-    
-    if bootstrap_cv:
-        data_type = 'stat'
-        roi_selector = 'all'
-        inputdata = 'meanstim'
-            
-        class_name = 'ori'
-        
-        aggregate_type = None #'half'
-        subset = None
-        
-        const_trans = ''
-        trans_value = ''
-        
-        # Create output dir:
-        
-        class_labels = sorted(list(set([sconfigs[c][class_name] for c in sconfigs.keys()])))
-        print class_labels
-        
-        classif_identifier = get_classifier_id(class_labels, inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
-                                                   class_name=class_name, aggregate_type=aggregate_type, subset=subset,
-                                                   const_trans=const_trans, trans_value=trans_value)
-        
-        classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
-        if not os.path.exists(classifier_dir):
-            os.makedirs(classifier_dir)
-        else:
-            print "DIR exists!", classifier_dir
-        
-        niters = 100
-        #nsamples_test = [5, 10, 15, 20]
-        nsamples_test = [4, 6, 8, 10]
-        
-        #svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=1E9)
-        means = []; sems = []
-        for nsamples in nsamples_test:
-            cmat, class_labels = bootstrap_subsets_confusion(dataset, class_name, svc=None,
-                                                             aggregate_type=aggregate_type,
-                                                             nsamples=nsamples,
-                                                             n_iterations=niters,
-                                                             roi_selector=roi_selector, 
-                                                             data_type=data_type, 
-                                                             inputdata=inputdata)
-            
-            normed_cms = [cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] for cm in cmat]
-            
-            gmean = np.mean(np.dstack(normed_cms), axis=-1)
-            gstd = np.std(np.dstack(normed_cms), axis=-1)
-            
-            mean_correct = np.diagonal(gmean)
-            sem_correct = np.diagonal(gstd)
-        
-            means.append(mean_correct)
-            sems.append(sem_correct)
-        
-        print("Normalized confusion matrix")
-        
-        nconds = len(means[0])
-        
-        
-        #cmap255 = [tuple(i*255 for i in cmap[c]) for c in range(nconds)]
-        cmap = sns.cubehelix_palette(as_cmap=True)
-        if isinstance(class_labels[0], str) or isinstance(class_labels[0], unicode):
-            color_levels = xrange(len(class_labels))
-        else:
-            color_levels = class_labels
-            
-        fig, ax = pl.subplots()
-        for idx, nsamples in enumerate(sorted(nsamples_test)):    
-            pts = ax.scatter(np.ones(means[idx].shape)*nsamples, means[idx], c=color_levels, cmap=cmap)
-            #ax.errorbar(np.ones(means[idx].shape)*nsamples, means[idx], yerr=sems[idx])
-        fig.colorbar(pts)
-        
-        
-            
-        #cmap1 = sns.color_palette("Blues", nconds)
-        cmap1 = sns.color_palette("magma", nconds)
-        fig, ax = pl.subplots()
-        for idx in range(len(nsamples_test)):
-            ax.errorbar(color_levels, means[idx], yerr=sems[idx], c=cmap1[idx], label=nsamples_test[idx], capsize=5)
-            ax.xaxis.set_major_locator(pl.MaxNLocator(nconds))
-            
-        pl.legend()
-        sns.despine(offset=4, trim=True)
-        pl.ylabel('accuracy')
-        pl.xlabel('labels')
-        
-        label_figure(fig, data_identifier)
-        
-        figname = 'accuracy_%iiters_%itiers.png' % (niters, len(nsamples_test))
-        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
-        
-        
-    #%
-    
-    
-    #%%
-    # =============================================================================
-    # Assign cX -- input data for classifier (nsamples x nfeatures)
-    # Get corresponding labels for each sample.
-    # =============================================================================
-    
-    
-    roi_selector = 'all' #'all' #'selectiveanova' #'selective'
-    data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
-    inputdata = 'meanstim'
-    inputdata_type = 'corrected' #'spikes' # None #'spikes'
-    get_null = False #True
-    
-    
-    if 'cnmf' in optsE.traceid_list[0]:
-        assert inputdata_type in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
-
-        Xdata = dataset[inputdata_type]
-        labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
-        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
-        cy = np.array(cy)
-        inputdata = 'meanstim'
-        is_cnmf = True
-    else:
-        assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
-        cX, cy = get_input_data(dataset, roi_selector=roi_selector, data_type=data_type, inputdata=inputdata)
-        cy = np.array(cy)
-        is_cnmf = False
-    
-    #%%
-    # =============================================================================
-    # SPECIFIY CLASSIFIER:
-    # =============================================================================
-    
-    # Group configIDs by selected class labels to sort labels in order:
-    class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-    aggregate_type = 'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
-    subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
-    
-    const_trans = '' #'' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
-    trans_value = '' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
-    
-    binsize=''
-    
-    cv_method = 'kfold'
-    classifier = 'LinearSVC'
-    
-    if data_type == 'frames':
-        const_trans_values = []
-        if not const_trans=='':
-            const_trans_values = sorted(list(set([sconfigs[c][const_trans] for c in sconfigs.keys()])))
-            print "Selected subsets of transform: %s. Found values %s" % (const_trans, str(const_trans_values))
-            
-        epochs, decode_dict, bins, binsize = format_epoch_dataset(cX, cy, run_info, class_name, sconfigs, 
-                                                                      binsize=binsize, 
-                                                                      const_trans_values=const_trans_values)
-    else:
-         cX, cy, class_labels = format_stat_dataset(cX, cy, sconfigs, 
-                                                     inputdata=inputdata,
-                                                     class_name=class_name,
-                                                     subset=subset,
-                                                     aggregate_type=aggregate_type, 
-                                                     const_trans=const_trans, 
-                                                     trans_value=trans_value, 
-                                                     relabel=False)
-         
-         if get_null and 'cnmf' in optsE.traceid_list[0]:
-            
-            _, _, cnull = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=True)
-            #cy = np.array(cy)
-            # Make sure num of cnull examples matches n samples per condition:
-            nconds_per = np.unique(Counter(cy).values())
-            assert len(nconds_per)==1, "Multiple reps found for conditions"
-            cnull_tmp = []
-            for conf in np.unique(cy):
-                cnull_tmp.append(cnull[np.where(cy==conf)[0], :])
-            cnull_tmp = np.mean(np.dstack(cnull_tmp), axis=-1) # average across conditions to get 20 reps x nrois
-            cX = np.vstack((cX, cnull_tmp))
-            cy = np.append(cy, ['bas' for _ in range(nconds_per[0])])
-            class_labels.append('bas')
-            
-         cX_std = StandardScaler().fit_transform(cX)
-         
-    #% Create output dir for current classifier:
-    classif_identifier = get_classifier_id(class_labels, classifier=classifier,
-                                               inputdata=inputdata, data_type=data_type, roi_selector=roi_selector,
-                                               class_name=class_name, aggregate_type=aggregate_type,
-                                               const_trans=const_trans, trans_value=trans_value)
-    
-    
-    if get_null:
-        classif_identifier = "%s_plusnull" % (classif_identifier)
-    
-    if is_cnmf:
-        classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
-    classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
-
-        
-    if aggregate_type == 'single':
-        clf_subdir = '%s_%s' % (const_trans, str(trans_value))
-        classifier_dir = os.path.join(classifier_dir, clf_subdir)
-    
-    if not os.path.exists(classifier_dir):
-        os.makedirs(classifier_dir)
-    else:
-        print "DIR exists!"
-       
-    print "Saving to:", classifier_dir
-    
-    # Also create dir for figures:
-    if not os.path.exists(os.path.join(classifier_dir, 'figures')): os.makedirs(os.path.join(classifier_dir, 'figures'))
-    if not os.path.exists(os.path.join(classifier_dir, 'results')): os.makedirs(os.path.join(classifier_dir, 'results'))
-    
-    #%%
-    # =============================================================================
-    # Assign cy -- labels for classifier to learn (nsamples,)
-    # =============================================================================
-    #
-    #if data_type == 'frames':
-    #    epochs, labels, bins = split_trial_epochs(cX, cy, class_name, sconfigs, run_info, binsize=binsize, relabel=False)
-    #    
-    #    if len(const_trans_values) > 0:
-    #        decode_dict = dict((trans_value, {}) for trans_value in const_trans_values)
-    #        for trans_value in const_trans_values:
-    #            subepochs = epochs.copy() #copy.copy(epochs)
-    #            sublabels = labels.copy()
-    #            kept_configs = [c for c in sconfigs.keys() if sconfigs[c][const_trans]==trans_value]
-    #            config_ixs = [ci for ci,cv in enumerate(labels[0]) if cv in kept_configs]
-    #            # Take subset of trials:
-    #            for c in epochs.keys():
-    #                subepochs[c] = subepochs[c][config_ixs, :]
-    #                sublabels[c] = sublabels[c][config_ixs]
-    #                new_labels = np.array([sconfigs[cv][class_name] for cv in sublabels[c]])
-    #                sublabels[c] = new_labels
-    #                
-    #            decode_dict[trans_value]['mepochs'] = subepochs
-    #            decode_dict[trans_value]['labels'] = sublabels
-    #    else:
-    #        decode_dict = {'all': {}}
-    #        new_labels = np.array([sconfigs[cv][class_name] for cv in labels[0]]) # Each classifier has the same labels, since we are comparing epochs
-    #        labels = dict((k, new_labels) for k in labels.keys())
-    #        decode_dict['all']['epochs'] = epochs
-    #        decode_dict['all']['labels'] = labels
-    #        
-    #    class_labels = sorted(list(set(decode_dict[decode_dict.keys()[0]]['labels'][0])))
-    #    print "Labels:", class_labels
-    #    
-    #else:
-    #    cX, cy = group_classifier_data(cX, cy, class_name, sconfigs, 
-    #                                       subset=subset,
-    #                                       aggregate_type=aggregate_type, 
-    #                                       const_trans=const_trans, 
-    #                                       trans_value=trans_value, 
-    #                                       relabel=False)
-    #    
-    #    cy = np.array([sconfigs[cv][class_name] for cv in cy])
-    #    
-    #    print 'cX (%s):' % data_type, cX.shape
-    #    print 'cY (labels):', cy.shape
-    #    
-    #    class_labels = sorted(list(set(cy)))
-    #    print "Labels:", class_labels
-    
-    #%%
-    niters = 10
-    if data_type == 'frames':
-        for view_key in decode_dict.keys():
-            
-            epochs = decode_dict[view_key]['epochs']
-            labels = decode_dict[view_key]['labels']
-            
-            # Create pipeline:
-            # ------------------
-            big_C = 1e9
-            if epochs[0].shape[0] > epochs[0].shape[1]: # nsamples > nfeatures
-                dual = False
-            else:
-                dual = True
-            #pipe_svc = Pipeline([('scl', StandardScaler()),
-            #                     ('clf', LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C))]) #))])
-            
-            for runiter in np.arange(0,niters): #range(5):
-                # evaluate each model in turn
-                results = []
-                names = []
-                scoring = 'accuracy'
-                for idx, curr_epoch in enumerate(sorted(epochs.keys())):
-                    model = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
-                    kfold = StratifiedKFold(n_splits=5, shuffle=True)
-                    x_std = StandardScaler().fit_transform(epochs[curr_epoch])
-                    cv_results = cross_val_score(model, x_std, labels[curr_epoch], cv=kfold, scoring=scoring)
-                    results.append(cv_results)
-                    names.append(curr_epoch)
-                    msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
-                    #print(msg)
-        
-                fig = plot_decoding_performance_trial_epochs(results, bins, names, 
-                                                           scoring=scoring, 
-                                                           stim_on_frame=run_info['stim_on_frame'],
-                                                           nframes_on=run_info['nframes_on'],
-                                                           nclasses=len(class_labels))
-        
-                fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (aggregate_type, const_trans, str(view_key)))
-                figname = '%s_trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (view_str, binsize, scoring, class_name, runiter)
-                label_figure(fig, data_identifier)
-                
-                pl.savefig(os.path.join(classifier_dir, figname))
-                pl.close()
-    
-    #%% Look at input data:
-                
-    # Get dimensions of session dataset:
-    nframes_per_trial = run_info['nframes_per_trial']
-    #nconditions = len(run_info['condition_list'])
-    nrois = cX.shape[1]
-    
-                
-    # Also create output dir for population-level figures:
-    population_figdir = os.path.join(traceid_dir,  'figures', 'population')
-    if not os.path.exists(population_figdir):
-        os.makedirs(population_figdir)
-                
+def correlation_matrix(clfparams, class_labels, cX, cy, data_identifier='', output_dir='/tmp'):
     
     # Correlation between stim classes across ROIs -- compute as RDM:
     # -----------------------------------------------------------------------------
-    
     zdf_cmap = 'PRGn' #pl.cm.hot
     
     df_list = []
@@ -1674,17 +1329,20 @@ def train_linear_classifier(options_list):
     fig = pl.figure()
     sns.heatmap(1-corrs, cmap=zdf_cmap, vmax=2.0)
     #sns.heatmap(1-corrs, cmap=zdf_cmap, vmin=0.7, vmax=1.3)
-    
-    if aggregate_type == 'single':
-        pl.title('RDM (%s) - %s: %s (%s %i)' % (data_type, class_name, aggregate_type, const_trans, trans_value))
-        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s%i.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, const_trans, trans_value)
-
+    figbase = 'RDM_%srois_%s_classes_%i%s_%s' % (clfparams['roi_selector'], clfparams['data_type'], len(class_labels), 
+                                                     clfparams['class_name'], clfparams['aggregate_type'])
+        
+    if clfparams['aggregate_type'] == 'single':
+        pl.title('RDM (%s) - %s: %s (%s %i)' % (clfparams['data_type'], 
+                                                 clfparams['class_name'], clfparams['aggregate_type'],
+                                                 clfparams['const_trans'], clfparams['trans_value']))
+        figbase = '%s_%s%i' % (figbase, clfparams['const_trans'], clfparams['trans_value'])
     else:
-        pl.title('RDM (%s) - %s: %s' % (data_type, class_name, aggregate_type))
-        figname = 'RDM_%srois_%s_classes_%i%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type)
+        pl.title('RDM (%s) - %s: %s' % (clfparams['data_type'], clfparams['class_name'], clfparams['aggregate_type']))
+
     label_figure(fig, data_identifier)
     
-    pl.savefig(os.path.join(population_figdir, figname))
+    pl.savefig(os.path.join(output_dir, '%s.png' % figbase))
     pl.close()
     
     #pl.figure()
@@ -1692,13 +1350,13 @@ def train_linear_classifier(options_list):
     
     # Look at RDM within trial:
     # -----------------------------------------------------------------------------
-    
+    nframes_per_trial = list(set([v for k,v in Counter(cy).items()]))[0] #run_info['nframes_per_trial']
     df_list = []
     cnames = []
     for label in class_labels:
         tidxs = np.where(cy==label)[0]
         currtrials = np.squeeze(cX[tidxs,:])
-        if data_type == 'xcondsub':
+        if clfparams['data_type'] == 'xcondsub':
             ax_labels = np.hstack([np.tile(i, (nframes_per_trial,)) for i in range(len(tidxs)/nframes_per_trial)])
             new_ax_labels = ['%s_%s' % (str(label), ti) for ti in ax_labels]
             cnames.extend(new_ax_labels)
@@ -1728,70 +1386,156 @@ def train_linear_classifier(options_list):
     ax.set_yticklabels(ax.get_yticklabels(), rotation=45, fontsize=8)
     ax.set(xlabel=cell_unit)
     
-    pl.title('RDM (%s, %s)' % (data_type, cell_unit))
-    if aggregate_type == 'single':
-        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s%i_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, const_trans, trans_value, cell_unit)
-    else:
-        figname = 'RDM_%srois_%s_classes_%i%s_%s_%s.png' % (roi_selector, data_type, len(class_labels), class_name, aggregate_type, cell_unit)
+    pl.title('RDM (%s, %s)' % (clfparams['data_type'], cell_unit))
+    
+    figname = '%s_%s' % (figbase, cell_unit)
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(population_figdir, figname))
+    pl.savefig(os.path.join(output_dir, figname))
     pl.close()
-    
-    #%% Create input data for classifier:
-    
-    # -----------------------------------------------------------------------------
-    # Whitening:
-    # -----------------------------------------------------------------------------
-    
-    #
-    #cX_std = StandardScaler().fit_transform(cX)
-    #print cX_std.shape
-    #
-    #pl.figure();
-    #sns.distplot(cX.ravel(), label=data_type)
-    #sns.distplot(cX_std.ravel(), label = 'standardized')
-    #pl.legend()
-    #pl.title('distN of combined ROIs for FOV1, FOV2')
-    #pl.savefig(os.path.join(clf_basedir, '%s_roi_zscore_distributions.png' % roi_selector))
-    
-      
-    #%% Train and test linear SVM using zscored response values:
-    
-    from sklearn.svm import SVR #LinearSVR
-    
-    # #############################################################################
-    # Set classifier type and CV params:
-    # #############################################################################
-    
-    big_C = 1e9
-    #
-    scoring = 'accuracy' #'neg_mean_squared_error'
-    cv_nfolds = 5
-    
-    
-    kfold = StratifiedKFold(n_splits=cv_nfolds, shuffle=True)
-    
-    # Create classifier:
-    # ------------------
-    if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
-        dual = False
+
+def print_top10(vectorizer, clf, class_labels):
+    """Prints features with the highest coefficient values, per class"""
+    feature_names = vectorizer.get_feature_names()
+    for i, class_label in enumerate(class_labels):
+        top10 = np.argsort(clf.coef_[i])[-10:]
+        print("%s: %s" % (class_label,
+              " ".join(feature_names[j] for j in top10)))
+
+def plot_coefficients(classifier, feature_names, class_idx=0, top_features=20):
+    if len(classifier.classes_) >= 3:
+        coef = classifier.coef_[class_idx, :].ravel()
     else:
-        dual = True
+        coef = classifier.coef_.ravel()
+    top_positive_coefficients = np.argsort(coef)[-top_features:]
+    top_negative_coefficients = np.argsort(coef)[:top_features]
+    top_coefficients = np.hstack([top_negative_coefficients, top_positive_coefficients])
+    # create plot
+    sns.set_style('white')
+    fig = pl.figure(figsize=(15, 5))
+    colors = ['r' if c < 0 else 'b' for c in coef[top_coefficients]]
+    sns.barplot(np.arange(2 * top_features), coef[top_coefficients], palette=colors) #colors)
+    sns.despine(offset=4, trim=True)
+
+    feature_names = np.array(feature_names)
+    pl.xticks(np.arange(0, 1 + 2 * top_features), feature_names[top_coefficients], rotation=45, ha='right')
+    pl.title('Sorted weights (top %i), class %i' % (top_features, class_idx))
+
+    return fig
+
+def plot_weight_matrix(svc, absolute_value=True):
         
-    if classifier == 'LinearSVC':
-        svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+    if absolute_value:
+        weight_values_ref = np.abs(svc.coef_[0,:])
+        cmap='magma'
     else:
-        svc = SVR(kernel='linear', C=1e3)
+        weight_values_ref = svc.coef_[0]
+        cmap='RdBu'
         
-    #svc = LinearSVC(random_state=0, dual=dual, C=big_C)
+    sorted_weights = np.argsort(weight_values_ref)[::-1]
+    
+    sorted_weight_matrix = np.empty(svc.coef_.shape)
+    if len(svc.classes_) < 3:
+        if absolute_value:
+            sorted_weight_matrix[0,:] = np.abs(svc.coef_[0,sorted_weights])
+        else:
+            sorted_weight_matrix[0,:] = svc.coef_[0,sorted_weights]
+    else:
+        for ci,cv in enumerate(svc.classes_):
+            if absolute_value:
+                sorted_weight_matrix[ci,:] = np.abs(svc.coef_[ci,sorted_weights])
+            else:
+                sorted_weight_matrix[ci,:] = svc.coef_[ci,sorted_weights]
+        
+    fig, ax = pl.subplots(figsize=(50,5))
+    cbar_ax = fig.add_axes([.905, .3, .005, .5])
+    g = sns.heatmap(sorted_weight_matrix, cmap=cmap, ax=ax, cbar_ax = cbar_ax, cbar=True)
+    for li,label in enumerate(g.get_xticklabels()):
+        if li % 20 == 0:
+            continue
+        label.set_visible(False)
+    g.set_xticklabels(g.get_xticklabels(), rotation=45, fontsize=8)
+    box = g.get_position()
+    g.set_position([box.x0, box.y0 + box.height * 0.2,
+                     box.width, box.height * 0.8])
+    g.set_xlabel('features')
+    g.set_ylabel('class')
+    if absolute_value:
+        g.set_title('abs(coef), sorted by class 0')
+    else:
+        g.set_title('coefs, sorted by class 0')
+
+    return fig
+
+#%%
+
+def decode_trial_epochs(clfparams, bins, decode_dict, run_info, data_identifier='', niterations=10, scoring='accuracy'):
+    '''
+    Get formatted data and bins/binsize from format_epoch_dataset(), and train
+    classifier for each epoch.
+    
+    Plot classifier scoring method (scoring='accuracy' default) for each epoch.
+    '''
+    
+    for view_key in decode_dict.keys():
+        
+        epochs = decode_dict[view_key]['epochs']
+        labels = decode_dict[view_key]['labels']
+        
+        # Create pipeline:
+        # ------------------
+        if epochs[0].shape[0] > epochs[0].shape[1]: # nsamples > nfeatures
+            dual = False
+        else:
+            dual = True
+        #pipe_svc = Pipeline([('scl', StandardScaler()),
+        #                     ('clf', LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C))]) #))])
+        
+        for runiter in np.arange(0,niterations): #range(5):
+            # evaluate each model in turn
+            print "... %i of %i iterations" % (runiter, niterations)
+            results = []
+            names = []
+            for idx, curr_epoch in enumerate(sorted(epochs.keys())):
+                model = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=clfparams['C'])
+                kfold = StratifiedKFold(n_splits=5, shuffle=True)
+                #x_std = StandardScaler().fit_transform(epochs[curr_epoch])
+                x_std = epochs[curr_epoch] # Already do standard scaling before
+                cv_results = cross_val_score(model, x_std, labels[curr_epoch], cv=kfold, scoring=scoring)
+                results.append(cv_results)
+                names.append(curr_epoch)
+                msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
+                #print(msg)
+    
+            fig = plot_decoding_performance_trial_epochs(results, bins, names, 
+                                                       scoring=scoring, 
+                                                       stim_on_frame=run_info['stim_on_frame'],
+                                                       nframes_on=run_info['nframes_on'],
+                                                       nclasses=len(clfparams['class_labels']),
+                                                       binsize=clfparams['binsize'])
+    
+            fig.suptitle('Estimator Comparison: label %s (%s: %s)' % (clfparams['aggregate_type'], clfparams['const_trans'], str(view_key)))
+            figname = 'trial_epoch_classifiers_binsize%i_%s_label_%s_iter%i.png' % (clfparams['binsize'], scoring, clfparams['class_name'], runiter)
+            label_figure(fig, data_identifier)
+            
+            pl.savefig(os.path.join(clfparams['classifier_dir'], 'figures', figname))
+            pl.close()
+    
+    return model
+    
+#%%
+            
+
+def cv_permutation_test(svc, cX_std, cy, clfparams, scoring='accuracy', 
+                        n_permutations=500, n_jobs=4, data_identifier=''):
+    
+    kfold = StratifiedKFold(n_splits=clfparams['cv_nfolds'], shuffle=True)
     
     cv_results = cross_val_score(svc, cX_std, cy, cv=kfold, scoring=scoring)
-    
-    curr_epoch = '0'
-    msg = "%s: %f (%f)" % (curr_epoch, cv_results.mean(), cv_results.std())
+    print "CV RESULTS: %f (%f)" % (cv_results.mean(), cv_results.std())
     
     score, permutation_scores, pvalue = permutation_test_score(
-        svc, cX_std, cy, scoring=scoring, cv=kfold, n_permutations=500, n_jobs=4)
+        svc, cX_std, cy, scoring=scoring, cv=kfold, 
+        n_permutations=n_permutations, n_jobs=n_jobs)
     
     print("Classification score %s (pvalue : %s)" % (score, pvalue))
     
@@ -1816,37 +1560,34 @@ def train_linear_classifier(options_list):
     pl.ylim(ylim)
     pl.legend()
     pl.xlabel('Score - %s' % scoring)
-    pl.show()
+    #pl.show()
     
-    if svc.C == 1:
-        Cstring = 'C1'
-    elif svc.C == big_C:
-        Cstring = 'bigC'
-    else:
-        Cstring = 'C%i' % svc.C
+    if svc.C == 1: Cstring = 'C1';
+    elif svc.C == 1E9: Cstring = 'bigC';
+    else: Cstring = 'C%i' % svc.C
         
     figname = 'cv_permutation_test_%s.png' % Cstring
     label_figure(fig, data_identifier)
     
-    pl.savefig(os.path.join(classifier_dir, 'figures', figname))
-    #pl.close()
+    pl.savefig(os.path.join(clfparams['classifier_dir'], 'figures', figname))
+    print "Saved CV results to: %s" % os.path.join(clfparams['classifier_dir'], 'figures', figname)
+    pl.close()
     
-    #%
-    # -----------------------------------------------------------------------------
-    # Format cross-validation data
-    # -----------------------------------------------------------------------------
     
-    #grid_values = {'penalty': ['l1','l2'], 'C': [0.001,0.01,0.1,1,10,100,1000]}
-    #model_lr = GridSearchCV(lr, param_grid=grid_values)
+def do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=''):
     
-    cv_nfolds = 5
-    cv_ngroups = 1
+    cv_method = clfparams['cv_method']
+    cv_nfolds = clfparams['cv_nfolds']
+    cv_ngroups = clfparams['cv_ngroups']
     
     training_data = cX_std.copy()
     
     n_samples = cX_std.shape[0]
     print "N samples for CV:", n_samples
-    
+
+
+    predicted = []
+    true = []
     # Cross-validate for t-series samples:
     if cv_method=='splithalf':
     
@@ -1856,23 +1597,27 @@ def train_linear_classifier(options_list):
         # Now predict the value of the class label on the second half:
         y_test = cy[n_samples // 2:]
         y_pred = svc.predict(training_data[n_samples // 2:])
-    
+        predicted.append(y_pred) #=y_test])
+        true.append(y_test)
+        
     elif cv_method=='kfold':
         loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
-        pred_results = []
-        pred_true = []
+
         for train, test in loo: #, groups=groups):
             print train, test
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
             y_pred = svc.fit(X_train, y_train).predict(X_test)
-            pred_results.append(y_pred) #=y_test])
-            pred_true.append(y_test)
+            predicted.append(y_pred) #=y_test])
+            true.append(y_test)
     
     else:
+        nframes_per_trial_tmp = list(set(Counter(cy)))
+        assert len(nframes_per_trial_tmp)==1, "More than 1 value found for N frames per trial..."
+        nframes_per_trial = nframes_per_trial_tmp[0]
         if cv_method=='LOGO':
             loo = LeaveOneGroupOut()
-            if data_type == 'xcondsub':
+            if clfparams['data_type'] == 'xcondsub':
                 ngroups = len(cy) / nframes_per_trial
                 groups = np.hstack(np.tile(f, (nframes_per_trial,)) for f in range(ngroups))
         elif cv_method=='LOO':
@@ -1881,8 +1626,6 @@ def train_linear_classifier(options_list):
         elif cv_method=='LPGO':
             loo = LeavePGroupsOut(5)
     
-        pred_results = []
-        pred_true = []
     
         for train, test in loo.split(training_data, cy, groups=groups):
             print train, test
@@ -1891,14 +1634,14 @@ def train_linear_classifier(options_list):
     
             y_pred = svc.fit(X_train, y_train).predict(X_test)
     
-            pred_results.append(y_pred) #=y_test])
-            pred_true.append(y_test)
+            predicted.append(y_pred) #=y_test])
+            true.append(y_test)
     
         
         if groups is not None:
             # Find "best fold"?
             avg_scores = []
-            for y_pred, y_test in zip(pred_results, pred_true):
+            for y_pred, y_test in zip(predicted, true):
                 pred_score = len([i for i in y_pred==y_test if i]) / float(len(y_pred))
                 avg_scores.append(pred_score)
             best_fold = avg_scores.index(np.max(avg_scores))
@@ -1907,228 +1650,102 @@ def train_linear_classifier(options_list):
             test = folds[best_fold][1][1]
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
-            y_pred = pred_results[best_fold]
-        
-            pl.figure();
-            sns.distplot(avg_scores, kde=False)
-        
-        else:
-            y_pred = np.array([i[0] for i in pred_results])
-            y_test = np.array([i[0] for i in pred_true])
+            y_pred = predicted[best_fold]
+
+#        else:
+#            y_pred = np.array([i[0] for i in predicted])
+#            y_test = np.array([i[0] for i in true])
     
-        avg_score = np.array([int(p==t) for p,t in zip(pred_results, pred_true)]).mean()
+        #avg_score = np.array([int(p==t) for p,t in zip(predicted, true)]).mean()
     
+    return predicted, true
+
     
-    #print("Classification report for classifier %s:\n%s\n"
-    #      % (svc, metrics.classification_report(y_test, y_pred)))
-    
-    #%
+def calculate_confusion_matrix(predicted, true, clfparams, data_identifier=''):
     
     # Compute confusion matrix:
     # -----------------------------------------------------------------------------
-    
-    if classifier == 'LinearSVC':
+    if clfparams['classifier'] == 'LinearSVC':
         average_iters = True
         
-        if (cv_method == 'LOO' or cv_method == 'splithalf') and (data_type != 'xcondsub'):
-            cmatrix_tframes = confusion_matrix(y_test, y_pred, labels=class_labels)
+        if (clfparams['cv_method'] == 'LOO' or clfparams['cv_method'] == 'splithalf') and (clfparams['data_type'] != 'xcondsub'):
+            # These have single valued folds (I think...):
+            y_test = np.array([int(i) for i in true])
+            y_pred = np.array([int(i) for i in predicted])
+            cmatrix_tframes = confusion_matrix(y_test, y_pred, labels=clfparams['class_labels'])
             conf_mat_str = 'trials'
         else:
             if average_iters:
-                cmatrix_tframes = confusion_matrix(pred_true[0], pred_results[0], labels=class_labels)
-                for iter_idx in range(len(pred_results))[1:]:
+                cmatrix_tframes = confusion_matrix(true[0], predicted[0], labels=clfparams['class_labels'])
+                for iter_idx in range(len(predicted))[1:]:
                     print "adding iter %i" % iter_idx
-                    cmatrix_tframes += confusion_matrix(pred_true[iter_idx], pred_results[iter_idx], labels=class_labels)
+                    cmatrix_tframes += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=clfparams['class_labels'])
                 conf_mat_str = 'AVG'
                 #cmatrix_tframes /= float(len(pred_results))
             else:
-                cmatrix_tframes = confusion_matrix(pred_true[best_fold], pred_results[best_fold], labels=class_labels)
+                avg_scores = []
+                for y_pred, y_test in zip(predicted, true):
+                    pred_score = len([i for i in y_pred==y_test if i]) / float(len(y_pred))
+                    avg_scores.append(pred_score)
+                best_fold = avg_scores.index(np.max(avg_scores))
+
+                cmatrix_tframes = confusion_matrix(true[best_fold], predicted[best_fold], labels=clfparams['class_labels'])
                 conf_mat_str = 'best'
-        
+                #pl.figure();
+                #sns.distplot(avg_scores, kde=False)
         
         #% Plot confusion matrix:
         # -----------------------------------------------------------------------------
         sns.set_style('white')
         fig = pl.figure(figsize=(10,4))
         ax1 = fig.add_subplot(1,2,1)
-        plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax1, normalize=False,
-                          title='Confusion matrix (%s, %s)' % (conf_mat_str, cv_method))
+        plot_confusion_matrix(cmatrix_tframes, classes=clfparams['class_labels'], ax=ax1, normalize=False,
+                          title='Confusion matrix (%s, %s)' % (conf_mat_str, clfparams['cv_method']))
         
         ax2 = fig.add_subplot(1,2,2)
-        plot_confusion_matrix(cmatrix_tframes, classes=class_labels, ax=ax2, normalize=True,
+        plot_confusion_matrix(cmatrix_tframes, classes=clfparams['class_labels'], ax=ax2, normalize=True,
                               title='Normalized')
         
         #%
+        classif_identifier = os.path.split(clfparams['classifier_dir'].split('/classifiers')[-1])[-1]
         figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
         
         label_figure(fig, data_identifier)
         
-        pl.savefig(os.path.join(classifier_dir, 'figures', figname))
-        #pl.close()
-        #%
+        pl.savefig(os.path.join(clfparams['classifier_dir'], 'figures', figname))
+        pl.close()
+
         
-    #elif classifier == 'SVR':
-        #[1 if int(round(p,0))==t else 0 for p,t in zip(predicted, truth) for predicted,truth in zip(pred_results, pred_true)]
-        
-    #%
-    
     # Save CV info:
     # -----------------------------------------------------------------------------
     cv_outfile = '%s__CV_report.txt' % classif_identifier
     
-    f = open(os.path.join(classifier_dir, 'results', cv_outfile), 'w')
-    f.write(metrics.classification_report(y_test, y_pred, target_names=[str(c) for c in class_labels]))
+    f = open(os.path.join(clfparams['classifier_dir'], 'results', cv_outfile), 'w')
+    for y_true, y_pred in zip(true, predicted):
+        f.write(metrics.classification_report(y_true, y_pred, target_names=[str(c) for c in clfparams['class_labels']]))
     f.close()
     
-    cv_results = {'predicted': [list(p) for p in pred_results], #.tolist(), #list(y_pred),
-                  'true': [list(p) for i in pred_true], # list(y_test),
-                  'classifier': classifier,
-                  'cv_method': cv_method,
-                  'ngroups': cv_ngroups,
-                  'nfolds': cv_nfolds
+    cv_results = {'predicted': [list(p) for p in predicted], #.tolist(), #list(y_pred),
+                  'true': [list(p) for i in true], # list(y_test),
+                  'classifier': clfparams['classifier'],
+                  'cv_method': clfparams['cv_method'],
+                  'ngroups': clfparams['cv_ngroups'],
+                  'nfolds': clfparams['cv_nfolds']
                   }
     cv_resultsfile = '%s__CV_results.json' % classif_identifier
-    with open(os.path.join(classifier_dir, 'results', cv_resultsfile), 'w') as f:
+    with open(os.path.join(clfparams['classifier_dir'], 'results', cv_resultsfile), 'w') as f:
         json.dump(cv_results, f, sort_keys=True, indent=4)
     
+    print "Saved CV results."
+    #pp.pprint(cv_results)
+
+#%%
     
-    #%
-    # -----------------------------------------------------------------------------
-    # Save classifier and formatted data:
-    # -----------------------------------------------------------------------------
-        
-    clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
-    np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
-                 data_type=data_type,
-                 sconfigs=sconfigs, run_info=run_info)
-    
-    from sklearn.externals import joblib
-    joblib.dump(classifier_dir, '%s.pkl' % classif_identifier, compress=9)
-     
-    import sys
-    clf_params = svc.get_params().copy()
-    if 'base_estimator' in clf_params.keys():
-        clf_params['base_estimator'] = str(clf_params['base_estimator'] )
-    #clf_params['cv'] = str(clf_params['cv'])
-    clf_params['identifier'] = classif_identifier
-    clf_params_hash = hash(json.dumps(clf_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
-    
-    with open(os.path.join(classifier_dir, 'params_%s.json' % clf_params_hash), 'w') as f:
-        json.dump(clf_params, f, indent=4, sort_keys=True, ensure_ascii=True)
-    
-    
-    #%%
-        
-    # Visualize feature weights:
-    # =============================================================================
-        
-    # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
-    # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
-    
-    def print_top10(vectorizer, clf, class_labels):
-        """Prints features with the highest coefficient values, per class"""
-        feature_names = vectorizer.get_feature_names()
-        for i, class_label in enumerate(class_labels):
-            top10 = np.argsort(clf.coef_[i])[-10:]
-            print("%s: %s" % (class_label,
-                  " ".join(feature_names[j] for j in top10)))
-    
-    def plot_coefficients(classifier, feature_names, class_idx=0, top_features=20):
-        if len(classifier.classes_) >= 3:
-            coef = classifier.coef_[class_idx, :].ravel()
-        else:
-            coef = classifier.coef_.ravel()
-        top_positive_coefficients = np.argsort(coef)[-top_features:]
-        top_negative_coefficients = np.argsort(coef)[:top_features]
-        top_coefficients = np.hstack([top_negative_coefficients, top_positive_coefficients])
-        # create plot
-        sns.set_style('white')
-        pl.figure(figsize=(15, 5))
-        colors = ['r' if c < 0 else 'b' for c in coef[top_coefficients]]
-        sns.barplot(np.arange(2 * top_features), coef[top_coefficients], palette=colors) #colors)
-        sns.despine(offset=4, trim=True)
-    
-        feature_names = np.array(feature_names)
-        pl.xticks(np.arange(0, 1 + 2 * top_features), feature_names[top_coefficients], rotation=45, ha='right')
-        pl.title('Sorted weights (top %i), class %i' % (top_features, class_idx))
-    
-    
-    
-    def plot_weight_matrix(svc, absolute_value=True):
-            
-        if absolute_value:
-            weight_values_ref = np.abs(svc.coef_[0,:])
-            cmap='magma'
-        else:
-            weight_values_ref = svc.coef_[0]
-            cmap='RdBu'
-            
-        sorted_weights = np.argsort(weight_values_ref)[::-1]
-        
-        sorted_weight_matrix = np.empty(svc.coef_.shape)
-        if len(svc.classes_) < 3:
-            if absolute_value:
-                sorted_weight_matrix[0,:] = np.abs(svc.coef_[0,sorted_weights])
-            else:
-                sorted_weight_matrix[0,:] = svc.coef_[0,sorted_weights]
-        else:
-            for ci,cv in enumerate(svc.classes_):
-                if absolute_value:
-                    sorted_weight_matrix[ci,:] = np.abs(svc.coef_[ci,sorted_weights])
-                else:
-                    sorted_weight_matrix[ci,:] = svc.coef_[ci,sorted_weights]
-            
-        fig, ax = pl.subplots(figsize=(50,5))
-        cbar_ax = fig.add_axes([.905, .3, .005, .5])
-        g = sns.heatmap(sorted_weight_matrix, cmap=cmap, ax=ax, cbar_ax = cbar_ax, cbar=True)
-        for li,label in enumerate(g.get_xticklabels()):
-            if li % 20 == 0:
-                continue
-            label.set_visible(False)
-        g.set_xticklabels(g.get_xticklabels(), rotation=45, fontsize=8)
-        box = g.get_position()
-        g.set_position([box.x0, box.y0 + box.height * 0.2,
-                         box.width, box.height * 0.8])
-        g.set_xlabel('features')
-        g.set_ylabel('class')
-        if absolute_value:
-            g.set_title('abs(coef), sorted by class 0')
-        else:
-            g.set_title('coefs, sorted by class 0')
-    
-    
-    #%
-    # Sort the weights by their strength, take out bottom N rois, iterate.
-    
-    plot_weight_matrix(svc, absolute_value=True)
-    label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
-    pl.close()
-    
-    plot_weight_matrix(svc, absolute_value=False)
-    label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_raw.png'))
-    pl.close()
-    
-    nrois = len(run_info['roi_list'])
-    for class_idx in range(len(svc.classes_)):
-        plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
-        label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
-        pl.close()
-    
-    #%
-    
-    # Identify top N (most informative) features (neurons) and test classification performance:
-        
-    from sklearn.feature_selection import RFE
-    
-    nclasses = len(class_labels)
+
+def iterate_RFE(clfparams, cX_std, cy, scoring='accuracy', datasubset='full'):
     nrois_total = cX_std.shape[-1]
     
-    split_half = False
-    if split_half:
-        datasubset = 'halfset'
+    if datasubset == 'half':
         # SPlit into halves:
         train_ixs=[]; test_ixs=[]
         for c in np.unique(cy):
@@ -2144,8 +1761,7 @@ def train_linear_classifier(options_list):
         test_data = cX_std[test_ixs, :]
         test_labels = cy[test_ixs]
     
-    else:
-        datasubset = 'fullset'
+    elif datasubset == 'full':
         train_data = cX_std.copy()
         train_labels = cy.copy()
         test_data = cX_std.copy()
@@ -2156,7 +1772,7 @@ def train_linear_classifier(options_list):
     orig_rids = xrange(0, nrois_total)
     print len(orig_rids)
     
-    svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C)
+    svc = LinearSVC(random_state=0, dual=clfparams['dual'], multi_class='ovr', C=clfparams['C'])
     kfold = StratifiedKFold(n_splits=5, shuffle=True)
     
     # First, get accuracy with all features:
@@ -2178,9 +1794,24 @@ def train_linear_classifier(options_list):
         kept_rids_by_iter.append(kept_rids)
         cv_results = cross_val_score(rfe, test_data[:, kept_rids], test_labels, cv=kfold, scoring=scoring)
         results_topN.append(cv_results)
+
+    # Save info:
+    rfe_cv_info = {'kfold': kfold,
+              'rfe': rfe,
+              'results': results_topN,
+              'kept_rids_by_iter': kept_rids_by_iter}
+    
+    with open(os.path.join(clfparams['classifier_dir'], 'results', 'RFE_cv_output_%s_%s.pkl' %  (scoring, datasubset)), 'wb') as f:
+        pkl.dump(rfe_cv_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+                
+    return results_topN
+
+
         
+def plot_RFE_results(results_topN, clfparams, scoring='accuracy', datasubset='full', data_identifier=''):
     
-    
+    nclasses = len(clfparams['class_labels'])
+
     # Plot number of features VS. cross-validation scores
     fig, ax = pl.subplots(1) #figure()
     pl.xlabel("Number of features selected")
@@ -2198,21 +1829,489 @@ def train_linear_classifier(options_list):
     
     #print("Optimal number of features : %d" % rfecv.n_features_)
     label_figure(fig, data_identifier)
-    pl.show()
     
-    pl.savefig(os.path.join(classifier_dir, 'figures', 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
-    #pl.close()
+    pl.savefig(os.path.join(clfparams['classifier_dir'], 'figures', 'RFE_fittransform_%s_%s.png' % (scoring, datasubset)))
+    pl.close()
     
-    # Save info:
-    rfe_cv_info = {'kfold': kfold,
-              'rfe': rfe,
-              'results': results_topN,
-              'kept_rids_by_iter': kept_rids_by_iter}
     
-    with open(os.path.join(classifier_dir, 'results', 'RFE_cv_output_%s_%s.pkl' %  (scoring, datasubset)), 'wb') as f:
-        pkl.dump(rfe_cv_info, f, protocol=pkl.HIGHEST_PROTOCOL)
+#%%
+def extract_options(options):
+#    roi_selector = 'all' #'all' #'selectiveanova' #'selective'
+#    data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
+#    inputdata = 'meanstim'
+#    inputdata_type = 'corrected' #'spikes' # None #'spikes'
+#    get_null = True #True
+#    
+#    # =============================================================================
+#    # SPECIFIY CLASSIFIER:
+#    # =============================================================================
+#    
+#    # Group configIDs by selected class labels to sort labels in order:
+#    class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+#    aggregate_type = 'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
+#    subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
+#    subset_nsamples = None
+#    
+#    const_trans = '' #'' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+#    trans_value = '' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
+#    
+#    classifier = 'LinearSVC'
+#    cv_method = 'kfold'
+#    cv_nfolds = 5
+#    C_val = 1e9
+#    cv_ngroups = 1
+#    
+#    binsize=''
+#    
+    
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir',
+                          default='/nas/volume1/2photon/data',
+                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid',
+                          default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session',
+                          default='', help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition',
+                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+                          default='raw', help="trace type [default: 'raw']")
+    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
+                          action='append',
+                          help="run ID in order of runs")
+    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
+                          action='append',
+                          help="trace ID in order of runs")
+    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
+    parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
+
+    # Classifier info:
+    parser.add_option('-r', '--rois', action='store', dest='roi_selector', default='all', help="(options: all, visual)")
+    parser.add_option('-p', '--dtype', action='store', dest='data_type', default='stat', help="(options: frames, stat)")
+    parser.add_option('-d', '--indata', action='store', dest='inputdata', default='meanstim', help="data type (meanstim, meanstimdff, etc.)")
+    parser.add_option('-s', '--indata_type', action='store', dest='inputdata_type', default='', help="data processing type (dff, corrected, raw, etc.)")
+    parser.add_option('--null', action='store_true', dest='get_null', default=False, help='Include a null class in addition to stim conditions')
+    parser.add_option('-N', '--name', action='store', dest='class_name', default='', help='Name of transform to classify (e.g., ori, xpos, morphlevel, etc.)')
+    
+    choices_agg = ('all', 'single', 'averagereps', 'collapse')
+    default_agg = 'all'
+    parser.add_option('-z', '--agg', dest='aggregate_type', type="choice", choices=choices_agg, default=default_agg, 
+                      help='Aggregate method. Valid choices: %s. Default %s' % (choices_agg, default_agg)) 
+    
+    choices_subset = (None, 'two_class', 'no_morphing')
+    default_subset = None
+    parser.add_option('--subset', dest='subset', type='choice', choices=choices_subset, default=default_subset,
+                      help='Set if only want to consider subset of data. Valid choices: %s. Default %s' % (choices_subset, default_subset)) 
+    parser.add_option('--subset-samples', action='store', dest='subset_nsamples', default=None, help='N samples to draw if aggregate_type=half, but want to use N other than half')
+    
+    parser.add_option('-c', '--const', action='store', dest='const_trans', default='', help='Transform name to hold constant if classifying a different transform')
+    parser.add_option('-v', '--tval', action='store', dest='trans_value', default='', help='Value to set const_trans to')
+    parser.add_option('-L', '--clf', action='store', dest='classifier', default='LinearSVC', help='Classifier type (default: LinearSVC)')
+    parser.add_option('-k', '--cv', action='store', dest='cv_method', default='kfold', help='Method of cross-validation (default: kfold)')
+    parser.add_option('-f', '--folds', action='store', dest='cv_nfolds', default=5, help='N folds for CV (default: 5)')
+    parser.add_option('-C', '--cval', action='store', dest='C_val', default=1e9, help='Value for C param if using SVC (default: 1e9)')
+    parser.add_option('-g', '--groups', action='store', dest='cv_ngroups', default=1, help='N groups for CV, relevant only for data_type=frames (default: 1)')
+    parser.add_option('-b', '--bin', action='store', dest='binsize', default=10, help='Bin size, relevant only for data_type=frames (default: 10)')
+    parser.add_option('--combine', action='store_true', dest='combine_data', default=False, help='Flag to combine multiple runs of the same thing')
+    parser.add_option('--combo', action='store', dest='combo_name', default='combo', help='Name of new, combined dataset (default: combined)')
+
+
+    # Pupil filtering info:
+#    parser.add_option('--no-pupil', action="store_false",
+#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+#    parser.add_option('-s', '--radius-min', action="store",
+#                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+#    parser.add_option('-B', '--radius-max', action="store",
+#                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
+#    parser.add_option('-d', '--dist', action="store",
+#                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+
+#%%
+#
+#opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+#           '-T', 'np_subtracted', '--no-pupil',
+#           '-R', 'gratings_static', '-t', 'cnmf_',
+#           '-n', '1']
+#
+##opts2 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+##           '-T', 'np_subtracted', '--no-pupil',
+##           '-R', 'gratings_rotating', '-t', 'cnmf_',
+##           '-n', '1']
+##
+#
+#
+##opts1 = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629', '-A', 'FOV1_zoom1x',
+##           '-T', 'np_subtracted', '--no-pupil',
+##           '-R', 'gratings_drifting', '-t', 'cnmf_20180720_12_10_07',
+##           '-n', '1']
+#
+#rootdir = '/Volumes/coxfs01/2p-data'
+#opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180724', '-A', 'FOV1_zoom1x',
+#           '--no-pupil',
+#           '-R', 'gratings_drifting_static', '-t', 'cnmf_',
+#           '-n', '1']
+#
+#
+#rootdir = '/mnt/odyssey'
+#opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+#           '--no-pupil',
+#           '-R', 'gratings_static_drifting', '-t', 'cnmf_',
+#           '-n', '1']
+#opts2 = ['-D', rootdir, '-i', 'CE077', '-S', '20180713', '-A', 'FOV1_zoom1x',
+#           '--no-pupil',
+#           '-R', 'gratings_static_drifting2', '-t', 'cnmf_',
+#           '-n', '1']
+#
+#opts1 = ['-D', rootdir, '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
+#           '--no-pupil',
+#           '-R', 'blobs_static_xpos', '-t', 'traces001',
+#           '-n', '1']
+#
+#
+#options_list = [opts1] #, opts2]
+#combine_data = False
+#combo_name = 'combined_gratings_drifting_static'
+
+#%%
+
+
+#options_list = [opts1, opts2]
+
+#optsE = extract_options(opts)
+#if len(optsE.run_list) != len(optsE.traceid_list):
+#    assert len(optsE.run_list) > len(optsE.traceid_list), "Unexpected run num and traceids specified..."
+#    optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
+#   
+
+
+
+#%%
+
+def train_linear_classifier(options_list): 
+    #%%
+    
+    data_paths = load_dataset_from_opts(options_list)
+    
+    opts_ix = 0
+    optsE = extract_options(options_list[opts_ix])
+    if len(optsE.run_list) != len(optsE.traceid_list):
+        assert len(optsE.run_list) > len(optsE.traceid_list), "Unexpected run num and traceids specified..."
+        optsE.traceid_list = [optsE.traceid_list[0] for i in range(len(optsE.run_list))]
+       
+    
+    
+    #%% Check if there are multiple datasets, and return combined, if specified:
+    if len(data_paths.keys()) > 1:
+        compare_grand_mean_traces(data_paths)
+    
+    if optsE.combine_data is True:
+        assert len(data_paths.keys()) > 1, "User did not specify > 1 experiment run to combine..."
+        data_fpath = combine_datasets(data_paths, combo_name=optsE.combo_name)
         
+        dt = np.load(data_fpath)
+        dataset = dt['arr_0'][()]
+    else:
+        dataset = np.load(data_paths[opts_ix])
+
+        
+    #%% Load dataset, get stimulus info and run/acquisition info:
     
+    
+    if isinstance(dataset['run_info'], dict):
+        run_info = dataset['run_info']
+    else:
+        run_info = dataset['run_info'][()]
+        
+    if isinstance(dataset['sconfigs'], dict):    
+        sconfigs = dataset['sconfigs']
+    else:
+        sconfigs = dataset['sconfigs'][()]
+        
+    print run_info['ntrials_by_cond']
+    
+    traceid_dir = run_info['traceid_dir']
+
+    if optsE.rootdir not in traceid_dir:
+        traceid_dir = replace_root(traceid_dir, optsE.rootdir, optsE.animalid, optsE.session)
+    
+    if optsE.traceid_list[opts_ix] == 'cnmf_':
+        if optsE.combine_data is True:
+            trace_id = traceid_dir.split('/traces/')[-1].split('/')[0]
+        else:
+            trace_id = traceid_dir.split('/cnmf/')[-1].split('/')[0]
+    else:
+        trace_id = optsE.traceid_list[opts_ix]
+        
+    data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, trace_id))
+
+    
+    #%%
+    # =============================================================================
+    # SPECIFIY CLASSIFIER:
+    # =============================================================================
+    
+    roi_selector = optsE.roi_selector #'all' #'all' #'selectiveanova' #'selective'
+    data_type = optsE.data_type #'stat' #'zscore' #zscore' # 'xcondsub'
+    inputdata = optsE.inputdata #'meanstim'
+    inputdata_type = optsE.inputdata_type #'corrected' #'spikes' # None #'spikes'
+    get_null = optsE.get_null # True #True
+    
+    # =============================================================================
+    # SPECIFIY CLASSIFIER:
+    # =============================================================================
+    
+    # Group configIDs by selected class labels to sort labels in order:
+    class_name =  optsE.class_name #'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
+    aggregate_type = optsE.aggregate_type #'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
+    subset = optsE.subset #None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
+    subset_nsamples = optsE.subset_nsamples #None
+    
+    const_trans = optsE.const_trans #'' #'' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
+    trans_value = optsE.trans_value #'' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
+    
+    classifier = optsE.classifier # 'LinearSVC'
+    cv_method = optsE.cv_method #'kfold'
+    cv_nfolds = int(optsE.cv_nfolds) #5
+    C_val = optsE.C_val #1e9
+    cv_ngroups = optsE.cv_ngroups # 1
+    
+    binsize = optsE.binsize #''
+    if data_type != 'frames':
+        binsize = ''
+
+    clfparams = get_classifier_params(data_type=data_type, 
+                                      inputdata=inputdata, 
+                                      inputdata_type=inputdata_type,
+                                      roi_selector=roi_selector, 
+                                      class_name=class_name, 
+                                      aggregate_type=aggregate_type,
+                                      subset=subset, subset_nsamples=subset_nsamples,
+                                      const_trans=const_trans, trans_value=trans_value,
+                                      cv_method=cv_method, 
+                                      cv_nfolds=cv_nfolds,
+                                      cv_ngroups=cv_ngroups,
+                                      classifier=classifier, 
+                                      binsize=binsize,
+                                      get_null=get_null,
+                                      C=C_val)
+
+
+    
+    if 'cnmf' in optsE.traceid_list[0]:
+        assert inputdata_type in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
+
+        Xdata = dataset[inputdata_type]
+        labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
+        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
+        cy = np.array(cy)
+        inputdata = 'meanstim'
+        is_cnmf = True
+    else:
+        assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
+        cX, cy = get_input_data(dataset, run_info, clfparams)
+        cy = np.array(cy)
+        is_cnmf = False
+
+    #%%
+    
+    # #############################################################################
+    # Randomly sample N trials per condition and compare classifier performance
+    # #############################################################################
+        
+    bootstrap_cv = False
+
+    if bootstrap_cv:
+        bootstrap_classifier_performance(clfparams, dataset, run_info, sconfigs,
+                                         n_iterations=100, n_test_samples=[4, 6, 8, 10],
+                                         data_identifier=data_identifier)
+    #%
+    #%%
+    # =============================================================================
+    # Assign cX -- input data for classifier (nsamples x nfeatures)
+    # Get corresponding labels for each sample.
+    # =============================================================================
+
+    if data_type == 'frames':
+        cX_std = StandardScaler().fit_transform(cX)
+        epochs, decode_dict, bins, clfparams['binsize'] = format_epoch_dataset(clfparams, cX, cy, run_info, sconfigs)
+        class_labels = sorted(list(set([sconfigs[c][clfparams['class_name']] for c in sconfigs.keys()])))
+
+    else:
+         cX, cy, class_labels = format_stat_dataset(clfparams, cX_std, cy, sconfigs, relabel=False)
+         
+         if get_null and 'cnmf' in optsE.traceid_list[0]:
+            _, _, cnull = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=True)
+            #cy = np.array(cy)
+            # Make sure num of cnull examples matches n samples per condition:
+            nconds_per = np.unique(Counter(cy).values())
+            assert len(nconds_per)==1, "Multiple reps found for conditions"
+            cnull_tmp = []
+            for conf in np.unique(cy):
+                cnull_tmp.append(cnull[np.where(cy==conf)[0], :])
+            cnull_tmp = np.mean(np.dstack(cnull_tmp), axis=-1) # average across conditions to get 20 reps x nrois
+            cX = np.vstack((cX, cnull_tmp))
+            cy = np.append(cy, ['bas' for _ in range(nconds_per[0])])
+            class_labels.append('bas')
+            
+         cX_std = StandardScaler().fit_transform(cX)
+         
+    #%% Create output dir for current classifier:
+    
+    classif_identifier = get_classifier_id(class_labels, clfparams)
+
+    if get_null:
+        classif_identifier = "%s_plusnull" % (classif_identifier)    
+    if is_cnmf:
+        classif_identifier = "%s_%s" % (classif_identifier, inputdata_type)
+    classifier_dir = os.path.join(traceid_dir, 'classifiers', classif_identifier)
+
+    if aggregate_type == 'single':
+        clf_subdir = '%s_%s' % (const_trans, str(trans_value))
+        classifier_dir = os.path.join(classifier_dir, clf_subdir)
+    
+    if not os.path.exists(classifier_dir):
+        os.makedirs(classifier_dir)
+    else:
+        print "DIR exists!"       
+    print "Saving to:", classifier_dir
+    
+    # Also create dir for figures:
+    if not os.path.exists(os.path.join(classifier_dir, 'figures')): os.makedirs(os.path.join(classifier_dir, 'figures'))
+    if not os.path.exists(os.path.join(classifier_dir, 'results')): os.makedirs(os.path.join(classifier_dir, 'results'))
+    
+    clfparams['classifier_dir'] = classifier_dir
+    clfparams['class_labels'] = class_labels
+
+
+    #%%  Create Classifier instance:
+    
+    if data_type == 'frames':
+        svc = decode_trial_epochs(clfparams, bins, decode_dict, run_info, data_identifier=data_identifier, 
+                            niterations=10, scoring='accuracy')
+    
+    #% Look at input data:
+    else:
+        #% Train and test linear SVM using zscored response values:
+            
+        # #############################################################################
+        # Set classifier type and CV params:
+        # #############################################################################
+        
+        # Create classifier:
+        # ------------------
+        if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
+            clfparams['dual'] = False
+        else:
+            clfparams['dual'] = True
+            
+        if clfparams['classifier'] == 'LinearSVC':
+            svc = LinearSVC(random_state=0, dual=clfparams['dual'], multi_class='ovr', C=clfparams['C'])
+        else:
+            svc = SVR(kernel='linear', C=clfparams['C'])
+    
+    
+    #%%
+    # -----------------------------------------------------------------------------
+    # Save classifier and formatted data:
+    # -----------------------------------------------------------------------------
+        
+    clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
+    np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
+                 data_type=data_type,
+                 sconfigs=sconfigs, run_info=run_info)
+
+    joblib.dump(svc, os.path.join(classifier_dir, '%s.pkl' % classif_identifier), compress=9)
+     
+    import sys
+    svc_params = svc.get_params().copy()
+    if 'base_estimator' in svc_params.keys():
+        svc_params['base_estimator'] = str(svc_params['base_estimator'] )
+    #clf_params['cv'] = str(clf_params['cv'])
+    svc_params['identifier'] = classif_identifier
+    svc_params_hash = hash(json.dumps(svc_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
+    
+    with open(os.path.join(classifier_dir, 'params_%s.json' % svc_params_hash), 'w') as f:
+        json.dump(svc_params, f, indent=4, sort_keys=True, ensure_ascii=True)
+    
+    clfparams['classifier_info'] = svc_params
+    
+    with open(os.path.join(classifier_dir, 'classifier_params.json'), 'w') as f:
+        json.dump(clfparams, f, indent=4, sort_keys=True, ensure_ascii=True)
+        
+        
+    #%%
+    if clfparams['data_type'] == 'stat':
+                    
+        # Create output dir for population-level figures:
+        population_figdir = os.path.join(traceid_dir,  'figures', 'population')
+        if not os.path.exists(population_figdir):
+            os.makedirs(population_figdir)
+            
+        correlation_matrix(clfparams, class_labels, cX, cy, data_identifier=data_identifier, output_dir=population_figdir)
+        
+          
+        # -----------------------------------------------------------------------------
+        # Do cross-validation
+        # -----------------------------------------------------------------------------
+        #grid_values = {'penalty': ['l1','l2'], 'C': [0.001,0.01,0.1,1,10,100,1000]}
+        #model_lr = GridSearchCV(lr, param_grid=grid_values)
+            
+        cv_permutation_test(svc, cX_std, cy, clfparams, scoring='accuracy',
+                            n_permutations=500, n_jobs=4, data_identifier=data_identifier)
+        
+                
+        predicted, true = do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=data_identifier)
+        
+        calculate_confusion_matrix(predicted, true, clfparams)
+        
+
+    #%%
+        
+        # Visualize feature weights:
+        # =============================================================================
+            
+        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+    
+        # Sort the weights by their strength, take out bottom N rois, iterate.
+        fig = plot_weight_matrix(svc, absolute_value=True)
+        label_figure(fig, data_identifier)
+        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
+        pl.close()
+        
+        fig = plot_weight_matrix(svc, absolute_value=False)
+        label_figure(fig, data_identifier)
+        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_raw.png'))
+        pl.close()
+        
+        nrois = len(run_info['roi_list'])
+        for class_idx in range(len(svc.classes_)):
+            fig = plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
+            label_figure(fig, data_identifier)
+            pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
+            pl.close()
+        
+        #%
+        
+        #%% Identify top N (most informative) features (neurons) and test classification performance:
+                
+        scoring = 'accuracy'
+        datasubset = 'full'
+        results_topN = iterate_RFE(clfparams, cX_std, cy, scoring=scoring, datasubset=datasubset)
+        plot_RFE_results(results_topN, clfparams, scoring=scoring, data_identifier=data_identifier)
+    
+            
+
     #%%
         
 #    # #############################################################################
