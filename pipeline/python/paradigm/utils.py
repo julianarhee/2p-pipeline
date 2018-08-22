@@ -1284,7 +1284,61 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
 
     #assert len(stim_dur_sec)==1, "more than 1 unique stim duration found in MW file!"
     #stim_dur = stim_dur_sec[0]
+
+
+    if skip_last_trial:
+        # Look in data_arrays dir to see if trials_to_dump were selected from
+        # a previous run:
+        dump_info_fpath = os.path.join(data_array_dir, 'dump_info.pkl')
+        if os.path.exists(dump_info_fpath):
+            with open(dump_info_fpath, 'rb') as d:
+                dumpinfo = pkl.load(d)
+        else:
+            dumpinfo = {}
+            # Need to remove trials for certain conditions since we're missing traces...
+            counts = Counter(configs)
+            dumpinfo['orig_counts'] = counts
+            min_frames = min([v for k,v in counts.items()])
+            conds_with_less = [k for k,v in counts.items() if v==min_frames]
+            conds_to_lop = [k for k in counts.keys() if k not in conds_with_less]
+            dumpinfo['conds_to_lop'] = conds_to_lop
+            kept_indices = []
+            dumpedtrials = {}
+            for cond in counts.keys():
+                currcond_idxs = np.where(configs==cond)[0]  # Original indices into the full array for current condition
+                if cond in conds_to_lop:
+                    curr_trials = trials[currcond_idxs]         # Trials 
+                    trial_labels = np.array(sorted(list(set(curr_trials)), key=natural_keys)) # Get trial IDs in order
+                    currcond_nframes = counts[cond]
+                    nframes_over = currcond_nframes - min_frames
+                    ntrials_to_remove = nframes_over/nframes_per_trial
+                    ntrials_orig = currcond_nframes/nframes_per_trial
+                    randomly_removed_trials = random.sample(range(0, ntrials_orig), ntrials_to_remove)
+                    trials_to_dump = trial_labels[randomly_removed_trials]
+                    cond_indices_to_keep = [i for i,trial in enumerate(curr_trials) if trial not in trials_to_dump]
+                    kept_indices.append(currcond_idxs[cond_indices_to_keep])
+                    dumpedtrials[cond] = trials_to_dump
+                else:
+                    kept_indices.append(currcond_idxs)
+            keep = np.array(sorted(list(itertools.chain(*kept_indices))))
+            dumpinfo['keep'] = keep
+            dumpinfo['dumpedtrials'] = dumpedtrials
+            
+            with open(dump_info_fpath, 'wb') as d:
+                pkl.dump(dumpinfo, d, protocol=pkl.HIGHEST_PROTOCOL)
+
+        if len(dumpinfo['keep']) > 0:
+            keep = np.array(dumpinfo['keep'])
+            xdata_df = xdata_df.loc[keep, :].reset_index(drop=True)
+            tstamps = tstamps[keep]
+            trials = trials[keep]
+            configs = configs[keep]
+            stim_durs = stim_durs[keep]
+            if F0_df is not None:
+                F0_df = F0_df.loc[keep, :].reset_index(drop=True)
     
+
+
     # Turn paradigm info into dataframe:
     labels_df = pd.DataFrame({'tsec': tstamps, 
                               'config': configs,
