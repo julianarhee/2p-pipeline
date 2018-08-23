@@ -291,7 +291,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                         #nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * 1.0 * framerate) #- int(framerate) #+ int(np.floor(mwtrials[trial]['iti_duration']/1E3) * framerate) - int(framerate)*3 #3)
                         # Skip TWO ITI durs (start and end) plus a little extra
                         #nframes_to_skip = int(round(np.floor((mwtrials[prev_trial]['iti_duration'])/1E3)*2.5 * framerate))
-                        nframes_to_skip = int(round((min_iti * 2.0 + 3) * framerate))
+                        nframes_to_skip = int(round((min_iti * 4.0 + 2) * framerate))
                     else:
                         #nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
                         nframes_to_skip = int(round(min_iti * framerate)) #3)
@@ -336,7 +336,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                 # ** CHeck for skipped frames -- should be relatively consecutive, otherwise we're frame-shifting.
                 currframe = int(first_frame[1][0].split('_')[0])
                 prevframe = int(first_found_frame[bi-1][0].split('_')[0])
-                if (currframe - prevframe)/framerate >= (2./framerate):
+                if (currframe - prevframe)/framerate >= (4./framerate):
                     print "%i -- Prev: %i, Curr: %i" % (bi, prevframe, currframe)
                     print "bitcodes:", bitcodes
                     print "Massive break found within %s. Skipping!" % trial
