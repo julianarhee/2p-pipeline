@@ -1262,8 +1262,8 @@ def make_nonnegative(images_dir):
 
     return images_dir_nonneg
 
-#%%
-def make_unsigned(images_dir):
+#%igned
+def add_offset_convert_uint16(images_dir):
     offset = 32768
 
     tiff_list = sorted([t for t in os.listdir(images_dir) if t.endswith('tif')], key=natural_keys)
@@ -1354,10 +1354,10 @@ def get_fissa_object(TID, RID, rootdir='', ncores_prep=2, ncores_sep=4, redo_pre
             print "Making tif files NONNEGATIVE..."
             src_img_dir = images_dir.split('_nonnegative')[0]
             images_dir = make_nonnegative(src_img_dir)
-        elif '_unsigned' in tiff_src_dir:
-            print "Making tif files unsigned..."
-            src_img_dir = images_dir.split('_unsigned')[0]
-            images_dir = make_unsigned(src_img_dir)
+        elif '_offset' in tiff_src_dir:
+            print "Making tif files unsigned with offset and uint16..."
+            src_img_dir = images_dir.split('_offset')[0]
+            images_dir = add_offset_convert_uint16(src_img_dir)
         elif '_uint16' in tiff_src_dir:
             print "Making tif files UINT16..."
             src_img_dir = images_dir.split('_uint16')[0]
@@ -1753,10 +1753,10 @@ def get_tiff_source(TID, rootdir, animalid, session):
         print "Making tif files NONNEGATIVE..."
         orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
         tiff_dir = make_nonnegative(orig_tiff_dir)
-    elif '_unsigned' in tiff_dir and not os.path.exists(tiff_dir):
-        print "Making tif files psuedo unsigned..."
-        orig_tiff_dir = tiff_dir.split('_unsigned')[0]
-        tiff_dir = make_unsigned(orig_tiff_dir)
+    elif '_offset' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files psuedo unsigned with offset and uint16 conversion..."
+        orig_tiff_dir = tiff_dir.split('_offset')[0]
+        tiff_dir = add_offset_convert_uint16(orig_tiff_dir)
     elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
         print "Making tif files UINT16..."
         orig_tiff_dir = tiff_dir.split('_uint16')[0]
