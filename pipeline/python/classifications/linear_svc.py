@@ -279,7 +279,7 @@ def group_classifier_data(clfparams, cX, cy, sconfigs, relabel=False):
     check_configs = sconfigs.keys()
     if clfparams['get_null']:
         check_configs.append('bas')
-    assert list(set(cy)) == check_configs, "Bad configIDs for label list. Should be the same as sconfigs.keys()."
+    assert sorted(list(set(cy))) == sorted(check_configs), "Bad configIDs for label list. Should be the same as sconfigs.keys()."
     
     if aggregate_type == 'all':
         # Assign labels, but don't group/average values by some shared transform value. 
@@ -688,21 +688,37 @@ def get_input_data(dataset, run_info, clfparams):
         
     random_draw = True
     if get_null:
-        if inputdata == 'meanstim':
-            Xdata = dataset['corrected']
-        elif inputdata == 'meanstimdff':
+        
+        if inputdata == 'meanstimdff':
             Xdata = dataset['dff']
-            
+        else:
+            Xdata = dataset['corrected']
+
         traces = np.reshape(Xdata, (ntrials_total, nframes_per_trial, nrois), order='C')
+
+        if 'mean' in inputdata:
+            nsamples = ntrials 
+            baseline_values = np.nanmean(traces[:, 0:run_info['stim_on_frame']], axis=1)
+            use_frames = False
+        else:
+            nsamples = ntrials * nframes_per_trial
+            baseline_values =  traces[:, 0:run_info['stim_on_frame']]
+            use_frames = True
+            
         #traces = traces[sorted_ixs,:,:]        
-        mean_baseline_values = np.nanmean(traces[:, 0:run_info['stim_on_frame']], axis=1)
         
         # Only get subset (or averaged) null sample to match conditions nums:
         if random_draw:
-            selected_trials = random.sample(range(0, mean_baseline_values.shape[0]), ntrials)
-        bas = mean_baseline_values[selected_trials, :]
+            selected_trials = random.sample(range(0, baseline_values.shape[0]), ntrials)
+        
+        if use_frames:
+            trial_ixs = np.array([np.arange(si*nframes_per_trial, si*nframes_per_trial + nframes_per_trial) for si in selected_trials])
+            selected_trial_ixs = trial_ixs.flatten()
+        else:
+            selected_trial_ixs = selected_trials
+        bas = baseline_values[selected_trial_ixs, :]
         cX = np.append(cX, bas, axis=0)
-        cy = np.append(cy, np.array(['bas' for _ in range(ntrials)]), axis=0)
+        cy = np.append(cy, np.array(['bas' for _ in range(nsamples)]), axis=0)
         
     print 'cX (inputdata):', cX.shape
     print 'cY (labels):', cy.shape
@@ -2022,7 +2038,9 @@ def train_linear_classifier(options_list):
         dataset = dt['arr_0'][()]
     else:
         dataset = np.load(data_paths[opts_ix])
-
+        if 'arr_0' in dataset.keys():
+            dataset = dataset['arr_0'][()]
+        
         
     #%% Load dataset, get stimulus info and run/acquisition info:
     
@@ -2147,9 +2165,11 @@ def train_linear_classifier(options_list):
         class_labels = sorted(list(set([sconfigs[c][clfparams['class_name']] for c in sconfigs.keys()])))
 
     else:
-         cX, cy, class_labels = format_stat_dataset(clfparams, cX_std, cy, sconfigs, relabel=False)
+        cX_std = StandardScaler().fit_transform(cX)
+
+        cX, cy, class_labels = format_stat_dataset(clfparams, cX_std, cy, sconfigs, relabel=False)
          
-         if get_null and 'cnmf' in optsE.traceid_list[0]:
+        if get_null and 'cnmf' in optsE.traceid_list[0]:
             _, _, cnull = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=True)
             #cy = np.array(cy)
             # Make sure num of cnull examples matches n samples per condition:
@@ -2162,8 +2182,7 @@ def train_linear_classifier(options_list):
             cX = np.vstack((cX, cnull_tmp))
             cy = np.append(cy, ['bas' for _ in range(nconds_per[0])])
             class_labels.append('bas')
-            
-         cX_std = StandardScaler().fit_transform(cX)
+    
          
     #%% Create output dir for current classifier:
     
