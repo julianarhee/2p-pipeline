@@ -113,8 +113,8 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 rootdir = '/mnt/odyssey' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180817' #'20180713' #'20180629'
-acquisition = 'FOV2_zoom1x'
+session = '20180523' #'20180713' #'20180629'
+acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
@@ -122,12 +122,12 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # #############################################################################
 # Select TRAINING data and classifier:
 # #############################################################################
-train_runid = 'blobs_static_xpos' #_static' #'blobs_run2'
-train_traceid = 'traces001' #'traces001'
+train_runid = 'blobs_run2' #_static' #'blobs_run2'
+train_traceid = 'traces002' #'traces001'
 
 train_data_type = 'meanstim' #_plusnull'
 input_data_type = 'corrected'
-class_desc = '3xpos'
+class_desc = '5yrot'
 
 if 'cnmf' in train_traceid:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s_%s' % (class_desc, train_data_type, input_data_type)
@@ -166,8 +166,8 @@ data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_
 #%%  Classifier Parameters:
     
 use_regression = False
-fit_best = False
-nfeatures_select = 'all' #50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+fit_best = True
+nfeatures_select = 30 #'all' #50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
 big_C = 1e9
 
 
@@ -230,8 +230,8 @@ if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 # #############################################################################
 # Select TESTING data:
 # ###################### #######################################################
-test_runid = 'blobs_dynamic_xpos2' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
-test_traceid =  'traces001' #'traces001' #'cnmf_20180720_14_36_24'
+test_runid = 'blobs_dynamic_run1' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
+test_traceid =  'traces002' #'traces001' #'cnmf_20180720_14_36_24'
 test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
 
 #%%
@@ -286,7 +286,19 @@ if test_data_type == 'spikes' and threshold:
         ixs = np.where(X_test_orig[:, rid] < X_test_orig[:, rid].max()*threshold_factor)[0]
         X_test_orig[ixs, rid] = 0
     
+#% Only grab subset of dataset if relevant:
+const_trans = 'xpos'
+trans_value = -5
+
+if const_trans is not None:
+    configs_to_test = [c for c in test_configs.keys() if test_configs[c][const_trans] == trans_value]
+else:
+    configs_to_test = test_configs.keys()
     
+label_ixs = np.array(labels_df[labels_df['config'].isin(configs_to_test)].index.tolist())
+X_test_orig = X_test_orig[label_ixs,:]
+labels_df = labels_df.iloc[label_ixs].reset_index(drop=True)
+
 # Whiten data:
 X_test = StandardScaler().fit_transform(X_test_orig)
 
@@ -390,6 +402,9 @@ for k,g in cgroups:
 
 # Set output dir:
 decoding_dir = os.path.join(test_results_dir, '%s_%s' % (test_runid, test_data_type))
+if const_trans is not None and trans_value is not None:
+    trans_string = '%s_%i' % (const_trans, trans_value)
+    decoding_dir = '%s_%s' % (decoding_dir, trans_string)
 if not os.path.exists(decoding_dir): os.makedirs(decoding_dir)
 
 
@@ -447,23 +462,37 @@ if isinstance(clf, CalibratedClassifierCV):
         if 'xpos' in class_desc:
             direction_label = 'xpos'
             is_grating = False
-        else:
+        elif 'yrot' in class_desc:
+            direction_label = 'yrot'
+            is_grating = False
+        elif 'ori' in class_desc:
             direction_label = 'direction'
             is_grating = True
+
+
+        # If GRATINGS: CW=1, values should be decreasing; CCW = -1, values are increasing
+        # If XPOS:  direction < 0 -- start LEFT; direction > 0 -- start RIGHT
+        # If YROT:  direction == 1 -- standard movie (positive to negative); direction == -1 -- _reverse movie  (negative to positive)
+#        if 'reverse' in imname:
+#            yrot = -1
+#        else:
+#            yrot = 1
+                        
             
         if test_configs[config][direction_label] > 0: #== 1:  # CW, values should be decreasing
             class_list = sorted(train_labels, reverse=True)
             shift_sign = -1
+            start_angle_ix = class_list[0]
         else:
             class_list = sorted(train_labels, reverse=False)
             shift_sign = 1
+            start_angle_ix = class_list[0]
         
         if is_grating:
             if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
                 start_angle_ix = class_list.index(0)
             else:
-                start_angle_ix = class_list.index(test_configs[config]['ori'])
-                        
+                start_angle_ix = class_list.index(test_configs[config]['ori'])      
             class_list = np.roll(class_list, shift_sign*start_angle_ix)
 
         if any([isinstance(v, str) for v in svc.classes_]):
@@ -619,21 +648,29 @@ if isinstance(clf, CalibratedClassifierCV):
             else:
                 rot_direction = 'CCW'
         
-        if stim_vary:
-            if test_configs[config]['stim_dur'] == half_dur:
-                rot_duration = 'half'
-            elif test_configs[config]['stim_dur'] == quarter_dur:
-                rot_duration = 'quarter'
-            else:
-                rot_duration = 'full'
+        if direction_label == 'ori':
+            if stim_vary:
+                if test_configs[config]['stim_dur'] == half_dur:
+                    rot_duration = 'half'
+                elif test_configs[config]['stim_dur'] == quarter_dur:
+                    rot_duration = 'quarter'
+                else:
+                    rot_duration = 'full'
             starting_rot = test_configs[config]['ori']
         else:
-            if test_configs[config]['xpos'] < 0:
-                rot_direction = 'rightward'
-            else:
-                rot_direction = 'leftward'
-            rot_duration = 'full'
-            starting_rot = test_configs[config]['xpos']
+            if direction_label=='xpos':
+                if test_configs[config]['xpos'] < 0:
+                    rot_direction = 'rightward'
+                else:
+                    rot_direction = 'leftward'
+                rot_duration = 'full'
+                starting_rot = test_configs[config]['xpos']
+            elif direction_label == 'yrot':
+                if test_configs[config]['yrot'] == -1:
+                    rot_direction = 'posneg'
+                else:
+                    rot_direction = 'reverse'
+                starting_rot = class_list[0]
             
         
         config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
@@ -739,7 +776,7 @@ for k,g in train_cgroups:
 # Plot mean traces for ROIs sorted by ANGLE: TRAINING DATA
 # #############################################################################
 
-train_feature = 'xpos'
+train_feature = 'yrot' #'xpos'
 plot_trials = True
 trial_lw = 0.2
 mean_lw = 1
@@ -952,8 +989,8 @@ offsets = np.vstack(baselines)
 
 # INPUT DATA:  Plot POLAR plots to show direction tuning:
 # =============================================================================
-if train_feature == 'ori':
-    thetas = [train_configs[cf]['ori'] * (math.pi/180) for cf in config_list]
+if train_feature == 'ori' or train_feature == 'yrot':
+    thetas = [train_configs[cf][direction_label] * (math.pi/180) for cf in config_list]
     use_polar = True
 else:
     thetas = [train_configs[cf][train_feature] * (math.pi/180) for cf in config_list]
@@ -1013,7 +1050,7 @@ pl.savefig(os.path.join(train_results_dir, figname))
 # Sort by direction preference:
 # -----------------------------------------------------------------------------
 
-thetas = [train_configs[cf]['ori'] for cf in config_list]
+thetas = [train_configs[cf][direction_label] for cf in config_list]
 
 pdirections = []
 for ridx in range(nrois):
@@ -1043,7 +1080,11 @@ plot_trials = True
 trial_lw = 0.2
 mean_lw = 1
 
-config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x]['ori'])
+# GROUP CONFIGS:
+# TODO:  if train/test on specific transform (e.g., xpos, yrot, etc.) group configs with different stimulus IDs together...
+config_groups = ...
+
+config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x][direction_label])
 class_indices = np.arange(0, len(config_list))
 
 fig, axes = pl.subplots(len(config_list), 1, figsize=(6,15))
@@ -1051,8 +1092,8 @@ for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)
     #print lix
     
     #grand_meantrace_across_rois = np.mean(np.mean(traces[class_label], axis=-1), axis=0)
-    rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==train_configs[class_label]['ori']]
-    print "Found %i cells with preferred dir %i" % (len(rois_preferred), train_configs[class_label]['ori'])
+    rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==train_configs[class_label][direction_label]]
+    print "Found %i cells with preferred dir %i" % (len(rois_preferred), train_configs[class_label][direction_label])
     stim_on = list(set(train_labels_df[train_labels_df['config']==class_label]['stim_on_frame']))[0]
     nframes_on = list(set(train_labels_df[train_labels_df['config']==class_label]['nframes_on']))[0]
     stim_frames = np.arange(stim_on, stim_on+nframes_on)
