@@ -17,7 +17,9 @@ import json
 import glob
 import math
 import datetime
+import ast
 from sklearn.feature_selection import RFE
+from sklearn.externals import joblib
 
 from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, replace_root, label_figure
@@ -33,6 +35,12 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.svm import SVR, LinearSVR
 
 #%%
+def filter_noise(X, labels_df, min_spikes=0.0002):    
+    
+    X[X <= min_spikes] = 0.
+
+    return X
+
 def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
     chunk_size = int(round(1./downsample_factor))
 
@@ -72,6 +80,461 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
     return X_test_orig, labels_df
 
+#%%
+
+def load_training_data(training_data_fpath):
+    train_runid = os.path.split(training_data_fpath.split('/traces/')[0])[-1]
+    if 'comb' in train_runid:
+        tmpd = np.load(training_data_fpath)
+        training_data = tmpd['arr_0'][()]
+        train_runinfo = training_data['run_info']
+    else:
+        training_data = np.load(training_data_fpath)
+        train_runinfo = training_data['run_info'][()]
+    
+    return training_data, train_runinfo
+
+
+def load_training_set(train_fpath, train_dtype='cX_std'):
+        
+    # Load data:
+    train_dset = np.load(train_fpath)
+    assert train_dtype in train_dset.keys(), "Specified training dset %s not found!" % train_dtype
+    
+        
+    train_X = train_dset[train_dtype]
+    train_y = [int(t) if t != 'bas' else 'bas' for t in train_dset['cy']]
+
+    
+    train_labels = sorted(list(set(train_y)))
+    #train_labels = [t for t in train_labels if t != 'bas']
+    
+    return train_X, train_y, train_labels
+
+
+def get_testing_set(test_fpath, test_data_type='smoothedX'):
+    # Load test dataset:    
+    test_dataset = np.load(test_fpath)
+    #%
+    assert test_data_type in test_dataset.keys(), "Specified d-type (%s) not found. Choose from: %s" % (test_data_type, str(test_dataset.keys()))
+    assert len(test_dataset[test_data_type].shape)>0, "D-type is empty!"
+    
+    # _, smoothed_X, _ = util.load_roiXtrials_df(test_dataset['run_info'][()]['traceid_dir'], trace_type='processed', dff=False, 
+    #                                                smoothed=True, frac=0.01, quantile=0.08)
+    #
+    
+    test_X = test_dataset[test_data_type]
+
+    
+    test_sconfigs = test_dataset['sconfigs'][()]
+    test_labels_df = pd.DataFrame(data=test_dataset['labels_data'], columns=test_dataset['labels_columns'])
+    
+    test_runinfo = test_dataset['run_info'][()]
+    
+    return test_X, test_labels_df, test_sconfigs, test_runinfo
+
+
+#%
+
+
+def refit_SVC(svc, train_X, train_y, classifier_dir, fit_best=False, nfeatures_select='all'):
+        
+    #if 'LinearSVC' in classif_identifier:
+    if fit_best:
+        roiset = 'best%i' % nfeatures_select
+        # First check if we've done this already:
+        fit_results = sorted(glob.glob(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results*.txt' % roiset)), key=natural_keys)
+        if len(fit_results) > 0:
+            # Load the most recent one:
+            print "Loading most recent fit: %s" % os.path.split(fit_results[-1])[-1]
+            with open(fit_results[-1], 'rb') as f:
+                for texti, textline in enumerate(f):
+                    if 'kept_rids' in textline:
+                        kept_rids_tmp = ast.literal_eval(textline)
+                        break
+            kept_rids = np.array(kept_rids_tmp['kept_rids'])
+        else:
+            # Recursively fit to get top N features:
+            rfe = RFE(svc, n_features_to_select=nfeatures_select)
+            rfe.fit(train_X, train_y)
+            removed_rids = np.where(rfe.ranking_!=1)[0]
+            kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
+            datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
+            with open(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results_%s_subset.txt' % (roiset, datestr)), 'wb') as f:
+                f.write('%s\n' % str(svc))
+                f.write('\n%s' % str({'kept_rids': list(kept_rids)}))
+                
+        # Only take top N cells:
+        train_X = train_X[:, kept_rids]
+        print "Found %i best ROIs:" % nfeatures_select, train_X.shape
+    
+    else:
+        print "Using ALL rois selected."
+        roiset = 'all'
+        kept_rids = np.arange(0, train_X.shape[-1])
+    
+    # Re-fit classifier:
+    svc.fit(train_X, train_y)
+    
+    # Convert to get probabilities
+    clf = CalibratedClassifierCV(svc) 
+    clf.fit(train_X, train_y)    
+
+    return clf, train_X, kept_rids, roiset
+
+
+def fit_regressor(train_X, train_y, classif_identifier):
+    print "Using regression..."
+    clf = SVR(kernel='linear', C=1, tol=1e-9)
+    clf.fit(train_X, train_y)
+
+    classif_identifier = classif_identifier.replace('LinearSVC', 'SVRegression')
+    
+    return clf, classif_identifier
+
+#%%
+
+
+def decode_traces(clf, cgroups, X, shuffle_frames=False):
+
+    all_class_predictions = {}
+    test_traces = {}
+    
+    for k,g in cgroups:
+        predictions = []; trace_values = [];
+        for kk,gg in g.groupby('trial'):
+    
+            trial_ixs = gg.index.tolist()
+            if shuffle_frames:
+                shuffle(trial_ixs)
+                
+            # Get subset of input test data corresponding to current config:
+            curr_test = X[trial_ixs, :]
+            #orig_test_traces = test_X_orig[trial_ixs,:]
+    
+            if isinstance(clf, CalibratedClassifierCV):
+                curr_proba = clf.predict_proba(curr_test)
+            elif isinstance(clf, MLPRegressor):
+                proba_tmp = clf.predict(curr_test)
+                curr_proba = np.arctan2(proba_tmp[:, 0], proba_tmp[:, 1])
+            else:
+                curr_proba = clf.predict(curr_test)
+            
+            predictions.append(curr_proba)
+            trace_values.append(curr_test) #(orig_test_traces)
+            
+        predictions = np.dstack(predictions)
+        trace_values = np.dstack(trace_values)
+        
+        all_class_predictions[k] = predictions
+        test_traces[k] = trace_values
+    
+    return all_class_predictions, test_traces
+
+
+#%%
+
+def get_ordered_classes(config, test_sconfigs, class_names, direction_label):
+    
+    if test_sconfigs[config][direction_label] > 0: #== 1:  # CW, values should be decreasing
+        class_list = sorted(class_names, reverse=True)
+        shift_sign = -1
+        start_angle_ix = class_list[0]
+    else:
+        class_list = sorted(class_names, reverse=False)
+        shift_sign = 1
+        start_angle_ix = class_list[0]
+    
+    if is_grating:
+        if max(class_list) < 180 and test_sconfigs[config]['ori'] == 180: # Not a drifting case, 180 = 0
+            start_angle_ix = class_list.index(0)
+        else:
+            start_angle_ix = class_list.index(test_sconfigs[config]['ori'])      
+        class_list = np.roll(class_list, shift_sign*start_angle_ix)
+
+    if any([isinstance(v, str) for v in class_names]):
+        class_indices = [[v for v in class_names].index(str(c)) for c in class_list]
+    else:
+        class_indices = [[v for v in class_names].index(c) for c in class_list]
+    
+    return class_list, class_indices
+
+#%%
+
+
+def draw_subplot_stimbars(axes, config, stim_frames, class_names, class_indices, 
+                          sconfigs, colorvals, is_static=False, y_unit=None, bar_offset=0.1):
+    
+    if any('stim_dur' in sconfigs[cf].keys() for cf in sconfigs.keys()): 
+        stimdurs = sorted(list(set([sconfigs[cf]['stim_dur'] for cf in sconfigs.keys()])))
+        vary_stimdur = True
+        if len(stimdurs) > 1:
+            full_dur = stimdurs[-1]
+            half_dur = stimdurs[-2]
+            if len(stimdurs) > 2:
+                quarter_dur = stimdurs[0]
+    else:
+        stimdurs = None
+        vary_stimdur = False
+        
+    for lix in range(len(axes)):
+        # Adjust ylimit and set stimbar location:
+        ymin, ymax = axes[lix].get_ylim()
+        curr_ylim = ymin - bar_offset
+        axes[lix].set_ylim([ymin-bar_offset*2, ymax])
+        axes[lix].axes.xaxis.set_ticks([])
+        if y_unit is None:
+            axes[lix].set_ylabel('prob (%i)' % class_names[class_indices[lix]])
+        else:
+            axes[lix].set_ylabel('%s' % y_unit)            
+        if vary_stimdur:
+            if sconfigs[config]['stim_dur'] == quarter_dur:
+                nclasses_shown = int(len(class_indices) * (1/4.)) + 1
+            elif sconfigs[config]['stim_dur'] == half_dur:
+                nclasses_shown = int(len(class_indices) * (1/2.)) + 1
+            else:
+                nclasses_shown = len(class_indices)
+        else:
+            nclasses_shown = len(class_indices)
+        ordered_indices = np.array(class_indices[0:nclasses_shown])
+        
+        if is_static:
+            ordered_colors = colorvals[lix]
+        else:
+            if 'bas' in class_names:
+                #ordered_colors = [colorvals[train_labels.index(int(svc.classes_[c]))] for c in ordered_indices]
+                ordered_colors = [colorvals[class_names.index(int(class_names[c]))] for c in ordered_indices]
+            else:
+                ordered_colors = [colorvals[c] for c in ordered_indices]
+            
+        # Create color bar:
+        cy = np.ones(stim_frames.shape) * axes[lix].get_ylim()[0]/2.0
+        z = stim_frames.copy()
+        points = np.array([stim_frames, cy]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        cmap = ListedColormap(ordered_colors)
+        lc = LineCollection(segments, cmap=cmap)
+        lc.set_array(z)
+        lc.set_linewidth(5)
+        axes[lix].add_collection(lc)
+        
+        
+def format_xaxis_subplots(axes, stim_on, framerate):
+    for lix in range(len(axes)):
+        if lix == len(axes)-1:
+            axes[lix].set_xticks((stim_on, stim_on + framerate))
+            axes[lix].set_xticklabels([0, 1])
+            axes[lix].set_xlabel('sec', horizontalalignment='right', x=0.25)        
+            for axside in ['top', 'right']:
+                axes[lix].spines[axside].set_visible(False)
+            sns.despine(trim=True, offset=4, ax=axes[lix])
+
+        else:
+            axes[lix].axes.xaxis.set_ticks([])
+            for axside in ['bottom', 'top', 'right']:
+                axes[lix].spines[axside].set_visible(False)
+            axes[lix].axes.xaxis.set_visible(False) #([])
+            sns.despine(trim=True, offset=4, ax=axes[lix])      
+
+
+def draw_legend(fig, class_list, colorvals , polar=False):         
+    if len(class_list) > 5: #180 in class_list:
+        legend_axes = [0.75, 0.75, 0.2, 0.3]
+    else:
+        legend_axes = [0.80, 0.75, 0.2, 0.3]
+
+    if polar:
+        legend = fig.add_axes(legend_axes, projection='polar') 
+    
+        thetas = sorted(np.array([ori_deg*(math.pi/180) for ori_deg in class_list]))
+        if max(thetas) < 300:
+            # Add 180 to legend, since that can be a starting/end point
+            thetas = np.append(thetas, 180*(math.pi/180))
+        
+        # Assign colors to each class:
+        for tix, theta in enumerate(thetas):
+            print theta
+            if theta == math.pi and max(class_list) < 300:
+                color_ix = 0
+            else:
+                color_ix = [t for t in thetas].index(theta)
+            legend.plot([theta, theta], [0, 1], color=colorvals[color_ix], lw=3)
+        legend.set_theta_zero_location("N")
+        legend.set_xlim([0, math.pi])
+        legend.grid(False); 
+        legend.set_xticks(thetas)
+        if max(class_list) < 300:
+            # Make sure 180 is just 0:
+            thetas[-1] = 0
+        legend.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=8)
+        legend.yaxis.grid(False); legend.set_yticklabels([])
+        legend.spines["polar"].set_visible(False)
+    else:
+        from matplotlib.lines import Line2D
+        custom_lines = []
+        for lix, c_ori in enumerate(class_list):
+            custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
+        legend = fig.add_axes(legend_axes)
+        legend.legend(custom_lines, class_list, loc='center')
+        legend.axis('off')
+        
+        
+def configs_to_english(config, sconfigs, direction_label, class_list):
+    if any('stim_dur' in sconfigs[cf].keys() for cf in sconfigs.keys()): 
+        stimdurs = sorted(list(set([sconfigs[cf]['stim_dur'] for cf in sconfigs.keys()])))
+        vary_stimdur = True
+        if len(stimdurs) > 1:
+            full_dur = stimdurs[-1]
+            half_dur = stimdurs[-2]
+            if len(stimdurs) > 2:
+                quarter_dur = stimdurs[0]
+    else:
+        stimdurs = None
+        vary_stimdur = False
+        
+        
+    rot_duration = 'full'
+    rot_direction = 'static'
+    if config == '':
+        starting_rot = ''
+    else:
+        starting_rot = sconfigs[config][direction_label]
+        
+        if vary_stimdur:
+            if sconfigs[config]['stim_dur'] == half_dur:
+                rot_duration = 'half'
+            elif sconfigs[config]['stim_dur'] == quarter_dur:
+                rot_duration = 'quarter'
+                
+        if direction_label == 'ori':
+            if sconfigs[config]['direction']==1:
+                rot_direction = 'CW'
+            else:
+                rot_direction = 'CCW'
+            starting_rot = sconfigs[config]['ori']
+        else:
+            if direction_label=='xpos':
+                if sconfigs[config]['xpos'] < 0:
+                    rot_direction = 'rightward'
+                else:
+                    rot_direction = 'leftward'
+                starting_rot = sconfigs[config]['xpos']
+            elif direction_label == 'yrot':
+                if sconfigs[config]['yrot'] == -1:
+                    rot_direction = 'posneg'
+                else:
+                    rot_direction = 'reverse'
+                starting_rot = class_list[0]
+    
+    return starting_rot, rot_direction, rot_duration
+
+
+#%%
+
+
+def plot_decoded_traces(cf, traces=None, trained_classes=[], pdirections=None,
+                        direction_label='', sconfigs=dict(), labels_df=None, 
+                        decode=True, shuffle_frames=False, plot_trials=True):
+    
+    if decode:
+        mean_traces = dict((k, np.mean(v, axis=-1)) for k, v in traces.items())
+        sem_traces = dict((k, stats.sem(v, axis=-1)) for k, v in traces.items())
+    else:
+        # Just plotting responses, so instead of dim 2 = classes, dim2 is ROIs:
+        assert pdirections is not None, "For plotting response traces, must provide ROIs sorted by preferred feature."
+
+            
+    # Order subplots by class-order in dynamic stimulus:
+    class_list, class_indices = get_ordered_classes(cf, sconfigs, trained_classes, direction_label)
+    
+    # PLOT ------------------------------------------------------
+    fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
+    
+    # Draw stimulus frames in the color of the predicted label:
+    nframes_in_trial, nclasses_total, ntrials_curr_config = traces[cf].shape
+    stim_on = list(set(labels_df[labels_df['config']==cf]['stim_on_frame']))[0]
+    nframes_on = list(set(labels_df[labels_df['config']==cf]['nframes_on']))[0]
+    stim_frames = np.arange(stim_on, stim_on+nframes_on)    
+    
+    for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
+        color_index = train_labels.index(class_label)
+        if decode:
+            mean_trace = mean_traces[cf][:, class_index]
+            std_trace = sem_traces[cf][:, class_index]
+            rois_preferred = class_index
+        else:
+            rois_preferred = np.array([pdir[0] for pdir in pdirections if pdir[1]==class_label])
+            print "Found %i cells with preferred dir %i" % (len(rois_preferred), class_label)
+            roi_traces = traces[cf][:, rois_preferred, :] # Test mat is:  Nframes x Nrois x Ntrials
+            mean_trace = np.mean(roi_traces, axis=-1)
+            std_trace = np.std(roi_traces, axis=-1)
+        
+        
+        axes[lix].plot(np.arange(0, stim_frames[0]), 
+                            mean_trace[0:stim_frames[0]],
+                            color='k', linewidth=mean_lw, alpha=1.0)
+        axes[lix].plot(stim_frames, 
+                            mean_trace[stim_frames], 
+                            color=colorvals[color_index], linewidth=mean_lw, alpha=1.0)
+        axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), 
+                            mean_trace[stim_frames[-1]:], 
+                            color='k', linewidth=mean_lw, alpha=1.0)
+        
+        if decode and 'bas' in trained_classes:
+            null_index = [v for v in trained_classes].index('bas')
+            axes[lix].plot(np.arange(0, nframes_in_trial), 
+                            mean_traces[cf][:, null_index], 
+                            color='gray', linestyle=':', linewidth=mean_lw, alpha=1.0)
+
+        if plot_trials:
+            plot_type = 'trials'
+            for trialn in range(ntrials_curr_config):
+                axes[lix].plot(np.arange(0, stim_frames[0]+1), 
+                                    traces[cf][0:stim_frames[0]+1, rois_preferred, trialn],
+                                    color='k', linewidth=trial_lw, alpha=0.5)
+                axes[lix].plot(stim_frames, 
+                                    traces[cf][stim_frames[0]:stim_frames[-1]+1, rois_preferred, trialn], 
+                                    color=colorvals[color_index], linewidth=trial_lw, alpha=0.5)
+                axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), 
+                                    traces[cf][stim_frames[-1]:, rois_preferred, trialn], 
+                                    color='k', linewidth=trial_lw, alpha=0.5)
+                
+        else:
+            plot_type = 'fillstd'
+            if len(mean_trace.shape) == 1:
+                axes[lix].fill_between(np.arange(0, nframes_in_trial), 
+                                    mean_trace + std_trace,
+                                    mean_trace - std_trace, 
+                                    alpha=0.2, color='k')
+            else:
+                for l in range(mean_trace.shape[-1]):
+                    axes[lix].fill_between(np.arange(0, nframes_in_trial), 
+                                    mean_trace[:, l] + std_trace[:, l],
+                                    mean_trace[:, l] - std_trace[:, l], 
+                                    alpha=0.2, color='k')
+        # Plot chance line:
+        chance = 1/len(class_list)
+        axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
+
+    # Format subplots, add labels, legend:
+    sns.despine(trim=True, offset=4, ax=axes[lix])
+    draw_subplot_stimbars(axes, cf, stim_frames, clf.classes_, class_indices, test_sconfigs, colorvals, 
+                          is_static=False)
+    format_xaxis_subplots(axes, stim_on, framerate, class_list)
+    # Put legend in upper right:
+    pl.subplots_adjust(top=0.85)
+    draw_legend(fig, class_list, colorvals, polar=polar_legend)
+    # Give a sensible title:
+    starting_rot, rot_direction, rot_duration = configs_to_english(cf, test_sconfigs, direction_label, class_list)
+    config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+    pl.suptitle(config_english)
+  
+    if shuffle_frames:
+        figbase = '%s_start_%i_%s_%s_%s_%s_shuffled.png' % (cf, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+    else:
+        figbase = '%s_start_%i_%s_%s_%s_%s.png' % (cf, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+    
+    return fig, figbase
 
 
 #%%
@@ -111,9 +574,9 @@ def downsample_data(X_test_orig, labels_df, downsample_factor=0.1):
 
 
 
-rootdir = '/mnt/odyssey' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
+rootdir = '/Volumes/coxfs01/2p-data' #'/mnt/odyssey' #'/Volumes/coxfs01/2p-data' #/mnt/odyssey'
 animalid = 'CE077'
-session = '20180523' #'20180713' #'20180629'
+session = '20180713' #'20180713' #'20180629'
 acquisition = 'FOV1_zoom1x'
 
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
@@ -121,101 +584,39 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
 # #############################################################################
 # Select TRAINING data and classifier:
-# #############################################################################
-train_runid = 'blobs_run2' #_static' #'blobs_run2'
-train_traceid = 'traces002' #'traces001'
+# -----------------------------------------------------------------------------
+train_runid = 'combined_gratings_static' #_static' #'blobs_run2'
+train_traceid = 'cnmf_' #'traces001'
 
 train_data_type = 'meanstim' #_plusnull'
 input_data_type = 'corrected'
-class_desc = '5yrot'
+class_desc = '6ori'
+
+# Select TESTING data:
+# -----------------------------------------------------------------------------
+test_runid = 'gratings_rotating' 
+test_traceid =  'cnmf_' 
+test_data_type = 'corrected' 
+
+# #############################################################################
+
 
 if 'cnmf' in train_traceid:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s_%s' % (class_desc, train_data_type, input_data_type)
 else:
     classif_identifier = 'stat_allrois_LinearSVC_kfold_%s_all_%s' % (class_desc, train_data_type)
 
-
-#data_identifier = '_'.join((animalid, session, acquisition))
-
-#%%
-
-# #############################################################################
-# LOAD TRAINING DATA:
-# #############################################################################
-
-#glob.glob(os.path.join(acquisition_dir, train_runid, 'traces', 'cnmf_*'))
-
 train_basedir = util.get_traceid_from_acquisition(acquisition_dir, train_runid, train_traceid)
-    
 train_fpath = os.path.join(train_basedir, 'classifiers', classif_identifier, '%s_datasets.npz' % classif_identifier)
-train_dset = np.load(train_fpath)
+test_basedir = util.get_traceid_from_acquisition(acquisition_dir, test_runid, test_traceid)
+test_fpath = os.path.join(test_basedir, 'data_arrays', 'datasets.npz')
+training_data_fpath = os.path.join(train_basedir, 'data_arrays', 'datasets.npz')
 
-train_dtype = 'cX_std'
+data_identifier = '_'.join((animalid, session, acquisition, 
+                            train_runid, os.path.split(train_basedir)[-1], 
+                            test_runid, os.path.split(test_basedir)[-1]))
+print data_identifier
 
-train_X = train_dset[train_dtype]
-train_y = [int(t) if t != 'bas' else 'bas' for t in train_dset['cy']]
-
-
-train_labels = sorted(list(set(train_y)))
-train_labels = [t for t in train_labels if t != 'bas']
-    
-print "Training labels:", train_labels
-
-data_identifier = '_'.join((animalid, session, acquisition, os.path.split(train_basedir)[-1]))
-
-#%%  Classifier Parameters:
-    
-use_regression = False
-fit_best = True
-nfeatures_select = 30 #'all' #50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
-big_C = 1e9
-
-
-#%%
-
-# #############################################################################
-# Fit classifier - get N best features, if applicable:
-# #############################################################################
-
-if train_X.shape[0] > train_X.shape[1]: # nsamples > nfeatures
-    dual = False
-else:
-    dual = True
-
-if 'LinearSVC' in classif_identifier:
-    if use_regression is False:
-        svc = LinearSVC(random_state=0, dual=dual, multi_class='ovr', C=big_C) #, C=best_C) # C=big_C)
-        if fit_best:
-            # First, get accuracy with all features:
-            rfe = RFE(svc, n_features_to_select=nfeatures_select)
-            rfe.fit(train_X, train_y)
-            removed_rids = np.where(rfe.ranking_!=1)[0]
-            kept_rids = np.array([i for i in np.arange(0, train_X.shape[-1]) if i not in removed_rids])
-            
-#            # tmp hack because cnmf discards empty components:
-#            if X_test_orig.shape[-1] < kept_rids.max():
-#                kept_rids = [k for k in kept_rids if k < X_test_orig.shape[-1]]
-#                
-            train_X = train_X[:, kept_rids]
-            print "Found %i best ROIs:" % nfeatures_select, train_X.shape
-            roiset = 'best%i' % nfeatures_select
-
-        else:
-            print "Using ALL rois selected."
-            roiset = 'all'
-            kept_rids = np.arange(0, train_X.shape[-1])
-            
-        svc.fit(train_X, train_y)
-        clf = CalibratedClassifierCV(svc) 
-        clf.fit(train_X, train_y)        
-    else:
-        print "Using regression..."
-        clf = SVR(kernel='linear', C=1, tol=1e-9)
-        clf.fit(train_X, train_y)
-    
-        classif_identifier_new = classif_identifier.replace('LinearSVC', 'SVRegression')
-            
-# #############################################################################
 
 # Set output directories:
 # -----------------------
@@ -226,88 +627,92 @@ train_results_dir = os.path.join(classifier_dir, 'traindata')
 if not os.path.exists(train_results_dir): os.makedirs(train_results_dir)
 
 
+# Get training feature keys for indexing into sconfigs dict()
+direction_label = ''.join([s for s in class_desc if not s.isdigit()])
+is_grating = False
+if 'ori' in class_desc:
+    direction_label = 'direction'
+    is_grating = True
+
+# If GRATINGS: CW=1, values should be decreasing; CCW = -1, values are increasing
+# If XPOS:  direction < 0 -- start LEFT; direction > 0 -- start RIGHT
+# If YROT:  direction == 1 -- standard movie (positive to negative); direction == -1 -- _reverse movie  (negative to positive)
+
 #%%
 # #############################################################################
-# Select TESTING data:
-# ###################### #######################################################
-test_runid = 'blobs_dynamic_run1' #drifting_rotating' #'blobs_dynamic_run6' #'blobs_dynamic_run1' #'blobs_dynamic_run1'
-test_traceid =  'traces002' #'traces001' #'cnmf_20180720_14_36_24'
-test_data_type = 'smoothedX' #'smoothedX' #'smoothedX' #'smoothedX' # 'corrected' #'smoothedX' #'smoothedDF'
+# LOAD TRAINING DATA:
+# #############################################################################
 
+train_X, train_y, train_labels = load_training_set(train_fpath)
+print "Training labels:", train_labels
+
+# Load trained classifier:
+svc = joblib.load(os.path.join(train_basedir, 'classifiers', classif_identifier, '%s.pkl' % classif_identifier))
+
+#%  Classifier Parameters: 
+use_regression = False
+fit_best = True
+nfeatures_select = 30 #'all' #50 # 'all' #150 #'all' #50 # 'all' #20 #50 #'all' #75 # 'all' #75
+
+# Fit classifier - get N best features, if applicable:
+clf, train_X, kept_rids, roiset = refit_SVC(svc, train_X, train_y, classifier_dir, 
+                                            fit_best=fit_best, nfeatures_select=nfeatures_select)
+
+# Create color palette:
+if 'bas' in clf.classes_:
+    colorvals = sns.color_palette("hls", len(clf.classes_)-1)
+else:
+    colorvals = sns.color_palette("hls", len(clf.classes_))
+    
 #%%
 # #############################################################################
 # LOAD TEST DATA:
 # #############################################################################
 
-test_basedir = util.get_traceid_from_acquisition(acquisition_dir, test_runid, test_traceid)
-    
-test_fpath = os.path.join(test_basedir, 'data_arrays', 'datasets.npz')
-test_dataset = np.load(test_fpath)
-    
-#%%
-assert test_data_type in test_dataset.keys(), "Specified d-type (%s) not found. Choose from: %s" % (test_data_type, str(test_dataset.keys()))
-assert len(test_dataset[test_data_type].shape)>0, "D-type is empty!"
-
-# _, smoothed_X, _ = util.load_roiXtrials_df(test_dataset['run_info'][()]['traceid_dir'], trace_type='processed', dff=False, 
-#                                                smoothed=True, frac=0.01, quantile=0.08)
-#
-
-X_test_orig = test_dataset[test_data_type]
+# Load testing data:
+test_X, test_labels_df, test_sconfigs, test_runinfo = get_testing_set(test_fpath, test_data_type=test_data_type)
+framerate = test_runinfo['framerate']
 
 
-test_configs = test_dataset['sconfigs'][()]
-labels_df = pd.DataFrame(data=test_dataset['labels_data'], columns=test_dataset['labels_columns'])
-
-test_info = test_dataset['run_info'][()]
-framerate = test_dataset['run_info'][()]['framerate']
-
-#%%
-filter_noise = False
-min_spikes = 0.0002
-if filter_noise:
-    X_test_orig[X_test_orig <= min_spikes] = 0.
-
-#%% # Format TEST data:
-
-# Downsample to ~5 Hz (44.69 / 10)
-downsample = False
+#% Data cleanup: --------------------------------------------------------------
 threshold = False
+min_spikes = 0.0002
 
-if downsample:
-    downsample_factor = 0.2
-    
-    X_test_orig, labels_df = downsample_data(X_test_orig, labels_df, downsample_factor=downsample_factor)
+downsample = False
+downsample_factor = 0.2
 
-if test_data_type == 'spikes' and threshold:
-    
-    threshold_factor = 0.8
-    
-    for rid in range(X_test_orig.shape[-1]):
-        ixs = np.where(X_test_orig[:, rid] < X_test_orig[:, rid].max()*threshold_factor)[0]
-        X_test_orig[ixs, rid] = 0
-    
-#% Only grab subset of dataset if relevant:
 const_trans = 'xpos'
 trans_value = -5
+# -----------------------------------------------------------------------------
 
-if const_trans is not None:
-    configs_to_test = [c for c in test_configs.keys() if test_configs[c][const_trans] == trans_value]
-else:
-    configs_to_test = test_configs.keys()
+# Filter and/or downsample:
+if threshold:
+    test_X = filter_noise(test_X, test_labels_df, min_spikes=min_spikes)
+if downsample:
+    test_X, test_labels_df = downsample_data(test_X, test_labels_df, downsample_factor=downsample_factor)
     
-label_ixs = np.array(labels_df[labels_df['config'].isin(configs_to_test)].index.tolist())
-X_test_orig = X_test_orig[label_ixs,:]
-labels_df = labels_df.iloc[label_ixs].reset_index(drop=True)
+# Only grab subset of dataset if relevant:
+if const_trans is not '':
+    assert trans_value in [test_sconfigs[c][const_trans] for c in test_sconfigs.keys()], \
+        "Specified trans_value %i for const_trans = %s, Not found." % (trans_value, const_trans)
+    configs_to_test = [c for c in test_sconfigs.keys() if test_sconfigs[c][const_trans] == trans_value]
+else:
+    configs_to_test = test_sconfigs.keys()
+    
+label_ixs = np.array(test_labels_df[test_labels_df['config'].isin(configs_to_test)].index.tolist())
+test_X = test_X[label_ixs, :]
+test_X = test_X[:, kept_rids]
+test_labels_df = test_labels_df.iloc[label_ixs].reset_index(drop=True)
 
 # Whiten data:
-X_test = StandardScaler().fit_transform(X_test_orig)
+test_X = StandardScaler().fit_transform(test_X)
 
 # Get config groups from labels matched to input data array:
-cgroups = labels_df.groupby('config')
+cgroups = test_labels_df.groupby('config')
 
-#%% # Load parsed MW file to get rotation values:
+#%% # Load parsed MW file to get frame-by-frame stimulus values from test set:
 
-test_rundir = test_dataset['run_info'][()]['traceid_dir'].split('/traces')[0]
+test_rundir = test_runinfo['traceid_dir'].split('/traces')[0]
 if rootdir not in test_rundir:
     test_rundir = replace_root(test_rundir, rootdir, animalid, session)
     
@@ -315,89 +720,33 @@ paradigm_fpath = glob.glob(os.path.join(test_rundir, 'paradigm', 'files', '*.jso
 with open(paradigm_fpath, 'r') as f:
     mwtrials = json.load(f)
 
-#if X_test_orig.shape[-1] < kept_rids.max():
-#    kept_rids = [k for k in kept_rids if k < X_test_orig.shape[-1]]
-#    
-
-#%%
-shuffle_frames = False
-
-if fit_best:
-    datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
-    with open(os.path.join(classifier_dir, 'results', '%s_fit_RFE_results_%s_subset.txt' % (roiset, datestr)), 'wb') as f:
-        f.write(str(svc))
-        f.write('\n%s' % str({'kept_rids': kept_rids}))
-    f.close()
-
-
-
 #%%
 
 # #############################################################################
 # Test the classifier:
 # #############################################################################
 
-mean_pred = {}
-sem_pred = {}
-all_preds = {}
-test_traces = {}
-predicted = []
-for k,g in cgroups:
+shuffle_frames = False
+all_predictions_by_class, test_traces = decode_traces(clf, cgroups, test_X, shuffle_frames=shuffle_frames)
+mean_predictions_by_class = dict((k, np.mean(v, axis=-1)) for k, v in all_predictions_by_class.items())
+sem_predictions_by_class = dict((k, stats.sem(v, axis=-1)) for k, v in all_predictions_by_class.items())
 
-    y_proba = []; y_true = [];
-    for kk,gg in g.groupby('trial'):
-        #print kk
-        
-        trial_ixs = gg.index.tolist()
-        if shuffle_frames:
-            shuffle(trial_ixs)
-
-        curr_test = X_test[trial_ixs,:]
-        orig_test_traces = X_test_orig[trial_ixs,:]
-        
-        if fit_best:
-            curr_test = curr_test[:, kept_rids]
-            orig_test_traces = orig_test_traces[:, kept_rids]
-            
-        if isinstance(clf, CalibratedClassifierCV):
-            curr_proba = clf.predict_proba(curr_test)
-        elif isinstance(clf, MLPRegressor):
-            proba_tmp = clf.predict(curr_test)
-            curr_proba = np.arctan2(proba_tmp[:, 0], proba_tmp[:, 1])
-        else:
-            curr_proba = clf.predict(curr_test)
-        
-        y_proba.append(curr_proba)
-        y_true.append(orig_test_traces)
-        
-    y_proba = np.dstack(y_proba)
-    curr_traces = np.dstack(y_true)
-    
-    means_by_class = np.mean(y_proba, axis=-1)
-    stds_by_class = stats.sem(y_proba, axis=-1) #np.std(y_proba, axis=-1)
-        
-        
-    mean_pred[k] = means_by_class
-    sem_pred[k] = stds_by_class
-    all_preds[k] = y_proba
-    test_traces[k] = curr_traces
-
-
-#%%
-#for config in test_traces.keys():
-#    tracemat = test_traces[config]
-#    for rid in range(tracemat.shape[1]):
-#        curr_rid_trace = tracemat[:, rid, :]
-#        curr_rid_trace[curr_rid_trace < curr_rid_trace.min()] = 0
-#        tracemat[:, rid, :] = curr_rid_trace
-#        
-#    test_traces[config] = tracemat
 
 #%%
 
 # #############################################################################
 # Plot probability of each trained angle, if using CLASSIFIER:
 # #############################################################################
+
+# Set plotting params:
+plot_trials = True
+if plot_trials:
+    mean_lw = 2
+    trial_lw=0.2
+else:
+    mean_lw = 1.0
+    trial_lw=0.2  
+polar_legend = False
 
 
 # Set output dir:
@@ -406,380 +755,162 @@ if const_trans is not None and trans_value is not None:
     trans_string = '%s_%i' % (const_trans, trans_value)
     decoding_dir = '%s_%s' % (decoding_dir, trans_string)
 if not os.path.exists(decoding_dir): os.makedirs(decoding_dir)
+  
+#%
 
+#train_labels = [int(t) for t in train_labels]
 
-plot_trials = True
-if plot_trials:
-    mean_lw = 2
-    trial_lw=0.2
-else:
-    mean_lw = 1.0
-    trial_lw=0.2
-    
-#drifting = False
-framerate = 44.69
-linear_legend = False
+#if isinstance(clf, CalibratedClassifierCV):
 
-train_labels = [int(t) for t in train_labels]
+configs_tested = sorted(list(set(test_labels_df['config'])), key=natural_keys)
 
-#%%
-if isinstance(clf, CalibratedClassifierCV):
-    
-    configs_tested = sorted(list(set(labels_df['config'])), key=natural_keys)
-    #maxval = 0.6 #max([all_preds[config].max() for config in mean_pred.keys()])
- 
-    if any('stim_dur' in test_configs[cf].keys() for cf in test_configs.keys()): 
-        stimdurs = sorted(list(set([test_configs[cf]['stim_dur'] for cf in test_configs.keys()])))
-        print stimdurs
-        stim_vary = True
-        if len(stimdurs) > 1:
-            full_dur = stimdurs[-1]
-            half_dur = stimdurs[-2]
-            if len(stimdurs) > 2:
-                quarter_dur = stimdurs[0]
-    else:
-        stimdurs = None
-        stim_vary = False
-    
-    for config in configs_tested:
-        #%
-        print config
-        minval = all_preds[config].min()
-        maxval = all_preds[config].max() - 0.1
-        
-        # Plot each CLASS's probability on a subplot:
-        # -----------------------------------------------------------------------------
-        #colorvals = sns.color_palette("hsv", len(svc.classes_))
-        if 'bas' in svc.classes_:
-            colorvals = sns.color_palette("hls", len(svc.classes_)-1)
-        else:
-            colorvals = sns.color_palette("hls", len(svc.classes_))
-        stim_on = list(set(labels_df[labels_df['config']==config]['stim_on_frame']))[0]
-        nframes_on = list(set(labels_df[labels_df['config']==config]['nframes_on']))[0]
-        stim_frames = np.arange(stim_on, stim_on+nframes_on)
-        
-        angle_step = list(set(np.diff(train_labels)))[0]
-        if 'xpos' in class_desc:
-            direction_label = 'xpos'
-            is_grating = False
-        elif 'yrot' in class_desc:
-            direction_label = 'yrot'
-            is_grating = False
-        elif 'ori' in class_desc:
-            direction_label = 'direction'
-            is_grating = True
+for cf in configs_tested:
 
+    fig, figbase = plot_decoded_traces(cf, traces=all_predictions_by_class, 
+                                       trained_classes=clf.classes_, 
+                                       direction_label=direction_label, 
+                                       sconfigs=test_sconfigs, 
+                                       labels_df=test_labels_df, 
+                                       shuffle_frames=False, decode=True,
+                                       plot_trials=True)
+    label_figure(fig, data_identifier)
+    figname = '0decode_%s_TEST_%s_%s' % (roiset, test_runid, figbase)
+    pl.savefig(os.path.join(decoding_dir, figname))
+    pl.close()
 
-        # If GRATINGS: CW=1, values should be decreasing; CCW = -1, values are increasing
-        # If XPOS:  direction < 0 -- start LEFT; direction > 0 -- start RIGHT
-        # If YROT:  direction == 1 -- standard movie (positive to negative); direction == -1 -- _reverse movie  (negative to positive)
-#        if 'reverse' in imname:
-#            yrot = -1
+#
+#
+#for cf in configs_tested:
+#    
+#    # Order subplots by class-order in dynamic stimulus:
+#    class_list, class_indices = get_ordered_classes(cf, test_sconfigs, clf.classes_, direction_label)
+#
+#    # PLOT ------------------------------------------------------
+#    fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
+# 
+#    # Draw stimulus frames in the color of the predicted label:
+#    nframes_in_trial, nclasses_total, ntrials_curr_config = all_predictions_by_class[cf].shape
+#    stim_on = list(set(test_labels_df[test_labels_df['config']==cf]['stim_on_frame']))[0]
+#    nframes_on = list(set(test_labels_df[test_labels_df['config']==cf]['nframes_on']))[0]
+#    stim_frames = np.arange(stim_on, stim_on+nframes_on)
+#        
+#    for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
+#        color_index = train_labels.index(class_label)
+#
+#        axes[lix].plot(np.arange(0, stim_frames[0]), 
+#                            mean_predictions_by_class[cf][0:stim_frames[0], class_index],
+#                            color='k', linewidth=mean_lw, alpha=1.0)
+#        axes[lix].plot(stim_frames, 
+#                            mean_predictions_by_class[cf][stim_frames, class_index], 
+#                            color=colorvals[color_index], linewidth=mean_lw, alpha=1.0)
+#        axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), 
+#                            mean_predictions_by_class[cf][stim_frames[-1]:, class_index], 
+#                            color='k', linewidth=mean_lw, alpha=1.0)
+#        
+#        if 'bas' in clf.classes_:
+#            null_index = [v for v in clf.classes_].index('bas')
+#            axes[lix].plot(np.arange(0, nframes_in_trial), 
+#                            mean_predictions_by_class[cf][:, null_index], 
+#                            color='gray', linestyle=':', linewidth=mean_lw, alpha=1.0)
+#
+#        if plot_trials:
+#            plot_type = 'trials'
+#            for trialn in range(ntrials_curr_config):
+#                axes[lix].plot(np.arange(0, stim_frames[0]), 
+#                                    all_predictions_by_class[cf][0:stim_frames[0], class_index, trialn],
+#                                    color='k', linewidth=trial_lw, alpha=0.5)
+#                axes[lix].plot(stim_frames, 
+#                                    all_predictions_by_class[cf][stim_frames, class_index, trialn], 
+#                                    color=colorvals[color_index], linewidth=trial_lw, alpha=0.5)
+#                axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), 
+#                                    all_predictions_by_class[cf][stim_frames[-1]:, class_index, trialn], 
+#                                    color='k', linewidth=trial_lw, alpha=0.5)
+#                
 #        else:
-#            yrot = 1
-                        
-            
-        if test_configs[config][direction_label] > 0: #== 1:  # CW, values should be decreasing
-            class_list = sorted(train_labels, reverse=True)
-            shift_sign = -1
-            start_angle_ix = class_list[0]
-        else:
-            class_list = sorted(train_labels, reverse=False)
-            shift_sign = 1
-            start_angle_ix = class_list[0]
-        
-        if is_grating:
-            if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
-                start_angle_ix = class_list.index(0)
-            else:
-                start_angle_ix = class_list.index(test_configs[config]['ori'])      
-            class_list = np.roll(class_list, shift_sign*start_angle_ix)
-
-        if any([isinstance(v, str) for v in svc.classes_]):
-            class_indices = [[v for v in svc.classes_].index(str(c)) for c in class_list]
-            ordered_indices = [train_labels.index(int(c)) for c in svc.classes_ if c != 'bas']
-        else:
-            class_indices = [[v for v in svc.classes_].index(c) for c in class_list]
-            ordered_indices = [train_labels.index(int(c)) for c in svc.classes_ if c != 'bas']
-        
-        fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
-
-        nframes_in_trial = np.squeeze(all_preds[config]).shape[0]
-        nclasses_total = np.squeeze(all_preds[config]).shape[1]
-        ntrials_curr_config =  np.squeeze(all_preds[config]).shape[-1]
-
-        for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
-            color_index = train_labels.index(class_label)
-    
-            axes[lix].plot(np.arange(0, stim_frames[0]), mean_pred[config][0:stim_frames[0], class_index],
-                                color='k', linewidth=mean_lw, alpha=1.0)
-            axes[lix].plot(stim_frames, mean_pred[config][stim_frames, class_index], 
-                                color=colorvals[color_index], linewidth=mean_lw, alpha=1.0)
-            axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), mean_pred[config][stim_frames[-1]:, class_index], 
-                                color='k', linewidth=mean_lw, alpha=1.0)
-            
-            if 'bas' in svc.classes_:
-                null_index = [v for v in svc.classes_].index('bas')
-                axes[lix].plot(np.arange(0, nframes_in_trial), mean_pred[config][:, null_index], 
-                                color='gray', linestyle=':', linewidth=mean_lw, alpha=1.0)
-    
-            if plot_trials:
-                plot_type = 'trials'
-                for trialn in range(ntrials_curr_config):
-                    axes[lix].plot(np.arange(0, stim_frames[0]), all_preds[config][0:stim_frames[0], class_index, trialn],
-                                        color='k', linewidth=trial_lw, alpha=0.5)
-                    axes[lix].plot(stim_frames, all_preds[config][stim_frames, class_index, trialn], 
-                                        color=colorvals[color_index], linewidth=trial_lw, alpha=0.5)
-                    axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), all_preds[config][stim_frames[-1]:, class_index, trialn], 
-                                        color='k', linewidth=trial_lw, alpha=0.5)
-                    
-            else:
-                plot_type = 'fillstd'
-                axes[lix].fill_between(range(nframes_in_trial), mean_pred[config][:,class_index]+sem_pred[config][:, class_index],
-                                            mean_pred[config][:,class_index]-sem_pred[config][:, class_index], alpha=0.2,
-                                            color='k')
-
-            axes[lix].axes.xaxis.set_ticks([])
-                        
-            # show stim dur, using class labels as color key:
-            #pl.plot([stim_on, stim_on+nframes_on], np.ones((2,1))*0, 'r', linewidth=3)
-            stimframes = np.arange(stim_on, stim_on+nframes_on)
-            if stim_vary:
-                if test_configs[config]['stim_dur'] == quarter_dur:
-                    nclasses_shown = int(len(class_indices) * (1/4.)) + 1
-                elif test_configs[config]['stim_dur'] == half_dur:
-                    nclasses_shown = int(len(class_indices) * (1/2.)) + 1
-                else:
-                    nclasses_shown = len(class_indices)
-            else:
-                nclasses_shown = len(class_indices)
-            ordered_indices = np.array(class_indices[0:nclasses_shown])
-            if 'bas' in svc.classes_:
-                ordered_colors = [colorvals[train_labels.index(int(svc.classes_[c]))] for c in ordered_indices]
-            else:
-                ordered_colors = [colorvals[c] for c in ordered_indices]
-                
-                
-            bar_offset = 0.1
-            curr_ylim = axes[lix].get_ylim()[0] - bar_offset
-            
-            axes[lix].set_ylim([minval-bar_offset*2, maxval])
-            
-            # Plot chance line:
-            chance = 1/len(class_list)
-            axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
-            
-                        
-        sns.despine(trim=True, offset=4, ax=axes[lix])
-        
-
-        for lix in range(len(class_list)):
-            # Create color bar:
-            cy = np.ones(stimframes.shape) * axes[lix].get_ylim()[0]/2.0
-            z = stimframes.copy()
-            points = np.array([stimframes, cy]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            cmap = ListedColormap(ordered_colors)
-            lc = LineCollection(segments, cmap=cmap)
-            lc.set_array(z)
-            lc.set_linewidth(5)
-            axes[lix].add_collection(lc)
-            
-            if lix == len(class_list)-1:
-                axes[lix].set_xticks((stim_on, stim_on + framerate))
-                axes[lix].set_xticklabels([0, 1])
-                axes[lix].set_xlabel('sec', horizontalalignment='right', x=0.25)        
-                for axside in ['top', 'right']:
-                    axes[lix].spines[axside].set_visible(False)
-                sns.despine(trim=True, offset=4, ax=axes[lix])
-
-            else:
-                axes[lix].axes.xaxis.set_ticks([])
-                for axside in ['bottom', 'top', 'right']:
-                    axes[lix].spines[axside].set_visible(False)
-                axes[lix].axes.xaxis.set_visible(False) #([])
-                sns.despine(trim=True, offset=4, ax=axes[lix])
-                
-            axes[lix].set_ylabel('prob (%i)' % class_list[lix])
-
-        
-        #pl.plot(stimframes, np.ones(stimframes.shape), color=ordered_colors, linewidth=5)
-        pl.subplots_adjust(top=0.85)
-        
-        # Custom legend:
-        if linear_legend:
-            from matplotlib.lines import Line2D
-            custom_lines = []
-            for lix, c_ori in enumerate(svc.classes_):
-                custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
-            pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
-        else:
-            if 180 in class_list:
-             legend = fig.add_axes([0.75, 0.75, 0.2, 0.3],
-                          projection='polar') 
-            else:
-             legend = fig.add_axes([0.85, 0.75, 0.2, 0.3],
-                          projection='polar')
-        
-            thetas = sorted(np.array([ori_deg*(math.pi/180) for ori_deg in class_list]))
-            if max(thetas) < 300:
-                thetas = np.append(thetas, 180*(math.pi/180))
-            
-            for tix, theta in enumerate(thetas):
-                print theta
-                if theta == math.pi and max(class_list) < 300:
-                    color_ix = 0
-                else:
-                    color_ix = [t for t in thetas].index(theta)
-                legend.plot([theta, theta], [0, 1], color=colorvals[color_ix], lw=3)
-            legend.set_theta_zero_location("N")
-            legend.set_xlim([0, math.pi])
-            legend.grid(False); 
-            legend.set_xticks(thetas)
-            if max(class_list) < 300:
-                thetas[-1] = 0
-            legend.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=8)
-            legend.yaxis.grid(False); legend.set_yticklabels([])
-            legend.spines["polar"].set_visible(False)
-
-        if is_grating:
-            if test_configs[config]['direction']==1:
-                rot_direction = 'CW'
-            else:
-                rot_direction = 'CCW'
-        
-        if direction_label == 'ori':
-            if stim_vary:
-                if test_configs[config]['stim_dur'] == half_dur:
-                    rot_duration = 'half'
-                elif test_configs[config]['stim_dur'] == quarter_dur:
-                    rot_duration = 'quarter'
-                else:
-                    rot_duration = 'full'
-            starting_rot = test_configs[config]['ori']
-        else:
-            if direction_label=='xpos':
-                if test_configs[config]['xpos'] < 0:
-                    rot_direction = 'rightward'
-                else:
-                    rot_direction = 'leftward'
-                rot_duration = 'full'
-                starting_rot = test_configs[config]['xpos']
-            elif direction_label == 'yrot':
-                if test_configs[config]['yrot'] == -1:
-                    rot_direction = 'posneg'
-                else:
-                    rot_direction = 'reverse'
-                starting_rot = class_list[0]
-            
-        
-        config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
-        pl.suptitle(config_english)
-        
-        label_figure(fig, data_identifier)
-        #%
-        #train_savedir = os.path.split(train_fpath)[0]
-        
-        
-        if shuffle_frames:
-            figname = '%s_hsv_TEST_%s_%s_start_%i_%s_%s_%s_%s_shuffled.png' % (roiset, test_runid, config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
-        else:
-            figname = '%s_hsv_TEST_%s_%s_start_%i_%s_%s_%s_%s.png' % (roiset, test_runid, config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
-        pl.savefig(os.path.join(decoding_dir, figname))
-        pl.close()
+#            plot_type = 'fillstd'
+#            axes[lix].fill_between(range(nframes_in_trial), 
+#                                    mean_predictions_by_class[cf][:,class_index]+sem_predictions_by_class[cf][:, class_index],
+#                                    mean_predictions_by_class[cf][:,class_index]-sem_predictions_by_class[cf][:, class_index], 
+#                                    alpha=0.2, color='k')
+#        # Plot chance line:
+#        chance = 1/len(class_list)
+#        axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
+#
+#    # Format subplots, add labels, legend:
+#    sns.despine(trim=True, offset=4, ax=axes[lix])
+#    draw_subplot_stimbars(axes, cf, stim_frames, clf.classes_, class_indices, test_sconfigs, colorvals, 
+#                          is_static=False)
+#    format_xaxis_subplots(axes, stim_on, framerate)
+#    # Put legend in upper right:
+#    pl.subplots_adjust(top=0.85)
+#    draw_legend(fig, class_list, colorvals, polar=polar_legend)
+#    # Give a sensible title:
+#    starting_rot, rot_direction, rot_duration = configs_to_english(cf, test_sconfigs, direction_label, class_list)
+#    config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+#    pl.suptitle(config_english)
+#    label_figure(fig, data_identifier)
+#    
+#    #%
+#    if shuffle_frames:
+#        figname = 'decode_%s_TEST_%s_%s_start_%i_%s_%s_%s_%s_shuffled.png' % (roiset, test_runid, cf, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+#    else:
+#        figname = 'decode_%s_TEST_%s_%s_start_%i_%s_%s_%s_%s.png' % (roiset, test_runid, cf, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+#    pl.savefig(os.path.join(decoding_dir, figname))
+#    pl.close()
 
 #%%
         
 # #############################################################################
 # Load TRAINING DATA and plot traces:
 # #############################################################################
-# POLAR PLOTS?
 
-# 
-training_data_fpath = os.path.join(train_basedir, 'data_arrays', 'datasets.npz')
-if 'comb' in train_runid:
-    tmpd = np.load(training_data_fpath)
-    training_data = tmpd['arr_0'][()]
-    train_run_info = training_data['run_info']
-else:
-    training_data = np.load(training_data_fpath)
-    train_run_info = training_data['run_info'][()]
-
-print training_data.keys()
+training_data, train_runinfo = load_training_data(training_data_fpath)
 train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=training_data['labels_columns'])
+
+aggregate_configs = True 
 
 #%%
 train_data_type = test_data_type #'smoothedX'
-if fit_best is False:
-    kept_rids = np.arange(0, X_test_orig.shape[-1])
-
+if 'df' not in train_data_type and 'DF' not in train_data_type:
+    train_data_units = 'intensity'
+else:
+    train_data_units = 'dff'
+    
 trainingX = training_data[train_data_type][:, kept_rids]
 print trainingX.shape
 nrois = trainingX.shape[-1]
 
-F0 = training_data['F0'][:, kept_rids]
+train_sconfigs = training_data['sconfigs'][()]
+train_feature = ''.join([s for s in class_desc if not s.isdigit()]) #'yrot' #'xpos'
+
 use_dff = False
+if use_dff:
+    F0 = training_data['F0'][:, kept_rids]
 
-train_configs = training_data['sconfigs'][()]
 
+#%% Group training configs by trained feature (may need to aggregate across objects)
+
+train_configs_df = pd.DataFrame(train_sconfigs).T
+config_groups = train_configs_df.groupby(train_feature)
+configs_by_feature = config_groups.indices
+
+for cval, cindices in configs_by_feature.items():
+    configs_by_feature[cval] = ['config%03d' % (i+1) for i in cindices]
+    
 
 #%%
-
 train_cgroups = train_labels_df.groupby('config')
 trainingX_std = StandardScaler().fit_transform(trainingX)
 
-# How good can the classifier "decode" its own training data:
-mean_preds_train = {}
-sem_preds_train = {}
-all_preds_train = {}
+all_preds_train, train_traces = decode_traces(clf, train_cgroups, trainingX_std, shuffle_frames=False)
+mean_preds_train = dict((k, np.mean(v, axis=-1)) for k, v in all_preds_train.items())
+sem_preds_train = dict((k, stats.sem(v, axis=-1)) for k, v in all_preds_train.items())
 
-predicted = []
-for k,g in train_cgroups:
 
-    y_proba = []; y_true = [];
-    for kk,gg in g.groupby('trial'):
-        #print kk
-        
-        trial_ixs = gg.index.tolist()
-        if shuffle_frames:
-            shuffle(trial_ixs)
-
-        curr_test = trainingX_std[trial_ixs,:]
-        orig_test_traces = trainingX[trial_ixs,:]
-        
-            
-        if isinstance(clf, CalibratedClassifierCV):
-            curr_proba = clf.predict_proba(curr_test)
-        elif isinstance(clf, MLPRegressor):
-            proba_tmp = clf.predict(curr_test)
-            curr_proba = np.arctan2(proba_tmp[:, 0], proba_tmp[:, 1])
-        else:
-            curr_proba = clf.predict(curr_test)
-        
-        y_proba.append(curr_proba)
-        y_true.append(orig_test_traces)
-        
-    y_proba = np.dstack(y_proba)
-    curr_traces = np.dstack(y_true)
-    
-    means_by_class = np.mean(y_proba, axis=-1)
-    stds_by_class = stats.sem(y_proba, axis=-1) #np.std(y_proba, axis=-1)
-        
-        
-    mean_preds_train[k] = means_by_class
-    sem_preds_train[k] = stds_by_class
-    all_preds_train[k] = y_proba
-    
-    
-    
 #%% #############################################################################
-# Plot mean traces for ROIs sorted by ANGLE: TRAINING DATA
+# Plot DECODED traces for ROIs sorted by ANGLE: TRAINING DATA
 # #############################################################################
 
-train_feature = 'yrot' #'xpos'
-plot_trials = True
-trial_lw = 0.2
-mean_lw = 1
 
 trained_classes = list(np.copy(train_labels))
 trained_classes.append('bas')
@@ -790,38 +921,33 @@ if any([isinstance(v, str) for v in clf.classes_]):
 else:
     class_indices = [[v for v in clf.classes_].index(c) for c in train_labels]
     
-if 'bas' in clf.classes_:
-    colorvals = sns.color_palette("hls", len(clf.classes_)-1)
-else:
-    colorvals = sns.color_palette("hls", len(clf.classes_))
-    
-    
+
 fig, axes = pl.subplots(len(train_labels), 1, figsize=(6,15))
 
-
-#class_indices = [[i for i in svc.classes_].index(str(v)) for v in train_labels]
-
 for lix, (class_label, class_index) in enumerate(zip(train_labels, class_indices)):
-    curr_config = [k for k,v in train_configs.items() if v[train_feature] == class_label][0]
+    curr_configs = [k for k,v in train_sconfigs.items() if v[train_feature] == class_label] #[0]
     
-    stim_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['stim_on_frame']))[0]
-    nframes_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['nframes_on']))[0]
+    stim_on = list(set(train_labels_df[train_labels_df['config'].isin(curr_configs)]['stim_on_frame']))[0]
+    nframes_on = list(set(train_labels_df[train_labels_df['config'].isin(curr_configs)]['nframes_on']))[0]
     stim_frames = np.arange(stim_on, stim_on+nframes_on)
 
-    nframes_in_trial = np.squeeze(all_preds_train[curr_config]).shape[0]
-    nclasses_total = np.squeeze(all_preds_train[curr_config]).shape[1]
-    ntrials_curr_config =  np.squeeze(all_preds_train[curr_config]).shape[-1]
+    for vi, class_name in enumerate(clf.classes_):
+        ix_in_svc = [i for i in clf.classes_].index(class_name)
 
-   
-    for vi, class_name in enumerate(svc.classes_):
-        ix_in_svc = [i for i in svc.classes_].index(class_name)
-
-        if class_name == 'bas':
-            axes[lix].plot(np.arange(0, nframes_in_trial), mean_preds_train[curr_config][:, int(ix_in_svc)], color='gray', linestyle=':')
-        else:
-            color_index = train_labels.index(int(class_name))
-            axes[lix].plot(np.arange(0, nframes_in_trial), mean_preds_train[curr_config][:, int(ix_in_svc)], color=colorvals[color_index], alpha=0.8)
-        
+        for curr_config in curr_configs:
+            nframes_in_trial = all_preds_train[curr_config].shape[0]
+            nclasses_total = all_preds_train[curr_config].shape[1]
+            ntrials_curr_config =  all_preds_train[curr_config].shape[-1]
+            if class_name == 'bas':
+                axes[lix].plot(np.arange(0, nframes_in_trial), 
+                                mean_preds_train[curr_config][:, int(ix_in_svc)], 
+                                color='gray', linestyle=':')
+            else:
+                color_index = train_labels.index(int(class_name))
+                axes[lix].plot(np.arange(0, nframes_in_trial), 
+                                mean_preds_train[curr_config][:, int(ix_in_svc)], 
+                                color=colorvals[color_index], alpha=0.8)
+            
 
     axes[lix].axes.xaxis.set_ticks([])
                 
@@ -835,65 +961,25 @@ for lix, (class_label, class_index) in enumerate(zip(train_labels, class_indices
     axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
     
                 
-sns.despine(trim=True, offset=4, ax=axes[lix])
-
-
-for lix in range(len(train_labels)):
-    # Create color bar:
-    cy = np.ones(stim_frames.shape) * axes[lix].get_ylim()[0]/2.0
-    z = stim_frames.copy()
-    points = np.array([stim_frames, cy]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    cmap = ListedColormap(colorvals[lix])
-    lc = LineCollection(segments, cmap=cmap)
-    lc.set_array(z)
-    lc.set_linewidth(5)
-    axes[lix].add_collection(lc)
-    
-    if lix == len(trained_classes)-1:
-        axes[lix].set_xticks((stim_on, stim_on + framerate))
-        axes[lix].set_xticklabels([0, 1])
-        axes[lix].set_xlabel('sec', horizontalalignment='right', x=0.25)        
-        for axside in ['top', 'right']:
-            axes[lix].spines[axside].set_visible(False)
-        sns.despine(trim=True, offset=4, ax=axes[lix])
-
-    else:
-        axes[lix].axes.xaxis.set_ticks([])
-        for axside in ['bottom', 'top', 'right']:
-            axes[lix].spines[axside].set_visible(False)
-        axes[lix].axes.xaxis.set_visible(False) #([])
-        sns.despine(trim=True, offset=4, ax=axes[lix])
-        
-    axes[lix].set_ylabel('prob') # % trained_classes[lix])
-
-
-#pl.plot(stimframes, np.ones(stimframes.shape), color=ordered_colors, linewidth=5)
+# Format subplots, add labels, legend:
+sns.despine(trim=True, offset=4)
+draw_subplot_stimbars(axes, '', stim_frames, clf.classes_, class_indices, train_sconfigs, colorvals, is_static=True)
+format_xaxis_subplots(axes, stim_on, framerate, class_list)
+# Put legend in upper right:
 pl.subplots_adjust(top=0.85)
-    
-
-# Custom legend:
-from matplotlib.lines import Line2D
-custom_lines = []
-for lix, c_ori in enumerate(svc.classes_):
-    if c_ori == 'bas':
-        custom_lines.append(Line2D([0], [0], color='gray', lw=4))
-    else:
-        custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
-pl.legend(custom_lines, trained_classes, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
-pl.suptitle('%s: Decoding training set' % roiset)
-
+draw_legend(fig, clf.classes_, colorvals, polar=polar_legend)
+# Give a sensible title:
+_, rot_direction, rot_duration = configs_to_english('', test_sconfigs, direction_label, class_list)
+pl.suptitle('%s: Decoding training set (all configs: %s - %s)' % (roiset, rot_direction, rot_duration))
 label_figure(fig, data_identifier)
 
-
-figname = '%s_decoded_training_traces_%s_%s_%s.png' % (roiset, train_runid, train_feature, train_data_type)
+figname = 'decode_%s_TRAIN_traces_%s_%s_%s.png' % (roiset, train_runid, train_feature, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
 
 #%% FORMAT TRAINING DATA for easier plotting and comparison with true TESTING data:
 
-# TODO:  Fix parsing of training data to allow for grouping configs together (for ex., group object IDs if training xpos)
 
 
 threshold = False
@@ -912,37 +998,31 @@ assert len(list(set(train_labels_df['nframes_on']))) == 1, "More than 1 nframes_
 train_nframes_on = list(set(train_labels_df['nframes_on']))[0]
 assert len(list(set(train_labels_df['stim_on_frame']))) == 1, "More than 1 stim_on_frame val found in TRAIN set..."
 train_stim_on = list(set(train_labels_df['stim_on_frame']))[0]
-ntrials_by_cond = [v for k,v in train_run_info['ntrials_by_cond'].items()]
+ntrials_by_cond = [v for k,v in train_runinfo['ntrials_by_cond'].items()]
 assert len(list(set(ntrials_by_cond)))==1, "More than 1 rep values found in TRAIN set"
 ntrials_per_cond = list(set(ntrials_by_cond))[0]
 
 
-config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x][train_feature])
+config_list = sorted([c for c in train_sconfigs.keys()], key=lambda x: train_sconfigs[x][train_feature])
 train_traces = {}
 for cf in config_list:
-    print cf, train_configs[cf][train_feature]
-    curr_config = [k for k,v in train_configs.items() if v[train_feature] == class_label][0]
+    curr_config = [k for k,v in train_sconfigs.items() if v[train_feature] == class_label][0]
     
     stim_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['stim_on_frame']))[0]
     nframes_on = list(set(train_labels_df[train_labels_df['config']==curr_config]['nframes_on']))[0]
     stim_frames = np.arange(stim_on, stim_on+nframes_on)
 
     nframes_per_trial = np.squeeze(all_preds_train[curr_config]).shape[0]
-    #nclasses_total = np.squeeze(all_preds_train[curr_config]).shape[1]
     ntrials_per_cond =  np.squeeze(all_preds_train[curr_config]).shape[-1]
 
 
     cixs = train_labels_df[train_labels_df['config']==cf].index.tolist()
     curr_frames = trainingX[cixs, :]
-    print curr_frames.shape
-    #nframes_per_trial = len(cixs) / ntrials_per_cond
     
-    #tmat = np.reshape(curr_frames, (ntrials_per_cond, nframes_per_trial, nrois))
     tmat = np.reshape(curr_frames, (nframes_per_trial, ntrials_per_cond, nrois), order='f') 
     tmat = np.swapaxes(tmat, 1, 2) # Nframes x Nrois x Ntrials (to match test_traces)
     if train_data_type == 'spikes' and threshold:
         print "... thresholding spikes"
-        #tmat[tmat <= tmat.max()*threshold_factor] = 0.
         tmat[tmat <= min_spikes] = 0.
         
     if use_dff:
@@ -960,7 +1040,6 @@ for cf in config_list:
 responses = []; baselines = [];
 for cf in config_list:
     tmat = train_traces[cf]
-    print cf
     baselines_per_trial = np.mean(tmat[0:train_stim_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
     #meanstims_per_trial = np.mean(tmat[train_stim_on:train_stim_on+train_nframes_on, :, :], axis=0) # ntrials x nrois -- baseline val for each trial
     #mean_config = np.mean(meanstims_per_trial, axis=-1)
@@ -989,13 +1068,12 @@ offsets = np.vstack(baselines)
 
 # INPUT DATA:  Plot POLAR plots to show direction tuning:
 # =============================================================================
-if train_feature == 'ori' or train_feature == 'yrot':
-    thetas = [train_configs[cf][direction_label] * (math.pi/180) for cf in config_list]
+if train_feature == 'ori':
+    thetas = [train_sconfigs[cf][direction_label] * (math.pi/180) for cf in config_list]
     use_polar = True
 else:
-    thetas = [train_configs[cf][train_feature] * (math.pi/180) for cf in config_list]
+    thetas = [train_sconfigs[cf][train_feature] for cf in config_list]
     use_polar = False
-print thetas
 
 import matplotlib as mpl
 
@@ -1009,8 +1087,7 @@ else:
     nrows = 4
     ncols = 5
 
-fig, axes = pl.subplots(figsize=(10,10), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=use_polar))
-#appended_thetas = np.append(thetas, math.pi)
+fig, axes = pl.subplots(figsize=(12,12), nrows=nrows, ncols=ncols, subplot_kw=dict(polar=use_polar))
 
 for ridx, ax in zip(range(len(kept_rids)), axes.flat):
     #print ridx
@@ -1018,31 +1095,36 @@ for ridx, ax in zip(range(len(kept_rids)), axes.flat):
     if radii.min() < 0:
         print "%i - fixing offset" % ridx
         radii -= radii.min()
-    polygon = mpl.patches.Polygon(zip(thetas, radii), fill=True, alpha=0.5, color='mediumorchid')
-    ax.add_line(polygon)
-    #ax.autoscale()
-    ax.grid(True)
+
     if use_polar:
+        ax.grid(True)
+        polygon = mpl.patches.Polygon(zip(thetas, radii), fill=True, alpha=0.5, color='mediumorchid')
+        ax.add_line(polygon)
+        #ax.autoscale()
         ax.set_theta_zero_location("N")
-    ax.set_xticklabels([])
-    #ax.set_title(ridx)
+        ax.set_xticklabels([])
+        max_angle_ix = np.where(radii==radii.max())[0][0]
+        ax.plot([0, thetas[max_angle_ix]], [0, radii[max_angle_ix]],'k', lw=1)
+    else:
+        for val in np.unique(thetas):
+            ixs = np.where(thetas == val)[0]
+            ax.plot(val, np.mean(radii[ixs]), '_', color='mediumorchid', markeredgewidth=2, markersize=10)
+        ax.scatter(thetas, radii, s=2, c='mediumorchid', alpha=0.5)        
     radii[np.isnan(radii)] = 0
-    max_angle_ix = np.where(radii==radii.max())[0][0]
-    ax.plot([0, thetas[max_angle_ix]], [0, radii[max_angle_ix]],'k', lw=1)
+
     ax.set_title(kept_rids[ridx]+1, fontsize=8)
     ax.set_xticks([t for t in thetas])
-#    ax.set_thetamin(0)
-#    ax.set_thetamax(math.pi) #([0, math.pi])
-#    
-pl.rc('ytick', labelsize=8)
-        
-    #ax.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=6)
-    #ax#.yaxis.grid(False); legend.set_yticklabels([])
-    #ax.spines["polar"].set_visible(False)
+pl.suptitle("tuning: %s" % roiset)
+sns.despine(trim=True, offset=4)
+fig.text(0.5, 0.04, '%s' % train_feature, ha='center')
+fig.text(0.04, 0.5, '%s' % train_data_units, va='center', rotation='vertical')
 
+if not use_polar:
+    pl.subplots_adjust(wspace=0.4, hspace=0.4)
+pl.rc('ytick', labelsize=8)
 label_figure(fig, data_identifier)
 
-figname = '%s_polar_plots_%s%s.png' % (roiset, train_data_type, figs_append)
+figname = '%s_tuning_plots_%s%s.png' % (roiset, train_data_type, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
     
 #%%
@@ -1050,12 +1132,26 @@ pl.savefig(os.path.join(train_results_dir, figname))
 # Sort by direction preference:
 # -----------------------------------------------------------------------------
 
-thetas = [train_configs[cf][direction_label] for cf in config_list]
+if len(thetas) != len(np.unique(thetas)):
+    # Either aggregate configs with shared featuer value, or keep separate
+    if aggregate_configs:
+        responses_by_feature=[]; feature_names=[];
+        for val in sorted(np.unique(thetas)):
+            ixs = np.where(thetas==val)[0]
+            avg_configs = np.mean(responses[ixs,:], axis=0)
+            responses_by_feature.append(avg_configs)
+            feature_names.append(val)
+        responses_by_feature = np.array(responses_by_feature)
+    else:
+        responses_by_feature = responses.copy()
+        feature_names = np.copy(thetas)
+        
+#thetas = [train_configs[cf][direction_label] for cf in config_list]
 
 pdirections = []
 for ridx in range(nrois):
     #print ridx
-    radii = responses[:, ridx]
+    radii = responses_by_feature[:, ridx]
     if radii.min() < 0:
         print "ROI %i has negative response. SKIPPING." % (kept_rids[ridx]+1)
         continue
@@ -1063,12 +1159,12 @@ for ridx in range(nrois):
     radii[np.isnan(radii)] = 0
     max_angle_ix = np.where(radii==radii.max())[0][0]
 
-    pdirections.append((ridx, thetas[max_angle_ix], radii[max_angle_ix]))
+    pdirections.append((ridx, feature_names[max_angle_ix], radii[max_angle_ix]))
     
 sorted_rois = sorted([pdir[0] for pdir in pdirections], key=lambda x: pdirections[x][1])
 
-for ridx in sorted_rois:
-    print ridx, pdirections[ridx][1]
+#for ridx in sorted_rois:
+#    print ridx, pdirections[ridx][1]
 
 #%%
     
@@ -1076,40 +1172,33 @@ for ridx in sorted_rois:
 # Plot mean traces for ROIs sorted by ANGLE: TRAINING DATA
 # #############################################################################
 
-plot_trials = True
-trial_lw = 0.2
-mean_lw = 1
-
-# GROUP CONFIGS:
-# TODO:  if train/test on specific transform (e.g., xpos, yrot, etc.) group configs with different stimulus IDs together...
-config_groups = ...
-
-config_list = sorted([c for c in train_configs.keys()], key=lambda x: train_configs[x][direction_label])
+config_list = sorted([c for c in configs_by_feature.keys()]) # key=lambda x: train_configs[x][direction_label])
 class_indices = np.arange(0, len(config_list))
 
 fig, axes = pl.subplots(len(config_list), 1, figsize=(6,15))
-for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)):
-    #print lix
-    
+for lix, (class_name, class_index) in enumerate(zip(config_list, class_indices)):
+    color_index = train_labels.index(class_name)
+
     #grand_meantrace_across_rois = np.mean(np.mean(traces[class_label], axis=-1), axis=0)
-    rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==train_configs[class_label][direction_label]]
-    print "Found %i cells with preferred dir %i" % (len(rois_preferred), train_configs[class_label][direction_label])
-    stim_on = list(set(train_labels_df[train_labels_df['config']==class_label]['stim_on_frame']))[0]
-    nframes_on = list(set(train_labels_df[train_labels_df['config']==class_label]['nframes_on']))[0]
+    rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==class_name] #train_configs[class_label][direction_label]]
+    print "Found %i cells with preferred dir %i" % (len(rois_preferred), class_name) #train_configs[class_label][direction_label])
+    stim_on = list(set(train_labels_df[train_labels_df['config'].isin(configs_by_feature[class_name])]['stim_on_frame']))[0]
+    nframes_on = list(set(train_labels_df[train_labels_df['config'].isin(configs_by_feature[class_name])]['nframes_on']))[0]
     stim_frames = np.arange(stim_on, stim_on+nframes_on)
         
     for ridx in rois_preferred:
-        roi_traces = train_traces[class_label][:, ridx, :]
+        if aggregate_configs:
+            roi_traces = np.mean(np.dstack(train_traces[class_label][:, ridx, :] for class_label in configs_by_feature[class_name]), axis=1)
+        else:
+            roi_traces = train_traces[class_label][:, ridx, :]
         mean_roi_trace = np.mean(roi_traces, axis=-1)
         std_roi_trace = np.std(roi_traces, axis=-1)
         ntrials_curr_config = roi_traces.shape[-1] # original array is:  Ntrials x Nframes x Nrois
 
-        cvals = [colorvals[class_index] if frameix in stim_frames else (0.0, 0.0, 0.0) for frameix in range(len(mean_roi_trace))]
-
         axes[lix].plot(np.arange(0, stim_frames[0]), mean_roi_trace[0:stim_frames[0]],
                             color='k', linewidth=mean_lw, alpha=1.0)
         axes[lix].plot(stim_frames, mean_roi_trace[stim_frames], 
-                            color=colorvals[class_index], linewidth=mean_lw, alpha=1.0)
+                            color=colorvals[color_index], linewidth=mean_lw, alpha=1.0)
         axes[lix].plot(np.arange(stim_frames[-1], len(mean_roi_trace)), mean_roi_trace[stim_frames[-1]:], 
                             color='k', linewidth=mean_lw, alpha=1.0)
 
@@ -1121,7 +1210,7 @@ for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)
                                     color='k', linewidth=trial_lw, alpha=0.3)
                 
                 axes[lix].plot(stim_frames, roi_traces[stim_frames, trialn], 
-                                    color=colorvals[class_index], linewidth=trial_lw, alpha=0.3)
+                                    color=colorvals[color_index], linewidth=trial_lw, alpha=0.3)
                 
                 axes[lix].plot(np.arange(stim_frames[-1], len(mean_roi_trace)), roi_traces[stim_frames[-1]:, trialn], 
                                     color='k', linewidth=trial_lw, alpha=0.3)
@@ -1129,27 +1218,29 @@ for lix, (class_label, class_index) in enumerate(zip(config_list, class_indices)
             axes[lix].fill_between(range(len(mean_roi_trace)), mean_roi_trace+std_roi_trace,
                                     mean_roi_trace-std_roi_trace, alpha=0.2,
                                     color='k')
-    if lix < len(config_list):
-        axes[lix].axes.xaxis.set_visible(True) #([])
-        axes[lix].axes.xaxis.set_ticks([])
+    #if lix < len(config_list):
+        #axes[lix].axes.xaxis.set_visible(True) #([])
+        #axes[lix].axes.xaxis.set_ticks([])
         
     axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]), fontsize=8)
-        
 
-sns.despine(trim=True, offset=4, bottom=True)
 
-# Custom legend:
-from matplotlib.lines import Line2D
-custom_lines = []
-for lix, c_ori in enumerate(train_labels):
-    custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
-pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
-pl.suptitle('%s: Training set' % roiset)
+# Format subplots, add labels, legend:
+sns.despine(trim=True, offset=4)
+draw_subplot_stimbars(axes, '', stim_frames, clf.classes_, class_indices, train_sconfigs, colorvals, is_static=True)
+format_xaxis_subplots(axes, stim_on, framerate, class_list)
+# Put legend in upper right:
+pl.subplots_adjust(top=0.85)
+draw_legend(fig, clf.classes_, colorvals, polar=polar_legend)
+pl.suptitle('Training set responses')
 
 label_figure(fig, data_identifier)
 
-
-figname = '%s_TRAIN_traces_%s_%s%s.png' % (roiset, train_runid, train_data_type, figs_append)
+if aggregate_configs:
+    aggregate_str = '_AGG%s' % train_feature
+else:
+    aggregate_str = ''
+figname = '%s_train_traces_%s_%s%s%s.png' % (roiset, train_runid, train_data_type, aggregate_str, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
@@ -1162,17 +1253,6 @@ pl.savefig(os.path.join(train_results_dir, figname))
 # Create decoder-style plots for ROI responses to test data
 # Each group of cells in preferred-direction group serves as "classifier"
 
-plot_trials = True
-if plot_trials:
-    mean_lw = 1
-    trial_lw=0.1
-else:
-    mean_lw = 1.0
-    trial_lw=0.2
-    
-#drifting = False
-framerate = 44.69
-linear_legend = False
 if 'DF' in test_data_type:
     yaxis_label = 'df/f'
 else:
@@ -1183,222 +1263,112 @@ if not os.path.exists(response_classif_dir):
     os.makedirs(response_classif_dir)
     
     
-configs_tested = sorted(list(set(labels_df['config'])), key=natural_keys)
+configs_tested = sorted(list(set(test_labels_df['config'])), key=natural_keys)
 #maxval = 0.5 #max([all_preds[config].max() for config in mean_pred.keys()])
 
-stimdurs = sorted(list(set([test_configs[cf]['stim_dur'] for cf in test_configs.keys()])))
-print stimdurs
-if len(stimdurs) > 1:
-    full_dur = stimdurs[-1]
-    half_dur = stimdurs[-2]
-    if len(stimdurs) > 2:
-        quarter_dur = stimdurs[0]
-
 for test_config in configs_tested:
-    #%
-    print test_config
-    #minval = test_traces[test_config].min()
-    #maxval = test_traces[test_config].max()
-    
-    # Plot each CLASS's probability on a subplot:
-    # -----------------------------------------------------------------------------
-    #colorvals = sns.color_palette("hsv", len(svc.classes_))
-    colorvals = sns.color_palette("hls", len(svc.classes_))
-    stim_on = list(set(labels_df[labels_df['config']==test_config]['stim_on_frame']))[0]
-    nframes_on = list(set(labels_df[labels_df['config']==test_config]['nframes_on']))[0]
-    stim_frames = np.arange(stim_on, stim_on+nframes_on)
-        
-    angle_step = list(set(np.diff(train_labels)))[0]
-    if test_configs[test_config]['direction'] == 1:  # CW, values should be decreasing
-        class_list = sorted(train_labels, reverse=True)
-        shift_sign = -1
-    else:
-        class_list = sorted(train_labels, reverse=False)
-        shift_sign = 1
 
-    if max(class_list) < 180 and test_configs[config]['ori'] == 180: # Not a drifting case, 180 = 0
-        start_angle_ix = class_list.index(0)
-    else:
-        start_angle_ix = class_list.index(test_configs[config]['ori'])
-    class_list = np.roll(class_list, shift_sign*start_angle_ix)
-    
-    if 'bas' in clf.classes_:
-        class_indices = [[v for v in clf.classes_].index(str(c)) for c in class_list]
-    else:
-        class_indices = [[v for v in svc.classes_].index(c) for c in class_list]
-    
-    #%
-    fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
-    #for lix in range(8):
-    #    curr_ori = svc.classes_[lix]
-    nframes_in_trial = np.squeeze(all_preds[test_config]).shape[0]
-    nclasses_total = np.squeeze(all_preds[test_config]).shape[1]
-    ntrials_curr_config =  np.squeeze(all_preds[test_config]).shape[-1]
-
-    for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
-        #print lix, class_label
-        color_index = train_labels.index(class_label)
-
-        #grand_meantrace_across_rois = np.mean(np.mean(traces[class_label], axis=-1), axis=0)
-        rois_preferred = [pdir[0] for pdir in pdirections if pdir[1]==class_label]
-        
-        print "Found %i cells with preferred dir %i" % (len(rois_preferred), class_label)
-        
-        for ridx in rois_preferred:
-            roi_traces = test_traces[test_config][:, ridx, :] # Test mat is:  Nframes x Nrois x Ntrials
-            mean_roi_trace = np.mean(roi_traces, axis=1)
-            std_roi_trace = np.std(roi_traces, axis=1)
-    
-                
-            axes[lix].plot(np.arange(0, stim_frames[0]), mean_roi_trace[0:stim_frames[0]], color='k', linewidth=1.5, alpha=1.0)
-            axes[lix].plot(stim_frames, mean_roi_trace[stim_frames], color=colorvals[color_index], linewidth=1.5, alpha=1.0)
-            axes[lix].plot(np.arange(stim_frames[-1]+1, len(mean_roi_trace)), mean_roi_trace[stim_frames[-1]+1:], color='k', linewidth=1.5, alpha=1.0)
-
-            if plot_trials:
-                plot_type = 'trials'
-                for trialn in range(ntrials_curr_config):
-                    axes[lix].plot(np.arange(0, stim_frames[0]), test_traces[test_config][0:stim_frames[0], ridx, trialn],
-                                        color='k', linewidth=0.4, alpha=0.3)
-                    
-                    axes[lix].plot(stim_frames, test_traces[test_config][stim_frames, ridx, trialn], 
-                                        color=colorvals[color_index], linewidth=0.4, alpha=0.3)
-                    
-                    axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), test_traces[test_config][stim_frames[-1]:, ridx, trialn], 
-                                        color='k', linewidth=0.4, alpha=0.3)
-                    
-            else:
-                plot_type = 'fillstd'
-                axes[lix].fill_between(range(nframes_in_trial), mean_roi_trace + std_roi_trace,
-                                            mean_roi_trace - std_roi_trace, alpha=0.2,
-                                            color='k')
-
-        axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]))
-        axes[lix].axes.xaxis.set_ticks([])
-        #axes[lix].set_title(class_label)
-                    
-        # show stim dur, using class labels as color key:
-        #pl.plot([stim_on, stim_on+nframes_on], np.ones((2,1))*0, 'r', linewidth=3)
-        stimframes = np.arange(stim_on, stim_on+nframes_on)
-        if test_configs[test_config]['stim_dur'] == quarter_dur:
-            nclasses_shown = int(len(class_indices) * (1/4.)) + 1
-        elif test_configs[test_config]['stim_dur'] == half_dur:
-            nclasses_shown = int(len(class_indices) * (1/2.)) + 1
-        else:
-            nclasses_shown = len(class_indices)
-        ordered_indices = np.array(class_indices[0:nclasses_shown])
-        #ordered_colors = [colorvals[c] for c in ordered_indices]
-        if 'bas' in svc.classes_:
-            ordered_colors = [colorvals[train_labels.index(int(svc.classes_[c]))] for c in ordered_indices]
-        else:
-            ordered_colors = [colorvals[c] for c in ordered_indices]
-#        bar_offset = 0.1 * 1000
-#        curr_ylim = axes[lix].get_ylim()[0] - bar_offset
-#        axes[lix].set_ylim([minval-bar_offset*2, axes[lix].get_ylim()[1]])
-#        
-        # Plot chance line:
-        chance = 1/len(class_list)
-        axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
-        
-                  
-        sns.despine(trim=True, offset=4, ax=axes[lix])
-    
-
-    for lix in range(len(class_list)):
-        # Create color bar:
-        cy = np.ones(stimframes.shape) * axes[lix].get_ylim()[0]/2.0
-        z = stimframes.copy()
-        points = np.array([stimframes, cy]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        cmap = ListedColormap(ordered_colors)
-        lc = LineCollection(segments, cmap=cmap)
-        lc.set_array(z)
-        lc.set_linewidth(5)
-        axes[lix].add_collection(lc)
-        
-        if lix == len(class_list)-1:
-            axes[lix].set_xticks((stim_on, stim_on + framerate))
-            axes[lix].set_xticklabels([0, 1])
-            axes[lix].set_xlabel('sec', horizontalalignment='right', x=0.25)        
-            for axside in ['top', 'right']:
-                axes[lix].spines[axside].set_visible(False)
-            sns.despine(trim=True, offset=4, ax=axes[lix])
-
-        else:
-            axes[lix].axes.xaxis.set_ticks([])
-            for axside in ['bottom', 'top', 'right']:
-                axes[lix].spines[axside].set_visible(False)
-            axes[lix].axes.xaxis.set_visible(False) #([])
-        axes[lix].set_ylabel('%s (%i)' % (yaxis_label, class_list[lix]))
-
-    
-    #pl.plot(stimframes, np.ones(stimframes.shape), color=ordered_colors, linewidth=5)
-    pl.subplots_adjust(top=0.85)
-    
-        
-    # Custom legend:
-    if linear_legend:
-        from matplotlib.lines import Line2D
-        custom_lines = []
-        for lix, c_ori in enumerate(svc.classes_):
-            custom_lines.append(Line2D([0], [0], color=colorvals[lix], lw=4))
-        pl.legend(custom_lines, svc.classes_, loc=9, bbox_to_anchor=(0.5, -0.2), ncol=len(svc.classes_)/2)
-    else:
-        if 180 in class_list:
-         legend = fig.add_axes([0.75, 0.75, 0.2, 0.3],
-                      projection='polar') 
-        else:
-         legend = fig.add_axes([0.85, 0.75, 0.2, 0.3],
-                      projection='polar')
-    
-        thetas = sorted(np.array([ori_deg*(math.pi/180) for ori_deg in class_list]))
-        if max(thetas) < 300:
-            thetas = np.append(thetas, 180*(math.pi/180))
-        
-        for tix, theta in enumerate(thetas):
-            print theta
-            if theta == math.pi and max(class_list) < 300:
-                color_ix = 0
-            else:
-                color_ix = [t for t in thetas].index(theta)
-            legend.plot([theta, theta], [0, 1], color=colorvals[color_ix], lw=3)
-        legend.set_theta_zero_location("N")
-        legend.set_xlim([0, math.pi])
-        legend.grid(False); 
-        legend.set_xticks(thetas)
-        if max(class_list) < 300:
-            thetas[-1] = 0
-        legend.set_xticklabels([int(round(t*(180/math.pi))) for t in thetas], fontsize=8)
-        legend.yaxis.grid(False); legend.set_yticklabels([])
-        legend.spines["polar"].set_visible(False)
-
-
-    if test_configs[test_config]['direction']==1:
-        rot_direction = 'CW'
-    else:
-        rot_direction = 'CCW'
-        
-    if test_configs[test_config]['stim_dur'] == half_dur:
-        rot_duration = 'half'
-    elif test_configs[test_config]['stim_dur'] == quarter_dur:
-        rot_duration = 'quarter'
-    else:
-        rot_duration = 'full'
-    starting_rot = test_configs[test_config]['ori']
-    config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
-    
+    fig, figbase = plot_decoded_traces(test_config, traces=test_traces, 
+                                       trained_classes=clf.classes_, 
+                                       direction_label=direction_label, 
+                                       sconfigs=test_sconfigs, 
+                                       labels_df=test_labels_df, 
+                                       shuffle_frames=False, decode=False,
+                                       pdirections=pdirections,
+                                       plot_trials=False)
     label_figure(fig, data_identifier)
-    
-    pl.suptitle(config_english)
-    
-    #%
-    #train_savedir = os.path.split(train_fpath)[0]
-    
-    
-    if shuffle_frames:
-        figname = '%s_traces_TEST_%s_%s_start_%i_%s_%s_%s_%s_shuffled.png' % (roiset, test_runid, test_config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
-    else:
-        figname = '%s_traces_TEST_%s_%s_start_%i_%s_%s_%s_%s.png' % (roiset, test_runid, test_config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
-    
+    figname = '0%s_traces_TEST_%s_%s.png' % (roiset, test_runid, figbase)
     pl.savefig(os.path.join(response_classif_dir, figname))
     pl.close()
     
+#
+#
+#for test_config in configs_tested:
+#    #%
+#    print test_config
+#    # Plot each CLASS's probability on a subplot:
+#    # -----------------------------------------------------------------------------
+#    stim_on = list(set(test_labels_df[test_labels_df['config']==test_config]['stim_on_frame']))[0]
+#    nframes_on = list(set(test_labels_df[test_labels_df['config']==test_config]['nframes_on']))[0]
+#    stim_frames = np.arange(stim_on, stim_on+nframes_on)
+#        
+#    angle_step = list(set(np.diff(train_labels)))[0]
+#    class_list, class_indices = get_ordered_classes(cf, test_sconfigs, clf.classes_, direction_label)
+#    nframes_in_trial, nclasses_total, ntrials_curr_config = all_predictions_by_class[test_config].shape
+#
+#    #%
+#    fig, axes = pl.subplots(len(class_list), 1, figsize=(6,15))
+#    
+#    for lix, (class_label, class_index) in enumerate(zip(class_list, class_indices)):
+#        
+#        color_index = train_labels.index(class_label)
+#        rois_preferred = np.array([pdir[0] for pdir in pdirections if pdir[1]==class_label])
+#        
+#        print "Found %i cells with preferred dir %i" % (len(rois_preferred), class_label)
+#        
+#        #for ridx in rois_preferred:
+#        roi_traces = test_traces[test_config][:, rois_preferred, :] # Test mat is:  Nframes x Nrois x Ntrials
+#        mean_roi_trace = np.mean(roi_traces, axis=-1)
+#        std_roi_trace = np.std(roi_traces, axis=-1)
+#            
+#        axes[lix].plot(np.arange(0, stim_frames[0]), 
+#                        mean_roi_trace[0:stim_frames[0]], color='k', 
+#                        linewidth=1.5, alpha=1.0)
+#        axes[lix].plot(stim_frames, 
+#                        mean_roi_trace[stim_frames], color=colorvals[color_index], 
+#                        linewidth=1.5, alpha=1.0)
+#        axes[lix].plot(np.arange(stim_frames[-1]+1, len(mean_roi_trace)), 
+#                        mean_roi_trace[stim_frames[-1]+1:], color='k', 
+#                        linewidth=1.5, alpha=1.0)
+#
+#        if plot_trials:
+#            plot_type = 'trials'
+#            for trialn in range(ntrials_curr_config):
+#                axes[lix].plot(np.arange(0, stim_frames[0]+1),
+#                                test_traces[test_config][0:stim_frames[0]+1, rois_preferred, trialn],
+#                                color='k', linewidth=0.4, alpha=0.3)
+#                
+#                axes[lix].plot(stim_frames, 
+#                                test_traces[test_config][stim_frames[0]:stim_frames[-1]+1, rois_preferred, trialn], 
+#                                color=colorvals[color_index], linewidth=0.4, alpha=0.3)
+#                
+#                axes[lix].plot(np.arange(stim_frames[-1], nframes_in_trial), 
+#                                test_traces[test_config][stim_frames[-1]:, rois_preferred, trialn], 
+#                                color='k', linewidth=0.4, alpha=0.3)
+#                
+#        else:
+#            plot_type = 'fillstd'
+#            axes[lix].fill_between(range(nframes_in_trial), mean_roi_trace + std_roi_trace,
+#                                        mean_roi_trace - std_roi_trace, 
+#                                        alpha=0.2, color='k')
+#
+#        axes[lix].set_title(str([kept_rids[r]+1 for r in rois_preferred]))
+#        axes[lix].axes.xaxis.set_ticks([])
+#
+#        # Plot chance line:
+#        chance = 1/len(class_list)
+#        axes[lix].plot(np.arange(0, nframes_in_trial), np.ones((nframes_in_trial,))*chance, 'k--', linewidth=0.5)
+#                  
+#    # Format subplots, add labels, legend:
+#    sns.despine(trim=True, offset=4, ax=axes[lix])
+#    draw_subplot_stimbars(axes, cf, stim_frames, clf.classes_, class_indices, test_sconfigs, colorvals, 
+#                          is_static=False)
+#    format_xaxis_subplots(axes, stim_on, framerate)
+#    # Put legend in upper right:
+#    pl.subplots_adjust(top=0.85)
+#    draw_legend(fig, clf.classes_, colorvals, polar=polar_legend)
+#    # Give a sensible title:
+#    starting_rot, rot_direction, rot_duration = configs_to_english(cf, test_sconfigs, direction_label, class_list)
+#    config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+#    pl.suptitle(config_english)
+#    label_figure(fig, data_identifier)
+#    #%
+    
+#    if shuffle_frames:
+#        figname = '%s_traces_TEST_%s_%s_start_%i_%s_%s_%s_%s_shuffled.png' % (roiset, test_runid, test_config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+#    else:
+#        figname = '%s_traces_TEST_%s_%s_start_%i_%s_%s_%s_%s.png' % (roiset, test_runid, test_config, starting_rot, rot_direction, rot_duration, plot_type, test_data_type)
+#    
+#    pl.savefig(os.path.join(response_classif_dir, figname))
+#    pl.close()
+#    
