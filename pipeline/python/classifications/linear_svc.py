@@ -13,6 +13,7 @@ import json
 import cv2
 import time
 import math
+import sys
 import random
 import itertools
 import scipy.io
@@ -2037,7 +2038,8 @@ def train_linear_classifier(options_list):
         dt = np.load(data_fpath)
         dataset = dt['arr_0'][()]
     else:
-        dataset = np.load(data_paths[opts_ix])
+        data_fpath = data_paths[opts_ix]
+        dataset = np.load(data_fpath)
         if 'arr_0' in dataset.keys():
             dataset = dataset['arr_0'][()]
         
@@ -2247,11 +2249,13 @@ def train_linear_classifier(options_list):
     clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
     np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
                  data_type=data_type,
+                 inputdata=inputdata,
+                 inputdata_type=inputdata_type,
+                 data_fpath=data_fpath,
                  sconfigs=sconfigs, run_info=run_info)
 
     joblib.dump(svc, os.path.join(classifier_dir, '%s.pkl' % classif_identifier), compress=9)
      
-    import sys
     svc_params = svc.get_params().copy()
     if 'base_estimator' in svc_params.keys():
         svc_params['base_estimator'] = str(svc_params['base_estimator'] )
