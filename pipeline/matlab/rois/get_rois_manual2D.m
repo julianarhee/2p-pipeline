@@ -9,7 +9,7 @@ clc; clear all;
 
 rootdir = '/mnt/odyssey'
 animalid = 'CE077' %'JR063';
-session = '20180413' %'20171202_JR063';
+session = '20180817' %'20171202_JR063';
 roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
