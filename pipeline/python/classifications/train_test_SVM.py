@@ -244,6 +244,7 @@ def get_ordered_classes(config, test_sconfigs, class_names, direction_label):
         class_list = sorted(class_names, reverse=False)
         shift_sign = 1
         start_angle_ix = class_list[0]
+    print "class list:", class_list
     
     if is_grating:
         if max(class_list) < 180 and test_sconfigs[config]['ori'] == 180: # Not a drifting case, 180 = 0
@@ -253,7 +254,7 @@ def get_ordered_classes(config, test_sconfigs, class_names, direction_label):
         class_list = np.roll(class_list, shift_sign*start_angle_ix)
 
     if any([isinstance(v, str) for v in class_names]):
-        class_indices = [[v for v in class_names].index(str(c)) for c in class_list]
+        class_indices = [[str(v) for v in class_names].index(str(c)) for c in class_list]
     else:
         class_indices = [[v for v in class_names].index(c) for c in class_list]
     
@@ -281,7 +282,7 @@ def draw_subplot_stimbars(axes, config, stim_frames, class_names, class_indices,
         # Adjust ylimit and set stimbar location:
         ymin, ymax = axes[lix].get_ylim()
         curr_ylim = ymin - bar_offset
-        axes[lix].set_ylim([ymin-bar_offset*2, ymax])
+        axes[lix].set_ylim([ymin - bar_offset*2, ymax])
         axes[lix].axes.xaxis.set_ticks([])
         if y_unit is None:
             axes[lix].set_ylabel('prob (%i)' % class_names[class_indices[lix]])
@@ -406,7 +407,7 @@ def configs_to_english(config, sconfigs, direction_label, class_list):
             elif sconfigs[config]['stim_dur'] == quarter_dur:
                 rot_duration = 'quarter'
                 
-        if direction_label == 'ori':
+        if direction_label == 'direction':
             if sconfigs[config]['direction']==1:
                 rot_direction = 'CW'
             else:
@@ -518,15 +519,16 @@ def plot_decoded_traces(cf, traces=None, trained_classes=[], pdirections=None,
 
     # Format subplots, add labels, legend:
     sns.despine(trim=True, offset=4, ax=axes[lix])
-    draw_subplot_stimbars(axes, cf, stim_frames, clf.classes_, class_indices, test_sconfigs, colorvals, 
+    draw_subplot_stimbars(axes, cf, stim_frames, clf.classes_, class_indices, sconfigs, colorvals, 
                           is_static=False)
-    format_xaxis_subplots(axes, stim_on, framerate, class_list)
+    format_xaxis_subplots(axes, stim_on, framerate)
     # Put legend in upper right:
     pl.subplots_adjust(top=0.85)
     draw_legend(fig, class_list, colorvals, polar=polar_legend)
     # Give a sensible title:
-    starting_rot, rot_direction, rot_duration = configs_to_english(cf, test_sconfigs, direction_label, class_list)
+    starting_rot, rot_direction, rot_duration = configs_to_english(cf, sconfigs, direction_label, class_list)
     config_english = 'start %i [%s, %s]' % (starting_rot, rot_direction, rot_duration)
+    print cf, config_english
     pl.suptitle(config_english)
   
     if shuffle_frames:
@@ -681,8 +683,8 @@ min_spikes = 0.0002
 downsample = False
 downsample_factor = 0.2
 
-const_trans = 'xpos'
-trans_value = -5
+const_trans = ''
+trans_value = ''
 # -----------------------------------------------------------------------------
 
 # Filter and/or downsample:
@@ -728,8 +730,8 @@ with open(paradigm_fpath, 'r') as f:
 
 shuffle_frames = False
 all_predictions_by_class, test_traces = decode_traces(clf, cgroups, test_X, shuffle_frames=shuffle_frames)
-mean_predictions_by_class = dict((k, np.mean(v, axis=-1)) for k, v in all_predictions_by_class.items())
-sem_predictions_by_class = dict((k, stats.sem(v, axis=-1)) for k, v in all_predictions_by_class.items())
+#mean_predictions_by_class = dict((k, np.mean(v, axis=-1)) for k, v in all_predictions_by_class.items())
+#sem_predictions_by_class = dict((k, stats.sem(v, axis=-1)) for k, v in all_predictions_by_class.items())
 
 
 #%%
@@ -746,12 +748,16 @@ if plot_trials:
 else:
     mean_lw = 1.0
     trial_lw=0.2  
-polar_legend = False
+
+if direction_label == 'direction': # orientations
+    polar_legend = True
+else:
+    polar_legend = False
 
 
 # Set output dir:
 decoding_dir = os.path.join(test_results_dir, '%s_%s' % (test_runid, test_data_type))
-if const_trans is not None and trans_value is not None:
+if const_trans is not '' and trans_value is not '':
     trans_string = '%s_%i' % (const_trans, trans_value)
     decoding_dir = '%s_%s' % (decoding_dir, trans_string)
 if not os.path.exists(decoding_dir): os.makedirs(decoding_dir)
@@ -869,7 +875,7 @@ train_labels_df = pd.DataFrame(data=training_data['labels_data'], columns=traini
 
 aggregate_configs = True 
 
-#%%
+#%
 train_data_type = test_data_type #'smoothedX'
 if 'df' not in train_data_type and 'DF' not in train_data_type:
     train_data_units = 'intensity'
@@ -964,16 +970,17 @@ for lix, (class_label, class_index) in enumerate(zip(train_labels, class_indices
 # Format subplots, add labels, legend:
 sns.despine(trim=True, offset=4)
 draw_subplot_stimbars(axes, '', stim_frames, clf.classes_, class_indices, train_sconfigs, colorvals, is_static=True)
-format_xaxis_subplots(axes, stim_on, framerate, class_list)
+format_xaxis_subplots(axes, stim_on, framerate)
 # Put legend in upper right:
 pl.subplots_adjust(top=0.85)
 draw_legend(fig, clf.classes_, colorvals, polar=polar_legend)
 # Give a sensible title:
-_, rot_direction, rot_duration = configs_to_english('', test_sconfigs, direction_label, class_list)
+class_list, class_indices = get_ordered_classes('config001', train_sconfigs, trained_classes, direction_label)
+_, rot_direction, rot_duration = configs_to_english('', train_sconfigs, direction_label, class_list)
 pl.suptitle('%s: Decoding training set (all configs: %s - %s)' % (roiset, rot_direction, rot_duration))
 label_figure(fig, data_identifier)
 
-figname = 'decode_%s_TRAIN_traces_%s_%s_%s.png' % (roiset, train_runid, train_feature, train_data_type)
+figname = '0decode_%s_TRAIN_traces_%s_%s_%s.png' % (roiset, train_runid, train_feature, train_data_type)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
@@ -1069,7 +1076,7 @@ offsets = np.vstack(baselines)
 # INPUT DATA:  Plot POLAR plots to show direction tuning:
 # =============================================================================
 if train_feature == 'ori':
-    thetas = [train_sconfigs[cf][direction_label] * (math.pi/180) for cf in config_list]
+    thetas = [train_sconfigs[cf][train_feature] * (math.pi/180) for cf in config_list]
     use_polar = True
 else:
     thetas = [train_sconfigs[cf][train_feature] for cf in config_list]
@@ -1109,13 +1116,15 @@ for ridx, ax in zip(range(len(kept_rids)), axes.flat):
         for val in np.unique(thetas):
             ixs = np.where(thetas == val)[0]
             ax.plot(val, np.mean(radii[ixs]), '_', color='mediumorchid', markeredgewidth=2, markersize=10)
-        ax.scatter(thetas, radii, s=2, c='mediumorchid', alpha=0.5)        
+        ax.scatter(thetas, radii, s=2, c='mediumorchid', alpha=0.5)   
+        sns.despine(trim=True, offset=4)
+
     radii[np.isnan(radii)] = 0
 
     ax.set_title(kept_rids[ridx]+1, fontsize=8)
     ax.set_xticks([t for t in thetas])
+
 pl.suptitle("tuning: %s" % roiset)
-sns.despine(trim=True, offset=4)
 fig.text(0.5, 0.04, '%s' % train_feature, ha='center')
 fig.text(0.04, 0.5, '%s' % train_data_units, va='center', rotation='vertical')
 
@@ -1124,7 +1133,7 @@ if not use_polar:
 pl.rc('ytick', labelsize=8)
 label_figure(fig, data_identifier)
 
-figname = '%s_tuning_plots_%s%s.png' % (roiset, train_data_type, figs_append)
+figname = '0%s_tuning_plots_%s%s.png' % (roiset, train_data_type, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
     
 #%%
@@ -1142,10 +1151,10 @@ if len(thetas) != len(np.unique(thetas)):
             responses_by_feature.append(avg_configs)
             feature_names.append(val)
         responses_by_feature = np.array(responses_by_feature)
-    else:
-        responses_by_feature = responses.copy()
-        feature_names = np.copy(thetas)
-        
+else:
+    responses_by_feature = responses.copy()
+    feature_names = config_list
+    
 #thetas = [train_configs[cf][direction_label] for cf in config_list]
 
 pdirections = []
@@ -1227,8 +1236,9 @@ for lix, (class_name, class_index) in enumerate(zip(config_list, class_indices))
 
 # Format subplots, add labels, legend:
 sns.despine(trim=True, offset=4)
-draw_subplot_stimbars(axes, '', stim_frames, clf.classes_, class_indices, train_sconfigs, colorvals, is_static=True)
-format_xaxis_subplots(axes, stim_on, framerate, class_list)
+draw_subplot_stimbars(axes, '', stim_frames, clf.classes_, class_indices, train_sconfigs, 
+                      colorvals, is_static=True, y_unit='intensity', bar_offset=0.08)
+format_xaxis_subplots(axes, stim_on, framerate)
 # Put legend in upper right:
 pl.subplots_adjust(top=0.85)
 draw_legend(fig, clf.classes_, colorvals, polar=polar_legend)
@@ -1240,7 +1250,7 @@ if aggregate_configs:
     aggregate_str = '_AGG%s' % train_feature
 else:
     aggregate_str = ''
-figname = '%s_train_traces_%s_%s%s%s.png' % (roiset, train_runid, train_data_type, aggregate_str, figs_append)
+figname = '0%s_train_traces_%s_%s%s%s.png' % (roiset, train_runid, train_data_type, aggregate_str, figs_append)
 pl.savefig(os.path.join(train_results_dir, figname))
 
 
