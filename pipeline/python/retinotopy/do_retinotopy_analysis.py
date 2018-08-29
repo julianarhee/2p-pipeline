@@ -16,6 +16,7 @@ from scipy import ndimage
 import cv2
 
 from pipeline.python.utils import natural_keys, replace_root
+from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -688,6 +689,9 @@ def do_analysis(options):
 	analysis_hash = RETINOID['analysis_hash']
 
 	tiff_dir = RETINOID['SRC']
+        if rootdir not in tiff_dir:
+            tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
 	#roi_name = RETINOID['PARAMS']['roi_id']
 	tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
 	#print "Found %i tiffs in dir %s.\nExtracting analysis with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
@@ -704,10 +708,13 @@ def do_analysis(options):
 
 	#Set file and figure directory
 	file_dir = os.path.join(RETINOID['DST'],'files')
+        if rootdir not in file_dir:
+            file_dir = replace_root(file_dir, rootdir, animalid, session)
 	if not os.path.exists(file_dir):
 			os.makedirs(file_dir)
 			
 	fig_base_dir = os.path.join(RETINOID['DST'],'figures')
+        if rootdir not in fig_base_dir: fig_base_dir = replace_root(fig_base_dir, rootdir, animalid, session)
 	if not os.path.exists(fig_base_dir):
 			os.makedirs(fig_base_dir)
 
@@ -773,7 +780,13 @@ def do_analysis(options):
 			analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file)
 	if RETINOID['PARAMS']['roi_type'] != 'pixels':
 		masks_file.close()
+	    
+	if RETINOID['PARAMS']['roi_type'] != 'pixels':
+            visualize_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition,
+				'-R', run, '-t', analysis_id]
 
+	    roi_retinotopy(visualize_opts)
+	    print "Plotted ROIs to screen coordinates."
 #-----------------------------------------------------
 #           MAIN SET OF ACTIONS
 #-----------------------------------------------------
