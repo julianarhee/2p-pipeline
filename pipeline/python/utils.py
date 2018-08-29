@@ -8,6 +8,7 @@ import hashlib
 import scipy
 import h5py
 import time
+import cv2
 import numpy as np
 import tifffile as tf
 from skimage import exposure
@@ -16,6 +17,14 @@ import scipy.io as spio
 import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
+
+def uint16_to_RGB(img):
+    im = img.astype(np.float64)/img.max()
+    im = 255 * im
+    im = im.astype(np.uint8)
+    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
+    return rgb
+
 
 def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)

@@ -37,6 +37,7 @@ pp = pprint.PrettyPrinter(indent=4)
 
 from pipeline.python.paradigm import tifs_to_data_arrays as fmt
 from pipeline.python.classifications import utils as util
+from pipeline.python.utils import uint16_to_RGB
 
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
 import pipeline.python.traces.combine_runs as cb
@@ -50,13 +51,6 @@ from collections import Counter
 
 
 #%%
-def uint16_to_RGB(img):
-    im = img.astype(np.float64)/img.max()
-    im = 255 * im
-    im = im.astype(np.uint8)
-    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
-    return rgb
-
 
 def find_barval_index(bar_value_to_label, p):
     min_distance = float("inf")  # initialize min_distance with infinity
