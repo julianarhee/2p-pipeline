@@ -83,6 +83,7 @@ def extract_options(options):
 
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
 
     (options, args) = parser.parse_args(options)
 
@@ -226,16 +227,27 @@ def do_KW_test(rdata, post_hoc='dunn', metric='meanstim', asdict=True):
 
 def group_roidata_stimresponse(roidata, labels_df):
     
-    assert len(list(set(labels_df['nframes_on'])))==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
-    assert len(list(set(labels_df['stim_on_frame'])))==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
-    nframes_on = int(round(list(set(labels_df['nframes_on']))[0]))
-    stim_on_frame =  int(round(list(set(labels_df['stim_on_frame']))[0]))
-
+    try:
+        stimdur_vary = False
+        assert len(labels_df['nframes_on'].unique())==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
+        assert len(labels_df['stim_on_frame'].unique())==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
+        nframes_on = int(round(labels_df['nframes_on'].unique()[0]))
+        stim_on_frame =  int(round(labels_df['stim_on_frame'].unique()[0]))
+    except Exception as e:
+        stimdur_vary = True
+        
     groupby_list = ['config', 'trial']
     config_groups = labels_df.groupby(groupby_list)
 
     df_list = []
     for (config, trial), trial_ixs in config_groups:
+        if stimdur_vary:
+            # Get stim duration info for this config:
+            assert len(labels_df[labels_df['config']==config]['nframes_on'].unique())==1, "Something went wrong! More than 1 unique stim dur for config: %s" % config
+            assert len(labels_df[labels_df['config']==config]['stim_on_frame'].unique())==1, "Something went wrong! More than 1 unique stim ON frame for config: %s" % config
+            nframes_on = labels_df[labels_df['config']==config]['nframes_on'].unique()[0]
+            stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
+             
         trial_frames = roidata[trial_ixs.index.tolist(), :]
         nrois = trial_frames.shape[-1]
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
@@ -404,16 +416,27 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
 
 def group_roidata_trialepoch(roidata, labels_df):
     
-    assert len(list(set(labels_df['nframes_on'])))==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
-    assert len(list(set(labels_df['stim_on_frame'])))==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
-    nframes_on = int(round(list(set(labels_df['nframes_on']))[0]))
-    stim_on_frame =  int(round(list(set(labels_df['stim_on_frame']))[0]))
+    try:
+        stimdur_vary = False
+        assert len(labels_df['nframes_on'].unique())==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
+        assert len(labels_df['stim_on_frame'].unique())==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
+        nframes_on = int(round(labels_df['nframes_on'].unique()[0]))
+        stim_on_frame =  int(round(labels_df['stim_on_frame'].unique()[0]))
+    except Exception as e:
+        stimdur_vary = True
 
     groupby_list = ['config', 'trial']
     config_groups = labels_df.groupby(groupby_list)
 
     df_list = []
     for (config, trial), trial_ixs in config_groups:
+        if stimdur_vary:
+            # Get stim duration info for this config:
+            assert len(labels_df[labels_df['config']==config]['nframes_on'].unique())==1, "Something went wrong! More than 1 unique stim dur for config: %s" % config
+            assert len(labels_df[labels_df['config']==config]['stim_on_frame'].unique())==1, "Something went wrong! More than 1 unique stim ON frame for config: %s" % config
+            nframes_on = labels_df[labels_df['config']==config]['nframes_on'].unique()[0]
+            stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
+            
         trial_frames = roidata[trial_ixs.index.tolist(), :]
         nrois = trial_frames.shape[-1]
         base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
@@ -435,6 +458,9 @@ def group_roidata_trialepoch(roidata, labels_df):
     return df_by_rois
 
 def pyvt_format_trialepoch_df(rdata):
+    '''
+    PYVT has its own dataframe structure, so just reformat pandas DF.
+    '''
     df_factors = ['config', 'trial', 'epoch', 'intensity']
     Trial = namedtuple('Trial', df_factors)
     pdf = pt.DataFrame()
@@ -561,14 +587,14 @@ def find_barval_index(bar_value_to_label, p):
     return index_of_bar_to_label
 
 #%%
+
+def calculate_roi_responsivity(options):
     optsE = extract_options(options)
     create_new = optsE.create_new
     nprocs = optsE.nprocs
     
-    run = optsE.run 
-    traceid = optsE.traceid 
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
     traceid = os.path.split(traceid_dir)[-1]
     trace_type = optsE.trace_type
     data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, traceid, trace_type))
@@ -649,4 +675,39 @@ def find_barval_index(bar_value_to_label, p):
         print >> f, 'VISUAL -- Top 10 neuron ids: %s' % str([int(r) for r in sorted_visual[0:10]])
         print >> f, 'SELECTIVE -- Top 10 neuron ids: %s' % str([int(r) for r in sorted_selective[0:10]])
         
-        
+    
+    # Save ROI stats to file for easy access later:
+    roistats_fpath = os.path.join(sort_dir, 'roistats_results.npz')
+    np.savez(roistats_fpath, 
+             animalid=optsE.animalid,
+             session=optsE.session,
+             acquisition=optsE.acquisition,
+             traceid=traceid,
+             nrois_total=nrois_total,
+             responsivity_test='pyvt_splitplot_anova2',
+             sorted_visual=sorted_visual,
+             sorted_selective=sorted_selective,
+             selectivity_test = 'kruskal_wallis',
+             selectivity_posthoc=post_hoc,
+             metric=metric
+             )
+    print "Saved ROI stat results to: %s" % roistats_fpath
+    
+    return roistats_fpath
+
+#%%
+    
+
+def main(options):
+    
+    roistats_fpath = calculate_roi_responsivity(options)
+    
+    print "*******************************************************************"
+    print "DONE!"
+    print "*******************************************************************"
+    
+    
+#%%
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
