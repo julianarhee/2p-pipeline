@@ -1991,7 +1991,7 @@ def load_masks_and_img(options, INFO):
     trace_id = os.path.split(traceid_dir)[-1].split('_')[0]
     run_dir = traceid_dir.split('/traces')[0]
     
-    if 'cobined_dataset' in INFO.keys() and INFO['combined_dataset'] is True:
+    if 'combined_dataset' in INFO.keys() and INFO['combined_dataset'] is True:
         tmp_runfolder = '_'.join([run_dir.split('_')[0], run_dir.split('_')[1]])
         tmp_rundir = os.path.join(session_dir, acquisition, tmp_runfolder)
         TID = load_TID(tmp_rundir, trace_id)
