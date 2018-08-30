@@ -591,7 +591,7 @@ def find_barval_index(bar_value_to_label, p):
 def calculate_roi_responsivity(options):
     optsE = extract_options(options)
     create_new = optsE.create_new
-    nprocs = optsE.nprocs
+    nprocs = optsE.nprocesses
     
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
