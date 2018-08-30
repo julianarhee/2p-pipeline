@@ -145,22 +145,24 @@ def plot_confusion_matrix(cm, classes,
         fig = pl.figure(figsize=(4,4))
         ax = fig.add_subplot(111)
 
-    pl.title(title)
+    ax.set_title(title, fontsize=10)
 
     im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
     tick_marks = np.arange(len(classes))
-    pl.xticks(tick_marks, classes, rotation=45)
-    pl.yticks(tick_marks, classes)
+    ax.set_xticks(tick_marks)
+    ax.set_xticklabels(classes, rotation=45, fontsize=10)
+    ax.set_yticks(tick_marks)
+    ax.set_yticklabels(classes, fontsize=10)
     fmt = '.2f' if normalize else 'd'
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        pl.text(j, i, format(cm[i, j], fmt),
+        ax.text(j, i, format(cm[i, j], fmt),
                  horizontalalignment="center",
                  color="white" if cm[i, j] > thresh else "black")
 
-    pl.tight_layout()
-    pl.ylabel('True label')
-    pl.xlabel('Predicted label')
+    #pl.tight_layout()
+    ax.set_ylabel('True label')
+    ax.set_xlabel('Predicted label')
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -1323,6 +1325,49 @@ def get_classifier_params(**cparams):
     
     return clfparams
 
+def get_default_gratings_params():
+    
+    clfparams = get_classifier_params(data_type='stat', 
+                                      inputdata='meanstim', 
+                                      inputdata_type='',
+                                      roi_selector='all', 
+                                      class_name='ori', 
+                                      aggregate_type='all',
+                                      subset=None, subset_nsamples=None,
+                                      const_trans='', trans_value='',
+                                      cv_method='kfold', 
+                                      cv_nfolds=5,
+                                      cv_ngroups=1,
+                                      classifier='LinearSVC', 
+                                      binsize=None,
+                                      get_null=False,
+                                      C=1e9)
+    return clfparams
+    
+def get_formatted_traindata(clfparams, dataset, traceid):
+    
+    if isinstance(dataset['run_info'], dict):
+        run_info = dataset['run_info']
+    else:
+        run_info = dataset['run_info'][()]
+        
+    if 'cnmf' in traceid: # optsE.traceid_list[0]:
+        assert clfparams['inputdata_type'] in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (clfparams['inputdata_type'], str(dataset.keys()))
+
+        Xdata = dataset[clfparams['inputdata_type']]
+        labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])        
+        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
+        cy = np.array(cy)
+        inputdata = 'meanstim'
+        is_cnmf = True
+    else:
+        assert clfparams['inputdata'] in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (clfparams['inputdata'], str(dataset.keys()))
+        cX, cy = get_input_data(dataset, run_info, clfparams)
+        cy = np.array(cy)
+        is_cnmf = False
+        inputdata = clfparams['inputdata']
+        
+    return cX, cy, inputdata, is_cnmf
 
 #%%
 
@@ -1756,6 +1801,53 @@ def calculate_confusion_matrix(predicted, true, clfparams, data_identifier=''):
     print "Saved CV results."
     #pp.pprint(cv_results)
 
+    
+def plot_normed_confusion_matrix(predicted, true, clfparams, ax=None):
+    
+    # Compute confusion matrix:
+    # -----------------------------------------------------------------------------
+    if clfparams['classifier'] == 'LinearSVC':
+        average_iters = True
+        
+        if (clfparams['cv_method'] == 'LOO' or clfparams['cv_method'] == 'splithalf') and (clfparams['data_type'] != 'xcondsub'):
+            # These have single valued folds (I think...):
+            y_test = np.array([int(i) for i in true])
+            y_pred = np.array([int(i) for i in predicted])
+            cmatrix_tframes = confusion_matrix(y_test, y_pred, labels=clfparams['class_labels'])
+            conf_mat_str = 'trials'
+        else:
+            if average_iters:
+                cmatrix_tframes = confusion_matrix(true[0], predicted[0], labels=clfparams['class_labels'])
+                for iter_idx in range(len(predicted))[1:]:
+                    print "adding iter %i" % iter_idx
+                    cmatrix_tframes += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=clfparams['class_labels'])
+                conf_mat_str = 'AVG'
+                #cmatrix_tframes /= float(len(pred_results))
+            else:
+                avg_scores = []
+                for y_pred, y_test in zip(predicted, true):
+                    pred_score = len([i for i in y_pred==y_test if i]) / float(len(y_pred))
+                    avg_scores.append(pred_score)
+                best_fold = avg_scores.index(np.max(avg_scores))
+
+                cmatrix_tframes = confusion_matrix(true[best_fold], predicted[best_fold], labels=clfparams['class_labels'])
+                conf_mat_str = 'best'
+                #pl.figure();
+                #sns.distplot(avg_scores, kde=False)
+        
+        #% Plot confusion matrix:
+        # -----------------------------------------------------------------------------
+        #sns.set_style('white')
+        if ax is None:
+            fig, ax = pl.subplots(figsize=(10,4))
+
+        plot_confusion_matrix(cmatrix_tframes, classes=clfparams['class_labels'], ax=ax, normalize=True,
+                              title='Normalized confusion (%s, %s)' % (conf_mat_str, clfparams['cv_method']))
+        
+    
+    return
+    
+    
 #%%
     
 
@@ -2126,21 +2218,8 @@ def train_linear_classifier(options_list):
                                       C=C_val)
 
 
+    cX, cy, inputdata, is_cnmf = get_formatted_traindata(clfparams, dataset, traceid)
     
-    if 'cnmf' in optsE.traceid_list[0]:
-        assert inputdata_type in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
-
-        Xdata = dataset[inputdata_type]
-        labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
-        cX, cy = get_training_data_cnmf(Xdata, labels_df, run_info, get_null=False)
-        cy = np.array(cy)
-        inputdata = 'meanstim'
-        is_cnmf = True
-    else:
-        assert inputdata in dataset.keys(), "Specified dataset - %s - not found!\n%s" % (inputdata, str(dataset.keys()))
-        cX, cy = get_input_data(dataset, run_info, clfparams)
-        cy = np.array(cy)
-        is_cnmf = False
 
     #%%
     
