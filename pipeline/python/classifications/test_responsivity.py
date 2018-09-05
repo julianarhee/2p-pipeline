@@ -93,9 +93,9 @@ def extract_options(options):
 
 def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp', 
                          metric='meanstim', stimlabels={}, data_identifier='',
-                         nprocs=4, post_hoc='dunn', create_new=False):
+                         nprocs=4, post_hoc='dunn', create_new=False, pvalue=0.05):
     
-    pvalue = 0.05
+    #pvalue = 0.05
     
     posthoc_fpath = os.path.join(sort_dir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
     if create_new is False:
@@ -133,7 +133,7 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
         summary_fpath = os.path.join(sort_dir, 'roi_summary.txt')
         top10 = ['roi%05d' % int(r+1) for r in sorted_selective[0:10]]
         with open(summary_fpath, 'a') as f:
-            f.write('----------------------------------------------------------\n')
+            f.write('\n----------------------------------------------------------\n')
             f.write('Kruskal-Wallis test for selectivity:\n')
             f.write('----------------------------------------------------------\n')
             f.write('%i out of %i pass selectivity test (p < %.2f).\n' % (len(selective_rois), len(roi_list), pvalue))
@@ -286,7 +286,7 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         df2 = df2[meds.index]
         fig = pl.figure(figsize=(10,5))
         ax = sns.boxplot(data=df2)
-        pl.title('%roi %05d' % int(roi+1))
+        pl.title('roi%05d' % int(roi+1))
         pl.ylabel('df/f')
     #    ax.set_xticklabels(['%i deg\n%.2f cpd\n%s' % (stimconfigs[t.get_text()]['rotation'],
     #                                                  stimconfigs[t.get_text()]['frequency'],
@@ -310,7 +310,8 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
 
 
 #%%
-def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, create_new=False, data_identifier=''):
+def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, 
+                          create_new=False, data_identifier='', pvalue=0.05):
     
     # Create output dir for ANOVA2 results:
     responsive_resultsdir = os.path.join(sort_dir, 'responsivity', 'spanova2_results')
@@ -338,7 +339,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, create_new=
             json.dump(responsive_anova, f, indent=4, sort_keys=True)
 
     # Sort ROIs:
-    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
+    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < pvalue]
     sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
     
     if create_new:
@@ -591,7 +592,8 @@ def find_barval_index(bar_value_to_label, p):
 def calculate_roi_responsivity(options):
     optsE = extract_options(options)
     create_new = optsE.create_new
-    nprocs = optsE.nprocesses
+    nprocs = int(optsE.nprocesses)
+    pvalue = 0.05
     
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
@@ -635,7 +637,8 @@ def calculate_roi_responsivity(options):
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
                                                         create_new=create_new, 
-                                                        data_identifier=data_identifier)
+                                                        data_identifier=data_identifier,
+                                                        pvalue=pvalue)
     print("%i out of %i cells pass split-plot ANOVA test for visual responses." % (len(sorted_visual), len(responsive_anova)))
 
 
@@ -660,14 +663,15 @@ def calculate_roi_responsivity(options):
                                                                    stimlabels=stimlabels, 
                                                                    data_identifier=data_identifier,
                                                                    nprocs=nprocs, 
-                                                                   create_new=create_new)
+                                                                   create_new=create_new,
+                                                                   pvalue=pvalue)
     
     # Update roi stats summary file:
     # ---------------------------------------------------------
     H_mean = np.mean([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
     H_std = np.std([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
     with open(summary_fpath, 'a') as f:
-        print >> f, '**********************************************************************'
+        print >> f, '\n**********************************************************************'
         print >> f, '%i out of %i cells are visually responsive (split-plot ANOVA, p < 0.05)' % (len(sorted_visual), nrois_total)
         print >> f, '%i out of %i visual are stimulus selective (Kruskal-Wallis, p < 0.05)' % (len(sorted_selective), len(sorted_visual))
         print >> f, 'Mean H=%.2f (std=%.2f)' % (H_mean, H_std)
@@ -689,7 +693,9 @@ def calculate_roi_responsivity(options):
              sorted_selective=sorted_selective,
              selectivity_test = 'kruskal_wallis',
              selectivity_posthoc=post_hoc,
-             metric=metric
+             metric=metric,
+             visual_pval = pvalue,
+             selective_pval = pvalue
              )
     print "Saved ROI stat results to: %s" % roistats_fpath
     
