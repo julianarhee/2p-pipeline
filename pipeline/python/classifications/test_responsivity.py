@@ -378,7 +378,8 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
         """
         outdict = {}
         print len(rlist)
-        for roi in rlist:
+        for roi in rlist: #rlist:
+            print roi
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
             pdf = pyvt_format_trialepoch_df(rdata)
@@ -596,8 +597,13 @@ def calculate_roi_responsivity(options):
     pvalue = 0.05
     
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
-    traceid = os.path.split(traceid_dir)[-1]
+    if len(optsE.traceid.split('_')) <= 2:
+        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
+        traceid = os.path.split(traceid_dir)[-1]
+    else:
+        traceid = optsE.traceid
+        traceid_dir = os.path.join(acquisition_dir, optsE.run, 'traces', optsE.traceid)
+        
     trace_type = optsE.trace_type
     data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, traceid, trace_type))
     
