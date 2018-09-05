@@ -1002,7 +1002,7 @@ def _pad_array(x, wing):
 #                mwtrial[trial]['stimuli']['direction'] = 
 #%%
     
-def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonnegative=True):
+def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonnegative=False):
     
     xdata_df=None; F0_df=None; labels_df=None
     
@@ -1111,13 +1111,9 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             with open(os.path.join(trace_arrays_dir, dfn), 'rb') as fi:
                 f = pkl.load(fi)
             if 'corrected' in f.keys():
-                file_df = f['corrected']
-                file_F0_df = f['F0']
-                trace_type = 'corrected'
+                file_df = f['corrected']; file_F0_df = f['F0']; trace_type = 'corrected';
             else:
-                file_df = f
-                file_F0_df = None
-                trace_type = f.keys()[0]   
+                file_df = f; file_F0_df = None; trace_type = f.keys()[0];
         elif fmt == 'hdf5':
             f = h5py.File(os.path.join(trace_arrays_dir, dfn), 'a')
             if 'corrected' in f.keys():
