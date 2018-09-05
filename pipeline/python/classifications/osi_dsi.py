@@ -153,7 +153,7 @@ def hist_preferred_oris(selectivity, colorvals, metric='meanstim', sort_dir='/tm
         pl.close()
     
     # legend:
-    sns.palplot(colorvals)
+    #sns.palplot(colorvals)
     if save_and_close:
         pl.savefig(os.path.join(sort_dir, 'figures', 'legend_OSI.png'))
         #pl.close()
