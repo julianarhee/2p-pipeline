@@ -10,6 +10,7 @@ matplotlib.use('agg')
 import sys
 import optparse
 import os
+import json
 import cPickle as pkl
 import pandas as pd
 import numpy as np
@@ -349,6 +350,9 @@ def create_rdata_array(opts):
     paradigm_dir = os.path.join(run_dir, 'paradigm')
     si_info = get_frame_info(run_dir)
     trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+    with open(os.path.join(data_basedir, 'trial_info.json'), 'w') as f:
+        json.dump(trial_info, f, indent=4) #f
+   
     configs, stimtype = acq.get_stimulus_configs(trial_info)
     pp.pprint(configs)
 
