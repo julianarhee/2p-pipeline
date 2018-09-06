@@ -639,7 +639,7 @@ def get_smoothed_run(traceid_dir, trace_type='processed', dff=False, frac=0.01, 
     
 
 #%%
-def get_processed_run(traceid_dir, quantile=0.20, window_size_sec=None, create_new=False, fmt='hdf5', user_test=False):
+def get_processed_run(traceid_dir, quantile=0.20, window_size_sec=None, create_new=False, fmt='hdf5', user_test=False, nonnegative=False):
     
     xdata_df=None; labels_df=None; F0_df=None;
     # Set up paths to look for saved dataframes:
@@ -658,7 +658,7 @@ def get_processed_run(traceid_dir, quantile=0.20, window_size_sec=None, create_n
     n_src_dataframes = len([r for r in os.listdir(trace_arrays_dir) if 'File' in r and r.endswith(fmt)])
     if not n_orig_tiffs == n_src_dataframes or create_new is True:
         print "Extracting PROCESSED trace arrays from .tif files."
-        process_trace_arrays(traceid_dir, window_size_sec=window_size_sec, quantile=quantile, fmt=fmt, user_test=user_test)
+        process_trace_arrays(traceid_dir, window_size_sec=window_size_sec, quantile=quantile, fmt=fmt, user_test=user_test, nonnegative=nonnegative)
         
     if not create_new:
         try:
@@ -704,7 +704,7 @@ def test_drift_correction(raw_df, F0_df, corrected_df, nframes_to_show, test_roi
     pl.pause(0.001)
 
 def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, create_new=False, 
-                             fmt='pkl', user_test=False, test_roi='roi00001'):
+                             fmt='pkl', user_test=False, test_roi='roi00001', nonnegative=False):
     '''
     Calculate F0 for each ROI by .tif file (continuous time points). These
     trace "chunks" can later be parsed and combined into a dataframe for trial
@@ -776,7 +776,7 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
         dfs = {}
         # Make data non-negative:
         raw_xdata = np.array(raw_df)
-        if raw_xdata.min() < 0:
+        if raw_xdata.min() < 0 and nonnegative is True:
             print "Making data non-negative"
             raw_xdata = raw_xdata - raw_xdata.min()
             raw_df = pd.DataFrame(raw_xdata, columns=raw_df.columns.tolist(), index=raw_df.index)
@@ -823,12 +823,13 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
         
 
                 
-        processing_info = {'window_size': window_size_sec*framerate,
-                           'window_size_sec': window_size_sec,
-                           'framerate': framerate,
-                           'quantile': quantile
-                           }
-        
+#        processing_info = {'window_size': window_size_sec*framerate,
+#                           'window_size_sec': window_size_sec,
+#                           'framerate': framerate,
+#                           'quantile': quantile,
+#                           'nonnegative': nonnegative,
+#                           }
+#        
         # Save traces:
         out_fname = dfn.replace('rawtraces', 'processed')
         if fmt=='hdf5':
@@ -845,10 +846,10 @@ def process_trace_arrays(traceid_dir, window_size_sec=None, quantile=0.08, creat
             with open(os.path.join(raw_trace_arrays_dir, out_fname), 'wb') as o:
                 pkl.dump(dfs, o, protocol=pkl.HIGHEST_PROTOCOL)
                 
-        # Also save output info:
-        with open(os.path.join(processed_trace_arrays_dir, 'processing_info.json'), 'w') as f:
-            json.dump(processing_info, f, indent=4)
-        
+#        # Also save output info:
+#        with open(os.path.join(processed_trace_arrays_dir, 'processing_info.json'), 'w') as f:
+#            json.dump(processing_info, f, indent=4)
+#        
     return processed_trace_arrays_dir        
     
 
@@ -1489,7 +1490,8 @@ def test_file_smooth(traceid_dir, use_raw=False, ridx=0, fmin=0.001, fmax=0.02, 
         else:
             print "Creating F0-subtracted arrays for: %s" % acquisition_dir
             print "Run: %s, Trace ID: %s" % (run, traceid)
-            process_trace_arrays(traceid_dir, quantile=quantile)
+            #process_trace_arrays(traceid_dir, quantile=quantile)
+            process_trace_arrays(traceid_dir, window_size_sec=window_size_sec, quantile=quantile, fmt=fmt, user_test=user_test, nonnegative=nonnegative)
 
         trace_fns = [f for f in os.listdir(trace_arrays_dir) if 'File' in f]
 

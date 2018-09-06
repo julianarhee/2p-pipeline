@@ -121,7 +121,7 @@ opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1
     
 def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=False,
                            quantile=0.2, window_size_sec=None, test_drift=False, 
-                           smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001'):
+                           smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001', nonnegative=False):
     
     # Extract raw trace arrays from the hdf5 files (created in traces/get_traces.py)
     run_info, stimconfigs, labels_df, raw_df = util.load_raw_run(traceid_dir, trace_type=trace_type, 
@@ -141,8 +141,23 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
         
     
     # Get processed traces:
+    processed_trace_arrays_dir = os.path.join(run_info['traceid_dir'], 'files', 'trace_arrays_processed')
+    if not os.path.exists(processed_trace_arrays_dir) or create_new:
+        os.makedirs(processed_trace_arrays_dir)
+    framerate=run_info['framerate']
+    processing_info = {'window_size': window_size_sec*framerate,
+                           'window_size_sec': window_size_sec,
+                           'framerate': framerate,
+                           'quantile': quantile,
+                           'nonnegative': nonnegative,
+                           'smoothing_frac': frac
+                           }
+    # Also save output info:
+    with open(os.path.join(processed_trace_arrays_dir, 'processing_info.json'), 'w') as f:
+        json.dump(processing_info, f, indent=4)
+
     _, corrected_df, F0_df = util.get_processed_run(traceid_dir, quantile=quantile, window_size_sec=window_size_sec, 
-                                                        create_new=create_new, fmt=fmt, user_test=test_drift)      
+                                                        create_new=create_new, fmt=fmt, user_test=test_drift, nonnegative=nonnegative)      
     dumb_dff=True
     if dumb_dff:
         dff_df = corrected_df/F0_df
@@ -250,6 +265,8 @@ def extract_options(options):
     parser.add_option('--raw', action='store_false', dest='smooth', default=True, help="Set flag to smooth traces")
     parser.add_option('--test-smooth', action='store_true', dest='test_smoothing', default=False, help="Set flag to test frac ranges for smoothing traces")
     parser.add_option('--test-drift', action='store_true', dest='test_drift', default=False, help="Set flag to inspect drift correction for F0 calculation")
+    parser.add_option('--nonnegative', action='store_true', dest='nonnegative', default=False, help="Set flag to add offset to make nonnegative")
+
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
     parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
@@ -289,7 +306,7 @@ def create_rdata_array(opts):
         
     optsE = extract_options(opts) 
     create_new = optsE.create_new
-
+    nonnegative = optsE.nonnegative
     test_smoothing = optsE.test_smoothing
     test_drift = optsE.test_drift
 
@@ -365,7 +382,7 @@ def create_rdata_array(opts):
     #dataset = create_data_arrays(options, test_drift=test_drift, test_smoothing=test_smoothing, test_roi=test_roi, smooth=smooth)
     create_data_arrays(traceid_dir, trace_type=trace_type, fmt=fmt, create_new=create_new,
                        quantile=quantile, window_size_sec=window_size_sec, test_drift=test_drift, 
-                       smooth=smooth, frac=frac, test_smoothing=test_smoothing, test_roi=test_roi)
+                       smooth=smooth, frac=frac, test_smoothing=test_smoothing, test_roi=test_roi, nonnegative=nonnegative)
     
     return data_fpath
 #%
