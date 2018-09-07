@@ -469,11 +469,14 @@ def extract_options(options):
     return options
 
 #%%
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+#           '-d', 'corrected',
+#           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
+#           ]
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
            '-d', 'corrected',
-           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
+           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
            ]
-
 
 optsE = extract_options(options)
 
@@ -522,7 +525,7 @@ else:
 #       - need to combine 5x5 for each transform if tested separately 
 #       - 
 
-fig, axes = pl.subplots(3,3, figsize=(15,20)) #pl.figure()
+fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
 axes_flat = axes.flat
 
 zproj_ix = 0
@@ -628,7 +631,7 @@ predicted, true = lsvc.do_cross_validation(svc, clfparams, cX_std, cy, data_iden
 lsvc.plot_normed_confusion_matrix(predicted, true, clfparams, ax=axes_flat[ori_decode_ix])
 sns.despine(trim=True, offset=4, ax=axes_flat[ori_decode_ix])
 bb = axes_flat[ori_decode_ix].get_position().bounds
-new_bb = [bb[0], bb[1]*1.05, bb[2]*0.9, bb[3]*0.9]
+new_bb = [bb[0], bb[1]*1.05, bb[2], bb[3]]
 axes_flat[ori_decode_ix].set_position(new_bb)
         
 #%%
@@ -764,7 +767,7 @@ figname = '%s_acquisition_summary.png' % optsE.acquisition
 
 pl.savefig(os.path.join(os.path.split(acquisition_dir)[0], figname))
 
-pl.close()
+#pl.close()
 
 ## get the tick label font size
 #fontsize_pt = 10 #pl.rcParams['ytick.labelsize']
