@@ -472,7 +472,11 @@ def create_neuropil_masks(masks, niterations=10):
 
     for ridx in range(nrois):
         rmask = masks[:,:,ridx]
-        gap = cv2.dilate(rmask, kernel, iterations=4)
+        if niterations==20:
+            gap_iterations = 8
+        else:
+            gap_iterations = 4
+        gap = cv2.dilate(rmask, kernel, iterations=gap_iterations)
         dilated = cv2.dilate(rmask, kernel, iterations=niterations)
 
         # Subtract to get annulus region:
