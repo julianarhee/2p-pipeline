@@ -51,7 +51,7 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
 
     return lin_coord_x, lin_coord_y
 
-def get_retino_info(width=80, height=44, resolution=[1920, 1080],
+def get_retino_info(width=81.28, height=45.77, resolution=[1920, 1080],
                     azimuth='right', elevation='top',
                     leftedge=None, rightedge=None, bottomedge=None, topedge=None):
 
