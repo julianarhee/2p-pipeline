@@ -699,6 +699,7 @@ def extract_options(options):
 
 #%%
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+
 #           '-d', 'corrected',
 #           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
