@@ -311,7 +311,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                             nframes_to_skip = int(round((min_iti * 1 + 1) * framerate))
                         else:
                             #nframes_to_skip = int(round((min_iti * 2 + 1) * framerate))
-                            nframes_to_skip = int(round(((mwtrials[prev_trial]['iti_duration']/1E3) + min_iti) * framerate))
+                            nframes_to_skip = int(round(((mwtrials[prev_trial]['iti_duration']/1E3) + min_iti*2 + 0.5) * framerate))
 
                     else:
                         #nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
@@ -373,6 +373,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             curr_frames = starting_frame_set.copy() # Revert incrementally-shortened frame-bank
             dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
                                 bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
+            break
     
         prev_trial = trial
         
