@@ -34,6 +34,7 @@ from pipeline.python.classifications import test_responsivity as resp #import ca
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import linear_svc as lsvc
 from pipeline.python.traces.utils import load_TID
+from pipeline.python.retinotopy import estimate_RF_size as RF
 
 from collections import Counter
 from matplotlib.lines import Line2D
@@ -442,8 +443,8 @@ def create_function_opts(rootdir='', animalid='', session='', acquisition='',
 
 #%%
 
-
-def plot_simple_summary(axes_flat, traceid_dirs, optsE, retino_screen_ix=1, 
+    
+def plot_simple_summary(axes_flat, traceid_dirs, optsE,
                             ori_hist_ix=3, ori_osi_ix=4, ori_decode_ix=5):
     # GRATINGS:
     gratings_traceid = os.path.split(traceid_dirs['gratings'])[-1]
@@ -473,15 +474,6 @@ def plot_simple_summary(axes_flat, traceid_dirs, optsE, retino_screen_ix=1,
     axes_flat[ori_hist_ix].set_xlabel('zscore')
     
     
-    # SUBPLOT 3:  Retinotopy:
-    # -----------------------------------------------------------------------------
-    retinovis_fpath = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
-                                             'retino_*', 'retino_analysis', 'analysis*', 'visualization', '*.png'))[0]
-    axes_flat[retino_screen_ix].clear()
-    plot_image(retinovis_fpath, scale=20, ax=axes_flat[retino_screen_ix])
-    bb = axes_flat[retino_screen_ix].get_position().bounds
-    new_bb = [bb[0]*0.95, bb[1]*0.98, bb[2]*1.3, bb[3]*1.2]
-    axes_flat[retino_screen_ix].set_position(new_bb)
     
     #retino = Image.open(retinovis_fpath)
     #retino = trim_whitespace(retino, scale=scale)
@@ -704,13 +696,17 @@ def extract_options(options):
 #           '-d', 'corrected',
 #           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV1_zoom1x',
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV1_zoom1x',
+#           '-d', 'corrected',
+#           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
+#           ]
+
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
            '-d', 'corrected',
-           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
+           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002',
            ]
-
-
 def plot_summaries(options):
+    
     optsE = extract_options(options)
     create_new = optsE.create_new
     use_dff = optsE.use_dff
@@ -723,8 +719,7 @@ def plot_summaries(options):
     
     # Get gratings traceid dir:
     if len(optsE.gratings_traceid) > 0:
-	check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-        print check_gratings_dir
+        check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
         if len(check_gratings_dir) > 1:
             combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name = 'combined_gratings_static', create_new=optsE.create_new)
             traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
@@ -733,21 +728,22 @@ def plot_summaries(options):
         gratings_were_run = True
     else:
         gratings_were_run = False
- 
+
     # Get static-blobs traceid dir(s):
     if len(optsE.blobs_traceid_list) > 0:
         print "Getting blobs..."
-	check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
-										for b in optsE.blobs_traceid_list] for item in sublist]))
-	check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
-	if len(check_blobs_dir) > 1:
-	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
-	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
-	else:
-	    traceid_dirs['blobs'] = check_blobs_dir[0]
+        check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
+        										for b in optsE.blobs_traceid_list] for item in sublist]))
+        check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
+        if len(check_blobs_dir) > 1:
+        	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
+        	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
+        else:
+            traceid_dirs['blobs'] = check_blobs_dir[0]
         blobs_were_run = True
     else:
         blobs_were_run = False 
+    
     data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
     
     
@@ -767,16 +763,43 @@ def plot_summaries(options):
     #       - need to combine 5x5 for each transform if tested separately 
     #       - 
     
+    
+    import matplotlib.gridspec as gridspec
+
     if blobs_were_run and gratings_were_run: 
-        fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
+        fig = pl.figure(figsize=(30,30))
+        spec = gridspec.GridSpec(ncols=3, nrows=3)
+        #fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
+        nrows = 3
     elif gratings_were_run and not blobs_were_run:
-        fig, axes = pl.subplots(2,3, figsize=(30,20)) #pl.figure()
-   
-    axes_flat = axes.flat
+        fig = pl.figure(figsize=(30,20))
+        spec = gridspec.GridSpec(ncols=3, nrows=2)
+        nrows = 2
+        #fig, axes = pl.subplots(2,3, figsize=(30,20)) #pl.figure()
+   else:
+       # Only ahve retino and FOV:
+       fig = pl.figure(figsize=(30,10))
+       spec = gridspec.GridSpec(ncols=3, nrows=1)
+       nrows = 1
+       
+    fig.add_subplot(spec[0, 0])
+    fig.add_subplot(spec[0, 1])
+    fig.add_subplot(spec[0, 2])
+    
+    if nrows > 1:
+        fig.add_subplot(spec[1, 0])
+        fig.add_subplot(spec[1, 1])
+        fig.add_subplot(spec[1, 2])
+    if nrows > 2:
+        fig.add_subplot(spec[2, 0])
+        fig.add_subplot(spec[2, 1])
+        fig.add_subplot(spec[2, 2])
+        
+    axes_flat = fig.axes #axes.flat
     
     zproj_ix = 0
     retino_screen_ix = 1
-    rf_ix = 2
+    rf_hist_ix = 2
     
     ori_hist_ix = 3
     ori_osi_ix = 4
@@ -795,10 +818,59 @@ def plot_summaries(options):
     pl.colorbar(im, cax=cax)
     axes_flat[zproj_ix].set_title('dF/F map')
     
-    axes_flat[rf_ix].axis('off')
+    bb = axes_flat[zproj_ix].get_position().bounds
+    new_bb = [bb[0]*0.95, bb[1]*1.02, bb[2]*1.2, bb[3]*1.2]
+    axes_flat[zproj_ix].set_position(new_bb)
+    
+    #axes_flat[rf_ix].axis('off')
+    
+    
+
+    # SUBPLOT 3:  Retinotopy:
+    # -----------------------------------------------------------------------------
+#    retinovis_fpath = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
+#                                             'retino_*', 'retino_analysis', 'analysis*', 'visualization', '*.png'))[0]
+#    axes_flat[retino_screen_ix].clear()
+#    plot_image(retinovis_fpath, scale=20, ax=axes_flat[retino_screen_ix])
+#    bb = axes_flat[retino_screen_ix].get_position().bounds
+#    new_bb = [bb[0]*0.95, bb[1]*0.98, bb[2]*1.3, bb[3]*1.2]
+#    axes_flat[retino_screen_ix].set_position(new_bb)
+    retinovis_fpath = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
+                                             'retino_*', 'retino_analysis', 'analysis*', 'visualization', '*.png'))[0]
+    retino_run = os.path.split(retinovis_fpath.split('/retino_analysis')[0])[1]
+    analysis_id = retinovis_fpath.split('/retino_analysis')[1].split('/')[1]
+    
+    fitness_threshold = 0.4
+    size_threshold = 0.1
+    ROIs, retinoid = RF.get_RF_size_estimates(acquisition_dir, 
+                             fitness_threshold=fitness_threshold, 
+                             size_threshold=size_threshold, 
+                             analysis_id=analysis_id)
+    
+    axes_flat[retino_screen_ix].clear()
+
+    RF.plot_RF_position_and_size(ROIs, acquisition_dir, retino_run, retinoid, ax=axes_flat[retino_screen_ix])
+    bb = axes_flat[retino_screen_ix].get_position().bounds
+    new_bb = [bb[0]*0.95, bb[1]*1.02, bb[2]*1.2, bb[3]*1.2]
+    axes_flat[retino_screen_ix].set_position(new_bb)
+    
+    
+    ##
+    axes_flat[rf_hist_ix].clear()
+    cond0_name = ROIs[0].conditions[0].name
+    cond1_name = ROIs[0].conditions[1].name
+    el_rfs = [roi.conditions[0].RF_degrees for roi in ROIs]
+    az_rfs = [roi.conditions[1].RF_degrees for roi in ROIs]
+    sns.distplot(az_rfs, kde=False, bins=50, ax=axes_flat[rf_hist_ix], label=cond0_name, color='orange')
+    sns.distplot(el_rfs, kde=False, bins=50, ax=axes_flat[rf_hist_ix], label=cond1_name, color='cornflowerblue')
+    bb = axes_flat[rf_hist_ix].get_position().bounds
+    new_bb = [bb[0]*1.05, bb[1]*1.02, bb[2]*0.8, bb[3]]
+    axes_flat[rf_hist_ix].set_position(new_bb)
+    axes_flat[rf_hist_ix].legend()
+    axes_flat[rf_hist_ix].set_title('distN of estimated RF sizes')
+    
     if gratings_were_run: 
         plot_simple_summary(axes_flat, traceid_dirs, optsE, 
-                            retino_screen_ix=retino_screen_ix,
                             ori_hist_ix=ori_hist_ix,
                             ori_osi_ix=ori_osi_ix,
                             ori_decode_ix=ori_decode_ix)
@@ -813,6 +885,7 @@ def plot_summaries(options):
     figname = '%s_acquisition_summary.png' % optsE.acquisition
     
     pl.savefig(os.path.join(os.path.split(acquisition_dir)[0], figname))
+    pl.close()
 
 #%%
     
