@@ -78,6 +78,22 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+def dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
+                        bitcodes, modes_by_frame, frame_bitcodes, serialfn_path):
+    curr_state = {'last_trial': trial,
+                  'starting_frame_set': starting_frame_set,
+                  'first_found_frame': first_found_frame,
+                  'bitcodes': bitcodes,
+                  'modes_by_frame': modes_by_frame,
+                  'frame_bitcodes': frame_bitcodes,
+                  'mwtrial_path': mwtrial_path,
+                  'serialfn_path': serialfn_path}
+    
+    with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_trial_events.pkl'), 'w') as f:
+        pkl.dump(trialevents, f, protocol=pkl.HIGHEST_PROTOCOL)
+    with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_curr_frames.pkl'), 'wb') as f:
+        pkl.dump(curr_state, f, protocol=pkl.HIGHEST_PROTOCOL)   
+        
 #%%
 
 def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False):
@@ -198,12 +214,12 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 #trial = 'trial00097'
 # all_bitcodes[58390:58420]
     #%%
-#    trial = tmp_frames['last_trial'] #'trial00287'
+#    trial = tmpframes['last_trial'] #'trial00287'
 #    tidx = int(trial[5:]) - 1
-#    curr_frames = tmp_frames['starting_frame_set']
+#    curr_frames = tmpframes['starting_frame_set']
 #    prev_trial = 'trial%05d' % (int(trial[5:])-1) #'trial00286' #'trial00001'
-#    frame_bitcodes = tmp_frames['frame_bitcodes']
-#    modes_by_frame = tmp_frames['modes_by_frame']
+#    frame_bitcodes = tmpframes['frame_bitcodes']
+#    modes_by_frame = tmpframes['modes_by_frame']
 #    first_frame = '%i_p0' % int(curr_frames[0].split('_')[0])
 ##    
     min_iti = min([mwtrials[t]['iti_duration']/1E3 for t in mwtrials.keys()])
@@ -294,7 +310,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                         if int(runinfo['session']) < 20180525:
                             nframes_to_skip = int(round((min_iti * 1 + 1) * framerate))
                         else:
-                            nframes_to_skip = int(round((min_iti * 2 + 1) * framerate))
+                            #nframes_to_skip = int(round((min_iti * 2 + 1) * framerate))
+                            nframes_to_skip = int(round(((mwtrials[prev_trial]['iti_duration']/1E3) + min_iti) * framerate))
 
                     else:
                         #nframes_to_skip = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) #3)
@@ -326,31 +343,37 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         #curr_frame_vals = dict((k, modes_by_frame[v]) for k in curr_frames)
         #first_found_frame = [(bitcode, curr_frame_vals.keys()[curr_frame_vals.values().index(bitcode)]) for bitcode in bitcodes] 
 
+    
         print "N bitcodes:", len(bitcodes)
         skip_trial = False
-        for bi, bitcode in enumerate(bitcodes):
-            #print "%s -- %i" % (trial, bi)
-            #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
+        try:
+            for bi, bitcode in enumerate(bitcodes):
+                #print "%s -- %i" % (trial, bi)
+                #first_frame = [si_frame for si_frame in curr_frames if int(frame_bitcodes[si_frame][0:len(frame_bitcodes[si_frame])/2].mode()[0])==bitcode or int(frame_bitcodes[si_frame][int(np.floor(len(frame_bitcodes[si_frame])/2)):].mode()[0])==bitcode][0]
+                
+                #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
+                curr_frame_vals = tuple((k, modes_by_frame[k]) for k in curr_frames)
+                first_frame = [(fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode][0]
+                #first_frame = next(((fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode), None)
+                if bi > 0 and len(bitcodes) > 2:
+                    # ** CHeck for skipped frames -- should be relatively consecutive, otherwise we're frame-shifting.
+                    currframe = int(first_frame[1][0].split('_')[0])
+                    prevframe = int(first_found_frame[bi-1][0].split('_')[0])
+                    # Make sure that the time difference (s) between consecutive frames is below some min.
+                    assert (currframe - prevframe)/framerate <= (4./framerate), "Massive break found within %s. Skipping!" % trial
+                    
+                first_found_frame.append(first_frame[1])
+                curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
             
-            #first_frame = [si_frame for si_frame in curr_frames if int(modes_by_frame[si_frame])==bitcode][0]
-            curr_frame_vals = tuple((k, modes_by_frame[k]) for k in curr_frames)
-            first_frame = [(fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode][0]
-            #first_frame = next(((fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]==bitcode), None)
-            if bi > 0 and len(bitcodes) > 2:
-                # ** CHeck for skipped frames -- should be relatively consecutive, otherwise we're frame-shifting.
-                currframe = int(first_frame[1][0].split('_')[0])
-                prevframe = int(first_found_frame[bi-1][0].split('_')[0])
-                if (currframe - prevframe)/framerate >= (4./framerate):
-                    print "%i -- Prev: %i, Curr: %i" % (bi, prevframe, currframe)
-                    print "bitcodes:", bitcodes
-                    print "Massive break found within %s. Skipping!" % trial
-                    # Flag skip_trial TRUE so that on the next trial's parsing, we know to skip a portion of the frames...
-                    skip_trial = True 
-                    curr_frames = starting_frame_set.copy() # Revert incrementally-shortened frame-bank
-                    break
-            first_found_frame.append(first_frame[1])
-            curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
-        
+        except Exception as e:
+            print "%i -- Prev: %i, Curr: %i" % (bi, prevframe, currframe)
+            print "bitcodes:", bitcodes
+            # Flag skip_trial TRUE so that on the next trial's parsing, we know to skip a portion of the frames...
+            skip_trial = True 
+            curr_frames = starting_frame_set.copy() # Revert incrementally-shortened frame-bank
+            dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
+                                bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
+    
         prev_trial = trial
         
         if skip_trial:
@@ -359,7 +382,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             skipped.update({mwtrial_hash: trial})
             print "** SKIPPED: %s" % trial            
             continue
-
+        
         # Do checks for stimulus duration:        
         stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
         print round(stim_dur_curr), '[%s]' % trial
@@ -367,19 +390,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         try:
             assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         except Exception as e:
-            curr_state = {'last_trial': trial,
-                          'starting_frame_set': starting_frame_set,
-                          'first_found_frame': first_found_frame,
-                          'bitcodes': bitcodes,
-                          'modes_by_frame': modes_by_frame,
-                          'frame_bitcodes': frame_bitcodes,
-                          'mwtrial_path': mwtrial_path,
-                          'serialfn_path': serialfn_path}
-            
-            with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_trial_events.pkl'), 'w') as f:
-                pkl.dump(trialevents, f, protocol=pkl.HIGHEST_PROTOCOL)
-            with open(os.path.join(os.path.split(mwtrial_path)[0], 'tmp_curr_frames.pkl'), 'wb') as f:
-                pkl.dump(curr_state, f, protocol=pkl.HIGHEST_PROTOCOL)           
+            dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
+                                bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
 
             assert round(stim_dur_curr) == round(mwtrials[trial]['stim_duration']/1E3), "Bad stim duration..! %s:" % trial 
 
