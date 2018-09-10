@@ -452,7 +452,7 @@ def plot_simple_summary(axes_flat, traceid_dirs, optsE, retino_screen_ix=1,
     # Load data array:
     data_fpath = os.path.join(traceid_dirs['gratings'], 'data_arrays', 'datasets.npz')
     gratings_dataset = np.load(data_fpath)
-    
+    print gratings_dataset['run_info'][()]['ntrials_by_cond'] 
     gratings_roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, gratings_run, 
                                           gratings_traceid.split('_')[0], create_new=optsE.create_new)
     
@@ -686,14 +686,15 @@ def extract_options(options):
     parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
     
     # Run specific info:
-    parser.add_option('-g', '--gratings', dest='gratings_traceid', default='traces001', action='store', help="traceid for GRATINGS [default: traces001]")
+    parser.add_option('-g', '--gratings', dest='gratings_traceid', default='', action='store', help="traceid for GRATINGS [default: '']")
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
-    parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=['traces001'], action='append', nargs=1, help='list of blob traceids [default: [traces001]')
+    parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
     
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
-
+     
     (options, args) = parser.parse_args(options)
-
+    if options.slurm is True and '/n/coxfs01' not in options.rootdir:
+        options.rootdir = '/n/coxfs01/2p-data'
     return options
 
 #%%
@@ -715,28 +716,36 @@ def plot_summaries(options):
     data_type = optsE.data_type
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     
-    
     traceid_dirs = {'gratings': None, 
                     'blobs': None}
     
     # Get gratings traceid dir:
-    check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-    if len(check_gratings_dir) > 1:
-        combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name = 'combined_gratings_static', create_new=optsE.create_new)
-        traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
+    if len(optsE.gratings_traceid) > 0:
+	check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
+        print check_gratings_dir
+        if len(check_gratings_dir) > 1:
+            combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name = 'combined_gratings_static', create_new=optsE.create_new)
+            traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
+        else:
+            traceid_dirs['gratings'] = check_gratings_dir[0]
+        gratings_were_run = True
     else:
-        traceid_dirs['gratings'] = check_gratings_dir[0]
-    
+        gratings_were_run = False
+ 
     # Get static-blobs traceid dir(s):
-    check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
-                                    for b in optsE.blobs_traceid_list] for item in sublist]))
-    check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
-    if len(check_blobs_dir) > 1:
-        combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
-        traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
+    if len(optsE.blobs_traceid_list) > 0:
+        print "Getting blobs..."
+	check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
+										for b in optsE.blobs_traceid_list] for item in sublist]))
+	check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
+	if len(check_blobs_dir) > 1:
+	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
+	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
+	else:
+	    traceid_dirs['blobs'] = check_blobs_dir[0]
+        blobs_were_run = True
     else:
-        traceid_dirs['blobs'] = check_blobs_dir[0]
-    
+        blobs_were_run = False 
     data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
     
     
@@ -756,7 +765,11 @@ def plot_summaries(options):
     #       - need to combine 5x5 for each transform if tested separately 
     #       - 
     
-    fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
+    if blobs_were_run and gratings_were_run: 
+        fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
+    elif gratings_were_run and not blobs_were_run:
+        fig, axes = pl.subplots(2,3, figsize=(30,20)) #pl.figure()
+   
     axes_flat = axes.flat
     
     zproj_ix = 0
@@ -781,15 +794,15 @@ def plot_summaries(options):
     axes_flat[zproj_ix].set_title('dF/F map')
     
     axes_flat[rf_ix].axis('off')
-    
-    plot_simple_summary(axes_flat, traceid_dirs, optsE, 
+    if gratings_were_run: 
+        plot_simple_summary(axes_flat, traceid_dirs, optsE, 
                             retino_screen_ix=retino_screen_ix,
                             ori_hist_ix=ori_hist_ix,
                             ori_osi_ix=ori_osi_ix,
                             ori_decode_ix=ori_decode_ix)
 
-
-    plot_complex_summary(axes_flat, traceid_dirs, optsE, 
+    if blobs_were_run:
+        plot_complex_summary(axes_flat, traceid_dirs, optsE, 
                             blobs_hist_ix=blobs_hist_ix,
                             transforms_ix=transforms_ix)
 
