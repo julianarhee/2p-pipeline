@@ -767,7 +767,7 @@ def plot_summaries(options):
     import matplotlib.gridspec as gridspec
 
     if blobs_were_run and gratings_were_run: 
-        fig = pl.figure(figsize=(30,30))
+        fig = pl.figure(figsize=(35,25))
         spec = gridspec.GridSpec(ncols=3, nrows=3)
         #fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
         nrows = 3
@@ -776,11 +776,11 @@ def plot_summaries(options):
         spec = gridspec.GridSpec(ncols=3, nrows=2)
         nrows = 2
         #fig, axes = pl.subplots(2,3, figsize=(30,20)) #pl.figure()
-   else:
-       # Only ahve retino and FOV:
-       fig = pl.figure(figsize=(30,10))
-       spec = gridspec.GridSpec(ncols=3, nrows=1)
-       nrows = 1
+    else:
+        # Only ahve retino and FOV:
+        fig = pl.figure(figsize=(30,10))
+        spec = gridspec.GridSpec(ncols=3, nrows=1)
+        nrows = 1
        
     fig.add_subplot(spec[0, 0])
     fig.add_subplot(spec[0, 1])
@@ -819,7 +819,7 @@ def plot_summaries(options):
     axes_flat[zproj_ix].set_title('dF/F map')
     
     bb = axes_flat[zproj_ix].get_position().bounds
-    new_bb = [bb[0]*0.95, bb[1]*1.02, bb[2]*1.2, bb[3]*1.2]
+    new_bb = [bb[0]*0.8, bb[1]*1.02, bb[2]*1.05, bb[3]*1.05]
     axes_flat[zproj_ix].set_position(new_bb)
     
     #axes_flat[rf_ix].axis('off')
@@ -851,7 +851,7 @@ def plot_summaries(options):
 
     RF.plot_RF_position_and_size(ROIs, acquisition_dir, retino_run, retinoid, ax=axes_flat[retino_screen_ix])
     bb = axes_flat[retino_screen_ix].get_position().bounds
-    new_bb = [bb[0]*0.95, bb[1]*1.02, bb[2]*1.2, bb[3]*1.2]
+    new_bb = [bb[0]*0.85, bb[1]*1.02, bb[2]*1.5, bb[3]]
     axes_flat[retino_screen_ix].set_position(new_bb)
     
     
