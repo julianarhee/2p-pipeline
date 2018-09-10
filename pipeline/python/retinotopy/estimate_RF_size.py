@@ -62,12 +62,12 @@ def get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_ne
         
         # Combine reps of the same condition.
         # Reshape masks and averaged tiff stack, extract ROI traces
-        traces = average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks)
+        traces = average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir=output_dir)
         
     return traces
 
 
-def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks):
+def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='/tmp'):
     
     rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
     unique_conditions = np.unique([rep[1] for rep in rep_list])
