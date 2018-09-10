@@ -7,6 +7,7 @@ Created on Wed Aug 29 16:41:33 2018
 """
 
 import os
+import sys
 import glob
 import optparse
 import json
@@ -35,15 +36,16 @@ from pipeline.python.classifications import linear_svc as lsvc
 from pipeline.python.traces.utils import load_TID
 
 from collections import Counter
+from matplotlib.lines import Line2D
 
+    
+from skimage.measure import block_reduce
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 #%%
 
 
-    
-from skimage.measure import block_reduce
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def create_activity_map(acquisition_dir, run, rootdir=''):
     
@@ -143,8 +145,8 @@ def load_traceid_zproj(traceid_dir, rootdir=''):
     if 'std' in img_src:
         img_src = img_src.replace('std', 'mean')
     if rootdir not in img_src:
-        animalid = traceid_dir.split(optsE.rootdir)[-1].split('/')[1]
-        session = traceid_dir.split(optsE.rootdir)[-1].split('/')[2]
+        animalid = traceid_dir.split(rootdir)[-1].split('/')[1]
+        session = traceid_dir.split(rootdir)[-1].split('/')[2]
         img_src = replace_root(img_src, rootdir, animalid, session)
     
     img = tf.imread(img_src)
@@ -183,6 +185,7 @@ def colorcode_histogram(bins, ppatches, color='m'):
 
 #rootdir=optsE.rootdir; animalid=optsE.animalid; session=optsE.session; acquisition=optsE.acquisition;
 #run = blobs_run; traceid = blobs_traceid;
+#get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, blobs_run, blobs_traceid, create_new=optsE.create_new)
 
 def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False):
     
@@ -243,6 +246,7 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
     ax.set_title('distN of zscores (all rois)', fontsize=10)
     
     # Label histogram colors:
+    nrois_total = len(df_by_rois.groups.keys())
     visual_pval= 0.05; visual_test = roistats['visual_test'].split('_')[-1];
     visual_str = 'visual: %i/%i (p<%.2f, %s)' % (len(roistats['rois_visual']), nrois_total, visual_pval, visual_test)
     texth = ax.get_ylim()[-1] + 2
@@ -328,8 +332,13 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
                            'run_info': curr_dset['run_info'][()]
                            }
             
-        unique_sconfigs = list(np.unique(np.array([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))
+        unique_sconfigs = list(np.unique(np.array(list(itertools.chain.from_iterable([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))))
         sconfigs = dict(('config%03d' % int(cix+1), cfg) for cix, cfg in enumerate(unique_sconfigs))
+        
+        new_paradigm_dir = os.path.join(acquisition_dir, combined_name, 'paradigm')
+        if not os.path.exists(new_paradigm_dir): os.makedirs(new_paradigm_dir);
+        with open(os.path.join(new_paradigm_dir, 'stimulus_configs.json'), 'w') as f:
+            json.dump(sconfigs, f, indent=4, sort_keys=True)
         
         # Remap config names for each run:
         last_trial_prev_run = 0
@@ -381,7 +390,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             remove_ixs = []
             for cf in configs_with_more:
                 curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
-                rand_trial_ixs = random.sample(range(0, len(curr_trials)), ntrials_target)
+                rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
                 selected_trials = curr_trials[rand_trial_ixs] 
                 ixs = tmp_labels_df[tmp_labels_df['trial'].isin(selected_trials)].index.tolist()
                 remove_ixs.extend(ixs)
@@ -431,6 +440,225 @@ def create_function_opts(rootdir='', animalid='', session='', acquisition='',
     
     return opts
 
+#%%
+
+
+def plot_simple_summary(axes_flat, traceid_dirs, optsE, retino_screen_ix=1, 
+                            ori_hist_ix=3, ori_osi_ix=4, ori_decode_ix=5):
+    # GRATINGS:
+    gratings_traceid = os.path.split(traceid_dirs['gratings'])[-1]
+    gratings_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
+    
+    # Load data array:
+    data_fpath = os.path.join(traceid_dirs['gratings'], 'data_arrays', 'datasets.npz')
+    gratings_dataset = np.load(data_fpath)
+    
+    gratings_roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, gratings_run, 
+                                          gratings_traceid.split('_')[0], create_new=optsE.create_new)
+    
+    gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=optsE.data_type)
+    gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
+    nrois_total = gratings_roidata.shape[-1]
+    
+    
+    # SUBPLOT 2:  Histogram of visual vs. selective ROIs (use zscores)
+    # -----------------------------------------------------------------------------
+    axes_flat[ori_hist_ix].clear()
+    hist_roi_stats(gratings_df_by_rois, gratings_roistats, ax=axes_flat[ori_hist_ix])
+    #bb = axes_flat[ori_hist_ix].get_position().bounds
+    #new_bb = [bb[0], bb[1], bb[2], bb[3]*0.95]
+    #axes_flat[ori_hist_ix].set_position(new_bb)
+    
+    axes_flat[ori_hist_ix].set_title('gratings: distN of zscores')
+    axes_flat[ori_hist_ix].set_xlabel('zscore')
+    
+    
+    # SUBPLOT 3:  Retinotopy:
+    # -----------------------------------------------------------------------------
+    retinovis_fpath = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
+                                             'retino_*', 'retino_analysis', 'analysis*', 'visualization', '*.png'))[0]
+    axes_flat[retino_screen_ix].clear()
+    plot_image(retinovis_fpath, scale=20, ax=axes_flat[retino_screen_ix])
+    bb = axes_flat[retino_screen_ix].get_position().bounds
+    new_bb = [bb[0]*0.95, bb[1]*0.98, bb[2]*1.3, bb[3]*1.2]
+    axes_flat[retino_screen_ix].set_position(new_bb)
+    
+    #retino = Image.open(retinovis_fpath)
+    #retino = trim_whitespace(retino, scale=scale)
+    #axes_flat[retino_screen_ix].imshow(retino)
+    #axes_flat[retino_screen_ix].axis('off')
+    
+    #%
+    
+    # SUBPLOT 4:  DistN of preferred orientations:
+    # -----------------------------------------------------------------------------
+    metric = 'meanstim'
+    selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
+    cmap = 'hls'
+    colorvals = sns.color_palette(cmap, len(gratings_sconfigs))
+    osi.hist_preferred_oris(selectivity, colorvals, metric=metric, save_and_close=False, ax=axes_flat[ori_osi_ix])
+    sns.despine(trim=True, offset=4, ax=axes_flat[ori_osi_ix])
+    #bb = axes_flat[ori_osi_ix].get_position().bounds
+    #new_bb = [bb[0], bb[1], bb[2], bb[3]]
+    #axes_flat[ori_osi_ix].set_position(new_bb)
+    axes_flat[ori_osi_ix].set_title('orientation selectivity')
+    
+    
+    # SUBPLOT 5:  Decoding performance for linear classifier on orientations:
+    # -----------------------------------------------------------------------------
+    clfparams = lsvc.get_default_gratings_params()
+    cX, cy, inputdata, is_cnmf = lsvc.get_formatted_traindata(clfparams, gratings_dataset, gratings_traceid)
+    cX_std = StandardScaler().fit_transform(cX)
+    if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
+        clfparams['dual'] = False
+    else:
+        clfparams['dual'] = True
+    cX, cy, clfparams['class_labels'] = lsvc.format_stat_dataset(clfparams, cX_std, cy, gratings_sconfigs, relabel=False)
+        
+    if clfparams['classifier'] == 'LinearSVC':
+        svc = LinearSVC(random_state=0, dual=clfparams['dual'], multi_class='ovr', C=clfparams['C'])
+    
+    axes_flat[ori_decode_ix].clear()
+    predicted, true = lsvc.do_cross_validation(svc, clfparams, cX_std, cy, data_identifier='')
+    lsvc.plot_normed_confusion_matrix(predicted, true, clfparams, ax=axes_flat[ori_decode_ix])
+    sns.despine(trim=True, offset=4, ax=axes_flat[ori_decode_ix])
+    bb = axes_flat[ori_decode_ix].get_position().bounds
+    new_bb = [bb[0], bb[1]*1.05, bb[2], bb[3]]
+    axes_flat[ori_decode_ix].set_position(new_bb)
+            
+#%%
+
+# SUBPLOT 6:  Complex stimuli...
+# -----------------------------------------------------------------------------
+
+#%
+#
+#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
+#           '-d', 'corrected',
+#           '-R', 'blobs_static_xpos', '-t', 'traces001',
+#           ]
+#optsE = extract_options(options)
+#acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition) 
+#traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
+#traceid = os.path.split(traceid_dir)[-1]
+
+# BLOBS
+
+def plot_complex_summary(axes_flat, traceid_dirs, optsE, blobs_hist_ix=6, transforms_ix=7):
+
+    blobs_traceid = os.path.split(traceid_dirs['blobs'])[-1]
+    blobs_run = os.path.split(traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
+    
+    
+    # Load data array:
+    data_fpath = os.path.join(traceid_dirs['blobs'], 'data_arrays', 'datasets.npz')
+    blobs_dataset = np.load(data_fpath)
+    
+    blobs_roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, blobs_run, blobs_traceid, create_new=optsE.create_new) #blobs_traceid.split('_')[0])
+    
+    
+    blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=optsE.data_type)
+    blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
+    nrois_total = blobs_roidata.shape[-1]
+    
+    
+    # SUBPLOT 6:  Complex stimuli...
+    # -----------------------------------------------------------------------------
+    roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, blobs_run, blobs_traceid)
+    axes_flat[blobs_hist_ix].clear()
+    hist_roi_stats(blobs_df_by_rois, blobs_roistats, ax=axes_flat[blobs_hist_ix])
+    axes_flat[blobs_hist_ix].set_title('blobs: distN of zscores')
+    
+    bb = axes_flat[blobs_hist_ix].get_position().bounds
+    new_bb = [bb[0], bb[1]*0.70, bb[2], bb[3]]
+    axes_flat[blobs_hist_ix].set_position(new_bb)
+    axes_flat[blobs_hist_ix].set_xlabel('zscore')
+    
+    #%
+    
+    
+    # SUBPLOT 7:  Complex stimuli 2...
+    # -----------------------------------------------------------------------------
+    
+    metric = 'zscore'
+    responses_by_config = dict((roi, blobs_df_by_rois.get_group(roi).groupby('config')[metric].mean()) for roi in roistats['rois_visual'])
+    
+    
+    transform_dict, object_transformations = util.get_transforms(blobs_sconfigs)
+    transforms_tested = [k for k, v in object_transformations.items() if len(v) > 0]
+    
+    sconfigs_df = pd.DataFrame(blobs_sconfigs).T
+    responses = []
+    for roi, rdf in responses_by_config.items():
+        responses.append(pd.concat([sconfigs_df, rdf, pd.Series(data=[roi for _ in range(rdf.shape[0])], index=rdf.index, name='roi')], axis=1))
+    responses = pd.concat(responses, axis=0)    
+    
+    df_columns = ['object', 'roi', metric]
+    df_columns.extend(transforms_tested)
+    
+    data = responses[df_columns]
+    
+    
+    #for tix, trans in enumerate(transforms_tested):
+    #    new_trans_str = 'transval%i' % tix
+    #    data.rename(columns={trans: new_trans_str}, inplace=True)
+    #    data.loc[:, 'transform%i' % tix] = [trans for _ in range(data.shape[0])]
+    
+    rois = data.groupby('roi')
+    
+    # Colors = cells
+    rois_to_plot = roistats['rois_selective'][0:10]
+    nrois_plot = len(rois_to_plot) 
+    colors = sns.color_palette('husl', nrois_plot*2)
+    
+    # Shapes = objects
+    nobjects = len(responses['object'].unique())
+    markers = ['o', 'P', '*', '^', 's', 'd']
+    marker_kws = {'markersize': 10, 'linewidth': 1, 'alpha': 0.3}
+        
+    for trans_ix, transform in enumerate(transforms_tested):
+        tix = transforms_ix + trans_ix
+        plot_list = []
+        for roi, df in rois:
+            if roi not in rois_to_plot:
+                continue
+            
+            df2 = df.pivot_table(index='object', columns=transform, values=metric)
+            #new_df = pd.concat([df2, pd.Series(data=[roi for _ in range(df2.shape[0])], index=df2.index, name='roi')], axis=1)
+            plot_list.append(df2)
+            
+        data = pd.concat(plot_list, axis=0)
+        #%
+        axes_flat[tix].clear()
+    
+        for ridx, r in enumerate(np.arange(0, data.shape[0], nobjects)):
+            for object_ix in range(nobjects):
+                axes_flat[tix].plot(data.iloc[r+object_ix, :], color=colors[ridx], marker=markers[object_ix], **marker_kws) #'.-')
+        axes_flat[tix].set_xticks(data.keys().tolist())
+        axes_flat[tix].set_ylabel(metric)
+        axes_flat[tix].set_xlabel(transforms_tested[0])
+        axes_flat[tix].set_title(transform)
+        
+        bb = axes_flat[tix].get_position().bounds
+        new_bb = [bb[0], bb[1]*0.8, bb[2], bb[3]]
+        axes_flat[tix].set_position(new_bb)
+        axes_flat[tix].set_xlabel('zscore')
+    
+        sns.despine(ax=axes_flat[tix])
+    
+    legend_objects = []
+    object_names = data.iloc[0:nobjects].index.tolist()
+    for object_ix in range(nobjects):
+        legend_objects.append(Line2D([0], [0], color='w', markerfacecolor='k', 
+                                     marker=markers[object_ix], label=object_names[object_ix], 
+                                     linewidth=2, markersize=10))
+        
+    axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(-0.2, -0.2), ncol=nobjects) # loc='upper right')
+    
+    
+  
+#%%
+
 def extract_options(options):
 
     parser = optparse.OptionParser()
@@ -455,12 +683,12 @@ def extract_options(options):
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
-    
+    parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
     
     # Run specific info:
     parser.add_option('-g', '--gratings', dest='gratings_traceid', default='traces001', action='store', help="traceid for GRATINGS [default: traces001]")
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
-    parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: [traces001]')
+    parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=['traces001'], action='append', nargs=1, help='list of blob traceids [default: [traces001]')
     
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
 
@@ -470,334 +698,117 @@ def extract_options(options):
 
 #%%
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+
 #           '-d', 'corrected',
 #           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV1_zoom1x',
            '-d', 'corrected',
            '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
            ]
 
-optsE = extract_options(options)
 
-data_type = optsE.data_type
-acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-
-
-traceid_dirs = {'gratings': None, 
-                'blobs': None}
-
-# Get gratings traceid dir:
-check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-if len(check_gratings_dir) > 1:
-    combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name = 'combined_gratings_static')
-    traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
-else:
-    traceid_dirs['gratings'] = check_gratings_dir[0]
-
-# Get static-blobs traceid dir(s):
-check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
-                                for b in optsE.blobs_traceid_list] for item in sublist]))
-check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
-if len(check_blobs_dir) > 1:
-    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static')
-    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
-else:
-    traceid_dirs['blobs'] = check_blobs_dir[0]
-
-data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
-
-
-#%%
-
-use_dff = True
-zproj_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
-
-if use_dff:
-    zproj = create_activity_map(acquisition_dir, zproj_run, rootdir=optsE.rootdir)
-else:
-    zproj = load_traceid_zproj(traceid_dirs['gratings'], rootdir=optsE.rootdir)
-
-
-#%%
-# a)  Load data for gratings (w/ specified traceid) - do stats, plot summary figs
-# b)  Load data for static blobs " "
-#       - need to combine 5x5 for each transform if tested separately 
-#       - 
-
-fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
-axes_flat = axes.flat
-
-zproj_ix = 0
-retino_screen_ix = 1
-rf_ix = 2
-
-ori_hist_ix = 3
-ori_osi_ix = 4
-ori_decode_ix = 5
-
-blobs_hist_ix = 6
-transforms_ix = 7
-
-
-# SUBPLOT 1:  Mean / zproj image
-# -----------------------------------------------------------------------------
-im = axes_flat[zproj_ix].imshow(zproj, cmap='gray')
-axes_flat[zproj_ix].axis('off')
-divider = make_axes_locatable(axes_flat[zproj_ix])
-cax = divider.append_axes('right', size='5%', pad=0.05)
-pl.colorbar(im, cax=cax)
-axes_flat[zproj_ix].set_title('dF/F map')
-
-axes_flat[rf_ix].axis('off')
-
-#%%
-create_new = False
-
-# GRATINGS:
-gratings_traceid = os.path.split(traceid_dirs['gratings'])[-1]
-gratings_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
-
-# Load data array:
-data_fpath = os.path.join(traceid_dirs['gratings'], 'data_arrays', 'datasets.npz')
-gratings_dataset = np.load(data_fpath)
-
-gratings_roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, gratings_run, gratings_traceid.split('_')[0], create_new=create_new)
-
-gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=data_type)
-gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
-nrois_total = gratings_roidata.shape[-1]
-
-
-# SUBPLOT 2:  Histogram of visual vs. selective ROIs (use zscores)
-# -----------------------------------------------------------------------------
-axes_flat[ori_hist_ix].clear()
-hist_roi_stats(gratings_df_by_rois, gratings_roistats, ax=axes_flat[ori_hist_ix])
-#bb = axes_flat[ori_hist_ix].get_position().bounds
-#new_bb = [bb[0], bb[1], bb[2], bb[3]*0.95]
-#axes_flat[ori_hist_ix].set_position(new_bb)
-
-axes_flat[ori_hist_ix].set_title('gratings: distN of zscores')
-axes_flat[ori_hist_ix].set_xlabel('zscore')
-
-
-# SUBPLOT 3:  Retinotopy:
-# -----------------------------------------------------------------------------
-retinovis_fpath = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
-                                         'retino_*', 'retino_analysis', 'analysis*', 'visualization', '*.png'))[0]
-axes_flat[retino_screen_ix].clear()
-plot_image(retinovis_fpath, scale=20, ax=axes_flat[retino_screen_ix])
-bb = axes_flat[retino_screen_ix].get_position().bounds
-new_bb = [bb[0]*0.95, bb[1]*0.98, bb[2]*1.3, bb[3]*1.2]
-axes_flat[retino_screen_ix].set_position(new_bb)
-
-#retino = Image.open(retinovis_fpath)
-#retino = trim_whitespace(retino, scale=scale)
-#axes_flat[retino_screen_ix].imshow(retino)
-#axes_flat[retino_screen_ix].axis('off')
-
-#%
-
-# SUBPLOT 4:  DistN of preferred orientations:
-# -----------------------------------------------------------------------------
-metric = 'meanstim'
-selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
-cmap = 'hls'
-colorvals = sns.color_palette(cmap, len(gratings_sconfigs))
-osi.hist_preferred_oris(selectivity, colorvals, metric=metric, save_and_close=False, ax=axes_flat[ori_osi_ix])
-sns.despine(trim=True, offset=4, ax=axes_flat[ori_osi_ix])
-#bb = axes_flat[ori_osi_ix].get_position().bounds
-#new_bb = [bb[0], bb[1], bb[2], bb[3]]
-#axes_flat[ori_osi_ix].set_position(new_bb)
-axes_flat[ori_osi_ix].set_title('orientation selectivity')
-
-
-# SUBPLOT 5:  Decoding performance for linear classifier on orientations:
-# -----------------------------------------------------------------------------
-clfparams = lsvc.get_default_gratings_params()
-cX, cy, inputdata, is_cnmf = lsvc.get_formatted_traindata(clfparams, gratings_dataset, gratings_traceid)
-cX_std = StandardScaler().fit_transform(cX)
-if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
-    clfparams['dual'] = False
-else:
-    clfparams['dual'] = True
-cX, cy, clfparams['class_labels'] = lsvc.format_stat_dataset(clfparams, cX_std, cy, gratings_sconfigs, relabel=False)
+def plot_summaries(options):
+    optsE = extract_options(options)
+    create_new = optsE.create_new
+    use_dff = optsE.use_dff
     
-if clfparams['classifier'] == 'LinearSVC':
-    svc = LinearSVC(random_state=0, dual=clfparams['dual'], multi_class='ovr', C=clfparams['C'])
+    data_type = optsE.data_type
+    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+    
+    
+    traceid_dirs = {'gratings': None, 
+                    'blobs': None}
+    
+    # Get gratings traceid dir:
+    check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
+    if len(check_gratings_dir) > 1:
+        combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name = 'combined_gratings_static', create_new=optsE.create_new)
+        traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
+    else:
+        traceid_dirs['gratings'] = check_gratings_dir[0]
+    
+    # Get static-blobs traceid dir(s):
+    check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
+                                    for b in optsE.blobs_traceid_list] for item in sublist]))
+    check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
+    if len(check_blobs_dir) > 1:
+        combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
+        traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
+    else:
+        traceid_dirs['blobs'] = check_blobs_dir[0]
+    
+    data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
+    
+    
+    #%%
+    
+    zproj_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
+    
+    if use_dff:
+        zproj = create_activity_map(acquisition_dir, zproj_run, rootdir=optsE.rootdir)
+    else:
+        zproj = load_traceid_zproj(traceid_dirs['gratings'], rootdir=optsE.rootdir)
 
-axes_flat[ori_decode_ix].clear()
-predicted, true = lsvc.do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=data_identifier)
-lsvc.plot_normed_confusion_matrix(predicted, true, clfparams, ax=axes_flat[ori_decode_ix])
-sns.despine(trim=True, offset=4, ax=axes_flat[ori_decode_ix])
-bb = axes_flat[ori_decode_ix].get_position().bounds
-new_bb = [bb[0], bb[1]*1.05, bb[2], bb[3]]
-axes_flat[ori_decode_ix].set_position(new_bb)
-        
+    
+    #%%
+    # a)  Load data for gratings (w/ specified traceid) - do stats, plot summary figs
+    # b)  Load data for static blobs " "
+    #       - need to combine 5x5 for each transform if tested separately 
+    #       - 
+    
+    fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
+    axes_flat = axes.flat
+    
+    zproj_ix = 0
+    retino_screen_ix = 1
+    rf_ix = 2
+    
+    ori_hist_ix = 3
+    ori_osi_ix = 4
+    ori_decode_ix = 5
+    
+    blobs_hist_ix = 6
+    transforms_ix = 7
+    
+    
+    # SUBPLOT 1:  Mean / zproj image
+    # -----------------------------------------------------------------------------
+    im = axes_flat[zproj_ix].imshow(zproj, cmap='gray')
+    axes_flat[zproj_ix].axis('off')
+    divider = make_axes_locatable(axes_flat[zproj_ix])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    pl.colorbar(im, cax=cax)
+    axes_flat[zproj_ix].set_title('dF/F map')
+    
+    axes_flat[rf_ix].axis('off')
+    
+    plot_simple_summary(axes_flat, traceid_dirs, optsE, 
+                            retino_screen_ix=retino_screen_ix,
+                            ori_hist_ix=ori_hist_ix,
+                            ori_osi_ix=ori_osi_ix,
+                            ori_decode_ix=ori_decode_ix)
+
+
+    plot_complex_summary(axes_flat, traceid_dirs, optsE, 
+                            blobs_hist_ix=blobs_hist_ix,
+                            transforms_ix=transforms_ix)
+
+
+    label_figure(fig, data_identifier)
+    figname = '%s_acquisition_summary.png' % optsE.acquisition
+    
+    pl.savefig(os.path.join(os.path.split(acquisition_dir)[0], figname))
+
 #%%
-
-# SUBPLOT 6:  Complex stimuli...
-# -----------------------------------------------------------------------------
-
-#%
-#
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
-#           '-d', 'corrected',
-#           '-R', 'blobs_static_xpos', '-t', 'traces001',
-#           ]
-#optsE = extract_options(options)
-#acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition) 
-#traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
-#traceid = os.path.split(traceid_dir)[-1]
-
-# BLOBS
-blobs_traceid = os.path.split(traceid_dirs['blobs'])[-1]
-blobs_run = os.path.split(traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
-
-
-# Load data array:
-data_fpath = os.path.join(traceid_dirs['blobs'], 'data_arrays', 'datasets.npz')
-blobs_dataset = np.load(data_fpath)
-
-blobs_roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, blobs_run, blobs_traceid, create_new=create_new) #blobs_traceid.split('_')[0])
-
-
-blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=data_type)
-blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
-nrois_total = blobs_roidata.shape[-1]
-
-
-# SUBPLOT 6:  Complex stimuli...
-# -----------------------------------------------------------------------------
-roistats = get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, blobs_run, blobs_traceid)
-axes_flat[blobs_hist_ix].clear()
-hist_roi_stats(blobs_df_by_rois, roistats, ax=axes_flat[blobs_hist_ix])
-axes_flat[blobs_hist_ix].set_title('blobs: distN of zscores')
-
-bb = axes_flat[blobs_hist_ix].get_position().bounds
-new_bb = [bb[0], bb[1]*0.70, bb[2], bb[3]]
-axes_flat[blobs_hist_ix].set_position(new_bb)
-axes_flat[blobs_hist_ix].set_xlabel('zscore')
-
-#%%
-
-
-# SUBPLOT 7:  Complex stimuli 2...
-# -----------------------------------------------------------------------------
-
-metric = 'zscore'
-responses_by_config = dict((roi, blobs_df_by_rois.get_group(roi).groupby('config')[metric].mean()) for roi in roistats['rois_visual'])
-
-
-transform_dict, object_transformations = util.get_transforms(blobs_sconfigs)
-transforms_tested = [k for k, v in object_transformations.items() if len(v) > 0]
-
-sconfigs_df = pd.DataFrame(blobs_sconfigs).T
-responses = []
-for roi, rdf in responses_by_config.items():
-    responses.append(pd.concat([sconfigs_df, rdf, pd.Series(data=[roi for _ in range(rdf.shape[0])], index=rdf.index, name='roi')], axis=1))
-responses = pd.concat(responses, axis=0)    
-
-df_columns = ['object', 'roi', metric]
-df_columns.extend(transforms_tested)
-
-data = responses[df_columns]
-
-
-#for tix, trans in enumerate(transforms_tested):
-#    new_trans_str = 'transval%i' % tix
-#    data.rename(columns={trans: new_trans_str}, inplace=True)
-#    data.loc[:, 'transform%i' % tix] = [trans for _ in range(data.shape[0])]
-
-rois = data.groupby('roi')
-
-# Colors = cells
-rois_to_plot = roistats['rois_selective'][0:10]
-nrois_plot = len(rois_to_plot) 
-colors = sns.color_palette('husl', nrois_plot*2)
-
-# Shapes = objects
-nobjects = len(responses['object'].unique())
-markers = ['o', 'P', '*', '^', 's', 'd']
-marker_kws = {'markersize': 10, 'linewidth': 1, 'alpha': 0.3}
     
-for trans_ix, transform in enumerate(transforms_tested):
-    tix = transforms_ix + trans_ix
-    plot_list = []
-    for roi, df in rois:
-        if roi not in rois_to_plot:
-            continue
-        
-        df2 = df.pivot_table(index='object', columns=transform, values=metric)
-        #new_df = pd.concat([df2, pd.Series(data=[roi for _ in range(df2.shape[0])], index=df2.index, name='roi')], axis=1)
-        plot_list.append(df2)
-        
-    data = pd.concat(plot_list, axis=0)
-    #%
-    axes_flat[tix].clear()
 
-    for ridx, r in enumerate(np.arange(0, data.shape[0], nobjects)):
-        for object_ix in range(nobjects):
-            axes_flat[tix].plot(data.iloc[r+object_ix, :], color=colors[ridx], marker=markers[object_ix], **marker_kws) #'.-')
-    axes_flat[tix].set_xticks(data.keys().tolist())
-    axes_flat[tix].set_ylabel(metric)
-    axes_flat[tix].set_xlabel(transforms_tested[0])
-    axes_flat[tix].set_title(transform)
+def main(options):
+    plot_summaries(options)
+
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
     
-    bb = axes_flat[tix].get_position().bounds
-    new_bb = [bb[0], bb[1]*0.8, bb[2], bb[3]]
-    axes_flat[tix].set_position(new_bb)
-    axes_flat[tix].set_xlabel('zscore')
-
-    sns.despine(ax=axes_flat[tix])
-
-from matplotlib.lines import Line2D
-legend_objects = []
-object_names = data.iloc[0:nobjects].index.tolist()
-for object_ix in range(nobjects):
-    legend_objects.append(Line2D([0], [0], color='w', markerfacecolor='k', 
-                                 marker=markers[object_ix], label=object_names[object_ix], 
-                                 linewidth=2, markersize=10))
     
-axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(-0.2, -0.2), ncol=nobjects) # loc='upper right')
-
-
-label_figure(fig, data_identifier)
-figname = '%s_acquisition_summary.png' % optsE.acquisition
-
-pl.savefig(os.path.join(os.path.split(acquisition_dir)[0], figname))
-
-#pl.close()
-
-## get the tick label font size
-#fontsize_pt = 10 #pl.rcParams['ytick.labelsize']
-#dpi = 72.27
-#
-## comput the matrix height in points and inches
-#matrix_height_pt = fontsize_pt * data.shape[0]
-#matrix_height_in = matrix_height_pt / dpi
-#
-## compute the required figure height 
-#top_margin = 0.02  # in percentage of the figure height
-#bottom_margin = 0.02 # in percentage of the figure height
-#figure_height = matrix_height_in / (1 - top_margin - bottom_margin)
-#
-#fig, ax = pl.subplots(
-#        figsize=(6,figure_height), 
-#        gridspec_kw=dict(top=1-top_margin, bottom=bottom_margin))
-
-#cbar_ax = fig.add_axes([0.91, 0.1, 0.02, 0.4])
-#ax = axes_flat[7]
-#ax.clear()
-#nobjects = len(responses['object'].unique())
-
-
-
-#sns.heatmap(data, ax=ax, cbar_kws={'label': metric}, cmap='magma')
-#
-#ax.hlines(np.arange(0, data.shape[0], nobjects), *ax.get_xlim(), color='w', linewidth=1)
-#ax.set_yticklabels([])
-#ax.set_yticks(np.arange(0, nobjects)+0.5)
-#ax.set_yticklabels(data.index.tolist()[0:nobjects], fontsize=5, rotation=0)
-#ax.set_ylabel('cells')
-#pl.subplots_adjust(top=0.9, right=0.85)

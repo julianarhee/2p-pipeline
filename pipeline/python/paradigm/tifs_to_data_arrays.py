@@ -8,6 +8,8 @@ Created on Fri Jun  1 13:22:15 2018
 import matplotlib
 matplotlib.use('agg')
 import sys
+import shutil
+import glob
 import optparse
 import os
 import json
@@ -336,6 +338,16 @@ def create_rdata_array(opts):
     #% Set up paths:    
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+
+    if create_new:
+        # Rmove data arrays dir:
+        if os.path.exists(os.path.join(traceid_dir, 'data_arrays')):
+            shutil.rmtree(os.path.join(traceid_dir, 'data_arrays'))
+        trace_arrays_dirs = glob.glob(os.path.join(traceid_dir, 'files', 'trace_arrays*'))
+        for tr in trace_arrays_dirs:
+            if os.path.isdir(tr):
+                shutil.rmtree(tr)
+
 
     # Set data array output dir:
     data_basedir = os.path.join(traceid_dir, 'data_arrays')
