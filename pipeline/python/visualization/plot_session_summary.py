@@ -495,7 +495,8 @@ def plot_simple_summary(axes_flat, traceid_dirs, optsE, retino_screen_ix=1,
     metric = 'meanstim'
     selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
     cmap = 'hls'
-    colorvals = sns.color_palette(cmap, len(gratings_sconfigs))
+    noris = len(np.unique([v['ori'] for k,v in gratings_sconfigs.items()]))
+    colorvals = sns.color_palette(cmap, noris) # len(gratings_sconfigs))
     osi.hist_preferred_oris(selectivity, colorvals, metric=metric, save_and_close=False, ax=axes_flat[ori_osi_ix])
     sns.despine(trim=True, offset=4, ax=axes_flat[ori_osi_ix])
     #bb = axes_flat[ori_osi_ix].get_position().bounds
