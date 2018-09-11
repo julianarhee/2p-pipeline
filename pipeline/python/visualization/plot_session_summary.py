@@ -80,45 +80,52 @@ def create_activity_map(acquisition_dir, run, rootdir=''):
     for fr in range(stack.shape[0]):
         frames_tmp[fr,:,:] = block_reduce(stack[fr, :, :], (2, 2), func=np.mean) + 10000
 
-    # Get frame info for trial epochs:
-    parsed_frames_fpath = glob.glob(os.path.join(acquisition_dir, run, 'paradigm', 'parsed_frames_*.hdf5'))[-1]
-    parsed_frames = h5py.File(parsed_frames_fpath, 'r')
-
-    # Get all trials contained in current .tif file:
-    trials_in_block = sorted([t for t in parsed_frames.keys() \
-                              if parsed_frames[t]['frames_in_run'].attrs['aux_file_idx'] == ref_file-1], key=natural_keys)
-    print "N trials in block: %i" % len(trials_in_block)
-    frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_run']) \
-                               for t in trials_in_block])
-    stim_onset_idxs = np.array([parsed_frames[t]['frames_in_run'].attrs['stim_on_idx'] \
-                                for t in trials_in_block])
-    
-    # Re-index frame indices for current tif file (i.e., block)
-    frame_indices = frame_indices - stack.shape[0] * (ref_file-1)
-    stim_onset_idxs = stim_onset_idxs - stack.shape[0] * (ref_file-1)
-    stim_on_relative = np.array([list(frame_indices).index(i) for i in stim_onset_idxs])
-    
     # Make "nonnegative" so no funky df/f
     frames = np.zeros(frames_tmp.shape, dtype='uint16')
     frames[:] = frames_tmp + 10000 #32768
-    
-    with open(os.path.join(acquisition_dir, run, '%s.json' % run), 'r') as f:
-        run_info = json.load(f)
-    framerate = run_info['frame_rate']
-    n_bas_frames = int(round(parsed_frames[trials_in_block[0]]['frames_in_run'].attrs['baseline_dur_sec'] * framerate))
-    n_stim_frames = int(round(parsed_frames[trials_in_block[0]]['frames_in_run'].attrs['stim_dur_sec'] * framerate))
-    bas_frames = [np.arange(stim_on - n_bas_frames, stim_on) for stim_on in stim_on_relative]
-    stim_frames = [np.arange(stim_on - n_stim_frames, stim_on) for stim_on in stim_on_relative]
 
-    # Just use average of baseline values:
-    grandmean_baseline = frames[bas_frames,:,:].mean()
-    mean_frames = np.empty((len(stim_frames), frames.shape[1], frames.shape[2]), dtype=float)
-    for trial, stim in enumerate(stim_frames):
-        im = (frames[stim,:,:] - grandmean_baseline) / grandmean_baseline
-        mean_frames[trial,:,:] = im.mean(axis=0)
+    if 'retino' not in run:
+        # Get frame info for trial epochs:
+        parsed_frames_fpath = glob.glob(os.path.join(acquisition_dir, run, 'paradigm', 'parsed_frames_*.hdf5'))[-1]
+        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
 
-    activity_map = mean_frames.mean(axis=0)
+        # Get all trials contained in current .tif file:
+        trials_in_block = sorted([t for t in parsed_frames.keys() \
+                              if parsed_frames[t]['frames_in_run'].attrs['aux_file_idx'] == ref_file-1], key=natural_keys)
+        print "N trials in block: %i" % len(trials_in_block)
+        frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_run']) \
+                               for t in trials_in_block])
+        stim_onset_idxs = np.array([parsed_frames[t]['frames_in_run'].attrs['stim_on_idx'] \
+                                for t in trials_in_block])
     
+        # Re-index frame indices for current tif file (i.e., block)
+        frame_indices = frame_indices - stack.shape[0] * (ref_file-1)
+        stim_onset_idxs = stim_onset_idxs - stack.shape[0] * (ref_file-1)
+        stim_on_relative = np.array([list(frame_indices).index(i) for i in stim_onset_idxs])
+    
+       
+        with open(os.path.join(acquisition_dir, run, '%s.json' % run), 'r') as f:
+            run_info = json.load(f)
+        framerate = run_info['frame_rate']
+        n_bas_frames = int(round(parsed_frames[trials_in_block[0]]['frames_in_run'].attrs['baseline_dur_sec'] * framerate))
+        n_stim_frames = int(round(parsed_frames[trials_in_block[0]]['frames_in_run'].attrs['stim_dur_sec'] * framerate))
+        bas_frames = [np.arange(stim_on - n_bas_frames, stim_on) for stim_on in stim_on_relative]
+        stim_frames = [np.arange(stim_on - n_stim_frames, stim_on) for stim_on in stim_on_relative]
+    
+        # Just use average of baseline values:
+        grandmean_baseline = frames[bas_frames,:,:].mean()
+        mean_frames = np.empty((len(stim_frames), frames.shape[1], frames.shape[2]), dtype=float)
+        for trial, stim in enumerate(stim_frames):
+            im = (frames[stim,:,:] - grandmean_baseline) / grandmean_baseline
+            mean_frames[trial,:,:] = im.mean(axis=0)
+    
+        activity_map = mean_frames.mean(axis=0)
+   
+    else:
+        grandmean_baseline = frames.mean()
+        activity_map =  (frames - grandmean_baseline) / grandmean_baseline
+        activity_map = activity_map.mean(axis=0)
+        print "ACTIVITY MAP:", activity_map.shape
     return activity_map
     
     
@@ -682,7 +689,8 @@ def extract_options(options):
     parser.add_option('-g', '--gratings', dest='gratings_traceid', default='', action='store', help="traceid for GRATINGS [default: '']")
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
     parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
-    
+    parser.add_option('-B', '--blobs', dest='blobs_runlist', default=[], action='append', nargs=1, help='list of blob run IDs [default: []')
+   
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      
     (options, args) = parser.parse_args(options)
@@ -735,6 +743,9 @@ def plot_summaries(options):
         check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
         										for b in optsE.blobs_traceid_list] for item in sublist]))
         check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
+        if len(optsE.blobs_runlist) > 0:
+            print "Specified blobs runs:", optsE.blobs_runlist
+            check_blobs_dir = [b for b in check_blobs_dir if os.path.split(b.split('/traces')[0])[-1] in optsE.blobs_runlist]
         if len(check_blobs_dir) > 1:
         	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name = 'combined_blobs_static', create_new=optsE.create_new)
         	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
@@ -748,8 +759,10 @@ def plot_summaries(options):
     
     
     #%%
-    
-    zproj_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
+    if traceid_dirs['gratings'] is None:
+        zproj_run = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
+    else: 
+        zproj_run = os.path.split(traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
     
     if use_dff:
         zproj = create_activity_map(acquisition_dir, zproj_run, rootdir=optsE.rootdir)
@@ -772,13 +785,13 @@ def plot_summaries(options):
         #fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
         nrows = 3
     elif gratings_were_run and not blobs_were_run:
-        fig = pl.figure(figsize=(30,20))
+        fig = pl.figure(figsize=(35,20))
         spec = gridspec.GridSpec(ncols=3, nrows=2)
         nrows = 2
         #fig, axes = pl.subplots(2,3, figsize=(30,20)) #pl.figure()
     else:
         # Only ahve retino and FOV:
-        fig = pl.figure(figsize=(30,10))
+        fig = pl.figure(figsize=(35,10))
         spec = gridspec.GridSpec(ncols=3, nrows=1)
         nrows = 1
        
@@ -819,7 +832,7 @@ def plot_summaries(options):
     axes_flat[zproj_ix].set_title('dF/F map')
     
     bb = axes_flat[zproj_ix].get_position().bounds
-    new_bb = [bb[0]*0.8, bb[1]*1.02, bb[2]*1.05, bb[3]*1.05]
+    new_bb = [bb[0]*0.75, bb[1]*1.02, bb[2]*1.0, bb[3]*1.0]
     axes_flat[zproj_ix].set_position(new_bb)
     
     #axes_flat[rf_ix].axis('off')
@@ -851,7 +864,7 @@ def plot_summaries(options):
 
     RF.plot_RF_position_and_size(ROIs, acquisition_dir, retino_run, retinoid, ax=axes_flat[retino_screen_ix])
     bb = axes_flat[retino_screen_ix].get_position().bounds
-    new_bb = [bb[0]*0.85, bb[1]*1.02, bb[2]*1.5, bb[3]]
+    new_bb = [bb[0]*0.9, bb[1]*1.02, bb[2]*1.35, bb[3]]
     axes_flat[retino_screen_ix].set_position(new_bb)
     
     
