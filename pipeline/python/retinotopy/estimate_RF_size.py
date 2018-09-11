@@ -365,21 +365,21 @@ class ActivityInfo:
                            'sigma': sigma,
                            'y_fit': y_fit}
         
-    def estimate_RF_size(self, frames_per_degree, fitness_threshold=0.5, size_threshold=0.1):
+    def estimate_RF_size(self, frames_per_degree, fitness_thr=0.5, size_thr=0.1):
 
-        if self.fit_results['r2'] > fitness_threshold:
+        if self.fit_results['r2'] > fitness_thr:
             
             y = self.average_y
             y_fit = self.fit_results['y_fit']
             
             fit_norm = y_fit/np.max(y_fit)
 
-            border_start = np.where(fit_norm>=size_threshold)[0]
+            border_start = np.where(fit_norm>=size_thr)[0]
             if len(border_start)==0:
                 border_start = 0
             else:
                 border_start = border_start[0]
-            border_end = np.where(fit_norm[border_start:]<=size_threshold)[0]
+            border_end = np.where(fit_norm[border_start:]<=size_thr)[0]
             if len(border_end) == 0:
                 border_end = len(fit_norm)-1
             else:
@@ -429,7 +429,7 @@ class RetinoROI:
             
         self.conditions[cond_ix].parse_cycles(framestart, stimframes_incl)
     
-    def fit(self, condition, frames_per_degree, fitness_threshold=0.5, size_threshold=0.1):
+    def fit(self, condition, frames_per_degree, fitness_thr=0.5, size_thr=0.1):
         cond_ix = [ci for ci, cond in enumerate(self.conditions) if cond.name==condition]
 #        if len(cond_ix) == 0:
 #            self.conditions.append(ActivityInfo(condition, roi_trace))
@@ -437,7 +437,9 @@ class RetinoROI:
 #        else:
         cond_ix = cond_ix[0]
         self.conditions[cond_ix].fit_gaussian_to_trace()
-        self.conditions[cond_ix].estimate_RF_size(frames_per_degree, )
+        self.conditions[cond_ix].estimate_RF_size(frames_per_degree, 
+                                   fitness_thr=fitness_thr, 
+                                   size_thr=size_thr)
     
     def print_info(self):
         for cond in self.conditions:
@@ -445,7 +447,7 @@ class RetinoROI:
 
 
 
-def get_RF_size_estimates(acquisition_dir, fitness_threshold=0.4, size_threshold=0.1, analysis_id=None):
+def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None):
 
     run_dir = glob.glob(os.path.join(acquisition_dir, 'retino*'))[0]
     run = os.path.split(run_dir)[1]
@@ -566,16 +568,17 @@ def get_RF_size_estimates(acquisition_dir, fitness_threshold=0.4, size_threshold
             nframes_per_cycle = stimframes_incl
             #cycles_per_sec = stack_info['stimfreq']
     
-            if curr_cond == 'right' or curr_cond == 'left':
-                cycles_per_degree = az_degrees_per_cycle
-            else:
-                cycles_per_degree = el_degrees_per_cycle
+            cycles_per_degree = az_degrees_per_cycle
+#            if curr_cond == 'right' or curr_cond == 'left':
+#                cycles_per_degree = az_degrees_per_cycle
+#            else:
+#                cycles_per_degree = el_degrees_per_cycle
     
             frames_per_degree = nframes_per_cycle / cycles_per_degree
             #print frames_per_degree
     
             roi.parse(curr_cond, roi_traces[curr_roi, :], framestart, stimframes_incl)
-            roi.fit(curr_cond, frames_per_degree, fitness_threshold=fitness_threshold, size_threshold=size_threshold)
+            roi.fit(curr_cond, frames_per_degree, fitness_thr=fitness_thr, size_thr=size_thr)
             
         ROIs.append(roi)
         
@@ -632,6 +635,7 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, roi_size=100, ax=None):
     
     magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
     pl.colorbar(im, cax=cax, cmap=magcmap, norm=magnorm)
+    cax.yaxis.set_ticks_position('right')
 
     #cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
     
@@ -657,7 +661,7 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, ax=None):
         
     ells = [Ellipse(xy=[linX[ri], linY[ri]], width=az_rfs[ri], height=el_rfs[ri]) for ri in range(nrois)
                 if az_rfs[ri] > 0 and el_rfs[ri] > 0]
-
+    
     r2_values = [np.mean([roi.conditions[0].fit_results['r2'], roi.conditions[1].fit_results['r2']]) for roi in ROIs]
     
     for ei,e in enumerate(ells[0:20]):
@@ -710,9 +714,9 @@ def extract_options(options):
     # Run specific info:
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', 
                       help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
-    parser.add_option('--fitness', dest='fitness_threshold', default=0.5, action='store',
+    parser.add_option('--fitness', dest='fitness_thr', default=0.5, action='store',
                       help='Threshold for R2 values for fitting response trace [default: 0.5]')
-    parser.add_option('--size', dest='size_threshold', default=0.1, action='store', 
+    parser.add_option('--size', dest='size_thr', default=0.1, action='store', 
                       help='Percent of max of gaussian fit to use to estimate RF size [default: 0.1]')
 
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
@@ -734,8 +738,8 @@ def estimate_RFs_and_plot(options):
     animalid = optsE.animalid
     session = optsE.session
     acquisition = optsE.session
-    fitness_threshold = optsE.fitness_threshold
-    size_threshold = optsE.size_threshold
+    fitness_thr = optsE.fitness_thr
+    size_thr = optsE.size_thr
     analysis_id = optsE.retino_traceid
     run = optsE.run
     
@@ -745,8 +749,8 @@ def estimate_RFs_and_plot(options):
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     
     ROIs, retinoid = get_RF_size_estimates(acquisition_dir, 
-                                 fitness_threshold=fitness_threshold, 
-                                 size_threshold=size_threshold, 
+                                 fitness_thr=fitness_thr, 
+                                 size_thr=size_thr, 
                                  analysis_id=analysis_id)
     
     roi_outdir = os.path.join(acquisition_dir, run, 'retino_analysis', retinoid, 'traces')
