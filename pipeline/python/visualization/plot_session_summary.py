@@ -779,7 +779,7 @@ def plot_summaries(options):
     
     import matplotlib.gridspec as gridspec
 
-    if blobs_were_run and gratings_were_run: 
+    if blobs_were_run: #and gratings_were_run: 
         fig = pl.figure(figsize=(35,25))
         spec = gridspec.GridSpec(ncols=3, nrows=3)
         #fig, axes = pl.subplots(3,3, figsize=(30,30)) #pl.figure()
