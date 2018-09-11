@@ -355,7 +355,9 @@ class ActivityInfo:
             
         except RuntimeError:
             print("Error - curve_fit failed")
-
+            A = None; x0 = None; sigma = None;
+            r_squared = 0
+            y_fit = None
         self.average_y = y
         self.fit_results = {'r2': r_squared,
                            'A': A,
