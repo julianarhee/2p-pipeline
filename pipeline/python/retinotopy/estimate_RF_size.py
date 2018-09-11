@@ -320,7 +320,13 @@ class ActivityInfo:
     def parse_cycles(self, framestart, stimframes_incl):
         ncycles = len(framestart)
         parsed_traces = np.zeros((ncycles,stimframes_incl))
+        print parsed_traces.shape
+        print self.activity_trace.shape
         for cycle in range(0,ncycles):
+            print framestart[cycle]
+            ixs_to_fill = framestart[cycle] + stimframes_incl
+            if ixs_to_fill > len(self.activity_trace):
+                self.activity_trace = np.pad(self.activity_trace, ((0, ixs_to_fill - len(self.activity_trace))), mode='constant', constant_values=0)
             parsed_traces[cycle,:]=self.activity_trace[framestart[cycle]:framestart[cycle]+stimframes_incl]
         self.parsed_traces = parsed_traces
         
