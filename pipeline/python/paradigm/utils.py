@@ -1588,6 +1588,8 @@ def get_traceid_from_acquisition(acquisition_dir, run, traceid):
     else:
         with open(os.path.join(acquisition_dir, run, 'traces', 'traceids_%s.json' % run), 'r') as f:
             tdict = json.load(f)
+        if '_' in traceid and 'comb' not in run:
+            traceid = traceid.split('_')[0]
         tracefolder = '%s_%s' % (traceid, tdict[traceid]['trace_hash'])
         traceid_dir = os.path.join(acquisition_dir, run, 'traces', tracefolder)
         
