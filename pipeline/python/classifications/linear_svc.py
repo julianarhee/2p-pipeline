@@ -1802,8 +1802,7 @@ def calculate_confusion_matrix(predicted, true, clfparams, data_identifier=''):
     #pp.pprint(cv_results)
 
     
-def plot_normed_confusion_matrix(predicted, true, clfparams, ax=None):
-    
+def get_confusion_matrix(predicted, true, clfparams):
     # Compute confusion matrix:
     # -----------------------------------------------------------------------------
     if clfparams['classifier'] == 'LinearSVC':
@@ -1832,19 +1831,27 @@ def plot_normed_confusion_matrix(predicted, true, clfparams, ax=None):
 
                 cmatrix_tframes = confusion_matrix(true[best_fold], predicted[best_fold], labels=clfparams['class_labels'])
                 conf_mat_str = 'best'
-                #pl.figure();
-                #sns.distplot(avg_scores, kde=False)
-        
-        #% Plot confusion matrix:
-        # -----------------------------------------------------------------------------
-        #sns.set_style('white')
-        if ax is None:
-            fig, ax = pl.subplots(figsize=(10,4))
+                
+    return cmatrix_tframes, clfparams['class_labels'], conf_mat_str
 
-        plot_confusion_matrix(cmatrix_tframes, classes=clfparams['class_labels'], ax=ax, normalize=True,
-                              title='Normalized confusion (%s, %s)' % (conf_mat_str, clfparams['cv_method']))
-        
+def plot_normed_confusion_matrix(predicted, true, clfparams, ax=None):
     
+    # Compute confusion matrix:
+    # -----------------------------------------------------------------------------
+    assert clfparams['classifier'] == 'LinearSVC', "Not sure how to calculate conf matrix for clf type: %s" % clfparams['classifier']
+
+    cmatrix_tframes, classes, conf_mat_str = get_confusion_matrix(predicted, true, clfparams)
+        
+    #% Plot confusion matrix:
+    # -----------------------------------------------------------------------------
+    #sns.set_style('white')
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(10,4))
+
+    plot_confusion_matrix(cmatrix_tframes, classes=classes, ax=ax, normalize=True,
+                          title='Normalized confusion (%s, %s)' % (conf_mat_str, clfparams['cv_method']))
+    
+
     return
     
     
