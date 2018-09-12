@@ -639,8 +639,12 @@ class SessionSummary():
         gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
         gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
         #nrois_total = gratings_roidata.shape[-1]
-        selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
-        
+        oris = np.unique([v['ori'] for v in gratings_sconfigs])
+        if max(oris) > 180:
+            selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
+        else:
+            selectivity = {}
+            
         self.gratings['source'] = data_fpath
         self.gratings['roistats'] = gratings_roistats
         self.gratings['roidata'] = gratings_df_by_rois
@@ -781,7 +785,8 @@ class SessionSummary():
         cmap = 'hls'
         noris = len(np.unique([v['ori'] for k, v in self.gratings['sconfigs'].items()]))
         colorvals = sns.color_palette(cmap, noris) # len(gratings_sconfigs))
-        osi.hist_preferred_oris(self.gratings['selectivity'], colorvals, metric=self.gratings['metric'], save_and_close=False, ax=axes_flat[aix])
+        if len(self.gratings['selectivity'].keys()) > 0:
+            osi.hist_preferred_oris(self.gratings['selectivity'], colorvals, metric=self.gratings['metric'], save_and_close=False, ax=axes_flat[aix])
         sns.despine(trim=True, offset=4, ax=axes_flat[aix])
         bb = axes_flat[aix].get_position().bounds
         new_bb = [bb[0], bb[1], bb[2]*0.9, bb[3]*0.9]
@@ -939,12 +944,12 @@ options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zo
            '-g', 'traces003', '-b', 'traces002', '-b', 'traces002'
            ]
 
-def load_session_summary(optsE):
+def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     #%
     # First check if saved session summary info exists:
     session_summary_fpath = os.path.join(acquisition_dir, 'session_summary.pkl')
-    if os.path.exists(session_summary_fpath) and optsE.create_new is False:
+    if os.path.exists(session_summary_fpath) and optsE.create_new is False and redo is False:
         with open(session_summary_fpath, 'rb') as f:
             S = pkl.load(f)
     else:
@@ -957,7 +962,7 @@ def load_session_summary(optsE):
 
 def plot_session_summary(options):
     optsE = extract_options(options)
-    S = load_session_summary(optsE)
+    S = load_session_summary(optsE, redo=True)
     
     data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
 
