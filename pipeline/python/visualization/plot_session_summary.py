@@ -639,7 +639,7 @@ class SessionSummary():
         gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
         gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
         #nrois_total = gratings_roidata.shape[-1]
-        oris = np.unique([v['ori'] for v in gratings_sconfigs])
+        oris = np.unique([v['ori'] for k,v in gratings_sconfigs.items()])
         if max(oris) > 180:
             selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
         else:
