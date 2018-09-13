@@ -244,7 +244,10 @@ def process_pid(options):
     print "PID %s: BIDIR finished." % pid_hash
 
     # Create average slices for viewing:
-    if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved', PID['PARAMS']['preprocessing']['destdir'], 'visible', '*.tif')))==0: #execute_bidi is True:
+    deint_dir = os.path.join('%s_mean_deinterleaved' % PID['PARAMS']['preprocessing']['destdir'], 'visible')
+    #print deint_dir
+    #print os.listdir(deint_dir)
+    if get_zproj is True and len(glob.glob(os.path.join(deint_dir, '*.tif')))==0: #execute_bidi is True:
         print "PID %s -- Done with BIDI. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
 
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
@@ -288,7 +291,7 @@ def process_pid(options):
     print "PID %s: MC finished." % pid_hash
  
     # Create average slices for viewing:
-    if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved', PID['PARAMS']['motion']['destdir'], 'visible', '*.tif')))==0:
+    if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved' % PID['PARAMS']['motion']['destdir'], 'visible', '*.tif')))==0:
         print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
             currpid = json.load(f)
