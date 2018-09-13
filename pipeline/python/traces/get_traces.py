@@ -1722,23 +1722,23 @@ def extract_options(options):
                       dest="save_warp_images", default=False, help="Set flag to save output plots of warped ROIs (manual warp only).")
 
     # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-s', '--radius-min', action="store",
-                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-    parser.add_option('-B', '--radius-max', action="store",
-                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#    parser.add_option('--no-pupil', action="store_false",
+#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+#    parser.add_option('-s', '--radius-min', action="store",
+#                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+#    parser.add_option('-B', '--radius-max', action="store",
+#                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
+#    parser.add_option('-d', '--dist', action="store",
+#                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
 
     # Trace alignment info:
-    parser.add_option('--collate', action="store_true",
-                      dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
-    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype)) 
-    parser.add_option('-b', '--baseline', action="store",
-                      dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
-
+#    parser.add_option('--collate', action="store_true",
+#                      dest="create_dataframe", default=False, help="Set flag to collate traces into dataframe (and extract filtered traces, if params set).")
+#    parser.add_option('-T', '--trace-type', type='choice', choices=choices_tracetype, action='store', dest='trace_type', default=default_tracetype, help="Type of timecourse to plot PSTHs. Valid choices: %s [default: %s]" % (choices_tracetype, default_tracetype)) 
+#    parser.add_option('-b', '--baseline', action="store",
+#                      dest="iti_pre", default=1.0, help="Time (s) pre-stimulus to use for baseline. [default: 1.0]")
 #
+##
 
     (options, args) = parser.parse_args(options)
 
@@ -1855,10 +1855,8 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
 #        '-t', 'traces001', '--np=subtract', '--neuropil', '--append', '--no-pupil', '--warp']
 
 #%%
+    
 def extract_traces(options):
-#    options = ['-D', '/mnt/odyssey', '-i', 'CE074', '-S', '20180215', '-A', 'FOV2_zoom1x_LI', '-R', 'blobs',
-#            '-t', 'traces003', '--np-method=subtract', '--neuropil', '--append', '--no-pupil']
-#
     # Set USER INPUT options:
     options = extract_options(options)
 
@@ -1906,18 +1904,18 @@ def extract_traces(options):
     save_warp_images = options.save_warp_images
 
     # Trace alignment params:
-    create_dataframe = options.create_dataframe
-    trace_type = options.trace_type
-    filter_pupil = options.filter_pupil
-    pupil_radius_max = float(options.pupil_radius_max)
-    pupil_radius_min = float(options.pupil_radius_min)
-    pupil_dist_thr = float(options.pupil_dist_thr)
-    iti_pre = float(options.iti_pre)
+    #create_dataframe = options.create_dataframe
+    #trace_type = options.trace_type
+#    filter_pupil = options.filter_pupil
+#    pupil_radius_max = float(options.pupil_radius_max)
+#    pupil_radius_min = float(options.pupil_radius_min)
+#    pupil_dist_thr = float(options.pupil_dist_thr)
+#    iti_pre = float(options.iti_pre)
 
 
     print "======================================================================="
     print "Trace Set: %s -- Starting trace extraction..." % trace_id
-    t_start = time.time()
+    #t_start = time.time()
 
 
     #% Get meta info for run:
@@ -2076,6 +2074,14 @@ def extract_traces(options):
                                                          rootdir=rootdir)
 
     #%
+
+    return TID, RID, si_info, filetraces_dir, rootdir, update_roi_timecourses
+
+
+
+def files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_new=False): #, create_dataframe=False):
+
+    #%
     # Organize timecourses by stim-type for each ROI:
     # -----------------------------------------------
     print "*** Creating ROI-TCOURSE file...."
@@ -2083,11 +2089,19 @@ def extract_traces(options):
     roi_tcourse_filepath = get_roi_timecourses(TID, RID, si_info,
                                                input_filedir=filetraces_dir,
                                                rootdir=rootdir,
-                                               create_new=update_roi_timecourses)
+                                               create_new=create_new)
     print "-----------------------------------------------------------------------"
 
     #% move tmp file and clean up:
     tmp_tid_fn = 'tmp_tid_%s.json' % TID['trace_hash']
+    run_dir = TID['DST']
+
+    if rootdir not in run_dir:
+        acq_dir = os.path.split(run_dir)[0]
+        session_dir = os.path.split(acq_dir)[0]
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        run_dir = replace_root(run_dir, rootdir, animalid, session)
     tmp_tid_dir = os.path.join(run_dir, 'traces', 'tmp_tids')
 
     completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
@@ -2099,27 +2113,27 @@ def extract_traces(options):
 
     #%
     print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % TID['trace_hash']
-    print_elapsed_time(t_start)
+#    print_elapsed_time(t_start)
     print "======================================================================="
-    traceid_dir = TID['DST']
+#    traceid_dir = TID['DST']
 
-    roidata_filepath = None
-    if create_dataframe is True:
-        print "*** Creating ROI dataframes ***"
-        if append_trace_type is True:
-            create_new = True
+#    roidata_filepath = None
+#    if create_dataframe is True:
+#        print "*** Creating ROI dataframes ***"
+#        if append_trace_type is True:
+#            create_new = True
+#
+#        # Assign frame indices for specified trial epochs:
+#        # =====================================================================
+#        roidata_filepath, roistats_filepath = acq.align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir,
+#                                                           create_new=create_new,
+#                                                           filter_pupil=filter_pupil,
+#                                                           pupil_radius_min=pupil_radius_min,
+#                                                           pupil_radius_max=pupil_radius_max,
+#                                                           pupil_dist_thr=pupil_dist_thr,
+#                                                           iti_pre=iti_pre)
 
-        # Assign frame indices for specified trial epochs:
-        # =====================================================================
-        roidata_filepath, roistats_filepath = acq.align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir,
-                                                           create_new=create_new,
-                                                           filter_pupil=filter_pupil,
-                                                           pupil_radius_min=pupil_radius_min,
-                                                           pupil_radius_max=pupil_radius_max,
-                                                           pupil_dist_thr=pupil_dist_thr,
-                                                           iti_pre=iti_pre)
-
-    return roi_tcourse_filepath, roidata_filepath
+    return roi_tcourse_filepath #, roidata_filepath
 
 
 #%%
@@ -2145,11 +2159,16 @@ def extract_traces(options):
 #%% GET PLOTS:
 def main(options):
     #options = extract_options(options)
-    roi_tcourse_filepath, roidata_filepath = extract_traces(options)
+
+    TID, RID, si_info, filetraces_dir, rootdir, update_roi_timecourses = extract_traces(options)
+    roi_tcourse_filepath = files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_new=update_roi_timecourses)
+
+
+    #roi_tcourse_filepath, roidata_filepath = extract_traces(options)
     print "DONE extracting traces!"
     print "Output saved to:\n---> %s" % roi_tcourse_filepath
-    if roidata_filepath is not None:
-        print "Aligned traces to trial events. Saved dataframe to:\n%s" % roidata_filepath
+#    if roidata_filepath is not None:
+#        print "Aligned traces to trial events. Saved dataframe to:\n%s" % roidata_filepath
 
 if __name__ == '__main__':
     main(sys.argv[1:])
