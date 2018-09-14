@@ -550,7 +550,8 @@ class SessionSummary():
             self.get_gratings(metric='meanstim')
         if self.traceid_dirs['blobs'] is not None:
             self.get_objects(metric='zscore')
-        self.data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
+
+        self.data_identifier ='_'.join([self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], self.gratings['source'], self.gratings['traceid'], self.blobs['source'], self.blobs['traceid']])
            
 
     def plot_summary(self, ignore_null=True, selective=True):
@@ -649,8 +650,9 @@ class SessionSummary():
         else:
             selectivity = {}
             
-        self.gratings['source'] = data_fpath
+        self.gratings['source'] = gratings_run 
         self.gratings['traceid'] = gratings_traceid
+        self.gratings['data_fpath'] = data_fpath
         self.gratings['roistats'] = gratings_roistats
         self.gratings['roidata'] = gratings_df_by_rois
         self.gratings['sconfigs'] = gratings_sconfigs
@@ -679,8 +681,9 @@ class SessionSummary():
         blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
         blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
         
-        self.blobs['source'] = data_fpath
+        self.blobs['source'] = blobs_run
         self.blobs['traceid'] = blobs_traceid
+        self.blobs['data_fpath'] = data_fpath
         self.blobs['roistats'] = blobs_roistats
         self.blobs['roidata'] = blobs_df_by_rois
         self.blobs['sconfigs'] = blobs_sconfigs
@@ -751,8 +754,8 @@ class SessionSummary():
         
         n_badfits = nrois - len(plot_rois)
 
-        sns.distplot(az_rfs, kde=False, bins=50, ax=axes_flat[aix], label=cond0_name, color='orange')
-        sns.distplot(el_rfs, kde=False, bins=50, ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
+        sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond0_name, color='orange')
+        sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
         bb = axes_flat[aix].get_position().bounds
         new_bb = [bb[0]*1.05, bb[1]*1.02, bb[2]*0.8, bb[3]]
         axes_flat[aix].set_position(new_bb)
@@ -845,12 +848,12 @@ class SessionSummary():
         else:
             rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
         nrois_plot = len(rois_to_plot) 
-        colors = sns.color_palette('husl', nrois_plot*2)
+        colors = sns.color_palette('husl', nrois_plot)
         
         # Shapes = objects
         nobjects = len(self.blobs['transforms']['object'].unique())  #len(responses['object'].unique())
         markers = ['o', 'P', '*', '^', 's', 'd']
-        marker_kws = {'markersize': 10, 'linewidth': 1, 'alpha': 0.3}
+        marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
             
         for trans_ix, transform in enumerate(self.blobs['transforms_tested']):
             tix = aix + trans_ix
@@ -887,9 +890,9 @@ class SessionSummary():
         for object_ix in range(nobjects):
             legend_objects.append(Line2D([0], [0], color='w', markerfacecolor='k', 
                                          marker=markers[object_ix], label=object_names[object_ix], 
-                                         linewidth=2, markersize=10))
+                                         linewidth=2, markersize=15))
             
-        axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(-0.2, -0.2), ncol=nobjects) # loc='upper right')
+        axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(0.2, -0.2), ncol=nobjects) # loc='upper right')
         
         
         
@@ -921,7 +924,8 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
     parser.add_option('--redo', action='store_true', dest='redo', default=False, help="set to (re-)create SessionSummary object")
     parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
-    
+    parser.add_option('--RF-all', action='store_false', dest='ignore_null_RFs', default=True, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
+   
     # Run specific info:
     parser.add_option('-g', '--gratings', dest='gratings_traceid', default='', action='store', help="traceid for GRATINGS [default: '']")
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
@@ -974,10 +978,10 @@ def plot_session_summary(options):
     
     #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
-    S.plot_summary(ignore_null=True, selective=True)
+    S.plot_summary(ignore_null=optsE.ignore_null_RFs, selective=True)
     label_figure(S.fig, S.data_identifier)
     
-    figname = '%s_acquisition_summary_%s.png' % (optsE.acquisition, data_identifier)
+    figname = '%s_acquisition_summary_%s.png' % (optsE.acquisition, S.data_identifier)
     
     pl.savefig(os.path.join(os.path.join(S.rootdir, S.animalid, S.session), figname))
     pl.close()
