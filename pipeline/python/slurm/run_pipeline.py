@@ -61,7 +61,7 @@ else:
     if (len(ACQUISITION) and len(RUN)) > 0:
         PIDDIR = os.path.join(ROOTDIR, ANIMALID, SESSION, ACQUISITION, RUN, 'processed', 'tmp_pids')
         if not os.path.exists(PIDDIR):
-            fatal("Specified PID path does not exist!\nACQ: %s | RUN: %s" % (ACQUISITION, SESSION))
+            fatal("Specified PID path does not exist!\nACQ: %s | RUN: %s" % (ACQUISITION, RUN))
         else:
             if len(PIDHASH) > 0:
                 PIDPATH = os.path.join(PIDDIR, 'tmp_pid_%s.json' % PIDHASH)
