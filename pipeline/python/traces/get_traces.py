@@ -2092,29 +2092,6 @@ def files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_
                                                create_new=create_new)
     print "-----------------------------------------------------------------------"
 
-    #% move tmp file and clean up:
-    tmp_tid_fn = 'tmp_tid_%s.json' % TID['trace_hash']
-    run_dir = TID['DST']
-
-    if rootdir not in run_dir:
-        acq_dir = os.path.split(run_dir)[0]
-        session_dir = os.path.split(acq_dir)[0]
-        session = os.path.split(session_dir)[-1]
-        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
-        run_dir = replace_root(run_dir, rootdir, animalid, session)
-    tmp_tid_dir = os.path.join(run_dir, 'traces', 'tmp_tids')
-
-    completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
-    if not os.path.exists(completed_tid_dir):
-        os.makedirs(completed_tid_dir)
-    if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
-        os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
-    print "Cleaned up tmp tid files."
-
-    #%
-    print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % TID['trace_hash']
-#    print_elapsed_time(t_start)
-    print "======================================================================="
 #    traceid_dir = TID['DST']
 
 #    roidata_filepath = None
@@ -2161,12 +2138,37 @@ def main(options):
     #options = extract_options(options)
 
     TID, RID, si_info, filetraces_dir, rootdir, update_roi_timecourses = extract_traces(options)
-    roi_tcourse_filepath = files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_new=update_roi_timecourses)
+    #roi_tcourse_filepath = files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_new=update_roi_timecourses)
+
+
+    #% move tmp file and clean up:
+    tmp_tid_fn = 'tmp_tid_%s.json' % TID['trace_hash']
+    run_dir = TID['DST']
+
+    if rootdir not in run_dir:
+        acq_dir = os.path.split(run_dir)[0]
+        session_dir = os.path.split(acq_dir)[0]
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        run_dir = replace_root(run_dir, rootdir, animalid, session)
+    tmp_tid_dir = os.path.join(run_dir, 'traces', 'tmp_tids')
+
+    completed_tid_dir = os.path.join(tmp_tid_dir, 'completed')
+    if not os.path.exists(completed_tid_dir):
+        os.makedirs(completed_tid_dir)
+    if os.path.exists(os.path.join(tmp_tid_dir, tmp_tid_fn)):
+        os.rename(os.path.join(tmp_tid_dir, tmp_tid_fn), os.path.join(completed_tid_dir, tmp_tid_fn))
+    print "Cleaned up tmp tid files."
+
+    #%
+    print "*** TID %s *** COMPLETED TRACE EXTRACTION!" % TID['trace_hash']
+#    print_elapsed_time(t_start)
+    print "======================================================================="
 
 
     #roi_tcourse_filepath, roidata_filepath = extract_traces(options)
     print "DONE extracting traces!"
-    print "Output saved to:\n---> %s" % roi_tcourse_filepath
+    #print "Output saved to:\n---> %s" % roi_tcourse_filepath
 #    if roidata_filepath is not None:
 #        print "Aligned traces to trial events. Saved dataframe to:\n%s" % roidata_filepath
 
