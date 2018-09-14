@@ -537,8 +537,11 @@ class SessionSummary():
         self.traceid_dirs = get_data_sources(optsE)
         self.zproj = {'source': None, 'type': 'dff' if optsE.use_dff else 'mean', 'data': None}
         self.retinotopy = {'source': None, 'traceid': optsE.retino_traceid, 'data': None}
-        self.gratings = {'source': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
-        self.blobs = {'source': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
+        self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
+        self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
+    
+        self.get_data()
+
 
     def get_data(self):
         self.get_zproj_image()
@@ -547,7 +550,8 @@ class SessionSummary():
             self.get_gratings(metric='meanstim')
         if self.traceid_dirs['blobs'] is not None:
             self.get_objects(metric='zscore')
-            
+        self.data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
+           
 
     def plot_summary(self, ignore_null=True, selective=True):
         
@@ -646,6 +650,7 @@ class SessionSummary():
             selectivity = {}
             
         self.gratings['source'] = data_fpath
+        self.gratings['traceid'] = gratings_traceid
         self.gratings['roistats'] = gratings_roistats
         self.gratings['roidata'] = gratings_df_by_rois
         self.gratings['sconfigs'] = gratings_sconfigs
@@ -675,6 +680,7 @@ class SessionSummary():
         blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
         
         self.blobs['source'] = data_fpath
+        self.blobs['traceid'] = blobs_traceid
         self.blobs['roistats'] = blobs_roistats
         self.blobs['roidata'] = blobs_df_by_rois
         self.blobs['sconfigs'] = blobs_sconfigs
@@ -913,6 +919,7 @@ def extract_options(options):
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
+    parser.add_option('--redo', action='store_true', dest='redo', default=False, help="set to (re-)create SessionSummary object")
     parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
     
     # Run specific info:
@@ -948,28 +955,29 @@ def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     #%
     # First check if saved session summary info exists:
+    
     session_summary_fpath = os.path.join(acquisition_dir, 'session_summary.pkl')
     if os.path.exists(session_summary_fpath) and optsE.create_new is False and redo is False:
         with open(session_summary_fpath, 'rb') as f:
             S = pkl.load(f)
     else:
         S = SessionSummary(optsE)
-        S.get_data()
-        with open(os.path.join(acquisition_dir, 'session_summary.pkl'), 'wb') as f:
+        #datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
             pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return S
 
 def plot_session_summary(options):
     optsE = extract_options(options)
-    S = load_session_summary(optsE, redo=True)
+    S = load_session_summary(optsE, redo=optsE.redo)
     
-    data_identifier ='_'.join([optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition])
+    #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
     S.plot_summary(ignore_null=True, selective=True)
-    label_figure(S.fig, data_identifier)
+    label_figure(S.fig, S.data_identifier)
     
-    figname = '%s_acquisition_summary.png' % optsE.acquisition
+    figname = '%s_acquisition_summary_%s.png' % (optsE.acquisition, data_identifier)
     
     pl.savefig(os.path.join(os.path.join(S.rootdir, S.animalid, S.session), figname))
     pl.close()
