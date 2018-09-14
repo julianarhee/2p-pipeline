@@ -551,10 +551,10 @@ class SessionSummary():
         if self.traceid_dirs['blobs'] is not None:
             self.get_objects(metric='zscore')
 
-        self.data_identifier ='_'.join([self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], self.gratings['source'], self.gratings['traceid'], self.blobs['source'], self.blobs['traceid']])
+        self.data_identifier ='_'.join([self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], str(self.gratings['source']), str(self.gratings['traceid']), str(self.blobs['source']), str(self.blobs['traceid'])])
            
 
-    def plot_summary(self, ignore_null=True, selective=True):
+    def plot_summary(self, ignore_null=False, selective=True):
         
         if self.traceid_dirs['blobs'] is not None: #and gratings_were_run: 
             fig = pl.figure(figsize=(35,25))
@@ -576,11 +576,13 @@ class SessionSummary():
         self.plot_zproj_image(fig.axes, aix=0)
         self.plot_retinotopy_to_screen(fig.axes, aix=1)
         self.plot_estimated_RF_size(fig.axes, aix=2, ignore_null=ignore_null)
-        self.plot_responsivity_gratings(fig.axes, aix=3)
-        self.plot_OSI_histogram(fig.axes, aix=4)
-        self.plot_confusion_gratings(fig.axes, aix=5)
-        self.plot_responsivity_objects(fig.axes, aix=6)
-        self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
+        if self.traceid_dirs['gratings'] is not None:
+            self.plot_responsivity_gratings(fig.axes, aix=3)
+            self.plot_OSI_histogram(fig.axes, aix=4)
+            self.plot_confusion_gratings(fig.axes, aix=5)
+        if self.traceid_dirs['blobs'] is not None:
+            self.plot_responsivity_objects(fig.axes, aix=6)
+            self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
 
     
     def get_zproj_image(self):
@@ -924,7 +926,7 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
     parser.add_option('--redo', action='store_true', dest='redo', default=False, help="set to (re-)create SessionSummary object")
     parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
-    parser.add_option('--RF-all', action='store_false', dest='ignore_null_RFs', default=True, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
+    parser.add_option('--ignore-null-RF', action='store_true', dest='ignore_null_RF', default=False, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
    
     # Run specific info:
     parser.add_option('-g', '--gratings', dest='gratings_traceid', default='', action='store', help="traceid for GRATINGS [default: '']")
@@ -978,7 +980,7 @@ def plot_session_summary(options):
     
     #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
-    S.plot_summary(ignore_null=optsE.ignore_null_RFs, selective=True)
+    S.plot_summary(ignore_null=optsE.ignore_null_RF, selective=True)
     label_figure(S.fig, S.data_identifier)
     
     figname = '%s_acquisition_summary_%s.png' % (optsE.acquisition, S.data_identifier)
