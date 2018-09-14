@@ -745,16 +745,17 @@ class SessionSummary():
         cond1_name = self.retinotopy['data'][0].conditions[1].name
 
         nrois = len(self.retinotopy['data'])
-        if ignore_null:
-            plot_rois = [ri for ri in range(nrois) if self.retinotopy['data'][ri].conditions[0].RF_degrees > 0 
+        fit_rois = [ri for ri in range(nrois) if self.retinotopy['data'][ri].conditions[0].RF_degrees > 0 
                                  and self.retinotopy['data'][ri].conditions[1].RF_degrees > 0]
+        if ignore_null:
+            plot_rois = fit_rois
         else:
             plot_rois = range(nrois)
         
         el_rfs = [roi.conditions[0].RF_degrees for ri, roi in enumerate(self.retinotopy['data']) if ri in plot_rois]
         az_rfs = [roi.conditions[1].RF_degrees for ri, roi in enumerate(self.retinotopy['data']) if ri in plot_rois]
         
-        n_badfits = nrois - len(plot_rois)
+        n_badfits = nrois - len(fit_rois)
 
         sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond0_name, color='orange')
         sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
@@ -962,11 +963,30 @@ def load_session_summary(optsE, redo=False):
     #%
     # First check if saved session summary info exists:
     
-    session_summary_fpath = os.path.join(acquisition_dir, 'session_summary.pkl')
-    if os.path.exists(session_summary_fpath) and optsE.create_new is False and redo is False:
-        with open(session_summary_fpath, 'rb') as f:
-            S = pkl.load(f)
-    else:
+    ss_fpaths = glob.glob(os.path.join(acquisition_dir, 'session_summary*.pkl'))
+    if len(ss_fpaths) > 0 and optsE.create_new is False and redo is False:
+        session_summary_fpath = None
+        while session_summary_fpath is None:
+            if len(ss_fpaths) > 1:
+                print "More than 1 SS fpath found:"
+                for si, spath in enumerate(ss_fpaths):
+                    print si, spath
+                selected = raw_input("Select IDX to plot: ")
+                if selected == '':
+                    redo = True
+                    session_summary_fpath = 'NA'
+                else:     
+                    session_summary_fpath = ss_fpaths[int(selected)]
+            else:
+                session_summary_fpath = ss_fpaths[0]
+        if session_summary_fpath == 'NA':
+            pass
+        else:
+            with open(session_summary_fpath, 'rb') as f:
+                S = pkl.load(f)
+
+    if optsE.create_new or redo:
+       print "*** Creating new SessionSummary() object!"
         S = SessionSummary(optsE)
         #datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
