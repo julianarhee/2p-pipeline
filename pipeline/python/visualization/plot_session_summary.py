@@ -460,8 +460,8 @@ def get_data_sources(optsE):
         print "Getting gratings..."
 
         #check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-        check_gratings_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % b)) 
-        										for b in optsE.gratings_traceid_list] for item in sublist]))
+        check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % b))
+        										for b in optsE.gratings_traceid_list] for item in sublist])), key=natural_keys)
         if len(check_gratings_dir) > 1:
             combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name='combined_gratings_static', create_new=optsE.create_new)
             traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
@@ -473,10 +473,10 @@ def get_data_sources(optsE):
         print "Getting blobs..."
         check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
         										for b in optsE.blobs_traceid_list] for item in sublist]))
-        check_blobs_dir = [b for b in check_blobs_dir if 'dynamic' not in b]
+        check_blobs_dir = sorted([b for b in check_blobs_dir if 'dynamic' not in b], key=natural_keys)
         if len(optsE.blobs_runlist) > 0:
             print "Specified blobs runs:", optsE.blobs_runlist
-            check_blobs_dir = [b for b in check_blobs_dir if os.path.split(b.split('/traces')[0])[-1] in optsE.blobs_runlist]
+            check_blobs_dir = sorted([b for b in check_blobs_dir if os.path.split(b.split('/traces')[0])[-1] in optsE.blobs_runlist], key=natural_keys)
         if len(check_blobs_dir) > 1:
         	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name='combined_blobs_static', create_new=optsE.create_new)
         	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
@@ -543,7 +543,7 @@ class SessionSummary():
         self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
     
-        #self.get_data()
+        self.get_data()
 
 
     def get_data(self):
