@@ -485,11 +485,13 @@ def create_neuropil_masks(masks, niterations=10):
         # Get full mask image to subtract overlaps:
         allmasks = np.sum(masks, axis=-1)
         summed = annulus + allmasks
-        summed[summed>1] = 0
-
+        summed[summed>1] = 0  # Find where this neuropil overlaps any other cells
+        summed[allmasks > 0] = 0
+        neuropil = summed.copy()
+        
         # Add annulus back in to make neuropil area = 2, everythign else = 1:
-        summed += annulus
-        neuropil = summed - allmasks
+        #summed += annulus
+        #neuropil = summed - allmasks
         np_masks[:,:,ridx] = neuropil.astype('bool')
 
     return np_masks
