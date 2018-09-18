@@ -95,6 +95,7 @@ Created on Tue Dec 12 11:57:24 2017
 import matplotlib
 matplotlib.use('Agg')
 import os
+import glob
 import sys
 import h5py
 import json
@@ -417,6 +418,14 @@ def plot_warped_rois(ref, sample, masks, masks_aligned, save_warp_images=True, o
     pl.close()
 
 #%%
+    
+    import tifffile as tf
+    import os
+    import h5py
+    import cv2
+    import pylab as pl
+    import numpy as np
+    
 def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_images=False, out_fpath='/tmp/warped.png'):
 
     height, width = ref.shape
@@ -434,32 +443,72 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
         warp_matrix = np.eye(2, 3, dtype=np.float32)
 
     # Set the stopping criteria for the algorithm.
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-6)
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-10)
 
     sample = img.copy()
     # Warp REFERENCE image into sample:
-    (cc, warp_matrix) = cv2.findTransformECC (get_gradient(sample), get_gradient(ref),warp_matrix, warp_mode, criteria)
+    (cc, warp_matrix) = cv2.findTransformECC (get_gradient(sample), get_gradient(ref), warp_matrix, warp_mode, criteria)
+    
     if warp_mode == cv2.MOTION_HOMOGRAPHY :
         # Use Perspective warp when the transformation is a Homography
-        ref_aligned = cv2.warpPerspective (ref, warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        ref_aligned = cv2.warpPerspective(ref, warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         mode_str = 'MOTION_HOMOGRAPHY'
     else:
         # Use Affine warp when the transformation is not a Homography
         ref_aligned = cv2.warpAffine(ref, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
         mode_str = 'WARP_AFFINE'
 
+    # Check if warp is better than the original:
+    warp_corr = np.corrcoef(sample.ravel(), ref_aligned.ravel())
+    orig_corr = np.corrcoef(sample.ravel(), ref.ravel())
+    if warp_corr[0,1] < orig_corr[0,1]:
+        if warp_mode == cv2.MOTION_HOMOGRAPHY:
+            alt_transform = cv2.MOTION_AFFINE
+        else:
+            alt_transform = cv2.MOTION_HOMOGRAPHY
+        
+        ref_aligned = np.zeros((height,width), dtype=ref.dtype) #dtype=np.uint8 )
 
+        # Retry with AFFINE:
+        warp_matrix = np.eye(2, 3, dtype=np.float32)
+
+        # Set the stopping criteria for the algorithm.
+        criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-10)
+        
+        sample = img.copy()
+        # Warp REFERENCE image into sample:
+        (cc, warp_matrix) = cv2.findTransformECC (get_gradient(sample), get_gradient(ref), warp_matrix, alt_transform, criteria)
+        
+        ref_aligned = cv2.warpAffine(ref, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
+
+        warp_corr = np.corrcoef(sample.ravel(), ref_aligned.ravel())
+        orig_corr = np.corrcoef(sample.ravel(), ref.ravel())
+        if warp_corr[0,1] < orig_corr[0,1]:
+            accept_warp = False
+        else:
+            accept_warp = True
+    else:
+        accept_warp = True
+        
+    pl.figure()
+    pl.subplot(1,3,1); pl.imshow(ref)
+    pl.subplot(1,3,2); pl.imshow(sample)
+    pl.subplot(1,3,3); pl.imshow(ref_aligned)
+        
     #% Warp masks with same transform:
     masks_aligned = np.zeros(masks.shape, dtype=masks.dtype)
     nrois = masks.shape[-1]
     for r in xrange(0, nrois):
-        masks_aligned[:,:,r] = cv2.warpPerspective (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        if warp_mode == cv2.MOTION_HOMOGRAPHY:
+            masks_aligned[:,:,r] = cv2.warpPerspective (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+        else:
+            masks_aligned[:,:,r] = cv2.warpAffine (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
 
     # Save warp alignment, if requested:
     if save_warp_images:
         plot_warped_rois(ref, sample, masks, masks_aligned, save_warp_images=save_warp_images, out_fpath=out_fpath)
 
-    return masks_aligned
+    return masks_aligned, accept_warp
 
 #%%
 
@@ -617,8 +666,11 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                         else:
                             warp_img_path = ''
                         print "... warping original REF to current tif image for aligned ROIs."
-                        masks = warp_masks(masks, ref_img, img, save_warp_images=save_warp_images, out_fpath=warp_img_path)
+                        masks_aligned, accept_warp = warp_masks(masks, ref_img, img, save_warp_images=save_warp_images, out_fpath=warp_img_path)
                         mask_arr = masks_to_normed_array(masks)
+                        if not accept_warp:
+                            print "*** warp is worse than original! Excluding tif %s." % curr_file
+
                     mref_name = maskinfo['ref_file']
                 else:
                     if len(masks.shape) > 2:
@@ -660,7 +712,9 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                     mab[...] = Ab
                     mac = filegrp.create_dataset('/'.join([curr_slice, 'Cf']), Cf.shape, Cf.dtype)
                     mac[...] = Cf
-
+                    
+            filegrp.attrs['accept_warp'] = accept_warp
+            
     except Exception as e:
         print "------------------------------------------"
         print "*** ERROR creating masks: %s, %s ***" % (curr_file, curr_slice)
@@ -1976,6 +2030,21 @@ def extract_traces(options):
     print "TID %s - Got mask info from ROI set %s." % (TID['trace_hash'], RID['roi_id'])
     print_elapsed_time(t_mask)
     print "-----------------------------------------------------------------------"
+
+    # Check that warps are acceptable:
+    print "Checking correlation values for warped masks..."
+    mfile = h5py.File(maskdict_path, 'r')
+    bad_warps = [mfile_key for mfile_key in mfile.keys() if not mfile[mfile_key].attrs['accept_warp']]
+    if len(bad_warps) > 0:
+        print "%i out of %i Files failed warp." % (len(bad_warps), len(mfile.keys()))
+        print "Overwriting 'excluded_tiffs' field in TID params."
+        print "EXCLUDE:", bad_warps
+        TID['PARAMS']['excluded_files'].extend(bad_warps)
+        tid_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_*.json'))[0]
+        with open(tid_path, 'r') as f: tids = json.load(tid_path)
+        tids[TID['trace_id']] = TID
+        with open(tid_path, 'w') as f: json.dump(tids, f, indent=True, sort_keys=True)
+        
 
     #%
     # Apply masks to .tif files:
