@@ -193,8 +193,10 @@ def make_clean_psths(options):
     run = optsE.run #run_list[0]
     traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    
-    traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    if '_' not in traceid: 
+        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    else:
+        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     print "Loaded data from: %s" % traceid_dir
 #    dataset = np.load(data_fpath)
@@ -241,8 +243,8 @@ def make_clean_psths(options):
         figdir_append = '_filtered'
     
     
-    ydata = dataset['ylabels']
-    tsecs = dataset['tsecs']
+    #ydata = dataset['ylabels']
+    #tsecs = dataset['tsecs']
     
     run_info = dataset['run_info'][()]
     nframes_per_trial = run_info['nframes_per_trial']
@@ -431,10 +433,13 @@ def make_clean_psths(options):
                 axesf[pi].set_xticklabels(())
                 axesf[pi].tick_params(axis='x', which='both',length=0)
                 axesf[pi].set_title(k, fontsize=8)
-                    
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
+            
+            # Add annotation for n trials in stim config:    
+            axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
+
             
             #pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
 
