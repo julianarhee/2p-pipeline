@@ -20,29 +20,30 @@ import tifffile as tf
 
 from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation, get_info_from_tiff_dir
 from pipeline.python.rois.get_rois import standardize_rois, save_roi_params
-from pipeline.python.utils import replace_root
+from pipeline.python.utils import replace_root, natural_keys, uint16_to_RGB
+from pipeline.python.traces.get_traces import get_gradient
 from pipeline.python.classifications import utils as util
 
 import imutils
 
 #%%
-def get_gradient(im) :
-    # Calculate the x and y gradients using Sobel operator
-    grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
-    grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
-
-    # Combine the two gradients
-    grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
-    return grad
-
-
-def uint16_to_RGB(img):
-    im = img.astype(np.float64)/img.max()
-    im = 255 * im
-    im = im.astype(np.uint8)
-    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
-    return rgb
-
+#def get_gradient(im) :
+#    # Calculate the x and y gradients using Sobel operator
+#    grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
+#    grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
+#
+#    # Combine the two gradients
+#    grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
+#    return grad
+#
+#
+#def uint16_to_RGB(img):
+#    im = img.astype(np.float64)/img.max()
+#    im = 255 * im
+#    im = im.astype(np.uint8)
+#    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
+#    return rgb
+#
 def get_all_contours(mask_array):
     # Cycle through all ROIs and get their edges
     # (note:  tried doing this on sum of all ROIs, but fails if ROIs are overlapping at all)
