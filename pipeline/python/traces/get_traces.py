@@ -383,7 +383,7 @@ def uint16_to_RGB(img):
     rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
     return rgb
 
-def plot_warped_rois(ref, sample, masks, masks_aligned, save_warp_images=True, out_fpath='/tmp/aligned_rois.png'):
+def plot_warped_rois(ref, sample, masks, masks_aligned, title='', save_warp_images=True, out_fpath='/tmp/aligned_rois.png'):
     refRGB = uint16_to_RGB(ref)
     imRGB = uint16_to_RGB(sample)
     wimRGB = uint16_to_RGB(sample)
@@ -414,18 +414,12 @@ def plot_warped_rois(ref, sample, masks, masks_aligned, save_warp_images=True, o
         ax3.imshow(wimRGB)
 
     #figname = 'aligned_rois.png'
+    pl.title(title)
     pl.savefig(out_fpath)
     pl.close()
 
 #%%
-    
-    import tifffile as tf
-    import os
-    import h5py
-    import cv2
-    import pylab as pl
-    import numpy as np
-    
+        
 def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_images=False, out_fpath='/tmp/warped.png'):
 
     height, width = ref.shape
@@ -464,8 +458,10 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
     if warp_corr[0,1] < orig_corr[0,1]:
         if warp_mode == cv2.MOTION_HOMOGRAPHY:
             alt_transform = cv2.MOTION_AFFINE
+            mode_str = 'WARP_AFFINE'
         else:
             alt_transform = cv2.MOTION_HOMOGRAPHY
+            mode_str = 'MOTION_HOMOGRAPHY'
         
         ref_aligned = np.zeros((height,width), dtype=ref.dtype) #dtype=np.uint8 )
 
@@ -487,14 +483,15 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
             accept_warp = False
         else:
             accept_warp = True
+        warp_mode = alt_transform
     else:
         accept_warp = True
         
-    pl.figure()
-    pl.subplot(1,3,1); pl.imshow(ref)
-    pl.subplot(1,3,2); pl.imshow(sample)
-    pl.subplot(1,3,3); pl.imshow(ref_aligned)
-        
+#    pl.figure()
+#    pl.subplot(1,3,1); pl.imshow(ref)
+#    pl.subplot(1,3,2); pl.imshow(sample)
+#    pl.subplot(1,3,3); pl.imshow(ref_aligned)
+
     #% Warp masks with same transform:
     masks_aligned = np.zeros(masks.shape, dtype=masks.dtype)
     nrois = masks.shape[-1]
@@ -506,7 +503,7 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
 
     # Save warp alignment, if requested:
     if save_warp_images:
-        plot_warped_rois(ref, sample, masks, masks_aligned, save_warp_images=save_warp_images, out_fpath=out_fpath)
+        plot_warped_rois(ref, sample, masks, masks_aligned, title=mode_str, save_warp_images=save_warp_images, out_fpath=out_fpath)
 
     return masks_aligned, accept_warp
 
