@@ -56,6 +56,7 @@ def create_activity_map(acquisition_dir, run, rootdir=''):
     # Can just use first File in run to not deal with frame indices 
 
     # Use motion-corrected files:
+    print os.listdir(os.path.join(acquisition_dir, run, 'processed'))
     pid_path = glob.glob(os.path.join(acquisition_dir, run, 'processed', 'pids_*.json'))[0]
     with open(pid_path, 'r') as f: pids = json.load(f)
     if len(pids.keys()) > 1:
@@ -589,10 +590,10 @@ class SessionSummary():
         
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         
-        if self.traceid_dirs['gratings'] is None:
-            self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
-        else:
-            self.zproj['source'] = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1]
+#        if self.traceid_dirs['gratings'] is None:
+        self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
+#        else:
+#            self.zproj['source'] = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1]
         
         if self.zproj['type'] == 'dff':
             self.zproj['data'] = create_activity_map(acquisition_dir, self.zproj['source'], rootdir=self.rootdir)
@@ -987,10 +988,10 @@ def load_session_summary(optsE, redo=False):
 
     if optsE.create_new or redo:
        print "*** Creating new SessionSummary() object!"
-        S = SessionSummary(optsE)
-        #datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
-            pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
+       S = SessionSummary(optsE)
+       #datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+       with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
+           pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return S
 
