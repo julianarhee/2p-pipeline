@@ -456,10 +456,12 @@ def get_data_sources(optsE):
                     'blobs': None}
     
     # Get gratings traceid dir:
-    if len(optsE.gratings_traceid) > 0:
+    if len(optsE.gratings_traceid_list) > 0:
         print "Getting gratings..."
 
-        check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
+        #check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
+        check_gratings_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % b)) 
+        										for b in optsE.gratings_traceid_list] for item in sublist]))
         if len(check_gratings_dir) > 1:
             combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name='combined_gratings_static', create_new=optsE.create_new)
             traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
@@ -541,7 +543,7 @@ class SessionSummary():
         self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
     
-        self.get_data()
+        #self.get_data()
 
 
     def get_data(self):
@@ -931,7 +933,7 @@ def extract_options(options):
     parser.add_option('--ignore-null-RF', action='store_true', dest='ignore_null_RF', default=False, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
    
     # Run specific info:
-    parser.add_option('-g', '--gratings', dest='gratings_traceid', default='', action='store', help="traceid for GRATINGS [default: '']")
+    parser.add_option('-g', '--gratings', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
     parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
     parser.add_option('-B', '--blobs', dest='blobs_runlist', default=[], action='append', nargs=1, help='list of blob run IDs [default: []')
@@ -954,10 +956,9 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
+options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180915', '-A', 'FOV1_zoom2p7x',
            '-d', 'corrected',
-           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002'
-           ]
+           '-g', 'traces001', '-g', 'traces001']
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
