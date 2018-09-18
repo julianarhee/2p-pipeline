@@ -200,6 +200,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     allframes = sorted(frame_bitcodes.keys(), key=natural_keys) #, key=natural_keys
 
     curr_frames = sorted(allframes[int(first_stim_frame.split('_')[0])+1:], key=natural_keys)
+    print "First stim frame:", curr_frames[0]
     curr_frame_vals = list((k, modes_by_frame[k]) for k in curr_frames)
 
     first_frame = first_stim_frame
@@ -247,6 +248,23 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
 
         bitcodes = mwtrials[trial]['all_bitcodes']
+       
+        # With pre-ITI, first stimulus bitcode of first trial can be 0, 
+	# so make sure we skip all the actual blanks until we hit the first preITI.
+        if bitcodes[0] == 0 and trial=='trial00001':
+            iter_curr_frame_vals = iter(curr_frame_vals) 
+            #-----
+            first_frame = curr_frame_vals[0]; pframe = curr_frame_vals[0]; currframes_counter=0;
+            if verbose:
+                print "... first", first_frame
+                print "...", curr_frame_vals[0:5]
+            while first_frame[1] == 0:
+                pframe = np.copy(first_frame)
+                first_frame = next(iter_curr_frame_vals)
+                currframes_counter += 1
+            curr_frames = curr_frames[currframes_counter:]
+            curr_frame_vals = curr_frame_vals[currframes_counter:]
+            first_frame = curr_frame_vals[0][0]
 
         # First, check if first "stimulus" bit-code is actually an image (in case frame-trigger  update missed at start)
         minframes = 5 #4 #5 #4
