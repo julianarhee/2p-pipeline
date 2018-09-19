@@ -15,6 +15,7 @@ import h5py
 import datetime
 import random
 import itertools
+import shutil
 import matplotlib
 matplotlib.use('agg')
 
@@ -372,7 +373,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             
     
         # Combine runs in order of their alphanumeric name:
-        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
         tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
         tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
         
@@ -409,7 +410,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             labels_df = tmp_labels_df.iloc[kept_ixs, :].reset_index(drop=True)
             data = tmp_data[kept_ixs, :]
             data_meanstim = tmp_data_meanstim[trial_indices, :]
-            
+           
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
 
         else:
@@ -417,11 +418,13 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             data = tmp_data
             data_meanstim = tmp_data_meanstim
             
-        
+        ylabels = labels_df['config'].values
+       
         # Save it:
         np.savez(combo_dpath,
                  corrected=data,
                  meanstim=data_meanstim,
+                 ylabels=ylabels,
                  labels_data=labels_df,
                  labels_columns=labels_df.columns.tolist(),
                  run_info = rinfo,
@@ -549,6 +552,7 @@ class SessionSummary():
         self.retinotopy = {'source': None, 'traceid': optsE.retino_traceid, 'data': None}
         self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
+        self.data_identifier = None
     
         self.get_data()
 
@@ -564,7 +568,11 @@ class SessionSummary():
         info_str = [self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], str(self.gratings['source']), str(self.gratings['traceid']), str(self.blobs['source']), str(self.blobs['traceid'])]
         print info_str
         self.data_identifier ='_'.join(info_str)
-           
+        
+        # Update tmp_ss.pkl file:
+        tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
+        if not os.path.exists(tmp_fpath):
+            shutil.move(os.path.join(acquisition_dir, 'tmp_ss.pkl'), tmp_fpath)   
 
     def plot_summary(self, ignore_null=False, selective=True):
         
@@ -598,7 +606,11 @@ class SessionSummary():
 
     def load_sessionsummary_step(self, key=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
-        tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        if self.data_identifier is None:
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        else:
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
+
         if not os.path.exists(tmp_fpath):
             print"No temp file exists. Redo step: %s" % key
             return None
@@ -612,12 +624,20 @@ class SessionSummary():
             
     def save_sessionsummary_step(self, key='', val=None):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
-        tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        if self.data_identifier is None:
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        else:
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
+
         if not os.path.exists(tmp_fpath):
             print "No temp file exists yet. Creating it!"
             tmpdict = {}
             tmpdict.update({key: val})
-            with open(tmp_fpath, 'rb') as f: pkl.dump(tmpdict, f, protocol=pkl.HHIGHEST_PROTOCOL)
+            with open(tmp_fpath, 'wb') as f: pkl.dump(tmpdict, f, protocol=pkl.HIGHEST_PROTOCOL)
+        else:
+            with open(tmp_fpath, 'rb') as f: tmpdict = pkl.load(f)
+            tmpdict.update({key: val})
+            with open(tmp_fpath, 'wb') as f: pkl.dump(tmpdict, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     
     def get_zproj_image(self):
