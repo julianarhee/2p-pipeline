@@ -286,7 +286,7 @@ def combine_run_info(D, identical_fields=[], combined_fields=[]):
             elif isinstance(run_vals[0], (int, long, float)):
                 uvals = np.unique(list(set(run_vals)))
                 assert len( uvals ) == 1, "** %s: runs do not match!" % info_key
-            run_info[info_key] = uvals[0]
+                run_info[info_key] = uvals[0]
         elif info_key in combined_fields:
 
             if isinstance(run_vals[0], dict):
@@ -1047,7 +1047,8 @@ def extract_options(options):
 
 options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180915', '-A', 'FOV1_zoom2p7x',
            '-d', 'corrected',
-           '-g', 'traces001', '-g', 'traces001']
+           '-g', 'traces001', '-g', 'traces001', '-b', 'traces001', '-b', 'traces001',
+           '-b', 'traces001', '-b', 'traces001']
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
