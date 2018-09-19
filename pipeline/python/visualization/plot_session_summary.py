@@ -570,6 +570,7 @@ class SessionSummary():
         self.data_identifier ='_'.join(info_str)
         
         # Update tmp_ss.pkl file:
+        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
         if not os.path.exists(tmp_fpath):
             shutil.move(os.path.join(acquisition_dir, 'tmp_ss.pkl'), tmp_fpath)   
