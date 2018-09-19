@@ -621,13 +621,16 @@ class SessionSummary():
 
     
     def get_zproj_image(self):
-        
-        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+        zproj = None
         
         if not self.create_new:
-            self.zproj = self.load_sessionsummary_step(key='zproj')
-        
-        if self.zproj is None:
+            zproj = self.load_sessionsummary_step(key='zproj')
+            for k in zproj:
+                if k not in self.zproj.keys() or self.zproj[k] is None:
+                    self.zproj[k] = zproj[k]
+                    
+        if zproj is None:
+            acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             
             self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
     
@@ -641,11 +644,15 @@ class SessionSummary():
         
     def get_retinotopy(self, fitness_thr=0.5, size_thr=0.1):
         
-        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+        retino = None
         if not self.create_new:
-            self.retinotopy = self.load_sessionsummary_step(key='retinotopy')
-        
-        if self.retinotopy is None:
+            retino = self.load_sessionsummary_step(key='retinotopy')
+            for k in retino:
+                if k not in self.retinotopy.keys() or self.retinotopy[k] is None:
+                    self.retinotopy[k] = retino[k]
+                    
+        if retino is None:
+            acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             if self.retinotopy['traceid'] is None:
                 # just take the first found ROI analysis
                 traceid = 'analysis*'
@@ -673,10 +680,14 @@ class SessionSummary():
             self.save_sessionsummary_step(key='retinotopy', val=self.retinotopy)
         
     def get_gratings(self, metric='meanstim'):
+        gratings = None
         if not self.create_new:
-            self.gratings = self.load_sessionsummary_step(key='gratings')
-            
-        if self.gratings is None:
+            gratings = self.load_sessionsummary_step(key='gratings')
+            for k in gratings:
+                if k not in self.gratings.keys() or self.gratings[k] is None:
+                    self.gratings[k] = gratings[k]
+                    
+        if gratings is None:
             # GRATINGS:
             gratings_traceid = os.path.split(self.traceid_dirs['gratings'])[-1]
             gratings_run = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
@@ -718,10 +729,14 @@ class SessionSummary():
         
         
     def get_objects(self, metric='zscore'):
+        blobs = None
         if not self.create_new:
-            self.blobs = self.load_sessionsummary_step(key='blobs')
-            
-        if self.blobs is None:
+            blobs = self.load_sessionsummary_step(key='blobs')
+            for k in blobs:
+                if k not in self.blobs.keys() or self.blobs[k] is None:
+                    self.blobs[k] = blobs[k]
+                    
+        if blobs is None:
                 
             blobs_traceid = os.path.split(self.traceid_dirs['blobs'])[-1]
             blobs_run = os.path.split(self.traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
