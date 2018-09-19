@@ -594,118 +594,163 @@ class SessionSummary():
             self.plot_responsivity_objects(fig.axes, aix=6)
             self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
 
+    def load_sessionsummary_step(self, key=''):
+        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+        tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        if not os.path.exists(tmp_fpath):
+            print"No temp file exists. Redo step: %s" % key
+            return None
+        else:
+            with open(tmp_fpath, 'rb') as f: tmpdict = pkl.load(f)
+            if key in tmpdict.keys():
+                return tmpdict[key]
+            else:
+                print "Specified key %s does not exist. Create new." % key
+                return None
+            
+    def save_sessionsummary_step(self, key='', val=None):
+        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+        tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+        if not os.path.exists(tmp_fpath):
+            print "No temp file exists yet. Creating it!"
+            tmpdict = {}
+            tmpdict.update({key: val})
+            with open(tmp_fpath, 'rb') as f: pkl.dump(tmpdict, f, protocol=pkl.HHIGHEST_PROTOCOL)
+
     
     def get_zproj_image(self):
         
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         
-#        if self.traceid_dirs['gratings'] is None:
-        self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
-#        else:
-#            self.zproj['source'] = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1]
+        if not self.create_new:
+            self.zproj = self.load_sessionsummary_step(key='zproj')
         
-        if self.zproj['type'] == 'dff':
-            self.zproj['data'] = create_activity_map(acquisition_dir, self.zproj['source'], rootdir=self.rootdir)
-        else:
-            self.zproj['data'] = load_traceid_zproj(self.traceid_dirs['gratings'], rootdir=self.rootdir)
-        
+        if self.zproj is None:
+            
+            self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
+    
+            if self.zproj['type'] == 'dff':
+                self.zproj['data'] = create_activity_map(acquisition_dir, self.zproj['source'], rootdir=self.rootdir)
+            else:
+                self.zproj['data'] = load_traceid_zproj(self.traceid_dirs['gratings'], rootdir=self.rootdir)
+            
+            # Save this step for now:
+            self.save_sessionsummary_step(key='zproj', val=self.zproj)
         
     def get_retinotopy(self, fitness_thr=0.5, size_thr=0.1):
         
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
-
-        if self.retinotopy['traceid'] is None:
-            # just take the first found ROI analysis
-            traceid = 'analysis*'
-        else:
-            traceid = '%s*' % self.retinotopy['traceid']
+        if not self.create_new:
+            self.retinotopy = self.load_sessionsummary_step(key='retinotopy')
+        
+        if self.retinotopy is None:
+            if self.retinotopy['traceid'] is None:
+                # just take the first found ROI analysis
+                traceid = 'analysis*'
+            else:
+                traceid = '%s*' % self.retinotopy['traceid']
+                
+            retinovis_fpath = glob.glob(os.path.join(self.rootdir, self.animalid, self.session, self.acquisition, 
+                                                 'retino_*', 'retino_analysis', traceid, 'visualization', '*.png'))[0]
             
-        retinovis_fpath = glob.glob(os.path.join(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                             'retino_*', 'retino_analysis', traceid, 'visualization', '*.png'))[0]
-        
-        retino_run = os.path.split(retinovis_fpath.split('/retino_analysis')[0])[1]
-        retino_traceid = retinovis_fpath.split('/retino_analysis')[1].split('/')[1]
-        
-        ROIs, retinoid = RF.get_RF_size_estimates(acquisition_dir, 
-                                 fitness_thr=fitness_thr, 
-                                 size_thr=size_thr, 
-                                 analysis_id=retino_traceid)
-        
-        self.retinotopy['source'] = retino_run
-        self.retinotopy['data'] = ROIs
-        self.retinotopy['traceid'] = retino_traceid
-        self.retinotopy['fitness_thr'] = fitness_thr
-        self.retinotopy['size_thr'] = size_thr
-        
+            retino_run = os.path.split(retinovis_fpath.split('/retino_analysis')[0])[1]
+            retino_traceid = retinovis_fpath.split('/retino_analysis')[1].split('/')[1]
+            
+            ROIs, retinoid = RF.get_RF_size_estimates(acquisition_dir, 
+                                     fitness_thr=fitness_thr, 
+                                     size_thr=size_thr, 
+                                     analysis_id=retino_traceid)
+            
+            self.retinotopy['source'] = retino_run
+            self.retinotopy['data'] = ROIs
+            self.retinotopy['traceid'] = retino_traceid
+            self.retinotopy['fitness_thr'] = fitness_thr
+            self.retinotopy['size_thr'] = size_thr
+            
+            # Save this step for now:
+            self.save_sessionsummary_step(key='retinotopy', val=self.retinotopy)
         
     def get_gratings(self, metric='meanstim'):
-        # GRATINGS:
-        gratings_traceid = os.path.split(self.traceid_dirs['gratings'])[-1]
-        gratings_run = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
-        
-        # Load data array:
-        data_fpath = os.path.join(self.traceid_dirs['gratings'], 'data_arrays', 'datasets.npz')
-        gratings_dataset = np.load(data_fpath)
-        
-        # Get sorted ROIs:
-        gratings_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                              gratings_run, gratings_traceid, create_new=self.create_new)
-                                              #gratings_traceid.split('_')[0], create_new=optsE.create_new)
-        
-        # Group data by ROIs:
-        gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
-        gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
-        #nrois_total = gratings_roidata.shape[-1]
-        oris = np.unique([v['ori'] for k,v in gratings_sconfigs.items()])
-        if max(oris) > 180:
-            selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
-        else:
-            selectivity = {}
+        if not self.create_new:
+            self.gratings = self.load_sessionsummary_step(key='gratings')
             
-        self.gratings['source'] = gratings_run 
-        self.gratings['traceid'] = gratings_traceid
-        self.gratings['data_fpath'] = data_fpath
-        self.gratings['roistats'] = gratings_roistats
-        self.gratings['roidata'] = gratings_df_by_rois
-        self.gratings['sconfigs'] = gratings_sconfigs
-        self.gratings['selectivity'] = selectivity
-        
-        cmatrix, classes, clfparams = run_gratings_classifier(gratings_dataset, gratings_sconfigs, gratings_traceid)
-
-        self.gratings['metric'] = metric
-        self.gratings['SVC'] = {'cmatrix': cmatrix, 'classes': classes, 'clfparams': clfparams}
-        
+        if self.gratings is None:
+            # GRATINGS:
+            gratings_traceid = os.path.split(self.traceid_dirs['gratings'])[-1]
+            gratings_run = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
+            
+            # Load data array:
+            data_fpath = os.path.join(self.traceid_dirs['gratings'], 'data_arrays', 'datasets.npz')
+            gratings_dataset = np.load(data_fpath)
+            
+            # Get sorted ROIs:
+            gratings_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
+                                                  gratings_run, gratings_traceid, create_new=self.create_new)
+                                                  #gratings_traceid.split('_')[0], create_new=optsE.create_new)
+            
+            # Group data by ROIs:
+            gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
+            gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
+            #nrois_total = gratings_roidata.shape[-1]
+            oris = np.unique([v['ori'] for k,v in gratings_sconfigs.items()])
+            if max(oris) > 180:
+                selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
+            else:
+                selectivity = {}
+                
+            self.gratings['source'] = gratings_run 
+            self.gratings['traceid'] = gratings_traceid
+            self.gratings['data_fpath'] = data_fpath
+            self.gratings['roistats'] = gratings_roistats
+            self.gratings['roidata'] = gratings_df_by_rois
+            self.gratings['sconfigs'] = gratings_sconfigs
+            self.gratings['selectivity'] = selectivity
+            
+            cmatrix, classes, clfparams = run_gratings_classifier(gratings_dataset, gratings_sconfigs, gratings_traceid)
     
+            self.gratings['metric'] = metric
+            self.gratings['SVC'] = {'cmatrix': cmatrix, 'classes': classes, 'clfparams': clfparams}
+            
+            # Save this step for now:
+            self.save_sessionsummary_step(key='gratings', val=self.gratings)
+        
         
     def get_objects(self, metric='zscore'):
-        blobs_traceid = os.path.split(self.traceid_dirs['blobs'])[-1]
-        blobs_run = os.path.split(self.traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
-
-        # Load data array:
-        data_fpath = os.path.join(self.traceid_dirs['blobs'], 'data_arrays', 'datasets.npz')
-        blobs_dataset = np.load(data_fpath)
-        
-        # Get sorted ROIs:
-        blobs_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                       blobs_run, blobs_traceid, create_new=self.create_new) #blobs_traceid.split('_')[0])
-        
-        # Group data by ROIs:
-        blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
-        blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
-        
-        self.blobs['source'] = blobs_run
-        self.blobs['traceid'] = blobs_traceid
-        self.blobs['data_fpath'] = data_fpath
-        self.blobs['roistats'] = blobs_roistats
-        self.blobs['roidata'] = blobs_df_by_rois
-        self.blobs['sconfigs'] = blobs_sconfigs
-        
-        data, transforms_tested = get_object_transforms(blobs_df_by_rois, blobs_roistats, blobs_sconfigs, metric=metric)
-        self.blobs['transforms'] = data
-        self.blobs['transforms_tested'] = transforms_tested
-        self.blobs['metric'] = metric
+        if not self.create_new:
+            self.blobs = self.load_sessionsummary_step(key='blobs')
             
+        if self.blobs is None:
+                
+            blobs_traceid = os.path.split(self.traceid_dirs['blobs'])[-1]
+            blobs_run = os.path.split(self.traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
     
+            # Load data array:
+            data_fpath = os.path.join(self.traceid_dirs['blobs'], 'data_arrays', 'datasets.npz')
+            blobs_dataset = np.load(data_fpath)
+            
+            # Get sorted ROIs:
+            blobs_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
+                                           blobs_run, blobs_traceid, create_new=self.create_new) #blobs_traceid.split('_')[0])
+            
+            # Group data by ROIs:
+            blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
+            blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
+            
+            self.blobs['source'] = blobs_run
+            self.blobs['traceid'] = blobs_traceid
+            self.blobs['data_fpath'] = data_fpath
+            self.blobs['roistats'] = blobs_roistats
+            self.blobs['roidata'] = blobs_df_by_rois
+            self.blobs['sconfigs'] = blobs_sconfigs
+            
+            data, transforms_tested = get_object_transforms(blobs_df_by_rois, blobs_roistats, blobs_sconfigs, metric=metric)
+            self.blobs['transforms'] = data
+            self.blobs['transforms_tested'] = transforms_tested
+            self.blobs['metric'] = metric
+                
+            # Save this step for now:
+            self.save_sessionsummary_step(key='blobs', val=self.blobs)
+        
         
     def plot_zproj_image(self, axes_flat=None, aix=0):
         # SUBPLOT 0:  Mean / zproj image
