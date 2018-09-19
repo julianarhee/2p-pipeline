@@ -332,6 +332,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             curr_dset = np.load(darray_fpath)
             
             D[curr_run] = {'data':  curr_dset['corrected'],
+                            'meanstim': curr_dset['meanstim'],
                            'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
                            'sconfigs':  curr_dset['sconfigs'][()],
                            'run_info': curr_dset['run_info'][()]
@@ -372,6 +373,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
     
         # Combine runs in order of their alphanumeric name:
         tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
         tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
         
         # Get run_info dict:
@@ -392,29 +394,34 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             print "Uneven numbers of trials per cond. Making equal."
             configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
             ntrials_target = min(ntrials_by_cond)
-            remove_ixs = []
+            remove_ixs = []; trial_indices = [];
             for cf in configs_with_more:
                 curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
                 rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
                 selected_trials = curr_trials[rand_trial_ixs] 
                 ixs = tmp_labels_df[tmp_labels_df['trial'].isin(selected_trials)].index.tolist()
                 remove_ixs.extend(ixs)
+                trial_indices.extend([i for i,tr in enumerate(curr_trials) if tr in selected_trials])
             
             all_ixs = np.arange(0, tmp_labels_df.shape[0])
             kept_ixs = np.delete(all_ixs, remove_ixs)
             
             labels_df = tmp_labels_df.iloc[kept_ixs, :].reset_index(drop=True)
             data = tmp_data[kept_ixs, :]
+            data_meanstim = tmp_data_meanstim[trial_indices, :]
+            
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
 
         else:
             labels_df = tmp_labels_df
             data = tmp_data
+            data_meanstim = tmp_data_meanstim
             
         
         # Save it:
         np.savez(combo_dpath,
                  corrected=data,
+                 meanstim=data_meanstim,
                  labels_data=labels_df,
                  labels_columns=labels_df.columns.tolist(),
                  run_info = rinfo,
