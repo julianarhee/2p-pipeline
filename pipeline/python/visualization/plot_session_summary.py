@@ -561,7 +561,9 @@ class SessionSummary():
         if self.traceid_dirs['blobs'] is not None:
             self.get_objects(metric='zscore')
 
-        self.data_identifier ='_'.join([self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], str(self.gratings['source']), str(self.gratings['traceid']), str(self.blobs['source']), str(self.blobs['traceid'])])
+        info_str = [self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], str(self.gratings['source']), str(self.gratings['traceid']), str(self.blobs['source']), str(self.blobs['traceid'])]
+        print info_str
+        self.data_identifier ='_'.join(info_str)
            
 
     def plot_summary(self, ignore_null=False, selective=True):
