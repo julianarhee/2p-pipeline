@@ -455,7 +455,10 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
     # Check if warp is better than the original:
     warp_corr = np.corrcoef(sample.ravel(), ref_aligned.ravel())
     orig_corr = np.corrcoef(sample.ravel(), ref.ravel())
-    if warp_corr[0,1] < orig_corr[0,1]:
+    if not warp_corr[0,1] >= 0.7: #< orig_corr[0,1]:
+        print "*** Warp corr:", warp_corr
+        print "*** Orig corr:", orig_corr
+
         if warp_mode == cv2.MOTION_HOMOGRAPHY:
             alt_transform = cv2.MOTION_AFFINE
             mode_str = 'WARP_AFFINE'
@@ -480,6 +483,9 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
         warp_corr = np.corrcoef(sample.ravel(), ref_aligned.ravel())
         orig_corr = np.corrcoef(sample.ravel(), ref.ravel())
         if warp_corr[0,1] < orig_corr[0,1]:
+            print "*** Even with affine, still bad warp..."
+            print "*** warp:", warp_corr, "orig_corr:", orig_corr
+
             accept_warp = False
         else:
             accept_warp = True
@@ -2036,7 +2042,7 @@ def extract_traces(options):
         print "%i out of %i Files failed warp." % (len(bad_warps), len(mfile.keys()))
         print "Overwriting 'excluded_tiffs' field in TID params."
         print "EXCLUDE:", bad_warps
-        TID['PARAMS']['excluded_files'].extend(bad_warps)
+        TID['PARAMS']['excluded_tiffs'].extend(bad_warps)
         tid_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_*.json'))[0]
         with open(tid_path, 'r') as f: tids = json.load(tid_path)
         tids[TID['trace_id']] = TID
