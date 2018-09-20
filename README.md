@@ -84,7 +84,7 @@ b.  Extract traces:
 ```
 python pipeline/python/traces/get_traces.py -i <ANIMALID> -S <SESSION> -A <ACQUISITION> -R <RUN> -t traces001
 ```
-Extracted traces and meta info are saved per .tif file in `.../traces/traces001_<TRACEHASH>/files/*.hdf5`, ROIs used in extraction are saved to `.../traces/traces001_<TRACEHASH>/figures/*.png`. At this point, .tif separation is replaced with a trials-in-run structure, and the time-courses of each ROI for the entire run (all trials) are saved to `.../traces/traces001_<TRACEHASH>/roi_timecourses_YYYYMMDD_HH_mm_SS_FILEHASH.hdf5`.
+Extracted traces and meta info are saved per .tif file in `.../traces/traces001_<TRACEHASH>/files/*.hdf5`, ROIs used in extraction are saved to `.../traces/traces001_<TRACEHASH>/figures/masks/*.png`. Each .tif is kept separate (saved to `.../traces/traces001_<TRACEHASH>/files/*.hdf5`) at this stage. Masks are applied to raw .tif stacks, and preprocessing of ROI traces is done in the next step. Neuropil correction is also done at this step (Use -h to get neuropil options).
 
 ### 4. Trial alignment
 a.  Parse acquisition events into trials:
@@ -95,15 +95,16 @@ Parsed trial and frame info is saved to `<ROOTDIR>/<ANIMALID>/<SESSION>/<ACQUISI
 
 b.  Align timecourses to acquisition events:
 ```
-python ./paradigm/align_acquisition_events.py -i <ANIMALID> -S <SESSION> -A <ACQUISITION> -R <RUN> -t traces001 -b 1.0 -T raw 
+python ./paradigm/tifs_to_data_arrays.py -i <ANIMALID> -S <SESSION> -A <ACQUISITION> -R <RUN> -t traces001 
 ```
-All repetitions of a given trial-type are plotted together on PSTH-like figures for each ROI. Here, we want to align the raw traces extracted in trace-set *traces001* to stimulus events, with *1.0 second* baseline period before stimulus-onset. The baseline value sets how many seconds prior to an event we want to use to calculate df/f.
+
+All .tif files in a block (or set of blocks) are parsed and aigned to trials for each ROI. Use -h to see preprocessing options (e.g., smoothing, drift-correction) and trial alignment options (e.g., pre-ITI baseline duration, post-stimulus offset duration).
 
 ### 5. Visualization
 ```
+python /paradigm/plot_responses.py                  # For each ROI, create PSTH-style plots of each stimulus (Use -h to see options for arranging figure grid based on stimulus config).
+python /visualization/plot_session_summary.py       # Plot session summary based on stimulus (i.e., experiment) type. *NOTE: Runs are combined at this step, if specified. Stats to determine visual/selective cells.
 python /visualization/plot_roi_timecourses.py       # Plot timecourse for a specified ROI for all files. High-light stim reps.
-python /paradigm/roi_subplots_by_stim.py            # For each ROI, create PSTH-style plots of each stimulus 
-python /paradigm/plot_slice_rois.py                 # Plot each ROI on average slice image.
 ```
 
 Notes: Python scripts require additional options specific for the experiment (add -h handle to view arguments and descriptions). See demo_pipeline.py (.mat) for more info. 
