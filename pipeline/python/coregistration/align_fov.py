@@ -576,7 +576,7 @@ options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180913', '-A', 'FOV1_zo
 
 def main(options):
     optsE = extract_options(options)
-    animal_fpath = os.path.join(optsE.rootdir, optsE.animalid, 'FOVs.pkl')
+    animal_fpath = os.path.join(optsE.rootdir, optsE.animalid, 'coreg', 'FOVs.pkl')
     if not os.path.exists(animal_fpath):
         print "--- Creating NEW animal object! ---"
         A = Animal(optsE)
