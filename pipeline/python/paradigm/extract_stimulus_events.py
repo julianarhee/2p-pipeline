@@ -491,6 +491,8 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--verbose', action='store_true', dest='verbose', default=False, help="set if want to print extra info for parsing")
+
 
     parser.add_option('--dynamic', action="store_true",
                       dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
@@ -524,7 +526,7 @@ def extract_options(options):
 #stimorder_files = False
 
 
-def parse_acquisition_events(run_dir, blank_start=True):
+def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 
     run = os.path.split(run_dir)[-1]
     runinfo_path = os.path.join(run_dir, '%s.json' % run)
@@ -583,7 +585,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
         serialfn_path = os.path.join(paradigm_rawdir, serialfn)
 
         # Align MW events to frame-events from serialdata:
-        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=blank_start, verbose=False)
+        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=blank_start, verbose=verbose)
 
         # Sort trials in run by time:
         sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
@@ -665,6 +667,7 @@ def main(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    verbose = options.verbose 
     slurm = options.slurm
 
     if slurm is True and 'coxfs01' not in rootdir:
@@ -708,7 +711,7 @@ def main(options):
     # Set reference path and get SERIALDATA info:
     # ================================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start)
+    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start, verbose=verbose)
     print "----------------------------------------"
     print "ACQUISITION INFO saved to:\n%s" % parsed_run_outfile
     print "----------------------------------------"
