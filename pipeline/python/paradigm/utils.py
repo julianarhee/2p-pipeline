@@ -259,7 +259,9 @@ def load_raw_run(traceid_dir, trace_type='np_subtracted', combined=False, create
 
     labels_df, raw_df = get_raw_run(traceid_dir, create_new=create_new, fmt=fmt)
     conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
-    
+    print "Got labels:"
+    print labels_df.head()
+ 
     # Get trun info:
     roi_list = sorted(list(set([r for r in raw_df.columns if not r=='index'])), key=natural_keys)
     ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
@@ -1171,7 +1173,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             varying_stim_dur = True
             for ti, trial in enumerate(sorted(trials_in_block, key=natural_keys)):
                 #print curr_trial_stimconfigs[ti]
-                curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3)
+                curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3, 1)
         
         # Get corresponding configXXX label:
         #print curr_trial_stimconfigs
@@ -1273,7 +1275,9 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     else:
         stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3, 1) for t in trial_list]))
     nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
-   
+    print "Nframes on:", nframes_on
+    print "stim_durs (sec):", stim_durs
+ 
 #    stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
 #    if len(stim_dur_sec) > 1:
 #        print "More than 1 unique stim dur."
