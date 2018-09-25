@@ -264,7 +264,7 @@ def extract_options(options):
 
     parser.add_option('--frac', action='store', dest='frac', default=0.01, help="Fraction of trace to use for lowess smoothing [default: 0.01]")
     parser.add_option('-r', '--roi', action='store', dest='test_roi_id', default=1, help="Roi ID to use for tests [default: 1]")
-    parser.add_option('--raw', action='store_false', dest='smooth', default=True, help="Set flag to smooth traces")
+    parser.add_option('--raw', action='store_false', dest='smooth', default=True, help="Set flag to only extract raw/corrected traces (NO smoothing)")
     parser.add_option('--test-smooth', action='store_true', dest='test_smoothing', default=False, help="Set flag to test frac ranges for smoothing traces")
     parser.add_option('--test-drift', action='store_true', dest='test_drift', default=False, help="Set flag to inspect drift correction for F0 calculation")
     parser.add_option('--nonnegative', action='store_true', dest='nonnegative', default=False, help="Set flag to add offset to make nonnegative")
