@@ -1388,8 +1388,8 @@ def format_stimconfigs(configs):
         
     # Split position into x,y:
     for config in stimconfigs.keys():
-        stimconfigs[config]['xpos'] = configs[config]['position'][0]
-        stimconfigs[config]['ypos'] = configs[config]['position'][1]
+        stimconfigs[config]['xpos'] = round(configs[config]['position'][0], 2)
+        stimconfigs[config]['ypos'] = round(configs[config]['position'][1], 2)
         stimconfigs[config]['size'] = configs[config]['scale'][0]
         stimconfigs[config].pop('position', None)
         stimconfigs[config].pop('scale', None)
