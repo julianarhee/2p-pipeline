@@ -274,8 +274,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         if skip_trial: # Skip the PREVIOUS trials, so jump full trial's worth of frame indices:
             print "... Skipping previous trials' frames (%s)..." % prev_trial
-            iti_frames = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) 
-            stim_frames = int(np.floor(mwtrials[prev_trial]['stim_duration']/1E3) * framerate) 
+            iti_frames = round(round(mwtrials[prev_trial]['iti_duration']/1E3, 1) * framerate, 1) 
+            stim_frames = round(round(mwtrials[prev_trial]['stim_duration']/1E3, 1) * framerate, 1) 
             # NOTE:  Trials skipped if massive frame-shift error in bitcodes
             # This is likely an indication of funky behavior during acquisition - we should skip these trials
             # Based on 20180814 - JC008 gratings data, we don't want to skip full trial's worth of frames.
@@ -451,8 +451,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         #prev_trial = trial
     #%%
     # Do a final check of all stim durs:
-    rounded_durs = list(set([round(d) for d in durs]))
-    unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3) for t in mwtrials.keys()]))
+    rounded_durs = list(set([round(d, 1) for d in durs]))
+    unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3, 1) for t in mwtrials.keys()]))
     if len(rounded_durs) != len(unique_mw_stim_durs):
         print " *** WARNING -- funky stim durs found:", rounded_durs
         print " --- found MW stim durs:", unique_mw_stim_durs

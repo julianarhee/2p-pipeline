@@ -18,6 +18,8 @@ import itertools
 import copy
 import scipy.io
 import optparse
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 import cPickle as pkl
 #import hickle as hkl
 import pandas as pd
@@ -213,7 +215,8 @@ def run_info_from_dfs(rundir, raw_df, labels_df, traceid_dir='', trace_type='np_
         print "N rois:", len(roi_list)
         print "N trials:", ntrials_total
         print "N frames per trial:", nframes_per_trial
-        print "N trials per stimulus:", ntrials_by_cond
+        print "N trials per stimulus:"
+        pp.pprint(ntrials_by_cond)
         print "-------------------------------------------"
 
     run_info = {'roi_list': roi_list,
@@ -1268,7 +1271,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
         stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
     else:
-        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
+        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3, 1) for t in trial_list]))
     nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
    
 #    stim_dur_sec = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
@@ -1342,7 +1345,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                               'trial': trials,
                               'stim_dur': stim_durs #np.tile(stim_dur, trials.shape)
                               }, index=xdata_df.index)
-    
+    #print [t for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+
     ons = [int(np.where(t==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
     assert len(list(set(ons))) == 1, "Stim onset index has multiple values..."
     stim_on_frame = list(set(ons))[0]

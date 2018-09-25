@@ -1046,9 +1046,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     else:
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
-        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3) for t in trial.keys()])))
-        
-        if len(unique_stim_durs) > 1 and 'grating' in stimtype:
+        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 1) for t in trial.keys()])))
+        print "STIM DURS:", unique_stim_durs 
+        if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
             if len(unique_stim_durs) == 2:
                 full_dur = max(unique_stim_durs)
