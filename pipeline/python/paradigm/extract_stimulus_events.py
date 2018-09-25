@@ -181,7 +181,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         # ix += 1
        
     print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
-    print frame_bitcodes.keys()[0:5]        
+    print sorted(frame_bitcodes.keys()[0:5], key=natural_keys)
 
     ### Find first frame of MW experiment start:
     modes_by_frame = dict((fr, int(frame_bitcodes[fr].mode()[0])) \
@@ -373,7 +373,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                                     
                 #--first_found_frame.append(first_frame[1])
                 #--curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
-                first_found_frame.append(pframe)
+                first_found_frame.append(first_frame) #.append(pframe)
                 curr_frames = curr_frames[currframes_counter:]
                 curr_frame_vals = curr_frame_vals[currframes_counter:]
 
@@ -429,11 +429,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             continue
         
         # Do checks for stimulus duration:        
-        stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
-        print round(stim_dur_curr), '[%s]' % trial
+        stim_dur_curr = round((float(first_found_frame[-1][0].split('_')[0]) - float(first_found_frame[0][0].split('_')[0]))/framerate, 1)
+        print stim_dur_curr, 'sec [%s]' % trial
 
         try:
-            assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
+            assert round(stim_dur_curr, 1) == round((mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         except Exception as e:
             dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
                                 bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
