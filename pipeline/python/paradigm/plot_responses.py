@@ -9,6 +9,7 @@ Created on Wed May 30 20:36:25 2018
 
 import matplotlib as mpl
 mpl.use('agg')
+import matplotlib.patches as patches
 import os
 import sys
 import optparse
@@ -429,14 +430,20 @@ def make_clean_psths(options):
                 # Set x-axis to only show stimulus ON bar:
                 start_val = tpoints[stim_on]
                 end_val = tpoints[stim_on + int(round(nframes_on))]
-                axesf[pi].set_xticks((start_val, int(round(end_val))))
+                if pi==len(axes)-1:
+                    axesf[pi].set_xticks((start_val, 1.0)) 
+                else:
+                    axesf[pi].set_xticks((0, 0))
                 axesf[pi].set_xticklabels(())
                 axesf[pi].tick_params(axis='x', which='both',length=0)
-                axesf[pi].set_title(k, fontsize=8)
+                axesf[pi].set_title('(%.1f, %.1f)' % (k[0], k[1]), fontsize=10)
+
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
-            
+            axesf[pi].set_yticks((0, 1))
+            sns.despine(offset=4, trim=True, ax=axesf[pi])
+          
             # Add annotation for n trials in stim config:    
             axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
 
@@ -446,18 +453,27 @@ def make_clean_psths(options):
             if pi==0:
                 axesf[pi].set_ylabel(ylabel)
             pi += 1
-        sns.despine(offset=4, trim=True)
+
+        #sns.despine(offset=4, trim=True)
+        #loop over the non-left axes:
+        for ax in axes.flat:
+            ymin = min([ax.get_ylim()[0], ax.get_yticks()[0]])
+            ymax = max([ax.get_ylim()[-1], ax.get_yticks()[-1]])
+            stimpatch = patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2)
+            ax.add_patch(stimpatch)
+            ax.set_yticks((0, 1))
+            sns.despine(offset=4, trim=True, ax=ax)
+
+
+#        for ax in axes.flat[1:]:
+#            # get the yticklabels from the axis and set visibility to False
+#            for label in ax.get_yticklabels():
+#                label.set_visible(False)
+#            ax.yaxis.offsetText.set_visible(False)
+#            ax.yaxis.set_visible(False)
+#                
     
-         #loop over the non-left axes:
-        for ax in axes.flat[1:]:
-            # get the yticklabels from the axis and set visibility to False
-            for label in ax.get_yticklabels():
-                label.set_visible(False)
-            ax.yaxis.offsetText.set_visible(False)
-            ax.yaxis.set_visible(False)
-                
-    
-        pl.subplots_adjust(top=0.85)
+        pl.subplots_adjust(bottom=0.12, top=0.95)
         pl.suptitle("%s" % (roi_id))
         pl.legend(loc=9, bbox_to_anchor=(0, 0), ncol=len(trace_labels))
         label_figure(fig, data_identifier)
