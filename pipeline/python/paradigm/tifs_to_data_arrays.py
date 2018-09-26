@@ -172,7 +172,10 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
                                                    create_new=create_new, fmt=fmt, user_test=test_smoothing, test_roi=test_roi)   
         smoothed_DF = util.get_smoothed_run(traceid_dir, trace_type='processed', dff=True, frac=frac,
                                                    create_new=create_new, fmt=fmt, user_test=test_smoothing, test_roi=test_roi)   
-            
+    else:
+        smoothed_X = None
+        smoothed_DF = None
+        frac = None        
 
     # Get label info:
     sconfigs = util.format_stimconfigs(stimconfigs)
