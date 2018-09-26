@@ -470,8 +470,9 @@ def get_data_sources(optsE):
         print "Getting gratings..."
 
         #check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-        check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % b))
+        check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*gratings*', 'traces', '%s*' % b))
         										for b in optsE.gratings_traceid_list] for item in sublist])), key=natural_keys)
+        print "Found gratings dirs:", check_gratings_dir
         if len(check_gratings_dir) > 1:
             combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name='combined_gratings_static', create_new=optsE.create_new)
             traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
@@ -481,9 +482,12 @@ def get_data_sources(optsE):
     # Get static-blobs traceid dir(s):
     if len(optsE.blobs_traceid_list) > 0:
         print "Getting blobs..."
-        check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, 'blobs*', 'traces', '%s*' % b)) 
+        check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*blobs*', 'traces', '%s*' % b)) 
         										for b in optsE.blobs_traceid_list] for item in sublist]))
+               
         check_blobs_dir = sorted([b for b in check_blobs_dir if 'dynamic' not in b], key=natural_keys)
+        print "Found blobs dirs:", check_blobs_dir
+
         if len(optsE.blobs_runlist) > 0:
             print "Specified blobs runs:", optsE.blobs_runlist
             check_blobs_dir = sorted([b for b in check_blobs_dir if os.path.split(b.split('/traces')[0])[-1] in optsE.blobs_runlist], key=natural_keys)
@@ -608,6 +612,7 @@ class SessionSummary():
     def load_sessionsummary_step(self, key=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         if self.data_identifier is None:
+            print "Loading step: %s" % key
             tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
         else:
             tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
@@ -704,11 +709,12 @@ class SessionSummary():
         gratings = None
         if not self.create_new:
             gratings = self.load_sessionsummary_step(key='gratings')
+        if gratings is not None:
             for k in gratings:
                 if k not in self.gratings.keys() or self.gratings[k] is None:
                     self.gratings[k] = gratings[k]
                     
-        if gratings is None:
+        else:
             # GRATINGS:
             gratings_traceid = os.path.split(self.traceid_dirs['gratings'])[-1]
             gratings_run = os.path.split(self.traceid_dirs['gratings'].split('/traces/')[0])[-1] #[0])[-1]
@@ -753,11 +759,12 @@ class SessionSummary():
         blobs = None
         if not self.create_new:
             blobs = self.load_sessionsummary_step(key='blobs')
+        if blobs is not None:
             for k in blobs:
                 if k not in self.blobs.keys() or self.blobs[k] is None:
                     self.blobs[k] = blobs[k]
                     
-        if blobs is None:
+        else:
                 
             blobs_traceid = os.path.split(self.traceid_dirs['blobs'])[-1]
             blobs_run = os.path.split(self.traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
