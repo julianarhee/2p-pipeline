@@ -696,6 +696,8 @@ def main(options):
         mwopts.extend(['--phasemod'])
     if single_run is False:
         mwopts.extend(['--multi'])
+    if verbose is True:
+        mwopts.extend(['--verbose'])
 
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)

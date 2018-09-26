@@ -1,5 +1,6 @@
 #!/usr/bin/env python2
 
+
 import numpy as np
 import os
 import optparse
@@ -122,13 +123,20 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     print "Parsing file\n%s... " % dfn
     print "Found %i start events in session." % len(bounds)
     print "****************************************************************"
-    if verbose:
+    if verbose is True:
         print "Bounds: ", bounds
         for bidx, bound in enumerate(bounds):
             print "bound ID:", bidx, (bound[1]-bound[0])/1E6, "sec"
 
     if single_run is True:
-        bounds = [bounds[boundidx]]
+        if len(bounds) > 1:
+            print "Multiple boundaries found for run start/stop:"
+            for bi, boundary in enumerate(bounds):
+                print bi, (boundary[1]-boundary[0])/1E6, "sec"
+            bound_select = input('Select IDX of boundary to use: ')
+            bounds = [bounds[int(bound_select)]]
+        else:      
+            bounds = [bounds[boundidx]]
 
     return df, bounds
 
@@ -151,7 +159,7 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     # Only include SI trigger events if they were acquired while MW was actually "running" (i.e., start/stop time boundaries):
     trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
-
+    print np.diff([t.time for t in trigg_evs])
     getout=0
     # Find all trigger LOW events after the first onset trigger (frame_trigger=0 when SI frame-trigger is high, =1 otherwise)
     while getout==0:
@@ -427,7 +435,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
     runinfo_path = os.path.join(rundir, '%s.json' % run)
     with open(runinfo_path, 'r') as f: runinfo = json.load(f)
     
-    df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx)
+    df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx, verbose=verbose)
     #print bounds
     codec = df.get_codec()
 
@@ -1171,7 +1179,7 @@ def parse_mw_trials(options):
                       dest="retinobar", default=False, help="Set flag if using moving-bar stimulus.")
     parser.add_option('--phasemod', action="store_true",
                       dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated grating stimulus.")
-    parser.add_option('--verbose', action="store_true",
+    parser.add_option('-V', '--verbose', action="store_true",
                       dest="verbose", default=False, help="Set flag if want to print all output (for debugging).")
     parser.add_option('--multi', action="store_false",
                       dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
@@ -1228,9 +1236,7 @@ def parse_mw_trials(options):
         curr_dfn = mw_dfns[didx]
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
-
-        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, 
-                                        verbose=verbose, single_run=single_run, boundidx=boundidx)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
         #print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 
