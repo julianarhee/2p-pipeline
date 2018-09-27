@@ -574,10 +574,10 @@ class SessionSummary():
         self.data_identifier ='_'.join(info_str)
         
         # Update tmp_ss.pkl file:
-        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
-        tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
-        if not os.path.exists(tmp_fpath):
-            shutil.move(os.path.join(acquisition_dir, 'tmp_ss.pkl'), tmp_fpath)   
+#        acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+#        tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
+#        if not os.path.exists(tmp_fpath):
+#            shutil.move(os.path.join(acquisition_dir, 'tmp_ss.pkl'), tmp_fpath)   
 
     def plot_summary(self, ignore_null=False, selective=True):
         
@@ -1108,9 +1108,9 @@ def plot_session_summary(options):
     S.plot_summary(ignore_null=optsE.ignore_null_RF, selective=True)
     label_figure(S.fig, S.data_identifier)
     
-    figname = '%s_acquisition_summary_%s.png' % (optsE.acquisition, S.data_identifier)
+    figname = 'acquisition_summary_%s.png' % (S.data_identifier)
     
-    pl.savefig(os.path.join(os.path.join(S.rootdir, S.animalid, S.session), figname))
+    pl.savefig(os.path.join(S.rootdir, S.animalid, S.session, figname))
     pl.close()
     
 
