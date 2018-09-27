@@ -1781,6 +1781,21 @@ def extract_options(options):
     parser.add_option('--warp', action="store_true",
                       dest="save_warp_images", default=False, help="Set flag to save output plots of warped ROIs (manual warp only).")
 
+    # ALIGNMENT opts:
+    parser.add_option('--align', action='store_true', dest='align_traces', default=False, help='Set flag to align traces. Must set trial alignment and trace preprocessing params.')
+    parser.add_option('--raw', action='store_true', dest='raw_only', default=False, help="Set flag to only extract raw/corrected traces (NO smoothing)")
+    parser.add_option('--nonnegative', action='store_true', dest='nonnegative', default=False, help="Set flag to add offset to make nonnegative")
+    parser.add_option('--pre', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
+    parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
+    parser.add_option('-q', '--quantile', action='store', dest='quantile', default=0.10, help="Quantile of trace to include for drift calculation (default: 0.10)")
+    parser.add_option('-w', '--window', action='store', dest='window_size_sec', default=30.0, help="Size of window for F0 calculation (default: 30 sec)")
+
+    # PLOTTING PSTH opts:
+    parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts.')
+    parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
+    parser.add_option('-C', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
+    parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
+
     # Pupil filtering info:
 #    parser.add_option('--no-pupil', action="store_false",
 #                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
@@ -2261,7 +2276,44 @@ def main(options):
     #print "Output saved to:\n---> %s" % roi_tcourse_filepath
 #    if roidata_filepath is not None:
 #        print "Aligned traces to trial events. Saved dataframe to:\n%s" % roidata_filepath
+    
+    optsE = extract_options(options)
+    run_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
+		'-A', optsE.acquisition, '-R', optsE.run, '-t', optsE.traceid]
 
+    if optsE.align_traces:
+
+        print "Aligning traces to tif arrays."
+	align_opts = run_opts
+        align_opts.extend([
+		      '-q', optsE.quantile, 
+		      '--post=%.2f' % optsE.iti_post, 
+		      '--pre=%.1f' % optsE.iti_pre, 
+		      '-w', optsE.window_size_sec])
+	if optsE.raw_only:
+	    align_opts.extend(['--raw'])
+	if optsE.nonnegative:
+	    align_opts.extend(['--nonnegative'])
+
+	data_fpath = create_rdata_array(align_opts)
+
+    if optsE.plot_psth:
+        psth_opts = run_opts
+        psth_opts.extend(['-d', optsE.psth_dtype])
+        if optsE.psth_rows is not None:
+            psth_opts.extend(['-r', optsE.psth_rows])
+        if optsE.psth_cols is not None:
+            psth_opts.extend(['-c', optsE.psth_cols])
+        if optsE.psth_hues is not None:
+            psth_opts.extend(['-H', optsE.psth_hues])
+        
+	psth_dir = make_clean_psths(options)
+	
+	print "*******************************************************************"
+	print "DONE!"
+	print "All output saved to: %s" % psth_dir
+	print "*******************************************************************"
+     
 if __name__ == '__main__':
     main(sys.argv[1:])
 
