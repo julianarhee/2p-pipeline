@@ -217,7 +217,7 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
-    plot_median = optsE.median
+    plot_median = optsE.plot_median
 
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
