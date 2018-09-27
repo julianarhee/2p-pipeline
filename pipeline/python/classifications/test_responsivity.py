@@ -319,10 +319,12 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
     # TODO:  pyvttbl split-plot anova 2-way does not handle bfactors > 100, just use 1-way RM:
     nconfigs = len(labels_df['config'].unique())
     if nconfigs > 100:
+        print "Using R-M ANOVA 1-way for visual responsiveness."
         test_type_str = 'Repeated Measures ANOVA1'
         resp_test_type = 'RManova1'
         split_plot = False
     else:
+        print "Using Split-Plot ANOVA 2-way for visual responsiveness."
         test_type_str = 'Split-plot ANOVA2'
         resp_test_type = 'SPanova2'
         split_plot = True
@@ -762,3 +764,4 @@ def main(options):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
