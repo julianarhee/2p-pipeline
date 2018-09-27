@@ -47,11 +47,10 @@ from pipeline.python.utils import label_figure
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted',
-           '-R', 'blobs_dynamic_xpos2', '-t', 'traces001', '-d', 'dff',
-           '-r', 'morphlevel', '-c', 'yrot', '-H', 'xpos']
-
+options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
+           '-R', 'combined_gratings_static', '-t', 'traces001_dc094f_traces001_d90714_traces001_52ffcb', 
+           '-d', 'corrected',
+           '-r', 'ypos', '-c', 'xpos', '-H', 'ori', '--shade']
 
 def extract_options(options):
 
@@ -94,6 +93,10 @@ def extract_options(options):
                           default=None, help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
     parser.add_option('--shade', action='store_false', dest='plot_trials',
                           default=True, help='Set to plot mean and sem as shaded (default plots individual trials)')
+    parser.add_option('--median', action='store_true', dest='plot_median',
+                          default=False, help='Set to plot MEDIAN (default plots mean across trials)')
+
+
     parser.add_option('-r', '--rows', action='store', dest='rows',
                           default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types) - default uses objects or morphlevel')
     parser.add_option('-c', '--columns', action='store', dest='columns',
@@ -214,6 +217,8 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
+    plot_median = optsE.median
+
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
     columns = optsE.columns
@@ -242,7 +247,8 @@ def make_clean_psths(options):
     if inputdata == 'spikes' and filter_noise:
         xdata[xdata<=0.0004] = 0.
         figdir_append = '_filtered'
-    
+    if plot_median:
+        figdir_append = '%s_median' % figdir_append 
     
     #ydata = dataset['ylabels']
     #tsecs = dataset['tsecs']
@@ -397,7 +403,8 @@ def make_clean_psths(options):
             for cf_idx, curr_config in enumerate(curr_configs):
                 sub_df = rdata[rdata['config']==str(curr_config)]
                 tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
-                tpoints = np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
+                tpoints = np.mean(sub_df.groupby('trial')['tsec'].apply(np.array), axis=0)
+                #np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
                 assert len(list(set(sub_df['nframes_on']))) == 1, "More than 1 stimdur parsed for current config..."
                 
                 nframes_on = list(set(sub_df['nframes_on']))[0]
@@ -410,8 +417,10 @@ def make_clean_psths(options):
 #                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
 #                else:
 #                    subdata = tracemat[config_ixs, :]
-                    
-                trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
+                if plot_median:
+                    trace_mean = np.median(subdata, axis=0)
+                else:    
+                    trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
                 axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, 
@@ -425,6 +434,8 @@ def make_clean_psths(options):
                         axesf[pi].plot(tpoints, subdata[ti,:], color=trace_colors[cf_idx], linewidth=0.5, alpha=0.2)
                 else:
                     # fill between with sem:
+#                    mean_nans = np.where(np.isnan(trace_mean))
+#                    sem_nans = np.where(np.isnan(trace_sem))
                     axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=trace_colors[cf_idx], alpha=0.2)
                 
                 # Set x-axis to only show stimulus ON bar:
