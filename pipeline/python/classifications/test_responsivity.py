@@ -45,7 +45,7 @@ import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
 from skimage import exposure
 from collections import Counter
-
+#%%
 
 options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
            '-d', 'corrected',
@@ -313,12 +313,28 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
 def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, 
                           create_new=False, data_identifier='', pvalue=0.05):
     
+    
+    responsivity_basedir = os.path.join(sort_dir, 'responsivity')
+
+    # TODO:  pyvttbl split-plot anova 2-way does not handle bfactors > 100, just use 1-way RM:
+    nconfigs = len(labels_df['config'].unique())
+    if nconfigs > 100:
+        test_type_str = 'Repeated Measures ANOVA1'
+        resp_test_type = 'RManova1'
+        split_plot = False
+    else:
+        test_type_str = 'Split-plot ANOVA2'
+        resp_test_type = 'SPanova2'
+        split_plot = True
+
+
     # Create output dir for ANOVA2 results:
-    responsive_resultsdir = os.path.join(sort_dir, 'responsivity', 'spanova2_results')
+    responsive_resultsdir = os.path.join(responsivity_basedir, '%s_results' % resp_test_type)
     if not os.path.exists(responsive_resultsdir):
         os.makedirs(responsive_resultsdir)
         
-    responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_spanova2_results.json')
+    responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_%s_results.json' % resp_test_type)        
+
     if create_new is False:
         try:
             print "Loading existing split ANOVA results:\n", responsive_anova_fpath
@@ -331,10 +347,10 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
     df_by_rois = group_roidata_trialepoch(roidata, labels_df)
     
     if create_new:
-        responsive_anova = visually_responsive_spanova2(df_by_rois, output_dir=responsive_resultsdir, nprocs=nprocs)
+        responsive_anova = visually_responsive_ANOVA(df_by_rois, split_plot=split_plot, output_dir=responsive_resultsdir, nprocs=nprocs)
 
         # Save responsive roi list to disk:
-        print "Saving split ANOVA results to:\n", responsive_anova_fpath
+        print "Saving %s results to:\n" % resp_test_type, responsive_anova_fpath
         with open(responsive_anova_fpath, 'w') as f:
             json.dump(responsive_anova, f, indent=4, sort_keys=True)
 
@@ -347,7 +363,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
         top10 = ['roi%05d' % int(r+1) for r in sorted_visual[0:10]]
         with open(summary_fpath, 'a') as f:
             f.write('----------------------------------------------------------\n')
-            f.write('Split-plot ANOVA2 results:\n')
+            f.write('%s results:\n' % test_type_str)
             f.write('----------------------------------------------------------\n')
             f.write('%i out of %i pass visual responsivity test (p < 0.05).\n' % (len(responsive_rois), len(responsive_anova.keys())))
             f.write('Top 10 (sorted by F val):\n    %s' % str(top10))
@@ -357,7 +373,8 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
     return responsive_anova, sorted_visual
 
 
-def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname='boxplot(intensity~epoch_X_config).png'):
+
+def visually_responsive_ANOVA(df_by_rois, split_plot=True, nprocs=4, output_dir='/tmp', fname='boxplot(intensity~epoch_X_config).png'):
 
     '''
     Take single ROI as a datatset, do split-plot rmANOVA:
@@ -370,7 +387,7 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
 
     t_eval_mp = time.time()
 
-    def worker(rlist, df_by_rois, output_dir, out_q):
+    def worker(split_plot, rlist, df_by_rois, output_dir, out_q):
         """
         Worker function is invoked in a process. 'roi_list' is a list of
         roi names to evaluate [rois00001, rois00002, etc.]. Results are placed
@@ -383,7 +400,10 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
             pdf = pyvt_format_trialepoch_df(rdata)
-            outdict[roi] = pyvt_splitplot_anova2(roi, pdf, output_dir=output_dir, asdict=True)  
+            if split_plot:
+                outdict[roi] = pyvt_splitplot_anova2(roi, pdf, output_dir=output_dir, asdict=True)  
+            else:
+                outdict[roi] = pyvt_rmeasures_anova1(roi, pdf, output_dir=output_dir, asdict=True)  
         out_q.put(outdict)
 
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -393,10 +413,11 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
 
     for i in range(nprocs):
         p = mp.Process(target=worker,
-                       args=(roi_list[chunksize * i:chunksize * (i + 1)],
-                                       df_by_rois,
-                                       output_dir,
-                                       out_q))
+                       args=(split_plot,
+                             roi_list[chunksize * i:chunksize * (i + 1)],
+                             df_by_rois,
+                             output_dir,
+                             out_q))
         procs.append(p)
         print "Starting:", p
         p.start()
@@ -469,7 +490,6 @@ def pyvt_format_trialepoch_df(rdata):
     [pdf.insert(Trial(cf, tr, ep, val)._asdict()) for cf, tr, ep, val in zip(rdata['config'], rdata['trial'], rdata['epoch'], rdata['intensity'])]
     return pdf
 
-
 #%
 # =============================================================================
 # STATISTICS:
@@ -490,14 +510,33 @@ def pyvt_splitplot_anova2(roi, pdf, output_dir='/tmp', asdict=True):
     with open(aov_results_fpath,'wb') as f:
         f.write(str(aov))
     f.close()
-    results_epoch = extract_apa_anova2(('epoch',), aov)
+    results_epoch = extract_apa_anova(('epoch',), aov)
+    if asdict is True:
+        return results_epoch
+    else:
+        return results_epoch['F'], results_epoch['p']
+    
+def pyvt_rmeasures_anova1(roi, pdf, output_dir='/tmp', asdict=True):
+    '''
+    Calculate splt-plot ANOVA.
+    Return results for this ROI as a dict.
+    '''
+    # Calculate ANOVA split-plot:
+    aov = pdf.anova('intensity', sub='trial',
+                       wfactors=['epoch'])
+
+    aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.txt' % roi)
+    with open(aov_results_fpath,'wb') as f:
+        f.write(str(aov))
+    f.close()
+    results_epoch = extract_apa_anova(('epoch',), aov)
     if asdict is True:
         return results_epoch
     else:
         return results_epoch['F'], results_epoch['p']
     
     
-def extract_apa_anova2(factor, aov, values = ['F', 'mse', 'eta', 'p', 'df']):
+def extract_apa_anova(factor, aov, values = ['F', 'mse', 'eta', 'p', 'df']):
     '''
     Returns ANOVA results as dict holding standard reported values.
     '''
