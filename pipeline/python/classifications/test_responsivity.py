@@ -370,7 +370,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
             
         boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, sort_dir=sort_dir)
                 
-    return responsive_anova, sorted_visual
+    return responsive_anova, sorted_visual, resp_test_type
 
 
 
@@ -678,13 +678,13 @@ def calculate_roi_responsivity(options):
     # =========================================================================
     # RESPONSIVITY:
     # =========================================================================
-    responsive_anova, sorted_visual = find_visual_cells(roidata, labels_df, 
+    responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df, 
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
                                                         create_new=create_new, 
                                                         data_identifier=data_identifier,
                                                         pvalue=pvalue)
-    print("%i out of %i cells pass split-plot ANOVA test for visual responses." % (len(sorted_visual), len(responsive_anova)))
+    print("%i out of %i cells pass %s test for visual responses." % (len(sorted_visual), len(responsive_anova), resp_test_type))
 
 
     # =========================================================================
@@ -717,7 +717,7 @@ def calculate_roi_responsivity(options):
     H_std = np.std([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
     with open(summary_fpath, 'a') as f:
         print >> f, '\n**********************************************************************'
-        print >> f, '%i out of %i cells are visually responsive (split-plot ANOVA, p < 0.05)' % (len(sorted_visual), nrois_total)
+        print >> f, '%i out of %i cells are visually responsive (%s, p < 0.05)' % (len(sorted_visual), nrois_total, resp_test_type)
         print >> f, '%i out of %i visual are stimulus selective (Kruskal-Wallis, p < 0.05)' % (len(sorted_selective), len(sorted_visual))
         print >> f, 'Mean H=%.2f (std=%.2f)' % (H_mean, H_std)
         print >> f, '**********************************************************************'
@@ -733,7 +733,7 @@ def calculate_roi_responsivity(options):
              acquisition=optsE.acquisition,
              traceid=traceid,
              nrois_total=nrois_total,
-             responsivity_test='pyvt_splitplot_anova2',
+             responsivity_test='pyvt_%s' % resp_test_type, #'pyvt_splitplot_anova2',
              sorted_visual=sorted_visual,
              sorted_selective=sorted_selective,
              selectivity_test = 'kruskal_wallis',
