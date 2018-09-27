@@ -18,7 +18,7 @@ import itertools
 import shutil
 import matplotlib
 matplotlib.use('agg')
-
+import traceback
 import pandas as pd
 import pylab as pl
 import numpy as np
@@ -558,7 +558,7 @@ class SessionSummary():
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.data_identifier = None
     
-        self.get_data()
+        #self.get_data()
 
 
     def get_data(self):
@@ -1053,10 +1053,10 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180915', '-A', 'FOV1_zoom2p7x',
-           '-d', 'corrected',
-           '-g', 'traces001', '-g', 'traces001', '-b', 'traces001', '-b', 'traces001',
-           '-b', 'traces001', '-b', 'traces001']
+options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
+           '-g', 'traces001_dc094f_traces001_d90714_traces001_52ffcb', 
+           '-b', 'traces001_64c344_traces001_cae5ab_traces001_4340f5_traces001_34e388',
+           '--redo']
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
@@ -1089,8 +1089,13 @@ def load_session_summary(optsE, redo=False):
        print "*** Creating new SessionSummary() object!"
        S = SessionSummary(optsE)
        #datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-       with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
-           pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
+       try:
+           S.get_data()
+       except Exception as e:
+           traceback.print_exc()
+       finally:
+           with open(os.path.join(acquisition_dir, 'session_summary_%s.pkl' % S.data_identifier), 'wb') as f:
+               pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return S
 
