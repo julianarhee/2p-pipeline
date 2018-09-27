@@ -329,6 +329,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         for blobdir in check_blobs_dir:
             curr_run = os.path.split(blobdir.split('/traces')[0])[-1]
             print "Getting data array for run: %s" % curr_run
+            print blobdir
             darray_fpath = glob.glob(os.path.join(blobdir, 'data_arrays', 'datasets.npz'))[0]
             curr_dset = np.load(darray_fpath)
             
@@ -470,7 +471,10 @@ def get_data_sources(optsE):
         print "Getting gratings..."
 
         #check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-        check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*gratings*', 'traces', '%s*' % b))
+        if len(optsE.gratings_runlist) > 0:
+            check_gratings_dir = sorted([glob.glob(os.path.join(acquisition_dir, '*gratings*%s' % grun, 'traces', '%s*' % gtid))[0] for grun, gtid in zip(optsE.gratings_runlist, optsE.gratings_traceid_list)], key=natural_keys)
+        else:
+            check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*gratings*', 'traces', '%s*' % b))
         										for b in optsE.gratings_traceid_list] for item in sublist])), key=natural_keys)
         print "Found gratings dirs:", check_gratings_dir
         if len(check_gratings_dir) > 1:
@@ -1030,10 +1034,11 @@ def extract_options(options):
     parser.add_option('--ignore-null-RF', action='store_true', dest='ignore_null_RF', default=False, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
    
     # Run specific info:
-    parser.add_option('-g', '--gratings', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
+    parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
+    parser.add_option('-G', '--gratings-run', dest='gratings_runlist', default=[], action='append', nargs=1, help='list of gratings run IDs [default: []')
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
-    parser.add_option('-b', '--objects', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
-    parser.add_option('-B', '--blobs', dest='blobs_runlist', default=[], action='append', nargs=1, help='list of blob run IDs [default: []')
+    parser.add_option('-b', '--objects-traceid', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
+    parser.add_option('-B', '--objects-run', dest='blobs_runlist', default=[], action='append', nargs=1, help='list of blob run IDs [default: []')
    
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      
