@@ -96,6 +96,7 @@ import matplotlib
 matplotlib.use('Agg')
 import os
 import glob
+import copy
 import sys
 import h5py
 import json
@@ -119,6 +120,8 @@ from pipeline.python.set_trace_params import post_tid_cleanup
 from pipeline.python.rois.utils import get_info_from_tiff_dir
 from pipeline.python.traces.utils import get_frame_info, get_metric_set
 from pipeline.python.paradigm import align_acquisition_events as acq
+from pipeline.python.paradigm import tifs_to_data_arrays as align
+from pipeline.python.paradigm import plot_responses as psth
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
@@ -1792,6 +1795,8 @@ def extract_options(options):
 
     # PLOTTING PSTH opts:
     parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts.')
+    parser.add_option('-d', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
+
     parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
     parser.add_option('-C', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
     parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
@@ -2029,6 +2034,9 @@ def extract_traces(options):
 
     # Check to see if we're re-using the same ROI set:
     warp_masks = True
+    maskfig_dir = os.path.join(trace_figdir, 'masks')
+    if not os.path.exists(maskfig_dir): os.makedirs(maskfig_dir)
+
     tdict_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_*.json'))[0]
     with open(tdict_path, 'r') as f: tdicts = json.load(f)
     reused_rids = [t for t,td in tdicts.items() if td['PARAMS']['roi_id']==TID['PARAMS']['roi_id'] and td['PARAMS']['rid_hash']==TID['PARAMS']['rid_hash'] and t != trace_id]
@@ -2041,7 +2049,7 @@ def extract_traces(options):
         warp_masks = False
         maskfig_dir = os.path.join(tdicts[reused_rids[0]]['DST'], 'figures', 'masks')
         if rootdir not in maskfig_dir: maskfig_dir = replace_root(maskfig_dir, rootdir, animalid, session)
-   
+       
     if warp_masks: 
         #%
         # Create mask array and save mask images for each slice specified in ROI set:
@@ -2279,26 +2287,31 @@ def main(options):
     
     optsE = extract_options(options)
     run_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
-		'-A', optsE.acquisition, '-R', optsE.run, '-t', optsE.traceid]
+		'-A', optsE.acquisition, '-R', optsE.run, '-t', optsE.trace_id]
+    if optsE.slurm:
+        run_opts.extend(['--slurm'])
 
     if optsE.align_traces:
 
         print "Aligning traces to tif arrays."
-	align_opts = run_opts
+	align_opts = copy.copy(run_opts)
         align_opts.extend([
 		      '-q', optsE.quantile, 
-		      '--post=%.2f' % optsE.iti_post, 
-		      '--pre=%.1f' % optsE.iti_pre, 
+		      '--post=%s' % optsE.iti_post, 
+		      '--pre=%s' % optsE.iti_pre, 
 		      '-w', optsE.window_size_sec])
 	if optsE.raw_only:
 	    align_opts.extend(['--raw'])
 	if optsE.nonnegative:
 	    align_opts.extend(['--nonnegative'])
 
-	data_fpath = create_rdata_array(align_opts)
+	data_fpath = align.create_rdata_array(align_opts)
+        print "******************************************"
+        print "Done aligning traces to trials."
+        print "******************************************"
 
     if optsE.plot_psth:
-        psth_opts = run_opts
+        psth_opts = copy.copy(run_opts)
         psth_opts.extend(['-d', optsE.psth_dtype])
         if optsE.psth_rows is not None:
             psth_opts.extend(['-r', optsE.psth_rows])
@@ -2307,7 +2320,7 @@ def main(options):
         if optsE.psth_hues is not None:
             psth_opts.extend(['-H', optsE.psth_hues])
         
-	psth_dir = make_clean_psths(options)
+	psth_dir = psth.make_clean_psths(psth_opts)
 	
 	print "*******************************************************************"
 	print "DONE!"
