@@ -265,7 +265,7 @@ def extract_options(options):
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
 
-    parser.add_option('--frac', action='store', dest='frac', default=0.01, help="Fraction of trace to use for lowess smoothing [default: 0.01]")
+    parser.add_option('--frac', action='store', dest='frac', default=0.005, help="Fraction of trace to use for lowess smoothing [default: 0.005]")
     parser.add_option('-r', '--roi', action='store', dest='test_roi_id', default=1, help="Roi ID to use for tests [default: 1]")
     parser.add_option('--raw', action='store_false', dest='smooth', default=True, help="Set flag to only extract raw/corrected traces (NO smoothing)")
     parser.add_option('--test-smooth', action='store_true', dest='test_smoothing', default=False, help="Set flag to test frac ranges for smoothing traces")
@@ -275,7 +275,7 @@ def extract_options(options):
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
     parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
-    parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
+    parser.add_option('--pre', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
     parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
     parser.add_option('-q', '--quantile', action='store', dest='quantile', default=0.10, help="Quantile of trace to include for drift calculation (default: 0.10)")
     parser.add_option('-w', '--window', action='store', dest='window_size_sec', default=30.0, help="Size of window for F0 calculation (default: 30 sec)")
