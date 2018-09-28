@@ -21,6 +21,7 @@ import itertools
 import scipy.io
 import optparse
 import sys
+import glob
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -348,136 +349,136 @@ def group_by_transform_subset(clfparams, cX, cy, sconfigs):
 # Data loading functions:
 # =============================================================================
     
-def get_datapaths_from_opts(optsE):
-    
-    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    run_list = optsE.run_list
-    traceid_list = optsE.traceid_list
-    if not len(run_list) == len(traceid_list):
-        assert len(traceid_list) == 1 and len(run_list) > 1, \
-                "[E]: I don't know what to do with this combination of RUNS\n%s\nand TRACEIDS\n\%s." % (str(run_list), str(traceid_list))
-        traceid_list = [traceid_list[0] for _ in range(len(run_list))]
-        print "Assuming same traceid for all specified runs: %s" % str(run_list)
-    
-        
-    data_paths = {}
-    for dix, (run, traceid) in enumerate(zip(run_list, traceid_list)):
-        #%
-        print "**********************************"
-        print "Processing %i of %i runs." % (int(dix+1), len(run_list))
-        print "**********************************"
-    
-        #%
-        traceid_dir = fmt.get_traceid_from_acquisition(acquisition_dir, run, traceid)
-        
-        # Data array dir:
-        data_basedir = os.path.join(traceid_dir, 'data_arrays')
-        data_fpath = os.path.join(data_basedir, 'datasets.npz')
-        assert os.path.exists(data_fpath), "[E]: Data array not found! Did you run tifs_to_data_arrays.py?"
-    
-        # Create output base dir for classifier results:
-        clf_basedir = os.path.join(traceid_dir, 'classifiers')
-        if not os.path.exists(os.path.join(clf_basedir, 'figures')):
-            os.makedirs(os.path.join(clf_basedir, 'figures'))
-    
-
-        data_paths[dix] = data_fpath
-    
-    return data_paths
-
-#%
-
-def combine_datasets(data_paths, combo_name='combo'):
-    excluded_keys = ['traceid_dir', 'ntrials_by_cond', 'nfiles', 'ntrials_total']
-    
-    # Load the first dataset's run_info, and use as reference for all other dsets:
-    d1 = np.load(data_paths[0])
-    s1 = d1['sconfigs'][()]
-
-    ref_info = d1['run_info'][()]
-    info_keys = ref_info.keys()
-    non_array_keys = ['frac', 'tsecs', 'quantile', 'sconfigs', 'run_info', 'labels_columns']
-
-    summed_info = dict((k, [ref_info[k]]) for k in excluded_keys)
-    concat_arrays = dict((k, d1[k]) for k in d1.keys() if k not in non_array_keys)
-    
-    # Initialize trial counter to update trial number in labels:
-    trial_counter = ref_info['ntrials_total']
-    trial_labels_col = [i for i in d1['labels_data'][0, :]].index('trial00001') # should be col 4
-    
-    for di,dpath in data_paths.items():
-        if di==0:
-            continue
-        d = np.load(dpath)
-        currblock_ntrials = d['run_info'][()]['ntrials_total']
-        print "Run %i of %i:  Adding %i trials to combined dset" % (di, len(data_paths), currblock_ntrials)
-        
-        # Make sure we're combining the same trial types together:
-        assert all([ref_info[k]==d['run_info'][()][k] for k in info_keys if k not in excluded_keys]), "Trying to combine unequal runs!"
-        
-        # Make sure stimulus configs are the exact same:
-        assert d['sconfigs'][()]==s1, "Stim configs are different!"
-        
-        # Make sure preprocessing parameters are the same:
-        if 'frac' in d.keys():
-            assert d1['frac'] == d['frac'], "Smoothing fractions differ: ref %d, %s %d" % (d1['frac'], dpath, d['frac'])
-        if 'quantile' in d.keys():
-            assert d1['quantile'] == d['quantile'], "Quantile values differ: ref %d, %s %d" % (d1['quantile'], dpath, d['quantile'])
-        
-        # Append data arrays for combo:
-        for array_key in [k for k in d1.keys() if k not in non_array_keys]:
-            #print "Array for comb: %s" % array_key
-            darray = d[array_key]
-            if array_key == 'labels_data':
-                # Need to replace trial labels to be relative to first trial of first run
-                tlabels = d[array_key][:, trial_labels_col]
-                darray[:, trial_labels_col] = np.array(['trial%05d' % (int(t[5:])+trial_counter) for t in tlabels], dtype=d[array_key].dtype)
-
-            if len(concat_arrays[array_key].shape) == 2:
-                tmp = np.vstack((concat_arrays[array_key], darray))
-            else:
-                tmp = np.hstack((concat_arrays[array_key], darray))
-            concat_arrays[array_key] = tmp
-            
-        # Append run info for combo:
-        for exk in excluded_keys:
-            summed_info[exk].append(d['run_info'][()][exk])
-            
-        trial_counter += currblock_ntrials  # Increment last trial num
-    
-    # Combined info that represents combo:
-    for k,v in summed_info.items():
-        if isinstance(v[0], dict):
-            tmp_entry = dict((kk, sum([v[i][kk] for i in range(len(v))])) for kk in v[0].keys())
-            summed_info[k] = tmp_entry
-        elif isinstance(v[0], (float, int)):
-            summed_info[k] = sum(v)
-    combined_run_info = dict((k, summed_info[k]) if k in excluded_keys else (k, v) for k,v in ref_info.items())
-
-    # Combine data arrays:
-        
-    dataset = dict((k, v) if k in non_array_keys else (k, concat_arrays[k]) for k,v in d1.items())
-    dataset['run_info'] = combined_run_info
-    orig_srcs = dataset['run_info']['traceid_dir']
-    dataset['source_paths'] = orig_srcs
-    
-    # Save to new trace dir:
-    if 'traces00' in data_paths.values()[0]:
-        tid_str = '_'.join([tdir.split('/traces')[-1].split('/')[0] for tdir in data_paths.values()])
-    else:
-        tid_str = '_'.join([tdir.split('/cnmf/')[-1].split('/')[0] for tdir in data_paths.values()])
-    acquisition_dir = os.path.split(data_paths[0].split('/traces')[0])[0]
-    combined_darray_dir = os.path.join(acquisition_dir, combo_name, 'traces', tid_str, 'data_arrays')
-    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
-    data_fpath = os.path.join(combined_darray_dir, 'datasets.npz')
-    dataset['run_info']['traceid_dir'] = data_fpath.split('/data_arrays')[0]
-    
-    print "Saving combined dataset to:\n%s" % data_fpath
-    np.savez(data_fpath, dataset)
-    
-    
-    
-    return data_fpath
+#def get_datapaths_from_opts(optsE):
+#    
+#    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+#    run_list = optsE.run_list
+#    traceid_list = optsE.traceid_list
+#    if not len(run_list) == len(traceid_list):
+#        assert len(traceid_list) == 1 and len(run_list) > 1, \
+#                "[E]: I don't know what to do with this combination of RUNS\n%s\nand TRACEIDS\n\%s." % (str(run_list), str(traceid_list))
+#        traceid_list = [traceid_list[0] for _ in range(len(run_list))]
+#        print "Assuming same traceid for all specified runs: %s" % str(run_list)
+#    
+#        
+#    data_paths = {}
+#    for dix, (run, traceid) in enumerate(zip(run_list, traceid_list)):
+#        #%
+#        print "**********************************"
+#        print "Processing %i of %i runs." % (int(dix+1), len(run_list))
+#        print "**********************************"
+#    
+#        #%
+#        traceid_dir = fmt.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#        
+#        # Data array dir:
+#        data_basedir = os.path.join(traceid_dir, 'data_arrays')
+#        data_fpath = os.path.join(data_basedir, 'datasets.npz')
+#        assert os.path.exists(data_fpath), "[E]: Data array not found! Did you run tifs_to_data_arrays.py?"
+#    
+#        # Create output base dir for classifier results:
+#        clf_basedir = os.path.join(traceid_dir, 'classifiers')
+#        if not os.path.exists(os.path.join(clf_basedir, 'figures')):
+#            os.makedirs(os.path.join(clf_basedir, 'figures'))
+#    
+#
+#        data_paths[dix] = data_fpath
+#    
+#    return data_paths
+#
+##%
+#
+#def combine_datasets(data_paths, combo_name='combo'):
+#    excluded_keys = ['traceid_dir', 'ntrials_by_cond', 'nfiles', 'ntrials_total']
+#    
+#    # Load the first dataset's run_info, and use as reference for all other dsets:
+#    d1 = np.load(data_paths[0])
+#    s1 = d1['sconfigs'][()]
+#
+#    ref_info = d1['run_info'][()]
+#    info_keys = ref_info.keys()
+#    non_array_keys = ['frac', 'tsecs', 'quantile', 'sconfigs', 'run_info', 'labels_columns']
+#
+#    summed_info = dict((k, [ref_info[k]]) for k in excluded_keys)
+#    concat_arrays = dict((k, d1[k]) for k in d1.keys() if k not in non_array_keys)
+#    
+#    # Initialize trial counter to update trial number in labels:
+#    trial_counter = ref_info['ntrials_total']
+#    trial_labels_col = [i for i in d1['labels_data'][0, :]].index('trial00001') # should be col 4
+#    
+#    for di,dpath in data_paths.items():
+#        if di==0:
+#            continue
+#        d = np.load(dpath)
+#        currblock_ntrials = d['run_info'][()]['ntrials_total']
+#        print "Run %i of %i:  Adding %i trials to combined dset" % (di, len(data_paths), currblock_ntrials)
+#        
+#        # Make sure we're combining the same trial types together:
+#        assert all([ref_info[k]==d['run_info'][()][k] for k in info_keys if k not in excluded_keys]), "Trying to combine unequal runs!"
+#        
+#        # Make sure stimulus configs are the exact same:
+#        assert d['sconfigs'][()]==s1, "Stim configs are different!"
+#        
+#        # Make sure preprocessing parameters are the same:
+#        if 'frac' in d.keys():
+#            assert d1['frac'] == d['frac'], "Smoothing fractions differ: ref %d, %s %d" % (d1['frac'], dpath, d['frac'])
+#        if 'quantile' in d.keys():
+#            assert d1['quantile'] == d['quantile'], "Quantile values differ: ref %d, %s %d" % (d1['quantile'], dpath, d['quantile'])
+#        
+#        # Append data arrays for combo:
+#        for array_key in [k for k in d1.keys() if k not in non_array_keys]:
+#            #print "Array for comb: %s" % array_key
+#            darray = d[array_key]
+#            if array_key == 'labels_data':
+#                # Need to replace trial labels to be relative to first trial of first run
+#                tlabels = d[array_key][:, trial_labels_col]
+#                darray[:, trial_labels_col] = np.array(['trial%05d' % (int(t[5:])+trial_counter) for t in tlabels], dtype=d[array_key].dtype)
+#
+#            if len(concat_arrays[array_key].shape) == 2:
+#                tmp = np.vstack((concat_arrays[array_key], darray))
+#            else:
+#                tmp = np.hstack((concat_arrays[array_key], darray))
+#            concat_arrays[array_key] = tmp
+#            
+#        # Append run info for combo:
+#        for exk in excluded_keys:
+#            summed_info[exk].append(d['run_info'][()][exk])
+#            
+#        trial_counter += currblock_ntrials  # Increment last trial num
+#    
+#    # Combined info that represents combo:
+#    for k,v in summed_info.items():
+#        if isinstance(v[0], dict):
+#            tmp_entry = dict((kk, sum([v[i][kk] for i in range(len(v))])) for kk in v[0].keys())
+#            summed_info[k] = tmp_entry
+#        elif isinstance(v[0], (float, int)):
+#            summed_info[k] = sum(v)
+#    combined_run_info = dict((k, summed_info[k]) if k in excluded_keys else (k, v) for k,v in ref_info.items())
+#
+#    # Combine data arrays:
+#        
+#    dataset = dict((k, v) if k in non_array_keys else (k, concat_arrays[k]) for k,v in d1.items())
+#    dataset['run_info'] = combined_run_info
+#    orig_srcs = dataset['run_info']['traceid_dir']
+#    dataset['source_paths'] = orig_srcs
+#    
+#    # Save to new trace dir:
+#    if 'traces00' in data_paths.values()[0]:
+#        tid_str = '_'.join([tdir.split('/traces')[-1].split('/')[0] for tdir in data_paths.values()])
+#    else:
+#        tid_str = '_'.join([tdir.split('/cnmf/')[-1].split('/')[0] for tdir in data_paths.values()])
+#    acquisition_dir = os.path.split(data_paths[0].split('/traces')[0])[0]
+#    combined_darray_dir = os.path.join(acquisition_dir, combo_name, 'traces', tid_str, 'data_arrays')
+#    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+#    data_fpath = os.path.join(combined_darray_dir, 'datasets.npz')
+#    dataset['run_info']['traceid_dir'] = data_fpath.split('/data_arrays')[0]
+#    
+#    print "Saving combined dataset to:\n%s" % data_fpath
+#    np.savez(data_fpath, dataset)
+#    
+#    
+#    
+#    return data_fpath
 
 
 
@@ -1482,34 +1483,6 @@ def get_frame_samples(Xdata, labels_df, clfparams):
     
 #%%
 def extract_options(options):
-#    roi_selector = 'all' #'all' #'selectiveanova' #'selective'
-#    data_type = 'stat' #'zscore' #zscore' # 'xcondsub'
-#    inputdata = 'meanstim'
-#    inputdata_type = 'corrected' #'spikes' # None #'spikes'
-#    get_null = True #True
-#    
-#    # =============================================================================
-#    # SPECIFIY CLASSIFIER:
-#    # =============================================================================
-#    
-#    # Group configIDs by selected class labels to sort labels in order:
-#    class_name = 'xpos' #'morphlevel' #'ori' #'xpos' #morphlevel' #'ori' # 'morphlevel'
-#    aggregate_type = 'all' #'all' #'all' #'all' #'half' #all'  # 'single' 
-#    subset = None# 'two_class' #None #'two_class' # None # 'two_class' #no_morphing' #'no_morphing' # None
-#    subset_nsamples = None
-#    
-#    const_trans = '' #'' #'xpos' #'xpos' #None #'xpos' #'xpos' #None#'xpos' #None #'xpos' #None# 'morphlevel' # 'xpos'
-#    trans_value = '' #-5 #-5 #16 #None #'-5' #None #-5 #None #-5 #None
-#    
-#    classifier = 'LinearSVC'
-#    cv_method = 'kfold'
-#    cv_nfolds = 5
-#    C_val = 1e9
-#    cv_ngroups = 1
-#    
-#    binsize=''
-#    
-
 
     parser = optparse.OptionParser()
 
@@ -1524,15 +1497,20 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
-    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-                          action='append',
-                          help="run ID in order of runs")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-                          action='append',
-                          help="trace ID in order of runs")
-    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
+#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+#                          default='raw', help="trace type [default: 'raw']")
+#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
+#                          action='append',
+#                          help="run ID in order of runs")
+#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
+#                          action='append',
+#                          help="trace ID in order of runs")
+#    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
+    parser.add_option('-R', '--run', action='store', dest='run',
+                          default='', help="RUN name (e.g., gratings_run1)")
+    parser.add_option('-t', '--traceid', action='store', dest='traceid',
+                          default='', help="traceid name (e.g., traces001)")
+    
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
@@ -1569,8 +1547,8 @@ def extract_options(options):
     parser.add_option('-C', '--cval', action='store', dest='C_val', default=1e9, help='Value for C param if using SVC (default: 1e9)')
     parser.add_option('-g', '--groups', action='store', dest='cv_ngroups', default=1, help='N groups for CV, relevant only for data_type=frames (default: 1)')
     parser.add_option('-b', '--bin', action='store', dest='binsize', default=10, help='Bin size, relevant only for data_type=frames (default: 10)')
-    parser.add_option('--combine', action='store_true', dest='combine_data', default=False, help='Flag to combine multiple runs of the same thing')
-    parser.add_option('--combo', action='store', dest='combo_name', default='combo', help='Name of new, combined dataset (default: combined)')
+#    parser.add_option('--combine', action='store_true', dest='combine_data', default=False, help='Flag to combine multiple runs of the same thing')
+#    parser.add_option('--combo', action='store', dest='combo_name', default='combo', help='Name of new, combined dataset (default: combined)')
 
     (options, args) = parser.parse_args(options)
     
@@ -1578,40 +1556,6 @@ def extract_options(options):
 
     return options
 #
-#opts1 = ['-D', '/mnt/odyssey', '-i', 'JC013', '-S', '20180908', '-A', 'FOV1_zoom2p7x',
-#           '-R', 'gratings_run2', '-t', 'traces001',
-#           '-r', 'visual', '-d', 'stat', '-s', 'meanstim',
-#           '-p', 'corrected', '-N', 'ori', '-z', 'all',
-#           '-n', '1']
-#
-
-opts1 = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-           '-R', 'gratings_run1', '-t', 'traces003',
-           '-r', 'visual', '-d', 'frames', '-s', 'trial',
-           '-p', 'corrected', '-N', 'ori',
-           '-n', '1']
-
-
-optsE = extract_options(opts1)
-
-
-
-
-#%%
-    
-C = LinearSVM(optsE)
-C.get_training_data()
-C.label_training_data()
-C.initialize_classifier()
-
-if C.clfparams['data_type'] == 'frames':
-    C.train_on_trial_epochs()
-else:
-    C.cv_kfold_permutation(scoring='accuracy', permutation_test=True, n_permutations=500)
-    C.confusion_matrix()
-    C.do_RFE(scoring='accuracy')
-    
-
 
     #%%
 #for trans_value in [-10, 10]:
@@ -1623,18 +1567,40 @@ class TransformClassifier():
         self.animalid = optsE.animalid
         self.session = optsE.session
         self.acquisition = optsE.acquisition
-        self.source = {'runs': optsE.run_list, 
-                       'traceids': optsE.traceid_list,
-                       'data_fpaths': get_datapaths_from_opts(optsE)}
-        self.combo_name = optsE.combo_name
-        self.do_combine = optsE.combine_data
+        self.run = optsE.run
+        if 'cnmf' in optsE.traceid:
+            tracedir_type = 'cnmf'
+        else:
+            tracedir_type = 'traces'
+        self.traceid_dir = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, 
+                                              optsE.session, optsE.acquisition, 
+                                              optsE.run, tracedir_type, 
+                                              '%s*' % optsE.traceid))[0]
+        self.traceid = os.path.split(self.traceid_dir)[-1]
+        
+        self.data_fpath = self.get_data_fpath()
+        
+    def get_data_fpath(self):
+
+        # Data array dir:
+        data_basedir = os.path.join(self.traceid_dir, 'data_arrays')
+        data_fpath = os.path.join(data_basedir, 'datasets.npz')
+        assert os.path.exists(data_fpath), "[E]: Data array not found! Did you run tifs_to_data_arrays.py?"
+    
+        # Create output base dir for classifier results:
+        clf_basedir = os.path.join(self.traceid_dir, 'classifiers')
+        if not os.path.exists(os.path.join(clf_basedir, 'figures')):
+            os.makedirs(os.path.join(clf_basedir, 'figures'))
+            
+        return data_fpath
+            
 
     def load_dataset(self):
-        if self.do_combine:
-            assert len(self.source['data_fpaths'].keys()) > 1, "User did not specify > 1 experiment run to combine..."
-            self.data_fpath = combine_datasets(self.source['data_fpaths'], combo_name=self.combo_name)
-        else:
-            self.data_fpath = self.source['data_fpaths'][0]
+#        if self.do_combine:
+#            assert len(self.source['data_fpaths'].keys()) > 1, "User did not specify > 1 experiment run to combine..."
+#            self.data_fpath = combine_datasets(self.source['data_fpaths'], combo_name=self.combo_name)
+#        else:
+#            self.data_fpath = self.source['data_fpaths'][0]
 
         # Store DATASET:            
         dt = np.load(self.data_fpath)
@@ -1656,23 +1622,23 @@ class TransformClassifier():
             self.sconfigs = self.dataset['sconfigs'][()]
                 
         # Store traceid:
-        traceid_dir = self.run_info['traceid_dir']
-        if all(['cnmf_' in tid for tid in self.source['traceids']]) and (self.combo_name is None):
-            self.traceid = traceid_dir.split('/cnmf/')[-1].split('/')[0]
-        else:
-            self.traceid = traceid_dir.split('/traces/')[-1].split('/')[0]
-        if self.rootdir not in traceid_dir:
-            self.traceid_dir = replace_root(traceid_dir, self.rootdir, self.animalid, self.session)
+#        traceid_dir = self.run_info['traceid_dir']
+##        if all(['cnmf_' in tid for tid in self.source['traceids']]) and (self.combo_name is None):
+##            self.traceid = traceid_dir.split('/cnmf/')[-1].split('/')[0]
+##        else:
+##            self.traceid = traceid_dir.split('/traces/')[-1].split('/')[0]
+#        if self.rootdir not in traceid_dir:
+#            self.traceid_dir = replace_root(traceid_dir, self.rootdir, self.animalid, self.session)
 
         # Store run name:
-        self.run = os.path.split(os.path.split(traceid_dir.split('/%s' % self.traceid)[0])[0])[-1]
+#        self.run = os.path.split(os.path.split(traceid_dir.split('/%s' % self.traceid)[0])[0])[-1]
         
         self.data_identifier = '_'.join((self.animalid, self.session, self.acquisition, self.run, self.traceid))
             
         
-    def compare_grand_mean_traces(self):
-        assert len(self.data_sources.keys()) > 1, "[E] Did not find more than 1 dataset to compare..."
-        compare_grand_mean_traces(self.ddata_sources)
+#    def compare_grand_mean_traces(self):
+#        assert len(self.data_sources.keys()) > 1, "[E] Did not find more than 1 dataset to compare..."
+#        compare_grand_mean_traces(self.ddata_sources)
         
     
     
@@ -1893,7 +1859,9 @@ class LinearSVM():
         predicted, true, classes = get_cv_folds(self.clf, self.clfparams, self.cX, self.cy, output_dir=self.classifier_dir)
         plot_confusion_matrix_subplots(predicted, true, classes, cv_method=self.clfparams['cv_method'], 
                                        data_identifier=self.data.data_identifier, output_dir=self.classifier_dir)
-
+        self.results['test'] = {'predicted': predicted,
+                                'true': true,
+                                'classes': classes}
 
     def do_RFE(self, scoring='accuracy'):
         results_topN = iterate_RFE(self.clfparams, self.cX, self.cy, scoring=scoring, 
@@ -1904,75 +1872,75 @@ class LinearSVM():
     
 #%%
     
-
-    
-
-    if data_type == 'frames':
-        cX_std = StandardScaler().fit_transform(cX)
-        epochs, decode_dict, bins, clfparams['binsize'] = format_epoch_dataset(clfparams, cX, cy, run_info, sconfigs)
-        class_labels = sorted(list(set([sconfigs[c][clfparams['class_name']] for c in sconfigs.keys()])))
-
-        svc = decode_trial_epochs(clfparams, bins, decode_dict, run_info, data_identifier=data_identifier, 
-                            niterations=10, scoring='accuracy')
-    
-    
-    #%
-    # -----------------------------------------------------------------------------
-    # Save classifier and formatted data:
-    # -----------------------------------------------------------------------------
-        
-    clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
-    np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
-                 data_type=data_type,
-                 inputdata=inputdata,
-                 inputdata_type=inputdata_type,
-                 data_fpath=data_fpath,
-                 sconfigs=sconfigs, run_info=run_info)
-
-    joblib.dump(svc, os.path.join(classifier_dir, '%s.pkl' % classif_identifier), compress=9)
-     
-    svc_params = svc.get_params().copy()
-    if 'base_estimator' in svc_params.keys():
-        svc_params['base_estimator'] = str(svc_params['base_estimator'] )
-    #clf_params['cv'] = str(clf_params['cv'])
-    svc_params['identifier'] = classif_identifier
-    svc_params_hash = hash(json.dumps(svc_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
-    
-    with open(os.path.join(classifier_dir, 'params_%s.json' % svc_params_hash), 'w') as f:
-        json.dump(svc_params, f, indent=4, sort_keys=True, ensure_ascii=True)
-    
-    clfparams['classifier_info'] = svc_params
-    
-    with open(os.path.join(classifier_dir, 'classifier_params.json'), 'w') as f:
-        json.dump(clfparams, f, indent=4, sort_keys=True, ensure_ascii=True)
-        
-        
-    #%%
-    if clfparams['data_type'] == 'stat':
-  
-        # Visualize feature weights:
-        # =============================================================================
-            
-        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
-        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
-    
-        # Sort the weights by their strength, take out bottom N rois, iterate.
-        fig = plot_weight_matrix(svc, absolute_value=True)
-        label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
-        pl.close()
-        
-        fig = plot_weight_matrix(svc, absolute_value=False)
-        label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_raw.png'))
-        pl.close()
-        
-        nrois = len(run_info['roi_list'])
-        for class_idx in range(len(svc.classes_)):
-            fig = plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
-            label_figure(fig, data_identifier)
-            pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
-            pl.close()
+#
+#    
+#
+#    if data_type == 'frames':
+#        cX_std = StandardScaler().fit_transform(cX)
+#        epochs, decode_dict, bins, clfparams['binsize'] = format_epoch_dataset(clfparams, cX, cy, run_info, sconfigs)
+#        class_labels = sorted(list(set([sconfigs[c][clfparams['class_name']] for c in sconfigs.keys()])))
+#
+#        svc = decode_trial_epochs(clfparams, bins, decode_dict, run_info, data_identifier=data_identifier, 
+#                            niterations=10, scoring='accuracy')
+#    
+#    
+#    #%
+#    # -----------------------------------------------------------------------------
+#    # Save classifier and formatted data:
+#    # -----------------------------------------------------------------------------
+#        
+#    clf_fpath = os.path.join(classifier_dir, '%s_datasets.npz' % classif_identifier)
+#    np.savez(clf_fpath, cX=cX, cX_std=cX_std, cy=cy,
+#                 data_type=data_type,
+#                 inputdata=inputdata,
+#                 inputdata_type=inputdata_type,
+#                 data_fpath=data_fpath,
+#                 sconfigs=sconfigs, run_info=run_info)
+#
+#    joblib.dump(svc, os.path.join(classifier_dir, '%s.pkl' % classif_identifier), compress=9)
+#     
+#    svc_params = svc.get_params().copy()
+#    if 'base_estimator' in svc_params.keys():
+#        svc_params['base_estimator'] = str(svc_params['base_estimator'] )
+#    #clf_params['cv'] = str(clf_params['cv'])
+#    svc_params['identifier'] = classif_identifier
+#    svc_params_hash = hash(json.dumps(svc_params, sort_keys=True, ensure_ascii=True)) % ((sys.maxsize + 1) * 2) #[0:6]
+#    
+#    with open(os.path.join(classifier_dir, 'params_%s.json' % svc_params_hash), 'w') as f:
+#        json.dump(svc_params, f, indent=4, sort_keys=True, ensure_ascii=True)
+#    
+#    clfparams['classifier_info'] = svc_params
+#    
+#    with open(os.path.join(classifier_dir, 'classifier_params.json'), 'w') as f:
+#        json.dump(clfparams, f, indent=4, sort_keys=True, ensure_ascii=True)
+#        
+#        
+#    #%%
+#    if clfparams['data_type'] == 'stat':
+#  
+#        # Visualize feature weights:
+#        # =============================================================================
+#            
+#        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+#        # svc.coef_ :  array shape [n_classes, n_features] (if n_classes=2, shape [n_features])
+#    
+#        # Sort the weights by their strength, take out bottom N rois, iterate.
+#        fig = plot_weight_matrix(svc, absolute_value=True)
+#        label_figure(fig, data_identifier)
+#        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_abs.png'))
+#        pl.close()
+#        
+#        fig = plot_weight_matrix(svc, absolute_value=False)
+#        label_figure(fig, data_identifier)
+#        pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_weights_raw.png'))
+#        pl.close()
+#        
+#        nrois = len(run_info['roi_list'])
+#        for class_idx in range(len(svc.classes_)):
+#            fig = plot_coefficients(svc, xrange(nrois), class_idx=class_idx, top_features=20)
+#            label_figure(fig, data_identifier)
+#            pl.savefig(os.path.join(classifier_dir, 'figures', 'sorted_feature_weights_%s.png' % class_idx))
+#            pl.close()
         
         #%
 
@@ -2196,9 +2164,34 @@ class LinearSVM():
 #
 #pl.savefig(os.path.join(classifier_dir, figname))
 
+options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180915', '-A', 'FOV1_zoom2p7x',
+           '-R', 'combined_gratings_static', '-t', 'traces001',
+           '-r', 'visual', '-d', 'stat', '-s', 'meanstim',
+           '-p', 'corrected', '-N', 'ori'
+           ]
+
+
+def train_test_linearSVC(options):
+
+    optsE = extract_options(options)
+        
+    C = LinearSVM(optsE)
+    C.get_training_data()
+    C.label_training_data()
+    C.initialize_classifier()
+    
+    if C.clfparams['data_type'] == 'frames':
+        C.train_on_trial_epochs()
+    else:
+        C.cv_kfold_permutation(scoring='accuracy', permutation_test=True, n_permutations=500)
+        C.confusion_matrix()
+        C.do_RFE(scoring='accuracy')
+    
+    
+#%%
 
 def main(options):
-    train_linear_classifier([options])
+    train_test_linearSVC(options)
 
 
 
