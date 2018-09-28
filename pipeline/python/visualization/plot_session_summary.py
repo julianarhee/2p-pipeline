@@ -396,17 +396,19 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             print "Uneven numbers of trials per cond. Making equal."
             configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
             ntrials_target = min(ntrials_by_cond)
-            remove_ixs = []; kept_trial_indices = [];
+            remove_ixs = []; removed_trials = [];
             for cf in configs_with_more:
                 curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
                 remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
                 remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
                 tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
                 remove_ixs.extend(tmp_remove_ixs)
-                kept_trial_indices.extend([i for i,tr in enumerate(curr_trials) if tr not in remove_selected_trials])
+                removed_trials.extend(remove_selected_trials)
             
             all_ixs = np.arange(0, tmp_labels_df.shape[0])
+            all_trials = sorted(tmp_labels_df['trial'].unique(), key=natural_keys)
             kept_frame_ixs = np.delete(all_ixs, remove_ixs)
+            kept_trial_indices = [ti for ti,trial in enumerate(sorted(all_trials, key=natural_keys)) if trial not in removed_trials]
             
             labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
             data = tmp_data[kept_frame_ixs, :]
@@ -733,7 +735,7 @@ class SessionSummary():
                                                   #gratings_traceid.split('_')[0], create_new=optsE.create_new)
             
             # Group data by ROIs:
-            gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=S.data_type)
+            gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
             gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
             #nrois_total = gratings_roidata.shape[-1]
             oris = np.unique([v['ori'] for k,v in gratings_sconfigs.items()])
@@ -1061,8 +1063,7 @@ def extract_options(options):
 #           ]
 
 options = ['-D', '/mnt/odyssey', '-i', 'JC017', '-S', '20180921', '-A', 'FOV1_zoom2p0x',
-           '-g', 'traces002', '-g', 'traces001', '-g', 'traces001', 
-           '-G', 'run1', '-G', 'run2', '-G', 'run3',
+           '-g', 'traces002_825c99_traces001_7fec84_traces001_a98004', 
            '-r', 'analysis002',
            '--redo']
 
