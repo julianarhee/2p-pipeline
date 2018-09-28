@@ -466,45 +466,50 @@ def get_data_sources(optsE):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
 
     traceid_dirs = {'gratings': None, 
-                    'blobs': None}
+                    'blobs': None,
+                    'objects': None}
+                
     
     # Get gratings traceid dir:
     if len(optsE.gratings_traceid_list) > 0:
         print "Getting gratings..."
-
-        #check_gratings_dir = glob.glob(os.path.join(acquisition_dir, 'gratings*', 'traces', '%s*' % optsE.gratings_traceid))
-        if len(optsE.gratings_runlist) > 0:
-            check_gratings_dir = sorted([glob.glob(os.path.join(acquisition_dir, '*gratings*%s' % grun, 'traces', '%s*' % gtid))[0] for grun, gtid in zip(optsE.gratings_runlist, optsE.gratings_traceid_list)], key=natural_keys)
-        else:
-            check_gratings_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*gratings*', 'traces', '%s*' % b))
-        										for b in optsE.gratings_traceid_list] for item in sublist])), key=natural_keys)
-        print "Found gratings dirs:", check_gratings_dir
-        if len(check_gratings_dir) > 1:
-            combo_gratings_dpath = combine_static_runs(check_gratings_dir, combined_name='combined_gratings_static', create_new=optsE.create_new)
-            traceid_dirs['gratings'] = combo_gratings_dpath.split('/data_arrays')[0]
-        else:
-            traceid_dirs['gratings'] = check_gratings_dir[0]
+        traceid_dirs['gratings'] = get_traceid_dir_from_lists(acquisition_dir, optsE.gratings_run_list, optsE.gratings_traceid_list, stimtype='gratings', create_new=optsE.create_new)
+    else:
+        traceid_dirs.pop('gratings')
 
     # Get static-blobs traceid dir(s):
     if len(optsE.blobs_traceid_list) > 0:
         print "Getting blobs..."
-        check_blobs_dir = list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*blobs*', 'traces', '%s*' % b)) 
-        										for b in optsE.blobs_traceid_list] for item in sublist]))
-               
-        check_blobs_dir = sorted([b for b in check_blobs_dir if 'dynamic' not in b], key=natural_keys)
-        print "Found blobs dirs:", check_blobs_dir
-
-        if len(optsE.blobs_runlist) > 0:
-            print "Specified blobs runs:", optsE.blobs_runlist
-            check_blobs_dir = sorted([b for b in check_blobs_dir if os.path.split(b.split('/traces')[0])[-1] in optsE.blobs_runlist], key=natural_keys)
-        if len(check_blobs_dir) > 1:
-        	    combo_blobs_dpath = combine_static_runs(check_blobs_dir, combined_name='combined_blobs_static', create_new=optsE.create_new)
-        	    traceid_dirs['blobs'] = combo_blobs_dpath.split('/data_arrays')[0]
-        else:
-            traceid_dirs['blobs'] = check_blobs_dir[0]
-        
+        traceid_dirs['blobs'] = get_traceid_dir_from_lists(acquisition_dir, optsE.blobs_run_list, optsE.blobs_traceid_list, stimtype='blobs', create_new=optsE.create_new)               
+    else:
+        traceid_dirs.pop('blobs')
+       
+    if len(optsE.objects_traceid_list) > 0:
+        print "Getting objects..."
+        traceid_dirs['objects'] = get_traceid_dir_from_lists(acquisition_dir, optsE.objects_run_list, optsE.objects_traceid_list, stimtype='objects', create_new=optsE.create_new)               
+    else:
+        traceid_dirs.pop('objects')
+ 
     return traceid_dirs
 
+def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype='', create_new=False):
+    print "Runs:", run_list
+    print "TraceIDs:", traceid_list
+    if len(run_list) > 0:
+        check_run_dir = sorted([glob.glob(os.path.join(acquisition_dir, '*%s*' % run, 'traces', '%s*' % traceid))[0] for run, traceid in zip(run_list, traceid_list)], key=natural_keys)
+    else:
+        check_run_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype, 'traces', '%s*' % traceid)) for traceid in traceid_list] for item in sublist])), key=natural_keys)
+    print "Found -- %s --  dirs:" % stimtype, check_run_dir
+
+    # Check if should combine runs:
+    if len(check_run_dir) > 1:
+        print "Combining runs:", check_run_dir
+        combo_dpath = combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new)
+        traceid_dirs = combo_dpath.split('/data_arrays')[0]
+    else:
+        traceid_dirs = check_run_dir[0]
+
+    return traceid_dirs
 
 #%%
 
@@ -562,6 +567,7 @@ class SessionSummary():
         self.retinotopy = {'source': None, 'traceid': optsE.retino_traceid, 'data': None}
         self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
+        self.objects = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.data_identifier = None
     
         #self.get_data()
@@ -570,12 +576,20 @@ class SessionSummary():
     def get_data(self):
         self.get_zproj_image()
         self.get_retinotopy()
-        if self.traceid_dirs['gratings'] is not None:
-            self.get_gratings(metric='meanstim')
-        if self.traceid_dirs['blobs'] is not None:
-            self.get_objects(metric='zscore')
+        info_str = [self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid']]
 
-        info_str = [self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid'], str(self.gratings['source']), str(self.gratings['traceid']), str(self.blobs['source']), str(self.blobs['traceid'])]
+        if 'gratings' in self.traceid_dirs.keys():# is not None:
+            self.get_gratings(metric='meanstim')
+            info_str.extend([str(self.gratings['source']), ''.join([tid.split('_')[0] for tid in self.gratings['traceid']])])
+
+        if 'blobs' in self.traceid_dirs.keys():
+            self.get_objects(metric='zscore')
+            info_str.extend([str(self.blobs['source']), ''.join([tid.split('_')[0] for tid in self.blobs['traceid']])])
+
+        if 'objects' in self.traceid_dirs.keys():
+            self.get_objects(metric='zscore')
+            info_str.extend([str(self.objects['source']), ''.join([tid.split('_')[0] for tid in self.objects['traceid']])])
+
         print info_str
         self.data_identifier ='_'.join(info_str)
         
@@ -1011,6 +1025,9 @@ class SessionSummary():
 
 def extract_options(options):
 
+    def comma_sep_list(option, opt, value, parser):
+        setattr(parser.values, option.dest, value.split(','))
+
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
@@ -1038,11 +1055,15 @@ def extract_options(options):
     parser.add_option('--ignore-null-RF', action='store_true', dest='ignore_null_RF', default=False, help="set to plot all ROIs in RF size historgram (even ones with RF 0 due to poor fit")
    
     # Run specific info:
-    parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
-    parser.add_option('-G', '--gratings-run', dest='gratings_runlist', default=[], action='append', nargs=1, help='list of gratings run IDs [default: []')
+    #parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
+    parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="traceids for GRATINGS [default: []]")
+
+    parser.add_option('-G', '--gratings-run', dest='gratings_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of gratings run IDs [default: []')
     parser.add_option('-r', '--retino', dest='retino_traceid', default=None, action='store', help='analysisid for RETINO [default assumes only 1 roi-based analysis]')
-    parser.add_option('-b', '--objects-traceid', dest='blobs_traceid_list', default=[], action='append', nargs=1, help='list of blob traceids [default: []')
-    parser.add_option('-B', '--objects-run', dest='blobs_runlist', default=[], action='append', nargs=1, help='list of blob run IDs [default: []')
+    parser.add_option('-b', '--blobs-traceid', dest='blobs_traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of blob traceids [default: []')
+    parser.add_option('-B', '--blobs-run', dest='blobs_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of blob run IDs [default: []')
+    parser.add_option('-o', '--objects-traceid', dest='objects_traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object traceids [default: []')
+    parser.add_option('-O', '--objects-run', dest='objects_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object run IDs [default: []')
    
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      
