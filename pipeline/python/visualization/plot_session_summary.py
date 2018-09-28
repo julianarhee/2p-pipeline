@@ -396,21 +396,21 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             print "Uneven numbers of trials per cond. Making equal."
             configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
             ntrials_target = min(ntrials_by_cond)
-            remove_ixs = []; trial_indices = [];
+            remove_ixs = []; kept_trial_indices = [];
             for cf in configs_with_more:
                 curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
-                rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
-                selected_trials = curr_trials[rand_trial_ixs] 
-                ixs = tmp_labels_df[tmp_labels_df['trial'].isin(selected_trials)].index.tolist()
-                remove_ixs.extend(ixs)
-                trial_indices.extend([i for i,tr in enumerate(curr_trials) if tr in selected_trials])
+                remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
+                remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
+                tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
+                remove_ixs.extend(tmp_remove_ixs)
+                kept_trial_indices.extend([i for i,tr in enumerate(curr_trials) if tr not in remove_selected_trials])
             
             all_ixs = np.arange(0, tmp_labels_df.shape[0])
-            kept_ixs = np.delete(all_ixs, remove_ixs)
+            kept_frame_ixs = np.delete(all_ixs, remove_ixs)
             
-            labels_df = tmp_labels_df.iloc[kept_ixs, :].reset_index(drop=True)
-            data = tmp_data[kept_ixs, :]
-            data_meanstim = tmp_data_meanstim[trial_indices, :]
+            labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
+            data = tmp_data[kept_frame_ixs, :]
+            data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
            
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
 
@@ -733,12 +733,14 @@ class SessionSummary():
                                                   #gratings_traceid.split('_')[0], create_new=optsE.create_new)
             
             # Group data by ROIs:
-            gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=self.data_type)
+            gratings_roidata, gratings_labels_df, gratings_sconfigs = get_data_and_labels(gratings_dataset, data_type=S.data_type)
             gratings_df_by_rois = resp.group_roidata_stimresponse(gratings_roidata, gratings_labels_df)
             #nrois_total = gratings_roidata.shape[-1]
             oris = np.unique([v['ori'] for k,v in gratings_sconfigs.items()])
             if max(oris) > 180:
-                selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, roi_list=gratings_roistats['rois_visual'], metric=metric)
+                selectivity = osi.get_OSI_DSI(gratings_df_by_rois, gratings_sconfigs, 
+                                              roi_list=gratings_roistats['rois_visual'], 
+                                              metric=metric)
             else:
                 selectivity = {}
                 
@@ -1058,9 +1060,10 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
-           '-g', 'traces001_dc094f_traces001_d90714_traces001_52ffcb', 
-           '-b', 'traces001_64c344_traces001_cae5ab_traces001_4340f5_traces001_34e388',
+options = ['-D', '/mnt/odyssey', '-i', 'JC017', '-S', '20180921', '-A', 'FOV1_zoom2p0x',
+           '-g', 'traces002', '-g', 'traces001', '-g', 'traces001', 
+           '-G', 'run1', '-G', 'run2', '-G', 'run3',
+           '-r', 'analysis002',
            '--redo']
 
 def load_session_summary(optsE, redo=False):
