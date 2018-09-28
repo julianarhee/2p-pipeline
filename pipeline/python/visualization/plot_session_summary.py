@@ -583,11 +583,11 @@ class SessionSummary():
             info_str.extend([str(self.gratings['source']), ''.join([tid.split('_')[0] for tid in self.gratings['traceid']])])
 
         if 'blobs' in self.traceid_dirs.keys():
-            self.get_objects(metric='zscore')
+            self.get_objects(object_type='blobs', metric='zscore')
             info_str.extend([str(self.blobs['source']), ''.join([tid.split('_')[0] for tid in self.blobs['traceid']])])
 
         if 'objects' in self.traceid_dirs.keys():
-            self.get_objects(metric='zscore')
+            self.get_objects(object_type='objects', metric='zscore')
             info_str.extend([str(self.objects['source']), ''.join([tid.split('_')[0] for tid in self.objects['traceid']])])
 
         print info_str
@@ -601,10 +601,10 @@ class SessionSummary():
 
     def plot_summary(self, ignore_null=False, selective=True):
         
-        if self.traceid_dirs['blobs'] is not None: #and gratings_were_run: 
+        if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys(): 
             fig = pl.figure(figsize=(35,25))
             spec = gridspec.GridSpec(ncols=3, nrows=3)
-        elif self.traceid_dirs['gratings'] is not None:
+        elif 'gratings' in self.traceid_dirs.keys():
             fig = pl.figure(figsize=(35,20))
             spec = gridspec.GridSpec(ncols=3, nrows=2)
         else:
@@ -621,11 +621,11 @@ class SessionSummary():
         self.plot_zproj_image(fig.axes, aix=0)
         self.plot_retinotopy_to_screen(fig.axes, aix=1)
         self.plot_estimated_RF_size(fig.axes, aix=2, ignore_null=ignore_null)
-        if self.traceid_dirs['gratings'] is not None:
+        if 'gratings' in self.traceid_dirs.keys():
             self.plot_responsivity_gratings(fig.axes, aix=3)
             self.plot_OSI_histogram(fig.axes, aix=4)
             self.plot_confusion_gratings(fig.axes, aix=5)
-        if self.traceid_dirs['blobs'] is not None:
+        if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
             self.plot_responsivity_objects(fig.axes, aix=6)
             self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
 
@@ -777,22 +777,26 @@ class SessionSummary():
             self.save_sessionsummary_step(key='gratings', val=self.gratings)
         
         
-    def get_objects(self, metric='zscore'):
+    def get_objects(self, object_type='blobs', metric='zscore'):
         blobs = None
         if not self.create_new:
-            blobs = self.load_sessionsummary_step(key='blobs')
+            blobs = self.load_sessionsummary_step(key=object_type)
         if blobs is not None:
             for k in blobs:
-                if k not in self.blobs.keys() or self.blobs[k] is None:
-                    self.blobs[k] = blobs[k]
-                    
+                if object_type == 'blobs':
+                    if k not in self.blobs.keys() or self.blobs[k] is None:
+                        self.blobs[k] = blobs[k]
+                else:
+                    if k not in self.objects.keys() or self.objects[k] is None:
+                        self.objects[k] = blobs[k]
+                   
         else:
                 
-            blobs_traceid = os.path.split(self.traceid_dirs['blobs'])[-1]
-            blobs_run = os.path.split(self.traceid_dirs['blobs'].split('/traces/')[0])[-1] #[0])[-1]
+            blobs_traceid = os.path.split(self.traceid_dirs[object_type])[-1]
+            blobs_run = os.path.split(self.traceid_dirs[object_type].split('/traces/')[0])[-1] #[0])[-1]
     
             # Load data array:
-            data_fpath = os.path.join(self.traceid_dirs['blobs'], 'data_arrays', 'datasets.npz')
+            data_fpath = os.path.join(self.traceid_dirs[object_type], 'data_arrays', 'datasets.npz')
             blobs_dataset = np.load(data_fpath)
             
             # Get sorted ROIs:
@@ -802,21 +806,25 @@ class SessionSummary():
             # Group data by ROIs:
             blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
             blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
-            
-            self.blobs['source'] = blobs_run
-            self.blobs['traceid'] = blobs_traceid
-            self.blobs['data_fpath'] = data_fpath
-            self.blobs['roistats'] = blobs_roistats
-            self.blobs['roidata'] = blobs_df_by_rois
-            self.blobs['sconfigs'] = blobs_sconfigs
-            
             data, transforms_tested = get_object_transforms(blobs_df_by_rois, blobs_roistats, blobs_sconfigs, metric=metric)
-            self.blobs['transforms'] = data
-            self.blobs['transforms_tested'] = transforms_tested
-            self.blobs['metric'] = metric
-                
+         
+            object_dict = {'source': blobs_run,
+                           'traceid': blobs_traceid,
+                           'data_fpath': data_fpath,
+                           'roistats': blobs_roistats,
+                           'roidata': blobs_df_by_rois,
+                           'sconfigs': blobs_sconfigs,
+                           'transforms': data,
+                           'transforms_tested': transforms_tested,
+                           'metric': metric}
+ 
+            if object_type == 'blobs': 
+                self.blobs = object_dict
+            else:
+                self.objects = object_dict               
+
             # Save this step for now:
-            self.save_sessionsummary_step(key='blobs', val=self.blobs)
+            self.save_sessionsummary_step(key=object_type, val=object_dict)
         
         
     def plot_zproj_image(self, axes_flat=None, aix=0):
@@ -951,8 +959,13 @@ class SessionSummary():
         # SUBPLOT 6:  Complex stimuli...
         # -----------------------------------------------------------------------------
         axes_flat[aix].clear()
-        hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=axes_flat[aix])
-        axes_flat[aix].set_title('blobs: distN of zscores')
+        if 'blobs' in self.traceid_dirs.keys():
+            hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=axes_flat[aix])
+            axes_flat[aix].set_title('blobs: distN of zscores')
+        else:
+            hist_roi_stats(self.objects['roidata'], self.objects['roistats'], ax=axes_flat[aix])
+            axes_flat[aix].set_title('objects: distN of zscores')
+
         
         bb = axes_flat[aix].get_position().bounds
         new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
@@ -964,30 +977,47 @@ class SessionSummary():
         if axes_flat is None:
             fig, ax = pl.subplots()
             axes_flat = fig.axes
-            
-        rois = self.blobs['transforms'].groupby('roi')
-        
-        # Colors = cells
-        if selective:
-            rois_to_plot = self.blobs['roistats']['rois_selective'][0:10]
+        if 'blobs' in self.traceid_dirs.keys():
+            ylabel = self.blobs['metric']
+            xlabel = self.blobs['transforms_tested'][0]
+            metric = self.blobs['metric']
+            transforms_tested = self.blobs['transforms_tested']
+            object_list = self.blobs['transforms']['object'].unique()
+            # Colors = cells
+            if selective:
+                rois_to_plot = self.blobs['roistats']['rois_selective'][0:10]
+            else:
+                rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
+            rois = self.blobs['transforms'].groupby('roi')
         else:
-            rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
+            ylabel = self.objects['metric']
+            xlabel = self.objects['transforms_tested'][0]
+            metric = self.objects['metric']
+            transforms_tested = self.objects['transforms_tested']
+            object_list = self.objects['transforms']['object'].unique()
+            # Colors = cells
+            if selective:
+                rois_to_plot = self.objects['roistats']['rois_selective'][0:10]
+            else:
+                rois_to_plot = self.objects['roistats']['rois_visual'][0:10]
+            rois = self.objects['transforms'].groupby('roi')
+       
         nrois_plot = len(rois_to_plot) 
         colors = sns.color_palette('husl', nrois_plot)
         
         # Shapes = objects
-        nobjects = len(self.blobs['transforms']['object'].unique())  #len(responses['object'].unique())
+        nobjects = len(object_list)  #len(responses['object'].unique())
         markers = ['o', 'P', '*', '^', 's', 'd']
         marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
             
-        for trans_ix, transform in enumerate(self.blobs['transforms_tested']):
+        for trans_ix, transform in enumerate(transforms_tested):
             tix = aix + trans_ix
             plot_list = []
             for roi, df in rois:
                 if roi not in rois_to_plot:
                     continue
                 
-                df2 = df.pivot_table(index='object', columns=transform, values=self.blobs['metric'])
+                df2 = df.pivot_table(index='object', columns=transform, values=metric)
                 #new_df = pd.concat([df2, pd.Series(data=[roi for _ in range(df2.shape[0])], index=df2.index, name='roi')], axis=1)
                 plot_list.append(df2)
                 
@@ -999,8 +1029,8 @@ class SessionSummary():
                 for object_ix in range(nobjects):
                     axes_flat[tix].plot(data.iloc[r+object_ix, :], color=colors[ridx], marker=markers[object_ix], **marker_kws) #'.-')
             axes_flat[tix].set_xticks(data.keys().tolist())
-            axes_flat[tix].set_ylabel(self.blobs['metric'])
-            axes_flat[tix].set_xlabel(self.blobs['transforms_tested'][0])
+            axes_flat[tix].set_ylabel(ylabel) #self.blobs['metric'])
+            axes_flat[tix].set_xlabel(xlabel)
             axes_flat[tix].set_title(transform)
             
             bb = axes_flat[tix].get_position().bounds
