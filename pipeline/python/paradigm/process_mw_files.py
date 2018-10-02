@@ -96,8 +96,10 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     start_ev = [i for i in modes if i['value']==2][0]                                # 2=running, 0 or 1 = stopped
 
     run_idxs = [i for i,e in enumerate(modes) if e['time']>start_ev['time']]         # Get all "run states" if more than 1 found
-
-    end_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)  # Find the first "stop" event after the first "run" event
+    try:
+        end_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)  # Find the first "stop" event after the first "run" event
+    except StopIteration:
+        end_ev = df.get_events('#pixelClockCode')[-1] 
 
     # Create a list of runs using start/stop-event times (so long as "Stop" button was not pressed during acquisition, only 1 chunk of time)
     bounds = []
@@ -275,10 +277,16 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
         if early_abort is True:
             if found_new_start is True:
                 print "Missing final frame-off event, just appending last frame-trigg event to go with found START ev."
-                last_on_ev = curr_chunk[0]
+                #last_on_ev = curr_chunk[0]
                 #print last_on_ev
-                last_ev = trigg_evs[-1]
-                found_trigger_evs.append([last_on_ev, last_ev])
+                #last_ev = trigg_evs[-1]
+                curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
+                curr_start_ev = trigg_evs[curr_start_idx]
+
+
+                found_trigger_evs.append([curr_start_ev, curr_off_ev]) #curr_chunk[-1]])
+                print "Last chunk duration:", (curr_off_ev.time - curr_start_ev.time)/1E3
             else:
                 found_trigger_evs[-1][1] = trigg_evs[-1]
 
@@ -388,24 +396,29 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         print "standard ITIs:", iti_standard_dur
         #assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
         if len(list(set(iti_standard_dur))) > 1:
-            print "***More than 1 unique ITI standard found."
-            selected_iti = raw_input("Select ITI dur to use: ")
-            iti_standard_dur = [float(selected_iti)]
+            iti_standard_dur = iti_standard_dur[-1]
+            #print "***More than 1 unique ITI standard found."
+            #selected_iti = raw_input("Select ITI dur to use: ")
+            #iti_standard_dur = [float(selected_iti)]
            
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
             tmp_iti_vals = [i.value for i in tmp_itis]
-            if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==len(list(set(iti_standard_dur))):
+            if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==1:
                 # jitter var exists, but not actually used.
                 info['ITI'] = iti_standard_dur[0]
             else:
                 
                 # Only take ITI durs that are within the max allowed, since I don't know what the others are:
                 # Also, only consider events time-stamped after the first 'this_ITI_time' update.
-                iti_jitter_max = [i.value for i in df.get_events('ITI_jitter_max') if i.time >= tmp_itis[0].time]
-                assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
-                max_iti = iti_standard_dur[0] + iti_jitter_max[0]
+                iti_jitter_max = list(set([i.value for i in df.get_events('ITI_jitter_max')])) # if i.time >= tmp_itis[0].time]))
+                if len(iti_jitter_max) > 1:
+                    iti_jitter_max = iti_jitter_max[-1]
+                else: 
+                    iti_jitter_max = iti_jitter_max[0]
+                print "iti vals:", list(set([round(i/1E3, 1) for i in tmp_iti_vals]))
+                max_iti = iti_standard_dur + iti_jitter_max #[0] + iti_jitter_max #[0]
                 itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
                 if len(boundary) > 0:
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
@@ -928,7 +941,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         for trialidx,(stim,iti,iti_dur) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey), iti_durs)):
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
-            print trialname
+            #print trialname
             
             corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]]
             corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) if iti.time > tval[0] and iti.time <= tval[1]]
