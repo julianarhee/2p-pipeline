@@ -1937,11 +1937,12 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
 
     if np_method=='subtract' and plot_neuropil is True:
         mask_figdir = os.path.join(mask_figdir, 'neuropil')
+        if not os.path.exists(mask_figdir): os.makedirs(mask_figdir);
         np_maskfigs = [i for i in os.listdir(mask_figdir) if 'rois_File' in i and i.endswith('png') and 'np_iter%i' % niter in i]
         if create_new is True or len(np_maskfigs) != len(maskfigs):
             plot_roi_masks(TID, RID, plot_neuropil=plot_neuropil, mask_figdir=mask_figdir, rootdir=rootdir)
 
-    return maskinfo, mask_write_path
+    return maskinfo, maskdict_path
 
 #%%
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180412', '-A', 'FOV1_zoom1x', '-R', 'blobs_run3',
@@ -2081,7 +2082,7 @@ def extract_traces(options):
         print "TID %s -- Getting mask info..." % TID['trace_hash']
         print "--------------------------------------------------------------------"
         t_mask = time.time()
-        maskinfo, mask_write_path = create_formatted_maskfile(TID, RID,
+        maskinfo, maskdict_path = create_formatted_maskfile(TID, RID,
                                                             nslices=si_info['nslices'],
                                                             save_warp_images=save_warp_images,
                                                             np_method=np_method,
