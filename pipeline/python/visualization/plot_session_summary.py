@@ -193,7 +193,7 @@ def colorcode_histogram(bins, ppatches, color='m'):
         ppatches.patches[ind].set_alpha(0.5)
     
 #%%
-def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False):
+def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False, nproc=4):
     
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition) 
 
@@ -210,7 +210,7 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_
                                                  session=session, 
                                                  acquisition=acquisition, 
                                                  run=run, traceid=traceid)
-        responsivity_opts.extend(['-d', 'corrected', '--nproc=4', '--par', '--new'])
+        responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par', '--new'])
         roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
         roistats = np.load(roistats_fpath)
         
@@ -562,6 +562,7 @@ class SessionSummary():
         self.acquisition = optsE.acquisition
         self.data_type = optsE.data_type
         self.create_new = optsE.create_new
+        self.nproc = int(optsE.nprocesses)
         self.traceid_dirs = get_data_sources(optsE)
         self.zproj = {'source': None, 'type': 'dff' if optsE.use_dff else 'mean', 'data': None}
         self.retinotopy = {'source': None, 'traceid': optsE.retino_traceid, 'data': None}
@@ -569,6 +570,7 @@ class SessionSummary():
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.objects = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.data_identifier = None
+        self.traceset = ''.join([tid for tid in [self.retinotopy['traceid'], self.gratings['traceid'], self.blobs['traceid'], self.objects['traceid']] if tid is not None])
     
         #self.get_data()
 
@@ -580,15 +582,15 @@ class SessionSummary():
 
         if 'gratings' in self.traceid_dirs.keys():# is not None:
             self.get_gratings(metric='meanstim')
-            info_str.extend([str(self.gratings['source']), ''.join([tid.split('_')[0] for tid in self.gratings['traceid']])])
+            info_str.extend([str(self.gratings['source']), ''.join(self.gratings['traceid'].split('_')[0::2])])
 
         if 'blobs' in self.traceid_dirs.keys():
             self.get_objects(object_type='blobs', metric='zscore')
-            info_str.extend([str(self.blobs['source']), ''.join([tid.split('_')[0] for tid in self.blobs['traceid']])])
+            info_str.extend([str(self.blobs['source']), ''.join(self.blobs['traceid'].split('_')[0::2])])
 
         if 'objects' in self.traceid_dirs.keys():
             self.get_objects(object_type='objects', metric='zscore')
-            info_str.extend([str(self.objects['source']), ''.join([tid.split('_')[0] for tid in self.objects['traceid']])])
+            info_str.extend([str(self.objects['source']), ''.join(self.objects['traceid'].split('_')[0::2])])
 
         print info_str
         self.data_identifier ='_'.join(info_str)
@@ -629,11 +631,11 @@ class SessionSummary():
             self.plot_responsivity_objects(fig.axes, aix=6)
             self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
 
-    def load_sessionsummary_step(self, key=''):
+    def load_sessionsummary_step(self, key='', traceset=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         if self.data_identifier is None:
             print "Loading step: %s" % key
-            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss_%s.pkl' % traceset)
         else:
             tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
 
@@ -648,10 +650,10 @@ class SessionSummary():
                 print "Specified key %s does not exist. Create new." % key
                 return None
             
-    def save_sessionsummary_step(self, key='', val=None):
+    def save_sessionsummary_step(self, key='', val=None, traceset=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         if self.data_identifier is None:
-            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss.pkl')
+            tmp_fpath = os.path.join(acquisition_dir, 'tmp_ss_%s.pkl' % traceset)
         else:
             tmp_fpath = os.path.join(acquisition_dir, 'tmp_%s.pkl' % self.data_identifier)
 
@@ -670,12 +672,13 @@ class SessionSummary():
         zproj = None
         
         if not self.create_new:
-            zproj = self.load_sessionsummary_step(key='zproj')
+            zproj = self.load_sessionsummary_step(key='zproj', traceset=self.traceset)
+        if zproj is not None:
             for k in zproj:
                 if k not in self.zproj.keys() or self.zproj[k] is None:
                     self.zproj[k] = zproj[k]
                     
-        if zproj is None:
+        else:
             acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             
             self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
@@ -686,18 +689,19 @@ class SessionSummary():
                 self.zproj['data'] = load_traceid_zproj(self.traceid_dirs['gratings'], rootdir=self.rootdir)
             
             # Save this step for now:
-            self.save_sessionsummary_step(key='zproj', val=self.zproj)
+            self.save_sessionsummary_step(key='zproj', val=self.zproj, traceset=self.traceset)
         
     def get_retinotopy(self, fitness_thr=0.5, size_thr=0.1):
         
         retino = None
         if not self.create_new:
-            retino = self.load_sessionsummary_step(key='retinotopy')
+            retino = self.load_sessionsummary_step(key='retinotopy', traceset=self.traceset)
+        if retino is not None:
             for k in retino:
                 if k not in self.retinotopy.keys() or self.retinotopy[k] is None:
                     self.retinotopy[k] = retino[k]
                     
-        if retino is None:
+        else:
             acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             if self.retinotopy['traceid'] is None:
                 # just take the first found ROI analysis
@@ -723,12 +727,12 @@ class SessionSummary():
             self.retinotopy['size_thr'] = size_thr
             
             # Save this step for now:
-            self.save_sessionsummary_step(key='retinotopy', val=self.retinotopy)
+            self.save_sessionsummary_step(key='retinotopy', val=self.retinotopy, traceset=self.traceset)
         
     def get_gratings(self, metric='meanstim'):
         gratings = None
         if not self.create_new:
-            gratings = self.load_sessionsummary_step(key='gratings')
+            gratings = self.load_sessionsummary_step(key='gratings', traceset=self.traceset)
         if gratings is not None:
             for k in gratings:
                 if k not in self.gratings.keys() or self.gratings[k] is None:
@@ -745,7 +749,7 @@ class SessionSummary():
             
             # Get sorted ROIs:
             gratings_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                                  gratings_run, gratings_traceid, create_new=self.create_new)
+                                                  gratings_run, gratings_traceid, create_new=self.create_new, nproc=self.nproc)
                                                   #gratings_traceid.split('_')[0], create_new=optsE.create_new)
             
             # Group data by ROIs:
@@ -774,13 +778,13 @@ class SessionSummary():
             self.gratings['SVC'] = {'cmatrix': cmatrix, 'classes': classes, 'clfparams': clfparams}
             
             # Save this step for now:
-            self.save_sessionsummary_step(key='gratings', val=self.gratings)
+            self.save_sessionsummary_step(key='gratings', val=self.gratings, traceset=self.traceset)
         
         
     def get_objects(self, object_type='blobs', metric='zscore'):
         blobs = None
         if not self.create_new:
-            blobs = self.load_sessionsummary_step(key=object_type)
+            blobs = self.load_sessionsummary_step(key=object_type, traceset=self.traceset)
         if blobs is not None:
             for k in blobs:
                 if object_type == 'blobs':
@@ -801,7 +805,7 @@ class SessionSummary():
             
             # Get sorted ROIs:
             blobs_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                           blobs_run, blobs_traceid, create_new=self.create_new) #blobs_traceid.split('_')[0])
+                                           blobs_run, blobs_traceid, create_new=self.create_new, nproc=self.nproc) #blobs_traceid.split('_')[0])
             
             # Group data by ROIs:
             blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
@@ -824,7 +828,7 @@ class SessionSummary():
                 self.objects = object_dict               
 
             # Save this step for now:
-            self.save_sessionsummary_step(key=object_type, val=object_dict)
+            self.save_sessionsummary_step(key=object_type, val=object_dict, traceset=self.traceset)
         
         
     def plot_zproj_image(self, axes_flat=None, aix=0):
