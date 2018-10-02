@@ -654,7 +654,7 @@ def calculate_roi_responsivity(options):
     sort_dir = os.path.join(traceid_dir, 'sorted_rois')
     if not os.path.exists(sort_dir):
         os.makedirs(sort_dir)
-
+    print "Saving sorted ROI results to:\n    %s" % sort_dir
     # Load data array:
     # -------------------------------------------------------------------------
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
@@ -764,4 +764,5 @@ def main(options):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
 
