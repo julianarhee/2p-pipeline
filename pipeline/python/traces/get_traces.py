@@ -2027,6 +2027,12 @@ def extract_traces(options):
     tiffs = ['File%03d' % int(i+1) for i in range(si_info['ntiffs']) if i not in TID['PARAMS']['excluded_tiffs']]    
     RID = load_TID_roiset(TID, rootdir)
 
+    # Save trace extraction params to file for easy-read:
+    trace_extraction_opts = vars(options)
+    with open(os.path.join(TID['DST'], 'extraction_params.json'), 'w') as f:
+        json.dump(trace_extraction_opts, f, indent=4, sort_keys=True)
+
+
     #%
     # Get source tiff paths using trace-ID params:
     # =============================================================================
