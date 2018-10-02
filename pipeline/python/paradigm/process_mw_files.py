@@ -397,6 +397,8 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         #assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
         if len(list(set(iti_standard_dur))) > 1:
             iti_standard_dur = iti_standard_dur[-1]
+        else: 
+            iti_standard_dur = iti_standard_dur[0]
             #print "***More than 1 unique ITI standard found."
             #selected_iti = raw_input("Select ITI dur to use: ")
             #iti_standard_dur = [float(selected_iti)]
@@ -504,7 +506,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                 trigg_times_tmp.append([trigg_times[first_file_in_chunk][0], trigg_times[last_file_in_chunk][-1]])
             else:
                 trigg_times_tmp.append(trigger_sect)
-        assert len(trigg_times_tmp) == runinfo['ntiffs'], "Even with subdivs, funky n chunks (%i) found..." % len(trigg_times_tmp)
+        assert len(trigg_times_tmp) == runinfo['ntiffs'], "Even with subdivs, funky n chunks (%i) found...(expecting %i ntiffs)" % (len(trigg_times_tmp), runinfo['ntiffs'])
         trigg_times = trigg_times_tmp
         
     
