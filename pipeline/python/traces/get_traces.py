@@ -2267,8 +2267,8 @@ def files_to_roi_timecourses(TID, RID, si_info, filetraces_dir, rootdir, create_
 #1/si_info['volumerate']
 #Out[326]: 0.06712490602513156
 
-#%% GET PLOTS:
-def main(options):
+
+def run_trace_extraction(options):
     #options = extract_options(options)
 
     TID, RID, si_info, filetraces_dir, rootdir, update_roi_timecourses = extract_traces(options)
@@ -2328,7 +2328,7 @@ def main(options):
 
 	data_fpath = align.create_rdata_array(align_opts)
         print "******************************************"
-        print "Done aligning traces to trials."
+        print "Done aligning traces to trials.\nSaved data arrays to:\n%s" % data_fpath
         print "******************************************"
 
     if optsE.plot_psth:
@@ -2348,6 +2348,12 @@ def main(options):
 	print "All output saved to: %s" % psth_dir
 	print "*******************************************************************"
      
+    
+
+#%% GET PLOTS:
+def main(options):
+    run_trace_extraction(options)
+    
 if __name__ == '__main__':
     main(sys.argv[1:])
 
