@@ -127,10 +127,7 @@ pp = pprint.PrettyPrinter(indent=4)
 #%%
 
 def load_TID(run_dir, trace_id, auto=False):
-    run = os.path.split(run_dir)[-1]
-    trace_dir = os.path.join(run_dir, 'traces')
-    tmp_tid_dir = os.path.join(trace_dir, 'tmp_tids')
-    tracedict_path = os.path.join(trace_dir, 'traceids_%s.json' % run)
+    tracedict_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_%s.json'))[0]
     try:
         print "Loading params for TRACE SET, id %s" % trace_id
         with open(tracedict_path, 'r') as f:
@@ -141,28 +138,15 @@ def load_TID(run_dir, trace_id, auto=False):
         print "No TRACE SET entry exists for specified id: %s" % trace_id
         print "TRACE DIR:", tracedict_path
         try:
-            print "Checking tmp trace-id dir..."
-            if auto is False:
-                while True:
-                    tmpfns = [t for t in os.listdir(tmp_tid_dir) if t.endswith('json')]
-                    for tidx, tidfn in enumerate(tmpfns):
-                        print tidx, tidfn
-                    userchoice = raw_input("Select IDX of found tmp trace-id to view: ")
-                    with open(os.path.join(tmp_tid_dir, tmpfns[int(userchoice)]), 'r') as f:
-                        tmpTID = json.load(f)
-                    print "Showing tid: %s, %s" % (tmpTID['trace_id'], tmpTID['trace_hash'])
-                    pp.pprint(tmpTID)
-                    userconfirm = raw_input('Press <Y> to use this trace ID, or <q> to abort: ')
-                    if userconfirm == 'Y':
-                        TID = tmpTID
-                        break
-                    elif userconfirm == 'q':
-                        break
+            assert len(tracedict.keys()) > 0, "No TIDs found! Did you run set_traceid_params.py?"
+            for tidx, tmpTID in tracedict.items():
+                print tidx, pp.pprint(tmpTID)
+            userconfirm = input('Select IDX of TID to use: ')
+            TID = tracedict[tracedict.keys()[int(userconfirm)]]
         except Exception as e:
             traceback.print_exc()
             print "---------------------------------------------------------------"
-            print "No tmp trace-ids found either... ABORTING with error:"
-            print e
+            print "Invalid TID choice. Aborting.
             print "---------------------------------------------------------------"
 
     return TID
@@ -172,7 +156,6 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
     mask_path = os.path.join(RID['DST'], 'masks.hdf5')
     excluded_tiffs = TID['PARAMS']['excluded_tiffs']
-
 
     maskinfo = dict()
     try:
@@ -283,70 +266,6 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
     return maskinfo
 
-#def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
-#    maskinfo = dict()
-#    try:
-#        maskfile = h5py.File(mask_path, "r")
-#        is_3D = bool(maskfile.attrs['is_3D'])
-#
-#        # identify tiff source:
-#        roidict_path = os.path.join(rootdir, maskfile.attrs['animal'], maskfile.attrs['session'], 'ROIs', 'rids_%s.json' % maskfile.attrs['session'])
-#        with open(roidict_path, 'r') as f:
-#            roidict = json.load(f)
-#        roi_tiff_src = roidict[maskfile.attrs['roi_id']]['SRC']
-#
-#        if rootdir not in roi_tiff_src:
-#            roi_tiff_src = replace_root(roi_tiff_src, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
-#        ntiffs = len([f for f in os.listdir(roi_tiff_src) if f.endswith('tif')])
-#
-#
-#        # Get files for which there are ROIs in this set:
-#        maskfiles = maskfile.keys()
-#        print "MASK FILES:", len(maskfiles)
-#        if len(maskfiles) == 1:
-#            #ntiffs = maskfile.attrs['ntiffs_in_set']
-#            filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs)], key=natural_keys)
-#            filenames = sorted([ f for f in filenames if f not in excluded_tiffs], key=natural_keys)
-#            ref_file = maskfiles[0]
-#            print "Using reference file %s on %i total tiffs." % (ref_file, len(filenames))
-#            single_reference = True
-#        else:
-#            filenames = maskfile.keys()
-#            single_reference = False
-#            ref_file = None #RID['PARAMS']['options']['ref_file']
-#
-#        # Check if masks are split up by slices: (Matlab, manual2D methods are diff)
-#        if type(maskfile[maskfiles[0]]['masks']) == h5py.Dataset:
-#            slice_masks = False
-#        else:
-#            slice_keys = [s for s in maskfile[maskfiles[0]]['masks'].keys() if 'Slice' in s]
-#            if len(slice_keys) > 0:
-#                slice_masks = True
-#            else:
-#                slice_masks = False
-#
-#        # Get slices for which there are ROIs in this set:
-#        if slice_masks:
-#            roi_slices = sorted([str(s) for s in maskfile[maskfiles[0]]['masks'].keys()], key=natural_keys)
-#        else:
-#            roi_slices = sorted(["Slice%02d" % int(s+1) for s in range(nslices)], key=natural_keys)
-#    except Exception as e:
-#        traceback.print_exc()
-#        print "Error loading mask info..."
-#        print "Mask path was: %s" % mask_path
-#    #finally:
-#        #maskfile.close()
-#
-#    maskinfo['filenames'] = filenames
-#    maskinfo['ref_file'] = ref_file
-#    maskinfo['is_single_reference'] = single_reference
-#    maskinfo['is_3D'] = is_3D
-#    maskinfo['is_slice_format'] = slice_masks
-#    maskinfo['roi_slices'] = roi_slices
-#    maskinfo['filepath'] = mask_path
-#
-#    return maskinfo
-
 #%%
 def masks_to_normed_array(masks):
     '''
@@ -387,16 +306,18 @@ def uint16_to_RGB(img):
     return rgb
 
 def plot_warped_rois(ref, sample, masks, masks_aligned, title='', save_warp_images=True, out_fpath='/tmp/aligned_rois.png'):
+    '''
+    Plots original ROI img (green), target img w/ orig ROIs (green), target img w/ orig ROIs (green) + warped ROIs (red)
+    '''
     refRGB = uint16_to_RGB(ref)
-    imRGB = uint16_to_RGB(sample)
+    #imRGB = uint16_to_RGB(sample)
     wimRGB = uint16_to_RGB(sample)
     nrois = masks.shape[-1]
 
-    fig = pl.figure(figsize=(15,5))
+    fig = pl.figure(figsize=(10,5))
     fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1, hspace=0.1, wspace=0.1)
-    ax1 = fig.add_subplot(1,3,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
-    ax2 = fig.add_subplot(1,3,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, orig rois'); pl.axis('off')
-    ax3 = fig.add_subplot(1,3,3); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
+    ax1 = fig.add_subplot(1,2,1); pl.imshow(refRGB, cmap='gray'); pl.title('ref rois'); pl.axis('off')
+    ax2 = fig.add_subplot(1,2,2); pl.imshow(imRGB, cmap='gray'); pl.title('sample, warped rois'); pl.axis('off')
     for ridx in range(nrois):
         #roinum = ridx + 1
         orig = masks[:,:,ridx].copy().astype('uint8')
@@ -405,16 +326,14 @@ def plot_warped_rois(ref, sample, masks, masks_aligned, title='', save_warp_imag
         orig2,contours,hierarchy = cv2.findContours(thresh, 1, 2)
         cv2.drawContours(refRGB, contours, 0, (0,255,0), 1)
         ax1.imshow(refRGB)
-        # Draw orig ROIs on sample:
-        cv2.drawContours(imRGB, contours, 0, (0,255,0), 1)
-        ax2.imshow(imRGB)
+
         # Draw orig ROIs + warped ROIs on sample (i.e., ref rois warped to match sample)
         alig = masks_aligned[:,:,ridx].copy().astype('uint8')
         ret,thresh = cv2.threshold(alig,.5,255,0)
         aligC,contours2,hierarchy = cv2.findContours(thresh, 1, 2)
         cv2.drawContours(wimRGB, contours, 0, (0,255,0), 1)
         cv2.drawContours(wimRGB, contours2, 0, (255,0,0), 1)
-        ax3.imshow(wimRGB)
+        ax2.imshow(wimRGB)
 
     #figname = 'aligned_rois.png'
     pl.title(title)
@@ -473,16 +392,12 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
 
         # Retry with AFFINE:
         warp_matrix = np.eye(2, 3, dtype=np.float32)
-
-        # Set the stopping criteria for the algorithm.
         criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-10)
-        
         sample = img.copy()
         # Warp REFERENCE image into sample:
         (cc, warp_matrix) = cv2.findTransformECC (get_gradient(sample), get_gradient(ref), warp_matrix, alt_transform, criteria)
-        
         ref_aligned = cv2.warpAffine(ref, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
-
+        # Check correlation again:
         warp_corr = np.corrcoef(sample.ravel(), ref_aligned.ravel())
         orig_corr = np.corrcoef(sample.ravel(), ref.ravel())
         if warp_corr[0,1] < orig_corr[0,1]:
@@ -506,9 +421,11 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
     nrois = masks.shape[-1]
     for r in xrange(0, nrois):
         if warp_mode == cv2.MOTION_HOMOGRAPHY:
-            masks_aligned[:,:,r] = cv2.warpPerspective (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+            masks_aligned[:,:,r] = cv2.warpPerspective (masks[:,:,r], warp_matrix, 
+                                             (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
         else:
-            masks_aligned[:,:,r] = cv2.warpAffine (masks[:,:,r], warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+            masks_aligned[:,:,r] = cv2.warpAffine (masks[:,:,r], warp_matrix, 
+                                             (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
 
     # Save warp alignment, if requested:
     if save_warp_images:
