@@ -168,6 +168,10 @@ def selectivity_KW(df_by_rois, roi_list=[], post_hoc='dunn', metric='meanstim', 
         for roi in rlist:
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
+            if np.where(np.isnan(rdata['intensity']))[0].any():
+                outdict[roi] = None
+                print "ROI %i:  Found NaNs, ignoring." % roi
+                continue
             outdict[roi] = do_KW_test(rdata, post_hoc=post_hoc, metric=metric, asdict=True)  
         out_q.put(outdict)
 
@@ -279,7 +283,12 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         
     for roi in roi_list[0:topn]:
         rdata = df_by_rois.get_group(int(roi))
-    
+        if np.where(np.isnan(rdata['intensity']))[0].any():
+            outdict[roi] = None
+            print "ROI %i:  Found NaNs, ignoring." % roi
+            continue
+
+   
         #% Sort configs by mean value:
         df2 = pd.DataFrame({col:vals[metric] for col,vals in rdata.groupby('config')})
         meds = df2.median().sort_values(ascending=False)
@@ -401,6 +410,10 @@ def visually_responsive_ANOVA(df_by_rois, split_plot=True, nprocs=4, output_dir=
             print roi
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
+            if np.where(np.isnan(rdata['intensity']))[0].any():
+                outdict[roi] = None
+                print "ROI %i:  Found NaNs, ignoring." % roi
+                continue
             pdf = pyvt_format_trialepoch_df(rdata)
             if split_plot:
                 outdict[roi] = pyvt_splitplot_anova2(roi, pdf, output_dir=output_dir, asdict=True)  
@@ -608,6 +621,11 @@ def pyvt_boxplot_epochXconfig(df_by_rois, roi_list, output_dir='/tmp'):
 
     for roi in roi_list:
         rdata = df_by_rois.get_group(int(roi))
+        if np.where(np.isnan(rdata['intensity']))[0].any():
+            outdict[roi] = None
+            print "ROI %i:  Found NaNs, ignoring." % roi
+            continue
+
         pdf = pyvt_format_trialepoch_df(rdata)
         factor_list = ['config', 'epoch']
         fname = 'roi%05d_boxplot(intensity~epoch_X_config).png' % (int(roi)+1)
@@ -665,6 +683,14 @@ def calculate_roi_responsivity(options):
     # Get trace array (nframes x nrois) and experiment info labels (nframes x nfeatures)
     assert trace_type in dataset.keys(), "[W] Specified trace_type %s does not exist in dataset." % trace_type
     roidata = dataset[trace_type]
+    #roi_list = np.arange(0, roidata.shape[1])
+    
+    # Get rid of "bad rois" i.e., ones that have nans... 
+    bad_frames, bad_rois = np.where(np.isnan(roidata))
+    bad_roi_ixs = np.unique(bad_rois)
+    #roidata = np.delete(roidata, bad_roi_ixs, axis=1)
+    print "*** WARNING *** Found %i rois with NaNs." % len(bad_roi_ixs)
+
     labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
     assert roidata.shape[0] == labels_df.shape[0], "[W] trace data shape (%s) does not match labels (%s)" % (str(roidata.shape), str(labels_df.shape))
     sconfigs = dataset['sconfigs'][()]
@@ -680,7 +706,7 @@ def calculate_roi_responsivity(options):
     # =========================================================================
     # RESPONSIVITY:
     # =========================================================================
-    responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df, 
+    responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df,
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
                                                         create_new=create_new, 
@@ -764,5 +790,6 @@ def main(options):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
 
 
