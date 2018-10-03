@@ -523,7 +523,11 @@ def do_roi_extraction(options):
     # =============================================================================
     # Get meta info for current run and source tiffs using trace-ID params:
     # =============================================================================
-    tiff_sourcedir = RID['SRC']
+    if os.path.isdir(RID['SRC']): 
+        tiff_sourcedir = RID['SRC']
+    else:
+        tiff_sourcedir = RID['PARAMS']['tiff_sourcedir']
+    # TODO:  update motion-checking, etc. for new zproj_type = std_warped_sum
     if rootdir not in tiff_sourcedir:
         tiff_sourcedir = replace_root(tiff_sourcedir, rootdir, animalid, session)
 
