@@ -1139,6 +1139,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         trials_in_block = sorted([t for t in trial_list \
                                   if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
         print "N trials in block: %i" % len(trials_in_block)
+        if len(trials_in_block) == 0:
+            continue
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
                                    for t in trials_in_block])
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
