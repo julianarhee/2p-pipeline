@@ -237,6 +237,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         old_dir = RID['DST']
         RID['rid_hash'] = hashlib.sha1(json.dumps(RID, sort_keys=True)).hexdigest()[0:6]
         RID['DST'] = RID['DST'].replace(old_hash, RID['rid_hash'])
+        RID['SRC'] = warped_mean_image_path.replace(old_hash, RID['rid_hash'])
         shutil.move(old_dir, RID['DST']) # Rename ROI ID dir
         print "Updated ROI ID from %s\n --> to %s" % (old_dir, RID['DST'])
         
