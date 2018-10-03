@@ -208,13 +208,17 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
         # Get zproj source base dir:
         # For now, assuming preprocessing + motion-correction output of fmt:
         # <...>_ZPROJ_deinterleaved/Channel01/File003 -- only take up to the Channel-dir
-        if 'source' not in maskfile[maskfile.keys()[0]].attrs.keys():
-            mask_source_dir = maskfile[maskfile.keys()[0]]['masks'].attrs['source']
+        if '_warped' in RID['PARAMS']['options']['zproj_type']:  
+            mask_source_dir = os.path.join('%s_mean_deinterleaved' % RID['PARAMS']['tiff_sourcedir'], 'Channel%02d' % RID['PARAMS']['options']['ref_channel'], 'File%03d' % RID['PARAMS']['options']['ref_file'])
         else:
-            mask_source_dir = maskfile[maskfile.keys()[0]].attrs['source']
+            if 'source' not in maskfile[maskfile.keys()[0]].attrs.keys():
+                mask_source_dir = maskfile[maskfile.keys()[0]]['masks'].attrs['source']
+            else:
+                mask_source_dir = maskfile[maskfile.keys()[0]].attrs['source']
         if rootdir not in mask_source_dir:
             mask_source_dir = replace_root(mask_source_dir, rootdir, maskfile.attrs['animal'], maskfile.attrs['session'])
         rid_zproj_basedir = os.path.split(mask_source_dir)[0]
+
         sigchannel_dirname = os.path.split(rid_zproj_basedir)[-1]
 
         # Get reference file in current trace id set (just use reference from processed dir)
