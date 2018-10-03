@@ -27,7 +27,8 @@ def get_downsampled_std_images(run_dir, downsample_factor=(0.1, 1, 1), interpola
     # create output dir:
     zproj_dir = '%s_std_deinterleaved/%s' % (os.path.split(tif_paths[0])[0], channel)
     if not os.path.exists(zproj_dir): os.makedirs(zproj_dir)
-    
+    print "Checking dir for existing tifs in: %s" % zproj_dir
+ 
     # First check if already done:
     existing_std_paths = glob.glob(os.path.join(zproj_dir, 'File*', '*std*.tif'))
     existing_files = [str(re.search('File(\d{3})', p).group(0)) for p in existing_std_paths]
@@ -67,6 +68,15 @@ def get_downsampled_std_images_mp(run_dir, downsample_factor=(0.1, 1, 1), interp
     # create output dir:
     zproj_dir = '%s_std_deinterleaved/%s' % (os.path.split(tif_paths[0])[0], channel)
     if not os.path.exists(zproj_dir): os.makedirs(zproj_dir)
+
+    print "Checking dir for existing tifs in: %s" % zproj_dir
+ 
+    # First check if already done:
+    existing_std_paths = glob.glob(os.path.join(zproj_dir, 'File*', '*std*.tif'))
+    existing_files = [str(re.search('File(\d{3})', p).group(0)) for p in existing_std_paths]
+    print "Found %i existing STD images." % len(existing_std_paths)
+    tif_paths = [p for p in tif_paths if str(re.search('File(\d{3})', p).group(0)) not in existing_files]
+    print "Missing %i images." % len(tif_paths)
     
     def downsampler(tif_list, downsample_factor, order, zproj_dir, out_q):
         
