@@ -2110,7 +2110,7 @@ def extract_traces(options):
         print "EXCLUDE:", bad_warps
         TID['PARAMS']['excluded_tiffs'].extend(bad_warps)
         tid_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_*.json'))[0]
-        with open(tid_path, 'r') as f: tids = json.load(tid_path)
+        with open(tid_path, 'r') as f: tids = json.load(f)
         tids[TID['trace_id']] = TID
         with open(tid_path, 'w') as f: json.dump(tids, f, indent=True, sort_keys=True)
         
