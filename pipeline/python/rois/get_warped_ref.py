@@ -270,8 +270,8 @@ def extract_options(options):
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     #parser.add_option('-p', '--pid', dest='pid', default='processed001', action='store', help="PID for all runs (default: processed001)")
     parser.add_option('-r', '--rid', dest='rid', default='', action='store', help="ROI ID for all runs (default: '')")
-    parser.add_options('-w', '--warp-thr', dest='warp_threshold', action='store', help='Threshold for aligned image correlation (default: 0.75)')
-    parser.add_options('-e', '--enhance', dest='enhance_factor', action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
+    parser.add_option('-w', '--warp-thr', dest='warp_threshold', default=0.75, action='store', help='Threshold for aligned image correlation (default: 0.75)')
+    parser.add_option('-e', '--enhance', dest='enhance_factor', action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
     
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set flag if making warps anew")
 
