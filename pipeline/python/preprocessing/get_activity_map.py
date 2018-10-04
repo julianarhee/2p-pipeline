@@ -123,7 +123,7 @@ def get_downsampled_std_images_mp(run_dir, downsample_factor=(0.1, 1, 1), interp
         print "Finished:", p
         p.join()
 
-    return resultdict
+    return zproj_dir #resultdict
 
 def extract_options(options):
 
@@ -157,6 +157,31 @@ def extract_options(options):
 
     return options
 
+def deinterleaved_to_stack(zproj_dir):
+    img_paths = glob.glob(os.path.join(zproj_dir, 'File*', '*.tif'))
+    print "Found %i deinterleaved images." % len(img_paths)
+    stack = []
+    for i,imgp in enumerate(img_paths):
+        img = tf.imread(imgp)
+        if len(img.shape) == 3:
+            std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
+            std_img[:] = np.std(img, axis=0)
+            tf.imsave(imgp, std_img)
+            stack.append(std_img)
+        else:
+            stack.append(img)
+    stack_r = np.dstack(stack).T
+    stack_r = np.swapaxes(stack_r, 1, 2) # swap x,y to match natural
+
+    print stack_r.shape
+    all_imgs = np.empty(stack_r.shape, dtype=stack[0].dtype)
+    all_imgs[:] = stack_r #np.dstack(stack)
+    std_base_dir = os.path.split(zproj_dir)[0]
+    stack_outfile = os.path.join(std_base_dir, 'std_images.tif')
+    print "Saving stack to:", stack_outfile
+    tf.imsave(stack_outfile, all_imgs)
+ 
+
 def main(options):
 
     optsE = extract_options(options)
@@ -172,6 +197,7 @@ def main(options):
 
     print "*** DONE ***"
     print "Downsample, STD-projected images saved to:\n", zproj_dir
+    deinterleaved_to_stack(zproj_dir)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
