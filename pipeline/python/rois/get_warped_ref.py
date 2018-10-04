@@ -159,6 +159,8 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         img_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, \
                                            'mcorrected_*_%s_deinterleaved' % zproj, channel,  'File*', '*.tif'))
         nfiles_total = len(img_paths)
+        print "TOTAL N IMAGES (across all runs): %i" % nfiles_total
+
         stack = []
         for i,imgp in enumerate(img_paths):
             img = tf.imread(imgp)
