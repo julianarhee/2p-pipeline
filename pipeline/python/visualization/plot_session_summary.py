@@ -507,6 +507,8 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
         combo_dpath = combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new)
         traceid_dirs = combo_dpath.split('/data_arrays')[0]
     else:
+        check_run_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype, 'traces', '%s*' % traceid)) for traceid in traceid_list] for item in sublist])), key=natural_keys)
+        print "1 run:", check_run_dir
         traceid_dirs = check_run_dir[0]
 
     return traceid_dirs
