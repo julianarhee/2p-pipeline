@@ -258,9 +258,11 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         retry_warps = {}; still_bad_warps= [];
         if len(bad_warps) > 0:
             print "Retrying warps using secondary warp mode for %i images." % len(bad_warps)
-            retry_warps = warp_images(stack[np.array(bad_warps)], ref=ref, warp_mode=secondary_warp)
+            print bad_warps
+            subset = [stack[i] for i in bad_warps]
+            retry_warps = warp_images(subset, ref=ref, warp_mode=secondary_warp)
             still_bad_warps = [bad_warps[image_ix] for image_ix, results in retry_warps.items() \
-                                   if results['corrcoef_aligned'][0,1] < warp_threshold]
+                                   if results['corrcoef_aligned'] < warp_threshold]
         if len(still_bad_warps) > 0:
             print "Found %i files that fail %.2f threshold using both warp modes." 
         
