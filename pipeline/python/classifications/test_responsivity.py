@@ -168,7 +168,7 @@ def selectivity_KW(df_by_rois, roi_list=[], post_hoc='dunn', metric='meanstim', 
         for roi in rlist:
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
-            if np.where(np.isnan(rdata['intensity']))[0].any():
+            if np.where(np.isnan(rdata[metric]))[0].any():
                 outdict[roi] = None
                 print "ROI %i:  Found NaNs, ignoring." % roi
                 continue
@@ -283,7 +283,7 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         
     for roi in roi_list[0:topn]:
         rdata = df_by_rois.get_group(int(roi))
-        if np.where(np.isnan(rdata['intensity']))[0].any():
+        if np.where(np.isnan(rdata[metric]))[0].any():
             outdict[roi] = None
             print "ROI %i:  Found NaNs, ignoring." % roi
             continue
