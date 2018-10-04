@@ -1084,7 +1084,7 @@ def extract_options(options):
 
 
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
-    parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
+    parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
     parser.add_option('--redo', action='store_true', dest='redo', default=False, help="set to (re-)create SessionSummary object")
     parser.add_option('--mean', action='store_false', dest='use_dff', default=True, help="set to use MEAN image for zproj instead of df/f (default)")
