@@ -689,7 +689,8 @@ def calculate_roi_responsivity(options):
     bad_frames, bad_rois = np.where(np.isnan(roidata))
     bad_roi_ixs = np.unique(bad_rois)
     #roidata = np.delete(roidata, bad_roi_ixs, axis=1)
-    print "*** WARNING *** Found %i rois with NaNs." % len(bad_roi_ixs)
+    if len(bad_roi_ixs) > 0:
+        print "*** WARNING *** Found %i rois with NaNs." % len(bad_roi_ixs)
 
     labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
     assert roidata.shape[0] == labels_df.shape[0], "[W] trace data shape (%s) does not match labels (%s)" % (str(roidata.shape), str(labels_df.shape))
