@@ -36,46 +36,102 @@ def get_gradient(im):
     grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
     return grad
 
-def warp_images(stack, ref, warp_mode=cv2.MOTION_HOMOGRAPHY):
+def warp_images(img_list, ref, warp_mode=cv2.MOTION_HOMOGRAPHY, nprocs=1):
 
-    height, width = stack[0].shape
+    height, width = img_list[0].shape
     
     # Allocate space for aligned image
 
-    # Define motion mode. # Set the warp matrix to identity.
-    if warp_mode == cv2.MOTION_HOMOGRAPHY:
-        warp_matrix = np.eye(3, 3, dtype=np.float32)
-    else:
-        warp_matrix = np.eye(2, 3, dtype=np.float32)
+
 
     # Set the stopping criteria for the algorithm.
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-6)
-    warps = {}
-    for image_ix, img in enumerate(stack):
-        print image_ix
-        sample = img.copy()
-        if (img == ref).all():
-            aligned_sample = sample.copy()
-            mode_str = 'None'
+    
+    def warper(img_list, img_ixs, ref, warp_mode, out_q):
+        # Define motion mode. # Set the warp matrix to identity.
+        if warp_mode == cv2.MOTION_HOMOGRAPHY:
+            warp_matrix = np.eye(3, 3, dtype=np.float32)
         else:
-            aligned_sample = np.zeros((height,width), dtype=sample.dtype) #dtype=np.uint8 )
-            
-            # Warp sample to ref:
-            (cc, warp_matrix) = cv2.findTransformECC (get_gradient(ref), get_gradient(sample), warp_matrix, warp_mode, criteria)
-            
-            if warp_mode == cv2.MOTION_HOMOGRAPHY :
-                # Use Perspective warp when the transformation is a Homography
-                aligned_sample = cv2.warpPerspective(sample, warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
-                mode_str = 'MOTION_HOMOGRAPHY'
+            warp_matrix = np.eye(2, 3, dtype=np.float32)
+
+        curr_warps = {}
+        for image_ix, img in zip(img_ixs, img_list):
+            print image_ix
+            sample = img.copy()
+            if (img == ref).all():
+                aligned_sample = sample.copy()
+                mode_str = 'None'
             else:
-                # Use Affine warp when the transformation is not a Homography
-                aligned_sample = cv2.warpAffine(sample, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
-                mode_str = 'WARP_AFFINE'
+                aligned_sample = np.zeros((height,width), dtype=sample.dtype) #dtype=np.uint8 )
+                
+                # Warp sample to ref:
+                (cc, warp_matrix) = cv2.findTransformECC (get_gradient(ref), get_gradient(sample), warp_matrix, warp_mode, criteria)
+                
+                if warp_mode == cv2.MOTION_HOMOGRAPHY :
+                    # Use Perspective warp when the transformation is a Homography
+                    aligned_sample = cv2.warpPerspective(sample, warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+                    mode_str = 'MOTION_HOMOGRAPHY'
+                else:
+                    # Use Affine warp when the transformation is not a Homography
+                    aligned_sample = cv2.warpAffine(sample, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
+                    mode_str = 'WARP_AFFINE'
+            
+            curr_warps[image_ix] = {'aligned': aligned_sample,
+                               'mode_str': mode_str,
+                               'corrcoef': np.corrcoef(sample.ravel(), ref.ravel())[0,1],
+                               'corrcoef_aligned': np.corrcoef(aligned_sample.ravel(), ref.ravel())[0,1]}
+        out_q.put(curr_warps)
         
-        warps[image_ix] = {'aligned': aligned_sample,
-                           'mode_str': mode_str,
-                           'corrcoef': np.corrcoef(sample.ravel(), ref.ravel())[0,1],
-                           'corrcoef_aligned': np.corrcoef(aligned_sample.ravel(), ref.ravel())[0,1]}
+    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+    out_q = mp.Queue()
+    chunksize = int(math.ceil(len(img_list) / float(nprocs)))
+    procs = []
+    img_ixs = range(len(img_list))
+    for i in range(nprocs):
+        p = mp.Process(target=warper,
+                       args=(img_list[chunksize * i:chunksize * (i + 1)],
+                                      img_ixs[chunksize * i:chunksize * (i + 1)], ref, warp_mode, out_q))
+        procs.append(p)
+        p.start()
+
+    # Collect all results into single results dict. We should know how many dicts to expect:
+    warps = {}
+    for i in range(nprocs):
+        warps.update(out_q.get())
+
+    # Wait for all worker processes to finish
+    for p in procs:
+        print "Finished:", p
+        p.join()
+        
+        
+#    warps = {}
+#    
+#    for image_ix, img in enumerate(stack):
+#        print image_ix
+#        sample = img.copy()
+#        if (img == ref).all():
+#            aligned_sample = sample.copy()
+#            mode_str = 'None'
+#        else:
+#            aligned_sample = np.zeros((height,width), dtype=sample.dtype) #dtype=np.uint8 )
+#            
+#            # Warp sample to ref:
+#            (cc, warp_matrix) = cv2.findTransformECC (get_gradient(ref), get_gradient(sample), warp_matrix, warp_mode, criteria)
+#            
+#            if warp_mode == cv2.MOTION_HOMOGRAPHY :
+#                # Use Perspective warp when the transformation is a Homography
+#                aligned_sample = cv2.warpPerspective(sample, warp_matrix, (width,height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+#                mode_str = 'MOTION_HOMOGRAPHY'
+#            else:
+#                # Use Affine warp when the transformation is not a Homography
+#                aligned_sample = cv2.warpAffine(sample, warp_matrix, (width, height), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP);
+#                mode_str = 'WARP_AFFINE'
+#        
+#        warps[image_ix] = {'aligned': aligned_sample,
+#                           'mode_str': mode_str,
+#                           'corrcoef': np.corrcoef(sample.ravel(), ref.ravel())[0,1],
+#                           'corrcoef_aligned': np.corrcoef(aligned_sample.ravel(), ref.ravel())[0,1]}
         
     return warps
         
@@ -175,61 +231,24 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                                            'mcorrected_*_%s_deinterleaved' % zproj, channel,  'File*', '*.tif'))
         nfiles_total = len(img_paths)
         print "TOTAL N IMAGES (across all runs): %i" % nfiles_total
-
-        def warper(img_paths, out_q):
-            stack = {} #stack = []
-            for i,imgp in enumerate(img_paths):
-                print "... %i of %i images" % (int(i+1), len(img_paths))
-                img = tf.imread(imgp)
-                if len(img.shape) == 3:
-                    std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
-                    std_img[:] = np.std(img, axis=0)
-                    tf.imsave(imgp, std_img)
-                    #stack.append(std_img)
-                    stack[imgp] = std_img
-                else:
-                    #stack.append(img)
-                    stack[imgp] = img
-            out_q.put(stack)
-            
-        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
-        out_q = mp.Queue()
-        chunksize = int(math.ceil(len(img_paths) / float(nprocs)))
-        procs = []
-        for i in range(nprocs):
-            p = mp.Process(target=warper, args=(img_paths[chunksize * i:chunksize * (i + 1)], out_q))
-            procs.append(p)
-            p.start()
-    
-        # Collect all results into single results dict. We should know how many dicts to expect:
-        resultdict = {}
-        for i in range(nprocs):
-            resultdict.update(out_q.get())
-    
-        # Wait for all worker processes to finish
-        for p in procs:
-            print "Finished:", p
-            p.join()
-        
-        stack = [resultdict[imgp] for imgp in img_paths]
         
         # ---------------------------------------------------------------------
-#        stack = []
-#        for i,imgp in enumerate(img_paths):
-#            img = tf.imread(imgp)
-#            if len(img.shape) == 3:
-#                std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
-#                std_img[:] = np.std(img, axis=0)
-#                tf.imsave(imgp, std_img)
-#                stack.append(std_img)
-#            else:
-#                stack.append(img)
+        stack = []
+        for i,imgp in enumerate(img_paths):
+            img = tf.imread(imgp)
+            if len(img.shape) == 3:
+                std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
+                std_img[:] = np.std(img, axis=0)
+                tf.imsave(imgp, std_img)
+                stack.append(std_img)
+            else:
+                stack.append(img)
         # ---------------------------------------------------------------------
         
         # Select reference and warp each image to it:
         reference_ix = nfiles_total/2
         ref = stack[reference_ix]
-        warps = warp_images(stack, ref=ref, warp_mode=primary_warp)
+        warps = warp_images(stack, ref=ref, warp_mode=primary_warp, nprocs=nprocs)
         
         # Check for bad warps:
         bad_warps = [image_ix for image_ix, results in warps.items() \
