@@ -17,6 +17,8 @@ import hashlib
 import shutil
 import json
 import optparse
+import math
+import multiprocessing as mp
 import numpy as np
 import pylab as pl
 import cPickle as pkl
@@ -116,7 +118,7 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
         
 
 
-def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, create_new=False):
+def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, create_new=False, nprocs=1):
     
     # Load RID:
     session_dir = os.path.split(acquisition_dir)[0]
@@ -160,7 +162,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
             else:
                 return warp_results #None
     else:
-        creat_new = True #return None
+        create_new = True #return None
             
     # Warp all ZPROJ images to a single reference.
     # -----------------------------------------------------------------------------
@@ -175,16 +177,54 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         nfiles_total = len(img_paths)
         print "TOTAL N IMAGES (across all runs): %i" % nfiles_total
 
-        stack = []
-        for i,imgp in enumerate(img_paths):
-            img = tf.imread(imgp)
-            if len(img.shape) == 3:
-                std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
-                std_img[:] = np.std(img, axis=0)
-                tf.imsave(imgp, std_img)
-                stack.append(std_img)
-            else:
-                stack.append(img)
+        def warper(img_paths, out_q):
+            stack = {} #stack = []
+            for i,imgp in enumerate(img_paths):
+                img = tf.imread(imgp)
+                if len(img.shape) == 3:
+                    std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
+                    std_img[:] = np.std(img, axis=0)
+                    tf.imsave(imgp, std_img)
+                    #stack.append(std_img)
+                    stack[imgp] = std_img
+                else:
+                    #stack.append(img)
+                    stack[imgp] = img
+            out_q.put(stack)
+            
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(img_paths) / float(nprocs)))
+        procs = []
+        for i in range(nprocs):
+            p = mp.Process(target=warper, args=(img_paths[chunksize * i:chunksize * (i + 1)], out_q))
+            procs.append(p)
+            p.start()
+    
+        # Collect all results into single results dict. We should know how many dicts to expect:
+        resultdict = {}
+        for i in range(nprocs):
+            resultdict.update(out_q.get())
+    
+        # Wait for all worker processes to finish
+        for p in procs:
+            print "Finished:", p
+            p.join()
+        
+        stack = [resultdict[imgp] for imgp in img_paths]
+        
+        # ---------------------------------------------------------------------
+#        stack = []
+#        for i,imgp in enumerate(img_paths):
+#            img = tf.imread(imgp)
+#            if len(img.shape) == 3:
+#                std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
+#                std_img[:] = np.std(img, axis=0)
+#                tf.imsave(imgp, std_img)
+#                stack.append(std_img)
+#            else:
+#                stack.append(img)
+        # ---------------------------------------------------------------------
         
         # Select reference and warp each image to it:
         reference_ix = nfiles_total/2
@@ -292,7 +332,8 @@ def extract_options(options):
     parser.add_option('-e', '--enhance', dest='enhance_factor', default=2.0, action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
     
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set flag if making warps anew")
-
+    parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=1, help="N processes if running in par (default=1)")
+    
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -311,7 +352,8 @@ def get_roi_reference(options):
     warp_results = warp_runs_in_fov(acquisition_dir, roi_id, 
                                         warp_threshold=warp_threshold, 
                                         enhance_factor=enhance_factor,
-                                        create_new=optsE.create_new)
+                                        create_new=optsE.create_new,
+                                        nprocs=int(optsE.nprocesses))
     
     if len(warp_results['failed_warps']) > 0:
         print "----- WARNING ----- Unable to warp %i files." % (len(warp_results['failed_results']))
