@@ -6,7 +6,8 @@ Created on Tue Oct  2 16:50:26 2018
 @author: juliana
 """
 
-
+import matplotlib
+matplotlib.use('agg')
 import os
 import glob
 import cv2
@@ -21,7 +22,7 @@ import pylab as pl
 import cPickle as pkl
 import tifffile as tf
 from scipy.ndimage import zoom
-from pipeline.python.utils import write_dict_to_json, get_tiff_paths
+from pipeline.python.utils import write_dict_to_json, get_tiff_paths, replace_root
 
 
 def get_gradient(im):
@@ -110,6 +111,7 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
     # Apply LUT, enhance contrast, and save resulting image
     enhancer_object = ImageEnhance.Contrast(Image.fromarray(LUT[img]).convert("L"))
     out = enhancer_object.enhance(factor)
+    print "SAVING:", warped_mean_image_path
     out.save(warped_mean_image_path)
         
 
@@ -117,7 +119,8 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
 def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, create_new=False):
     
     # Load RID:
-    print "Getting ROI info from session dir: %s" % os.path.split(acquisition_dir)[0]
+    session_dir = os.path.split(acquisition_dir)[0]
+    print "Getting ROI info from session dir: %s" % session_dir
     roidict_filepath = glob.glob(os.path.join(os.path.split(acquisition_dir)[0], 'ROIs', 'rids_*.json'))[0]
     with open(roidict_filepath, 'r') as f: rids = json.load(f)
     RID = rids[roi_id]
@@ -128,7 +131,18 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
     roi_output_dir = RID['DST']
     
     warped_mean_image_path = os.path.join(RID['DST'], 'warped_mean_reference.tif')
+    session = os.path.split(session_dir)[1]
+    animalid_dir = os.path.split(session_dir)[0]
+    animalid = os.path.split(animalid_dir)[1]
+    rootdir = os.path.split(animalid_dir)[0]
+    print "ROOTDIR:", rootdir
+    print "ANIMALID:", animalid
+    if rootdir not in warped_mean_image_path:
+        warped_mean_image_path = replace_root(warped_mean_image_path, rootdir, animalid, session)
     warp_results_path = os.path.join(RID['DST'], 'warp_results.pkl')
+    if rootdir not in warp_results_path:
+       warp_results_path = replace_root(warp_results_path, rootdir, animalid, session)
+
     if os.path.exists(warp_results_path) and create_new is False:
         action = raw_input("Warp results exist. Press <R> to re-warp, <I> to remake image, and <ENTER> to escape: ")
         if action == 'R':
