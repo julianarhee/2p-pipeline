@@ -126,24 +126,23 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
     roidict_filepath = glob.glob(os.path.join(os.path.split(acquisition_dir)[0], 'ROIs', 'rids_*.json'))[0]
     with open(roidict_filepath, 'r') as f: rids = json.load(f)
     RID = rids[roi_id]
-    
-    channel = 'Channel%02d' % RID['PARAMS']['options']['ref_channel']
-    zproj = RID['PARAMS']['options']['zproj_type']
-    pid = str(re.search('processed(\d{3})', RID['SRC']).group(0))
-    roi_output_dir = RID['DST']
-    
-    warped_mean_image_path = os.path.join(RID['DST'], 'warped_mean_reference.tif')
     session = os.path.split(session_dir)[1]
     animalid_dir = os.path.split(session_dir)[0]
     animalid = os.path.split(animalid_dir)[1]
     rootdir = os.path.split(animalid_dir)[0]
     print "ROOTDIR:", rootdir
     print "ANIMALID:", animalid
-    if rootdir not in warped_mean_image_path:
-        warped_mean_image_path = replace_root(warped_mean_image_path, rootdir, animalid, session)
+   
+    channel = 'Channel%02d' % RID['PARAMS']['options']['ref_channel']
+    zproj = RID['PARAMS']['options']['zproj_type']
+    pid = str(re.search('processed(\d{3})', RID['SRC']).group(0))
+
+    if rootdir not in RID['DST']:
+        RID['DST'] = replace_root(RID['DST'], rootdir, animalid, session) 
+    roi_output_dir = RID['DST']
+    
+    warped_mean_image_path = os.path.join(RID['DST'], 'warped_mean_reference.tif')
     warp_results_path = os.path.join(RID['DST'], 'warp_results.pkl')
-    if rootdir not in warp_results_path:
-       warp_results_path = replace_root(warp_results_path, rootdir, animalid, session)
 
     if os.path.exists(warp_results_path) and create_new is False:
         action = raw_input("Warp results exist. Press <R> to re-warp, <I> to remake image, and <ENTER> to escape: ")
@@ -180,6 +179,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         def warper(img_paths, out_q):
             stack = {} #stack = []
             for i,imgp in enumerate(img_paths):
+                print "... %i of %i images" % (int(i+1), len(img_paths))
                 img = tf.imread(imgp)
                 if len(img.shape) == 3:
                     std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
