@@ -234,9 +234,9 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
     if ax is None:
         fig, ax = pl.subplots()
         
-    max_zscores_all = pd.Series([roidf.groupby('config')['zscore'].mean().max() for roi, roidf in df_by_rois])
-    max_zscores_visual = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_visual']]
-    max_zscores_selective = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_selective']]
+    max_zscores_all = pd.Series([roidf.groupby('config')['zscore'].mean().max() for roi, roidf in df_by_rois if not np.where(np.isnan(roidf['zscore']))[0].any()])
+    max_zscores_visual = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_visual'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
+    max_zscores_selective = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_selective'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
     
     count, division = np.histogram(max_zscores_all, bins=100)
     ppatches = max_zscores_all.hist(bins=division, color='gray', ax=ax, grid=False, alpha=0.5)
