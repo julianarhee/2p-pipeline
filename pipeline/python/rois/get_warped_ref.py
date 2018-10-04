@@ -117,6 +117,7 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
 def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, create_new=False):
     
     # Load RID:
+    print "Getting ROI info from session dir: %s" % os.path.split(acquisition_dir)[0]
     roidict_filepath = glob.glob(os.path.join(os.path.split(acquisition_dir)[0], 'ROIs', 'rids_*.json'))[0]
     with open(roidict_filepath, 'r') as f: rids = json.load(f)
     RID = rids[roi_id]
@@ -141,10 +142,11 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                 aligned_stack = np.dstack([results['aligned'] for ix, results in warp_results['warps'].items()])
                 warped_mean = np.mean(aligned_stack, axis=-1)
                 warped_mean = enhance_image_and_save(warped_mean, warped_mean_image_path, factor=new_factor)
+                return warp_results
             else:
-                return None
+                return warp_results #None
     else:
-        return None
+        creat_new = True #return None
             
     # Warp all ZPROJ images to a single reference.
     # -----------------------------------------------------------------------------
@@ -267,11 +269,11 @@ def extract_options(options):
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
 
 
-    parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
+    #parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     #parser.add_option('-p', '--pid', dest='pid', default='processed001', action='store', help="PID for all runs (default: processed001)")
     parser.add_option('-r', '--rid', dest='rid', default='', action='store', help="ROI ID for all runs (default: '')")
-    parser.add_option('-w', '--warp-thr', dest='warp_threshold', default=0.75, action='store', help='Threshold for aligned image correlation (default: 0.75)')
-    parser.add_option('-e', '--enhance', dest='enhance_factor', action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
+    parser.add_option('-w', '--warp-thr', dest='warp_threshold', default=0.70, action='store', help='Threshold for aligned image correlation (default: 0.70)')
+    parser.add_option('-e', '--enhance', dest='enhance_factor', default=2.0, action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
     
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set flag if making warps anew")
 
@@ -285,7 +287,7 @@ def extract_options(options):
     
 def get_roi_reference(options):
     optsE = extract_options(options)
-    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.acquisition)
+    acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     roi_id = optsE.rid
     warp_threshold = float(optsE.warp_threshold)
     enhance_factor = float(optsE.enhance_factor)
