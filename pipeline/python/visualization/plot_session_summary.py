@@ -235,9 +235,12 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
         fig, ax = pl.subplots()
     print "DF ROIS:", df_by_rois.groups.keys()
    
-    max_zscores_all = pd.Series([roidf.groupby('config')['zscore'].mean().max() for roi, roidf in df_by_rois if not np.where(np.isnan(roidf['zscore']))[0].any()])
-    max_zscores_visual = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_visual'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
-    max_zscores_selective = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_selective'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
+    max_zscores_all = pd.Series([roidf.groupby('config')['zscore'].mean().max() for roi, roidf in df_by_rois]) 
+                                        # if not np.where(np.isnan(roidf['zscore']))[0].any()])
+    max_zscores_visual = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_visual']] 
+                                        # if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
+    max_zscores_selective = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_selective']] 
+                                        #if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
     
     count, division = np.histogram(max_zscores_all, bins=100)
     ppatches = max_zscores_all.hist(bins=division, color='gray', ax=ax, grid=False, alpha=0.5)
@@ -1126,10 +1129,12 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC017', '-S', '20180921', '-A', 'FOV1_zoom2p0x',
-           '-g', 'traces002_825c99_traces001_7fec84_traces001_a98004', 
-           '-r', 'analysis002',
+options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
+           '-g', 'traces002_4f10a1_traces002_53c7bc_traces002_557356', 
+           '-r', 'analysis003',
+           '-b', 'traces002_c5150f_traces002_6b07d7_traces002_9177ee_traces002_94a782',
            '--redo']
+
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
