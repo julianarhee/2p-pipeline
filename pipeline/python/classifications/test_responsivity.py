@@ -366,7 +366,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
             json.dump(responsive_anova, f, indent=4, sort_keys=True)
 
     # Sort ROIs:
-    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < pvalue]
+    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < pvalue ]
     sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
     
     if create_new:
@@ -590,7 +590,7 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
     pyvt_boxplot_epochXconfig(df_by_rois, sorted_visual[0:topn], output_dir=vis_responsive_dir)
 
     # View histogram of partial eta-squared values:
-    eta2p_vals = [responsive_anova[r]['eta2_p'] for r in responsive_anova.keys()]
+    eta2p_vals = [responsive_anova[r]['eta2_p'] for r in responsive_anova.keys() if responsive_anova[r] is not None]
     eta2p = pd.Series(eta2p_vals)
     
     fig = pl.figure()
@@ -599,7 +599,7 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
     p = eta2p.hist(bins=division, color='gray')
     
     # Highlight p-eta2 vals for significant neurons:
-    sig_etas = [responsive_anova[r]['eta'] for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
+    sig_etas = [responsive_anova[r]['eta'] for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < 0.05]
     sig_bins = list(set([binval for ix,binval in enumerate(division) for etaval in sig_etas if division[ix] < etaval <= division[ix+1]]))
     
     indices_to_label = [find_barval_index(v, p) for v in sig_bins]
