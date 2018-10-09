@@ -54,6 +54,10 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
 
     # Before changing anything, check if there is a corresponding 'slices" dir:
     adjust_slicedir = False
+    if isinstance(write_dir, list):
+        print "WRITE DIR:", write_dir
+        write_dir = write_dir[0]
+
     if os.path.isdir(write_dir + '_deinterleaved'):
         adjust_slicedir = True             # WRITE-DIR has companion _slices dir.
         slice_dir = write_dir + '_deinterleaved'
