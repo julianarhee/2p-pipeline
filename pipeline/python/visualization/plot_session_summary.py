@@ -233,7 +233,8 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
         
     if ax is None:
         fig, ax = pl.subplots()
-        
+    print "DF ROIS:", df_by_rois.groups.keys()
+   
     max_zscores_all = pd.Series([roidf.groupby('config')['zscore'].mean().max() for roi, roidf in df_by_rois if not np.where(np.isnan(roidf['zscore']))[0].any()])
     max_zscores_visual = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_visual'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
     max_zscores_selective = [df_by_rois.get_group(roi).groupby('config')['zscore'].mean().max() for roi in roistats['rois_selective'] if not np.where(np.isnan(df_by_rois.get_group(roi)['zscore']))[0].any()]
@@ -507,6 +508,7 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
         combo_dpath = combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new)
         traceid_dirs = combo_dpath.split('/data_arrays')[0]
     else:
+        print os.listdir(glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype))[0])
         check_run_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype, 'traces', '%s*' % traceid)) for traceid in traceid_list] for item in sublist])), key=natural_keys)
         print "1 run:", check_run_dir
         traceid_dirs = check_run_dir[0]
@@ -518,6 +520,11 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
 def run_gratings_classifier(dataset, sconfigs, traceid):
     clfparams = lsvc.get_default_gratings_params()
     cX, cy, inputdata, is_cnmf = lsvc.get_formatted_traindata(clfparams, dataset, traceid)
+    # Check for NaNs:
+    frames, bad_roi_ixs = np.where(np.isnan(cX))
+    bad_rois = list(set(bad_roi_ixs))
+    if len(bad_rois) > 0:
+        cX = np.delete(cX, bad_rois, axis=1) 
     cX_std = StandardScaler().fit_transform(cX)
     if cX_std.shape[0] > cX_std.shape[1]: # nsamples > nfeatures
         clfparams['dual'] = False
