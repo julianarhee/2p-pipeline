@@ -149,7 +149,7 @@ def warp_images(img_list, ref, warp_mode=cv2.MOTION_HOMOGRAPHY, nprocs=1):
 
 from PIL import Image, ImageEnhance
 
-def convert_range(img, min_new=0, max_new=255):
+def convert_range(img, min_new=0.0, max_new=255.0):
     img_new = (img - img.min()) * ((max_new - min_new) / (img.max() - img.min())) + min_new
     return img_new
 
@@ -191,8 +191,8 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
     print "ANIMALID:", animalid
    
     channel = 'Channel%02d' % RID['PARAMS']['options']['ref_channel']
-    zproj = RID['PARAMS']['options']['zproj_type']
-    pid = str(re.search('processed(\d{3})', RID['SRC']).group(0))
+    zproj_orig = RID['PARAMS']['options']['zproj_type']
+    pid = str(re.search('processed(\d{3})', RID['PARAMS']['tiff_sourcedir']).group(0))
 
     if rootdir not in RID['DST']:
         RID['DST'] = replace_root(RID['DST'], rootdir, animalid, session) 
@@ -212,6 +212,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                 new_factor = float(raw_input("... Enter enhancing factor (default: 1.2): "))
                 with open(warp_results_path, 'rb') as f: warp_results = pkl.load(f)
                 aligned_stack = np.dstack([results['aligned'] for ix, results in warp_results['warps'].items()])
+                print "*** User specified zproj type: %s (stack size: %s)" % (zproj, str(aligned_stack.shape))
                 if zproj == 'mean':
                     final_ref = np.mean(aligned_stack, axis=-1)
                 elif zproj == 'sum':
@@ -236,7 +237,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         
         # Get a list of ALL zproj images for all runs in acquisition:
         img_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, \
-                                           'mcorrected_*_%s_deinterleaved' % zproj, channel,  'File*', '*.tif'))
+                                           'mcorrected_*_%s_deinterleaved' % zproj_orig, channel,  'File*', '*.tif'))
         nfiles_total = len(img_paths)
         print "TOTAL N IMAGES (across all runs): %i" % nfiles_total
         
@@ -365,6 +366,8 @@ def extract_options(options):
     #parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     #parser.add_option('-p', '--pid', dest='pid', default='processed001', action='store', help="PID for all runs (default: processed001)")
     parser.add_option('-r', '--rid', dest='rid', default='', action='store', help="ROI ID for all runs (default: '')")
+    parser.add_option('-z', '--zproj', dest='zproj', default='mean', action='store', help="zproj to use for creating all warped STD images across runs (default: mean; options: mean, sum, max)")
+
     parser.add_option('-w', '--warp-thr', dest='warp_threshold', default=0.70, action='store', help='Threshold for aligned image correlation (default: 0.70)')
     parser.add_option('-e', '--enhance', dest='enhance_factor', default=2.0, action='store', help='Factor for enhancing grand mean img for ROI ref (default: 2.0)')
     
