@@ -172,6 +172,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     frame_offsets.update({tix: nframes_to_add[tix]})
                 else:
                     frame_offsets.update({tix: 0})
+        else:
+            frame_offsets = dict((tix, 0) for tix in range(runinfo['ntiffs']))
+ 
     else:
         frame_offsets = dict((tix, 0) for tix in range(runinfo['ntiffs']))
                 
