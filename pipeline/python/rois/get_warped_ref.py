@@ -174,7 +174,8 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
         
 
 
-def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, create_new=False, nprocs=1):
+def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, zproj='mean', 
+                     create_new=False, nprocs=1):
     
     # Load RID:
     session_dir = os.path.split(acquisition_dir)[0]
@@ -197,7 +198,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         RID['DST'] = replace_root(RID['DST'], rootdir, animalid, session) 
     roi_output_dir = RID['DST']
     
-    warped_mean_image_path = os.path.join(RID['DST'], 'warped_mean_reference.tif')
+    warped_mean_image_path = os.path.join(RID['DST'], 'warped_%s_reference.tif' % zproj)
     warp_results_path = os.path.join(RID['DST'], 'warp_results.pkl')
 
     if os.path.exists(warp_results_path) and create_new is False:
@@ -211,8 +212,15 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                 new_factor = float(raw_input("... Enter enhancing factor (default: 1.2): "))
                 with open(warp_results_path, 'rb') as f: warp_results = pkl.load(f)
                 aligned_stack = np.dstack([results['aligned'] for ix, results in warp_results['warps'].items()])
-                warped_mean = np.mean(aligned_stack, axis=-1)
-                warped_mean = enhance_image_and_save(warped_mean, warped_mean_image_path, factor=new_factor)
+                if zproj == 'mean':
+                    final_ref = np.mean(aligned_stack, axis=-1)
+                elif zproj == 'sum':
+                    final_ref = np.sum(aligned_stack, axis=-1)
+                elif zproj == 'max':
+                    final_ref = np.max(aligned_stack, axis=-1)
+                else:
+                    print "Unknown zproj type: %s" % zproj
+                warped_mean = enhance_image_and_save(final_ref, warped_mean_image_path, factor=new_factor)
                 return warp_results
             else:
                 return warp_results #None
@@ -274,15 +282,23 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         
         # Save summed warp image for ROI extraction img:
         #warped_mean = np.zeros((aligned_stack.shape[0], aligned_stack.shape[1]), dtype='uint16')
-        warped_mean = np.mean(aligned_stack, axis=-1)
-        warped_mean = enhance_image_and_save(warped_mean, warped_mean_image_path, factor=enhance_factor)
+        if zproj == 'mean':
+            final_ref = np.mean(aligned_stack, axis=-1)
+        elif zproj == 'sum':
+            final_ref = np.sum(aligned_stack, axis=-1)
+        elif zproj == 'max':
+            final_ref = np.max(aligned_stack, axis=-1)
+        else:
+            print "Unknown zproj type: %s" % zproj
+            
+        warped_mean = enhance_image_and_save(final_ref, warped_mean_image_path, factor=enhance_factor)
         
-        fig, axes = pl.subplots(1,3, figsize=(15,5))
+        fig, axes = pl.subplots(1,2, figsize=(15,5))
         ref_run = img_paths[reference_ix].split(acquisition_dir)[1].split('/')[1]
         ref_file = img_paths[reference_ix].split(acquisition_dir)[1].split('/')[-2]
         axes[0].imshow(ref); axes[0].set_title('reference\n(%s, %s)' % (ref_run, ref_file))
-        axes[1].imshow(np.mean(aligned_stack, axis=-1)); axes[1].set_title('mean aligned')
-        axes[2].imshow(np.sum(aligned_stack, axis=-1)); axes[2].set_title('sum aligned')
+        axes[1].imshow(final_ref); axes[1].set_title('%s aligned' % zproj)
+        #axes[2].imshow(np.sum(aligned_stack, axis=-1)); axes[2].set_title('sum aligned')
         pl.savefig(os.path.join(roi_output_dir, 'reference_to_aligned.png'))
         pl.close()
         
@@ -371,6 +387,7 @@ def get_roi_reference(options):
     enhance_factor = float(optsE.enhance_factor)
     
     warp_results = warp_runs_in_fov(acquisition_dir, roi_id, 
+                                        zproj=optsE.zproj,
                                         warp_threshold=warp_threshold, 
                                         enhance_factor=enhance_factor,
                                         create_new=optsE.create_new,
