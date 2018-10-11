@@ -145,10 +145,37 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     nexpected_frames = runinfo['nvolumes'] * runinfo['ntiffs']
     nfound_frames = len(frame_on_idxs)
+    frame_offsets = {}
     if nexpected_frames != nfound_frames:
-        print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nexpected_frames - nfound_frames)
-        
-        
+        nframes_off = nexpected_frames - nfound_frames
+        print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nframes_off)
+        if nframes_off < 0:
+            # More frames found than expected (we're skipping a chunk of the frames):
+            frames_per_chunk = np.diff(long_breaks)
+            funky_stretches = [frix for frix,chunklength in enumerate(frames_per_chunk) if abs(chunklength - runinfo['nvolumes']) > 2] 
+            tif_files_with_delay = [tix+1 for tix in funky_stretches] # add 1 cuz diff adds 1 and break counts begin after File001
+            first_file_offset = min(tif_files_with_delay)
+            # All subsequent tifs should have appropriate offset:
+            last_tif = first_file_offset
+            nframes_to_add = {}
+            for tix in np.arange(first_file_offset, runinfo['ntiffs']):
+                if tix in tif_files_with_delay:
+                    tmp_last_tif = [k for k in tif_files_with_delay if k > last_tif]
+                    if len(tmp_last_tif) > 0: # We hit the last offset
+                        last_tif = tmp_last_tif[0]
+                        
+                nframes_to_add.update({tix: frames_per_chunk[last_tif-1]})
+                
+            for tix in range(runinfo['ntiffs']):
+                if tix >= first_file_offset:
+                    print "---> Found a funky delay (extra frames not beloning to a tif) prior to File%03d" % (tix+1)
+                    frame_offsets.update({tix: nframes_to_add[tix]})
+                else:
+                    frame_offsets.update({tix: 0})
+    else:
+        frame_offsets = dict((tix, 0) for tix in range(runinfo['ntiffs']))
+                
+                
     use_loop = False # True 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
@@ -447,6 +474,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         trialevents[mwtrial_hash]['stim_on_idx'] = int(first_found_frame[0][0].split('_')[0])
         trialevents[mwtrial_hash]['stim_off_idx'] = int(first_found_frame[-1][0].split('_')[0])
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
+        trialevents[mwtrial_hash]['block_frame_offset'] = frame_offsets[mwtrials[trial]['block_idx']]
         
         #prev_trial = trial
     #%%
@@ -625,6 +653,7 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
             RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
             RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
             RUN[trialname]['trial_in_run'] = trialnum
+            RUN[trialname]['block_frame_offset'] = trialevents[trialhash]['block_frame_offset']
 
 
     # Get unique hash for current RUN dict:

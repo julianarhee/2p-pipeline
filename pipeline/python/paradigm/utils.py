@@ -1105,6 +1105,7 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     frame_times = []
     trial_ids = []
     config_ids = []
+    #relative_frame_indices = []
     for fidx, dfn in enumerate(trace_fns):
         curr_file = str(re.search(r"File\d{3}", dfn).group())
         if curr_file in excluded_tifs:
@@ -1138,7 +1139,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         # Get all trials contained in current .tif file:
         trials_in_block = sorted([t for t in trial_list \
                                   if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
-        print "N trials in block: %i" % len(trials_in_block)
+        print "%s - N trials in block: %i" % (curr_file, len(trials_in_block))
+        
         if len(trials_in_block) == 0:
             continue
         frame_indices = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
@@ -1151,16 +1153,20 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         # Subtract off frame indices by value to make them relative to BLOCK:
         # Since we are cycling thru FILES (i.e., blocks), we need to readjust frame indices.
         if block_indexed is False:
-            frame_indices = frame_indices - len(frame_tsecs)*fidx #frame_indices -= fidx*file_df.shape[0]
+            frame_indices = frame_indices - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] #frame_indices -= fidx*file_df.shape[0]
             if frame_indices[-1] > len(frame_tsecs):
                 print 'File: %i' % fidx, len(frame_tsecs)
                 print "*** %i extra frames removed." % (frame_indices[-1] - len(frame_tsecs))
                 print frame_indices[-10:]
                 last_ix = np.where(frame_indices==len(frame_tsecs)-1)[0][0]
                 frame_indices = frame_indices[0:last_ix]
-            stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx #stim_onset_idxs -= fidx*file_df.shape[0]
-            stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx
+            
+            stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] #stim_onset_idxs -= fidx*file_df.shape[0]
+            stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] 
         #print frame_indices[-10:]    
+        
+        #relative_frame_indices.append([frame_indices[0] - (5170.*fidx), frame_indices[-1] - (5170.*fidx)]) #(frame_indices[0])
+        
         
         # Get Stimulus info for each trial:        
         #excluded_params = [k for k in mwinfo[t]['stimuli'].keys() if k in stimconfigs[stimconfigs.keys()[0]].keys()]
