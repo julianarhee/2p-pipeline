@@ -2329,6 +2329,7 @@ def run_trace_extraction(options):
 	    align_opts.extend(['--raw'])
 	if optsE.nonnegative:
 	    align_opts.extend(['--nonnegative'])
+        align_opts.extend(['--new', '--align'])
 
 	data_fpath = align.create_rdata_array(align_opts)
         print "******************************************"
