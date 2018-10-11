@@ -154,17 +154,21 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             frames_per_chunk = np.diff(long_breaks)
             funky_stretches = [frix for frix,chunklength in enumerate(frames_per_chunk) if abs(chunklength - runinfo['nvolumes']) > 2] 
             tif_files_with_delay = [tix+1 for tix in funky_stretches] # add 1 cuz diff adds 1 and break counts begin after File001
-            first_file_offset = min(tif_files_with_delay)
-            # All subsequent tifs should have appropriate offset:
-            last_tif = first_file_offset
-            nframes_to_add = {}
-            for tix in np.arange(first_file_offset, runinfo['ntiffs']):
-                if tix in tif_files_with_delay:
-                    tmp_last_tif = [k for k in tif_files_with_delay if k > last_tif]
-                    if len(tmp_last_tif) > 0: # We hit the last offset
-                        last_tif = tmp_last_tif[0]
+            if len(tif_files_with_delay) > 0:
+                first_file_offset = min(tif_files_with_delay)
+                # All subsequent tifs should have appropriate offset:
+                last_tif = first_file_offset
+                nframes_to_add = {}
+                for tix in np.arange(first_file_offset, runinfo['ntiffs']):
+                    if tix in tif_files_with_delay:
+                        tmp_last_tif = [k for k in tif_files_with_delay if k > last_tif]
+                        if len(tmp_last_tif) > 0: # We hit the last offset
+                            last_tif = tmp_last_tif[0]
                         
-                nframes_to_add.update({tix: frames_per_chunk[last_tif-1]})
+                    nframes_to_add.update({tix: frames_per_chunk[last_tif-1]})
+            else:
+                # There are extra frames because we're ignoring chunks at the end (liekly incompletel chunks):
+                first_file_offset = runinfo['ntiffs']
                 
             for tix in range(runinfo['ntiffs']):
                 if tix >= first_file_offset:
