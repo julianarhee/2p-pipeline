@@ -359,12 +359,14 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset'][currtrial_in_run]))))
                 else:
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset']))))
-                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
-                if postframes[-1] > len(si_info['vol_idxs']):
-                    extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
-                    postframes = [p for p in postframes if p <= len(si_info['vol_idxs'])-1]
-                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
-
+#                print postframes
+#                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
+#                if postframes[-1] > len(si_info['vol_idxs']):
+#                    
+#                    extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
+#                    postframes = [p for p in postframes if p <= len(si_info['vol_idxs'])-1]
+#                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
+#                    
                 framenums = [preframes, [first_frame_on], postframes]
                 framenums = reduce(operator.add, framenums)
                 #print "POST FRAMES:", len(framenums)
