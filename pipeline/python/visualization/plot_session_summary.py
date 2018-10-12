@@ -1196,7 +1196,8 @@ def plot_session_summary(options):
     optsE = extract_options(options)
     print "Getting session summary..."
     S = load_session_summary(optsE, redo=optsE.redo)
-    
+    if optsE.rootdir != S.rootdir:
+        S.rootdir = optsE.rootdir 
     #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
     print "PLOTTING..."
