@@ -1152,8 +1152,12 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
      
         # Subtract off frame indices by value to make them relative to BLOCK:
         # Since we are cycling thru FILES (i.e., blocks), we need to readjust frame indices.
+        if 'block_frame_offset' not in mwinfo[trials_in_block[0]].keys():
+            frame_shift = 0
+        else:
+            frame_shift = mwinfo[trials_in_block[0]]['block_frame_offset']
         if block_indexed is False:
-            frame_indices = frame_indices - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] #frame_indices -= fidx*file_df.shape[0]
+            frame_indices = frame_indices - len(frame_tsecs)*fidx - frame_shift  #frame_indices -= fidx*file_df.shape[0]
             if frame_indices[-1] > len(frame_tsecs):
                 print 'File: %i' % fidx, len(frame_tsecs)
                 print "*** %i extra frames removed." % (frame_indices[-1] - len(frame_tsecs))
@@ -1161,8 +1165,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                 last_ix = np.where(frame_indices==len(frame_tsecs)-1)[0][0]
                 frame_indices = frame_indices[0:last_ix]
             
-            stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] #stim_onset_idxs -= fidx*file_df.shape[0]
-            stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx - mwinfo[trials_in_block[0]]['block_frame_offset'] 
+            stim_onset_idxs = stim_onset_idxs - len(frame_tsecs)*fidx - frame_shift #stim_onset_idxs -= fidx*file_df.shape[0]
+            stim_offset_idxs = stim_offset_idxs - len(frame_tsecs)*fidx - frame_shift 
         #print frame_indices[-10:]    
         
         #relative_frame_indices.append([frame_indices[0] - (5170.*fidx), frame_indices[-1] - (5170.*fidx)]) #(frame_indices[0])
