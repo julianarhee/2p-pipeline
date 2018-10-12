@@ -317,7 +317,8 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
     # First check if specified combo run exists:
     traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
     acquisition_dir = os.path.split(check_blobs_dir[0].split('/traces/')[0])[0]
-    combined_darray_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string, 'data_arrays')
+    combined_traceid_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string)
+    combined_darray_dir = os.path.join(combined_traceid_dir, 'data_arrays')
     if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
     combo_dpath = os.path.join(combined_darray_dir, 'datasets.npz')    
     
@@ -430,6 +431,9 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             data_meanstim = tmp_data_meanstim
             
         ylabels = labels_df['config'].values
+        
+        # Make sure runinfo traceid_dir now points to the COMBINED dir:
+        rinfo['traceid_dir'] = combined_traceid_dir
        
         # Save it:
         np.savez(combo_dpath,
@@ -1133,10 +1137,12 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
-           '-g', 'traces002_4f10a1_traces002_53c7bc_traces002_557356', 
+options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
+           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
            '-r', 'analysis003',
-           '-b', 'traces002_c5150f_traces002_6b07d7_traces002_9177ee_traces002_94a782',
+           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
+           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
+           '-n', 4,
            '--redo']
 
 
