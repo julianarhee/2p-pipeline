@@ -6,7 +6,7 @@ Created on Wed May 23 13:59:19 2018
 @author: juliana
 """
 
-
+import glob
 import h5py
 import os
 import json
@@ -174,7 +174,7 @@ def plot_confusion_matrix(cm, classes,
 
 def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
         
-    trans_types = run_info['transforms'].keys()
+    trans_types = run_info['trans_types'] #.keys()
     
     # Load sorted ROI info:
     # -----------------------------------------------------------------------------
@@ -190,8 +190,9 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
     if roi_selector == 'visual':
         
         # Get list of visually repsonsive ROIs:
-        responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_anova_results.json')
-        assert os.path.exists(responsive_anova_fpath), "No results found for VISUAL rois: %s" % sort_dir
+        responsive_anova_fpaths = glob.glob(os.path.join(sort_dir, 'visual_*_results.json'))
+        assert len(responsive_anova_fpaths) > 0, "No results found for VISUAL rois: %s" % str(os.listdir(os.path.join(sort_dir)))
+        responsive_anova_fpath = responsive_anova_fpaths[0]
         
         print "Loading existing split ANOVA results:\n", responsive_anova_fpath
         with open(responsive_anova_fpath, 'r') as f:
@@ -207,7 +208,7 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
     elif roi_selector == 'selectiveanova':
     
         selective_anova_fpath = os.path.join(sort_dir, 'selective_rois_anova_results_%s.json' % metric)
-        assert os.path.exists(selective_anova_fpath), "No results found for SELECTIVE rois (anova): %s" % sort_dir
+        assert os.path.exists(selective_anova_fpath), "No results found for SELECTIVE rois (anova): %s" % selective_anova_fpath
         
         if os.path.exists(selective_anova_fpath):
             print "Loading existing %i-way ANOVA results: %s" % (len(trans_types), selective_anova_fpath)
