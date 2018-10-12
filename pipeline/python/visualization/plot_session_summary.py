@@ -1010,7 +1010,9 @@ class SessionSummary():
             # Colors = cells
             if selective:
                 rois_to_plot = self.blobs['roistats']['rois_selective'][0:10]
-            else:
+                if len(rois_to_plot) == 0:
+                    selective = False
+            if not selective:
                 rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
             rois = self.blobs['transforms'].groupby('roi')
         else:
@@ -1022,7 +1024,9 @@ class SessionSummary():
             # Colors = cells
             if selective:
                 rois_to_plot = self.objects['roistats']['rois_selective'][0:10]
-            else:
+                if len(rois_to_plot) == 0:
+                    selective = False
+            if not selective:
                 rois_to_plot = self.objects['roistats']['rois_visual'][0:10]
             rois = self.objects['transforms'].groupby('roi')
        
@@ -1033,7 +1037,8 @@ class SessionSummary():
         nobjects = len(object_list)  #len(responses['object'].unique())
         markers = ['o', 'P', '*', '^', 's', 'd']
         marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
-            
+        print "Plotting %i rois" % nrois_plot
+ 
         for trans_ix, transform in enumerate(transforms_tested):
             tix = aix + trans_ix
             plot_list = []
@@ -1189,10 +1194,12 @@ def load_session_summary(optsE, redo=False):
 
 def plot_session_summary(options):
     optsE = extract_options(options)
+    print "Getting session summary..."
     S = load_session_summary(optsE, redo=optsE.redo)
     
     #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
+    print "PLOTTING..."
     S.plot_summary(ignore_null=optsE.ignore_null_RF, selective=True)
     label_figure(S.fig, S.data_identifier)
     
