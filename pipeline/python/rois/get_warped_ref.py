@@ -192,6 +192,9 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
    
     channel = 'Channel%02d' % RID['PARAMS']['options']['ref_channel']
     zproj_orig = RID['PARAMS']['options']['zproj_type']
+    if len(zproj_orig.split('_')) > 1:
+        zproj_orig = zproj.split('_')[-1]
+        print "ORIG zproj:", zproj_orig
     pid = str(re.search('processed(\d{3})', RID['PARAMS']['tiff_sourcedir']).group(0))
 
     if rootdir not in RID['DST']:
@@ -273,7 +276,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
             still_bad_warps = [bad_warps[image_ix] for image_ix, results in retry_warps.items() \
                                    if results['corrcoef_aligned'] < warp_threshold]
         if len(still_bad_warps) > 0:
-            print "Found %i files that fail %.2f threshold using both warp modes." 
+            print "Found %i files that fail %.2f threshold using both warp modes." % (len(still_bad_warps), warp_threshold)
         
         # Keep good warps:
         for bad_ix, image_ix in enumerate(bad_warps):
@@ -323,7 +326,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         RID['SRC'] = warped_mean_image_path
         RID['PARAMS']['tiff_sourcedir'] = tiff_source_dir
         RID['PARAMS']['options']['ref_file'] = int(str(re.search('File(\d{3})', reference_filepath).group(0))[4:])
-        RID['PARAMS']['options']['zproj_type'] = '%s_warped_sum' % zproj
+        RID['PARAMS']['options']['zproj_type'] = '%s_warped_std' % zproj
         
         # Update RID hashes:
         RID['PARAMS']['hashid'] = hashlib.sha1(json.dumps(RID['PARAMS'], sort_keys=True)).hexdigest()[0:6]
@@ -397,8 +400,8 @@ def get_roi_reference(options):
                                         nprocs=int(optsE.nprocesses))
     
     if len(warp_results['failed_warps']) > 0:
-        print "----- WARNING ----- Unable to warp %i files." % (len(warp_results['failed_results']))
-        print warp_results['failed_results']
+        print "----- WARNING ----- Unable to warp %i files." % (len(warp_results['failed_warps']))
+        print warp_results['failed_warps']
     else:
         print "!! All successful warps !!"
         
