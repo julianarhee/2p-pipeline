@@ -345,12 +345,12 @@ class ActivityInfo:
             popt, pcov = curve_fit(gaus, x0, y, p0=(y[np.argmax(y)], np.argmax(y), 1))
 
             y_fit = gaus(x0,*popt)
-            print(popt)
+            #print(popt)
 
             ss_res = np.sum((y - y_fit)**2)
             ss_tot = np.sum((y-np.mean(y))**2)
             r_squared = 1 - (ss_res / ss_tot)
-            print("R2:", r_squared)
+            #print("R2:", r_squared)
             A, x0, sigma = popt
             
         except RuntimeError:
