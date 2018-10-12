@@ -16,6 +16,8 @@ import datetime
 import random
 import itertools
 import shutil
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 import matplotlib
 matplotlib.use('agg')
 import traceback
@@ -398,13 +400,14 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
         if len(ntrials_by_cond) > 1:
             print "Uneven numbers of trials per cond. Making equal."
-            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
+            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
             ntrials_target = min(ntrials_by_cond)
             remove_ixs = []; removed_trials = [];
             for cf in configs_with_more:
                 curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
-                remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
+                remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), len(curr_trials) - ntrials_target)
                 remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
+                print "Removing %i trials (out of %i total)" % (len(remove_selected_trials), len(curr_trials))
                 tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
                 remove_ixs.extend(tmp_remove_ixs)
                 removed_trials.extend(remove_selected_trials)
@@ -419,6 +422,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
            
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+            pp.pprint(rinfo['ntrials_by_cond'])
 
         else:
             labels_df = tmp_labels_df
