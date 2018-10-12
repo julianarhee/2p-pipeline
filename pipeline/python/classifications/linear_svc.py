@@ -1330,7 +1330,7 @@ def get_default_gratings_params():
     clfparams = get_classifier_params(data_type='stat', 
                                       inputdata='meanstim', 
                                       inputdata_type='',
-                                      roi_selector='all', 
+                                      roi_selector='visual', 
                                       class_name='ori', 
                                       aggregate_type='all',
                                       subset=None, subset_nsamples=None,
