@@ -138,7 +138,7 @@ def plot_confusion_matrix(cm, classes,
     else:
         print('Confusion matrix, without normalization')
 
-    print(cm)
+    #print(cm)
 
     #fig = pl.figure(figsize=(4,4))
     if ax is None:
@@ -202,8 +202,10 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
         responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
         sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
         print "Loaded %i visual out of %i neurons (split-plot ANOVA (p<0.05)." % (len(sorted_visual), len(run_info['roi_list']))
-        
-        visual_rids = [int(r[3:])-1 for r in sorted_visual]
+        if 'roi' in sorted_visual[0]:
+            visual_rids = [int(r[3:])-1 for r in sorted_visual]
+        else:
+            visual_rids = [int(r) for r in sorted_visual]
     
     elif roi_selector == 'selectiveanova':
     
@@ -1667,7 +1669,7 @@ def do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=''):
         loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
 
         for train, test in loo: #, groups=groups):
-            print train, test
+            #print train, test
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
             y_pred = svc.fit(X_train, y_train).predict(X_test)
@@ -1691,7 +1693,7 @@ def do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=''):
     
     
         for train, test in loo.split(training_data, cy, groups=groups):
-            print train, test
+            #print train, test
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
     
