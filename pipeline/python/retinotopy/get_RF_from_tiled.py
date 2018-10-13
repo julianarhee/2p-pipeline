@@ -48,7 +48,7 @@ def moments(data):
     the gaussian parameters of a 2D distribution by calculating its
     moments """
     total = data.sum()
-    X, Y = np.indices(data.shape)
+    X, Y = np.indices(data.shape) # X is row indices (i.e., YPOS), Y is col indicies (i.e., XPOS)
     x = (X*data).sum()/total
     y = (Y*data).sum()/total
     col = data[:, int(y)]
@@ -74,7 +74,7 @@ def fitgaussian(data, verbose=False):
 
 
 #%%
-rootdir = '/mnt/odyssey'
+rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC015'
 session = '20180919'
 acquisition = 'FOV1_zoom2p0x'
@@ -104,9 +104,12 @@ if not os.path.exists(os.path.join(tile_results_dir, 'figures')):
 print "Saving RF estimate results to:", tile_results_dir
 
 
-
+#%%
 # Tiled data:
 # ------------------
+metric = 'zscore'
+# TODO:  Re-extract data stats so we can also consider stim-OFF periods
+
 nrois_total = len(S.gratings['roidata'].groups.keys())
 
 visual_rois = S.gratings['roistats']['rois_visual']
@@ -132,7 +135,7 @@ for roi in visual_rois:
     for k,g in config_grps:
         xvals.append(k[0])
         yvals.append(k[1])
-        zvals.append(np.mean(roidata[roidata['config'].isin(g.index.tolist())].groupby('config')['zscore'].mean().values))
+        zvals.append(np.mean(roidata[roidata['config'].isin(g.index.tolist())].groupby('config')[metric].mean().values))
     
     RF_data[roi] = {'x': xvals, 
                     'y': yvals,
@@ -150,25 +153,40 @@ for roi in visual_rois:
 # Save all results:
 rf_results_fpath = os.path.join(tile_results_dir, 'rf_results.json')
 with open(rf_results_fpath, 'w') as f:
-    json.dump(RF_data, rf_results_fpath, indent=4, sort_keys=True)
+    json.dump(RF_data, f, indent=4, sort_keys=True)
     
-
+#%%
+# Look at distN of RF sizes:
+    
 fit_thr = 0.5
-good_rois = [roi for roi,res in RF_data.items() if res['results']['r2'] > fit_thr \
-                 and res['results']['width_x'] < 200 and res['results']['width_y'] < 150]
+good_rois = [roi for roi,res in RF_data.items() if res['results']['r2'] >= fit_thr \
+                 and 0 < res['results']['width_x'] < 200 and 0 < res['results']['width_y'] < 150]
 
 results = {}
 results['width_x'] = [RF_data[r]['results']['width_x'] for r in good_rois]
 results['width_y'] = [RF_data[r]['results']['width_y'] for r in good_rois]
 results['r2'] = [RF_data[r]['results']['r2'] for r in good_rois]
 
+print "-----------------------------------------------------------------------"
+print "%i out of %i visual rois fit with 2D gaussian (R2 >= %.2f)" % (len(good_rois), len(visual_rois), fit_thr)
+print "-----------------------------------------------------------------------"
+
 
 df = pd.DataFrame(results, index=good_rois)
 sns.jointplot('width_x', 'width_y', data=df, kind="hex")
+pl.savefig(os.path.join(tile_results_dir, 'joint_x_y.png'))
 
+
+sns.distplot(df['width_x'], label='x')
+sns.distplot(df['width_y'], label='y')
+pl.xlabel('widths (deg)')
+pl.legend()
+pl.savefig(os.path.join(tile_results_dir, 'distplot_x_y.png'))
 
 #%%
 # Plot using `.trisurf()`:
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 def r2_from_pcov(ydata, yfit):
     residuals = ydata - yfit
@@ -177,7 +195,7 @@ def r2_from_pcov(ydata, yfit):
     r_squared = 1 - (ss_res / ss_tot)
     return r_squared
         
-def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
+def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1, cmap=cm.hot):
     roi_name = os.path.splitext(os.path.split(figpath)[-1])[0]
     
     ## DataFrame from 2D-arrays
@@ -191,7 +209,7 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
     
     xpositions = sorted(np.unique(xvals))
     ypositions = sorted(np.unique(yvals))
-    gy, gx = np.meshgrid(xpositions, ypositions)
+    gx, gy = np.meshgrid(xpositions, ypositions)
     maxix = df3D[df3D['z']==df3D['z'].max()].index.tolist()[0]
     
     xo = df3D.iloc[maxix]['x']
@@ -204,9 +222,16 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
 
     # Plot actual data:
     data_grid = df3D['z'].values.reshape(gx.shape, order='F')
-    ax1.imshow(data_grid, cmap=pl.cm.magma)
+    im = ax1.imshow(data_grid, cmap=cmap)
+    pl.xticks(np.arange(len(xpositions)), xpositions, rotation=45)
+    pl.yticks(np.arange(len(ypositions)), ypositions, rotation=45)
+    
+    divider = make_axes_locatable(ax1)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    pl.colorbar(im, cax=cax)
 
     try:
+        no_fit = False
         if method==1:
             # Method 1: Fit using scipy.opt
             initial_guess = (amp, xo, yo, x_interval, y_interval, 0, 0)
@@ -224,7 +249,8 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
             data_fitted = fit(*np.indices(data_grid.shape))          # Create a fitted 2D gaus to plot (NOTE: Y indices are actualy "x" and X indices are actually "y")
             (height, fy, fx, width_y, width_x) = popt
             r_squared = r2_from_pcov(data_grid, data_fitted)
-            ax1.contour(data_fitted, cmap=pl.cm.copper)
+        
+        ax1.contour(data_fitted, cmap=cm.Greys_r) #cmap=pl.cm.hot)
 
 
         if method==1:
@@ -237,28 +263,30 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
             estim_y = width_y * y_interval
             peak_x = fx #xpositions[int(round(fx))]
             peak_y = fy #ypositions[int(round(fy))]
-            
-            
-        ax1.text(0.95, 0.05, 
-        'x : %.1f\ny : %.1f\nwidth_x : %.1f\nwidth_y : %.1f' % (peak_x, peak_y, estim_x, estim_y),
-                fontsize=16, horizontalalignment='right', color='white',
-                verticalalignment='bottom', transform=ax1.transAxes)
-        
+
     except RuntimeError:
         print "*** Bad fit: %s ***" % roi_name
         #traceback.print_exc()
         r_squared = None
         data_fitted = None
         estim_x = None; estim_y = None; peak_x = None; peak_y = None; height=None;
-        ax1.text(0.95, 0.05, 'NO FIT',
-                fontsize=16, horizontalalignment='right', color='white',
-                verticalalignment='bottom', transform=ax1.transAxes)
+        no_fit = True
     
-    pl.xticks(np.arange(len(xpositions)), xpositions, rotation=45)
-    pl.yticks(np.arange(len(ypositions)), ypositions, rotation=45)
+
     
-    ax2 = fig.add_subplot(122, projection='3d', azim=-130, elev=60)
-    ax2.plot_trisurf(df3D.x, df3D.y, df3D.z, cmap=cm.coolwarm, linewidth=0.2)
+    ax2 = fig.add_subplot(122, projection='3d', azim=-124, elev=35)
+    ax2.plot_trisurf(df3D.x, df3D.y, df3D.z, cmap=cmap, linewidth=0.2)
+
+    if no_fit:
+        ax2.text(43,4,ax2.get_zlim()[1], 'NO FIT',
+                fontsize=16, horizontalalignment='right', color='black',
+                verticalalignment='bottom') #, transform=ax1.transAxes)
+    else:
+        ax2.text(43,4,ax2.get_zlim()[1], 'x : %.1f\ny : %.1f\nwidth_x : %.1f\nwidth_y : %.1f' % (peak_x, peak_y, estim_x, estim_y),
+                fontsize=16, horizontalalignment='left', color='black',
+                verticalalignment='top') #, transform=ax2.transAxes)
+        
+        
     
     if figpath is not None:
         roi_name = os.path.splitext(os.path.split(figpath)[-1])[0]
