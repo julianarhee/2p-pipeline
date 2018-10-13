@@ -9,12 +9,16 @@ Created on Fri Oct 12 16:05:22 2018
 import glob
 import os
 import traceback
+import json
+
 import numpy as np
 import cPickle as pkl
 import pandas as pd
 import pylab as pl
-from matplotlib import cm
+import seaborn as sns
 import scipy.optimize as opt
+
+from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 from pipeline.python.visualization.plot_session_summary import SessionSummary
 
@@ -94,9 +98,9 @@ with open(ss_fpath, 'rb') as f:
 # Set up output dir for RF estimate results:
 # ------------------------------------------
 tile_dir = glob.glob(os.path.join(acquisition_dir, gratings_run, 'traces', '%s*' % gratings_id))[0]
-tile_results_dir = os.path.join(tile_dir, 'figures', 'rf_estimates')
-if not os.path.exists(tile_results_dir):
-    os.makedirs(tile_results_dir)
+tile_results_dir = os.path.join(tile_dir, 'rf_estimates')
+if not os.path.exists(os.path.join(tile_results_dir, 'figures')):
+    os.makedirs(os.path.join(tile_results_dir, 'figures'))
 print "Saving RF estimate results to:", tile_results_dir
 
 
@@ -134,7 +138,7 @@ for roi in visual_rois:
                     'y': yvals,
                     'z': zvals}
     
-    figpath = os.path.join(tile_results_dir, 'roi%05d.png' % int(roi+1))
+    figpath = os.path.join(tile_results_dir, 'figures', 'roi%05d.png' % int(roi+1))
     estim_x, estim_y, peak_x, peak_y, amp, r_squared = plot_RF_fit(xvals, yvals, zvals, method=1, figpath=figpath)
     RF_data[roi]['results'] = {'width_x': estim_x,
                                'width_y': estim_y,
@@ -142,6 +146,26 @@ for roi in visual_rois:
                                'peak_y': peak_y,
                                'amplitude': amp,
                                'r2': r_squared}
+
+# Save all results:
+rf_results_fpath = os.path.join(tile_results_dir, 'rf_results.json')
+with open(rf_results_fpath, 'w') as f:
+    json.dump(RF_data, rf_results_fpath, indent=4, sort_keys=True)
+    
+
+fit_thr = 0.5
+good_rois = [roi for roi,res in RF_data.items() if res['results']['r2'] > fit_thr \
+                 and res['results']['width_x'] < 200 and res['results']['width_y'] < 150]
+
+results = {}
+results['width_x'] = [RF_data[r]['results']['width_x'] for r in good_rois]
+results['width_y'] = [RF_data[r]['results']['width_y'] for r in good_rois]
+results['r2'] = [RF_data[r]['results']['r2'] for r in good_rois]
+
+
+df = pd.DataFrame(results, index=good_rois)
+sns.jointplot('width_x', 'width_y', data=df, kind="hex")
+
 
 #%%
 # Plot using `.trisurf()`:
@@ -154,6 +178,8 @@ def r2_from_pcov(ydata, yfit):
     return r_squared
         
 def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
+    roi_name = os.path.splitext(os.path.split(figpath)[-1])[0]
+    
     ## DataFrame from 2D-arrays
     xvals = np.array(xvals)
     yvals = np.array(yvals)
@@ -219,7 +245,8 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
                 verticalalignment='bottom', transform=ax1.transAxes)
         
     except RuntimeError:
-        traceback.print_exc()
+        print "*** Bad fit: %s ***" % roi_name
+        #traceback.print_exc()
         r_squared = None
         data_fitted = None
         estim_x = None; estim_y = None; peak_x = None; peak_y = None; height=None;
@@ -237,6 +264,7 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1):
         roi_name = os.path.splitext(os.path.split(figpath)[-1])[0]
         pl.suptitle(roi_name)
         pl.savefig(figpath)
+        
     pl.close()
 
     return estim_x, estim_y, peak_x, peak_y, height, r_squared
