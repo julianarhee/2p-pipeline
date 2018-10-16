@@ -205,14 +205,14 @@ def plot_RF_fit(xvals, yvals, zvals, figpath=None,  method=1, cmap=cm.hot):
 #%%
 rootdir = '/n/coxfs01/2p-data'
 
-
-animalid = 'JC015'
-session = '20180919'
-acquisition = 'FOV1_zoom2p0x'
-retino_run = 'retino_run1'
-retino_id = 'analysis004'
-gratings_run = 'combined_gratings_static'
-gratings_id = 'traces003'
+#
+#animalid = 'JC015'
+#session = '20180919'
+#acquisition = 'FOV1_zoom2p0x'
+#retino_run = 'retino_run1'
+#retino_id = 'analysis004'
+#gratings_run = 'combined_gratings_static'
+#gratings_id = 'traces003'
 #
 #animalid = 'JC015'
 #session = '20180917'
@@ -231,6 +231,14 @@ gratings_id = 'traces003'
 #gratings_run = 'combined_gratings_static'
 #gratings_id = 'traces003'
 
+animalid = 'JC015'
+session = '20180925'
+acquisition = 'FOV1_zoom2p0x'
+retino_run = 'retino_run1'
+retino_id = 'analysis004'
+tiled_run = 'combined_objects_static'
+tiled_traceid = 'traces003'
+
 #animalid = 'JC022'
 #session = '20181005'
 #acquisition = 'FOV2_zoom2p7x'
@@ -246,9 +254,9 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
 # Load SessionSummary data (combo data paths w. stats):
 # -----------------------------------------------------------------------------
-ss_paths = glob.glob(os.path.join(acquisition_dir, 'session_summary_*%s_%s*_%s_%s*.pkl' % (retino_run, retino_id, gratings_run, gratings_id)))
+ss_paths = glob.glob(os.path.join(acquisition_dir, 'session_summary_*%s_%s*_%s_%s*.pkl' % (retino_run, retino_id, tiled_run, tiled_traceid)))
 
-assert len(ss_paths) == 1, "More than 1 specified combo found:\n ... retino -- %s, %s\n ... tiling data -- %s, %s." % (retino_run, retino_id, gratings_run, gratings_id)
+assert len(ss_paths) == 1, "More than 1 specified combo found:\n ... retino -- %s, %s\n ... tiling data -- %s, %s." % (retino_run, retino_id, tiled_run, gratings_id)
 ss_fpath = ss_paths[0]
 
 with open(ss_fpath, 'rb') as f:
@@ -256,7 +264,7 @@ with open(ss_fpath, 'rb') as f:
 
 # Set up output dir for RF estimate results:
 # ------------------------------------------
-tile_dir = glob.glob(os.path.join(acquisition_dir, gratings_run, 'traces', '%s*' % gratings_id))[0]
+tile_dir = glob.glob(os.path.join(acquisition_dir, tiled_run, 'traces', '%s*' % tiled_traceid))[0]
 tile_results_dir = os.path.join(tile_dir, 'rf_estimates')
 if not os.path.exists(os.path.join(tile_results_dir, 'figures')):
     os.makedirs(os.path.join(tile_results_dir, 'figures'))
@@ -269,14 +277,20 @@ print "Saving RF estimate results to:", tile_results_dir
 metric = 'zscore'
 # TODO:  Re-extract data stats so we can also consider stim-OFF periods
 
-nrois_total = len(S.gratings['roidata'].groups.keys())
+if 'gratings' in tiled_run:
+    dset = S.gratings
+elif 'objects' in tiled_run:
+    dset = S.objects
+elif 'blobs' in tiled_run:
+    dset = S.blobs
 
-visual_rois = S.gratings['roistats']['rois_visual']
+nrois_total = len(dset['roidata'].groups.keys())
+
+visual_rois = dset['roistats']['rois_visual']
 print "TILED: Found %i of %i visual rois." % (len(visual_rois), nrois_total)
 
 #roi = visual_rois[3]
-sconfigs = pd.DataFrame(S.gratings['sconfigs']).T
-
+sconfigs = pd.DataFrame(dset['sconfigs']).T
 config_grps = sconfigs.groupby(['xpos', 'ypos'])
 xpositions = sconfigs['xpos'].unique().astype('float')
 ypositions = sconfigs['ypos'].unique().astype('float')
@@ -300,7 +314,7 @@ else:
     
     RF_data = {}
     for roi in visual_rois:
-        roidata = S.gratings['roidata'].get_group(roi)
+        roidata = dset['roidata'].get_group(roi)
     
         xvals=[]; yvals=[]; zvals=[];
         for k,g in config_grps:
