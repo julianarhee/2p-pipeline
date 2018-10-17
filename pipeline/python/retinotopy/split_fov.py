@@ -129,96 +129,15 @@ def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None,
 
         ax.imshow(orig)
 
-#    
-#
-##%%
-#def fftconvolve2d(x, y):
-#    # This assumes y is "smaller" than x.
-#    f2 = ifft2(fft2(x, shape=x.shape) * fft2(y, shape=x.shape)).real
-#    f2 = np.roll(f2, (-((y.shape[0] - 1)//2), -((y.shape[1] - 1)//2)), axis=(0, 1))
-#    return f2
-#
-#
-#
-#def convert_range(img, min_new=0.0, max_new=255.0):
-#    img_new = (img - img.min()) * ((max_new - min_new) / (img.max() - img.min())) + min_new
-#    return img_new
-#
-#def smooth_array(inputArray,fwhm):
-#	szList=np.array([None,None,None,11,None,21,None,27,None,31,None,37,None,43,None,49,None,53,None,59,None,55,None,69,None,79,None,89,None,99])
-#	sigmaList=np.array([None,None,None,.9,None,1.7,None,2.6,None,3.4,None,4.3,None,5.1,None,6.4,None,6.8,None,7.6,None,8.5,None,9.4,None,10.3,None,11.2,None,12])
-#	sigma=sigmaList[fwhm]
-#	sz=szList[fwhm]
-#
-#	outputArray=cv2.GaussianBlur(inputArray, (sz,sz), sigma, sigma)
-#	return outputArray
-#
-#def get_fov_mask(img, max_val, min_val=0):
-#    
-#    msk = np.copy(img)
-#    msk[img > max_val] = np.nan
-#    msk[img < min_val] = np.nan
-#    
-#    return msk
-#
-#
-#def smooth_fov(img, kernel_type='median', kernel_size=5):
-#
-#    omax = img.max()
-#    omin = img.min()
-#    if img.dtype != 'uint8':
-#        tmpimg = convert_range(img)
-#        tmpimg = np.array(Image.fromarray(tmpimg).convert("L"))
-#    
-#    if kernel_type == 'median':
-#        img_smoothed = cv2.medianBlur(tmpimg, kernel_size)
-#    elif kernel_type == 'gaussian':
-#        img_smoothed = smooth_array(tmpimg, kernel_size)
-#    elif kernel_type == 'uniform':
-#        kernel = np.ones((kernel_size,kernel_size), np.float32)/(kernel_size*kernel_size)
-#        img_smoothed = cv2.filter2D(tmpimg,-1,kernel)
-#    elif kernel_type == 'orig':
-#        img_smoothed = np.copy(img)
-#    
-#    # Convert range and type back:
-#    final_img = convert_range(img_smoothed, min_new=omin, max_new=omax)
-#    
-#    return final_img
-#        
-#def morph_fov(img, kernel_size=5, n_iterations=2):
-#        
-#    # noise removal
-#    kernel = np.ones((kernel_size, kernel_size),np.uint8)
-#    opening = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=n_iterations)
-#    # sure background area
-#    dilated = cv2.dilate(opening,kernel,iterations=n_iterations)
-#    
-#    return dilated
-#    
-#
-##%%
-#    
-#
-#def get_retinorun_info(acquisition_dir, retino_run='retino_run1'):
-#    print 'Getting paradigm file info'
-#    paradigm_fpath = glob.glob(os.path.join(acquisition_dir, '%s*' % retino_run, 'paradigm', 'files', '*.json'))[0]
-#    with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
-#    # pp.pprint(mwinfo)
-#    
-#    rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
-#    unique_conditions = np.unique([rep[1] for rep in rep_list])
-#    conditions = dict((cond, [int(run) for run,config in rep_list if config==cond]) for cond in unique_conditions)
-#    print conditions
-#    
-#    return conditions
+
     
 #%%
 rootdir = '/n/coxfs01/2p-data'
 
 # Combine different conditions of the SAME acquisition:
 animalid = 'JC015'
-session = '20180925'
-acquisition = 'FOV2_zoom1p7x'
+session = '20180919'
+acquisition = 'FOV1_zoom2p0x'
 retino_run = 'retino_run1'
 
 #use_azimuth = True
@@ -243,8 +162,8 @@ else:
     
     
     fov = seg.Segmentations(animalid, session, acquisition, retino_run)
-    pix_phasemap = fov.get_phase_data(analysis_type='pixels', use_azimuth=True, use_single_ref=True, retino_file_ix=0)
-    roi_phasemap = fov.get_phase_data(analysis_type='rois', use_azimuth=True, use_single_ref=True, retino_file_ix=0)
+    pix_phasemap = fov.get_phase_data(analysis_type='pixels', use_azimuth=True, use_single_ref=True, retino_file_ix=1)
+    roi_phasemap = fov.get_phase_data(analysis_type='rois', use_azimuth=True, use_single_ref=True, retino_file_ix=1)
     
     
     roi_phase_mask = np.copy(roi_phasemap)
