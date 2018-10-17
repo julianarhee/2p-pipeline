@@ -1158,8 +1158,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             file_df -= np.array(file_df).min()
 
         # Get all trials contained in current .tif file:
-        trials_in_block = sorted([t for t in trial_list \
+        tmp_trials_in_block = sorted([t for t in trial_list \
                                   if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
+        # 20181016 BUG: ignore trials that are BLANKS:
+        trials_in_block = sorted([t for t in tmp_trials_in_block if mwinfo[t]['stimuli']['type'] != 'blank'], key=natural_keys)
+    
         print "%s - N trials in block: %i" % (curr_file, len(trials_in_block))
         
         if len(trials_in_block) == 0:
