@@ -5,6 +5,14 @@ Created on Sun Oct 14 14:36:54 2018
 
 @author: juliana
 """
+import glob
+import os
+import json
+import pandas as pd
+import numpy as np
+import pylab as pl
+import seaborn as sns
+import cPickle as pkl
 
 from pipeline.python.utils import label_figure
 
@@ -29,9 +37,9 @@ def rescale_values(values, newmin=0, newmax=200):
 rootdir = '/n/coxfs01/2p-data'
 
 # Combine different conditions of the SAME acquisition:
-animalid = 'JC015'
-session = '20180925'
-acquisition = 'FOV1_zoom2p0x'
+animalid = 'JC022'
+session = '20181005'
+acquisition = 'FOV2_zoom2p7x'
 
 # Load RF estimate results for TILING data:
 # -----------------------------------------------------------------------------

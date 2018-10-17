@@ -231,13 +231,13 @@ rootdir = '/n/coxfs01/2p-data'
 #gratings_run = 'combined_gratings_static'
 #gratings_id = 'traces003'
 
-animalid = 'JC015'
-session = '20180925'
-acquisition = 'FOV1_zoom2p0x'
-retino_run = 'retino_run1'
-retino_id = 'analysis004'
-tiled_run = 'combined_objects_static'
-tiled_traceid = 'traces003'
+#animalid = 'JC015'
+#session = '20180925'
+#acquisition = 'FOV1_zoom2p0x'
+#retino_run = 'retino_run1'
+#retino_id = 'analysis004'
+#tiled_run = 'combined_objects_static'
+#tiled_traceid = 'traces003'
 
 #animalid = 'JC022'
 #session = '20181005'
@@ -247,6 +247,15 @@ tiled_traceid = 'traces003'
 #gratings_run = 'combined_gratings_static'
 #gratings_id = 'traces001'
 
+animalid = 'JC022'
+session = '20181005'
+acquisition = 'FOV3_zoom2p7x'
+retino_run = 'retino_run1'
+retino_id = 'analysis002'
+tiled_run = 'combined_gratings_static'
+tiled_traceid = 'traces001'
+
+
 acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
 
@@ -255,9 +264,17 @@ acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 # Load SessionSummary data (combo data paths w. stats):
 # -----------------------------------------------------------------------------
 ss_paths = glob.glob(os.path.join(acquisition_dir, 'session_summary_*%s_%s*_%s_%s*.pkl' % (retino_run, retino_id, tiled_run, tiled_traceid)))
+if len(ss_paths) > 1:
+    print "Found > 1 session summary:"
+    for si, spath in enumerate(ss_paths):
+        print si, spath
+    ss_choice = input("Select IDX of SessionSummary() to use: ")
+    ss_path = ss_paths[ss_choice]
+else:
+    ss_fpath = ss_paths[0]
 
-assert len(ss_paths) == 1, "More than 1 specified combo found:\n ... retino -- %s, %s\n ... tiling data -- %s, %s." % (retino_run, retino_id, tiled_run, gratings_id)
-ss_fpath = ss_paths[0]
+#assert len(ss_paths) == 1, "More than 1 specified combo found:\n ... retino -- %s, %s\n ... tiling data -- %s, %s." % (retino_run, retino_id, tiled_run, tiled_traceid)
+#ss_fpath = ss_paths[0]
 
 with open(ss_fpath, 'rb') as f:
     S = pkl.load(f)
