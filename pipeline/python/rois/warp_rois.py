@@ -138,14 +138,17 @@ if not os.path.exists(warp_output_dir):
 src_tiff_dir = RID['PARAMS']['options']['source']['tiff_dir']
 if rootdir not in src_tiff_dir:
     src_tiff_dir = replace_root(src_tiff_dir, rootdir, animalid, session)
-src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
+if '.tif' in src_tiff_dir:
+    ref_img_path = src_tiff_dir
+else:
+    src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
                     '_%s_deinterleaved' % zproj_type in d and os.path.split(src_tiff_dir)[-1] in d][0]
-print "Using %s reference img." % zproj_type
+    print "Using %s reference img." % zproj_type
 
-ref_img_dir = os.path.join(src_proj_dir,
+    ref_img_dir = os.path.join(src_proj_dir,
                                 'Channel%02d' % RID['PARAMS']['options']['source']['ref_channel'],
                                 'File%03d' % RID['PARAMS']['options']['source']['ref_file'])
-ref_img_path = [os.path.join(ref_img_dir, t) for t in os.listdir(ref_img_dir) if t.endswith('tif')][0]
+    ref_img_path = [os.path.join(ref_img_dir, t) for t in os.listdir(ref_img_dir) if t.endswith('tif')][0]
 
 # Load mean image of SAMPLE to warp to:
 rid_tiff_dir = RID['SRC']
