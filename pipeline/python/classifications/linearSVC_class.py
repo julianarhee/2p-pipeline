@@ -151,7 +151,7 @@ def get_classifier_params(**cparams):
 #     Make sure aggregate type matches:
 #    if clfparams['const_trans'] is not '' and clfparams['trans_value'] is not '':
 #        optsE.aggregate_type = 'single' # TODO:  fix this so that tuples of const-trans are allowed?
-    clfparams['binsize'] = clfparams['binsize'] if clfparams['data_type'] =='frames' else ''
+    #clfparams['binsize'] = clfparams['binsize'] if clfparams['data_type'] =='frames' else ''
     
     
     return clfparams
@@ -162,7 +162,7 @@ def get_default_gratings_params():
     clfparams = get_classifier_params(data_type='stat', 
                                       inputdata='meanstim', 
                                       inputdata_type='',
-                                      roi_selector='all', 
+                                      roi_selector='visual', 
                                       class_name='ori', 
                                       aggregate_type='all',
                                       subset=None, subset_nsamples=None,
@@ -1076,7 +1076,7 @@ def get_cv_folds(svc, clfparams, cX_std, cy, output_dir='/tmp'):
             predicted.append(y_pred) #=y_test])
             true.append(y_test)
     
-    else:
+    elif cv_method in ['LOGO', 'LOO', 'LPGO']:
         nframes_per_trial_tmp = list(set(Counter(cy)))
         assert len(nframes_per_trial_tmp)==1, "More than 1 value found for N frames per trial..."
         nframes_per_trial = nframes_per_trial_tmp[0]
@@ -1581,31 +1581,52 @@ def get_frame_samples(Xdata, labels_df, clfparams):
 #    assert options.stat_type in stat_choices[options.data_type], "Invalid STAT selected for data_type %s. Run -h for options." % options.data_type
 #
 #    return options
-#
 
-    
+                    
+            
 #%%
 class TransformClassifier():
     
-    def __init__(self, optsE):
-        self.rootdir = optsE.rootdir
-        self.animalid = optsE.animalid
-        self.session = optsE.session
-        self.acquisition = optsE.acquisition
-        self.run = optsE.run
-        if 'cnmf' in optsE.traceid:
+    def __init__(self, animalid, session, acquisition, run, traceid, rootdir='/n/coxfs01/2p-data',
+                         roi_selector='visual', data_type='stat', stat_type='meanstim',
+                         inputdata_type='corrected', 
+                         get_null=False, class_name='', class_subset='',
+                         const_trans='', trans_value='',
+                         cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10):
+        
+        self.rootdir = rootdir
+        self.animalid = animalid
+        self.session = session
+        self.acquisition = acquisition
+        self.run = run
+        if 'cnmf' in traceid:
             tracedir_type = 'cnmf'
         else:
             tracedir_type = 'traces'
-        self.traceid_dir = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, 
-                                              optsE.session, optsE.acquisition, 
-                                              optsE.run, tracedir_type, 
-                                              '%s*' % optsE.traceid))[0]
+        self.traceid_dir = glob.glob(os.path.join(rootdir, animalid, 
+                                              session, acquisition, 
+                                              run, tracedir_type, 
+                                              '%s*' % traceid))[0]
         self.traceid = os.path.split(self.traceid_dir)[-1]        
         self.data_fpath = self.get_data_fpath()
-    
-        self.set_params(optsE) # Set up classifier parameters
         self.classifiers = []
+
+        train_params = {'roi_selector': roi_selector,
+                        'data_type': data_type,
+                        'stat_type': stat_type,
+                        'inputdata_type': inputdata_type,
+                        'get_null': get_null,
+                        'class_name': class_name,
+                        'class_subset': class_subset,
+                        'const_trans': const_trans,
+                        'trans_value': trans_value,
+                        'binsize': binsize,
+                        'cv_method': cv_method,
+                        'cv_nfolds': cv_nfolds,
+                        'cv_ngroups': cv_ngroups,
+                        'C_val': C_val}
+        self.set_params(train_params) # Set up classifier parameters
+        
                 
     def get_data_fpath(self):
 
@@ -1696,26 +1717,34 @@ class TransformClassifier():
         
         return roi_list
     
-    def set_params(self, optsE):
-
+    def set_params(self, train_params):
+        # Check arg validity:
+        valid_choices = {
+                        'data_type': ['frames', 'stat'],
+                        'stat_type': ['meanstim', 'zscore', 'meanstimdiff'],
+                        'cv_method': ['kfold', 'splithalf', 'LOGO', 'LOO', 'LPGO']
+                        }
+        for opt, choices in valid_choices.items():
+            assert train_params[opt] in choices, "Specified %s --%s-- NOT valid. Select from %s" % (opt, train_params[opt], str(choices))                
+        
         self.params = get_classifier_params(
                                     classifier = 'LinearSVC', 
-                                    cv_method = optsE.cv_method, 
-                                    cv_nfolds = int(optsE.cv_nfolds),
-                                    cv_ngroups = optsE.cv_ngroups,
-                                    C_val = optsE.C_val,
-                                    roi_selector = optsE.roi_selector,         # Can be 'all', or 'visual' or 'selective' (must have sorted ROIs)
-                                    data_type = optsE.data_type,               # Can be 'stat' or 'frames' 
-                                    stat_type = optsE.stat_type,               # Can be 'meanstim', 'zscore', 'meanstimdff'
-                                    inputdata_type = optsE.inputdata_type,     # is '', unless CNMF traces, in which case 'corrected', 'spikes', etc.
-                                    get_null = optsE.get_null,                 # Whether null-class should be trained
-                                    class_name = optsE.class_name,             # Should be a transform (ori, morphlevel, xpos, ypos, size)
+                                    cv_method = train_params['cv_method'], 
+                                    cv_nfolds = int(train_params['cv_nfolds']),
+                                    cv_ngroups = train_params['cv_ngroups'],
+                                    C_val = train_params['C_val'],
+                                    roi_selector = train_params['roi_selector'],         # Can be 'all', or 'visual' or 'selective' (must have sorted ROIs)
+                                    data_type = train_params['data_type'],               # Can be 'stat' or 'frames' 
+                                    stat_type = train_params['stat_type'],               # Can be 'meanstim', 'zscore', 'meanstimdff'
+                                    inputdata_type = train_params['inputdata_type'],     # is '', unless CNMF traces, in which case 'corrected', 'spikes', etc.
+                                    get_null = train_params['get_null'],                 # Whether null-class should be trained
+                                    class_name = train_params['class_name'],             # Should be a transform (ori, morphlevel, xpos, ypos, size)
                                     #aggregate_type = optsE.aggregate_type,     # Should be 'all', 'single', 'half' -- TOD:  add multiepl trans-constants
-                                    const_trans = optsE.const_trans,           # '' Transform type to hold at a constant value (must be different than class_name)
-                                    trans_value = optsE.trans_value,           # '' Transform value to hold const_trans at
-                                    class_subset = optsE.class_subset,         # LIST of subset of class_name types to include
+                                    const_trans = train_params['const_trans'],           # '' Transform type to hold at a constant value (must be different than class_name)
+                                    trans_value = train_params['trans_value'],           # '' Transform value to hold const_trans at
+                                    class_subset = [float(c) if c.isdigit() else c for c in train_params['class_subset']],         # LIST of subset of class_name types to include
                                     #subset_nsamples = optsE.subset_nsamples,   #**# None; TODO:  fix this and 'subset' options -- these make no sense
-                                    binsize = optsE.binsize)
+                                    binsize = train_params['binsize'] if train_params['data_type'] =='frames' else '')
     
     def create_classifier_dirs(self):
         # What are we classifying:
@@ -1733,6 +1762,7 @@ class TransformClassifier():
             const_trans_dict = self.get_constant_transforms()
             transforms_desc = '_'.join('%i%s' % (len(v), k) for k,v in const_trans_dict.items())
         else:
+            const_trans_dict = None
             transforms_desc = 'alltransforms'
         
         # What is the input data type:
@@ -1774,9 +1804,12 @@ class TransformClassifier():
     
     def initialize_classifiers(self):
 
-        keys, values = zip(*self.const_trans_dict.items())
-        transforms = [dict(zip(keys, v)) for v in itertools.product(*values)]
-        
+        if self.const_trans_dict is not None:
+            keys, values = zip(*self.const_trans_dict.items())
+            transforms = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        else:
+            transforms = []
+            
         # If we are testing subset of the data (const_trans and trans_val are non-empty),
         # create a classifier + output subdirs for each subset:
         if len(transforms) > 0:
@@ -1788,62 +1821,71 @@ class TransformClassifier():
                                                   self.sample_data, 
                                                   self.sample_labels, 
                                                   self.sconfigs, 
-                                                  self.classifier_dir))
+                                                  self.classifier_dir,
+                                                  self.run_info,
+                                                  data_identifier=self.data_identifier))
         else:
             self.classifiers.append(LinearSVM(self.params, 
                                               self.sample_data,
                                               self.sample_labels,
                                               self.sconfigs,
-                                              self.classifier_dir))
+                                              self.classifier_dir,
+                                              self.run_info,
+                                              data_identifier=self.data_identifier))
             
     def label_classifier_data(self):
         for ci, clf in enumerate(self.classifiers):
             clf.label_training_data()
             clf.create_classifier()
-            print "Created %i of %i classifiers: %s" % (ci, len(self.classifiers), clf.classifier_dir)
+            print "Created %i of %i classifiers: %s" % (ci+1, len(self.classifiers), clf.classifier_dir)
             
+#    
+#    def train_classifier(self, clf):
+#        print "Training classifier.\n--- output saved to: %s" % clf.classifier_dir
+#        if self.params['data_type'] == 'frames':
+#            self.train_on_trial_epochs(clf)
+#        else:
+#            self.train_on_trials(clf)
+#            
+#    def train_on_trial_epochs(self, clf):
+#        
+#        epochs, decode_dict, bins, clf.clfparams['binsize'], class_labels = \
+#                                        format_epoch_dataset(clf.clfparams, clf.cX, clf.cy, self.run_info, self.sconfigs)
+#                                        
+#        decode_trial_epochs(clf.class_labels, clf.clfparams, bins, decode_dict, 
+#                                self.run_info, data_identifier=self.data_identifier, 
+#                                niterations=10, scoring='accuracy', output_dir=clf.classifier_dir)
+#        
+#    def train_on_trials(self, clf):
+#        
+#        print "... running permutation test for CV accuracy."
+#        clf.cv_kfold_permutation(data_identifier=self.data_identifier,
+#                                  scoring='accuracy', 
+#                                  permutation_test=True, 
+#                                  n_permutations=500)
+#        
+#        print "... plotting confusion matrix."
+#        clf.confusion_matrix(data_identifier=self.data_identifier)
+#        
+#        print "... doing RFE."
+#        clf.do_RFE(data_identifier=self.data_identifier, scoring='accuracy')
     
-    def train_classifier(self, clf):
-        print "Training classifier.\n--- output saved to: %s" % clf.classifier_dir
-        if self.params['data_type'] == 'frames':
-            self.train_on_trial_epochs(clf)
-        else:
-            self.train_on_trials(clf)
-            
-    def train_on_trial_epochs(self, clf):
-        
-        epochs, decode_dict, bins, clf.clfparams['binsize'], class_labels = \
-                                        format_epoch_dataset(clf.clfparams, clf.cX, clf.cy, self.run_info, self.sconfigs)
-                                        
-        decode_trial_epochs(clf.class_labels, clf.clfparams, bins, decode_dict, 
-                                self.run_info, data_identifier=self.data_identifier, 
-                                niterations=10, scoring='accuracy', output_dir=clf.classifier_dir)
-        
-    def train_on_trials(self, clf):
-        
-        print "... running permutation test for CV accuracy."
-        clf.cv_kfold_permutation(data_identifier=self.data_identifier,
-                                  scoring='accuracy', 
-                                  permutation_test=True, 
-                                  n_permutations=500)
-        
-        print "... plotting confusion matrix."
-        clf.confusion_matrix(data_identifier=self.data_identifier)
-        
-        print "... doing RFE."
-        clf.do_RFE(data_identifier=self.data_identifier, scoring='accuracy')
-    
-    
+    def save_me(self):
+        with open(os.path.join(self.classifier_dir, 'TransformClassifier.pkl'), 'wb') as f:
+            pkl.dump(self, f, protocol=pkl.HIGHEST_PROTOCOL)
     
 #%%
 class LinearSVM():
     
-    def __init__(self, clfparams, sample_data, sample_labels, sconfigs, classifier_dir):
+    def __init__(self, clfparams, sample_data, sample_labels, sconfigs, classifier_dir,
+                         run_info, data_identifier=''):
         self.clfparams = clfparams
         self.cX = sample_data
         self.cy = sample_labels
         self.sconfigs = sconfigs
         self.classifier_dir = classifier_dir
+        self.run_info = run_info
+        self.data_identifier = data_identifier
     
         if self.clfparams['const_trans'] is not '':
             # Create SUBDIR for specific const-trans and trans-val pair:
@@ -1861,12 +1903,18 @@ class LinearSVM():
             
     def label_training_data(self):
         
-        if self.clfparams['const_trans'] != '':
+        if self.clfparams['const_trans'] != '' and self.clfparams['class_subset'] == '':
+            # Only group and take subset of data for specified const-trans/trans-value pair
             cX, cy, class_labels = self.group_by_transform_subset()
         
-        elif self.clfparams['class_subset'] != '':
+        elif self.clfparams['class_subset'] != '' and self.clfparams['const_trans'] == '':
+            # Only group and take subset of data for subset of class-to-be-trained (across all transforms)
             cX, cy, class_labels = self.group_by_class_subset()
-            
+        
+        elif self.clfparams['class_subset'] != '' and self.clfparams['const_trans'] != '':
+            # Only group and take subset of data for class subset within a sub-subset of specified cons-trans/trans-value pair
+            cX, cy, class_labels = self.group_by_class_and_transform_subset()
+        
         else:
             cX, cy, class_labels = self.group_by_class()
             
@@ -1940,6 +1988,38 @@ class LinearSVM():
         
         return cX, cy, class_labels
 
+
+    def group_by_class_and_transform_subset(self):
+        const_trans_dict = dict((k, v) if isinstance(v, list) else (k, [v]) for k,v in zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
+        sconfigs_df = pd.DataFrame(self.sconfigs).T
+        configs_subset = sconfigs_df[sconfigs_df[self.clfparams['class_name']].isin(self.clfparams['class_subset'])].index.tolist()
+        sconfigs_df = sconfigs_df[sconfigs_df.index.isin(configs_subset)]
+        
+        configs_included = []; configs_pile = self.sconfigs.keys()
+        for transix, (trans_name, trans_value) in enumerate(const_trans_dict.items()):
+            assert trans_value in sconfigs_df[trans_name].unique(), "Specified trans_name, trans_value not found: %s" % str((trans_name, trans_value))
+            
+            if transix == 0:
+                first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
+                configs_tmp = [c for c in configs_pile if c in first_culling]
+            else:
+                configs_pile = copy.copy(configs_tmp)
+                first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
+                configs_tmp = [c for c in configs_pile if c in first_culling]
+        configs_included = configs_tmp
+    
+        if self.clfparams['get_null']:
+            configs_included.append('bas')
+            
+        kept_ixs = np.array([cix for cix, cname in enumerate(self.cy) if cname in configs_included])
+        cX = self.cX[kept_ixs, :] 
+        cy_tmp = self.cy[kept_ixs]
+        
+        cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
+        class_labels = sorted(np.unique(cy))
+        
+        return cX, cy, class_labels
+    
     
     def create_classifier(self):
         
@@ -1971,13 +2051,45 @@ class LinearSVM():
 #        correlation_matrix(self.clfparams, self.class_labels, self.cX, self.cy, 
 #                               data_identifier=self.data.data_identifier, output_dir=output_dir)
         
-    def train_on_trial_epochs(self, data_identifier=''):
+
+    def train_classifier(self):
+        print "Training classifier.\n--- output saved to: %s" % self.classifier_dir
+        if self.clfparams['data_type'] == 'frames':
+            self.train_on_trial_epochs()
+        else:
+            self.train_on_trials()
+            
+    def train_on_trial_epochs(self):
         
         epochs, decode_dict, bins, self.clfparams['binsize'], class_labels = \
-                                        format_epoch_dataset(self.clfparams, self.cX, self.cy, self.data.run_info, self.data.sconfigs)
+                                        format_epoch_dataset(self.clfparams, self.cX, self.cy, self.run_info, self.sconfigs)
+                                        
         decode_trial_epochs(self.class_labels, self.clfparams, bins, decode_dict, 
-                                self.data.run_info, data_identifier=data_identifier, 
+                                self.run_info, data_identifier=self.data_identifier, 
                                 niterations=10, scoring='accuracy', output_dir=self.classifier_dir)
+        
+    def train_on_trials(self):
+        
+        print "... running permutation test for CV accuracy."
+        self.cv_kfold_permutation(data_identifier=self.data_identifier,
+                                  scoring='accuracy', 
+                                  permutation_test=True, 
+                                  n_permutations=500)
+        
+        print "... plotting confusion matrix."
+        self.confusion_matrix(data_identifier=self.data_identifier)
+        
+        print "... doing RFE."
+        self.do_RFE(data_identifier=self.data_identifier, scoring='accuracy')
+        
+        
+#    def train_on_trial_epochs(self, data_identifier=''):
+#        
+#        epochs, decode_dict, bins, self.clfparams['binsize'], class_labels = \
+#                                        format_epoch_dataset(self.clfparams, self.cX, self.cy, self.data.run_info, self.data.sconfigs)
+#        decode_trial_epochs(self.class_labels, self.clfparams, bins, decode_dict, 
+#                                self.data.run_info, data_identifier=data_identifier, 
+#                                niterations=10, scoring='accuracy', output_dir=self.classifier_dir)
         
     def cv_kfold_permutation(self, scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500, data_identifier=''):
         # -----------------------------------------------------------------------------
