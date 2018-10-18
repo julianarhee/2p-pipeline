@@ -865,7 +865,7 @@ class SessionSummary():
         
         # Shapes = objects
         nobjects = len(object_list)  #len(responses['object'].unique())
-        markers = ['o', 'P', '*', '^', 's', 'd']
+        markers = ['o', 'P', '*', 'X', 's', 'd', 'p', 'H', '1', '2', '3', '4','<','>','_']
         marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
         print "Plotting %i rois" % nrois_plot
  
