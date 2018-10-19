@@ -277,6 +277,123 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
 
 #%%
 
+def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False, make_equal=True):
+    
+    # First check if specified combo run exists:
+    traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
+    acquisition_dir = os.path.split(check_blobs_dir[0].split('/traces/')[0])[0]
+    combined_darray_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string, 'data_arrays')
+    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+    combo_dpath = os.path.join(combined_darray_dir, 'datasets.npz')    
+    
+    if create_new is False:
+        try:
+            assert os.path.exists(combo_dpath), "Combined dset %s does not exist!" % combined_name
+        except Exception as e:
+            print "Creating new combined dataset: %s" % combined_name
+            print "Combining data from dirs:\n", check_blobs_dir
+            create_new = True
+        
+    if create_new:
+        
+        D = dict()
+        for blobdir in check_blobs_dir:
+            curr_run = os.path.split(blobdir.split('/traces')[0])[-1]
+            print "Getting data array for run: %s" % curr_run
+            darray_fpath = glob.glob(os.path.join(blobdir, 'data_arrays', 'datasets.npz'))[0]
+            curr_dset = np.load(darray_fpath)
+            
+            D[curr_run] = {'data':  curr_dset['corrected'],
+                           'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
+                           'sconfigs':  curr_dset['sconfigs'][()],
+                           'run_info': curr_dset['run_info'][()]
+                           }
+            
+        unique_sconfigs = list(np.unique(np.array(list(itertools.chain.from_iterable([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))))
+        sconfigs = dict(('config%03d' % int(cix+1), cfg) for cix, cfg in enumerate(unique_sconfigs))
+        
+        new_paradigm_dir = os.path.join(acquisition_dir, combined_name, 'paradigm')
+        if not os.path.exists(new_paradigm_dir): os.makedirs(new_paradigm_dir);
+        with open(os.path.join(new_paradigm_dir, 'stimulus_configs.json'), 'w') as f:
+            json.dump(sconfigs, f, indent=4, sort_keys=True)
+        
+        # Remap config names for each run:
+        last_trial_prev_run = 0
+        prev_run = None
+        for ridx, curr_run in enumerate(sorted(D.keys(), key=natural_keys)):
+            print curr_run
+            # Get the correspondence between current run's original keys, and the new keys from the combined stim list
+            remapping = dict((oldkey, newkey) for oldkey, oldval in D[curr_run]['sconfigs'].items() for newkey, newval in sconfigs.items() 
+                                                if newval==oldval)
+            # Create dict of DF indices <--> new config key to replace each index once
+            ixs_to_replace = dict((ix, remapping[oldval]) for ix, oldval in 
+                                      zip(D[curr_run]['labels_df']['config'].index.tolist(), D[curr_run]['labels_df']['config'].values))
+            # Replace old config with new config at the correct index
+            D[curr_run]['labels_df']['config'].put(ixs_to_replace.keys(), ixs_to_replace.values())
+            
+            # Also replace trial names so that they have unique values between the two runs:
+            if prev_run is not None:        
+                last_trial_prev_run = int(sorted(D[prev_run]['labels_df']['trial'].unique(), key=natural_keys)[-1][5:]) #len(D[curr_run]['labels_df']['trial'].unique())
+    
+                trials_to_replace = dict((ix, 'trial%05d' % int(int(oldval[5:]) + last_trial_prev_run)) for ix, oldval in 
+                                     zip(D[curr_run]['labels_df']['trial'].index.tolist(), D[curr_run]['labels_df']['trial'].values))
+                D[curr_run]['labels_df']['trial'].put(trials_to_replace.keys(), trials_to_replace.values())
+                
+            prev_run = curr_run
+            
+    
+        # Combine runs in order of their alphanumeric name:
+        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
+        
+        # Get run_info dict:
+        identical_fields = ['trace_type', 'roi_list', 'nframes_on', 'framerate', 'stim_on_frame', 'nframes_per_trial']
+        combined_fields = ['traceid_dir', 'trans_types', 'transforms', 'nfiles', 'ntrials_total']
+        
+        rinfo = combine_run_info(D, identical_fields=identical_fields, combined_fields=combined_fields)
+        
+        replace_fields = ['condition_list', 'ntrials_by_cond']
+        replace_keys = [k for k,v in rinfo.items() if v is None]
+        assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
+        rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
+        rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+        
+        # CHeck N trials per condition:
+        ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
+        if make_equal and len(ntrials_by_cond) > 1:
+            print "Uneven numbers of trials per cond. Making equal."
+            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
+            ntrials_target = min(ntrials_by_cond)
+            remove_ixs = []
+            for cf in configs_with_more:
+                curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
+                rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
+                selected_trials = curr_trials[rand_trial_ixs] 
+                ixs = tmp_labels_df[tmp_labels_df['trial'].isin(selected_trials)].index.tolist()
+                remove_ixs.extend(ixs)
+            
+            all_ixs = np.arange(0, tmp_labels_df.shape[0])
+            kept_ixs = np.delete(all_ixs, remove_ixs)
+            
+            labels_df = tmp_labels_df.iloc[kept_ixs, :].reset_index(drop=True)
+            data = tmp_data[kept_ixs, :]
+            rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+
+        else:
+            labels_df = tmp_labels_df
+            data = tmp_data
+            
+        
+        # Save it:
+        np.savez(combo_dpath,
+                 corrected=data,
+                 labels_data=labels_df,
+                 labels_columns=labels_df.columns.tolist(),
+                 run_info = rinfo,
+                 sconfigs=sconfigs
+                 )
+    
+    return combo_dpath
 
 #%%
 def get_data_and_labels(dataset, data_type='corrected'):
