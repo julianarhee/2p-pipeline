@@ -782,14 +782,18 @@ def update_roi_records(rid, session_dir):
 
 def main(options):
 
-    rid = create_rid(options)
+    RID = create_rid(options)
 
     print "****************************************************************"
     print "Created RID."
     print "----------------------------------------------------------------"
-    pp.pprint(rid)
+    pp.pprint(RID)
     print "****************************************************************"
 
+    optsE = extract_options(options)
+    # Save tmp roiparams.json file:
+    roiparams = save_roi_params(RID, excluded_tiffs=RID['PARAMS']['eval']['manual_excluded'], rootdir=optsE.rootdir)
+    
 
 if __name__ == '__main__':
     main(sys.argv[1:])
