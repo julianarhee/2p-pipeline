@@ -181,14 +181,6 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-<<<<<<< HEAD
-#def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
-#
-#    mask_path = os.path.join(RID['DST'], 'masks.hdf5')
-#    excluded_tiffs = TID['PARAMS']['excluded_tiffs']
-#
-#
-=======
 def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
     mask_path = os.path.join(RID['DST'], 'masks.hdf5')
@@ -309,7 +301,6 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
     return maskinfo
 
 #def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
->>>>>>> master
 #    maskinfo = dict()
 #    try:
 #        maskfile = h5py.File(mask_path, 'r')
@@ -451,7 +442,6 @@ def get_gradient(im) :
     return grad
 
 #%%
-<<<<<<< HEAD
 #def uint16_to_RGB(img):
 #    im = img.astype(np.float64)/img.max()
 #    im = 255 * im
