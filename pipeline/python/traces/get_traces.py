@@ -2008,11 +2008,11 @@ options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zo
 
 #%%
 
-optsE = extract_options(options)
-T = Traces(optsE)
-T.get_sources()
+#optsE = extract_options(options)
+#T = Traces(optsE)
+#T.get_sources()
 
-T.get_masks(nprocs=1)
+#T.get_masks(nprocs=1)
 
 #%%
 class RoiMasks():
