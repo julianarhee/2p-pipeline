@@ -2322,7 +2322,8 @@ def extract_traces(options):
         TID['DST'] = replace_root(TID['DST'], rootdir, animalid, session)
     tiffs = ['File%03d' % int(i+1) for i in range(si_info['ntiffs']) if i not in TID['PARAMS']['excluded_tiffs']]    
     #RID = load_TID_roiset(TID, rootdir)
-    RID = load_RID(os.path.split(run_dir)[0],TID['PARAMS']['roi_id']) 
+    session_dir = os.path.join(rootdir, animalid, session)
+    RID = load_RID(session_dir, TID['PARAMS']['roi_id']) 
 
     # Save trace extraction params to file for easy-read:
     trace_extraction_opts = vars(options)
