@@ -99,7 +99,7 @@ def extract_options(options):
 
     parser.add_option('--test-C', action='store', dest='setC', default=1e9, help='C value or type to use for final trained classifier')
     parser.add_option('--nfeatures', action='store', dest='nfeatures_select', default='', help='Whether to use RFE to find best N rois (default: best, can be int)')
-    parser.add_options('--partial', action='store_false', dest='full_train', default=True, help='Set flag to leave aside test_size of the training dataset for the test plots')
+    parser.add_option('--partial', action='store_false', dest='full_train', default=True, help='Set flag to leave aside test_size of the training dataset for the test plots')
     parser.add_option('--test-size', action='store', dest='test_size', default=0.33, help='Fraction of train data to set aside for plotting test resutls (default: 0.33)')
 
     
@@ -337,7 +337,7 @@ def find_best_classifier(cX, cy, start_params, setC='best', nfeatures_select='be
     return svc, cX, cy, kept_rids, clf_output_dir
 
 
-def train_and_validate(svc, cX, cy, clfparams, clf_output_dir):
+def train_and_validate(svc, cX, cy, clf, clf_output_dir, full_train=False, test_size=0.33):
     #nfolds = clf.clfparams['cv_nfolds']
     #kfold = StratifiedKFold(n_splits=nfolds, shuffle=True)
     
@@ -376,12 +376,13 @@ def train_and_validate(svc, cX, cy, clfparams, clf_output_dir):
         svc.fit(X_train, train_true)
         test_predicted = svc.predict(X_test)
         #test_score = svc.score(X_test, test_true)
-        for classix, classname in np.unique(test_true):
+        for classix, classname in enumerate(sorted(np.unique(test_true))):
             ncorrect = np.sum([1 if p == classname else 0 for p in test_predicted])
             ntotal = len(test_predicted)
             trained_classes[classname] = float(ncorrect) / float(ntotal)
 
     return svc, trained_classes
+
 
 def get_test_data(sample_data, sample_labels, sdf, clfparams):
     #sdf = pd.DataFrame(clf.sconfigs).T
@@ -414,7 +415,7 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181016', '-A', 'F
            '-R', 'combined_blobs_static', '-t', 'traces001',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,106',
+           '--subset', '0,97',
            '--nproc=1'
            ]
    
@@ -442,6 +443,10 @@ def main(options):
     #%%
     
     # Look at specific classifier:
+    setC='best'
+    nfeatures_select='best'
+    full_train=False
+    test_size=0.2
     
     curr_clf = rfe_results.keys()[0]
     
@@ -471,7 +476,7 @@ def main(options):
                                                                       test_size=test_size, 
                                                                       classifier_base_dir=clf.classifier_dir)
     
-    svc, trained_classes = train_and_validate(svc, cX, clf.clfparams, clf_output_dir)
+    svc, trained_classes = train_and_validate(svc, cX, cy, clf, clf_output_dir, full_train=full_train, test_size=test_size)
     
     
     #%%  
