@@ -2343,7 +2343,8 @@ def run_trace_extraction(options):
             psth_opts.extend(['-r', optsE.psth_rows])
         if optsE.psth_cols is not None:
             psth_opts.extend(['-c', optsE.psth_cols])
-        if optsE.psth_hues is not None:
+        if optsE.psth_hues is not None and optsE.psth_hues!='None':
+            print "Specified HUE:", optsE.psth_hues
             psth_opts.extend(['-H', optsE.psth_hues])
         
 	psth_dir = psth.make_clean_psths(psth_opts)
