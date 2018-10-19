@@ -25,7 +25,7 @@ import cPickle as pkl
 import tifffile as tf
 from scipy.ndimage import zoom
 from pipeline.python.utils import write_dict_to_json, get_tiff_paths, replace_root
-
+from pipeline.python.rois.utils import save_roi_params
 
 def get_gradient(im):
     # Calculate the x and y gradients using Sobel operator
@@ -315,9 +315,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                         'failed_warps': [img_paths[bi] for bi in still_bad_warps],
                         'roi_reference_file': warped_mean_image_path}
         
-        with open(warp_results_path, 'wb') as f:
-            pkl.dump(warp_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-            
+           
         # Save ROI INFO:
         # -------------------------------------------------------------------------
         # EFfectively usinga specific STD file of a specific run as "reference":
@@ -343,7 +341,16 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         rids[RID['roi_id']] = RID
         write_dict_to_json(rids, roidict_filepath)
         # -------------------------------------------------------------------------
-    
+        # Also updated warp_mean_image_path:
+        warp_results['roi_reference_file'] = warped_mean_image_path.replace(old_hash, RID['rid_hash']) 
+        warp_results_path = warp_results_path.replace(old_hash, RID['rid_hash'])
+
+        with open(warp_results_path, 'wb') as f:
+            pkl.dump(warp_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+        # Save roiparams.json:
+        roiparams = save_roi_params(RID, excluded_tiffs=RID['PARAMS']['eval']['manual_excluded'], rootdir=rootdir)
+     
     return warp_results
 
 
