@@ -570,9 +570,17 @@ class SessionSummary():
 
     def plot_summary(self, ignore_null=False, selective=True):
         
-        if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys(): 
-            fig = pl.figure(figsize=(35,25))
-            spec = gridspec.GridSpec(ncols=3, nrows=3)
+        if 'blobs' in self.traceid_dirs.keys() and 'objects' in self.traceid_dirs.keys(): 
+            fig = pl.figure(figsize=(35,35))
+            spec = gridspec.GridSpec(ncols=3, nrows=4)
+        elif 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
+            if 'gratings' not in self.traceid_dirs.keys():
+                fig = pl.figure(figsize=(35,20))
+                spec = gridspec.GridSpec(ncols=3, nrows=2)
+            else:
+                fig = pl.figure(figsize=(35,25))
+                spec = gridspec.GridSpec(ncols=3, nrows=3)
+              
         elif 'gratings' in self.traceid_dirs.keys():
             fig = pl.figure(figsize=(35,20))
             spec = gridspec.GridSpec(ncols=3, nrows=2)
@@ -586,17 +594,26 @@ class SessionSummary():
                 fig.add_subplot(spec[pr, pc])
     
         self.fig = fig
-        
+         
         self.plot_zproj_image(fig.axes, aix=0)
         self.plot_retinotopy_to_screen(fig.axes, aix=1)
         self.plot_estimated_RF_size(fig.axes, aix=2, ignore_null=ignore_null)
         if 'gratings' in self.traceid_dirs.keys():
-            self.plot_responsivity_gratings(fig.axes, aix=3)
-            self.plot_OSI_histogram(fig.axes, aix=4)
-            self.plot_confusion_gratings(fig.axes, aix=5)
+            self.plot_responsivity_gratings(axes_flat=fig.axes, aix=3)
+            self.plot_OSI_histogram(axes_flat=fig.axes, aix=4)
+            self.plot_confusion_gratings(axes_flat=fig.axes, aix=5)
+            obj_startix = 6
+        else:
+            obj_startix = 3
         if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
-            self.plot_responsivity_objects(fig.axes, aix=6)
-            self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
+            self.plot_responsivity_objects(axes_flat=fig.axes, aix=obj_startix)
+        if 'blobs' in self.traceid_dirs.keys():
+            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='blobs')
+            obj_startix = obj_startix + 3
+        if 'objects' in self.traceid_dirs.keys():
+            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='objects')
+            
+
 
     def load_sessionsummary_step(self, key='', traceset=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
@@ -926,57 +943,54 @@ class SessionSummary():
         if axes_flat is None:
             fig, ax = pl.subplots()
             axes_flat = fig.axes
-            
+
         # SUBPLOT 6:  Complex stimuli...
         # -----------------------------------------------------------------------------
         axes_flat[aix].clear()
         if 'blobs' in self.traceid_dirs.keys():
             hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=axes_flat[aix])
             axes_flat[aix].set_title('blobs: distN of zscores')
-        else:
+
+            bb = axes_flat[aix].get_position().bounds
+            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
+            axes_flat[aix].set_position(new_bb)
+            axes_flat[aix].set_xlabel('zscore')
+            aix = aix + 3 # increment axis index
+            print "incrementing object plot Ixs:", aix
+        
+        if 'objects' in self.traceid_dirs.keys():
             hist_roi_stats(self.objects['roidata'], self.objects['roistats'], ax=axes_flat[aix])
             axes_flat[aix].set_title('objects: distN of zscores')
+ 
+            bb = axes_flat[aix].get_position().bounds
+            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
+            axes_flat[aix].set_position(new_bb)
+            axes_flat[aix].set_xlabel('zscore')
+     
 
-        
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
-        axes_flat[aix].set_position(new_bb)
-        axes_flat[aix].set_xlabel('zscore')
-        
-
-    def plot_transforms_objects(self, axes_flat=None, aix=0, selective=True):
+    def plot_transforms_objects(self, axes_flat=None, aix=0, selective=True, object_type='blobs'):
         if axes_flat is None:
             fig, ax = pl.subplots()
             axes_flat = fig.axes
-        if 'blobs' in self.traceid_dirs.keys():
-            ylabel = self.blobs['metric']
-            xlabel = self.blobs['transforms_tested'][0]
-            metric = self.blobs['metric']
-            transforms_tested = self.blobs['transforms_tested']
-            object_list = self.blobs['transforms']['object'].unique()
-            # Colors = cells
-            if selective:
-                rois_to_plot = self.blobs['roistats']['rois_selective'][0:10]
-                if len(rois_to_plot) == 0:
-                    selective = False
-            if not selective:
-                rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
-            rois = self.blobs['transforms'].groupby('roi')
-        else:
-            ylabel = self.objects['metric']
-            xlabel = self.objects['transforms_tested'][0]
-            metric = self.objects['metric']
-            transforms_tested = self.objects['transforms_tested']
-            object_list = self.objects['transforms']['object'].unique()
-            # Colors = cells
-            if selective:
-                rois_to_plot = self.objects['roistats']['rois_selective'][0:10]
-                if len(rois_to_plot) == 0:
-                    selective = False
-            if not selective:
-                rois_to_plot = self.objects['roistats']['rois_visual'][0:10]
-            rois = self.objects['transforms'].groupby('roi')
+        if object_type == 'blobs':
+            plotdata = self.blobs
+        elif object_type == 'objects':
+            plotdata = self.objects
        
+        ylabel = plotdata['metric']
+        xlabel = plotdata['transforms_tested'][0]
+        metric = plotdata['metric']
+        transforms_tested = plotdata['transforms_tested']
+        object_list = plotdata['transforms']['object'].unique()
+        # Colors = cells
+        if selective:
+            rois_to_plot = plotdata['roistats']['rois_selective'][0:10]
+            if len(rois_to_plot) == 0:
+                selective = False
+        if not selective:
+            rois_to_plot = plotdata['roistats']['rois_visual'][0:10]
+        rois = plotdata['transforms'].groupby('roi')
+      
         nrois_plot = len(rois_to_plot) 
         colors = sns.color_palette('husl', nrois_plot)
         
@@ -1010,7 +1024,7 @@ class SessionSummary():
             axes_flat[tix].set_title(transform)
             
             bb = axes_flat[tix].get_position().bounds
-            new_bb = [bb[0], bb[1]*0.8, bb[2]*0.9, bb[3]]
+            new_bb = [bb[0], bb[1]*0.95, bb[2]*0.9, bb[3]]
             axes_flat[tix].set_position(new_bb)
             axes_flat[tix].set_xlabel('zscore')
         
@@ -1023,7 +1037,7 @@ class SessionSummary():
                                          marker=markers[object_ix], label=object_names[object_ix], 
                                          linewidth=2, markersize=15))
             
-        axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(0.2, -0.2), ncol=nobjects) # loc='upper right')
+        axes_flat[tix].legend(handles=legend_objects, loc=2, bbox_to_anchor=(0.0, 0.99), ncol=nobjects) # loc='upper right')
         
         
         
@@ -1104,6 +1118,7 @@ def load_session_summary(optsE, redo=False):
     # First check if saved session summary info exists:
     
     ss_fpaths = glob.glob(os.path.join(acquisition_dir, 'session_summary*.pkl'))
+    print "Found SS:", ss_fpaths
     if len(ss_fpaths) > 0 and optsE.create_new is False and redo is False:
         session_summary_fpath = None
         while session_summary_fpath is None:
