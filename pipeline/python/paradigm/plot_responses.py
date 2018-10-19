@@ -365,10 +365,12 @@ def make_clean_psths(options):
             print "Hue is OBJECT"
             hues = object_transformations[rows]
             trace_labels = hues
+            
         if len(hues) <= 2:
             trace_colors = ['g', 'b']
         else:
-            trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
+            trace_colors = sns.color_palette('hls', len(hues))
+            #trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     for ridx in range(xdata.shape[-1]):
