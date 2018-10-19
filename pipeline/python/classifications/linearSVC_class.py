@@ -1603,10 +1603,21 @@ class TransformClassifier():
             tracedir_type = 'cnmf'
         else:
             tracedir_type = 'traces'
-        self.traceid_dir = glob.glob(os.path.join(rootdir, animalid, 
+        tmp_traceid_dir = sorted(glob.glob(os.path.join(rootdir, animalid, 
                                               session, acquisition, 
                                               run, tracedir_type, 
-                                              '%s*' % traceid))[0]
+                                              '%s*' % traceid)), key=natural_keys)
+        if len(tmp_traceid_dir) > 1:
+            print "Found multiple trace IDs:"
+            for ti, tidir in enumerate(tmp_traceid_dir):
+                print ti, tidir
+            sel = input("Select IDX of tid dir to use: ")
+            traceid_dir = tmp_traceid_dir[sel]
+        else:
+            assert len(tmp_traceid_dir) == 1, "Not TRACEIDs found!"
+            traceid_dir = tmp_traceid_dir[0]
+        self.traceid_dir = traceid_dir
+        
         self.traceid = os.path.split(self.traceid_dir)[-1]        
         self.data_fpath = self.get_data_fpath()
         self.classifiers = []
@@ -1903,15 +1914,15 @@ class LinearSVM():
             
     def label_training_data(self):
         
-        if self.clfparams['const_trans'] != '' and self.clfparams['class_subset'] == '':
+        if self.clfparams['const_trans'] != '' and len(self.clfparams['class_subset']) == 0:
             # Only group and take subset of data for specified const-trans/trans-value pair
             cX, cy, class_labels = self.group_by_transform_subset()
         
-        elif self.clfparams['class_subset'] != '' and self.clfparams['const_trans'] == '':
+        elif len(self.clfparams['class_subset']) > 0 and self.clfparams['const_trans'] == '':
             # Only group and take subset of data for subset of class-to-be-trained (across all transforms)
             cX, cy, class_labels = self.group_by_class_subset()
         
-        elif self.clfparams['class_subset'] != '' and self.clfparams['const_trans'] != '':
+        elif len(self.clfparams['class_subset']) > 0 and self.clfparams['const_trans'] != '':
             # Only group and take subset of data for class subset within a sub-subset of specified cons-trans/trans-value pair
             cX, cy, class_labels = self.group_by_class_and_transform_subset()
         
