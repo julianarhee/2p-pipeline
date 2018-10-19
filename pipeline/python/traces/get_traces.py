@@ -184,6 +184,9 @@ def load_TID(run_dir, trace_id, auto=False):
 def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
     mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+    if rootdir not in mask_path and '/mnt/odyssey' in mask_path:
+        mask_path = mask_path.replace('/mnt/odyssey', '/n/coxfs01/2p-data')
+
     excluded_tiffs = TID['PARAMS']['excluded_tiffs']
 
 
@@ -1901,27 +1904,27 @@ def extract_options(options):
 
 #%%
 
-#def get_tiff_source(TID, rootdir, animalid, session):
-#    trace_hash = TID['trace_hash']
-#    tiff_dir = TID['SRC']
-#    roi_name = TID['PARAMS']['roi_id']
-#    if rootdir not in tiff_dir:
-#        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
-#
-#    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files NONNEGATIVE..."
-#        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
-#        tiff_dir = make_nonnegative(orig_tiff_dir)
-#    elif '_offset' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files psuedo unsigned with offset and uint16 conversion..."
-#        orig_tiff_dir = tiff_dir.split('_offset')[0]
-#        tiff_dir = add_offset_convert_uint16(orig_tiff_dir)
-#    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files UINT16..."
-#        orig_tiff_dir = tiff_dir.split('_uint16')[0]
-#        tiff_dir = convert_uint16(orig_tiff_dir)
-#
-#    return tiff_dir
+def get_tiff_source(TID, rootdir, animalid, session):
+    trace_hash = TID['trace_hash']
+    tiff_dir = TID['SRC']
+    roi_name = TID['PARAMS']['roi_id']
+    if rootdir not in tiff_dir:
+        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
+    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files NONNEGATIVE..."
+        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
+        tiff_dir = make_nonnegative(orig_tiff_dir)
+    elif '_offset' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files psuedo unsigned with offset and uint16 conversion..."
+        orig_tiff_dir = tiff_dir.split('_offset')[0]
+        tiff_dir = add_offset_convert_uint16(orig_tiff_dir)
+    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files UINT16..."
+        orig_tiff_dir = tiff_dir.split('_uint16')[0]
+        tiff_dir = convert_uint16(orig_tiff_dir)
+
+    return tiff_dir
 
 
 #%%
@@ -2396,7 +2399,10 @@ def extract_traces(options):
     # Check that warps are acceptable:
     print "Checking correlation values for warped masks..."
     mfile = h5py.File(maskdict_path, 'r')
-    bad_warps = [mfile_key for mfile_key in mfile.keys() if not mfile[mfile_key].attrs['accept_warp']]
+    if 'accept_warp' in mfile[mfile.keys()[0]].attrs.keys():
+        bad_warps = [mfile_key for mfile_key in mfile.keys() if not mfile[mfile_key].attrs['accept_warp']]
+    else:
+        bad_warps = []
     if len(bad_warps) > 0:
         print "%i out of %i Files failed warp." % (len(bad_warps), len(mfile.keys()))
         print "Overwriting 'excluded_tiffs' field in TID params."
