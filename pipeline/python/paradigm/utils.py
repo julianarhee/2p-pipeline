@@ -86,7 +86,8 @@ def combine_run_info(D, identical_fields=[], combined_fields=[]):
             
     return run_info
 
-def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False):
+def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False, make_equal=True):
+    print "Make Equal?", make_equal
     
     # First check if specified combo run exists:
     traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
@@ -116,6 +117,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             
             D[curr_run] = {'data':  curr_dset['corrected'],
                             'meanstim': curr_dset['meanstim'],
+                            'zscore': curr_dset['zscore'],
                            'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
                            'sconfigs':  curr_dset['sconfigs'][()],
                            'run_info': curr_dset['run_info'][()]
@@ -157,6 +159,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         # Combine runs in order of their alphanumeric name:
         tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
         tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_data_zscore = np.vstack([D[curr_run]['zscore'] for curr_run in sorted(D.keys(), key=natural_keys)])
         tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
         
         # Get run_info dict:
@@ -173,7 +176,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         
         # CHeck N trials per condition:
         ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
-        if len(ntrials_by_cond) > 1:
+        if make_equal is True and len(ntrials_by_cond) > 1:
             print "Uneven numbers of trials per cond. Making equal."
             configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
             ntrials_target = min(ntrials_by_cond)
@@ -195,7 +198,8 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
             data = tmp_data[kept_frame_ixs, :]
             data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
-           
+            data_zscore = tmp_data_zscore[kept_trial_indices, :]
+            
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
             pp.pprint(rinfo['ntrials_by_cond'])
 
@@ -203,6 +207,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             labels_df = tmp_labels_df
             data = tmp_data
             data_meanstim = tmp_data_meanstim
+            data_zscore = tmp_data_zscore
             
         ylabels = labels_df['config'].values
         
@@ -213,6 +218,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         np.savez(combo_dpath,
                  corrected=data,
                  meanstim=data_meanstim,
+                 zscore=data_zscore,
                  ylabels=ylabels,
                  labels_data=labels_df,
                  labels_columns=labels_df.columns.tolist(),
