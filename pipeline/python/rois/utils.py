@@ -18,11 +18,34 @@ import traceback
 import re
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, get_source_info, replace_root
+from pipeline.python.utils import natural_keys, get_source_info, replace_root, write_dict_to_json
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[], rootdir=''):
+    roiparams = dict()
+    rid_dir = RID['DST']
+    if rootdir not in rid_dir:
+        session_dir = rid_dir.split('/ROIs/')[0]
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        rid_dir = replace_root(rid_dir, rootdir, animalid, session)
+
+    roiparams['eval'] = evalparams
+    roiparams['keep_good_rois'] = keep_good_rois
+    roiparams['excluded_tiffs'] = excluded_tiffs
+    roiparams['roi_type'] = RID['roi_type']
+    roiparams['roi_id'] = RID['roi_id']
+    roiparams['rid_hash'] = RID['rid_hash']
+
+    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
+    write_dict_to_json(roiparams, roiparams_filepath)
+
+    print "Saved ROI params to: %s" % roiparams_filepath
+
+    return roiparams
+
 
 def get_roi_eval_path(src_roi_dir, eval_key, auto=False):
     src_eval_filepath = None

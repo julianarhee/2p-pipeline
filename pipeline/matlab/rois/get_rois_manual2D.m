@@ -7,9 +7,9 @@ clc; clear all;
 % session = '20171128_JR063'; %'20171202_JR063';
 % roi_id = 'rois007'; %'e4893c';
 
-rootdir = '/mnt/odyssey'
-animalid = 'CE077' %'JR063';
-session = '20180817' %'20171202_JR063';
+rootdir = '/n/coxfs01/2p-data' %'/mnt/odyssey'
+animalid = 'JC022' %'JR063';
+session = '20181016' %'20171202_JR063';
 roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
@@ -25,7 +25,8 @@ roi_hash = RID.rid_hash;
 roi_slices = RID.PARAMS.options.slices
 
 %% Get paths:
-animalroot = strsplit(RID.SRC, session);
+%animalroot = strsplit(RID.SRC, session);
+animalroot = strsplit(RID.PARAMS.tiff_sourcedir, session);
 sessionparts = strsplit(animalroot{2}, '/');
 acquisition = sessionparts{2};
 run = sessionparts{3};
@@ -101,14 +102,21 @@ if ~any(strfind(rid_src_dir, rootdir))
     fprintf('Replacing root dir...\n');
     rid_src_dir = strrep(rid_src_dir, orig_root, rootdir);
 end
-average_images_dir = [rid_src_dir sprintf('_%s_deinterleaved', zproj_type)];
-if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
-    slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
+
+if strfind(zproj_type, '_warped_')
+    [slice_sourcedir, slice_tiff_fn, ext] = fileparts(rid_src_dir);
+    slice_tiffs = {[slice_tiff_fn ext]};
 else
-    slice_sourcedir = average_images_dir;
+    average_images_dir = [rid_src_dir sprintf('_%s_deinterleaved', zproj_type)];
+    if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
+        slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
+    else
+        slice_sourcedir = average_images_dir;
+    end
+    slice_tiffs = dir(fullfile(slice_sourcedir, '*.tif'));
+    slice_tiffs = {slice_tiffs(:).name}';
 end
-slice_tiffs = dir(fullfile(slice_sourcedir, '*.tif'));
-slice_tiffs = {slice_tiffs(:).name}';
+
 assert(length(slice_tiffs)==length(roi_slices), 'RID %s -- WARNING:  Incorrect number of slices found in specified dir:\n%s\n', roi_hash, slice_sourcedir);
 
 
@@ -216,7 +224,7 @@ end
 % end
 % figure(); imshow(RGBimg);
 
-%% Save ROI masks by slice:
+% Save ROI masks by slice:
 %maskname = sprintf('masks_%s', roi_hash)
 %mask_fn = fullfile(mask_dir, sprintf('%s.h5', maskname));
 %mask_fn = fullfile(roi_base_dir, sprintf('%s.hdf5', maskname));
@@ -291,7 +299,7 @@ for a=1:length(info.GroupHierarchy.Groups(1).Attributes)
     end
 end
 
-%% Clean up tmp file
+% Clean up tmp file
 
 tmp_rid_dir = fullfile(roi_dir, 'tmp_rids');
 tmp_rid_fn = sprintf('tmp_rid_%s.json', roi_hash);

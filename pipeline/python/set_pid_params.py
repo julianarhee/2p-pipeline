@@ -54,6 +54,10 @@ def write_hash_readonly(write_dir, PID=None, step='', label=''):
 
     # Before changing anything, check if there is a corresponding 'slices" dir:
     adjust_slicedir = False
+    if isinstance(write_dir, list):
+        print "WRITE DIR:", write_dir
+        write_dir = write_dir[0]
+
     if os.path.isdir(write_dir + '_deinterleaved'):
         adjust_slicedir = True             # WRITE-DIR has companion _slices dir.
         slice_dir = write_dir + '_deinterleaved'
@@ -327,7 +331,7 @@ def set_params(rootdir='', homedir='', notnative=False,
         file_sizes = [get_file_size(os.path.join(rawtiff_dir, t)) for t in tiffs]
         gb_files = [f for f in file_sizes if 'GB' in f]
         toobig = [g for g in gb_files if float(g.split('GB')[0]) > 4.0]
-        if len(toobig) > 0:
+        if len(toobig) > 0 and split_channels is False:
             split_channels = True
 
     # ----------------------------------------------------------
@@ -618,6 +622,7 @@ def extract_options(options):
     parser.add_option('-s', '--tiffsource', action='store', dest='tiffsource', default=None, help="name of folder containing tiffs to be processed (ex: processed001). should be child of <run>/processed/")
     parser.add_option('-t', '--sourcetype', action='store', dest='sourcetype', default='raw', help="type of source tiffs (e.g., bidi, raw, mcorrected) [default: 'raw']")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--split', action='store_true', dest='split_channels', default=False, help="set if saved 2 channels and file size too big")
 
     # Preprocessing params:
     parser.add_option('--bidi', action='store_true', dest='bidi', default=False, help='Set flag if correct bidirectional scanning phase offset.')
@@ -670,6 +675,7 @@ def create_pid(options):
     mc_algorithm = options.algorithm
     ref_file = int(options.ref_file)
     ref_channel = int(options.ref_channel)
+    split_channels = options.split_channels
 
     # -------------------------------------------------------------
     # Set basename for files created containing meta/reference info:
@@ -686,7 +692,7 @@ def create_pid(options):
                             tiffsource=tiffsource, sourcetype=sourcetype,
                             correct_bidir=correct_bidir, correct_flyback=correct_flyback, nflyback_frames=nflyback_frames,
                             correct_motion=correct_motion, ref_file=ref_file, ref_channel=ref_channel,
-                            mc_method=mc_method, mc_algorithm=mc_algorithm, auto=auto)
+                            mc_method=mc_method, mc_algorithm=mc_algorithm, auto=auto, split_channels=split_channels)
 
     # Generate new process_id based on input params:
     if notnative is True:

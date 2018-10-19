@@ -6,7 +6,7 @@ Created on Wed May 23 13:59:19 2018
 @author: juliana
 """
 
-
+import glob
 import h5py
 import os
 import json
@@ -138,7 +138,7 @@ def plot_confusion_matrix(cm, classes,
     else:
         print('Confusion matrix, without normalization')
 
-    print(cm)
+    #print(cm)
 
     #fig = pl.figure(figsize=(4,4))
     if ax is None:
@@ -174,7 +174,7 @@ def plot_confusion_matrix(cm, classes,
 
 def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
         
-    trans_types = run_info['transforms'].keys()
+    trans_types = run_info['trans_types'] #.keys()
     
     # Load sorted ROI info:
     # -----------------------------------------------------------------------------
@@ -190,24 +190,27 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
     if roi_selector == 'visual':
         
         # Get list of visually repsonsive ROIs:
-        responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_anova_results.json')
-        assert os.path.exists(responsive_anova_fpath), "No results found for VISUAL rois: %s" % sort_dir
+        responsive_anova_fpaths = glob.glob(os.path.join(sort_dir, 'visual_*_results.json'))
+        assert len(responsive_anova_fpaths) > 0, "No results found for VISUAL rois: %s" % str(os.listdir(os.path.join(sort_dir)))
+        responsive_anova_fpath = responsive_anova_fpaths[0]
         
         print "Loading existing split ANOVA results:\n", responsive_anova_fpath
         with open(responsive_anova_fpath, 'r') as f:
             responsive_anova = json.load(f)
         
         # Sort ROIs:
-        responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
+        responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < 0.05]
         sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
         print "Loaded %i visual out of %i neurons (split-plot ANOVA (p<0.05)." % (len(sorted_visual), len(run_info['roi_list']))
-        
-        visual_rids = [int(r[3:])-1 for r in sorted_visual]
+        if 'roi' in sorted_visual[0]:
+            visual_rids = [int(r[3:])-1 for r in sorted_visual]
+        else:
+            visual_rids = [int(r) for r in sorted_visual]
     
     elif roi_selector == 'selectiveanova':
     
         selective_anova_fpath = os.path.join(sort_dir, 'selective_rois_anova_results_%s.json' % metric)
-        assert os.path.exists(selective_anova_fpath), "No results found for SELECTIVE rois (anova): %s" % sort_dir
+        assert os.path.exists(selective_anova_fpath), "No results found for SELECTIVE rois (anova): %s" % selective_anova_fpath
         
         if os.path.exists(selective_anova_fpath):
             print "Loading existing %i-way ANOVA results: %s" % (len(trans_types), selective_anova_fpath)
@@ -1330,7 +1333,7 @@ def get_default_gratings_params():
     clfparams = get_classifier_params(data_type='stat', 
                                       inputdata='meanstim', 
                                       inputdata_type='',
-                                      roi_selector='all', 
+                                      roi_selector='visual', 
                                       class_name='ori', 
                                       aggregate_type='all',
                                       subset=None, subset_nsamples=None,
@@ -1666,7 +1669,7 @@ def do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=''):
         loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
 
         for train, test in loo: #, groups=groups):
-            print train, test
+            #print train, test
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
             y_pred = svc.fit(X_train, y_train).predict(X_test)
@@ -1690,7 +1693,7 @@ def do_cross_validation(svc, clfparams, cX_std, cy, data_identifier=''):
     
     
         for train, test in loo.split(training_data, cy, groups=groups):
-            print train, test
+            #print train, test
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
     
