@@ -173,6 +173,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
         rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
         rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+        rinfo['ntrials_total'] =  sum([val for fi,val in run_info['ntrials_by_cond'].items()])
         
         # CHeck N trials per condition:
         ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
@@ -202,6 +203,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             
             rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
             pp.pprint(rinfo['ntrials_by_cond'])
+            rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
 
         else:
             labels_df = tmp_labels_df
