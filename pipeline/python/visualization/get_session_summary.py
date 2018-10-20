@@ -205,21 +205,24 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_
             roistats = np.load(roistats_fpath)
         except Exception as e:
             print "** No roi stats found... Testing responsivity now."
-            create_new = True
+            #create_new = True
             
+    responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
+                                             session=session, 
+                                             acquisition=acquisition, 
+                                             run=run, traceid=traceid)
+    responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par'])
     if create_new:
-        responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
-                                                 session=session, 
-                                                 acquisition=acquisition, 
-                                                 run=run, traceid=traceid)
-        responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par', '--new'])
-        roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
-        roistats = np.load(roistats_fpath)
+        responsivity_opts.extend(['--new'])
+    print responsivity_opts
+        
+    roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
+    roistats = np.load(roistats_fpath)
         
     visual_test = str(roistats['responsivity_test'])
     selective_test = str(roistats['selectivity_test'])
-    rois_visual = roistats['sorted_visual']
-    rois_selective = roistats['sorted_selective']   
+    rois_visual = [int(r) for r in roistats['sorted_visual']]
+    rois_selective = [int(r) for r in roistats['sorted_selective']]   
     
     roistats = {'visual_test': visual_test,
                 'selective_test': selective_test,
@@ -1103,14 +1106,19 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
-           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
-           '-r', 'analysis003',
-           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
-           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
+#options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
+#           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
+#           '-r', 'analysis003',
+#           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
+#           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
+#           '-n', 4,
+#           '--redo']
+
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
+           '-r', 'analysis001',
+           '-b', 'traces001',
            '-n', 4,
            '--redo']
-
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)

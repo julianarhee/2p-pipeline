@@ -131,7 +131,7 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
    
     if create_new:
         summary_fpath = os.path.join(sort_dir, 'roi_summary.txt')
-        top10 = ['roi%05d' % int(r+1) for r in sorted_selective[0:10]]
+        top10 = ['roi%05d' % int(int(r)+1) for r in sorted_selective[0:10]]
         with open(summary_fpath, 'a') as f:
             f.write('\n----------------------------------------------------------\n')
             f.write('Kruskal-Wallis test for selectivity:\n')
