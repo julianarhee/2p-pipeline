@@ -231,6 +231,14 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
     return combo_dpath
 
 def get_equal_reps(dataset, data_fpath):
+    eq_data_fpath = '%s_eq.npz' % os.path.splitext(data_fpath)[0]
+
+    try:
+        dataset = np.load(eq_data_fpath)
+        return dataset, eq_data_fpath
+    except Exception as e:
+        print "Unable to load equalized data file -- creating new."
+        
     tmp_data = dataset['corrected']
     tmp_data_meanstim = dataset['meanstim']
     tmp_data_zscore = dataset['zscore']
@@ -280,7 +288,6 @@ def get_equal_reps(dataset, data_fpath):
 #    dset['labels_columns'] = labels_df.columns.tolist()
 #    
 #        # Save it:
-    eq_data_fpath = '%s_eq.npz' % os.path.splitext(data_fpath)[0]
     np.savez(eq_data_fpath,
                  corrected=data,
                  meanstim=data_meanstim,
