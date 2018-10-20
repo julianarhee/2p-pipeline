@@ -181,17 +181,12 @@ def load_TID(run_dir, trace_id, auto=False):
     return TID
 
 #%%
-<<<<<<< HEAD
-#def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
-#
-#    mask_path = os.path.join(RID['DST'], 'masks.hdf5')
-#    excluded_tiffs = TID['PARAMS']['excluded_tiffs']
-#
-#
-=======
 def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
 
     mask_path = os.path.join(RID['DST'], 'masks.hdf5')
+    if rootdir not in mask_path and '/mnt/odyssey' in mask_path:
+        mask_path = mask_path.replace('/mnt/odyssey', '/n/coxfs01/2p-data')
+
     excluded_tiffs = TID['PARAMS']['excluded_tiffs']
 
 
@@ -309,7 +304,6 @@ def get_mask_info(TID, RID, nslices=1, rootdir='/n/coxfs01/2p-data'):
     return maskinfo
 
 #def get_mask_info(mask_path, nslices=1, excluded_tiffs=[], rootdir='/n/coxfs01/2p-data'):
->>>>>>> master
 #    maskinfo = dict()
 #    try:
 #        maskfile = h5py.File(mask_path, 'r')
@@ -451,7 +445,6 @@ def get_gradient(im) :
     return grad
 
 #%%
-<<<<<<< HEAD
 #def uint16_to_RGB(img):
 #    im = img.astype(np.float64)/img.max()
 #    im = 255 * im
@@ -1911,27 +1904,27 @@ def extract_options(options):
 
 #%%
 
-#def get_tiff_source(TID, rootdir, animalid, session):
-#    trace_hash = TID['trace_hash']
-#    tiff_dir = TID['SRC']
-#    roi_name = TID['PARAMS']['roi_id']
-#    if rootdir not in tiff_dir:
-#        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
-#
-#    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files NONNEGATIVE..."
-#        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
-#        tiff_dir = make_nonnegative(orig_tiff_dir)
-#    elif '_offset' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files psuedo unsigned with offset and uint16 conversion..."
-#        orig_tiff_dir = tiff_dir.split('_offset')[0]
-#        tiff_dir = add_offset_convert_uint16(orig_tiff_dir)
-#    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
-#        print "Making tif files UINT16..."
-#        orig_tiff_dir = tiff_dir.split('_uint16')[0]
-#        tiff_dir = convert_uint16(orig_tiff_dir)
-#
-#    return tiff_dir
+def get_tiff_source(TID, rootdir, animalid, session):
+    trace_hash = TID['trace_hash']
+    tiff_dir = TID['SRC']
+    roi_name = TID['PARAMS']['roi_id']
+    if rootdir not in tiff_dir:
+        tiff_dir = replace_root(tiff_dir, rootdir, animalid, session)
+
+    if '_nonnegative' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files NONNEGATIVE..."
+        orig_tiff_dir = tiff_dir.split('_nonnegative')[0]
+        tiff_dir = make_nonnegative(orig_tiff_dir)
+    elif '_offset' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files psuedo unsigned with offset and uint16 conversion..."
+        orig_tiff_dir = tiff_dir.split('_offset')[0]
+        tiff_dir = add_offset_convert_uint16(orig_tiff_dir)
+    elif '_uint16' in tiff_dir and not os.path.exists(tiff_dir):
+        print "Making tif files UINT16..."
+        orig_tiff_dir = tiff_dir.split('_uint16')[0]
+        tiff_dir = convert_uint16(orig_tiff_dir)
+
+    return tiff_dir
 
 
 #%%
@@ -2018,11 +2011,11 @@ options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zo
 
 #%%
 
-optsE = extract_options(options)
-T = Traces(optsE)
-T.get_sources()
+#optsE = extract_options(options)
+#T = Traces(optsE)
+#T.get_sources()
 
-T.get_masks(nprocs=1)
+#T.get_masks(nprocs=1)
 
 #%%
 class RoiMasks():
@@ -2283,7 +2276,7 @@ def extract_traces(options):
     append_trace_type = options.append_trace_type
     np_method = options.np_method
     np_niterations = int(options.np_niterations)
-    do_neuropil_correction = options.neuropil
+    do_neuropil_correction = True #options.neuropil
     if do_neuropil_correction:
         plot_neuropil = True
     else:
@@ -2331,7 +2324,9 @@ def extract_traces(options):
     if rootdir not in TID['DST']:
         TID['DST'] = replace_root(TID['DST'], rootdir, animalid, session)
     tiffs = ['File%03d' % int(i+1) for i in range(si_info['ntiffs']) if i not in TID['PARAMS']['excluded_tiffs']]    
-    RID = load_TID_roiset(TID, rootdir)
+    #RID = load_TID_roiset(TID, rootdir)
+    session_dir = os.path.join(rootdir, animalid, session)
+    RID = load_RID(session_dir, TID['PARAMS']['roi_id']) 
 
     # Save trace extraction params to file for easy-read:
     trace_extraction_opts = vars(options)
@@ -2404,7 +2399,10 @@ def extract_traces(options):
     # Check that warps are acceptable:
     print "Checking correlation values for warped masks..."
     mfile = h5py.File(maskdict_path, 'r')
-    bad_warps = [mfile_key for mfile_key in mfile.keys() if not mfile[mfile_key].attrs['accept_warp']]
+    if 'accept_warp' in mfile[mfile.keys()[0]].attrs.keys():
+        bad_warps = [mfile_key for mfile_key in mfile.keys() if not mfile[mfile_key].attrs['accept_warp']]
+    else:
+        bad_warps = []
     if len(bad_warps) > 0:
         print "%i out of %i Files failed warp." % (len(bad_warps), len(mfile.keys()))
         print "Overwriting 'excluded_tiffs' field in TID params."
