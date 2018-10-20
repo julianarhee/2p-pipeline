@@ -10,7 +10,7 @@ import os
 import glob
 import shutil
 import copy
-
+import sys
 import cPickle as pkl
 import numpy as np
 import pandas as pd
@@ -97,6 +97,7 @@ def extract_options(options):
     
     parser.add_option('--equal', action='store_true', dest='make_equal', default=False, help="set if make ntrials per cond equal (need for roistats)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to re-extract data summaries")
+    parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
 
     (options, args) = parser.parse_args(options)
     if options.slurm is True and '/n/coxfs01' not in options.rootdir:
@@ -118,11 +119,12 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180612', '-A', 'F
 def main(options):
     optsE = extract_options(options)
 
-    processed_run_fpath = process_run_data(optsE.animalid, optsE.session, optsE.run_list, optsE.traceid_list, rootdir=optsE.rootdir,
+    processed_run_fpath = process_run_data(optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list, optsE.traceid_list, rootdir=optsE.rootdir,
                                            stimtype=optsE.stimtype, data_type=optsE.data_type, metric=optsE.metric,
-                                           make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nproc))
+                                           make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nprocesses))
 
     print "Finished processing data!"
     print "Saved processed run to:\n--> %s" % processed_run_fpath
     
-    
+if __name__ == '__main__':
+    main(sys.argv[1:]) 
