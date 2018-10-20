@@ -207,8 +207,12 @@ def get_traceid_dir(animalid, session, acquisition, run, traceid, rootdir='/n/co
 
 def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data'):
     C=None
-    found_transform_classifiers = sorted(glob.glob(os.path.join(traceid_dir, 'classifiers', 'LinearSVC*', 'TransformClassifier.pkl')), key=natural_keys)
-    assert len(found_transform_classifiers) > 0, "No classifiers found."
+    try:
+        found_transform_classifiers = sorted(glob.glob(os.path.join(traceid_dir, 'classifiers', 'LinearSVC*', 'TransformClassifier.pkl')), key=natural_keys)
+        assert len(found_transform_classifiers) > 0, "No classifiers found."
+    except AssertionError:
+        return C
+    
     for ti, tclassifier in enumerate(found_transform_classifiers):
         print ti, os.path.split(os.path.split(tclassifier)[0])[-1]
     sel = raw_input("Select IDX of TransformClassifier object to load: ")
@@ -412,11 +416,11 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
 
 #%%
     
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181016', '-A', 'FOV1_zoom2p7x',
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181018', '-A', 'FOV2_zoom2p7x',
            '-R', 'combined_blobs_static', '-t', 'traces001',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,97',
+           '--subset', '0,106',
            '--nproc=1'
            ]
    
@@ -446,8 +450,8 @@ def main(options):
     # Look at specific classifier:
     setC='best'
     nfeatures_select='best'
-    full_train=False
-    test_size=0.2
+    full_train=True
+    test_size=1.0
     
     curr_clf = rfe_results.keys()[0]
     
@@ -459,10 +463,10 @@ def main(options):
     # =============================================================================
     # Train the classifier:
     # =============================================================================
-    setC = optsE.setC #'best' # choices: 'best' (test diff values of C on log scale), 'big' (1E9), 'small' (w.0)
-    nfeatures_select = int(optsE.nfeatures_select) if optsE.nfeatures_select.isdigit() else optsE.nfeatures_select # 'best' # choices: 'best' (uses RFE to find cells with max. clf accuracy), int (uses RFE to find top N cells)
-    full_train = optsE.full_train #True
-    test_size = float(optsE.test_size) #0.33
+    #setC = optsE.setC #'best' # choices: 'best' (test diff values of C on log scale), 'big' (1E9), 'small' (w.0)
+    #nfeatures_select = int(optsE.nfeatures_select) if optsE.nfeatures_select.isdigit() else optsE.nfeatures_select # 'best' # choices: 'best' (uses RFE to find cells with max. clf accuracy), int (uses RFE to find top N cells)
+    #full_train = optsE.full_train #True
+    #test_size = float(optsE.test_size) #0.33
     
     if full_train:
         train_set = 'fulltrain'
@@ -494,7 +498,7 @@ def main(options):
     
     test_choices = svc.predict(test_data) #(test_data, fake_labels)
     prob_choose_m100 = {}
-    m100 = 106
+    m100 = 97
     # Plot % correct from test choices:
     morph_levels = sorted(sdf[clf.clfparams['class_name']].unique())
     for morph_level in morph_levels:

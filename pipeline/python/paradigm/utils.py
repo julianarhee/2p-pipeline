@@ -173,7 +173,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
         rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
         rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
-        rinfo['ntrials_total'] =  sum([val for fi,val in run_info['ntrials_by_cond'].items()])
+        rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
         
         # CHeck N trials per condition:
         ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
@@ -229,6 +229,74 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
                  )
     
     return combo_dpath
+
+def get_equal_reps(dataset, data_fpath):
+    tmp_data = dataset['corrected']
+    tmp_data_meanstim = dataset['meanstim']
+    tmp_data_zscore = dataset['zscore']
+    tmp_labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
+    rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
+    sconfigs = dataset['sconfigs'] if isinstance(dataset['sconfigs'], dict) else dataset['sconfigs'][()]
+
+    
+    # CHeck N trials per condition:
+    ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
+    if len(ntrials_by_cond) > 1:
+        print "Uneven numbers of trials per cond. Making equal."
+        configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
+        ntrials_target = min(ntrials_by_cond)
+        remove_ixs = []; removed_trials = [];
+        for cf in configs_with_more:
+            curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
+            remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), len(curr_trials) - ntrials_target)
+            remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
+            print "Removing %i trials (out of %i total)" % (len(remove_selected_trials), len(curr_trials))
+            tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
+            remove_ixs.extend(tmp_remove_ixs)
+            removed_trials.extend(remove_selected_trials)
+        
+        all_ixs = np.arange(0, tmp_labels_df.shape[0])
+        all_trials = sorted(tmp_labels_df['trial'].unique(), key=natural_keys)
+        kept_frame_ixs = np.delete(all_ixs, remove_ixs)
+        kept_trial_indices = [ti for ti,trial in enumerate(sorted(all_trials, key=natural_keys)) if trial not in removed_trials]
+        
+        labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
+        data = tmp_data[kept_frame_ixs, :]
+        data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
+        data_zscore = tmp_data_zscore[kept_trial_indices, :]
+        ylabels = labels_df['config'].values
+        
+        rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+        pp.pprint(rinfo['ntrials_by_cond'])
+        rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
+
+#    dset = dict(dataset)
+#    dset['corrected'] = data
+#    dset['meanstim'] = data_meanstim
+#    dset['zscore'] = data_zscore
+#    dset['ylabels'] = ylabels
+#    dset['run_info'][()] = rinfo
+#    dset['labels_data'] = labels_df
+#    dset['labels_columns'] = labels_df.columns.tolist()
+#    
+#        # Save it:
+    eq_data_fpath = '%s_eq.npz' % os.path.splitext(data_fpath)[0]
+    np.savez(eq_data_fpath,
+                 corrected=data,
+                 meanstim=data_meanstim,
+                 zscore=data_zscore,
+                 ylabels=ylabels,
+                 labels_data=labels_df,
+                 labels_columns=labels_df.columns.tolist(),
+                 run_info = rinfo,
+                 sconfigs=sconfigs
+                 )
+    
+    print "Saved adjusted dataset to:", eq_data_fpath
+    
+    dataset = np.load(eq_data_fpath)
+            
+    return dataset, eq_data_fpath
 
 #%%
 def df_to_sarray(df):

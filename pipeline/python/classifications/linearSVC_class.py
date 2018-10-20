@@ -1513,9 +1513,17 @@ class TransformClassifier():
         # Store DATASET:            
         dt = np.load(self.data_fpath)
         if 'arr_0' in dt.keys():
-            self.dataset = dt['arr_0'][()]
+            dataset = dt['arr_0'][()]
         else:
-            self.dataset = dt           
+            dataset = dt           
+            
+        # Check that there are equal num trials per cond:
+        rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
+        if len(list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))) > 1:
+            dataset, data_fpath = fmt.get_equal_reps(dataset, self.data_fpath)
+            self.data_fpath = data_fpath
+            
+        self.dataset = dataset
         
         # Store run info:
         if isinstance(self.dataset['run_info'], dict):
