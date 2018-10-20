@@ -22,12 +22,12 @@ from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
 
-animalid = optsE.animalid
-session = optsE.session
-acquisition = optsE.acquisition
-run_list = optsE.run_list
-traceid_list = optsE.traceid_list
-
+#animalid = optsE.animalid
+#session = optsE.session
+#acquisition = optsE.acquisition
+#run_list = optsE.run_list
+#traceid_list = optsE.traceid_list
+#
 def process_run_data(animalid, session, acquisition, run_list, traceid_list, 
                          rootdir='/n/coxfs01/2p-data',
                          stimtype='', data_type='corrected', metric='zscore',
