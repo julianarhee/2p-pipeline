@@ -313,11 +313,12 @@ def find_best_classifier(cX, cy, start_params, setC='best', nfeatures_select='be
         C_val = lsvc.get_best_C(svc, cX, cy)
         pl.savefig(os.path.join(classifier_base_dir, 'figures', 'C_values.png'))
         pl.close()
-        
     elif setC == 'big':
         C_val = 1E9 #clf.clfparams['C_val']
     elif setC == 'small':
         C_val = 1.0
+    else:
+        C_val = svc.C
     C_str = '%sC%.2f' % (setC, C_val)
     
     # Create output dir:
