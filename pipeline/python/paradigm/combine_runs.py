@@ -19,7 +19,7 @@ import pandas as pd
 from pipeline.python.visualization import get_session_summary as ss
 from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
-from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
+from pipeline.python.classifications import test_responsivity as resp 
 
 def extract_options(options):
 
@@ -71,12 +71,12 @@ stimtype = optsE.stimtype
 if stimtype == '':
     stimtype = run_list[0].split('_')[0]
     
-traceid_dirs = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=False, create_new=False)
+traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=False, create_new=False)
 
 #%%
 
 
-data_fpath = glob.glob(os.path.join(traceid_dirs, 'data_arrays', '*.npz'))[0]
+data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
 
 dset = np.load(data_fpath)
 
@@ -116,19 +116,19 @@ del dset
 
 #%%
 
-from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
-
-# Get sorted ROIs:
-traceid = os.path.split(traceid_dirs)[-1]
-run = 'combined_blobs_static'
-roistats = ss.get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
-                               run, traceid, create_new=False, nproc=4) #blobs_traceid.split('_')[0])
 
 dataset = np.load(data_fpath)
 
+# Get sorted ROIs:
+traceid = os.path.split(traceid_dir)[-1]
+run = 'combined_blobs_static'
+metric = 'zscore'
+
+roistats = ss.get_roi_stats(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition, 
+                               run, traceid, create_new=False, nproc=4) #blobs_traceid.split('_')[0])
+
 
 # Group data by ROIs:
-metric = 'zscore'
 roidata, labels_df, sconfigs = ss.get_data_and_labels(dataset, data_type='corrected')
 df_by_rois = resp.group_roidata_stimresponse(roidata, labels_df)
 data, transforms_tested = ss.get_object_transforms(df_by_rois, roistats, sconfigs, metric=metric)
@@ -143,6 +143,6 @@ object_dict = {'source': run,
                'transforms_tested': transforms_tested,
                'metric': metric}
 
-run_summary_fpath = os.path.join(traceid_dirs, 'grouped_data.pkl')
-with open(run_summary_fpath, 'wb') as f:
+processed_run_fpath = os.path.join(traceid_dir, 'processed_run.pkl')
+with open(processed_run_fpath, 'wb') as f:
     pkl.dump(object_dict, f, protocol=pkl.HIGHEST_PROTOCOL)
