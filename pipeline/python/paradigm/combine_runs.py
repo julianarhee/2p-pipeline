@@ -12,13 +12,14 @@ import glob
 import shutil
 import copy
 
-
+import cPickle as pkl
 import numpy as np
 import pandas as pd
 
 from pipeline.python.visualization import get_session_summary as ss
 from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
 
 def extract_options(options):
 
@@ -141,3 +142,7 @@ object_dict = {'source': run,
                'transforms': data,
                'transforms_tested': transforms_tested,
                'metric': metric}
+
+run_summary_fpath = os.path.join(traceid_dirs, 'grouped_data.pkl')
+with open(run_summary_fpath, 'wb') as f:
+    pkl.dump(object_dict, f, protocol=pkl.HIGHEST_PROTOCOL)
