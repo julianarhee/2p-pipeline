@@ -14,6 +14,7 @@ import os
 import sys
 import optparse
 import itertools
+import glob
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -198,10 +199,16 @@ def make_clean_psths(options):
     run = optsE.run #run_list[0]
     traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    if '_' not in traceid: 
-        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    if 'cnmf' in traceid:
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
     else:
-        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid))[0]
+
+#    if '_' not in traceid: 
+#        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#    else:
+#        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     print "Loaded data from: %s" % traceid_dir
 #    dataset = np.load(data_fpath)
@@ -406,7 +413,8 @@ def make_clean_psths(options):
                 skipped_axes.append(pi)
                 pi += 1
                 continue
-            print k
+            #print k
+            g = sgroups.get_group(k)
             if subplot_hue is not None:
                 curr_configs = g.sort_values(subplot_hue).index.tolist()
             else:
