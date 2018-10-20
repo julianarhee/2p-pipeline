@@ -74,7 +74,8 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     processed_run_fpath = os.path.join(traceid_dir, 'processed_run.pkl')
     with open(processed_run_fpath, 'wb') as f:
         pkl.dump(object_dict, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+   
+    return processed_run_fpath
 
 
 def extract_options(options):
