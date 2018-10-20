@@ -18,7 +18,7 @@ import math
 import optparse
 import imutils
 import datetime
-
+import glob
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -675,8 +675,12 @@ def calculate_roi_responsivity(options):
     print "Saving sorted ROI results to:\n    %s" % sort_dir
     # Load data array:
     # -------------------------------------------------------------------------
-    data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    print "Loaded data from: %s" % traceid_dir
+    data_fpaths = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets*.npz'))
+    if len(data_fpaths) > 1 and any(['eq' in f for f in data_fpaths]):
+        data_fpath = [f for f in data_fpaths if 'eq' in f][0]
+    else:
+        data_fpath = data_fpaths[0]
+    print "Loaded data from: %s" % data_fpath
     dataset = np.load(data_fpath)
     print dataset.keys()
     
