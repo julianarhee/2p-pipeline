@@ -199,7 +199,7 @@ def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
             responsive_anova = json.load(f)
         
         # Sort ROIs:
-        responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
+        responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < 0.05]
         sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
         print "Loaded %i visual out of %i neurons (split-plot ANOVA (p<0.05)." % (len(sorted_visual), len(run_info['roi_list']))
         if 'roi' in sorted_visual[0]:

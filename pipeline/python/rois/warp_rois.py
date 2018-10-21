@@ -20,29 +20,30 @@ import tifffile as tf
 
 from pipeline.python.rois.utils import load_RID, get_source_paths, check_mc_evaluation, get_info_from_tiff_dir
 from pipeline.python.rois.get_rois import standardize_rois, save_roi_params
-from pipeline.python.utils import replace_root
+from pipeline.python.utils import replace_root, natural_keys, uint16_to_RGB
+from pipeline.python.traces.get_traces import get_gradient
 from pipeline.python.classifications import utils as util
 
 import imutils
 
 #%%
-def get_gradient(im) :
-    # Calculate the x and y gradients using Sobel operator
-    grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
-    grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
-
-    # Combine the two gradients
-    grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
-    return grad
-
-
-def uint16_to_RGB(img):
-    im = img.astype(np.float64)/img.max()
-    im = 255 * im
-    im = im.astype(np.uint8)
-    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
-    return rgb
-
+#def get_gradient(im) :
+#    # Calculate the x and y gradients using Sobel operator
+#    grad_x = cv2.Sobel(im,cv2.CV_32F,1,0,ksize=3)
+#    grad_y = cv2.Sobel(im,cv2.CV_32F,0,1,ksize=3)
+#
+#    # Combine the two gradients
+#    grad = cv2.addWeighted(np.absolute(grad_x), 0.5, np.absolute(grad_y), 0.5, 0)
+#    return grad
+#
+#
+#def uint16_to_RGB(img):
+#    im = img.astype(np.float64)/img.max()
+#    im = 255 * im
+#    im = im.astype(np.uint8)
+#    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
+#    return rgb
+#
 def get_all_contours(mask_array):
     # Cycle through all ROIs and get their edges
     # (note:  tried doing this on sum of all ROIs, but fails if ROIs are overlapping at all)
@@ -138,14 +139,17 @@ if not os.path.exists(warp_output_dir):
 src_tiff_dir = RID['PARAMS']['options']['source']['tiff_dir']
 if rootdir not in src_tiff_dir:
     src_tiff_dir = replace_root(src_tiff_dir, rootdir, animalid, session)
-src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
+if '.tif' in src_tiff_dir:
+    ref_img_path = src_tiff_dir
+else:
+    src_proj_dir = [os.path.join(os.path.split(src_tiff_dir)[0], d) for d in os.listdir(os.path.split(src_tiff_dir)[0]) if
                     '_%s_deinterleaved' % zproj_type in d and os.path.split(src_tiff_dir)[-1] in d][0]
-print "Using %s reference img." % zproj_type
+    print "Using %s reference img." % zproj_type
 
-ref_img_dir = os.path.join(src_proj_dir,
+    ref_img_dir = os.path.join(src_proj_dir,
                                 'Channel%02d' % RID['PARAMS']['options']['source']['ref_channel'],
                                 'File%03d' % RID['PARAMS']['options']['source']['ref_file'])
-ref_img_path = [os.path.join(ref_img_dir, t) for t in os.listdir(ref_img_dir) if t.endswith('tif')][0]
+    ref_img_path = [os.path.join(ref_img_dir, t) for t in os.listdir(ref_img_dir) if t.endswith('tif')][0]
 
 # Load mean image of SAMPLE to warp to:
 rid_tiff_dir = RID['SRC']

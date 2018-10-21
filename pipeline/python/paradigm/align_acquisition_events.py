@@ -439,8 +439,12 @@ def get_stimulus_configs(trial_info):
     trialdict = load_parsed_trials(trial_info['parsed_trials_source'])
 
     # Get presentation info (should be constant across trials and files):
-    trial_list = sorted(trialdict.keys(), key=natural_keys)
-
+    tmp_trial_list = sorted(trialdict.keys(), key=natural_keys)
+    
+    # 201810116 BUG -- ignore trials (and stimconfigs) that are "blanks"
+    ignore_trials = [t for t in tmp_trial_list if trialdict[t]['stimuli']['type'] == 'blank']
+    trial_list = sorted([t for t in tmp_trial_list if t not in ignore_trials], key=natural_keys)
+    
     # Get all varying stimulus parameters:
     stimtype = trialdict[trial_list[0]]['stimuli']['type']
     if 'grating' in stimtype:

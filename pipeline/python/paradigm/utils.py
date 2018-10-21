@@ -49,71 +49,261 @@ from pipeline.python.traces.utils import load_TID
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
 
-#%% Load Datasets:
-#
-#def extract_options(options):
-#
-#    parser = optparse.OptionParser()
-#
-#    parser.add_option('-D', '--root', action='store', dest='rootdir',
-#                          default='/nas/volume1/2photon/data',
-#                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-#    parser.add_option('-i', '--animalid', action='store', dest='animalid',
-#                          default='', help='Animal ID')
-#
-#    # Set specific session/run for current animal:
-#    parser.add_option('-S', '--session', action='store', dest='session',
-#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-#                          default='raw', help="trace type [default: 'raw']")
-#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-#                          action='append',
-#                          help="run ID in order of runs")
-#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-#                          action='append',
-#                          help="trace ID in order of runs")
-#    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
-#    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-#    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
-#
-#    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set flag to create data arrays from new.")
-#    parser.add_option('--align', action='store_true', dest='align_frames', default=False, help="Set flag to (re)-align frames to trials.")
-#    parser.add_option('--iti', action='store', dest='iti_pre', default=1.0, help="Num seconds to use as pre-stimulus period [default: 1.0]")
-#    parser.add_option('--post', action='store', dest='iti_post', default=None, help="Num seconds to use as pre-stimulus period [default: tue ITI - iti_pre]")
-#    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
-#
-#
-#    # Pupil filtering info:
-#    parser.add_option('--no-pupil', action="store_false",
-#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-#    parser.add_option('-s', '--radius-min', action="store",
-#                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-#    parser.add_option('-B', '--radius-max', action="store",
-#                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-#    parser.add_option('-d', '--dist', action="store",
-#                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-#
-#    (options, args) = parser.parse_args(options)
-#    if options.slurm:
-#        options.rootdir = '/n/coxfs01/2p-data'
-#
-#    return options
-
-
 #%%
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted', '--no-pupil',
-#           '-R', 'gratings_run3', '-t', 'traces002',
-#           '--new',
-#           '--align', 
-#           '--iti=1.0', '--post=4.8', 
-#           '-q', '0.2', 
-#           '--no-pupil']
+def combine_run_info(D, identical_fields=[], combined_fields=[]):
+    
+    run_info = {}
+    
+    info_keys = D[D.keys()[0]]['run_info'].keys()
+    
+    for info_key in info_keys:
+        print info_key
+        run_vals = [D[curr_run]['run_info'][info_key] for curr_run in D.keys()]
+        if info_key in identical_fields:
+            if isinstance(run_vals[0], list):
+                assert all([run_vals[0] == D[curr_run]['run_info'][info_key] for curr_run in D.keys()]), "%s: All vals not equal!" % info_key
+                run_info[info_key] = run_vals[0]
+            elif isinstance(run_vals[0], (int, long, float)):
+                uvals = np.unique(list(set(run_vals)))
+                assert len( uvals ) == 1, "** %s: runs do not match!" % info_key
+                run_info[info_key] = uvals[0]
+        elif info_key in combined_fields:
 
+            if isinstance(run_vals[0], dict):
+                uvals = dict((k,v) for rd in run_vals for k,v in rd.items())
+            else:
+                if isinstance(run_vals[0], list):
+                    uvals = np.unique(list(itertools.chain.from_iterable(run_vals))) 
+                else:
+                    uvals = list(set(run_vals))
+                if isinstance(uvals[0], (str, unicode)):
+                    run_info[info_key] = list(uvals)
+                elif isinstance(uvals[0], (int, float, long)):
+                    run_info[info_key] = sum(uvals)
+        else:
+            print "%s: Not sure what to do with this..." % info_key
+            run_info[info_key] = None
+            
+    return run_info
 
+def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False, make_equal=True):
+    print "Make Equal?", make_equal
+    
+    # First check if specified combo run exists:
+    traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
+    acquisition_dir = os.path.split(check_blobs_dir[0].split('/traces/')[0])[0]
+    combined_traceid_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string)
+    combined_darray_dir = os.path.join(combined_traceid_dir, 'data_arrays')
+    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+    combo_dpath = os.path.join(combined_darray_dir, 'datasets.npz')    
+    
+    if create_new is False:
+        try:
+            assert os.path.exists(combo_dpath), "Combined dset %s does not exist!" % combined_name
+        except Exception as e:
+            print "Creating new combined dataset: %s" % combined_name
+            print "Combining data from dirs:\n", check_blobs_dir
+            create_new = True
+        
+    if create_new:
+        
+        D = dict()
+        for blobdir in check_blobs_dir:
+            curr_run = os.path.split(blobdir.split('/traces')[0])[-1]
+            print "Getting data array for run: %s" % curr_run
+            print blobdir
+            darray_fpath = glob.glob(os.path.join(blobdir, 'data_arrays', 'datasets.npz'))[0]
+            curr_dset = np.load(darray_fpath)
+            
+            D[curr_run] = {'data':  curr_dset['corrected'],
+                            'meanstim': curr_dset['meanstim'],
+                            'zscore': curr_dset['zscore'],
+                           'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
+                           'sconfigs':  curr_dset['sconfigs'][()],
+                           'run_info': curr_dset['run_info'][()]
+                           }
+            
+        unique_sconfigs = list(np.unique(np.array(list(itertools.chain.from_iterable([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))))
+        sconfigs = dict(('config%03d' % int(cix+1), cfg) for cix, cfg in enumerate(unique_sconfigs))
+        
+        new_paradigm_dir = os.path.join(acquisition_dir, combined_name, 'paradigm')
+        if not os.path.exists(new_paradigm_dir): os.makedirs(new_paradigm_dir);
+        with open(os.path.join(new_paradigm_dir, 'stimulus_configs.json'), 'w') as f:
+            json.dump(sconfigs, f, indent=4, sort_keys=True)
+        
+        # Remap config names for each run:
+        last_trial_prev_run = 0
+        prev_run = None
+        for ridx, curr_run in enumerate(sorted(D.keys(), key=natural_keys)):
+            print curr_run
+            # Get the correspondence between current run's original keys, and the new keys from the combined stim list
+            remapping = dict((oldkey, newkey) for oldkey, oldval in D[curr_run]['sconfigs'].items() for newkey, newval in sconfigs.items() 
+                                                if newval==oldval)
+            # Create dict of DF indices <--> new config key to replace each index once
+            ixs_to_replace = dict((ix, remapping[oldval]) for ix, oldval in 
+                                      zip(D[curr_run]['labels_df']['config'].index.tolist(), D[curr_run]['labels_df']['config'].values))
+            # Replace old config with new config at the correct index
+            D[curr_run]['labels_df']['config'].put(ixs_to_replace.keys(), ixs_to_replace.values())
+            
+            # Also replace trial names so that they have unique values between the two runs:
+            if prev_run is not None:        
+                last_trial_prev_run = int(sorted(D[prev_run]['labels_df']['trial'].unique(), key=natural_keys)[-1][5:]) #len(D[curr_run]['labels_df']['trial'].unique())
+    
+                trials_to_replace = dict((ix, 'trial%05d' % int(int(oldval[5:]) + last_trial_prev_run)) for ix, oldval in 
+                                     zip(D[curr_run]['labels_df']['trial'].index.tolist(), D[curr_run]['labels_df']['trial'].values))
+                D[curr_run]['labels_df']['trial'].put(trials_to_replace.keys(), trials_to_replace.values())
+                
+            prev_run = curr_run
+            
+    
+        # Combine runs in order of their alphanumeric name:
+        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
+        tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_data_zscore = np.vstack([D[curr_run]['zscore'] for curr_run in sorted(D.keys(), key=natural_keys)])
+        tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
+        
+        # Get run_info dict:
+        identical_fields = ['trace_type', 'roi_list', 'nframes_on', 'framerate', 'stim_on_frame', 'nframes_per_trial']
+        combined_fields = ['traceid_dir', 'trans_types', 'transforms', 'nfiles', 'ntrials_total']
+        
+        rinfo = combine_run_info(D, identical_fields=identical_fields, combined_fields=combined_fields)
+        
+        replace_fields = ['condition_list', 'ntrials_by_cond']
+        replace_keys = [k for k,v in rinfo.items() if v is None]
+        assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
+        rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
+        rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+        rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
+        
+        # CHeck N trials per condition:
+        ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
+        if make_equal is True and len(ntrials_by_cond) > 1:
+            print "Uneven numbers of trials per cond. Making equal."
+            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
+            ntrials_target = min(ntrials_by_cond)
+            remove_ixs = []; removed_trials = [];
+            for cf in configs_with_more:
+                curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
+                remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), len(curr_trials) - ntrials_target)
+                remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
+                print "Removing %i trials (out of %i total)" % (len(remove_selected_trials), len(curr_trials))
+                tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
+                remove_ixs.extend(tmp_remove_ixs)
+                removed_trials.extend(remove_selected_trials)
+            
+            all_ixs = np.arange(0, tmp_labels_df.shape[0])
+            all_trials = sorted(tmp_labels_df['trial'].unique(), key=natural_keys)
+            kept_frame_ixs = np.delete(all_ixs, remove_ixs)
+            kept_trial_indices = [ti for ti,trial in enumerate(sorted(all_trials, key=natural_keys)) if trial not in removed_trials]
+            
+            labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
+            data = tmp_data[kept_frame_ixs, :]
+            data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
+            data_zscore = tmp_data_zscore[kept_trial_indices, :]
+            
+            rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+            pp.pprint(rinfo['ntrials_by_cond'])
+            rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
 
+        else:
+            labels_df = tmp_labels_df
+            data = tmp_data
+            data_meanstim = tmp_data_meanstim
+            data_zscore = tmp_data_zscore
+            
+        ylabels = labels_df['config'].values
+        
+        # Make sure runinfo traceid_dir now points to the COMBINED dir:
+        rinfo['traceid_dir'] = combined_traceid_dir
+       
+        # Save it:
+        np.savez(combo_dpath,
+                 corrected=data,
+                 meanstim=data_meanstim,
+                 zscore=data_zscore,
+                 ylabels=ylabels,
+                 labels_data=labels_df,
+                 labels_columns=labels_df.columns.tolist(),
+                 run_info = rinfo,
+                 sconfigs=sconfigs
+                 )
+    
+    return combo_dpath
+
+def get_equal_reps(dataset, data_fpath):
+    eq_data_fpath = '%s_eq.npz' % os.path.splitext(data_fpath)[0]
+
+    try:
+        dataset = np.load(eq_data_fpath)
+        return dataset, eq_data_fpath
+    except Exception as e:
+        print "Unable to load equalized data file -- creating new."
+        
+    tmp_data = dataset['corrected']
+    tmp_data_meanstim = dataset['meanstim']
+    tmp_data_zscore = dataset['zscore']
+    tmp_labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
+    rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
+    sconfigs = dataset['sconfigs'] if isinstance(dataset['sconfigs'], dict) else dataset['sconfigs'][()]
+
+    
+    # CHeck N trials per condition:
+    ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
+    if len(ntrials_by_cond) > 1:
+        print "Uneven numbers of trials per cond. Making equal."
+        configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
+        ntrials_target = min(ntrials_by_cond)
+        remove_ixs = []; removed_trials = [];
+        for cf in configs_with_more:
+            curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
+            remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), len(curr_trials) - ntrials_target)
+            remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
+            print "Removing %i trials (out of %i total)" % (len(remove_selected_trials), len(curr_trials))
+            tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
+            remove_ixs.extend(tmp_remove_ixs)
+            removed_trials.extend(remove_selected_trials)
+        
+        all_ixs = np.arange(0, tmp_labels_df.shape[0])
+        all_trials = sorted(tmp_labels_df['trial'].unique(), key=natural_keys)
+        kept_frame_ixs = np.delete(all_ixs, remove_ixs)
+        kept_trial_indices = [ti for ti,trial in enumerate(sorted(all_trials, key=natural_keys)) if trial not in removed_trials]
+        
+        labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
+        data = tmp_data[kept_frame_ixs, :]
+        data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
+        data_zscore = tmp_data_zscore[kept_trial_indices, :]
+        ylabels = labels_df['config'].values
+        
+        rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+        pp.pprint(rinfo['ntrials_by_cond'])
+        rinfo['ntrials_total'] =  sum([val for fi,val in rinfo['ntrials_by_cond'].items()])
+
+#    dset = dict(dataset)
+#    dset['corrected'] = data
+#    dset['meanstim'] = data_meanstim
+#    dset['zscore'] = data_zscore
+#    dset['ylabels'] = ylabels
+#    dset['run_info'][()] = rinfo
+#    dset['labels_data'] = labels_df
+#    dset['labels_columns'] = labels_df.columns.tolist()
+#    
+#        # Save it:
+    np.savez(eq_data_fpath,
+                 corrected=data,
+                 meanstim=data_meanstim,
+                 zscore=data_zscore,
+                 ylabels=ylabels,
+                 labels_data=labels_df,
+                 labels_columns=labels_df.columns.tolist(),
+                 run_info = rinfo,
+                 sconfigs=sconfigs
+                 )
+    
+    print "Saved adjusted dataset to:", eq_data_fpath
+    
+    dataset = np.load(eq_data_fpath)
+            
+    return dataset, eq_data_fpath
 
 #%%
 def df_to_sarray(df):
@@ -921,92 +1111,6 @@ def _pad_array(x, wing):
 
 
 #%%
-
-#        
-#def load_roiXtrials_df(traceid_dir, trace_type='raw', dff=False, smoothed=False, frac=0.001, create_new=False, window_ntrials=3, quantile=0.08):
-#    
-#    collate=False
-#    # Set up paths to look for saved dataframes:
-#    data_array_dir = os.path.join(traceid_dir, 'data_arrays')
-#    if not os.path.exists(data_array_dir):
-#        os.makedirs(data_array_dir)
-#    
-#    if trace_type == 'processed' and dff:
-#        xdata_fpath = os.path.join(data_array_dir, 'roiXtrials_dff.pkl')
-#    else:
-#        xdata_fpath = os.path.join(data_array_dir, 'roiXtrials_%s.pkl' % trace_type) # processed OR raw
-#        
-#    if smoothed:
-#        fbase = os.path.splitext(xdata_fpath)[0]
-#        xdata_fpath = '%s_smoothed.pkl' % fbase
-#        
-#    print "XDATA path:", xdata_fpath
-#    
-#    labels_fpath = os.path.join(data_array_dir, 'roiXtrials_paradigm.pkl')
-#    F0_fpath=None; F0_df=None
-#    if trace_type == 'processed' and not smoothed:
-#        # Also get baseline:
-#        F0_fpath = os.path.join(data_array_dir, 'roiXtrials_F0.pkl')
-#        
-#    if create_new:
-#        collate = True
-#    else:
-#        try:
-#            with open(xdata_fpath, 'rb') as f:
-#                xdata_df = pkl.load(f)
-#            print "Loaded XDATA."
-#            
-#            with open(labels_fpath, 'rb') as f:
-#                labels_df = pkl.load(f)
-#            print "Loaded labels."
-#            
-#            if F0_fpath is not None:
-#                with open(F0_fpath, 'rb') as f:
-#                    F0_df = pkl.load(f)
-#                print "Loaded F0."
-#                
-#        except Exception as e:
-#            collate = True
-#
-#    if collate:
-#        # First, check that there are indeed df arrays from which to collate all data:
-#        # roi-xframes arrays:
-#        n_orig_tiffs = len([r for r in os.listdir(os.path.join(traceid_dir, 'files')) if r.endswith('hdf5')])
-#
-#        trace_arrays_dir = os.path.join(traceid_dir, 'files', '%s_trace_arrays' % trace_type)
-#
-#        if smoothed:
-#            trace_arrays_dir = '%s_smoothed' % trace_arrays_dir
-#            
-#        if not os.path.exists(trace_arrays_dir):
-#            os.makedirs(trace_arrays_dir)
-#        n_src_dataframes = len([r for r in os.listdir(trace_arrays_dir) if 'File' in r])
-#
-#        if not n_orig_tiffs == n_src_dataframes or create_new is True:
-#            if trace_type == 'raw':
-#                raw_hdf_to_dataframe(traceid_dir)
-#            elif trace_type == 'processed':
-#                processed_trace_arrays(traceid_dir, window_ntrials=window_ntrials, quantile=quantile)
-#            
-#            if smoothed:
-#                smoothed_trace_arrays(traceid_dir, trace_type=trace_type, dff=dff, frac=frac)
-#
-#        if trace_type == 'raw':
-#            labels_df, xdata_df, _ = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
-#        else:
-#            labels_df, xdata_df, F0_df = collate_trials(traceid_dir, trace_type=trace_type, dff=dff, smoothed=smoothed)
-#    
-#    return labels_df, xdata_df, F0_df
-
-#def adjust_mw_gratings(mwinfo):
-#    unique_stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1E3) for t in mwinfo.keys()]))
-#    full_dur = max(unique_stim_durs)
-#    half_dur = min(unique_stim_durs)
-#    for trial in sorted(mwinfo.keys(), key=natural_keys):
-#        if round(mwtrial[trial]['stim_dur_ms']/1E3) == half_dur:
-#            if mwtrial[trial]['stimuli']['rotation'] == 180:
-#                mwtrial[trial]['stimuli']['direction'] = 
-#%%
     
 def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonnegative=False):
     
@@ -1137,8 +1241,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             file_df -= np.array(file_df).min()
 
         # Get all trials contained in current .tif file:
-        trials_in_block = sorted([t for t in trial_list \
+        tmp_trials_in_block = sorted([t for t in trial_list \
                                   if parsed_frames[t]['frames_in_file'].attrs['aux_file_idx'] == fidx], key=natural_keys)
+        # 20181016 BUG: ignore trials that are BLANKS:
+        trials_in_block = sorted([t for t in tmp_trials_in_block if mwinfo[t]['stimuli']['type'] != 'blank'], key=natural_keys)
+    
         print "%s - N trials in block: %i" % (curr_file, len(trials_in_block))
         
         if len(trials_in_block) == 0:
@@ -1837,79 +1944,6 @@ def format_stimconfigs(configs):
 
 #%%
 
-
-#%%
-
-#
-#def format_framesXrois(Xdf, Sdf, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
-##def format_framesXrois(sDATA, roi_list, nframes_on, framerate, trace='raw', verbose=True, missing='drop'):
-#
-#    # Format data: rows = frames, cols = rois
-#    #raw_xdata = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])[trace].apply(np.array).tolist()).T
-#    raw_xdata = np.array(Xdf)
-#    
-#    # Make data non-negative:
-#    if raw_xdata.min() < 0:
-#        print "Making data non-negative"
-#        raw_xdata = raw_xdata - raw_xdata.min()
-#
-#    #roi_list = sorted(list(set(sDATA['roi'])), key=natural_keys) #sorted(roi_list, key=natural_keys)
-#    roi_list = sorted([r for r in Xdf.columns.tolist() if not r=='index'], key=natural_keys) #sorted(roi_list, key=natural_keys)
-#    Xdf = pd.DataFrame(raw_xdata, columns=roi_list)
-#
-#    # Calculate baseline for RUN:
-#    # decay_constant = 71./1000 # in sec -- this is what Romano et al. bioRxiv 2017 do for Fsmooth (decay_constant of indicator * 40)
-#    # vs. Dombeck et al. Neuron 2007 methods (15 sec +/- tpoint 8th percentile)
-#    
-#    window_size_sec = (nframes_on/framerate) * 4 # decay_constant * 40
-#    decay_frames = window_size_sec * framerate # decay_constant in frames
-#    window_size = int(round(decay_frames))
-#    quantile = 0.08
-#    
-#    Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
-#    Xdata_tmp = (Xdf - Fsmooth)
-#    Xdata = np.array(Xdata_tmp)
-#    
-##    fig, axes = pl.subplots(2,1, figsize=(20,5))
-##    axes[0].plot(raw_xdata[0:nframes_per_trial*20, 0], label='raw')
-##    axes[0].plot(fsmooth.values[0:nframes_per_trial*20, 0], label='baseline')
-##    axes[1].plot(Xdata[0:nframes_per_trial*20,0], label='Fmeasured')
-#    
-#    
-##    # Get rid of "bad rois" that have np.nan on some of the trials:
-##    # NOTE:  This is not exactly the best way, but if the df/f trace is wild, np.nan is set for df value on that trial
-##    # Since this is done in traces/get_traces.py, for now, just deal with this by ignoring ROI
-##    bad_roi = None
-##    if missing == 'drop':
-##        ix, iv = np.where(np.isnan(Xdata))
-##        bad_roi = list(set(iv))
-##        if len(bad_roi) == 0:
-##            bad_roi = None
-##
-##    if bad_roi is not None:
-##        Xdata = np.delete(Xdata, bad_roi, 1)
-##        roi_list = [r for ri,r in enumerate(roi_list) if ri not in bad_roi]
-#
-#    #tsecs = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['tsec'].apply(np.array).tolist()).T
-#    tsecs = np.array(Sdf['tsec'].values)
-##    if bad_roi is not None:
-##        tsecs = np.delete(tsecs, bad_roi, 1)
-#
-#    # Get labels: # only need one col, since trial id same for all rois
-#    ylabels = np.array(sDATA.sort_values(['trial', 'tsec']).groupby(['roi'])['config'].apply(np.array).tolist()).T[:,0]
-#    groups = np.array(sDATA.sort_values(['trial']).groupby(['roi'])['trial'].apply(np.array).tolist()).T[:,0]
-#
-#    if verbose:
-#        print "-------------------------------------------"
-#        print "Formatting summary:"
-#        print "-------------------------------------------"
-#        print "X:", Xdata.shape
-#        print "y (labels):", ylabels.shape
-#        print "N groupings of trials:", len(list(set(groups)))
-#        print "N samples: %i, N features: %i" % (Xdata.shape[0], Xdata.shape[1])
-#        print "-------------------------------------------"
-#
-#    return Xdata, ylabels, groups, tsecs, Fsmooth # roi_list, Fsmooth
 
 #%%
 def format_roisXvalue(Xdata, run_info, labels_df=None, fsmooth=None, sorted_ixs=None, value_type='meanstim', trace='raw'):

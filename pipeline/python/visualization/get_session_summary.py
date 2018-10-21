@@ -205,21 +205,24 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_
             roistats = np.load(roistats_fpath)
         except Exception as e:
             print "** No roi stats found... Testing responsivity now."
-            create_new = True
+            #create_new = True
             
+    responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
+                                             session=session, 
+                                             acquisition=acquisition, 
+                                             run=run, traceid=traceid)
+    responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par'])
     if create_new:
-        responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
-                                                 session=session, 
-                                                 acquisition=acquisition, 
-                                                 run=run, traceid=traceid)
-        responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par', '--new'])
-        roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
-        roistats = np.load(roistats_fpath)
+        responsivity_opts.extend(['--new'])
+    print responsivity_opts
+        
+    roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
+    roistats = np.load(roistats_fpath)
         
     visual_test = str(roistats['responsivity_test'])
     selective_test = str(roistats['selectivity_test'])
-    rois_visual = roistats['sorted_visual']
-    rois_selective = roistats['sorted_selective']   
+    rois_visual = [int(r) for r in roistats['sorted_visual']]
+    rois_selective = [int(r) for r in roistats['sorted_selective']]   
     
     roistats = {'visual_test': visual_test,
                 'selective_test': selective_test,
@@ -276,177 +279,124 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
     return
 
 #%%
-def combine_run_info(D, identical_fields=[], combined_fields=[]):
-    
-    run_info = {}
-    
-    info_keys = D[D.keys()[0]]['run_info'].keys()
-    
-    for info_key in info_keys:
-        print info_key
-        run_vals = [D[curr_run]['run_info'][info_key] for curr_run in D.keys()]
-        if info_key in identical_fields:
-            if isinstance(run_vals[0], list):
-                assert all([run_vals[0] == D[curr_run]['run_info'][info_key] for curr_run in D.keys()]), "%s: All vals not equal!" % info_key
-                run_info[info_key] = run_vals[0]
-            elif isinstance(run_vals[0], (int, long, float)):
-                uvals = np.unique(list(set(run_vals)))
-                assert len( uvals ) == 1, "** %s: runs do not match!" % info_key
-                run_info[info_key] = uvals[0]
-        elif info_key in combined_fields:
 
-            if isinstance(run_vals[0], dict):
-                uvals = dict((k,v) for rd in run_vals for k,v in rd.items())
-            else:
-                if isinstance(run_vals[0], list):
-                    uvals = np.unique(list(itertools.chain.from_iterable(run_vals))) 
-                else:
-                    uvals = list(set(run_vals))
-                if isinstance(uvals[0], (str, unicode)):
-                    run_info[info_key] = list(uvals)
-                elif isinstance(uvals[0], (int, float, long)):
-                    run_info[info_key] = sum(uvals)
-        else:
-            print "%s: Not sure what to do with this..." % info_key
-            run_info[info_key] = None
-            
-    return run_info
-
-def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False):
-    
-    # First check if specified combo run exists:
-    traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
-    acquisition_dir = os.path.split(check_blobs_dir[0].split('/traces/')[0])[0]
-    combined_traceid_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string)
-    combined_darray_dir = os.path.join(combined_traceid_dir, 'data_arrays')
-    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
-    combo_dpath = os.path.join(combined_darray_dir, 'datasets.npz')    
-    
-    if create_new is False:
-        try:
-            assert os.path.exists(combo_dpath), "Combined dset %s does not exist!" % combined_name
-        except Exception as e:
-            print "Creating new combined dataset: %s" % combined_name
-            print "Combining data from dirs:\n", check_blobs_dir
-            create_new = True
-        
-    if create_new:
-        
-        D = dict()
-        for blobdir in check_blobs_dir:
-            curr_run = os.path.split(blobdir.split('/traces')[0])[-1]
-            print "Getting data array for run: %s" % curr_run
-            print blobdir
-            darray_fpath = glob.glob(os.path.join(blobdir, 'data_arrays', 'datasets.npz'))[0]
-            curr_dset = np.load(darray_fpath)
-            
-            D[curr_run] = {'data':  curr_dset['corrected'],
-                            'meanstim': curr_dset['meanstim'],
-                           'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
-                           'sconfigs':  curr_dset['sconfigs'][()],
-                           'run_info': curr_dset['run_info'][()]
-                           }
-            
-        unique_sconfigs = list(np.unique(np.array(list(itertools.chain.from_iterable([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))))
-        sconfigs = dict(('config%03d' % int(cix+1), cfg) for cix, cfg in enumerate(unique_sconfigs))
-        
-        new_paradigm_dir = os.path.join(acquisition_dir, combined_name, 'paradigm')
-        if not os.path.exists(new_paradigm_dir): os.makedirs(new_paradigm_dir);
-        with open(os.path.join(new_paradigm_dir, 'stimulus_configs.json'), 'w') as f:
-            json.dump(sconfigs, f, indent=4, sort_keys=True)
-        
-        # Remap config names for each run:
-        last_trial_prev_run = 0
-        prev_run = None
-        for ridx, curr_run in enumerate(sorted(D.keys(), key=natural_keys)):
-            print curr_run
-            # Get the correspondence between current run's original keys, and the new keys from the combined stim list
-            remapping = dict((oldkey, newkey) for oldkey, oldval in D[curr_run]['sconfigs'].items() for newkey, newval in sconfigs.items() 
-                                                if newval==oldval)
-            # Create dict of DF indices <--> new config key to replace each index once
-            ixs_to_replace = dict((ix, remapping[oldval]) for ix, oldval in 
-                                      zip(D[curr_run]['labels_df']['config'].index.tolist(), D[curr_run]['labels_df']['config'].values))
-            # Replace old config with new config at the correct index
-            D[curr_run]['labels_df']['config'].put(ixs_to_replace.keys(), ixs_to_replace.values())
-            
-            # Also replace trial names so that they have unique values between the two runs:
-            if prev_run is not None:        
-                last_trial_prev_run = int(sorted(D[prev_run]['labels_df']['trial'].unique(), key=natural_keys)[-1][5:]) #len(D[curr_run]['labels_df']['trial'].unique())
-    
-                trials_to_replace = dict((ix, 'trial%05d' % int(int(oldval[5:]) + last_trial_prev_run)) for ix, oldval in 
-                                     zip(D[curr_run]['labels_df']['trial'].index.tolist(), D[curr_run]['labels_df']['trial'].values))
-                D[curr_run]['labels_df']['trial'].put(trials_to_replace.keys(), trials_to_replace.values())
-                
-            prev_run = curr_run
-            
-    
-        # Combine runs in order of their alphanumeric name:
-        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
-        tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
-        tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
-        
-        # Get run_info dict:
-        identical_fields = ['trace_type', 'roi_list', 'nframes_on', 'framerate', 'stim_on_frame', 'nframes_per_trial']
-        combined_fields = ['traceid_dir', 'trans_types', 'transforms', 'nfiles', 'ntrials_total']
-        
-        rinfo = combine_run_info(D, identical_fields=identical_fields, combined_fields=combined_fields)
-        
-        replace_fields = ['condition_list', 'ntrials_by_cond']
-        replace_keys = [k for k,v in rinfo.items() if v is None]
-        assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
-        rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
-        rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
-        
-        # CHeck N trials per condition:
-        ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
-        if len(ntrials_by_cond) > 1:
-            print "Uneven numbers of trials per cond. Making equal."
-            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v>min(ntrials_by_cond)]
-            ntrials_target = min(ntrials_by_cond)
-            remove_ixs = []; removed_trials = [];
-            for cf in configs_with_more:
-                curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
-                remove_rand_trial_ixs = random.sample(range(0, len(curr_trials)), len(curr_trials) - ntrials_target)
-                remove_selected_trials = curr_trials[remove_rand_trial_ixs] 
-                print "Removing %i trials (out of %i total)" % (len(remove_selected_trials), len(curr_trials))
-                tmp_remove_ixs = tmp_labels_df[tmp_labels_df['trial'].isin(remove_selected_trials)].index.tolist()
-                remove_ixs.extend(tmp_remove_ixs)
-                removed_trials.extend(remove_selected_trials)
-            
-            all_ixs = np.arange(0, tmp_labels_df.shape[0])
-            all_trials = sorted(tmp_labels_df['trial'].unique(), key=natural_keys)
-            kept_frame_ixs = np.delete(all_ixs, remove_ixs)
-            kept_trial_indices = [ti for ti,trial in enumerate(sorted(all_trials, key=natural_keys)) if trial not in removed_trials]
-            
-            labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
-            data = tmp_data[kept_frame_ixs, :]
-            data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
-           
-            rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
-            pp.pprint(rinfo['ntrials_by_cond'])
-
-        else:
-            labels_df = tmp_labels_df
-            data = tmp_data
-            data_meanstim = tmp_data_meanstim
-            
-        ylabels = labels_df['config'].values
-        
-        # Make sure runinfo traceid_dir now points to the COMBINED dir:
-        rinfo['traceid_dir'] = combined_traceid_dir
-       
-        # Save it:
-        np.savez(combo_dpath,
-                 corrected=data,
-                 meanstim=data_meanstim,
-                 ylabels=ylabels,
-                 labels_data=labels_df,
-                 labels_columns=labels_df.columns.tolist(),
-                 run_info = rinfo,
-                 sconfigs=sconfigs
-                 )
-    
-    return combo_dpath
+#def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=False, make_equal=True):
+#    
+#    # First check if specified combo run exists:
+#    traceid_string = '_'.join([blobdir.split('/traces/')[-1] for blobdir in sorted(check_blobs_dir)])
+#    acquisition_dir = os.path.split(check_blobs_dir[0].split('/traces/')[0])[0]
+#    combined_darray_dir = os.path.join(acquisition_dir, combined_name, 'traces', traceid_string, 'data_arrays')
+#    if not os.path.exists(combined_darray_dir): os.makedirs(combined_darray_dir)
+#    combo_dpath = os.path.join(combined_darray_dir, 'datasets.npz')    
+#    
+#    if create_new is False:
+#        try:
+#            assert os.path.exists(combo_dpath), "Combined dset %s does not exist!" % combined_name
+#        except Exception as e:
+#            print "Creating new combined dataset: %s" % combined_name
+#            print "Combining data from dirs:\n", check_blobs_dir
+#            create_new = True
+#        
+#    if create_new:
+#        
+#        D = dict()
+#        for blobdir in check_blobs_dir:
+#            curr_run = os.path.split(blobdir.split('/traces')[0])[-1]
+#            print "Getting data array for run: %s" % curr_run
+#            darray_fpath = glob.glob(os.path.join(blobdir, 'data_arrays', 'datasets.npz'))[0]
+#            curr_dset = np.load(darray_fpath)
+#            
+#            D[curr_run] = {'data':  curr_dset['corrected'],
+#                           'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
+#                           'sconfigs':  curr_dset['sconfigs'][()],
+#                           'run_info': curr_dset['run_info'][()]
+#                           }
+#            
+#        unique_sconfigs = list(np.unique(np.array(list(itertools.chain.from_iterable([D[curr_run]['sconfigs'].values() for curr_run in D.keys()])))))
+#        sconfigs = dict(('config%03d' % int(cix+1), cfg) for cix, cfg in enumerate(unique_sconfigs))
+#        
+#        new_paradigm_dir = os.path.join(acquisition_dir, combined_name, 'paradigm')
+#        if not os.path.exists(new_paradigm_dir): os.makedirs(new_paradigm_dir);
+#        with open(os.path.join(new_paradigm_dir, 'stimulus_configs.json'), 'w') as f:
+#            json.dump(sconfigs, f, indent=4, sort_keys=True)
+#        
+#        # Remap config names for each run:
+#        last_trial_prev_run = 0
+#        prev_run = None
+#        for ridx, curr_run in enumerate(sorted(D.keys(), key=natural_keys)):
+#            print curr_run
+#            # Get the correspondence between current run's original keys, and the new keys from the combined stim list
+#            remapping = dict((oldkey, newkey) for oldkey, oldval in D[curr_run]['sconfigs'].items() for newkey, newval in sconfigs.items() 
+#                                                if newval==oldval)
+#            # Create dict of DF indices <--> new config key to replace each index once
+#            ixs_to_replace = dict((ix, remapping[oldval]) for ix, oldval in 
+#                                      zip(D[curr_run]['labels_df']['config'].index.tolist(), D[curr_run]['labels_df']['config'].values))
+#            # Replace old config with new config at the correct index
+#            D[curr_run]['labels_df']['config'].put(ixs_to_replace.keys(), ixs_to_replace.values())
+#            
+#            # Also replace trial names so that they have unique values between the two runs:
+#            if prev_run is not None:        
+#                last_trial_prev_run = int(sorted(D[prev_run]['labels_df']['trial'].unique(), key=natural_keys)[-1][5:]) #len(D[curr_run]['labels_df']['trial'].unique())
+#    
+#                trials_to_replace = dict((ix, 'trial%05d' % int(int(oldval[5:]) + last_trial_prev_run)) for ix, oldval in 
+#                                     zip(D[curr_run]['labels_df']['trial'].index.tolist(), D[curr_run]['labels_df']['trial'].values))
+#                D[curr_run]['labels_df']['trial'].put(trials_to_replace.keys(), trials_to_replace.values())
+#                
+#            prev_run = curr_run
+#            
+#    
+#        # Combine runs in order of their alphanumeric name:
+#        tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)])
+#        tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
+#        
+#        # Get run_info dict:
+#        identical_fields = ['trace_type', 'roi_list', 'nframes_on', 'framerate', 'stim_on_frame', 'nframes_per_trial']
+#        combined_fields = ['traceid_dir', 'trans_types', 'transforms', 'nfiles', 'ntrials_total']
+#        
+#        rinfo = combine_run_info(D, identical_fields=identical_fields, combined_fields=combined_fields)
+#        
+#        replace_fields = ['condition_list', 'ntrials_by_cond']
+#        replace_keys = [k for k,v in rinfo.items() if v is None]
+#        assert replace_fields == replace_keys, "Replace fields (%s) and None keys (%s) do not match!" % (str(replace_fields), str(replace_keys))
+#        rinfo['condition_list'] = sorted(tmp_labels_df['config'].unique())
+#        rinfo['ntrials_by_cond'] = dict((cf, len(tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+#        
+#        # CHeck N trials per condition:
+#        ntrials_by_cond = list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))
+#        if make_equal and len(ntrials_by_cond) > 1:
+#            print "Uneven numbers of trials per cond. Making equal."
+#            configs_with_more = [k for k,v in rinfo['ntrials_by_cond'].items() if v==max(ntrials_by_cond)]
+#            ntrials_target = min(ntrials_by_cond)
+#            remove_ixs = []
+#            for cf in configs_with_more:
+#                curr_trials = tmp_labels_df[tmp_labels_df['config']==cf]['trial'].unique()
+#                rand_trial_ixs = random.sample(range(0, len(curr_trials)), max(ntrials_by_cond)-ntrials_target)
+#                selected_trials = curr_trials[rand_trial_ixs] 
+#                ixs = tmp_labels_df[tmp_labels_df['trial'].isin(selected_trials)].index.tolist()
+#                remove_ixs.extend(ixs)
+#            
+#            all_ixs = np.arange(0, tmp_labels_df.shape[0])
+#            kept_ixs = np.delete(all_ixs, remove_ixs)
+#            
+#            labels_df = tmp_labels_df.iloc[kept_ixs, :].reset_index(drop=True)
+#            data = tmp_data[kept_ixs, :]
+#            rinfo['ntrials_by_cond'] = dict((cf, len(labels_df[labels_df['config']==cf]['trial'].unique())) for cf in rinfo['condition_list'])
+#
+#        else:
+#            labels_df = tmp_labels_df
+#            data = tmp_data
+#            
+#        
+#        # Save it:
+#        np.savez(combo_dpath,
+#                 corrected=data,
+#                 labels_data=labels_df,
+#                 labels_columns=labels_df.columns.tolist(),
+#                 run_info = rinfo,
+#                 sconfigs=sconfigs
+#                 )
+#    
+#    return combo_dpath
 
 #%%
 def get_data_and_labels(dataset, data_type='corrected'):
@@ -504,7 +454,7 @@ def get_data_sources(optsE):
  
     return traceid_dirs
 
-def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype='', create_new=False):
+def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype='', create_new=False, make_equal=True):
     print "Runs:", run_list
     print "TraceIDs:", traceid_list
     if len(run_list) > 0:
@@ -516,7 +466,7 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
     # Check if should combine runs:
     if len(check_run_dir) > 1:
         print "Combining runs:", check_run_dir
-        combo_dpath = combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new)
+        combo_dpath = util.combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new, make_equal=make_equal)
         traceid_dirs = combo_dpath.split('/data_arrays')[0]
     else:
         print os.listdir(glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype))[0])
@@ -623,9 +573,17 @@ class SessionSummary():
 
     def plot_summary(self, ignore_null=False, selective=True):
         
-        if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys(): 
-            fig = pl.figure(figsize=(35,25))
-            spec = gridspec.GridSpec(ncols=3, nrows=3)
+        if 'blobs' in self.traceid_dirs.keys() and 'objects' in self.traceid_dirs.keys(): 
+            fig = pl.figure(figsize=(35,35))
+            spec = gridspec.GridSpec(ncols=3, nrows=4)
+        elif 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
+            if 'gratings' not in self.traceid_dirs.keys():
+                fig = pl.figure(figsize=(35,20))
+                spec = gridspec.GridSpec(ncols=3, nrows=2)
+            else:
+                fig = pl.figure(figsize=(35,25))
+                spec = gridspec.GridSpec(ncols=3, nrows=3)
+              
         elif 'gratings' in self.traceid_dirs.keys():
             fig = pl.figure(figsize=(35,20))
             spec = gridspec.GridSpec(ncols=3, nrows=2)
@@ -639,17 +597,26 @@ class SessionSummary():
                 fig.add_subplot(spec[pr, pc])
     
         self.fig = fig
-        
+         
         self.plot_zproj_image(fig.axes, aix=0)
         self.plot_retinotopy_to_screen(fig.axes, aix=1)
         self.plot_estimated_RF_size(fig.axes, aix=2, ignore_null=ignore_null)
         if 'gratings' in self.traceid_dirs.keys():
-            self.plot_responsivity_gratings(fig.axes, aix=3)
-            self.plot_OSI_histogram(fig.axes, aix=4)
-            self.plot_confusion_gratings(fig.axes, aix=5)
+            self.plot_responsivity_gratings(axes_flat=fig.axes, aix=3)
+            self.plot_OSI_histogram(axes_flat=fig.axes, aix=4)
+            self.plot_confusion_gratings(axes_flat=fig.axes, aix=5)
+            obj_startix = 6
+        else:
+            obj_startix = 3
         if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
-            self.plot_responsivity_objects(fig.axes, aix=6)
-            self.plot_transforms_objects(fig.axes, aix=7, selective=selective)
+            self.plot_responsivity_objects(axes_flat=fig.axes, aix=obj_startix)
+        if 'blobs' in self.traceid_dirs.keys():
+            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='blobs')
+            obj_startix = obj_startix + 3
+        if 'objects' in self.traceid_dirs.keys():
+            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='objects')
+            
+
 
     def load_sessionsummary_step(self, key='', traceset=''):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
@@ -979,61 +946,63 @@ class SessionSummary():
         if axes_flat is None:
             fig, ax = pl.subplots()
             axes_flat = fig.axes
-            
+
         # SUBPLOT 6:  Complex stimuli...
         # -----------------------------------------------------------------------------
         axes_flat[aix].clear()
         if 'blobs' in self.traceid_dirs.keys():
             hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=axes_flat[aix])
             axes_flat[aix].set_title('blobs: distN of zscores')
-        else:
+
+            bb = axes_flat[aix].get_position().bounds
+            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
+            axes_flat[aix].set_position(new_bb)
+            axes_flat[aix].set_xlabel('zscore')
+            aix = aix + 3 # increment axis index
+            print "incrementing object plot Ixs:", aix
+        
+        if 'objects' in self.traceid_dirs.keys():
             hist_roi_stats(self.objects['roidata'], self.objects['roistats'], ax=axes_flat[aix])
             axes_flat[aix].set_title('objects: distN of zscores')
+ 
+            bb = axes_flat[aix].get_position().bounds
+            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
+            axes_flat[aix].set_position(new_bb)
+            axes_flat[aix].set_xlabel('zscore')
+     
 
-        
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
-        axes_flat[aix].set_position(new_bb)
-        axes_flat[aix].set_xlabel('zscore')
-        
-
-    def plot_transforms_objects(self, axes_flat=None, aix=0, selective=True):
+    def plot_transforms_objects(self, axes_flat=None, aix=0, selective=True, object_type='blobs'):
         if axes_flat is None:
             fig, ax = pl.subplots()
             axes_flat = fig.axes
-        if 'blobs' in self.traceid_dirs.keys():
-            ylabel = self.blobs['metric']
-            xlabel = self.blobs['transforms_tested'][0]
-            metric = self.blobs['metric']
-            transforms_tested = self.blobs['transforms_tested']
-            object_list = self.blobs['transforms']['object'].unique()
-            # Colors = cells
-            if selective:
-                rois_to_plot = self.blobs['roistats']['rois_selective'][0:10]
-            else:
-                rois_to_plot = self.blobs['roistats']['rois_visual'][0:10]
-            rois = self.blobs['transforms'].groupby('roi')
-        else:
-            ylabel = self.objects['metric']
-            xlabel = self.objects['transforms_tested'][0]
-            metric = self.objects['metric']
-            transforms_tested = self.objects['transforms_tested']
-            object_list = self.objects['transforms']['object'].unique()
-            # Colors = cells
-            if selective:
-                rois_to_plot = self.objects['roistats']['rois_selective'][0:10]
-            else:
-                rois_to_plot = self.objects['roistats']['rois_visual'][0:10]
-            rois = self.objects['transforms'].groupby('roi')
+        if object_type == 'blobs':
+            plotdata = self.blobs
+        elif object_type == 'objects':
+            plotdata = self.objects
        
+        ylabel = plotdata['metric']
+        xlabel = plotdata['transforms_tested'][0]
+        metric = plotdata['metric']
+        transforms_tested = plotdata['transforms_tested']
+        object_list = plotdata['transforms']['object'].unique()
+        # Colors = cells
+        if selective:
+            rois_to_plot = plotdata['roistats']['rois_selective'][0:10]
+            if len(rois_to_plot) == 0:
+                selective = False
+        if not selective:
+            rois_to_plot = plotdata['roistats']['rois_visual'][0:10]
+        rois = plotdata['transforms'].groupby('roi')
+      
         nrois_plot = len(rois_to_plot) 
         colors = sns.color_palette('husl', nrois_plot)
         
         # Shapes = objects
         nobjects = len(object_list)  #len(responses['object'].unique())
-        markers = ['o', 'P', '*', '^', 's', 'd']
+        markers = ['o', 'P', '*', 'X', 's', 'd', 'p', 'H', '1', '2', '3', '4','<','>','_']
         marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
-            
+        print "Plotting %i rois" % nrois_plot
+ 
         for trans_ix, transform in enumerate(transforms_tested):
             tix = aix + trans_ix
             plot_list = []
@@ -1058,7 +1027,7 @@ class SessionSummary():
             axes_flat[tix].set_title(transform)
             
             bb = axes_flat[tix].get_position().bounds
-            new_bb = [bb[0], bb[1]*0.8, bb[2]*0.9, bb[3]]
+            new_bb = [bb[0], bb[1]*0.95, bb[2]*0.9, bb[3]]
             axes_flat[tix].set_position(new_bb)
             axes_flat[tix].set_xlabel('zscore')
         
@@ -1071,7 +1040,7 @@ class SessionSummary():
                                          marker=markers[object_ix], label=object_names[object_ix], 
                                          linewidth=2, markersize=15))
             
-        axes_flat[tix].legend(handles=legend_objects, loc=9, bbox_to_anchor=(0.2, -0.2), ncol=nobjects) # loc='upper right')
+        axes_flat[tix].legend(handles=legend_objects, loc=2, bbox_to_anchor=(0.0, 0.99), ncol=nobjects) # loc='upper right')
         
         
         
@@ -1137,14 +1106,19 @@ def extract_options(options):
 #           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
 #           ]
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
-           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
-           '-r', 'analysis003',
-           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
-           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
+#options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
+#           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
+#           '-r', 'analysis003',
+#           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
+#           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
+#           '-n', 4,
+#           '--redo']
+
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
+           '-r', 'analysis001',
+           '-b', 'traces001',
            '-n', 4,
            '--redo']
-
 
 def load_session_summary(optsE, redo=False):
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
@@ -1152,6 +1126,7 @@ def load_session_summary(optsE, redo=False):
     # First check if saved session summary info exists:
     
     ss_fpaths = glob.glob(os.path.join(acquisition_dir, 'session_summary*.pkl'))
+    print "Found SS:", ss_fpaths
     if len(ss_fpaths) > 0 and optsE.create_new is False and redo is False:
         session_summary_fpath = None
         while session_summary_fpath is None:
@@ -1189,10 +1164,13 @@ def load_session_summary(optsE, redo=False):
 
 def plot_session_summary(options):
     optsE = extract_options(options)
+    print "Getting session summary..."
     S = load_session_summary(optsE, redo=optsE.redo)
-    
+    if optsE.rootdir != S.rootdir:
+        S.rootdir = optsE.rootdir 
     #data_identifier ='_'.join([S.animalid, S.session, S.acquisition, S.retinotopy['traceid'], S.gratings['traceid'], S.blobs['traceid']])
 
+    print "PLOTTING..."
     S.plot_summary(ignore_null=optsE.ignore_null_RF, selective=True)
     label_figure(S.fig, S.data_identifier)
     

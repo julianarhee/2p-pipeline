@@ -547,6 +547,20 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     image_evs.append(curr_stim_evs[0])
             else:
                 image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+                # 20181016 data -- "blank" image events:
+                tmp_imevs = []
+                stimulus_duration = np.unique([s.value for s in df.get_events('distractor_presentation_time')])[0] / 1E3
+                print "Stim duration (s):", stimulus_duration
+                for pi, pev in enumerate(pixelclock_evs):
+                    if pi == len(pixelclock_evs)-1:
+                        continue
+                    curr_ev_dur = (pixelclock_evs[pi+1].time - pev.time) / 1E6
+                    if round(curr_ev_dur, 1) == stimulus_duration:
+                        tmp_imevs.append(pev)
+                blank_images = [i for i in tmp_imevs if i not in image_evs]
+                if len(blank_images) > 0:
+                    print "*** WARNING *** Found %i blank image events." % len(blank_images)
+                image_evs = tmp_imevs
                 
         elif 'grating' in stimtype:
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
@@ -609,7 +623,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         iti_evs = []
         for im in im_idx:
             try:
-                next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
+                next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_non_stimuli-1))
 #                if skip_first_repeat_iti:
 #                    first_found = pixelclock_evs.index(next_iti)
 #                    if first_found == len(pixelclock_evs)-1:
@@ -929,7 +943,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         if 'grating' in session_info['stimulus'] or dynamic:
             nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
         else:
-            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
+            nexpected_pixelevents = ntrials*2 + 1 #(ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
         nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
 
         if not nexpected_pixelevents == nbitcode_events:
@@ -955,8 +969,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
             trial[trialname]['end_time_ms'] = round((iti.time/1E3 + iti_dur)) # session_info['ITI']))
-            stimtype = stim.value[1]['type']
-            stimname = stim.value[1]['name']
+            if len(stim.value) > 2: # BUG presenting blank stimulus on 20181016
+                stimtype = stim.value[1]['type']
+                stimname = stim.value[1]['name']
             if 'grating' in stimtype:
                 stimrotation = stim.value[1]['rotation']
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
@@ -993,11 +1008,20 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             else:
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
                 #stimname = stim.value[1]['name'] #''
-                stimrotation = stim.value[1]['rotation']
-                stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
-                stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
-                stimfile = stim.value[1]['filename']
-                stimhash = stim.value[1]['file_hash']
+                if len(stim.value) == 2: # BLANK screen (but 20181016)
+                    stimname = 'blank'
+                    stimpos = (0, 0)
+                    stimsize = (0, 0)
+                    stimtype = 'blank'
+                    stimfile = ''
+                    stimhash = ''
+                    stimrotation = 0
+                else:
+                    stimrotation = stim.value[1]['rotation']
+                    stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
+                    stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
+                    stimfile = stim.value[1]['filename']
+                    stimhash = stim.value[1]['file_hash']
                 trial[trialname]['stimuli'] = {'stimulus': stimname,
                                               'position': stimpos,
                                               'scale': stimsize,

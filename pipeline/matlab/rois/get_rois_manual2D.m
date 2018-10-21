@@ -7,10 +7,10 @@ clc; clear all;
 % session = '20171128_JR063'; %'20171202_JR063';
 % roi_id = 'rois007'; %'e4893c';
 
-rootdir = '/mnt/odyssey'
-animalid = 'JC015' %'JR063';
-session = '20180915' %'20171202_JR063';
-roi_id = 'rois002' %'e4893c';
+rootdir = '/n/coxfs01/2p-data' %'/mnt/odyssey'
+animalid = 'JC022' %'JR063';
+session = '20181016' %'20171202_JR063';
+roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
 roi_dir = fullfile(rootdir, animalid, session, 'ROIs');
@@ -103,7 +103,7 @@ if ~any(strfind(rid_src_dir, rootdir))
     rid_src_dir = strrep(rid_src_dir, orig_root, rootdir);
 end
 
-if strfind(zproj_type, '_warped_sum')
+if strfind(zproj_type, '_warped_')
     [slice_sourcedir, slice_tiff_fn, ext] = fileparts(rid_src_dir);
     slice_tiffs = {[slice_tiff_fn ext]};
 else
