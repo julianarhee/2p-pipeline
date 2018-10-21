@@ -25,7 +25,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from collections import Counter
 
 from pipeline.python.classifications import linearSVC_class as lsvc
-from pipeline.python.utils import print_elapsed_time, natural_keys, label_figure
+from pipeline.python.utils import print_elapsed_time, natural_keys, label_figure, replace_root
 
 from sklearn.feature_selection import RFE
 
@@ -58,15 +58,25 @@ def extract_options(options):
                           default='', help='Animal ID')
 
     # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session',
-                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-R', '--run', action='store', dest='run',
-                          default='', help="RUN name (e.g., gratings_run1)")
-    parser.add_option('-t', '--traceid', action='store', dest='traceid',
-                          default='', help="traceid name (e.g., traces001)")
+#    parser.add_option('-S', '--session', action='store', dest='session',
+#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
+#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
+#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+#    parser.add_option('-R', '--run', action='store', dest='run',
+#                          default='', help="RUN name (e.g., gratings_run1)")
+#    parser.add_option('-t', '--traceid', action='store', dest='traceid',
+#                          default='', help="traceid name (e.g., traces001)")
+
+    # Run specific info:
+    parser.add_option('-S', '--session', dest='session_list', default=[], type='string', action='callback', callback=comma_sep_list, help="SESSIONS for corresponding runs [default: []]")
+
+    parser.add_option('-A', '--fov', dest='fov_list', default=[], type='string', action='callback', callback=comma_sep_list, help="FOVs for corresponding runs [default: []]")
+
+    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="TRACEIDs for corresponding runs [default: []]")
+
+    parser.add_option('-R', '--run', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
     
+
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
     parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
@@ -121,16 +131,31 @@ def extract_options(options):
 #           ]
 
 
-def get_transform_classifiers(optsE):
+#def get_transform_classifiers(optsE):
+def get_transform_classifiers(animalid, session, acquisition, run, traceid, rootdir='/n/coxfs01/2p-data',
+                         roi_selector='visual', data_type='stat', stat_type='meanstim',
+                         inputdata_type='corrected', 
+                         get_null=False, class_name='', class_subset='',
+                         const_trans='', trans_value='',
+                         cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10,
+                         nprocesses=2):
 
-    nprocs = int(optsE.nprocesses)
+    nprocs = int(nprocesses)
     
-    C = lsvc.TransformClassifier(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid,
-                                rootdir=optsE.rootdir, roi_selector=optsE.roi_selector, data_type=optsE.data_type,
-                                stat_type=optsE.stat_type, inputdata_type=optsE.inputdata_type,
-                                get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
-                                const_trans=optsE.const_trans, trans_value=optsE.trans_value, 
-                                cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, binsize=optsE.binsize)
+    C = lsvc.TransformClassifier(animalid, session, acquisition, run, traceid, rootdir=rootdir,
+                         roi_selector=roi_selector, data_type=data_type, stat_type=stat_type,
+                         inputdata_type=inputdata_type, 
+                         get_null=get_null, class_name=class_name, class_subset=class_subset,
+                         const_trans=const_trans, trans_value=trans_value,
+                         cv_method=cv_method, cv_nfolds=cv_nfolds, cv_ngroups=cv_ngroups, C_val=C_val, binsize=binsize)
+    
+#    C = lsvc.TransformClassifier(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid,
+#                                rootdir=optsE.rootdir, roi_selector=optsE.roi_selector, data_type=optsE.data_type,
+#                                stat_type=optsE.stat_type, inputdata_type=optsE.inputdata_type,
+#                                get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
+#                                const_trans=optsE.const_trans, trans_value=optsE.trans_value, 
+#                                cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, binsize=optsE.binsize)
+#    
     C.load_dataset()
     
     C.create_classifier_dirs()
@@ -196,17 +221,30 @@ def get_transform_classifiers(optsE):
 
 #%%
 
+def get_traceids_from_lists(animalid, session_list, fov_list, run_list, traceid_list, rootdir='/n/coxfs01/2p-data'):
+    traceid_dirs = {}
+    assert len(session_list)==len(fov_list)==len(run_list)==len(traceid_list), "Unmatched sessions, fovs, runs, and traceids provided."
+    for sesh, fov, run, traceid in zip(session_list, fov_list, run_list, traceid_list):
+        traceid_dir = get_traceid_dir(animalid, sesh, fov, run, traceid, rootdir=rootdir)
+        fov_key = '%s_%s' % (sesh, fov)
+        traceid_dirs[fov_key] = traceid_dir
+        
+    return traceid_dirs
+            
 def get_traceid_dir(animalid, session, acquisition, run, traceid, rootdir='/n/coxfs01/2p-data'):
     found_traceid_dirs = sorted(glob.glob(os.path.join(rootdir, animalid, session, acquisition, run, 'traces', '%s*' % traceid)), key=natural_keys)
     assert len(found_traceid_dirs) > 0, "No traceids found."
-    for ti, tdir in enumerate(found_traceid_dirs):
-        print ti, os.path.split(tdir)[-1]
-    sel = input("Select IDX of traceid to use: ")
-    traceid_dir = found_traceid_dirs[int(sel)]
+    if len(found_traceid_dirs) > 1:
+        for ti, tdir in enumerate(found_traceid_dirs):
+            print ti, os.path.split(tdir)[-1]
+        sel = input("Select IDX of traceid to use: ")
+        traceid_dir = found_traceid_dirs[int(sel)]
+    else:
+        traceid_dir = found_traceid_dirs[0]
     
     return traceid_dir
 
-def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data'):
+def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data', animalid='', session=''):
     C=None
     try:
         found_transform_classifiers = sorted(glob.glob(os.path.join(traceid_dir, 'classifiers', 'LinearSVC*', 'TransformClassifier.pkl')), key=natural_keys)
@@ -219,10 +257,13 @@ def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data'):
     sel = raw_input("Select IDX of TransformClassifier object to load: ")
     if len(sel) > 0:
         tclf_fpath = found_transform_classifiers[int(sel)]
-    
+        if rootdir not in tclf_fpath:
+            tclf_fpath = replace_root(tclf_fpath, rootdir, animalid, session)
         with open(tclf_fpath, 'rb') as f:
             C = pkl.load(f)
         if isinstance(C.dataset, str):
+            if rootdir not in C.dataset:
+                C.dataset = replace_root(C.dataset, rootdir, C.animalid, C.session)
             loaded_dset = np.load(C.dataset)
             C.dataset = loaded_dset
         
@@ -426,8 +467,14 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
 #           '--subset', '0,106',
 #           '--nproc=1'
 #           ]
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-R', 'combined_blobs_static', '-t', 'traces002',
+
+rootdir = '/Volumes/coxfs01/2p-data'
+
+options = ['-D', rootdir, '-i', 'CE077', 
+           '-S', '20180518,20180521,20180521,20180523', 
+           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV2_zoom1x,FOV1_zoom1x',
+           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static', 
+           '-t', 'traces002,traces002,traces002,traces002',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
            '--subset', '0,22',
@@ -442,8 +489,31 @@ def main(options):
     #%%
     optsE = extract_options(options)
     
-    traceid_dir = get_traceid_dir(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid)
+    traceid_dirs = get_traceids_from_lists(optsE.animalid, optsE.session_list, optsE.fov_list, optsE.run_list, optsE.traceid_list, rootdir=rootdir)
+    #traceid_dir = get_traceid_dir(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid)
+
+    # Combine data arrays -- just  use stim-period zscore? (then dont have to deal w/ different trial structures)
+        
+    for fov, traceid_dir in traceid_dirs.items():
+        print "Getting TransformClassifiers() for: %s" % fov
+        curr_session = fov.split('_')[0]
+        curr_fov = '_'.join(fov.split('_')[1:3])
+        curr_traceid = os.path.split(traceid_dir)[-1].split('_')[0]
+        curr_run = os.path.split(traceid_dir.split('/traces/')[0])[-1]
+        print "SESSION: %s | FOV: %s | RUN: %s | traceid: %s" % (curr_session, curr_fov, curr_run, curr_traceid)
+        C = load_classifier_object(traceid_dir, rootdir=optsE.rootdir, animalid=optsE.animalid, session=curr_session)
+        print C
+        if C is None:
+            C = get_transform_classifiers(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
+                                      roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
+                                      inputdata_type=optsE.inputdata_type, 
+                                      get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
+                                      const_trans=optsE.const_trans, trans_value=optsE.trans_value,
+                                      cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
+                                      C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses)
     
+    
+    #%%
     C = load_classifier_object(traceid_dir)
     
     if C is None:
