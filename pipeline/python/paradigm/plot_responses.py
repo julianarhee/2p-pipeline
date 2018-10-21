@@ -13,6 +13,8 @@ import matplotlib.patches as patches
 import os
 import sys
 import optparse
+import itertools
+import glob
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -47,10 +49,10 @@ from pipeline.python.utils import label_figure
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180919', '-A', 'FOV1_zoom2p0x',
-           '-R', 'combined_gratings_static', '-t', 'traces001_dc094f_traces001_d90714_traces001_52ffcb', 
+options = ['-D', '/n/coxfs01/2p-data','-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+           '-R', 'combined_blobs_static', '-t', 'traces002_496213_traces002_e56f62', 
            '-d', 'corrected',
-           '-r', 'ypos', '-c', 'xpos', '-H', 'ori', '--shade']
+           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
 def extract_options(options):
 
@@ -197,10 +199,16 @@ def make_clean_psths(options):
     run = optsE.run #run_list[0]
     traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    if '_' not in traceid: 
-        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    if 'cnmf' in traceid:
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
     else:
-        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid))[0]
+
+#    if '_' not in traceid: 
+#        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#    else:
+#        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     print "Loaded data from: %s" % traceid_dir
 #    dataset = np.load(data_fpath)
@@ -328,7 +336,8 @@ def make_clean_psths(options):
     
     if len(sgroups.groups) == 3:
         nrows = 1; ncols=3;
-        
+    
+    grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
     #%
     # Set output dir for nice(r) psth:
     if plot_trials:
@@ -394,9 +403,18 @@ def make_clean_psths(options):
         fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(20,3*nrows+5))
         axesf = axes.flat    
         traces_list = []
+        skipped_axes = []
         pi = 0
-        for k,g in sgroups:
+        
+        #for k,g in sgroups:
+        for k in grid_pairs:
+            if k not in sgroups.groups.keys(): 
+                axesf[pi].axis('off')
+                skipped_axes.append(pi)
+                pi += 1
+                continue
             #print k
+            g = sgroups.get_group(k)
             if subplot_hue is not None:
                 curr_configs = g.sort_values(subplot_hue).index.tolist()
             else:
@@ -454,7 +472,8 @@ def make_clean_psths(options):
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
-            axesf[pi].set_yticks((0, 1))
+            if 'df' in inputdata:
+                axesf[pi].set_yticks((0, 1))
             sns.despine(offset=4, trim=True, ax=axesf[pi])
           
             # Add annotation for n trials in stim config:    
@@ -469,12 +488,15 @@ def make_clean_psths(options):
 
         #sns.despine(offset=4, trim=True)
         #loop over the non-left axes:
-        for ax in axes.flat:
+        for ai,ax in enumerate(axes.flat):
+            if ai in skipped_axes:
+                continue
             ymin = min([ax.get_ylim()[0], ax.get_yticks()[0]])
             ymax = max([ax.get_ylim()[-1], ax.get_yticks()[-1]])
             stimpatch = patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2)
             ax.add_patch(stimpatch)
-            ax.set_yticks((0, 1))
+            if 'df' in inputdata:
+                ax.set_yticks((0, 1))
             sns.despine(offset=4, trim=True, ax=ax)
 
 

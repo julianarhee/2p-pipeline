@@ -11,6 +11,8 @@ import glob
 import shutil
 import copy
 import sys
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 import cPickle as pkl
 import numpy as np
 import pandas as pd
@@ -20,7 +22,12 @@ from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
 
-
+#animalid = optsE.animalid
+#session = optsE.session
+#acquisition = optsE.acquisition
+#run_list = optsE.run_list
+#traceid_list = optsE.traceid_list
+#
 def process_run_data(animalid, session, acquisition, run_list, traceid_list, 
                          rootdir='/n/coxfs01/2p-data',
                          stimtype='', data_type='corrected', metric='zscore',
@@ -36,6 +43,12 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
     dataset = np.load(data_fpath)
     
+    rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
+    pp.pprint(rinfo['ntrials_by_cond'])
+    if len(list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))) > 1:
+        dataset, data_fpath = util.get_equal_reps(dataset, data_fpath)
+
+
     traceid = os.path.split(traceid_dir)[-1]
     run = os.path.split(traceid_dir.split('/traces/')[0])[-1]
     print "Run: %s | traceid: %s" % (run, traceid)
@@ -61,7 +74,8 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     processed_run_fpath = os.path.join(traceid_dir, 'processed_run.pkl')
     with open(processed_run_fpath, 'wb') as f:
         pkl.dump(object_dict, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+   
+    return processed_run_fpath
 
 
 def extract_options(options):
@@ -107,10 +121,12 @@ def extract_options(options):
 
 #%%
     
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
-           '-R', 'blobs_run1',
-           '-t', 'traces001',
-           '-s', 'blobs'
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+           '-R', 'blobs_run1,blobs_run2',
+           '-t', 'traces002,traces002',
+           '-s', 'blobs',
+           '--new',
+           '-n', 2
            ]
 
 #metric = 'zscore'
