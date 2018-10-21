@@ -470,14 +470,27 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
 
 rootdir = '/Volumes/coxfs01/2p-data'
 
+#options = ['-D', rootdir, '-i', 'CE077', 
+#           '-S', '20180518,20180521,20180521,20180523', 
+#           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV2_zoom1x,FOV1_zoom1x',
+#           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static', 
+#           '-t', 'traces002,traces002,traces002,traces002',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,22',
+#           '-c', 'xpos,yrot',
+#           '-v', '-5,0',
+#           '--nproc=1'
+#           ]
+
 options = ['-D', rootdir, '-i', 'CE077', 
-           '-S', '20180518,20180521,20180521,20180523', 
-           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV2_zoom1x,FOV1_zoom1x',
-           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static', 
-           '-t', 'traces002,traces002,traces002,traces002',
+           '-S', '20180602,20180609,20180612', 
+           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x',
+           '-R', 'combined_blobs_static,combined_blobs_static,blobs_run1', 
+           '-t', 'traces001,traces001,traces001',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,22',
+           '--subset', '0,106',
            '-c', 'xpos,yrot',
            '-v', '-5,0',
            '--nproc=1'
@@ -512,13 +525,18 @@ def main(options):
                                       cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
                                       C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses)
     
+    #%
+#    C = load_classifier_object(traceid_dir)
+#    
+#    if C is None:
+#        C = get_transform_classifiers(optsE)
     
     #%%
-    C = load_classifier_object(traceid_dir)
+    # Cycle thru all FOVs and get their classifier data and labels to refit and train:
     
-    if C is None:
-        C = get_transform_classifiers(optsE)
-    
+        
+
+#%%
     if len(C.classifiers) > 1:
         # Const-trans/ trans-value pairs were separately trained.
         print "-----------------------------------------------------"
