@@ -600,7 +600,7 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
     
     # Highlight p-eta2 vals for significant neurons:
     sig_etas = [responsive_anova[r]['eta'] for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < 0.05]
-    sig_bins = list(set([binval for ix,binval in enumerate(division) for etaval in sig_etas if division[ix] < etaval <= division[ix+1]]))
+    sig_bins = list(set([binval for ix,binval in enumerate(division[0:-1]) for etaval in sig_etas if division[ix] < etaval <= division[ix+1]]))
     
     indices_to_label = [find_barval_index(v, p) for v in sig_bins]
     for ind in indices_to_label:
