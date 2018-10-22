@@ -717,7 +717,7 @@ def main(options):
     full_train=True
     test_size=0. #0.33
     train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '0')
-    no_morphs = False
+    no_morphs = True
     
     #trained_labels = list(set([int(i) for fov, cdict in clfs.items() for i in cdict['classifier'].clfparams['class_subset']]))
     trained_labels = list(set([int(i) for fov, tdict in trans_classifiers.items() for i in tdict['C'].classifiers[0].clfparams['class_subset']]))
@@ -922,12 +922,12 @@ def main(options):
         TRAIN['kept_rids'][fov] = kept_rids
         TRAIN['svc'][fov] = svc
     
-    clfs_fpath = os.path.join(clf_subdir, 'TRAIN_clfs_transforms.pkl')
-    with open(clfs_fpath, 'wb') as f:
+    train_trans_fpath = os.path.join(clf_subdir, 'TRAIN_clfs_transforms.pkl')
+    with open(train_trans_fpath, 'wb') as f:
         pkl.dump(TRAIN, f, protocol=pkl.HIGHEST_PROTOCOL)
         
-    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
-    with open(clfs_fpath, 'wb') as f:
+    test_trans_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
+    with open(test_trans_fpath, 'wb') as f:
         pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
         
     pl.close('all')
@@ -1090,26 +1090,26 @@ def main(options):
     pl.xlabel('morph level')
     pl.savefig(os.path.join(test_morphs_dir, 'perc_choose_106_%s.png' % train_set))
     
-    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_morphs.pkl')
-    with open(clfs_fpath, 'wb') as f:
+    test_morphs_fpath = os.path.join(clf_subdir, 'TEST_clfs_morphs.pkl')
+    with open(test_morphs_fpath, 'wb') as f:
         pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
-    clfs_fpath = os.path.join(clf_subdir, 'TRAIN_clfs_morphs.pkl')
-    with open(clfs_fpath, 'wb') as f:
+    train_morphs_fpath = os.path.join(clf_subdir, 'TRAIN_clfs_morphs.pkl')
+    with open(train_morphs_fpath, 'wb') as f:
         pkl.dump(TRAIN, f, protocol=pkl.HIGHEST_PROTOCOL)        
         
 #%%
 
-
-        clf_save_fpath = os.path.join(clf_output_dir, 'classifier_results.npz')
-        np.savez(clf_save_fpath, svc=svc, cX=cX, cy=cy, kept_rids=kept_rids, visual_rois=C.rois, m100=m100,
-                 prob_choose_m100=prob_choose_m100, levels=morph_levels, class_name=clf.clfparams['class_name'],
-                 test_data=test_data, test_labels=test_labels)
-        
-
-    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
-    with open(clfs_fpath, 'wb') as f:
-        pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
-        
+#
+#        clf_save_fpath = os.path.join(clf_output_dir, 'classifier_results.npz')
+#        np.savez(clf_save_fpath, svc=svc, cX=cX, cy=cy, kept_rids=kept_rids, visual_rois=C.rois, m100=m100,
+#                 prob_choose_m100=prob_choose_m100, levels=morph_levels, class_name=clf.clfparams['class_name'],
+#                 test_data=test_data, test_labels=test_labels)
+#        
+#
+#    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
+#    with open(clfs_fpath, 'wb') as f:
+#        pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
+#        
         
     
 #%%
