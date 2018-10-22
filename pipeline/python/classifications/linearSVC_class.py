@@ -1532,10 +1532,31 @@ class TransformClassifier():
             self.run_info = self.dataset['run_info'][()]
 
         # Store stim configs:
-        if isinstance(self.dataset['sconfigs'], dict):    
-            self.sconfigs = self.dataset['sconfigs']
+        if isinstance(self.dataset['sconfigs'], dict):
+            orig_sconfigs = self.dataset['sconfigs']
         else:
-            self.sconfigs = self.dataset['sconfigs'][()]
+            orig_sconfigs = self.dataset['sconfigs'][()]
+        if int(self.session) < 20180602:
+            # Rename morphs:
+            update_configs = [cfg for cfg, info in orig_sconfigs.items() if info['morphlevel'] > 0]
+            for cfg in update_configs:
+                if orig_sconfigs[cfg]['morphlevel'] == 6:
+                    orig_sconfigs[cfg]['morphlevel'] = 27
+                elif orig_sconfigs[cfg]['morphlevel'] == 11:
+                    orig_sconfigs[cfg]['morphlevel'] = 53
+                elif orig_sconfigs[cfg]['morphlevel'] == 16:
+                    orig_sconfigs[cfg]['morphlevel'] = 79
+                elif orig_sconfigs[cfg]['morphlevel'] == 22:
+                    orig_sconfigs[cfg]['morphlevel'] = 106
+                else:
+                    print "Unknown morphlevel converstion: %i" % orig_sconfigs[cfg]['morphlevel']
+        self.sconfigs = orig_sconfigs
+#
+#            
+#        if isinstance(self.dataset['sconfigs'], dict):    
+#            self.sconfigs = self.dataset['sconfigs']
+#        else:
+#            self.sconfigs = self.dataset['sconfigs'][()]
 
         self.data_identifier = '_'.join((self.animalid, self.session, self.acquisition, self.run, self.traceid))
         
