@@ -15,17 +15,22 @@ import time
 import copy
 import glob
 import itertools
+import json
+import h5py
 import pandas as pd
 import numpy as np
 import multiprocessing as mp
 import cPickle as pkl
 import pylab as pl
+import tifffile as tf
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from collections import Counter
 
 from pipeline.python.classifications import linearSVC_class as lsvc
 from pipeline.python.utils import print_elapsed_time, natural_keys, label_figure, replace_root
+from pipeline.python.rois.utils import get_roi_contours, plot_roi_contours
+
 
 from sklearn.feature_selection import RFE
 
@@ -40,6 +45,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
 
 from sklearn.model_selection import permutation_test_score
+
 
 #%%
 
@@ -269,6 +275,22 @@ def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data', animalid='
         
     return C
 
+def get_clf_RFE(clf):
+    rfe_results = {}
+    clf_key = os.path.split(clf.classifier_dir)[-1]
+    rresults = load_RFE_results(clf)
+    rfe_scores = np.array([np.mean(cv_scores) for ri, cv_scores in enumerate(rresults['results'])])
+    best_iter = rfe_scores.argmax()
+    kept_rids = rresults['kept_rids_by_iter'][best_iter-1]
+    bestN = len(kept_rids)
+    print clf_key, "Best score: %.2f" % rfe_scores.max(), "N rois: %i" % bestN
+    print " --->", kept_rids
+    rfe_results['best'] = {'iter_ix': best_iter,
+                           'kept_rids': kept_rids,
+                           'max_score': rfe_scores.max()}
+    return rfe_results
+    
+
 
 def get_RFE_results(C):
     '''For each classifier trained in TransformClassifier object (C), get RFE resuults
@@ -276,19 +298,19 @@ def get_RFE_results(C):
     rfe_results={}
     for clf in C.classifiers:
         clf_key = os.path.split(clf.classifier_dir)[-1]
-        rfe_results[clf_key] = load_RFE_results(clf)
+        rfe_results[clf_key] = get_clf_RFE #load_RFE_results(clf)
     
-    for clf_key, res in rfe_results.items():
-        rfe_scores = np.array([np.mean(cv_scores) for ri, cv_scores in enumerate(res['results'])])
-        best_iter = rfe_scores.argmax()
-        kept_rids = res['kept_rids_by_iter'][best_iter-1]
-        bestN = len(kept_rids)
-        print clf_key, "Best score: %.2f" % rfe_scores.max(), "N rois: %i" % bestN
-        print " --->", kept_rids
-        rfe_results[clf_key]['best'] = {'iter_ix': best_iter,
-                                'kept_rids': kept_rids,
-                                'max_score': rfe_scores.max()}
-    
+#    for clf_key, res in rfe_results.items():
+#        rfe_scores = np.array([np.mean(cv_scores) for ri, cv_scores in enumerate(res['results'])])
+#        best_iter = rfe_scores.argmax()
+#        kept_rids = res['kept_rids_by_iter'][best_iter-1]
+#        bestN = len(kept_rids)
+#        print clf_key, "Best score: %.2f" % rfe_scores.max(), "N rois: %i" % bestN
+#        print " --->", kept_rids
+#        rfe_results[clf_key]['best'] = {'iter_ix': best_iter,
+#                                        'kept_rids': kept_rids,
+#                                        'max_score': rfe_scores.max()}
+#    
     return rfe_results
 
 
@@ -310,6 +332,37 @@ def load_RFE_results(clf):
     return rfe
 
 #%%
+
+def train_and_validate_best_clf(clf, setC='big', nfeatures_select='all', full_train=False, test_size=0.33):
+
+    # =============================================================================
+    # Train the classifier:
+    # =============================================================================
+    #setC = optsE.setC #'best' # choices: 'best' (test diff values of C on log scale), 'big' (1E9), 'small' (w.0)
+    #nfeatures_select = int(optsE.nfeatures_select) if optsE.nfeatures_select.isdigit() else optsE.nfeatures_select # 'best' # choices: 'best' (uses RFE to find cells with max. clf accuracy), int (uses RFE to find top N cells)
+    #full_train = optsE.full_train #True
+    #test_size = float(optsE.test_size) #0.33
+    
+    if full_train:
+        train_set = 'fulltrain'
+    else:
+        train_set = 'testsize%.2f' % test_size
+        
+    if nfeatures_select == 'best':
+        rfe_results = get_clf_RFE(clf)
+    else:
+        rfe_results = {}
+    svc, cX, cy, kept_rids, clf_output_dir = find_best_classifier(clf.cX, clf.cy, clf.clf.get_params(), 
+                                                                      setC=setC, 
+                                                                      nfeatures_select=nfeatures_select,
+                                                                      rfe_results=rfe_results,
+                                                                      full_train=full_train, 
+                                                                      test_size=test_size, 
+                                                                      classifier_base_dir=clf.classifier_dir)
+    
+    svc, test, X_test, test_true, test_predicted = train_and_validate(svc, cX, cy, clf, clf_output_dir, full_train=full_train, test_size=test_size)
+    
+    return svc, test, X_test, test_true, test_predicted, kept_rids
 
 def find_best_classifier(cX, cy, start_params, setC='best', nfeatures_select='best', 
                              full_train=True, test_size=0.33, classifier_base_dir='/tmp',
@@ -407,7 +460,7 @@ def train_and_validate(svc, cX, cy, clf, clf_output_dir, full_train=False, test_
     # =============================================================================
     # Train the classifier with specified params:
     # =============================================================================
-    X_test = None; test_true=None;
+    X_test = None; test_true=None; test_predicted=None;
     test = {}
     if full_train:
         svc.fit(cX, cy)
@@ -447,6 +500,7 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
     configs_included = test_sdf.index.tolist()
     
     kept_trial_ixs = np.array([fi for fi, config in enumerate(sample_labels) if config in configs_included])
+    print "N kept trials:", len(kept_trial_ixs)
     
     test_data = sample_data[kept_trial_ixs, :]
     tmp_test_labels = sample_labels[kept_trial_ixs]
@@ -460,6 +514,61 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
 
 #%%
     
+def get_fov(traceid_dir):
+    
+    run_dir = traceid_dir.split('/traces/')[0]
+    stack = []
+    if 'combined' in run_dir:
+        acquisition_dir = os.path.split(run_dir)[0]
+        stimtype = os.path.split(run_dir)[-1].split('_')[1]
+        single_runs = [d for d in glob.glob(os.path.join(acquisition_dir, '%s_run*' % stimtype)) if os.path.isdir(d)]
+        tiff_fpaths = [glob.glob(os.path.join(single_run, 'processed', 'processed*', 'mcorrected_*mean_deinterleaved', 'Channel01', 'File*', '*.tif')) for single_run in single_runs]
+        tiff_fpaths = [f for sublist in tiff_fpaths for f in sublist]
+    else:
+        tiff_fpaths = glob.glob(os.path.join(run_dir, 'processed', 'processed*', 'mcorrected_*mean_deinterleaved', 'CHannel01', 'File*', '*.tif'))
+            
+    for tiff_fpath in tiff_fpaths:
+        im = tf.imread(tiff_fpath)
+        stack.append(im)
+    fov_img = np.mean(np.array(stack), axis=0)
+        
+    return fov_img
+
+
+
+def load_tid_rois(mask_fpath, file_key=None):
+    maskfile = h5py.File(mask_fpath, 'r')
+
+    if file_key is None:
+        file_key = maskfile.keys()[0]
+    masks = np.array(maskfile[file_key]['Slice01']['maskarray'])
+    dims = maskfile[file_key]['Slice01']['zproj'].shape
+    masks_r = np.reshape(masks, (dims[0], dims[1], masks.shape[-1]))
+    
+    return masks_r
+    
+def get_roi_masks(traceid_dir):
+    run_dir = traceid_dir.split('/traces/')[0]
+    traceid = traceid_dir.split('/traces/')[-1]
+    acquisition_dir = os.path.split(run_dir)[0]
+    run = os.path.split(run_dir)[-1]
+    #if 'combined' in run:
+    stimtype = run.split('_')[1]
+    traceid_names = traceid.split('_')[0::2]
+    combined_masks = []
+    for tid in traceid_names:
+        single_run_maskfile = glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype, 'traces', '%s*' % tid, 'MASKS.hdf5'))[0]
+        masks = load_tid_rois(single_run_maskfile, file_key='File001')
+        combined_masks.append(masks)
+    rois = np.mean(np.array(combined_masks), axis=0)
+    
+    return rois
+        
+
+
+
+#%%
+    
 #options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181018', '-A', 'FOV2_zoom2p7x',
 #           '-R', 'combined_blobs_static', '-t', 'traces001',
 #           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
@@ -468,7 +577,7 @@ def get_test_data(sample_data, sample_labels, sdf, clfparams):
 #           '--nproc=1'
 #           ]
 
-rootdir = '/Volumes/coxfs01/2p-data'
+rootdir = '/n/coxfs01/2p-data' #-data'
 
 #options = ['-D', rootdir, '-i', 'CE077', 
 #           '-S', '20180518,20180521,20180521,20180523', 
@@ -488,7 +597,7 @@ options = ['-D', rootdir, '-i', 'CE077',
            '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x',
            '-R', 'combined_blobs_static,combined_blobs_static,blobs_run1', 
            '-t', 'traces001,traces001,traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+           '-r', 'selective', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
            '--subset', '0,106',
            '-c', 'xpos,yrot',
@@ -506,7 +615,8 @@ def main(options):
     #traceid_dir = get_traceid_dir(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid)
 
     # Combine data arrays -- just  use stim-period zscore? (then dont have to deal w/ different trial structures)
-        
+    clfs = dict((fov, {}) for fov in sorted(traceid_dirs.keys(), key=natural_keys))
+    trans_classifiers = dict()
     for fov, traceid_dir in traceid_dirs.items():
         print "Getting TransformClassifiers() for: %s" % fov
         curr_session = fov.split('_')[0]
@@ -524,7 +634,16 @@ def main(options):
                                       const_trans=optsE.const_trans, trans_value=optsE.trans_value,
                                       cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
                                       C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses)
-    
+        if optsE.rootdir not in C.classifier_dir:
+            C.classifier_dir = replace_root(C.classifier_dir, optsE.rootdir, optsE.animalid, curr_session)
+            for clf in C.classifiers:
+                clf.classifier_dir = replace_root(clf.classifier_dir, optsE.rootdir, optsE.animalid, curr_session)
+                
+        trans_classifiers[fov] = C
+        clfs[fov]['classifier'] = C.classifiers[0]
+        clfs[fov]['fov'] = get_fov(traceid_dir)
+        
+        
     #%
 #    C = load_classifier_object(traceid_dir)
 #    
@@ -532,159 +651,361 @@ def main(options):
 #        C = get_transform_classifiers(optsE)
     
     #%%
+    visual_area = 'LM'
+    grouped_fovs = '_'.join(sorted(clfs.keys(), key=natural_keys))
+    print grouped_fovs
+    output_dir = os.path.join(optsE.rootdir, optsE.animalid, visual_area, grouped_fovs)
+    if not os.path.exists(output_dir): os.makedirs(output_dir)
+    print "-- Saving all current %s output to:\n%s" % (visual_area, output_dir)
+    
+    clf_names = list(set([clfdict['classifier'].classifier_dir.split('/classifiers/')[-1] for fov, clfdict in clfs.items()]))
+    assert len(clf_names) == 1, "*** WARNING *** Looks like you're trying to combine different types of classifiers:\n    %s" % clf_names
+    clf_name = clf_names[0]
+    
+    clf_output_dir = os.path.join(output_dir, 'classifiers', clf_name)
+    if not os.path.exists(clf_output_dir): os.makedirs(clf_output_dir)
+    
+#%%
+    for fi, fov in enumerate(sorted(clfs.keys(), key=natural_keys)):
+        clfs[fov]['RFE'] = get_clf_RFE(clfs[fov]['classifier'])
+        clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
+        clfs[fov]['contours'] = get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
+
+#    
+#    clfs_fpath = os.path.join(clf_output_dir, 'TRAIN_clfs.pkl')
+#    with open(clfs_fpath, 'wb') as f:
+#        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+    
+    #%%
     # Cycle thru all FOVs and get their classifier data and labels to refit and train:
+    
+#    fov_list = sorted(clfs.keys(), key=natural_keys)
+#    print "Combining data from:", fov_list
+#    for fov_key in fov_list:
+#        tmp_cX = np.array([clf.cX.shape for fov, clf in sorted(clfs.items(), key=lambda x: x[0])]).shape
+#    
     
         
 
 #%%
-    if len(C.classifiers) > 1:
-        # Const-trans/ trans-value pairs were separately trained.
-        print "-----------------------------------------------------"
-        print "[%s]-classifier was trained at separate values of %s" % (C.params['class_name'], C.params['const_trans'])
-        for ci, clf in enumerate(C.classifiers):
-            print [('IDX: %i' % ci, '%s: %i' % (trans, val)) for (trans, val) in zip(clf.clfparams['const_trans'], clf.clfparams['trans_value'])]
-
-    rfe_results = get_RFE_results(C)
+#    if len(C.classifiers) > 1:
+#        # Const-trans/ trans-value pairs were separately trained.
+#        print "-----------------------------------------------------"
+#        print "[%s]-classifier was trained at separate values of %s" % (C.params['class_name'], C.params['const_trans'])
+#        for ci, clf in enumerate(C.classifiers):
+#            print [('IDX: %i' % ci, '%s: %i' % (trans, val)) for (trans, val) in zip(clf.clfparams['const_trans'], clf.clfparams['trans_value'])]
+#    #rfe_results = get_RFE_results(C)
+#    
+#    #%
+#    # Look at specific classifier:
+#    setC='big'
+#    nfeatures_select='best'
+#    full_train=False
+#    test_size=0.5
+#    
+#    clf = C.classifiers[0]
+##    if C.params['const_trans'] != '':
+##        clf = copy.copy([c for c in C.classifiers if curr_clf.split('_')[0] in c.clfparams['const_trans'] and float(curr_clf.split('_')[1].replace('n', '-')) in c.clfparams['trans_value']][0])
+##    else:
+##        clf = C.classifiers[0]
+#    svc, test, X_test, test_true, test_predicted, kept_rids = train_and_validate_best_clf(clf, setC=setC, nfeatures_select=nfeatures_select, 
+#                                                                               full_train=full_train, test_size=test_size)    
     
-    #%%
+#%%  
     
-    # Look at specific classifier:
-    setC='big'
-    nfeatures_select='best'
-    full_train=False
-    test_size=0.5
+    setC='small'
+    nfeatures_select='all'
+    full_train=True
+    test_size=0.0
+    train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '')
+    no_morphs = True
     
-    curr_clf = rfe_results.keys()[0]
+    trained_labels = list(set([int(i) for fov, cdict in clfs.items() for i in cdict['classifier'].clfparams['class_subset']]))
     
-    if C.params['const_trans'] != '':
-        clf = copy.copy([c for c in C.classifiers if curr_clf.split('_')[0] in c.clfparams['const_trans'] and float(curr_clf.split('_')[1].replace('n', '-')) in c.clfparams['trans_value']][0])
+    if no_morphs:
+        class_subset = '%s_%s' % (clfs[clfs.keys()[0]]['classifier'].clfparams['class_name'], '_'.join([str(l) for l in trained_labels]))
     else:
-        clf = C.classifiers[0]
+        class_subset = '%s_all' % (clfs[clfs.keys()[0]]['classifier'].clfparams['class_name'])
     
-    # =============================================================================
-    # Train the classifier:
-    # =============================================================================
-    #setC = optsE.setC #'best' # choices: 'best' (test diff values of C on log scale), 'big' (1E9), 'small' (w.0)
-    #nfeatures_select = int(optsE.nfeatures_select) if optsE.nfeatures_select.isdigit() else optsE.nfeatures_select # 'best' # choices: 'best' (uses RFE to find cells with max. clf accuracy), int (uses RFE to find top N cells)
-    #full_train = optsE.full_train #True
-    #test_size = float(optsE.test_size) #0.33
-    
-    if full_train:
-        train_set = 'fulltrain'
-    else:
-        train_set = 'testsize%.2f' % test_size
+    if nfeatures_select.isdigit():
+        nfeatures_select = int(nfeatures_select)
         
-    svc, cX, cy, kept_rids, clf_output_dir = find_best_classifier(clf.cX, clf.cy, clf.clf.get_params(), 
-                                                                      setC=setC, 
-                                                                      nfeatures_select=nfeatures_select,
-                                                                      rfe_results=rfe_results[curr_clf],
-                                                                      full_train=full_train, 
-                                                                      test_size=test_size, 
-                                                                      classifier_base_dir=clf.classifier_dir)
-    
-    svc, test, X_test, test_true, test_predicted = train_and_validate(svc, cX, cy, clf, clf_output_dir, full_train=full_train, test_size=test_size)
-    
-    
-    #%%  
-    # =============================================================================
-    # TEST the trained classifier:
-    # =============================================================================
-    
-    sample_data = C.sample_data[:, kept_rids]
-    sample_labels = C.sample_labels
-    sdf = pd.DataFrame(clf.sconfigs).T
-    
-    #%%
-    
-    test_data, test_labels = get_test_data(sample_data, sample_labels, sdf, clf.clfparams)
-    #%
-    
-    test_choices = svc.predict(test_data) #(test_data, fake_labels)
-    prob_choose_m100 = {}
-    m100 = max(clf.clfparams['class_subset']) #106
-    # Plot % correct from test choices:
-    morph_levels = sorted(sdf[clf.clfparams['class_name']].unique())
-    for morph_level in morph_levels:
-        if morph_level in [morph_levels[0], morph_levels[-1]]:
-            prob_choose_m100[morph_level] = (1-trained_classes[morph_level]) if morph_level==0 else trained_classes[morph_level]
-        else:
-            curr_trials = [ti for ti, tchoice in enumerate(test_labels) if tchoice == morph_level]
-            curr_choices = [test_choices[ti] for ti in curr_trials]
-            prob_choose_m100[morph_level] = float( np.count_nonzero(curr_choices) ) / float( len(curr_choices) )
-    
-    
-    pl.figure()
-    morph_choices = [prob_choose_m100[m] for m in morph_levels]
-    pl.plot(morph_levels, morph_choices, 'ko')
-    pl.ylim([0, 1.0])
-    pl.ylabel('perc. chose 106')
-    pl.xlabel('morph level')
-    pl.savefig(os.path.join(clf_output_dir, 'figures', 'perc_choose_106_%s.png' % train_set))
-    
-    clf_save_fpath = os.path.join(clf_output_dir, 'classifier_results.npz')
-    np.savez(clf_save_fpath, svc=svc, cX=cX, cy=cy, kept_rids=kept_rids, visual_rois=C.rois, m100=m100,
-             prob_choose_m100=prob_choose_m100, levels=morph_levels, class_name=clf.clfparams['class_name'],
-             test_data=test_data, test_labels=test_labels)
-    
+    clf_desc = '%s_C_%s_features_%s_%s' % (class_subset, str(setC), str(nfeatures_select), train_set)
+    clf_subdir = os.path.join(clf_output_dir, clf_desc)
+    if not os.path.exists(clf_subdir): os.makedirs(clf_subdir)
 
-
-    #%%
-    train_config = clf.clfparams['trans_value']
+#%%
     
-    grouped_sdf = sdf.groupby(clf.clfparams['const_trans'])
-    tmp_data = sample_data.copy()
-    tmp_labels = sample_labels.copy()
-    #tmp_labels = [sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in tmp_labels]
+    fig, axes = pl.subplots(nrows=1, ncols=len(clfs.keys()), figsize=(20, 5))
+    for fi, fov in enumerate(sorted(clfs.keys(), key=natural_keys)):
+        axes[fi].imshow(clfs[fov]['fov'])
+        axes[fi].set_title(fov)
+        axes[fi].axis('off')
+        plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
     
-    testdata = dict((k, {}) for k in grouped_sdf.groups.keys())
-    performance = {}
-    for k,g in grouped_sdf:
-        if k == train_config:
-            testdata[k]['data'] = X_test
-            testdata[k]['labels'] = test_true
-            testdata[k]['predicted'] = test_predicted
-        else:
-            incl_ixs = np.array([i for i,label in enumerate(tmp_labels) if label in g.index.tolist()])
-            testdata[k]['data'] = tmp_data[incl_ixs, :]
-            curr_labels = tmp_labels[incl_ixs]
+    pl.savefig(os.path.join(clf_subdir, 'best_RFE_masks.png'))
+    
+#%%
+    middle_morph = 53
+    m100 = 106 #max(clf.clfparams['class_subset'])
+    # =============================================================================
+    # TEST the trained classifier -- TRANSFORMATIONS.
+    # =============================================================================
+    if clf.clfparams['const_trans'] == '':
+        trans0 = 'yrot' #clf.clfparams['const_trans'][0]
+        trans1 = 'xpos' #clf.clfparams['const_trans'][0]
+    else:
+        trans0 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][0]
+        trans1 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][1]
+        
+    #all_counts = dict() #dict((k, []) for k in grouped_sdf.groups.keys())
+        
+    TEST = {'morph_results': {},
+            'predicted': {},
+            'data': {},
+            'labels': {}}
+    
+    all_trans1 = []; all_trans0 = []
+    
+    for fov in sorted(clfs.keys(), key=natural_keys):
+        C = trans_classifiers[fov]
+        clf = clfs[fov]['classifier']
+        svc, test, X_test, test_true, test_predicted, kept_rids = train_and_validate_best_clf(clf, setC=setC, nfeatures_select=nfeatures_select, 
+                                                                               full_train=full_train, test_size=test_size)    
             
-            testdata[k]['labels'] = np.array([sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in curr_labels])
-            testdata[k]['predicted'] = svc.predict(testdata[k]['data'])
+        #kept_rids = clfs[fov]['RFE']['best']['kept_rids']
+        sample_data = C.sample_data[:, kept_rids]
+        sample_labels = C.sample_labels
+        sdf = pd.DataFrame(clf.sconfigs).T
+        if no_morphs:
+            sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
+            
+        
+        all_trans0.extend(sorted([i for i in sdf[trans0].unique()]))
+        all_trans1.extend(sorted([i for i in sdf[trans1].unique()]))
+    
+        train_config = tuple(clf.clfparams['trans_value'])
         
         
-        left_trials = np.where(testdata[k]['labels'] < 11)[0]
-        right_trials = np.where(testdata[k]['labels'] > 11)[0]
-        mid_trials = np.where(testdata[k]['labels'] == 11)[0]
-        correct = [1 if val==0 else 0 for val in testdata[k]['predicted'][left_trials]]
-        correct.extend([1 if val==22 else 0 for val in testdata[k]['predicted'][right_trials]])
-        #correct.extend([0.5 for _ in range(len(mid_trials))])
-        pcorrect = float(sum(correct)) / float(len(left_trials)+len(right_trials)) #float(len(testdata[k]['predicted']))
-    
-        performance[k] = pcorrect
+        grouped_sdf = sdf.groupby([trans0, trans1])
+        tmp_data = sample_data.copy()
+        tmp_labels = sample_labels.copy()
+        #tmp_labels = [sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in tmp_labels]
         
-    #%%
+        testdata = dict((tconfig, {}) for tconfig in grouped_sdf.groups.keys())
+        performance = {}; counts = {}; ncorrect={};
+        
+        for trans_config,g in grouped_sdf:
+            print trans_config
+            if trans_config == train_config:
+                testdata[trans_config]['data'] = X_test
+                testdata[trans_config]['labels'] = test_true
+                testdata[trans_config]['predicted'] = test_predicted
+                if test_predicted is not None:
+                    print "*****Train: %s, %i" % (str(trans_config), len(test_predicted))
+            else:
+                incl_ixs = np.array([i for i,label in enumerate(tmp_labels) if label in g.index.tolist()])
+                testdata[trans_config]['data'] = tmp_data[incl_ixs, :]
+                curr_labels = tmp_labels[incl_ixs]
+                
+                testdata[trans_config]['labels'] = np.array([sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in curr_labels])
+                testdata[trans_config]['predicted'] = svc.predict(testdata[trans_config]['data'])
+            
+#            if k not in all_counts.keys():
+#                all_counts[k] = []
+#            else:
+#                all_counts[k].append(testdata[k]['data'].shape[0])
+#            
+            if full_train and trans_config == train_config:
+                performance[trans_config] = np.mean([testval for testclass,testval in test.items()])
+                counts[trans_config] = clf.cX.shape[0]
+                ncorrect[trans_config] = sum([len(np.where(clf.cy==testkey)[0]) * test[testkey] for testkey in test.keys()])
+            else:
+                left_trials = np.where(testdata[trans_config]['labels'] < middle_morph)[0]
+                right_trials = np.where(testdata[trans_config]['labels'] > middle_morph)[0]
+                mid_trials = np.where(testdata[trans_config]['labels'] == middle_morph)[0]
+                correct = [1 if val==0 else 0 for val in testdata[trans_config]['predicted'][left_trials]]
+                correct.extend([1 if val==m100 else 0 for val in testdata[trans_config]['predicted'][right_trials]])
+                #correct.extend([0.5 for _ in range(len(mid_trials))])
+                pcorrect = float(sum(correct)) / float(len(left_trials)+len(right_trials)) #float(len(testdata[k]['predicted']))
+            
+                performance[trans_config] = pcorrect
+                counts[trans_config] = len(left_trials) + len(right_trials)
+                ncorrect[trans_config] = sum(correct)
+        
+        TEST['morph_results'][fov] = {'accuracy': performance, 'counts': counts, 'ncorrect': ncorrect}
+        TEST['predicted'][fov] = dict((tconfig, tdata['predicted']) for tconfig, tdata in testdata.items())
+        TEST['data'][fov] = dict((tconfig, tdata['data']) for tconfig, tdata in testdata.items())
+        TEST['labels'][fov] = dict((tconfig, tdata['labels']) for tconfig, tdata in testdata.items())
     
-    rowvals = sorted([i for i in sdf[clf.clfparams['const_trans'][0]].unique()])
-    colvals = sorted([i for i in sdf[clf.clfparams['const_trans'][1]].unique()])
     
-    performance_grid = np.ones((len(rowvals), len(colvals)))*np.nan
-    grid_pairs = sorted(list(itertools.product(rowvals, colvals)), key=lambda x: (x[0], x[1]))
-    for k in grid_pairs:
-        if k not in performance.keys():
-            continue
-        rix = rowvals.index(k[0])
-        cix = colvals.index(k[1])
-        performance_grid[rix, cix] = performance[k] 
+    clfs_fpath = os.path.join(clf_subdir, 'TRAIN_clfs.pkl')
+    with open(clfs_fpath, 'wb') as f:
+        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
+    with open(clfs_fpath, 'wb') as f:
+        pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+    pl.close('all')
+
+#%%
+    
+    # Plot classifier accuracy at each position:    
+    
+    rowvals = sorted([i for i in list(set(all_trans0))]) #sdf[clf.clfparams['const_trans'][0]].unique()])
+    colvals = sorted([i for i in list(set(all_trans1))])  #sdf[clf.clfparams['const_trans'][1]].unique()])
+    
+    ncorrect_grid = np.ones((len(rowvals), len(colvals)))*np.nan
+    counts_grid = np.ones((len(rowvals), len(colvals)))*np.nan
+    
+    for fov in TEST['morph_results'].keys():
+        #performance = TEST['morph_results'][fov]['accuracy']
+        ncorrect = TEST['morph_results'][fov]['ncorrect']
+        counts = TEST['morph_results'][fov]['counts']
+                
+        grid_pairs = sorted(list(itertools.product(rowvals, colvals)), key=lambda x: (x[0], x[1]))
+        for trans_config in grid_pairs:
+            #print ncorrect_grid
+            if k not in ncorrect.keys():
+                continue
+            rix = rowvals.index(trans_config[0])
+            cix = colvals.index(trans_config[1])
+            if np.isnan(ncorrect_grid[rix, cix]):
+                ncorrect_grid[rix, cix] = ncorrect[trans_config]
+                counts_grid[rix, cix] = counts[trans_config]
+            else:
+                ncorrect_grid[rix, cix] += ncorrect[trans_config] 
+                counts_grid[rix, cix] += counts[trans_config]
+        
+    performance_grid = ncorrect_grid / counts_grid
+    
+            
+            
     
     pl.figure()
     pl.imshow(performance_grid, cmap='hot', vmin=0.50, vmax=1.0)
     ax = pl.gca()
+    ax.set_xticks(range(len(colvals)))
     ax.set_xticklabels(colvals)
+    ax.set_xlabel(trans1)
+    ax.set_yticks(range(len(rowvals)))
+    ax.set_yticklabels(rowvals)
+    ax.set_ylabel(trans0)
     
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(rowvals)):
+        for j in range(len(colvals)):
+            text = ax.text(j, i, '%.2f' % performance_grid[i, j],
+                           ha="center", va="center", color="w")
+        
     pl.colorbar()
     
+    pl.savefig(os.path.join(clf_subdir, 'test_transforms_performance_grid_%s.png' % train_set))
+    
+    
+    
+    pl.figure()
+    pl.imshow(counts_grid, cmap='Blues', vmin=10)
+    ax = pl.gca()
+    ax.set_xticks(range(len(colvals)))
+    ax.set_xticklabels(colvals)
+    ax.set_xlabel(trans1)
+    ax.set_yticks(range(len(rowvals)))
+    ax.set_yticklabels(rowvals)
+    ax.set_ylabel(trans0)
+    
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(rowvals)):
+        for j in range(len(colvals)):
+            text = ax.text(j, i, '%.2f' % counts_grid[i, j],
+                           ha="center", va="center", color="w")
+        
+    pl.savefig(os.path.join(clf_subdir, 'test_transforms_counts_grid_%s.png' % train_set))
 
-    pl.savefig(os.path.join(clf_output_dir, 'figures', 'performance_grid_%s.png' % train_set))
+#%%
+    prob_m100_list = {}
+    m100 = max(clf.clfparams['class_subset']) #106
+    
+    # =============================================================================
+    # TEST the trained classifier -- MORPH LINE.
+    # =============================================================================
+    
+    all_counts = dict((k, []) for k in grouped_sdf.groups.keys())
+        
+    TEST = dict((fov, {}) for fov in clfs.keys())
+    all_trans1 = []; all_trans0 = []
+    
+    for fov in sorted(clfs.keys(), key=natural_keys):
+        C = trans_classifiers[fov]
+        clf = clfs[fov]['classifier']
+        svc, test, X_test, test_true, test_predicted, kept_rids = train_and_validate_best_clf(clf, setC=setC, nfeatures_select=nfeatures_select, 
+                                                                               full_train=full_train, test_size=test_size)    
+            
+        #kept_rids = clfs[fov]['RFE']['best']['kept_rids']
+        sample_data = C.sample_data[:, kept_rids]
+        sample_labels = C.sample_labels
+        sdf = pd.DataFrame(clf.sconfigs).T
+        if no_morphs:
+            sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
+            
+        all_trans0.extend(sorted([i for i in sdf[trans0].unique()]))
+        all_trans1.extend(sorted([i for i in sdf[trans1].unique()]))
+    
+        train_config = tuple(clf.clfparams['trans_value'])
+        
+        
+        test_data, test_labels = get_test_data(sample_data, sample_labels, sdf, clf.clfparams)
+        #%
+        
+        test_choices = svc.predict(test_data) #(test_data, fake_labels)
+        
+#        prob_choose_m100 = {}
+#        m100 = max(clf.clfparams['class_subset']) #106
+        # Plot % correct from test choices:
+        morph_levels = sorted(sdf[clf.clfparams['class_name']].unique())
+        for morph_level in morph_levels:
+            if morph_level in [morph_levels[0], morph_levels[-1]]:
+                prob = (1-test[morph_level]) if morph_level==0 else test[morph_level]
+            else:
+                curr_trials = [ti for ti, tchoice in enumerate(test_labels) if tchoice == morph_level]
+                curr_choices = [test_choices[ti] for ti in curr_trials]
+                prob = float( np.count_nonzero(curr_choices) ) / float( len(curr_choices) )
+            
+            if morph_level not in prob_m100_list:
+                prob_m100_list[morph_level] = []
+                
+            prob_m100_list[morph_level].append(prob)
+            
+    pl.close('all')
+    
+    
+    #%%
+    prob_choose_m100 = dict((k, np.mean(vals)) for k, vals in prob_m100_list.items())
+    pl.figure()
+    morph_choices = [prob_choose_m100[m] for m in morph_levels]
+    pl.plot(morph_levels, morph_choices, 'ko')
+    pl.ylim([0, 1.0])
+    pl.ylabel('perc. chose %i' % m100)
+    pl.xlabel('morph level')
+    pl.savefig(os.path.join(clf_subdir, 'perc_choose_106_%s.png' % train_set))
+    
+
+#%%
+
+
+        clf_save_fpath = os.path.join(clf_output_dir, 'classifier_results.npz')
+        np.savez(clf_save_fpath, svc=svc, cX=cX, cy=cy, kept_rids=kept_rids, visual_rois=C.rois, m100=m100,
+                 prob_choose_m100=prob_choose_m100, levels=morph_levels, class_name=clf.clfparams['class_name'],
+                 test_data=test_data, test_labels=test_labels)
+        
+
+    clfs_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms.pkl')
+    with open(clfs_fpath, 'wb') as f:
+        pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+        
     
 #%%
 
