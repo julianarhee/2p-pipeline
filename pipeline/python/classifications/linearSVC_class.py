@@ -1231,7 +1231,7 @@ def get_stat_samples(Xdata, labels_df, clfparams, multiple_durs=True):
 
     ntrials_total = len(labels_df['trial'].unique())
     ntrials_per_cond = [len(t) for t in labels_df.groupby('config')['trial'].unique()]
-    assert len(np.unique(ntrials_per_cond)) == 1, "Uneven reps per condition! %s" % str(ntrials_per_cond)
+    #assert len(np.unique(ntrials_per_cond)) == 1, "Uneven reps per condition! %s" % str(ntrials_per_cond)
     ntrials = np.unique(ntrials_per_cond)[0]
     
     # Get baseline and stimulus indices for each trial:
@@ -1517,11 +1517,11 @@ class TransformClassifier():
         else:
             dataset = dt           
             
-        # Check that there are equal num trials per cond:
-        rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
-        if len(list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))) > 1:
-            dataset, data_fpath = fmt.get_equal_reps(dataset, self.data_fpath)
-            self.data_fpath = data_fpath
+#        # Check that there are equal num trials per cond:
+#        rinfo = dataset['run_info'] if isinstance(dataset['run_info'], dict) else dataset['run_info'][()]
+#        if len(list(set([v for k,v in rinfo['ntrials_by_cond'].items()]))) > 1:
+#            dataset, data_fpath = fmt.get_equal_reps(dataset, self.data_fpath)
+#            self.data_fpath = data_fpath
             
         self.dataset = dataset
         
@@ -1565,7 +1565,7 @@ class TransformClassifier():
         # Make sure all conds have same N trials:
         ntrials_by_cond = self.run_info['ntrials_by_cond']
         ntrials_tmp = list(set([v for k, v in ntrials_by_cond.items()]))
-        assert len(ntrials_tmp)==1, "Unequal reps per condition!"
+        #assert len(ntrials_tmp)==1, "Unequal reps per condition!"
         labels_df = pd.DataFrame(data=self.dataset['labels_data'], columns=self.dataset['labels_columns'])
         
         if self.params['data_type'] == 'stat':
@@ -1634,7 +1634,7 @@ class TransformClassifier():
         # Is there a subgroup of class_name that we want to train the classifier on:
         if self.params['const_trans'] is not '':
             const_trans_dict = self.get_constant_transforms()
-            transforms_desc = '_'.join('%i%s' % (len(v), k) for k,v in const_trans_dict.items())
+            transforms_desc = '_'.join('%i%s' % (len(v) if isinstance(v, list) else v, k) for k,v in const_trans_dict.items())
         else:
             const_trans_dict = None
             transforms_desc = 'alltransforms'
@@ -1669,9 +1669,11 @@ class TransformClassifier():
             trans_value = []
             for trans in const_trans:
                 trans_value.append(sorted(sconfigs_df[trans].unique().tolist()))
+        else:
+            trans_value = [float(v) for v in trans_value]
         
         # Check that all provided trans-values are valid and get config IDs to include:
-        const_trans_dict = dict((k, v) for k,v in zip([t for t in const_trans], [v for v in trans_value]))
+        const_trans_dict = dict((k, [v]) for k,v in zip([t for t in const_trans], [v for v in trans_value]))
         
         return const_trans_dict
     
@@ -1690,7 +1692,7 @@ class TransformClassifier():
             for transform in transforms:
                 curr_clfparams = self.params.copy()
                 curr_clfparams['const_trans'] = transform.keys()
-                curr_clfparams['trans_value'] = sorted(transform.values(), key=lambda x: transform.keys())
+                curr_clfparams['trans_value'] = sorted([v for v in transform.values()], key=lambda x: transform.keys())
                 self.classifiers.append(LinearSVM(curr_clfparams, 
                                                   self.sample_data, 
                                                   self.sample_labels, 
@@ -1791,6 +1793,26 @@ class LinearSVM():
         
         else:
             cX, cy, class_labels = self.group_by_class()
+        
+        # Check that nsamples are the same for all groups:
+        counts_by_class = Counter(cy)
+        print counts_by_class
+        tmp_cX = cX.copy(); tmp_cy = cy.copy();
+        remove_ixs=[]
+        if len(list(set([v for k,v in counts_by_class.items()]))) > 1:
+            print "Uneven n samples for each class."
+            print "... making equal..."
+            # randomly choose N samples:
+            min_num = min([v for k,v in counts_by_class.items()])
+            classes_to_subsample = [k for k,v in counts_by_class.items() if v > min_num]
+            for cs in classes_to_subsample:
+                remove_sample_ixs = random.sample(range(0, counts_by_class[cs]), counts_by_class[cs]-min_num)
+                curr_ixs = np.where(cy==cs)[0]
+                remove_ixs.append(curr_ixs[remove_sample_ixs])
+            discard = [val for sublist in remove_ixs for val in sublist]
+            keep = np.array([ix for ix in range(len(tmp_cy)) if ix not in discard])    
+            cX = tmp_cX[keep,:]
+            cy = tmp_cy[keep]
             
         self.cX = StandardScaler().fit_transform(cX)
         self.cy = cy
