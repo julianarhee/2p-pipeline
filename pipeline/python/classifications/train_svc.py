@@ -821,6 +821,7 @@ def main(options):
             plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
         
         pl.savefig(os.path.join(clf_subdir, 'best_RFE_masks.png'))
+        pl.close()
         
 #%%
     middle_morph = 53
@@ -1010,6 +1011,8 @@ def main(options):
     pl.close()
 
 #%%
+    
+if not no_morphs:
     prob_m100_list = {}
     m100 = max(clf.clfparams['class_subset']) #106
     
@@ -1037,8 +1040,7 @@ def main(options):
         sample_data = C.sample_data[:, kept_rids]
         sample_labels = C.sample_labels
         sdf = pd.DataFrame(clf.sconfigs).T
-        if no_morphs:
-            sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
+        sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
             
         all_trans0.extend(sorted([i for i in sdf[trans0].unique()]))
         all_trans1.extend(sorted([i for i in sdf[trans1].unique()]))
