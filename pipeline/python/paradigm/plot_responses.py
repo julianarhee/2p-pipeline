@@ -338,6 +338,7 @@ def make_clean_psths(options):
         nrows = 1; ncols=3;
     
     grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
+    print grid_pairs
     #%
     # Set output dir for nice(r) psth:
     if plot_trials:
