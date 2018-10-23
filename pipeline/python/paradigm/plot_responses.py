@@ -336,8 +336,12 @@ def make_clean_psths(options):
     
     if len(sgroups.groups) == 3:
         nrows = 1; ncols=3;
-    
-    grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
+
+    print "N stimulus combinations:", len(stim_grid)
+    if len(stim_grid)==1:
+        grid_pairs = sorted([x for x in stim_grid[0]])
+    else:
+        grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
     print grid_pairs
     #%
     # Set output dir for nice(r) psth:
@@ -468,7 +472,11 @@ def make_clean_psths(options):
                     axesf[pi].set_xticks((0, 0))
                 axesf[pi].set_xticklabels(())
                 axesf[pi].tick_params(axis='x', which='both',length=0)
-                axesf[pi].set_title('(%.1f, %.1f)' % (k[0], k[1]), fontsize=10)
+                if isinstance(k, int):
+                    axesf[pi].set_title('(%.1f)' % (k), fontsize=10)
+                else:
+                    axesf[pi].set_title('(%.1f, %.1f)' % (k[0], k[1]), fontsize=10)
+
 
             # Set y-axis to be the same, if specified:
             if scale_y:
