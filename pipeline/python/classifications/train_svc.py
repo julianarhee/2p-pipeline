@@ -640,8 +640,8 @@ options = ['-D', rootdir, '-i', 'CE077',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', '-N', 'morphlevel',
            '--subset', '0,106',
-           '-c', 'xpos,yrot',
-           '-v', '-5,0',
+#           '-c', 'xpos,yrot',
+#           '-v', '-5,0',
            '--nproc=1'
            ]
 
@@ -712,12 +712,12 @@ def main(options):
     # Specify training meta parameters - this also sets the output dir:
     # -------------------------------------------------------------------------
 
-    setC='best'
+    setC='small'
     nfeatures_select='best'
     full_train=True
     test_size=0. #0.33
     train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '0')
-    no_morphs = True
+    no_morphs = False
     
     #trained_labels = list(set([int(i) for fov, cdict in clfs.items() for i in cdict['classifier'].clfparams['class_subset']]))
     trained_labels = list(set([int(i) for fov, tdict in trans_classifiers.items() for i in tdict['C'].classifiers[0].clfparams['class_subset']]))
@@ -987,7 +987,7 @@ def main(options):
     label_figure(fig, data_identifier)
 
     pl.savefig(os.path.join(test_transforms_dir, 'test_transforms_performance_grid_%s.png' % train_set))
-    pl.close()
+    #pl.close()
     
     
     fig = pl.figure(figsize=(15,8))
@@ -1008,11 +1008,11 @@ def main(options):
                            ha="center", va="center", color="w")
         
     pl.savefig(os.path.join(test_transforms_dir, 'test_transforms_counts_grid_%s.png' % train_set))
-    pl.close()
+    #pl.close()
 
 #%%
     
-if not no_morphs:
+#if not no_morphs:
     prob_m100_list = {}
     m100 = max(clf.clfparams['class_subset']) #106
     
@@ -1029,7 +1029,7 @@ if not no_morphs:
     
     for fov in sorted(clfs.keys(), key=natural_keys):
         C = trans_classifiers[fov]['C']
-        clf = clfs[fov]['classifier']
+        clf = copy.copy(clfs[fov]['classifier'])
         svc, traindataX, testdataX, test, kept_rids = train_and_validate_best_clf(clf, setC=setC, nfeatures_select=nfeatures_select, 
                                                                                full_train=full_train, test_size=test_size,
                                                                                secondary_output_dir=os.path.join(test_morphs_dir, 'cross_validation'), 
@@ -1040,7 +1040,7 @@ if not no_morphs:
         sample_data = C.sample_data[:, kept_rids]
         sample_labels = C.sample_labels
         sdf = pd.DataFrame(clf.sconfigs).T
-        sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
+        #sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
             
         all_trans0.extend(sorted([i for i in sdf[trans0].unique()]))
         all_trans1.extend(sorted([i for i in sdf[trans1].unique()]))
