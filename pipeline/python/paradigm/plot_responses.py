@@ -202,7 +202,7 @@ def make_clean_psths(options):
     if 'cnmf' in traceid:
         traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
     else:
-        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid))[0]
+        traceid_dir = [t for t in glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid)) if 'ORIG' not in t][0]
 
 #    if '_' not in traceid: 
 #        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
@@ -210,7 +210,7 @@ def make_clean_psths(options):
 #        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
 
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    print "Loaded data from: %s" % traceid_dir
+    print "Loaded data from: %s" % data_fpath #traceid_dir
 #    dataset = np.load(data_fpath)
 #    print dataset.keys()
 #        
@@ -286,12 +286,14 @@ def make_clean_psths(options):
     # Get stimulus info:
     sconfigs = dataset['sconfigs'][()]
     transform_dict, object_transformations = util.get_transforms(sconfigs)
+   
     # replace duration:
     if 'duration' in transform_dict.keys():
         transform_dict['stim_dur'] = transform_dict['duration']
         transform_dict.pop('duration')
     trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])        
     print "Trans:", trans_types
+    print object_transformations #transform_dict
 #
 #    if alt_axis is not None:
 #        trans_types.extend([alt_axis])
@@ -305,12 +307,12 @@ def make_clean_psths(options):
             sconfigs.pop(c)
             
     sconfigs_df = pd.DataFrame(sconfigs).T
-        
+    print sconfigs_df.head()    
         
     # Get trial and timing info:
     #    trials = np.hstack([np.tile(i, (nframes_per_trial, )) for i in range(ntrials_total)])
     #multi_plot = None
-    if len(trans_types) == 1:
+    if len(trans_types) == 1 and rows is None and columns is None:
         stim_grid = (transform_dict[trans_types[0]],)
         sgroups = sconfigs_df.groupby(sorted(trans_types))
         ncols = len(stim_grid[0])
@@ -323,15 +325,23 @@ def make_clean_psths(options):
                 rows = 'morphlevel'
             else:
                 rows = 'object'
+        if rows == 'object':
+            transform_dict['object'] = [i.value for i in sconfigs_df['object'].unique()]
         other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
+
         if columns is None:
             columns = other_trans_types[0]
+        if columns == 'object':
+            transform_dict['object'] = [i for i in sconfigs_df['object'].unique()]
+            
         if subplot_hue is None and len(other_trans_types) > 1:
             subplot_hue = [t for t in other_trans_types if t != columns][0]
+
+#        if nrows in 
         nrows = len(transform_dict[rows])
-        ncols = len(transform_dict[columns])
-        
+        ncols = len(transform_dict[columns])        
         stim_grid = (transform_dict[rows], transform_dict[columns])
+
         sgroups = sconfigs_df.groupby([rows, columns])
     
     if len(sgroups.groups) == 3:
@@ -475,7 +485,17 @@ def make_clean_psths(options):
                 if isinstance(k, int):
                     axesf[pi].set_title('(%.1f)' % (k), fontsize=10)
                 else:
-                    axesf[pi].set_title('(%.1f, %.1f)' % (k[0], k[1]), fontsize=10)
+                    if isinstance(k[0], (int, float)) or k[0].isdigit():
+                        k0 = float(k[0])
+                        k0_str = '%.1f' % k0
+                    else:
+                        k0_str = str(k[0])
+                    if isinstance(k[1], (int, float)) or k[1].isdigit():
+                        k1 = float(k[1])
+                        k1_str = '%.1f' % k1
+                    else:
+                        k1_str = str(k[1])
+                    axesf[pi].set_title('(%s, %s)' % (k0_str, k1_str), fontsize=10)
 
 
             # Set y-axis to be the same, if specified:
