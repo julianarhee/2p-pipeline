@@ -862,7 +862,7 @@ def cv_permutation_test(svc, cX_std, cy, clfparams, scoring='accuracy',
     
 
 
-def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
+def get_cv_folds(svc, clfparams, cX, cy, cy_labels=None, output_dir=None):
     
     cv_method = clfparams['cv_method']
     cv_nfolds = clfparams['cv_nfolds']
@@ -876,6 +876,7 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
 
     predicted = []
     true = []
+    config_names = []
     # Cross-validate for t-series samples:
     if cv_method=='splithalf':
     
@@ -887,7 +888,9 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
         y_pred = svc.predict(training_data[n_samples // 2:])
         predicted.append(y_pred) #=y_test])
         true.append(y_test)
-        
+        if cy_labels is not None:
+            config_names.append(cy_labels[n_samples // 2:])
+            
     elif cv_method=='kfold':
         loo = cross_validation.StratifiedKFold(cy, n_folds=cv_nfolds, shuffle=True)
 
@@ -898,6 +901,8 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
             y_pred = svc.fit(X_train, y_train).predict(X_test)
             predicted.append(y_pred) #=y_test])
             true.append(y_test)
+            if cy_labels is not None:
+                config_names.append(cy_labels[test])
     
     elif cv_method in ['LOGO', 'LOO', 'LPGO']:
         nframes_per_trial_tmp = list(set(Counter(cy)))
@@ -923,6 +928,8 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
     
             predicted.append(y_pred) #=y_test])
             true.append(y_test)
+            if cy_labels is not None:
+                config_names.append(cy_labels[test])
     
         if groups is not None:
             # Find "best fold"?
@@ -937,6 +944,9 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
             X_train, X_test = training_data[train], training_data[test]
             y_train, y_test = cy[train], cy[test]
             y_pred = predicted[best_fold]
+            if cy_labels is not None:
+                config_names.append(cy_labels[test])
+    
     
     if output_dir is not None:
         # Save CV info:
@@ -947,19 +957,21 @@ def get_cv_folds(svc, clfparams, cX, cy, output_dir=None):
         f.close()
         
         cv_results = {'predicted': [list(p) for p in predicted], #.tolist(), #list(y_pred),
-                      'true': [list(p) for i in true], # list(y_test),
+                      'true': [list(p) for p in true], # list(y_test),
                       'classifier': clfparams['classifier'],
                       'cv_method': clfparams['cv_method'],
                       'ngroups': clfparams['cv_ngroups'],
                       'nfolds': clfparams['cv_nfolds'],
-                      'classes': classes
+                      'classes': classes,
+                      'cy_labels': list(cy_labels),
+                      'config_names': [list(p) for p in config_names]
                       }
         with open(os.path.join(output_dir, 'results', 'CV_results.json'), 'w') as f:
             json.dump(cv_results, f, sort_keys=True, indent=4)
         
         print "Saved CV results: %s" % output_dir
 
-    return predicted, true, classes
+    return predicted, true, classes, config_names
 
 
 
@@ -1446,7 +1458,7 @@ class TransformClassifier():
                          roi_selector='visual', data_type='stat', stat_type='meanstim',
                          inputdata_type='corrected', 
                          get_null=False, class_name='', class_subset='',
-                         const_trans='', trans_value='',
+                         const_trans='', trans_value='', test_set=[], indie=False,
                          cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10):
         
         self.rootdir = rootdir
@@ -1490,7 +1502,9 @@ class TransformClassifier():
                         'cv_method': cv_method,
                         'cv_nfolds': cv_nfolds,
                         'cv_ngroups': cv_ngroups,
-                        'C_val': C_val}
+                        'C_val': C_val,
+                        'test_set': test_set,
+                        'indie': indie}
         self.set_params(train_params) # Set up classifier parameters
         
                 
@@ -1536,6 +1550,13 @@ class TransformClassifier():
             orig_sconfigs = self.dataset['sconfigs']
         else:
             orig_sconfigs = self.dataset['sconfigs'][()]
+            
+        # Make sure numbers are rounded:
+        for cname, cdict in orig_sconfigs.items():
+            for stimkey, stimval in cdict.items():
+                if isinstance(stimval, (int, float)):
+                    orig_sconfigs[cname][stimkey] = round(stimval, 1)
+                
         if int(self.session) < 20180602:
             # Rename morphs:
             update_configs = [cfg for cfg, info in orig_sconfigs.items() if info['morphlevel'] > 0]
@@ -1637,6 +1658,8 @@ class TransformClassifier():
                                     #aggregate_type = optsE.aggregate_type,     # Should be 'all', 'single', 'half' -- TOD:  add multiepl trans-constants
                                     const_trans = train_params['const_trans'],           # '' Transform type to hold at a constant value (must be different than class_name)
                                     trans_value = train_params['trans_value'],           # '' Transform value to hold const_trans at
+                                    test_set = train_params['test_set'],
+                                    indie = train_params['indie'], 
                                     class_subset = [float(c) if c.isdigit() else c for c in train_params['class_subset']],         # LIST of subset of class_name types to include
                                     #subset_nsamples = optsE.subset_nsamples,   #**# None; TODO:  fix this and 'subset' options -- these make no sense
                                     binsize = train_params['binsize'] if train_params['data_type'] =='frames' else '')
@@ -1654,11 +1677,21 @@ class TransformClassifier():
     
         # Is there a subgroup of class_name that we want to train the classifier on:
         if self.params['const_trans'] is not '':
-            const_trans_dict = self.get_constant_transforms()
-            transforms_desc = '_'.join('%i%s' % (len(v) if isinstance(v, list) else v, k) for k,v in const_trans_dict.items())
+            train_transforms_list = self.get_constant_transforms()
+            #transforms_desc = '_'.join('%i%s' % (len(v) if isinstance(v, list) else v, k) for k,v in train_transforms_list.items())
+            #if any([isinstance(v, list) and len(v) > 1 for tdict in train_transforms_list for k, v in tdict.items()]):
+            transforms_desc = '_'.join('%s%s' % (k, str(v)) for tdict in train_transforms_list for k,v in tdict.items())
+            transforms_desc = transforms_desc.replace(' ', '')
+            transforms_desc = transforms_desc.replace('[','(').replace(']', ')')
+
+            #transforms_desc = '_'.join('%i%s' % (len(v) if (isinstance(v, list) and len(v) > 1) else v if isinstance(v, (int, float)) else v[0], k) for tdict in train_transforms_list for k,v in tdict.items()) #train_transforms_list.items())
+
         else:
-            const_trans_dict = None
+            train_transforms_list = [] #None
             transforms_desc = 'alltransforms'
+            
+        if len(self.params['test_set']) > 0:
+            transforms_desc = '%s_holdtest%s' % (transforms_desc, len(self.params['test_set']))
         
         # What is the input data type:
         data_desc = '%s_%s_%s' % (self.params['data_type'], self.params['inputdata_type'], self.params['stat_type'])
@@ -1671,9 +1704,9 @@ class TransformClassifier():
         
         # Set output dirs:
         self.classifier_dir = os.path.join(self.traceid_dir, 'classifiers', classif_identifier)
-        self.const_trans_dict = const_trans_dict
+        self.train_transforms_list = train_transforms_list
         print "Creating CLF base dir:", self.classifier_dir
-        print "Training classifiers on the following constant transform values:", self.const_trans_dict
+        print "Training classifiers on the following constant transform values:", self.train_transforms_list
             
     # CLASSIFIER CREATION:
     
@@ -1681,7 +1714,7 @@ class TransformClassifier():
         # Select only those samples w/ values equal to specificed transform value.
         # 'const_trans' :  transform type desired
         # 'trans_value' :  value of const_trans to use.
-        
+        train_transforms_list = []
         sconfigs_df = pd.DataFrame(self.sconfigs).T
         const_trans = [trans.strip() for trans in self.params['const_trans']]
         trans_value = self.params['trans_value']
@@ -1695,22 +1728,71 @@ class TransformClassifier():
         
         # Check that all provided trans-values are valid and get config IDs to include:
         const_trans_dict = dict((k, [v]) for k,v in zip([t for t in const_trans], [v for v in trans_value]))
-        
-        return const_trans_dict
-    
-    
-    def initialize_classifiers(self):
 
-        if self.const_trans_dict is not None:
-            keys, values = zip(*self.const_trans_dict.items())
+        if const_trans_dict is not None:
+            keys, values = zip(*const_trans_dict.items())
+            #values_flat = [val[0] for val in values]
             transforms = [dict(zip(keys, v)) for v in itertools.product(*values)]
         else:
             transforms = []
             
+        if len(transforms) > 0:
+            remove_pairs = []
+            for config_set in transforms:
+                found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
+                if len(found_configs) == 0:
+                    remove_pairs.append(config_set)
+            if len(remove_pairs) > 0:
+                tmp_transforms = [sdict for sdict in transforms if sdict not in remove_pairs]
+                transforms = tmp_transforms
+            
+            # Check if we need to reserve a subset of configs for TEST:
+            train_transforms = [tdict for tdict in transforms if tdict not in self.params['test_set']]
+    
+            # Check if we are training EACH stimulus config independently, or group as 1:
+            if self.params['indie'] is False:
+                transform_dict = {}
+                transform_names = self.params['const_trans']
+                for trans_name in transform_names:
+                    transform_values = sorted(list(set([tdict[trans_name] for tdict in train_transforms])))
+                    transform_dict[trans_name] = transform_values
+                train_transforms_list.append(transform_dict)
+            else:
+                train_transforms_list = train_transforms
+                
+        return train_transforms_list #const_trans_dict
+    
+    
+    def initialize_classifiers(self):
+
+#        if self.const_trans_dict is not None:
+#            keys, values = zip(*self.const_trans_dict.items())
+#            values_flat = [val[0] for val in values]
+#            transforms = [dict(zip(keys, v)) for v in itertools.product(*values_flat)]
+#        else:
+#            transforms = []
+            
+#        if len(transforms) > 0:
+#            remove_pairs = []
+#            for config_set in transforms:
+#                found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
+#                if len(found_configs) == 0:
+#                    remove_pairs.append(config_set)
+#            if len(remove_pairs) > 0:
+#                tmp_transforms = [sdict for sdict in transforms if sdict not in remove_pairs]
+#                transforms = tmp_transforms
+            
         # If we are testing subset of the data (const_trans and trans_val are non-empty),
         # create a classifier + output subdirs for each subset:
-        if len(transforms) > 0:
-            for transform in transforms:
+        print "Initializing classifiers..."
+        print "--> transform subsets:"
+        pp.pprint(self.train_transforms_list)
+        confirm = raw_input("Create classifiers for each transformation?: Enter <Y> to accept, <ENTER> to quit: ")
+        if confirm != 'Y':
+            return
+        
+        if len(self.train_transforms_list) > 0:
+            for transform in self.train_transforms_list:
                 curr_clfparams = self.params.copy()
                 curr_clfparams['const_trans'] = transform.keys()
                 curr_clfparams['trans_value'] = sorted([v for v in transform.values()], key=lambda x: transform.keys())
@@ -1787,7 +1869,13 @@ class LinearSVM():
         if self.clfparams['const_trans'] is not '':
             # Create SUBDIR for specific const-trans and trans-val pair:
             const_trans_dict = dict((k, v) for k,v in zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
-            transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v)) if v < 0 else '%s_%.1f' % (k, v) for k,v in const_trans_dict.items())
+            print "TRANSFORMS for current clf:"
+            pp.pprint(const_trans_dict)
+            print "Testing EACH value of const transforms."
+            if any([(isinstance(v, list) and len(v) > 1) for k, v in const_trans_dict.items()]):
+                transforms_desc = '_'.join('%s_%i' % (k, len(v)) for k,v in const_trans_dict.items())
+            else:
+                transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v[0])) if v < 0 else '%s_%.1f' % (k, v[0]) for k,v in const_trans_dict.items())
             self.classifier_dir = os.path.join(self.classifier_dir, transforms_desc)
             
         # Set output dirs:
@@ -1802,18 +1890,18 @@ class LinearSVM():
         
         if self.clfparams['const_trans'] != '' and len(self.clfparams['class_subset']) == 0:
             # Only group and take subset of data for specified const-trans/trans-value pair
-            cX, cy, class_labels = self.group_by_transform_subset()
+            cX, cy, class_labels, cy_labels = self.group_by_transform_subset()
         
         elif len(self.clfparams['class_subset']) > 0 and self.clfparams['const_trans'] == '':
             # Only group and take subset of data for subset of class-to-be-trained (across all transforms)
-            cX, cy, class_labels = self.group_by_class_subset()
+            cX, cy, class_labels, cy_labels = self.group_by_class_subset()
         
         elif len(self.clfparams['class_subset']) > 0 and self.clfparams['const_trans'] != '':
             # Only group and take subset of data for class subset within a sub-subset of specified cons-trans/trans-value pair
-            cX, cy, class_labels = self.group_by_class_and_transform_subset()
+            cX, cy, class_labels, cy_labels = self.group_by_class_and_transform_subset()
         
         else:
-            cX, cy, class_labels = self.group_by_class()
+            cX, cy, class_labels, cy_labels = self.group_by_class()
         
         # Check that nsamples are the same for all groups:
         counts_by_class = Counter(cy)
@@ -1838,6 +1926,7 @@ class LinearSVM():
         self.cX = StandardScaler().fit_transform(cX)
         self.cy = cy
         self.class_labels = class_labels
+        self.cy_labels = cy_labels
 
         # Add finalized info to clfparams:        
         self.clfparams['dual'] = cX.shape[0] > cX.shape[1]
@@ -1846,10 +1935,11 @@ class LinearSVM():
     def group_by_class(self):
         
         cX = self.cX
-        cy = np.array([self.sconfigs[cv][self.clfparams['class_name']] if cv != 'bas' else 'bas' for cv in self.cy])
+        cy_tmp = self.cy
+        cy = np.array([self.sconfigs[cv][self.clfparams['class_name']] if cv != 'bas' else 'bas' for cv in cy_tmp])
         class_labels = sorted(np.unique(cy))
         
-        return cX, cy, class_labels
+        return cX, cy, class_labels, cy_tmp
     
     def group_by_class_subset(self):
         '''
@@ -1863,10 +1953,23 @@ class LinearSVM():
         '''
         
         sconfigs_df = pd.DataFrame(self.sconfigs).T
-        configs_included = sconfigs_df[sconfigs_df[self.clfparams['class_name']].isin(self.clfparams['class_subset'])].index.tolist()
+        configs_tmp = sconfigs_df[sconfigs_df[self.clfparams['class_name']].isin(self.clfparams['class_subset'])].index.tolist()
+
+        # Check if we need to hold any back for TEST SET:
+        hold_for_test = []
+        if len(self.clfparams['test_set']) > 0:
+            for transform in self.clfparams['test_set']:
+                subdf = sconfigs_df.copy()
+                for transname, transvalue in transform.items():
+                    subdf = subdf[subdf[transname]==transvalue]
+                hold_for_test.extend(subdf.index.tolist())
+            configs_included = [cfg for cfg in configs_tmp if cfg not in hold_for_test]
+        else:
+            configs_included = configs_tmp
+            
         if self.clfparams['get_null']:
             configs_included.append('bas')
-            
+
         kept_ixs = np.array([cix for cix, cname in enumerate(self.cy) if cname in configs_included])
         cX = self.cX[kept_ixs, :] 
         cy_tmp = self.cy[kept_ixs]
@@ -1874,7 +1977,7 @@ class LinearSVM():
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
         class_labels = sorted(np.unique(cy))
         
-        return cX, cy, class_labels
+        return cX, cy, class_labels, cy_tmp
 
 
     def group_by_transform_subset(self):
@@ -1882,7 +1985,10 @@ class LinearSVM():
         sconfigs_df = pd.DataFrame(self.sconfigs).T
         configs_included = []; configs_pile = self.sconfigs.keys()
         for transix, (trans_name, trans_value) in enumerate(const_trans_dict.items()):
-            assert trans_value in sconfigs_df[trans_name].unique(), "Specified trans_name, trans_value not found: %s" % str((trans_name, trans_value))
+            if isinstance(trans_value, list):
+                assert all([tv in sconfigs_df[trans_name].unique() for tv in trans_value]), "Specified transvalues NOT all in transname %s: %s" % (trans_name, str(trans_value))
+            else:
+                assert trans_value in sconfigs_df[trans_name].unique(), "Specified trans_name, trans_value not found: %s" % str((trans_name, trans_value))
             
             if transix == 0:
                 first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
@@ -1891,7 +1997,19 @@ class LinearSVM():
                 configs_pile = copy.copy(configs_tmp)
                 first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
                 configs_tmp = [c for c in configs_pile if c in first_culling]
-        configs_included = configs_tmp
+
+        
+        # Check if we need to hold any back for TEST SET:
+        hold_for_test = []
+        if len(self.clfparams['test_set']) > 0:
+            for transform in self.clfparams['test_set']:
+                subdf = sconfigs_df.copy()
+                for transname, transvalue in transform.items():
+                    subdf = subdf[subdf[transname]==transvalue]
+                hold_for_test.extend(subdf.index.tolist())
+            configs_included = [cfg for cfg in configs_tmp if cfg not in hold_for_test]
+        else:
+            configs_included = configs_tmp
     
         if self.clfparams['get_null']:
             configs_included.append('bas')
@@ -1903,7 +2021,7 @@ class LinearSVM():
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
         class_labels = sorted(np.unique(cy))
         
-        return cX, cy, class_labels
+        return cX, cy, class_labels, cy_tmp
 
 
     def group_by_class_and_transform_subset(self):
@@ -1914,7 +2032,10 @@ class LinearSVM():
         
         configs_included = []; configs_pile = self.sconfigs.keys()
         for transix, (trans_name, trans_value) in enumerate(const_trans_dict.items()):
-            assert trans_value in sconfigs_df[trans_name].unique(), "Specified trans_name, trans_value not found: %s" % str((trans_name, trans_value))
+            if isinstance(trans_value, list):
+                assert all([tv in sconfigs_df[trans_name].unique() for tv in trans_value]), "Specified transvalues NOT all in transname %s: %s" % (trans_name, str(trans_value))
+            else:
+                assert trans_value in sconfigs_df[trans_name].unique(), "Specified trans_name, trans_value not found: %s" % str((trans_name, trans_value))
             
             if transix == 0:
                 first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
@@ -1923,19 +2044,36 @@ class LinearSVM():
                 configs_pile = copy.copy(configs_tmp)
                 first_culling = sconfigs_df[sconfigs_df[trans_name].isin(trans_value)].index.tolist()
                 configs_tmp = [c for c in configs_pile if c in first_culling]
-        configs_included = configs_tmp
+            
+            print "Trans: %s (= %s) is %i configs." % (trans_name, str(trans_value), len(configs_tmp))
+        
+        # Check if we need to hold any back for TEST SET:
+        hold_for_test = []
+        if len(self.clfparams['test_set']) > 0:
+            for transform in self.clfparams['test_set']:
+                subdf = sconfigs_df.copy()
+                for transname, transvalue in transform.items():
+                    subdf = subdf[subdf[transname]==transvalue]
+                hold_for_test.extend(subdf.index.tolist())
+            configs_included = [cfg for cfg in configs_tmp if cfg not in hold_for_test]
+        else:
+            configs_included = configs_tmp
+        
     
         if self.clfparams['get_null']:
             configs_included.append('bas')
             
         kept_ixs = np.array([cix for cix, cname in enumerate(self.cy) if cname in configs_included])
+        print "Training classifier on %i different stimulus configs (nsamples = %i)" % (len(configs_included), len(kept_ixs))
+        #print "Current scongfig has %i trials for training." % len(kept_ixs)
+        
         cX = self.cX[kept_ixs, :] 
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
         class_labels = sorted(np.unique(cy))
         
-        return cX, cy, class_labels
+        return cX, cy, class_labels, cy_tmp
     
     
     def create_classifier(self):
@@ -2042,12 +2180,13 @@ class LinearSVM():
 
     def confusion_matrix(self, data_identifier=''):
                 
-        predicted, true, classes = get_cv_folds(self.clf, self.clfparams, self.cX, self.cy, output_dir=self.classifier_dir)
+        predicted, true, classes, config_names = get_cv_folds(self.clf, self.clfparams, self.cX, self.cy, cy_labels=self.cy_labels, output_dir=self.classifier_dir)
         plot_confusion_matrix_subplots(predicted, true, classes, cv_method=self.clfparams['cv_method'], 
                                        data_identifier=data_identifier, output_dir=self.classifier_dir)
         self.results['test'] = {'predicted': predicted,
                                 'true': true,
-                                'classes': classes}
+                                'classes': classes,
+                                'config_names': config_names}
 
     def do_RFE(self, scoring='accuracy', data_identifier=''):
         results_topN = iterate_RFE(self.clfparams, self.cX, self.cy, scoring=scoring, 
