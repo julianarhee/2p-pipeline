@@ -2,7 +2,7 @@
 # extract_traces.sbatch
 #
 #SBATCH -p cox # run on cox gpu to use correct env 
-#SBATCH -n 10 # one core
+#SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-2:00 # Running time of 3 hours
 #SBATCH --mem-per-cpu=8132 #70656 # Memory request of 70 GB (inc to 98304)
@@ -25,5 +25,5 @@ echo ${3}
 echo ${4}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/preprocessing/get_activity_map.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -n 10
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/preprocessing/get_activity_map.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -n 8
 
