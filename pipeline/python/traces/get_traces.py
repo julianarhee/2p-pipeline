@@ -578,8 +578,8 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
 
     # Save warp alignment, if requested:
     if save_warp_images:
-        plot_warped_rois(ref, sample, masks, masks_aligned, title=mode_str, 
-                             save_warp_images=save_warp_images, out_fpath=out_fpath)
+        plot_warped_rois(ref, sample, masks, masks_aligned, 
+                             out_fpath=out_fpath)
 
     return masks_aligned, accept_warp
 
