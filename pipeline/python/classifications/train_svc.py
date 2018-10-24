@@ -632,168 +632,6 @@ def get_roi_masks(traceid_dir, rootdir='/n/coxfs01/2p-data'):
 #glob.glob(os.path.join(optsE.rootdir, optsE.animalid, '2018*', 'FOV*', '*blobs*', 'traces', 'traces*', 'classifiers'))
 
 #%%
-#    
-#def train_and_test_transforms_single(trans_classifiers, clfs, clf_subdir, setC='big', nfeatures_select='best', 
-#                              full_train=False, test_size=0.2, secondary_output_dir=None, data_identifier='',
-#                              no_morphs=False, trans0=None, trans1=None, middle_morph=53, m100=106):
-#    if no_morphs:
-#        nomorph_str = '_nomorphs'
-#    else:
-#        nomorph_str = ''
-#    
-#    if trans0 is None or trans1 is None:
-#        trans0 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][0]
-#        trans1 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][1]
-#        
-#        
-#    TEST = {'morph_results': {},
-#            'predicted': {},
-#            'data': {},
-#            'labels': {}}
-#    
-#    TRAIN = {'traindata': {},
-#            'testdata': {},
-#            'kept_rids': {},
-#            'svc': {}}
-#    
-#    all_trans1 = []; all_trans0 = []
-#    
-#    for fov in sorted(clfs.keys(), key=natural_keys):
-#        C = copy.copy(trans_classifiers[fov]['C'])
-#        clf = copy.copy(clfs[fov]['classifier'])
-#        svc, traindataX, testdataX, traintest_results, kept_rids = train_and_validate_best_clf(clf, setC=setC, nfeatures_select=nfeatures_select, 
-#                                                                               full_train=full_train, test_size=test_size,
-#                                                                               secondary_output_dir=secondary_output_dir,
-#                                                                               data_identifier=clf.data_identifier)    
-#                                                                               
-#            
-#        #kept_rids = clfs[fov]['RFE']['best']['kept_rids']
-#        sample_data = C.sample_data[:, kept_rids]
-#        sample_labels = C.sample_labels
-#        sdf = pd.DataFrame(clf.sconfigs).T
-#        if no_morphs:
-#            sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
-#            
-#        
-#        all_trans0.extend(sorted([i for i in sdf[trans0].unique()]))
-#        all_trans1.extend(sorted([i for i in sdf[trans1].unique()]))
-#
-#
-#        train_config = tuple(clf.clfparams['trans_value'])
-#        
-#        grouped_sdf = sdf.groupby([trans0, trans1])
-#        tmp_data = sample_data.copy()
-#        tmp_labels = sample_labels.copy()
-#        #tmp_labels = [sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in tmp_labels]
-#        
-#        testdata = dict((tconfig, {}) for tconfig in grouped_sdf.groups.keys())
-#        performance = {}; counts = {}; ncorrect={};
-#        
-#        for trans_config,g in grouped_sdf:
-#            print trans_config
-#            if trans_config == train_config:
-#                testdata[trans_config]['data'] = testdataX['data']
-#                testdata[trans_config]['labels'] = testdataX['labels']
-#                testdata[trans_config]['predicted'] = testdataX['predicted']
-#                if testdataX['predicted'] is not None:
-#                    print "*****Train: %s, %i" % (str(trans_config), len(testdataX['predicted']))
-#            else:
-#                incl_ixs = np.array([i for i,label in enumerate(tmp_labels) if label in g.index.tolist()])
-#                testdata[trans_config]['data'] = tmp_data[incl_ixs, :]
-#                curr_labels = tmp_labels[incl_ixs]
-#                
-#                testdata[trans_config]['labels'] = np.array([sdf[sdf.index==cfg][clf.clfparams['class_name']][0] for cfg in curr_labels])
-#                testdata[trans_config]['predicted'] = svc.predict(testdata[trans_config]['data'])
-#
-#            if full_train and trans_config == train_config:
-##                performance[trans_config] = np.mean([testval for testclass,testval in traintest_results.items()])
-##                counts[trans_config] = traindataX['data'].shape[0] #clf.cX.shape[0]
-##                ncorrect[trans_config] = performance[trans_config] * counts[trans_config] 
-#                performance[trans_config] = np.mean([cinfo['percent_correct'] for cname, cinfo in traintest_results['by_config'].items() if cname in g.index.tolist()])
-#                ncorrect[trans_config] = np.sum([cinfo['ncorrect'] for cname, cinfo in traintest_results['by_config'].items() if cname in g.index.tolist()])
-#                counts[trans_config] = np.sum([cinfo['ntotal'] for cname, cinfo in traintest_results['by_config'].items() if cname in g.index.tolist()])
-#                
-#            else:
-#                left_trials = np.where(testdata[trans_config]['labels'] < middle_morph)[0]
-#                right_trials = np.where(testdata[trans_config]['labels'] > middle_morph)[0]
-#                mid_trials = np.where(testdata[trans_config]['labels'] == middle_morph)[0]
-#                correct = [1 if val==0 else 0 for val in testdata[trans_config]['predicted'][left_trials]]
-#                correct.extend([1 if val==m100 else 0 for val in testdata[trans_config]['predicted'][right_trials]])
-#                #correct.extend([0.5 for _ in range(len(mid_trials))])
-#                pcorrect = float(sum(correct)) / float(len(left_trials)+len(right_trials)) #float(len(testdata[k]['predicted']))
-#            
-#                performance[trans_config] = pcorrect
-#                counts[trans_config] = len(left_trials) + len(right_trials)
-#                ncorrect[trans_config] = sum(correct)
-#        
-#    
-#        
-#        TEST['morph_results'][fov] = {'accuracy': performance, 'counts': counts, 'ncorrect': ncorrect}
-#        TEST['predicted'][fov] = dict((tconfig, tdata['predicted']) for tconfig, tdata in testdata.items())
-#        TEST['data'][fov] = dict((tconfig, tdata['data']) for tconfig, tdata in testdata.items())
-#        TEST['labels'][fov] = dict((tconfig, tdata['labels']) for tconfig, tdata in testdata.items())
-#    
-#        TRAIN['testdata'][fov] = testdataX
-#        TRAIN['traindata'][fov] = traindataX
-#        TRAIN['kept_rids'][fov] = kept_rids
-#        TRAIN['svc'][fov] = svc
-#
-#    rowvals = sorted([i for i in list(set(all_trans1))]) #sdf[clf.clfparams['const_trans'][0]].unique()])
-#    colvals = sorted([i for i in list(set(all_trans0))])  #sdf[clf.clfparams['const_trans'][1]].unique()])
-#    TEST['rowvals'] = rowvals
-#    TEST['colvals'] = colvals
-# 
-#    
-#    train_trans_fpath = os.path.join(clf_subdir, 'TRAIN_clfs_transforms%s.pkl' % nomorph_str)
-#    with open(train_trans_fpath, 'wb') as f:
-#        pkl.dump(TRAIN, f, protocol=pkl.HIGHEST_PROTOCOL)
-#        
-#    test_trans_fpath = os.path.join(clf_subdir, 'TEST_clfs_transforms%s.pkl' % nomorph_str)
-#    with open(test_trans_fpath, 'wb') as f:
-#        pkl.dump(TEST, f, protocol=pkl.HIGHEST_PROTOCOL)
-#        
-#    pl.close('all')
-#
-#    return TRAIN, TEST
-##%
-#    
-#    # Plot classifier accuracy at each VIEW:    
-#    # -------------------------------------------------------------------------
-#    rowvals = sorted([i for i in list(set(all_trans1))]) #sdf[clf.clfparams['const_trans'][0]].unique()])
-#    colvals = sorted([i for i in list(set(all_trans0))])  #sdf[clf.clfparams['const_trans'][1]].unique()])
-#    
-#    ncorrect_grid = np.ones((len(rowvals), len(colvals)))*np.nan
-#    counts_grid = np.ones((len(rowvals), len(colvals)))*np.nan
-#    
-#    for fov in TEST['morph_results'].keys():
-#        #performance = TEST['morph_results'][fov]['accuracy']
-#        ncorrect = TEST['morph_results'][fov]['ncorrect']
-#        counts = TEST['morph_results'][fov]['counts']
-#                
-##        grid_pairs = sorted(list(itertools.product(rowvals, colvals)), key=lambda x: (x[0], x[1]))
-#        grid_pairs = sorted(list(itertools.product(colvals, rowvals)), key=lambda x: (x[0], x[1]))
-#
-#        for trans_config in grid_pairs:
-#            #print ncorrect_grid
-#            if trans_config not in ncorrect.keys():
-#                continue
-##            rix = rowvals.index(trans_config[1])
-##            cix = colvals.index(trans_config[0])
-#            rix = rowvals.index(trans_config[1])
-#            cix = colvals.index(trans_config[0])
-#            if np.isnan(ncorrect_grid[rix, cix]):
-#                ncorrect_grid[rix, cix] = ncorrect[trans_config]
-#                counts_grid[rix, cix] = counts[trans_config]
-#            else:
-#                ncorrect_grid[rix, cix] += ncorrect[trans_config] 
-#                counts_grid[rix, cix] += counts[trans_config]
-#        
-#    performance_grid = ncorrect_grid / counts_grid
-#    
-#    return performance_grid, counts_grid, rowvals, colvals
-
-
-#
     
 
 def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', nfeatures_select='best', 
@@ -850,12 +688,18 @@ def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', n
         # names to be included for TRAINING set:
         const_trans_dict = dict((k, v) for k,v in  zip(clf.clfparams['const_trans'], clf.clfparams['trans_value']))
 
-        if const_trans_dict is not None:
+        if const_trans_dict is not None and len(const_trans_dict.keys()) > 0:
+            keys, values = zip(*const_trans_dict.items())
+            #values_flat = [val[0] for val in values]
+            train_list = [dict(zip(keys, v)) for v in itertools.product(values)]
+        else:
+            # clf is trained on ALL configs:
+            #tconfigs = traintest_results['by_configs'].keys()
+            const_trans_all = [ctrans for ctrans, values in clf.run_info['transforms'].items() if len(values) > 0]
+            const_trans_dict = dict((ctrans, list(sdf[ctrans].unique())) for ctrans in const_trans_all)
             keys, values = zip(*const_trans_dict.items())
             #values_flat = [val[0] for val in values]
             train_list = [dict(zip(keys, v)) for v in itertools.product(*values)]
-        else:
-            train_list = []
         
         train_transforms = [tuple(tdict.values()) for tdict in train_list if tdict not in clf.clfparams['test_set']]
 
@@ -869,6 +713,7 @@ def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', n
         performance = {}; counts = {}; ncorrect={};
         
         for trans_config,g in grouped_sdf:
+            print trans_config
             if trans_config in train_transforms:
                 testdata[trans_config]['data'] = testdataX['data']
                 testdata[trans_config]['labels'] = testdataX['labels']
@@ -1015,8 +860,7 @@ def plot_transform_grid(performance_grid, rowvals=[], colvals=[],
     
     return fig
 
-
-train_te#%%
+#%%
     
 #options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181018', '-A', 'FOV2_zoom2p7x',
 #           '-R', 'combined_blobs_static', '-t', 'traces001',
@@ -1308,8 +1152,8 @@ def main(options):
     # =========================================================================
     # Specify training meta parameters - this also sets the output dir:
     # =========================================================================
-    setC='big'
-    nfeatures_select='best'
+    setC='best'
+    nfeatures_select='all'
     full_train=True
     test_size=0.0 #0.33
     train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '0')
@@ -1341,29 +1185,32 @@ def main(options):
 
     # Load or create classifier dicts that combine all specified fovs:
     # -------------------------------------------------------------------------
-    clfs_fpath = os.path.join(clf_subdir, 'classifiers.pkl')
-    if os.path.exists(clfs_fpath):
-        print "--- Loading existing classifier dict.---"
-        with open(clfs_fpath, 'rb') as f:
-            clfs = pkl.load(f)
-    else:
-        clfs = dict((fov, {}) for fov in sorted(trans_classifiers.keys(), key=natural_keys))
-        print "--- Creating NEW classifier dict.---"
-
-        for fov in trans_classifiers.keys():
-            print "... ... loading %s" % fov
-            C = trans_classifiers[fov]['C']
-            traceid_dir = trans_classifiers[fov]['traceid_dir']
-            clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
-            clfs[fov]['fov'] = get_fov(traceid_dir) 
-    #%
-            clfs[fov]['RFE'] = get_clf_RFE(clfs[fov]['classifier'])
-            clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
-            clfs[fov]['contours'] = get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
+#    clfs_fpath = os.path.join(clf_subdir, 'classifiers.pkl')
+#    if os.path.exists(clfs_fpath):
+#        print "--- Loading existing classifier dict.---"
+#        with open(clfs_fpath, 'rb') as f:
+#            clfs = pkl.load(f)
+#    else:
     
-        
-        with open(clfs_fpath, 'wb') as f:
-            pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
+    clfs_fpath = os.path.join(clf_subdir, 'classifiers.pkl')
+    
+    clfs = dict((fov, {}) for fov in sorted(trans_classifiers.keys(), key=natural_keys))
+    print "--- Creating NEW classifier dict.---"
+
+    for fov in trans_classifiers.keys():
+        print "... ... loading %s" % fov
+        C = trans_classifiers[fov]['C']
+        traceid_dir = trans_classifiers[fov]['traceid_dir']
+        clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
+        clfs[fov]['fov'] = get_fov(traceid_dir) 
+#%
+        clfs[fov]['RFE'] = get_clf_RFE(clfs[fov]['classifier'])
+        clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
+        clfs[fov]['contours'] = get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
+
+    
+    with open(clfs_fpath, 'wb') as f:
+        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
         
     # Plot RFE results from original CLFs created at start:
     # -------------------------------------------------------------------------
@@ -1390,7 +1237,7 @@ def main(options):
     # =============================================================================
     # TEST the trained classifier -- TRANSFORMATIONS.
     # =============================================================================
-    no_morphs = True
+    no_morphs = False
 
     middle_morph = 53
     m100 = 106 #max(clf.clfparams['class_subset'])
@@ -1402,7 +1249,7 @@ def main(options):
 
     const_trans_types = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans']
     if const_trans_types == '' or len(const_trans_types) == 1:
-        trans0 = 'ypos' #clf.clfparams['const_trans'][0]
+        trans0 = 'yrot' #clf.clfparams['const_trans'][0]
         trans1 = None #clf.clfparams['const_trans'][0]
     else:
         trans0 = const_trans_types[0]
@@ -1527,7 +1374,7 @@ def main(options):
 #        with open(train_morphs_fpath, 'wb') as f:
 #            pkl.dump(TRAIN, f, protocol=pkl.HIGHEST_PROTOCOL)        
 
-#%%
+#%
     # =============================================================================
     # TEST the trained classifier -- MORPH LINE: Split test data by VIEW.
     # =============================================================================
