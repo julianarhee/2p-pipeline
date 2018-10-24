@@ -72,13 +72,13 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
     rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
     unique_conditions = np.unique([rep[1] for rep in rep_list])
     conditions = dict((cond, [int(run) for run,config in rep_list if config==cond]) for cond in unique_conditions)
-    print conditions
+    #print conditions
     cstack = get_averaged_condition_stack(conditions, tiff_fpaths, RID)
 
     rtraces = {}
     for curr_cond in cstack.keys():
         roi_traces = apply_masks_to_tifs(masks, cstack[curr_cond])
-        print roi_traces.shape
+        #print roi_traces.shape
         rtraces[curr_cond] = roi_traces
 
     # Smooth roi traces:
@@ -144,7 +144,7 @@ def get_averaged_condition_stack(conditions, tiff_fpaths, RID):
             print "Loading: ", tiff_fpath
             tiff_stack = get_processed_stack(tiff_fpath, RID)
             szx, szy, nframes = tiff_stack.shape
-            print szx, szy, nframes
+            #print szx, szy, nframes
             if tidx == 0:
                 # initiate stack
                 stack = np.empty(tiff_stack.shape, dtype=tiff_stack.dtype)
@@ -162,8 +162,8 @@ def apply_masks_to_tifs(masks, stack):
     nrois = masks.shape[0]
     maskr = np.reshape(masks, (nrois, szx*szy))
     stackr = np.reshape(stack, (szx*szy, nframes))
-    print "masks:", maskr.shape
-    print "stack:", stackr.shape
+    #print "masks:", maskr.shape
+    #print "stack:", stackr.shape
     roi_traces = np.dot(maskr, stackr)
     return roi_traces
 
@@ -185,7 +185,7 @@ def block_mean(ar, fact):
 def block_mean_stack(stack0, ds_factor, along_axis=2):
     if along_axis==2:
 	im0 = block_mean(stack0[:,:,0],ds_factor) 
-        print im0.shape
+        #print im0.shape
 	stack1 = np.zeros((im0.shape[0],im0.shape[1],stack0.shape[2]))
 	for i in range(0,stack0.shape[2]):
             stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
@@ -216,7 +216,7 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	# Read in RAW tiff: 
 	print('Loading file : %s'%(tiff_path_full))
 	stack0 = tf.imread(tiff_path_full)
-        print stack0.shape
+        #print stack0.shape
 	#swap axes for familiarity
 	stack1 = np.swapaxes(stack0,0,2)
 	stack1 = np.swapaxes(stack1,1,0)
@@ -401,7 +401,7 @@ class ActivityInfo:
                 border_edge2 = peak + tail2
 
             rf_size_frames = border_edge2 - border_edge1
-            print rf_size_frames
+            #print rf_size_frames
         else:
             rf_size_frames = 0
             peak = 0
