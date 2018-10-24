@@ -320,10 +320,10 @@ class ActivityInfo:
     def parse_cycles(self, framestart, stimframes_incl):
         ncycles = len(framestart)
         parsed_traces = np.zeros((ncycles,stimframes_incl))
-        print parsed_traces.shape
-        print self.activity_trace.shape
+        #print parsed_traces.shape
+        #print self.activity_trace.shape
         for cycle in range(0,ncycles):
-            print framestart[cycle]
+            #print framestart[cycle]
             ixs_to_fill = framestart[cycle] + stimframes_incl
             if ixs_to_fill > len(self.activity_trace):
                 self.activity_trace = np.pad(self.activity_trace, ((0, ixs_to_fill - len(self.activity_trace))), mode='constant', constant_values=0)
@@ -461,7 +461,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     if analysis_id is None:
         analysis_id = 'analysis'
     retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
-    print retino_roi_analysis
+    #print retino_roi_analysis
     
     retinoids_fpath = glob.glob(os.path.join(acquisition_dir, 'retino*', 'retino_analysis', 'analysisids_*.json'))[0]
     retinoid_dir = os.path.split(retino_roi_analysis)[0]
@@ -510,7 +510,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     
     traces = get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=create_new)
     
-    print "Conditions:",  traces['traces'].keys()
+    #print "Conditions:",  traces['traces'].keys()
     traceinfo =  traces['traces']
     nrois = traces['masks'].shape[0]
     
@@ -550,7 +550,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
         roi = RetinoROI(curr_roi)
     
         for curr_cond in traceinfo.keys():
-            print curr_cond
+            #print curr_cond
             stack_info = traceinfo[curr_cond]['info']
             roi_traces = traceinfo[curr_cond]['traces']
     
