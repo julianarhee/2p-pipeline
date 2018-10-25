@@ -14,6 +14,9 @@ from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import estimate_RF_size as rf
 
 import cPickle as pkl
+import seaborn as sns
+import pylab as pl
+import numpy as np
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'CE077'
@@ -102,17 +105,18 @@ class FOV():
         self.animalid = animalid
         self.session = session
         self.acquisition = acquisition
-        
+        self.RFs = [] 
         self.retino_id = self.get_roi_retinotopy()
-        
+         
         if self.retino_id is not None:
             self.roi_id = self.retino_id['PARAMS']['roi_id']
             self.run_list = self.get_run_list()
         
-        self.RFs = []
+        #self.RFs = []
         
     def estimate_RFs_by_roi(self, fitness_thr=0.4, size_thr=0.1):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+        print "retino id:", self.retino_id['analysis_id']
         RF_estimates, _ = rf.get_RF_size_estimates(acquisition_dir, fitness_thr=fitness_thr, size_thr=fitness_thr, analysis_id=self.retino_id['analysis_id'])
         
         return RF_estimates
@@ -156,21 +160,80 @@ class FOV():
     
 #%%
 #    
-#
-#A = ANIMAL(animalid, excluded_sessions=excluded_sessions, rootdir=rootdir)
-#for session, fov in A.sessions.items():
-#    print session, fov.run_list
-#    RFs = fov.estimate_RFs_by_roi()
-#    fov.RFs.append(RFs) 
-#    print session, fov, "N rois:", len(RFs)
-#    
-#    
-## SAVE:
-#animal_fpath = os.path.join(rootdir, animalid, 'FOVS.pkl')
-#with open(animal_fpath, 'wb') as f:
-#    pkl.dump(animal_fpath, f, protocol=pkl.HIGHEST_PROTOCOL)
-    
 
+def get_animal(animalid, excluded_sessions=[], rootdir='/n/coxfs01/2p-data'):
+    A = ANIMAL(animalid, excluded_sessions=excluded_sessions, rootdir=rootdir)
+    for session, fov in A.sessions.items():
+        print session, len(fov.run_list)
+        subdir = os.path.join(A.rootdir, A.animalid, 'fovs')
+        if not os.path.exists(subdir): os.makedirs(subdir)
+        fov_fpath = os.path.join(subdir, '%s.pkl' % session)
+        if os.path.exists(fov_fpath):
+            with open(fov_fpath, 'rb') as f:
+                fov = pkl.load(f)
+        if 'RFs' not in dir(fov):
+            fov.RFs = []
+        if len(fov.RFs) == 0:
+            print "empty FOVs"
+            RFs = fov.estimate_RFs_by_roi()
+            fov.RFs.append(RFs)
+        if 'conditions' not in dir(fov.RFs[0]):
+            if 'conditions' in dir(fov.RFs[0][0]):
+                rlist = fov.RFs[0]
+                fov.RFs = rlist
+        with open(os.path.join(subdir, '%s.pkl' % session), 'wb') as f:
+            pkl.dump(fov, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print "Finished: %s" % session, "N rois", len(fov.RFs)
+        A.sessions[session] = fov
+
+    ## SAVE:
+    #animal_fpath = os.path.join(rootdir, animalid, 'FOVS.pkl')
+    #with open(animal_fpath, 'wb') as f:
+    #    pkl.dump(A, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return A 
+      
+def get_good_RFs(A, fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
+    rf_fits = {}
+    #animal_fpath = os.path.join(rootdir, animalid, 'FOVS.pkl')
+    #print "Loading FOV info for animal: %s" % animal_fpath
+    #with open(animal_fpath, 'rb') as f:
+    #    A = pkl.load(f)
+   
+    for session, fov in A.sessions.items():
+        nrois_total = len(fov.RFs)  
+        if nrois_total == 0:
+            print "No rois!"
+            rf_fits[session] = 0
+            continue
+       
+        retino_good_rois = [roi for roi in range(nrois_total) if all([fov.RFs[roi].conditions[ci].fit_results['r2'] >= fit_thr for ci in range(2)])]
+        print "%s: %i out of %i good RF fits." % (session, len(retino_good_rois), nrois_total)
+        #rf_fits[session] = good
+    
+        retino_az_cond = [c for c in range(2) if fov.RFs[roi].conditions[c].name == 'right'][0]
+        retino_el_cond = [c for c in range(2) if fov.RFs[roi].conditions[c].name == 'top'][0]
+        
+        retino_widths = [(fov.RFs[roi].conditions[retino_az_cond].fit_results['sigma'], fov.RFs[roi].conditions[retino_el_cond].fit_results['sigma']) for roi in retino_good_rois]
+        retino_rdict = dict((roi, {'width_x': fov.RFs[roi].conditions[retino_az_cond].fit_results['sigma'], 
+                           'width_y': fov.RFs[roi].conditions[retino_el_cond].fit_results['sigma'], 
+                           'r2_x': fov.RFs[roi].conditions[retino_az_cond].fit_results['r2'], 
+                           'r2_y': fov.RFs[roi].conditions[retino_el_cond].fit_results['r2']}) for roi in retino_good_rois)
+        rf_fits[session] = retino_rdict
+
+    return rf_fits 
+  
+def hist_rf_widths(rf_fits, visual_area='visual area', ax=None, color='g'):
+    rf_widths = [np.mean( [res['width_x'], res['width_y']] ) for session, rfdicts in rf_fits.items() for roi, res in rfdicts.items() ] 
+    if ax is None:
+        fig, ax = pl.subplots(1)
+
+    sns.distplot(rf_widths, label=visual_area, ax=ax,
+              rug=True, rug_kws={"color": color},
+              kde_kws={"color": color, "lw": 3, "label": "KDE", "alpha": 0.5},
+              hist_kws={"histtype": "step", "linewidth": 1, "alpha": 0.2, "color": color})
+ 
+    #return fig
 #%%
     
 #

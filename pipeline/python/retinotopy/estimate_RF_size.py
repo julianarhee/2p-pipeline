@@ -57,7 +57,12 @@ def get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_ne
         masks = load_roi_masks(session_dir, RID)
 
         # Block reduce masks to match downsampled tiffs:
-        masks = block_mean_stack(masks, int(RID['PARAMS']['downsample_factor']), along_axis=0)
+        dsample = RID['PARAMS']['downsample_factor']
+        if dsample is None:
+            dsample = 1
+        else:
+            dsample = int(dsample)
+        masks = block_mean_stack(masks, dsample, along_axis=0)
         print masks.shape
         
         # Combine reps of the same condition.
@@ -225,7 +230,12 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	#block-reduce, if indicated
 	if RETINOID['PARAMS']['downsample_factor'] is not None:
 		print('Performing block-reduction on stack....')
-		stack1 = block_mean_stack(stack1, int(RETINOID['PARAMS']['downsample_factor']))
+                dsample = RETINOID['PARAMS']['downsample_factor']
+                if dsample is None:
+                    dsample = 1
+                else:
+                    dsample = int(dsample)
+		stack1 = block_mean_stack(stack1, dsample)
 
 	#spatial smoothing, if indicated
 	if RETINOID['PARAMS']['smooth_fwhm'] is not None:
@@ -448,7 +458,7 @@ class RetinoROI:
 
 
 def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None):
-
+    print "*** GETTING ESTIMATES ***"
     run_dir = glob.glob(os.path.join(acquisition_dir, 'retino*'))[0]
     run = os.path.split(run_dir)[1]
     
@@ -457,14 +467,18 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     session = os.path.split(session_dir)[1]
     animalid = os.path.split(os.path.split(session_dir)[0])[1]
     rootdir = os.path.split(os.path.split(session_dir)[0])[0]
-    
+    print "SESSION:", session, "ACQ:", acquisition, analysis_id 
+    print "ANALYSIS ID:", analysis_id
     if analysis_id is None:
         analysis_id = 'analysis'
-    retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
-    #print retino_roi_analysis
+        retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
+        retinoid_dir = os.path.split(retino_roi_analysis)[0]
+
+    else:
+       retinoid_dir = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id))[0]
+    print retinoid_dir
     
     retinoids_fpath = glob.glob(os.path.join(acquisition_dir, 'retino*', 'retino_analysis', 'analysisids_*.json'))[0]
-    retinoid_dir = os.path.split(retino_roi_analysis)[0]
     retinoid = os.path.split(retinoid_dir)[1]
     
     with open(retinoids_fpath, 'r') as f: rids = json.load(f)
