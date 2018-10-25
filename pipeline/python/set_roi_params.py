@@ -452,7 +452,7 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
             src_rid = rdict[roi_source_id]
             params['source'][ridx] = dict()
             params['source'][ridx]['roi_dir'] = src_rid['DST']
-            params['source'][ridx]['tiff_dir'] = src_rid['SRC']
+            params['source'][ridx]['tiff_dir'] = src_rid['PARAMS']['tiff_sourcedir'] #src_rid['SRC']
             params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
             params['source'][ridx]['roi_id'] = src_rid['roi_id']
             params['source'][ridx]['roi_type'] = src_rid['roi_type']

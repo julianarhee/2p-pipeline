@@ -483,7 +483,7 @@ def plot_warped_rois(ref, sample, masks, masks_aligned, out_fpath='/tmp/aligned_
         ax3.imshow(wimRGB)
 
     #figname = 'aligned_rois.png'
-    pl.title(title)
+    #pl.title(title)
     pl.savefig(out_fpath)
     pl.close()
 
@@ -828,6 +828,7 @@ def plot_roi_masks(TID, RID, plot_neuropil=True, mask_figdir='/tmp', rootdir='')
         info = get_info_from_tiff_dir(TID['SRC'], session_dir)
         maskdict_path = replace_root(maskdict_path, rootdir, info['animalid'], info['session'])
     MASKS = h5py.File(maskdict_path, 'r')
+    print maskdict_path
 
     print "Plotting masks for %i files." % len(MASKS.keys())
     filenames = [k for k in MASKS.keys() if 'File' in k]

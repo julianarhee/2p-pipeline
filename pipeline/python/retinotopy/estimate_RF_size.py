@@ -57,7 +57,12 @@ def get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_ne
         masks = load_roi_masks(session_dir, RID)
 
         # Block reduce masks to match downsampled tiffs:
-        masks = block_mean_stack(masks, int(RID['PARAMS']['downsample_factor']), along_axis=0)
+        dsample = RID['PARAMS']['downsample_factor']
+        if dsample is None:
+            dsample = 1
+        else:
+            dsample = int(dsample)
+        masks = block_mean_stack(masks, dsample, along_axis=0)
         print masks.shape
         
         # Combine reps of the same condition.
@@ -72,13 +77,13 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
     rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
     unique_conditions = np.unique([rep[1] for rep in rep_list])
     conditions = dict((cond, [int(run) for run,config in rep_list if config==cond]) for cond in unique_conditions)
-    print conditions
+    #print conditions
     cstack = get_averaged_condition_stack(conditions, tiff_fpaths, RID)
 
     rtraces = {}
     for curr_cond in cstack.keys():
         roi_traces = apply_masks_to_tifs(masks, cstack[curr_cond])
-        print roi_traces.shape
+        #print roi_traces.shape
         rtraces[curr_cond] = roi_traces
 
     # Smooth roi traces:
@@ -144,7 +149,7 @@ def get_averaged_condition_stack(conditions, tiff_fpaths, RID):
             print "Loading: ", tiff_fpath
             tiff_stack = get_processed_stack(tiff_fpath, RID)
             szx, szy, nframes = tiff_stack.shape
-            print szx, szy, nframes
+            #print szx, szy, nframes
             if tidx == 0:
                 # initiate stack
                 stack = np.empty(tiff_stack.shape, dtype=tiff_stack.dtype)
@@ -162,8 +167,8 @@ def apply_masks_to_tifs(masks, stack):
     nrois = masks.shape[0]
     maskr = np.reshape(masks, (nrois, szx*szy))
     stackr = np.reshape(stack, (szx*szy, nframes))
-    print "masks:", maskr.shape
-    print "stack:", stackr.shape
+    #print "masks:", maskr.shape
+    #print "stack:", stackr.shape
     roi_traces = np.dot(maskr, stackr)
     return roi_traces
 
@@ -185,7 +190,7 @@ def block_mean(ar, fact):
 def block_mean_stack(stack0, ds_factor, along_axis=2):
     if along_axis==2:
 	im0 = block_mean(stack0[:,:,0],ds_factor) 
-        print im0.shape
+        #print im0.shape
 	stack1 = np.zeros((im0.shape[0],im0.shape[1],stack0.shape[2]))
 	for i in range(0,stack0.shape[2]):
             stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
@@ -216,7 +221,7 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	# Read in RAW tiff: 
 	print('Loading file : %s'%(tiff_path_full))
 	stack0 = tf.imread(tiff_path_full)
-        print stack0.shape
+        #print stack0.shape
 	#swap axes for familiarity
 	stack1 = np.swapaxes(stack0,0,2)
 	stack1 = np.swapaxes(stack1,1,0)
@@ -225,7 +230,12 @@ def get_processed_stack(tiff_path_full,RETINOID):
 	#block-reduce, if indicated
 	if RETINOID['PARAMS']['downsample_factor'] is not None:
 		print('Performing block-reduction on stack....')
-		stack1 = block_mean_stack(stack1, int(RETINOID['PARAMS']['downsample_factor']))
+                dsample = RETINOID['PARAMS']['downsample_factor']
+                if dsample is None:
+                    dsample = 1
+                else:
+                    dsample = int(dsample)
+		stack1 = block_mean_stack(stack1, dsample)
 
 	#spatial smoothing, if indicated
 	if RETINOID['PARAMS']['smooth_fwhm'] is not None:
@@ -320,10 +330,10 @@ class ActivityInfo:
     def parse_cycles(self, framestart, stimframes_incl):
         ncycles = len(framestart)
         parsed_traces = np.zeros((ncycles,stimframes_incl))
-        print parsed_traces.shape
-        print self.activity_trace.shape
+        #print parsed_traces.shape
+        #print self.activity_trace.shape
         for cycle in range(0,ncycles):
-            print framestart[cycle]
+            #print framestart[cycle]
             ixs_to_fill = framestart[cycle] + stimframes_incl
             if ixs_to_fill > len(self.activity_trace):
                 self.activity_trace = np.pad(self.activity_trace, ((0, ixs_to_fill - len(self.activity_trace))), mode='constant', constant_values=0)
@@ -401,7 +411,7 @@ class ActivityInfo:
                 border_edge2 = peak + tail2
 
             rf_size_frames = border_edge2 - border_edge1
-            print rf_size_frames
+            #print rf_size_frames
         else:
             rf_size_frames = 0
             peak = 0
@@ -448,7 +458,7 @@ class RetinoROI:
 
 
 def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None):
-
+    print "*** GETTING ESTIMATES ***"
     run_dir = glob.glob(os.path.join(acquisition_dir, 'retino*'))[0]
     run = os.path.split(run_dir)[1]
     
@@ -457,14 +467,18 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     session = os.path.split(session_dir)[1]
     animalid = os.path.split(os.path.split(session_dir)[0])[1]
     rootdir = os.path.split(os.path.split(session_dir)[0])[0]
-    
+    print "SESSION:", session, "ACQ:", acquisition, analysis_id 
+    print "ANALYSIS ID:", analysis_id
     if analysis_id is None:
         analysis_id = 'analysis'
-    retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
-    print retino_roi_analysis
+        retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
+        retinoid_dir = os.path.split(retino_roi_analysis)[0]
+
+    else:
+       retinoid_dir = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id))[0]
+    print retinoid_dir
     
     retinoids_fpath = glob.glob(os.path.join(acquisition_dir, 'retino*', 'retino_analysis', 'analysisids_*.json'))[0]
-    retinoid_dir = os.path.split(retino_roi_analysis)[0]
     retinoid = os.path.split(retinoid_dir)[1]
     
     with open(retinoids_fpath, 'r') as f: rids = json.load(f)
@@ -510,7 +524,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     
     traces = get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=create_new)
     
-    print "Conditions:",  traces['traces'].keys()
+    #print "Conditions:",  traces['traces'].keys()
     traceinfo =  traces['traces']
     nrois = traces['masks'].shape[0]
     
@@ -550,7 +564,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
         roi = RetinoROI(curr_roi)
     
         for curr_cond in traceinfo.keys():
-            print curr_cond
+            #print curr_cond
             stack_info = traceinfo[curr_cond]['info']
             roi_traces = traceinfo[curr_cond]['traces']
     
