@@ -18,7 +18,7 @@ import cPickle as pkl
 from pipeline.python.classifications import visualarea_class as vis
 
 
-
+#%%
 
 rootdir = '/n/coxfs01/2p-data'
 
@@ -28,15 +28,13 @@ fit_thr = 0.5
 fig, ax = pl.subplots()
 
 
-#%%
-
 
 #%%
 
 
 visual_area = 'V1'
 color = 'b'
-#rootdir = '/n/coxfs01/2p-data'
+kde = False
 
 V1_fovs = {'JC024': {'exclude':[],
                      'include': [],
@@ -71,7 +69,7 @@ for animalid, sessioninfo in V1_fovs.items():
         V1.update({fovkey: rdict})
     
 
-vis.hist_rf_widths(V1, visual_area=visual_area, ax=ax, color=color)
+vis.hist_rf_widths(V1, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 
 
@@ -86,7 +84,7 @@ vis.hist_rf_widths(V1, visual_area=visual_area, ax=ax, color=color)
 
 visual_area = 'LM'
 color = 'g'
-
+#kde = False
 
 LM_fovs = {'CE077': {'exclude':['20180525',
                                 '20180321',
@@ -113,7 +111,7 @@ for animalid, sessioninfo in LM_fovs.items():
         LM.update({fovkey: rdict})
         
         
-vis.hist_rf_widths(LM, visual_area=visual_area, ax=ax, color=color)
+vis.hist_rf_widths(LM, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 #%%
 
@@ -162,7 +160,7 @@ for animalid, sessioninfo in LI_fovs.items():
 #    
 #A = vis.get_animal(animalid, excluded_sessions=excluded_sessions, rootdir=rootdir)
 #LI_rfs = vis.get_good_RFs(A, fit_thr=fit_thr, rootdir=rootdir)
-vis.hist_rf_widths(LI, visual_area=visual_area, ax=ax, color=color)
+vis.hist_rf_widths(LI, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 #%%
 
@@ -174,18 +172,14 @@ POR_fovs = {'JC017': {'exclude':[],
                      'include': [],
                      'ignore': []
                      },
-           'CE84':  {'exclude': [],
+           'CE084':  {'exclude': [],
                      'include': ['20180511'],
                      'ignore': []
-                     },
-           'CE074': {'exclude': ['20180215'],
-                     'include': [],
-                     'ignore': ['20180221_FOV1*']
                      }
            }
                     
 POR = {}
-for animalid, sessioninfo in LI_fovs.items():
+for animalid, sessioninfo in POR_fovs.items():
     
     A = vis.get_animal(animalid, excluded_sessions=sessioninfo['exclude'], rootdir=rootdir)
     
@@ -202,5 +196,11 @@ for animalid, sessioninfo in LI_fovs.items():
 #    
 #A = vis.get_animal(animalid, excluded_sessions=excluded_sessions, rootdir=rootdir)
 #LI_rfs = vis.get_good_RFs(A, fit_thr=fit_thr, rootdir=rootdir)
-vis.hist_rf_widths(POR, visual_area=visual_area, ax=ax, color=color)
+vis.hist_rf_widths(POR, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
+#%%
+
+ax.legend()
+
+
+pl.savefig(os.path.join(rootdir, 'VISUAL_AREAS', 'all_fovs_RFs_noPOR.png'))
