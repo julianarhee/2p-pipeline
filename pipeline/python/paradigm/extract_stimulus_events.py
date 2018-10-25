@@ -145,10 +145,44 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     nexpected_frames = runinfo['nvolumes'] * runinfo['ntiffs']
     nfound_frames = len(frame_on_idxs)
+    frame_offsets = {}
     if nexpected_frames != nfound_frames:
-        print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nexpected_frames - nfound_frames)
-        
-        
+        nframes_off = nexpected_frames - nfound_frames
+        print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nframes_off)
+        if nframes_off < 0:
+            # More frames found than expected (we're skipping a chunk of the frames):
+            frames_per_chunk = np.diff(long_breaks)
+            funky_stretches = [frix for frix,chunklength in enumerate(frames_per_chunk) if abs(chunklength - runinfo['nvolumes']) > 2] 
+            tif_files_with_delay = [tix+1 for tix in funky_stretches] # add 1 cuz diff adds 1 and break counts begin after File001
+            if len(tif_files_with_delay) > 0:
+                first_file_offset = min(tif_files_with_delay)
+                # All subsequent tifs should have appropriate offset:
+                last_tif = first_file_offset
+                nframes_to_add = {}
+                for tix in np.arange(first_file_offset, runinfo['ntiffs']):
+                    if tix in tif_files_with_delay:
+                        tmp_last_tif = [k for k in tif_files_with_delay if k > last_tif]
+                        if len(tmp_last_tif) > 0: # We hit the last offset
+                            last_tif = tmp_last_tif[0]
+                        
+                    nframes_to_add.update({tix: frames_per_chunk[last_tif-1]})
+            else:
+                # There are extra frames because we're ignoring chunks at the end (liekly incompletel chunks):
+                first_file_offset = runinfo['ntiffs']
+                
+            for tix in range(runinfo['ntiffs']):
+                if tix >= first_file_offset:
+                    print "---> Found a funky delay (extra frames not beloning to a tif) prior to File%03d" % (tix+1)
+                    frame_offsets.update({tix: nframes_to_add[tix]})
+                else:
+                    frame_offsets.update({tix: 0})
+        else:
+            frame_offsets = dict((tix, 0) for tix in range(runinfo['ntiffs']))
+ 
+    else:
+        frame_offsets = dict((tix, 0) for tix in range(runinfo['ntiffs']))
+                
+                
     use_loop = False # True 
 
     ### Get arduino-processed bitcodes for each frame: frame_on_idxs[8845]
@@ -181,7 +215,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         # ix += 1
        
     print "Found %i missed triggers! - index: %i, trigger ix: %i" % (missed_triggers, idx, frameidx)
-    print frame_bitcodes.keys()[0:5]        
+    print sorted(frame_bitcodes.keys()[0:5], key=natural_keys)
 
     ### Find first frame of MW experiment start:
     modes_by_frame = dict((fr, int(frame_bitcodes[fr].mode()[0])) \
@@ -274,8 +308,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         if skip_trial: # Skip the PREVIOUS trials, so jump full trial's worth of frame indices:
             print "... Skipping previous trials' frames (%s)..." % prev_trial
-            iti_frames = int(np.floor(mwtrials[prev_trial]['iti_duration']/1E3) * framerate) 
-            stim_frames = int(np.floor(mwtrials[prev_trial]['stim_duration']/1E3) * framerate) 
+            iti_frames = round(round(mwtrials[prev_trial]['iti_duration']/1E3, 1) * framerate, 1) 
+            stim_frames = round(round(mwtrials[prev_trial]['stim_duration']/1E3, 1) * framerate, 1) 
             # NOTE:  Trials skipped if massive frame-shift error in bitcodes
             # This is likely an indication of funky behavior during acquisition - we should skip these trials
             # Based on 20180814 - JC008 gratings data, we don't want to skip full trial's worth of frames.
@@ -373,7 +407,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                                     
                 #--first_found_frame.append(first_frame[1])
                 #--curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
-                first_found_frame.append(pframe)
+                first_found_frame.append(first_frame) #.append(pframe)
                 curr_frames = curr_frames[currframes_counter:]
                 curr_frame_vals = curr_frame_vals[currframes_counter:]
 
@@ -429,11 +463,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             continue
         
         # Do checks for stimulus duration:        
-        stim_dur_curr = round((int(first_found_frame[-1][0].split('_')[0]) - int(first_found_frame[0][0].split('_')[0]))/framerate, 2)
-        print round(stim_dur_curr), '[%s]' % trial
+        stim_dur_curr = round((float(first_found_frame[-1][0].split('_')[0]) - float(first_found_frame[0][0].split('_')[0]))/framerate, 1)
+        print stim_dur_curr, 'sec [%s]' % trial
 
         try:
-            assert round(stim_dur_curr, 1) == round(np.floor(mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
+            assert round(stim_dur_curr, 1) == round((mwtrials[trial]['stim_duration']/1E3), 1), "Bad stim duration..! %s:" % trial 
         except Exception as e:
             dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
                                 bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
@@ -447,12 +481,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         trialevents[mwtrial_hash]['stim_on_idx'] = int(first_found_frame[0][0].split('_')[0])
         trialevents[mwtrial_hash]['stim_off_idx'] = int(first_found_frame[-1][0].split('_')[0])
         trialevents[mwtrial_hash]['mw_trial'] = mwtrials[trial]
+        trialevents[mwtrial_hash]['block_frame_offset'] = frame_offsets[mwtrials[trial]['block_idx']]
         
         #prev_trial = trial
     #%%
     # Do a final check of all stim durs:
-    rounded_durs = list(set([round(d) for d in durs]))
-    unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3) for t in mwtrials.keys()]))
+    rounded_durs = list(set([round(d, 1) for d in durs]))
+    unique_mw_stim_durs = list(set([round(mwtrials[t]['stim_duration']/1E3, 1) for t in mwtrials.keys()]))
     if len(rounded_durs) != len(unique_mw_stim_durs):
         print " *** WARNING -- funky stim durs found:", rounded_durs
         print " --- found MW stim durs:", unique_mw_stim_durs
@@ -491,6 +526,8 @@ def extract_options(options):
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='', help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--verbose', action='store_true', dest='verbose', default=False, help="set if want to print extra info for parsing")
+
 
     parser.add_option('--dynamic', action="store_true",
                       dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
@@ -524,7 +561,7 @@ def extract_options(options):
 #stimorder_files = False
 
 
-def parse_acquisition_events(run_dir, blank_start=True):
+def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 
     run = os.path.split(run_dir)[-1]
     runinfo_path = os.path.join(run_dir, '%s.json' % run)
@@ -583,7 +620,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
         serialfn_path = os.path.join(paradigm_rawdir, serialfn)
 
         # Align MW events to frame-events from serialdata:
-        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=blank_start, verbose=False)
+        trialevents = extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=blank_start, verbose=verbose)
 
         # Sort trials in run by time:
         sorted_trials_in_run = sorted(trialevents.keys(), key=lambda x: trialevents[x]['stim_on_idx'])
@@ -623,6 +660,7 @@ def parse_acquisition_events(run_dir, blank_start=True):
             RUN[trialname]['frame_stim_on'] = trialevents[trialhash]['stim_on_idx']
             RUN[trialname]['frame_stim_off'] = trialevents[trialhash]['stim_off_idx']
             RUN[trialname]['trial_in_run'] = trialnum
+            RUN[trialname]['block_frame_offset'] = trialevents[trialhash]['block_frame_offset']
 
 
     # Get unique hash for current RUN dict:
@@ -665,6 +703,7 @@ def main(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    verbose = options.verbose 
     slurm = options.slurm
 
     if slurm is True and 'coxfs01' not in rootdir:
@@ -693,6 +732,8 @@ def main(options):
         mwopts.extend(['--phasemod'])
     if single_run is False:
         mwopts.extend(['--multi'])
+    if verbose is True:
+        mwopts.extend(['--verbose'])
 
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)
@@ -708,7 +749,7 @@ def main(options):
     # Set reference path and get SERIALDATA info:
     # ================================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start)
+    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start, verbose=verbose)
     print "----------------------------------------"
     print "ACQUISITION INFO saved to:\n%s" % parsed_run_outfile
     print "----------------------------------------"

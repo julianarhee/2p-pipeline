@@ -16,13 +16,129 @@ import pprint
 import time
 import traceback
 import re
+from skimage import exposure
+
+import cv2
+import imutils
+
 import pylab as pl
 import numpy as np
-from pipeline.python.utils import natural_keys, get_source_info, replace_root
+from pipeline.python.utils import natural_keys, get_source_info, replace_root, write_dict_to_json
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
+
+
+def get_roi_contours(roi_masks, roi_axis=0):
+    
+    cnts = []
+    nrois = roi_masks.shape[roi_axis]
+    for ridx in range(nrois):
+        if roi_axis == 0:
+            im = np.copy(roi_masks[ridx, :, :])
+        else:
+            im = np.copy(roi_masks[:, :, ridx])
+        im[im>0] = 1
+        im[im==0] = np.nan #1
+        im = im.astype('uint8')
+        edged = cv2.Canny(im, 0, 0.9)
+        tmp_cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        tmp_cnts = tmp_cnts[0] if imutils.is_cv2() else tmp_cnts[1]
+        cnts.append((ridx, tmp_cnts[0]))
+    print "Created %i contours for rois." % len(cnts)
+
+    return cnts
+
+def uint16_to_RGB(img):
+    im = img.astype(np.float64)/img.max()
+    im = 255 * im
+    im = im.astype(np.uint8)
+    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
+    return rgb
+
+def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None, 
+                          roi_highlight = [],
+                          label_all=False, roi_color_default=(127, 127, 127),
+                          label_highlight=False, roi_color_highlight=(0, 255, 0),
+                          thickness=1, fontsize=12):
+
+
+    if ax is None:
+        fig, ax = pl.subplots(1, figsize=(10,10))
+
+
+    #clip_limit=0.02
+    # Create ZPROJ img to draw on:
+    refRGB = uint16_to_RGB(zproj)        
+#    p2, p98 = np.percentile(refRGB, (1, 99))
+#    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
+    im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
+    im_adapthist *= 256
+    im_adapthist= im_adapthist.astype('uint8')
+    ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
+
+    orig = im_adapthist.copy()
+
+    # loop over the contours individually
+    for rid, cnt in enumerate(cnts):
+        contour = np.squeeze(cnt[-1])
+        
+
+        # draw the contours on the image
+        orig = refRGB.copy()
+
+        if len(contour.shape) == 1:
+            xpos = contour[0]
+            ypos = contour[1]
+            single = True
+        else:
+            xpos = contour[-1, 0]
+            ypos = contour[-1, 1]
+            single = False
+            
+        if len(roi_highlight) > 0 and rid in roi_highlight:
+            col255 = tuple([cval/255. for cval in roi_color_highlight])
+            if label_highlight:
+                ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
+        else:
+            col255 = tuple([cval/255. for cval in roi_color_default])
+            if label_all:
+                ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
+            
+        #cv2.drawContours(orig, cnt, -1, col255, thickness)
+        if single:
+            ax.plot(contour[0], contour[1], color=col255)
+        else:
+            ax.plot(contour[-1, 0], contour[-1, 1], color=col255)
+
+
+        ax.imshow(orig)
+        
+#%%
+def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[], rootdir=''):
+    roiparams = dict()
+    rid_dir = RID['DST']
+    if rootdir not in rid_dir:
+        session_dir = rid_dir.split('/ROIs/')[0]
+        session = os.path.split(session_dir)[-1]
+        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
+        rid_dir = replace_root(rid_dir, rootdir, animalid, session)
+
+    roiparams['eval'] = evalparams
+    roiparams['keep_good_rois'] = keep_good_rois
+    roiparams['excluded_tiffs'] = excluded_tiffs
+    roiparams['roi_type'] = RID['roi_type']
+    roiparams['roi_id'] = RID['roi_id']
+    roiparams['rid_hash'] = RID['rid_hash']
+
+    roiparams_filepath = os.path.join(rid_dir, 'roiparams.json') # % (str(roi_id), str(rid_hash)))
+    write_dict_to_json(roiparams, roiparams_filepath)
+
+    print "Saved ROI params to: %s" % roiparams_filepath
+
+    return roiparams
+
 
 def get_roi_eval_path(src_roi_dir, eval_key, auto=False):
     src_eval_filepath = None

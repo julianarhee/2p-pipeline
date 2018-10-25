@@ -190,7 +190,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
 
         # Get presentation info (should be constant across trials and files):
         trial_list = sorted(trialdict.keys(), key=natural_keys)
-        stim_durs = [round(np.floor(trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
+        stim_durs = [round((trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
         #assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
         if len(list(set(stim_durs))) > 1:
             print "more than 1 stim_dur found:", list(set(stim_durs))
@@ -198,7 +198,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         else:
             stim_on_sec = stim_durs[0]
        
-        iti_durs = [round(np.floor(trialdict[t]['iti_dur_ms']/1E3), 0) for t in trial_list]
+        iti_durs = [round(np.floor(trialdict[t]['iti_dur_ms']/1E3), 1) for t in trial_list]
         print 'Found ITI durs:', list(set(iti_durs))
         if len(list(set(iti_durs))) > 1:
             iti_jitter = round(max(iti_durs) - min(iti_durs)) #1.0 # TMP TMP 
@@ -359,12 +359,14 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset'][currtrial_in_run]))))
                 else:
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset']))))
-                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
-                if postframes[-1] > len(si_info['vol_idxs']):
-                    extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
-                    postframes = [p for p in postframes if p <= len(si_info['vol_idxs'])-1]
-                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
-
+#                print postframes
+#                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
+#                if postframes[-1] > len(si_info['vol_idxs']):
+#                    
+#                    extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
+#                    postframes = [p for p in postframes if p <= len(si_info['vol_idxs'])-1]
+#                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
+#                    
                 framenums = [preframes, [first_frame_on], postframes]
                 framenums = reduce(operator.add, framenums)
                 #print "POST FRAMES:", len(framenums)
@@ -437,8 +439,12 @@ def get_stimulus_configs(trial_info):
     trialdict = load_parsed_trials(trial_info['parsed_trials_source'])
 
     # Get presentation info (should be constant across trials and files):
-    trial_list = sorted(trialdict.keys(), key=natural_keys)
-
+    tmp_trial_list = sorted(trialdict.keys(), key=natural_keys)
+    
+    # 201810116 BUG -- ignore trials (and stimconfigs) that are "blanks"
+    ignore_trials = [t for t in tmp_trial_list if trialdict[t]['stimuli']['type'] == 'blank']
+    trial_list = sorted([t for t in tmp_trial_list if t not in ignore_trials], key=natural_keys)
+    
     # Get all varying stimulus parameters:
     stimtype = trialdict[trial_list[0]]['stimuli']['type']
     if 'grating' in stimtype:
@@ -1388,8 +1394,8 @@ def format_stimconfigs(configs):
         
     # Split position into x,y:
     for config in stimconfigs.keys():
-        stimconfigs[config]['xpos'] = configs[config]['position'][0]
-        stimconfigs[config]['ypos'] = configs[config]['position'][1]
+        stimconfigs[config]['xpos'] = round(configs[config]['position'][0], 2)
+        stimconfigs[config]['ypos'] = round(configs[config]['position'][1], 2)
         stimconfigs[config]['size'] = configs[config]['scale'][0]
         stimconfigs[config].pop('position', None)
         stimconfigs[config].pop('scale', None)

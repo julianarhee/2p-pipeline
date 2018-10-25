@@ -452,7 +452,7 @@ def set_options_manual(rootdir='', animalid='', session='', acquisition='', run=
             src_rid = rdict[roi_source_id]
             params['source'][ridx] = dict()
             params['source'][ridx]['roi_dir'] = src_rid['DST']
-            params['source'][ridx]['tiff_dir'] = src_rid['SRC']
+            params['source'][ridx]['tiff_dir'] = src_rid['PARAMS']['tiff_sourcedir'] #src_rid['SRC']
             params['source'][ridx]['rid_hash'] = src_rid['rid_hash']
             params['source'][ridx]['roi_id'] = src_rid['roi_id']
             params['source'][ridx]['roi_type'] = src_rid['roi_type']
@@ -782,14 +782,18 @@ def update_roi_records(rid, session_dir):
 
 def main(options):
 
-    rid = create_rid(options)
+    RID = create_rid(options)
 
     print "****************************************************************"
     print "Created RID."
     print "----------------------------------------------------------------"
-    pp.pprint(rid)
+    pp.pprint(RID)
     print "****************************************************************"
 
+    optsE = extract_options(options)
+    # Save tmp roiparams.json file:
+    roiparams = save_roi_params(RID, excluded_tiffs=RID['PARAMS']['eval']['manual_excluded'], rootdir=optsE.rootdir)
+    
 
 if __name__ == '__main__':
     main(sys.argv[1:])

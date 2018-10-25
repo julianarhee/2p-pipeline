@@ -1,5 +1,6 @@
 #!/usr/bin/env python2
 
+
 import numpy as np
 import os
 import optparse
@@ -95,8 +96,10 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     start_ev = [i for i in modes if i['value']==2][0]                                # 2=running, 0 or 1 = stopped
 
     run_idxs = [i for i,e in enumerate(modes) if e['time']>start_ev['time']]         # Get all "run states" if more than 1 found
-
-    end_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)  # Find the first "stop" event after the first "run" event
+    try:
+        end_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)  # Find the first "stop" event after the first "run" event
+    except StopIteration:
+        end_ev = df.get_events('#pixelClockCode')[-1] 
 
     # Create a list of runs using start/stop-event times (so long as "Stop" button was not pressed during acquisition, only 1 chunk of time)
     bounds = []
@@ -122,13 +125,20 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     print "Parsing file\n%s... " % dfn
     print "Found %i start events in session." % len(bounds)
     print "****************************************************************"
-    if verbose:
+    if verbose is True:
         print "Bounds: ", bounds
         for bidx, bound in enumerate(bounds):
             print "bound ID:", bidx, (bound[1]-bound[0])/1E6, "sec"
 
     if single_run is True:
-        bounds = [bounds[boundidx]]
+        if len(bounds) > 1:
+            print "Multiple boundaries found for run start/stop:"
+            for bi, boundary in enumerate(bounds):
+                print bi, (boundary[1]-boundary[0])/1E6, "sec"
+            bound_select = input('Select IDX of boundary to use: ')
+            bounds = [bounds[int(bound_select)]]
+        else:      
+            bounds = [bounds[boundidx]]
 
     return df, bounds
 
@@ -151,7 +161,7 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     # Only include SI trigger events if they were acquired while MW was actually "running" (i.e., start/stop time boundaries):
     trigg_evs = [t for t in trigg_evs if t.time >= boundary[0] and t.time <= boundary[1]]
-
+    print np.diff([t.time for t in trigg_evs])
     getout=0
     # Find all trigger LOW events after the first onset trigger (frame_trigger=0 when SI frame-trigger is high, =1 otherwise)
     while getout==0:
@@ -267,10 +277,16 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
         if early_abort is True:
             if found_new_start is True:
                 print "Missing final frame-off event, just appending last frame-trigg event to go with found START ev."
-                last_on_ev = curr_chunk[0]
+                #last_on_ev = curr_chunk[0]
                 #print last_on_ev
-                last_ev = trigg_evs[-1]
-                found_trigger_evs.append([last_on_ev, last_ev])
+                #last_ev = trigg_evs[-1]
+                curr_off_idx = [i.time for i in trigg_evs].index(curr_off_ev.time)
+                curr_start_idx = curr_off_idx - 1  # next "frame-start" should be immediately before next found "frame-off" event
+                curr_start_ev = trigg_evs[curr_start_idx]
+
+
+                found_trigger_evs.append([curr_start_ev, curr_off_ev]) #curr_chunk[-1]])
+                print "Last chunk duration:", (curr_off_ev.time - curr_start_ev.time)/1E3
             else:
                 found_trigger_evs[-1][1] = trigg_evs[-1]
 
@@ -380,24 +396,31 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
         print "standard ITIs:", iti_standard_dur
         #assert len(list(set(iti_standard_dur))) == 1, "More than 1 unique ITI standard found!, %s" % str(iti_standard_dur)
         if len(list(set(iti_standard_dur))) > 1:
-            print "***More than 1 unique ITI standard found."
-            selected_iti = raw_input("Select ITI dur to use: ")
-            iti_standard_dur = [float(selected_iti)]
+            iti_standard_dur = iti_standard_dur[-1]
+        else: 
+            iti_standard_dur = iti_standard_dur[0]
+            #print "***More than 1 unique ITI standard found."
+            #selected_iti = raw_input("Select ITI dur to use: ")
+            #iti_standard_dur = [float(selected_iti)]
            
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
             tmp_iti_vals = [i.value for i in tmp_itis]
-            if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==len(list(set(iti_standard_dur))):
+            if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==1:
                 # jitter var exists, but not actually used.
                 info['ITI'] = iti_standard_dur[0]
             else:
                 
                 # Only take ITI durs that are within the max allowed, since I don't know what the others are:
                 # Also, only consider events time-stamped after the first 'this_ITI_time' update.
-                iti_jitter_max = [i.value for i in df.get_events('ITI_jitter_max') if i.time >= tmp_itis[0].time]
-                assert len(list(set(iti_jitter_max))) == 1, "More than 1 unique ITI jitter max value found!, %s" % str(iti_jitter_max)
-                max_iti = iti_standard_dur[0] + iti_jitter_max[0]
+                iti_jitter_max = list(set([i.value for i in df.get_events('ITI_jitter_max')])) # if i.time >= tmp_itis[0].time]))
+                if len(iti_jitter_max) > 1:
+                    iti_jitter_max = iti_jitter_max[-1]
+                else: 
+                    iti_jitter_max = iti_jitter_max[0]
+                print "iti vals:", list(set([round(i/1E3, 1) for i in tmp_iti_vals]))
+                max_iti = iti_standard_dur + iti_jitter_max #[0] + iti_jitter_max #[0]
                 itis = sorted([i for i in tmp_itis if i.value <= max_iti], key=get_timekey)
                 if len(boundary) > 0:
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
@@ -427,7 +450,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
     runinfo_path = os.path.join(rundir, '%s.json' % run)
     with open(runinfo_path, 'r') as f: runinfo = json.load(f)
     
-    df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx)
+    df, bounds = get_session_bounds(curr_dfn, single_run=single_run, boundidx=boundidx, verbose=verbose)
     #print bounds
     codec = df.get_codec()
 
@@ -483,7 +506,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                 trigg_times_tmp.append([trigg_times[first_file_in_chunk][0], trigg_times[last_file_in_chunk][-1]])
             else:
                 trigg_times_tmp.append(trigger_sect)
-        assert len(trigg_times_tmp) == runinfo['ntiffs'], "Even with subdivs, funky n chunks (%i) found..." % len(trigg_times_tmp)
+        assert len(trigg_times_tmp) == runinfo['ntiffs'], "Even with subdivs, funky n chunks (%i) found...(expecting %i ntiffs)" % (len(trigg_times_tmp), runinfo['ntiffs'])
         trigg_times = trigg_times_tmp
         
     
@@ -524,6 +547,20 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     image_evs.append(curr_stim_evs[0])
             else:
                 image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+                # 20181016 data -- "blank" image events:
+                tmp_imevs = []
+                stimulus_duration = np.unique([s.value for s in df.get_events('distractor_presentation_time')])[0] / 1E3
+                print "Stim duration (s):", stimulus_duration
+                for pi, pev in enumerate(pixelclock_evs):
+                    if pi == len(pixelclock_evs)-1:
+                        continue
+                    curr_ev_dur = (pixelclock_evs[pi+1].time - pev.time) / 1E6
+                    if round(curr_ev_dur, 1) == stimulus_duration:
+                        tmp_imevs.append(pev)
+                blank_images = [i for i in tmp_imevs if i not in image_evs]
+                if len(blank_images) > 0:
+                    print "*** WARNING *** Found %i blank image events." % len(blank_images)
+                image_evs = tmp_imevs
                 
         elif 'grating' in stimtype:
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
@@ -586,7 +623,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         iti_evs = []
         for im in im_idx:
             try:
-                next_iti = next(i for i in pixelclock_evs[im:] if len(i.value)==(num_non_stimuli-1))
+                next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_non_stimuli-1))
 #                if skip_first_repeat_iti:
 #                    first_found = pixelclock_evs.index(next_iti)
 #                    if first_found == len(pixelclock_evs)-1:
@@ -906,7 +943,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         if 'grating' in session_info['stimulus'] or dynamic:
             nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
         else:
-            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
+            nexpected_pixelevents = ntrials*2 + 1 #(ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
         nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
 
         if not nexpected_pixelevents == nbitcode_events:
@@ -920,7 +957,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         for trialidx,(stim,iti,iti_dur) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey), iti_durs)):
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
-            print trialname
+            #print trialname
             
             corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]]
             corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) if iti.time > tval[0] and iti.time <= tval[1]]
@@ -932,8 +969,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
             trial[trialname]['end_time_ms'] = round((iti.time/1E3 + iti_dur)) # session_info['ITI']))
-            stimtype = stim.value[1]['type']
-            stimname = stim.value[1]['name']
+            if len(stim.value) > 2: # BUG presenting blank stimulus on 20181016
+                stimtype = stim.value[1]['type']
+                stimname = stim.value[1]['name']
             if 'grating' in stimtype:
                 stimrotation = stim.value[1]['rotation']
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
@@ -970,11 +1008,20 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             else:
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
                 #stimname = stim.value[1]['name'] #''
-                stimrotation = stim.value[1]['rotation']
-                stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
-                stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
-                stimfile = stim.value[1]['filename']
-                stimhash = stim.value[1]['file_hash']
+                if len(stim.value) == 2: # BLANK screen (but 20181016)
+                    stimname = 'blank'
+                    stimpos = (0, 0)
+                    stimsize = (0, 0)
+                    stimtype = 'blank'
+                    stimfile = ''
+                    stimhash = ''
+                    stimrotation = 0
+                else:
+                    stimrotation = stim.value[1]['rotation']
+                    stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
+                    stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
+                    stimfile = stim.value[1]['filename']
+                    stimhash = stim.value[1]['file_hash']
                 trial[trialname]['stimuli'] = {'stimulus': stimname,
                                               'position': stimpos,
                                               'scale': stimsize,
@@ -1046,9 +1093,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     else:
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
-        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3) for t in trial.keys()])))
-        
-        if len(unique_stim_durs) > 1 and 'grating' in stimtype:
+        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 1) for t in trial.keys()])))
+        print "STIM DURS:", unique_stim_durs 
+        if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
             if len(unique_stim_durs) == 2:
                 full_dur = max(unique_stim_durs)
@@ -1171,7 +1218,7 @@ def parse_mw_trials(options):
                       dest="retinobar", default=False, help="Set flag if using moving-bar stimulus.")
     parser.add_option('--phasemod', action="store_true",
                       dest="phasemod", default=False, help="Set flag if using dynamic, phase-modulated grating stimulus.")
-    parser.add_option('--verbose', action="store_true",
+    parser.add_option('-V', '--verbose', action="store_true",
                       dest="verbose", default=False, help="Set flag if want to print all output (for debugging).")
     parser.add_option('--multi', action="store_false",
                       dest="single_run", default=True, help="Set flag if multiple start/stops in run.")
@@ -1228,9 +1275,7 @@ def parse_mw_trials(options):
         curr_dfn = mw_dfns[didx]
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
-
-        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, 
-                                        verbose=verbose, single_run=single_run, boundidx=boundidx)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
         #print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 

@@ -9,9 +9,12 @@ Created on Wed May 30 20:36:25 2018
 
 import matplotlib as mpl
 mpl.use('agg')
+import matplotlib.patches as patches
 import os
 import sys
 import optparse
+import itertools
+import glob
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -46,11 +49,10 @@ from pipeline.python.utils import label_figure
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
-           '-T', 'np_subtracted',
-           '-R', 'blobs_dynamic_xpos2', '-t', 'traces001', '-d', 'dff',
-           '-r', 'morphlevel', '-c', 'yrot', '-H', 'xpos']
-
+options = ['-D', '/n/coxfs01/2p-data','-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
+           '-R', 'combined_blobs_static', '-t', 'traces002_496213_traces002_e56f62', 
+           '-d', 'corrected',
+           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
 def extract_options(options):
 
@@ -93,6 +95,10 @@ def extract_options(options):
                           default=None, help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
     parser.add_option('--shade', action='store_false', dest='plot_trials',
                           default=True, help='Set to plot mean and sem as shaded (default plots individual trials)')
+    parser.add_option('--median', action='store_true', dest='plot_median',
+                          default=False, help='Set to plot MEDIAN (default plots mean across trials)')
+
+
     parser.add_option('-r', '--rows', action='store', dest='rows',
                           default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types) - default uses objects or morphlevel')
     parser.add_option('-c', '--columns', action='store', dest='columns',
@@ -193,12 +199,18 @@ def make_clean_psths(options):
     run = optsE.run #run_list[0]
     traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    if '_' not in traceid: 
-        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+    if 'cnmf' in traceid:
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
     else:
-        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+        traceid_dir = [t for t in glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid)) if 'ORIG' not in t][0]
+
+#    if '_' not in traceid: 
+#        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, run, traceid)
+#    else:
+#        traceid_dir = os.path.join(acquisition_dir, run, 'traces', traceid)
+
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    print "Loaded data from: %s" % traceid_dir
+    print "Loaded data from: %s" % data_fpath #traceid_dir
 #    dataset = np.load(data_fpath)
 #    print dataset.keys()
 #        
@@ -213,6 +225,8 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     plot_trials = optsE.plot_trials
+    plot_median = optsE.plot_median
+
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
     columns = optsE.columns
@@ -241,7 +255,8 @@ def make_clean_psths(options):
     if inputdata == 'spikes' and filter_noise:
         xdata[xdata<=0.0004] = 0.
         figdir_append = '_filtered'
-    
+    if plot_median:
+        figdir_append = '%s_median' % figdir_append 
     
     #ydata = dataset['ylabels']
     #tsecs = dataset['tsecs']
@@ -271,12 +286,14 @@ def make_clean_psths(options):
     # Get stimulus info:
     sconfigs = dataset['sconfigs'][()]
     transform_dict, object_transformations = util.get_transforms(sconfigs)
+   
     # replace duration:
     if 'duration' in transform_dict.keys():
         transform_dict['stim_dur'] = transform_dict['duration']
         transform_dict.pop('duration')
     trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])        
     print "Trans:", trans_types
+    print object_transformations #transform_dict
 #
 #    if alt_axis is not None:
 #        trans_types.extend([alt_axis])
@@ -290,12 +307,12 @@ def make_clean_psths(options):
             sconfigs.pop(c)
             
     sconfigs_df = pd.DataFrame(sconfigs).T
-        
+    print sconfigs_df.head()    
         
     # Get trial and timing info:
     #    trials = np.hstack([np.tile(i, (nframes_per_trial, )) for i in range(ntrials_total)])
     #multi_plot = None
-    if len(trans_types) == 1:
+    if len(trans_types) == 1 and rows is None and columns is None:
         stim_grid = (transform_dict[trans_types[0]],)
         sgroups = sconfigs_df.groupby(sorted(trans_types))
         ncols = len(stim_grid[0])
@@ -308,20 +325,34 @@ def make_clean_psths(options):
                 rows = 'morphlevel'
             else:
                 rows = 'object'
+        if rows == 'object':
+            transform_dict['object'] = [i.value for i in sconfigs_df['object'].unique()]
         other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
+
         if columns is None:
             columns = other_trans_types[0]
+        if columns == 'object':
+            transform_dict['object'] = [i for i in sconfigs_df['object'].unique()]
+            
         if subplot_hue is None and len(other_trans_types) > 1:
             subplot_hue = [t for t in other_trans_types if t != columns][0]
+
+#        if nrows in 
         nrows = len(transform_dict[rows])
-        ncols = len(transform_dict[columns])
-        
+        ncols = len(transform_dict[columns])        
         stim_grid = (transform_dict[rows], transform_dict[columns])
+
         sgroups = sconfigs_df.groupby([rows, columns])
     
     if len(sgroups.groups) == 3:
         nrows = 1; ncols=3;
-        
+
+    print "N stimulus combinations:", len(stim_grid)
+    if len(stim_grid)==1:
+        grid_pairs = sorted([x for x in stim_grid[0]])
+    else:
+        grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
+    print grid_pairs
     #%
     # Set output dir for nice(r) psth:
     if plot_trials:
@@ -358,10 +389,12 @@ def make_clean_psths(options):
             print "Hue is OBJECT"
             hues = object_transformations[rows]
             trace_labels = hues
+            
         if len(hues) <= 2:
             trace_colors = ['g', 'b']
         else:
-            trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
+            trace_colors = sns.color_palette('hls', len(hues))
+            #trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     for ridx in range(xdata.shape[-1]):
@@ -385,9 +418,18 @@ def make_clean_psths(options):
         fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(20,3*nrows+5))
         axesf = axes.flat    
         traces_list = []
+        skipped_axes = []
         pi = 0
-        for k,g in sgroups:
+        
+        #for k,g in sgroups:
+        for k in grid_pairs:
+            if k not in sgroups.groups.keys(): 
+                axesf[pi].axis('off')
+                skipped_axes.append(pi)
+                pi += 1
+                continue
             #print k
+            g = sgroups.get_group(k)
             if subplot_hue is not None:
                 curr_configs = g.sort_values(subplot_hue).index.tolist()
             else:
@@ -396,7 +438,8 @@ def make_clean_psths(options):
             for cf_idx, curr_config in enumerate(curr_configs):
                 sub_df = rdata[rdata['config']==str(curr_config)]
                 tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
-                tpoints = np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
+                tpoints = np.mean(sub_df.groupby('trial')['tsec'].apply(np.array), axis=0)
+                #np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
                 assert len(list(set(sub_df['nframes_on']))) == 1, "More than 1 stimdur parsed for current config..."
                 
                 nframes_on = list(set(sub_df['nframes_on']))[0]
@@ -409,8 +452,10 @@ def make_clean_psths(options):
 #                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
 #                else:
 #                    subdata = tracemat[config_ixs, :]
-                    
-                trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
+                if plot_median:
+                    trace_mean = np.median(subdata, axis=0)
+                else:    
+                    trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
                 axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, 
@@ -424,19 +469,42 @@ def make_clean_psths(options):
                         axesf[pi].plot(tpoints, subdata[ti,:], color=trace_colors[cf_idx], linewidth=0.5, alpha=0.2)
                 else:
                     # fill between with sem:
+#                    mean_nans = np.where(np.isnan(trace_mean))
+#                    sem_nans = np.where(np.isnan(trace_sem))
                     axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=trace_colors[cf_idx], alpha=0.2)
                 
                 # Set x-axis to only show stimulus ON bar:
                 start_val = tpoints[stim_on]
                 end_val = tpoints[stim_on + int(round(nframes_on))]
-                axesf[pi].set_xticks((start_val, int(round(end_val))))
+                if pi==len(axes)-1:
+                    axesf[pi].set_xticks((start_val, 1.0)) 
+                else:
+                    axesf[pi].set_xticks((0, 0))
                 axesf[pi].set_xticklabels(())
                 axesf[pi].tick_params(axis='x', which='both',length=0)
-                axesf[pi].set_title(k, fontsize=8)
+                if isinstance(k, int):
+                    axesf[pi].set_title('(%.1f)' % (k), fontsize=10)
+                else:
+                    if isinstance(k[0], (int, float)) or k[0].isdigit():
+                        k0 = float(k[0])
+                        k0_str = '%.1f' % k0
+                    else:
+                        k0_str = str(k[0])
+                    if isinstance(k[1], (int, float)) or k[1].isdigit():
+                        k1 = float(k[1])
+                        k1_str = '%.1f' % k1
+                    else:
+                        k1_str = str(k[1])
+                    axesf[pi].set_title('(%s, %s)' % (k0_str, k1_str), fontsize=10)
+
+
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
-            
+            if 'df' in inputdata:
+                axesf[pi].set_yticks((0, 1))
+            sns.despine(offset=4, trim=True, ax=axesf[pi])
+          
             # Add annotation for n trials in stim config:    
             axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
 
@@ -446,18 +514,30 @@ def make_clean_psths(options):
             if pi==0:
                 axesf[pi].set_ylabel(ylabel)
             pi += 1
-        sns.despine(offset=4, trim=True)
+
+        #sns.despine(offset=4, trim=True)
+        #loop over the non-left axes:
+        for ai,ax in enumerate(axes.flat):
+            if ai in skipped_axes:
+                continue
+            ymin = min([ax.get_ylim()[0], ax.get_yticks()[0]])
+            ymax = max([ax.get_ylim()[-1], ax.get_yticks()[-1]])
+            stimpatch = patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2)
+            ax.add_patch(stimpatch)
+            if 'df' in inputdata:
+                ax.set_yticks((0, 1))
+            sns.despine(offset=4, trim=True, ax=ax)
+
+
+#        for ax in axes.flat[1:]:
+#            # get the yticklabels from the axis and set visibility to False
+#            for label in ax.get_yticklabels():
+#                label.set_visible(False)
+#            ax.yaxis.offsetText.set_visible(False)
+#            ax.yaxis.set_visible(False)
+#                
     
-         #loop over the non-left axes:
-        for ax in axes.flat[1:]:
-            # get the yticklabels from the axis and set visibility to False
-            for label in ax.get_yticklabels():
-                label.set_visible(False)
-            ax.yaxis.offsetText.set_visible(False)
-            ax.yaxis.set_visible(False)
-                
-    
-        pl.subplots_adjust(top=0.85)
+        pl.subplots_adjust(bottom=0.12, top=0.95)
         pl.suptitle("%s" % (roi_id))
         pl.legend(loc=9, bbox_to_anchor=(0, 0), ncol=len(trace_labels))
         label_figure(fig, data_identifier)

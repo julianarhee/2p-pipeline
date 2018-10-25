@@ -18,7 +18,7 @@ import math
 import optparse
 import imutils
 import datetime
-
+import glob
 import pandas as pd
 import numpy as np
 import pylab as pl
@@ -45,7 +45,7 @@ import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
 from skimage import exposure
 from collections import Counter
-
+#%%
 
 options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
            '-d', 'corrected',
@@ -131,7 +131,7 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
    
     if create_new:
         summary_fpath = os.path.join(sort_dir, 'roi_summary.txt')
-        top10 = ['roi%05d' % int(r+1) for r in sorted_selective[0:10]]
+        top10 = ['roi%05d' % int(int(r)+1) for r in sorted_selective[0:10]]
         with open(summary_fpath, 'a') as f:
             f.write('\n----------------------------------------------------------\n')
             f.write('Kruskal-Wallis test for selectivity:\n')
@@ -168,6 +168,10 @@ def selectivity_KW(df_by_rois, roi_list=[], post_hoc='dunn', metric='meanstim', 
         for roi in rlist:
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
+            if np.where(np.isnan(rdata[metric]))[0].any():
+                outdict[roi] = None
+                print "ROI %i:  Found NaNs, ignoring." % roi
+                continue
             outdict[roi] = do_KW_test(rdata, post_hoc=post_hoc, metric=metric, asdict=True)  
         out_q.put(outdict)
 
@@ -279,7 +283,12 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         
     for roi in roi_list[0:topn]:
         rdata = df_by_rois.get_group(int(roi))
-    
+        if np.where(np.isnan(rdata[metric]))[0].any():
+            outdict[roi] = None
+            print "ROI %i:  Found NaNs, ignoring." % roi
+            continue
+
+   
         #% Sort configs by mean value:
         df2 = pd.DataFrame({col:vals[metric] for col,vals in rdata.groupby('config')})
         meds = df2.median().sort_values(ascending=False)
@@ -313,12 +322,30 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
 def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, 
                           create_new=False, data_identifier='', pvalue=0.05):
     
+    
+    responsivity_basedir = os.path.join(sort_dir, 'responsivity')
+
+    # TODO:  pyvttbl split-plot anova 2-way does not handle bfactors > 100, just use 1-way RM:
+    nconfigs = len(labels_df['config'].unique())
+    if nconfigs > 100:
+        print "Using R-M ANOVA 1-way for visual responsiveness."
+        test_type_str = 'Repeated Measures ANOVA1'
+        resp_test_type = 'RManova1'
+        split_plot = False
+    else:
+        print "Using Split-Plot ANOVA 2-way for visual responsiveness."
+        test_type_str = 'Split-plot ANOVA2'
+        resp_test_type = 'SPanova2'
+        split_plot = True
+
+
     # Create output dir for ANOVA2 results:
-    responsive_resultsdir = os.path.join(sort_dir, 'responsivity', 'spanova2_results')
+    responsive_resultsdir = os.path.join(responsivity_basedir, '%s_results' % resp_test_type)
     if not os.path.exists(responsive_resultsdir):
         os.makedirs(responsive_resultsdir)
         
-    responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_spanova2_results.json')
+    responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_%s_results.json' % resp_test_type)        
+
     if create_new is False:
         try:
             print "Loading existing split ANOVA results:\n", responsive_anova_fpath
@@ -331,15 +358,15 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
     df_by_rois = group_roidata_trialepoch(roidata, labels_df)
     
     if create_new:
-        responsive_anova = visually_responsive_spanova2(df_by_rois, output_dir=responsive_resultsdir, nprocs=nprocs)
+        responsive_anova = visually_responsive_ANOVA(df_by_rois, split_plot=split_plot, output_dir=responsive_resultsdir, nprocs=nprocs)
 
         # Save responsive roi list to disk:
-        print "Saving split ANOVA results to:\n", responsive_anova_fpath
+        print "Saving %s results to:\n" % resp_test_type, responsive_anova_fpath
         with open(responsive_anova_fpath, 'w') as f:
             json.dump(responsive_anova, f, indent=4, sort_keys=True)
 
     # Sort ROIs:
-    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r]['p'] < pvalue]
+    responsive_rois = [r for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < pvalue ]
     sorted_visual = sorted(responsive_rois, key=lambda x: responsive_anova[x]['F'])[::-1]
     
     if create_new:
@@ -347,17 +374,18 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
         top10 = ['roi%05d' % int(r+1) for r in sorted_visual[0:10]]
         with open(summary_fpath, 'a') as f:
             f.write('----------------------------------------------------------\n')
-            f.write('Split-plot ANOVA2 results:\n')
+            f.write('%s results:\n' % test_type_str)
             f.write('----------------------------------------------------------\n')
             f.write('%i out of %i pass visual responsivity test (p < 0.05).\n' % (len(responsive_rois), len(responsive_anova.keys())))
             f.write('Top 10 (sorted by F val):\n    %s' % str(top10))
             
         boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, sort_dir=sort_dir)
                 
-    return responsive_anova, sorted_visual
+    return responsive_anova, sorted_visual, resp_test_type
 
 
-def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname='boxplot(intensity~epoch_X_config).png'):
+
+def visually_responsive_ANOVA(df_by_rois, split_plot=True, nprocs=4, output_dir='/tmp', fname='boxplot(intensity~epoch_X_config).png'):
 
     '''
     Take single ROI as a datatset, do split-plot rmANOVA:
@@ -370,7 +398,7 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
 
     t_eval_mp = time.time()
 
-    def worker(rlist, df_by_rois, output_dir, out_q):
+    def worker(split_plot, rlist, df_by_rois, output_dir, out_q):
         """
         Worker function is invoked in a process. 'roi_list' is a list of
         roi names to evaluate [rois00001, rois00002, etc.]. Results are placed
@@ -382,8 +410,15 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
             print roi
             # Format pandas df into pyvttbl dataframe:
             rdata = df_by_rois.get_group(int(roi))
+            if np.where(np.isnan(rdata['intensity']))[0].any():
+                outdict[roi] = None
+                print "ROI %i:  Found NaNs, ignoring." % roi
+                continue
             pdf = pyvt_format_trialepoch_df(rdata)
-            outdict[roi] = pyvt_splitplot_anova2(roi, pdf, output_dir=output_dir, asdict=True)  
+            if split_plot:
+                outdict[roi] = pyvt_splitplot_anova2(roi, pdf, output_dir=output_dir, asdict=True)  
+            else:
+                outdict[roi] = pyvt_rmeasures_anova1(roi, pdf, output_dir=output_dir, asdict=True)  
         out_q.put(outdict)
 
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -393,10 +428,11 @@ def visually_responsive_spanova2(df_by_rois, nprocs=4, output_dir='/tmp', fname=
 
     for i in range(nprocs):
         p = mp.Process(target=worker,
-                       args=(roi_list[chunksize * i:chunksize * (i + 1)],
-                                       df_by_rois,
-                                       output_dir,
-                                       out_q))
+                       args=(split_plot,
+                             roi_list[chunksize * i:chunksize * (i + 1)],
+                             df_by_rois,
+                             output_dir,
+                             out_q))
         procs.append(p)
         print "Starting:", p
         p.start()
@@ -469,7 +505,6 @@ def pyvt_format_trialepoch_df(rdata):
     [pdf.insert(Trial(cf, tr, ep, val)._asdict()) for cf, tr, ep, val in zip(rdata['config'], rdata['trial'], rdata['epoch'], rdata['intensity'])]
     return pdf
 
-
 #%
 # =============================================================================
 # STATISTICS:
@@ -490,14 +525,33 @@ def pyvt_splitplot_anova2(roi, pdf, output_dir='/tmp', asdict=True):
     with open(aov_results_fpath,'wb') as f:
         f.write(str(aov))
     f.close()
-    results_epoch = extract_apa_anova2(('epoch',), aov)
+    results_epoch = extract_apa_anova(('epoch',), aov)
+    if asdict is True:
+        return results_epoch
+    else:
+        return results_epoch['F'], results_epoch['p']
+    
+def pyvt_rmeasures_anova1(roi, pdf, output_dir='/tmp', asdict=True):
+    '''
+    Calculate splt-plot ANOVA.
+    Return results for this ROI as a dict.
+    '''
+    # Calculate ANOVA split-plot:
+    aov = pdf.anova('intensity', sub='trial',
+                       wfactors=['epoch'])
+
+    aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.txt' % roi)
+    with open(aov_results_fpath,'wb') as f:
+        f.write(str(aov))
+    f.close()
+    results_epoch = extract_apa_anova(('epoch',), aov)
     if asdict is True:
         return results_epoch
     else:
         return results_epoch['F'], results_epoch['p']
     
     
-def extract_apa_anova2(factor, aov, values = ['F', 'mse', 'eta', 'p', 'df']):
+def extract_apa_anova(factor, aov, values = ['F', 'mse', 'eta', 'p', 'df']):
     '''
     Returns ANOVA results as dict holding standard reported values.
     '''
@@ -536,7 +590,7 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
     pyvt_boxplot_epochXconfig(df_by_rois, sorted_visual[0:topn], output_dir=vis_responsive_dir)
 
     # View histogram of partial eta-squared values:
-    eta2p_vals = [responsive_anova[r]['eta2_p'] for r in responsive_anova.keys()]
+    eta2p_vals = [responsive_anova[r]['eta2_p'] for r in responsive_anova.keys() if responsive_anova[r] is not None]
     eta2p = pd.Series(eta2p_vals)
     
     fig = pl.figure()
@@ -545,8 +599,8 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
     p = eta2p.hist(bins=division, color='gray')
     
     # Highlight p-eta2 vals for significant neurons:
-    sig_etas = [responsive_anova[r]['eta'] for r in responsive_anova.keys() if responsive_anova[r]['p'] < 0.05]
-    sig_bins = list(set([binval for ix,binval in enumerate(division) for etaval in sig_etas if division[ix] < etaval <= division[ix+1]]))
+    sig_etas = [responsive_anova[r]['eta'] for r in responsive_anova.keys() if responsive_anova[r] is not None and responsive_anova[r]['p'] < 0.05]
+    sig_bins = list(set([binval for ix,binval in enumerate(division[0:-1]) for etaval in sig_etas if division[ix] < etaval <= division[ix+1]]))
     
     indices_to_label = [find_barval_index(v, p) for v in sig_bins]
     for ind in indices_to_label:
@@ -567,6 +621,11 @@ def pyvt_boxplot_epochXconfig(df_by_rois, roi_list, output_dir='/tmp'):
 
     for roi in roi_list:
         rdata = df_by_rois.get_group(int(roi))
+        if np.where(np.isnan(rdata['intensity']))[0].any():
+            outdict[roi] = None
+            print "ROI %i:  Found NaNs, ignoring." % roi
+            continue
+
         pdf = pyvt_format_trialepoch_df(rdata)
         factor_list = ['config', 'epoch']
         fname = 'roi%05d_boxplot(intensity~epoch_X_config).png' % (int(roi)+1)
@@ -613,17 +672,30 @@ def calculate_roi_responsivity(options):
     sort_dir = os.path.join(traceid_dir, 'sorted_rois')
     if not os.path.exists(sort_dir):
         os.makedirs(sort_dir)
-
+    print "Saving sorted ROI results to:\n    %s" % sort_dir
     # Load data array:
     # -------------------------------------------------------------------------
-    data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    print "Loaded data from: %s" % traceid_dir
+    data_fpaths = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets*.npz'))
+    if len(data_fpaths) > 1 and any(['eq' in f for f in data_fpaths]):
+        data_fpath = [f for f in data_fpaths if 'eq' in f][0]
+    else:
+        data_fpath = data_fpaths[0]
+    print "Loaded data from: %s" % data_fpath
     dataset = np.load(data_fpath)
     print dataset.keys()
     
     # Get trace array (nframes x nrois) and experiment info labels (nframes x nfeatures)
     assert trace_type in dataset.keys(), "[W] Specified trace_type %s does not exist in dataset." % trace_type
     roidata = dataset[trace_type]
+    #roi_list = np.arange(0, roidata.shape[1])
+    
+    # Get rid of "bad rois" i.e., ones that have nans... 
+    bad_frames, bad_rois = np.where(np.isnan(roidata))
+    bad_roi_ixs = np.unique(bad_rois)
+    #roidata = np.delete(roidata, bad_roi_ixs, axis=1)
+    if len(bad_roi_ixs) > 0:
+        print "*** WARNING *** Found %i rois with NaNs." % len(bad_roi_ixs)
+
     labels_df = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
     assert roidata.shape[0] == labels_df.shape[0], "[W] trace data shape (%s) does not match labels (%s)" % (str(roidata.shape), str(labels_df.shape))
     sconfigs = dataset['sconfigs'][()]
@@ -639,13 +711,13 @@ def calculate_roi_responsivity(options):
     # =========================================================================
     # RESPONSIVITY:
     # =========================================================================
-    responsive_anova, sorted_visual = find_visual_cells(roidata, labels_df, 
+    responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df,
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
                                                         create_new=create_new, 
                                                         data_identifier=data_identifier,
                                                         pvalue=pvalue)
-    print("%i out of %i cells pass split-plot ANOVA test for visual responses." % (len(sorted_visual), len(responsive_anova)))
+    print("%i out of %i cells pass %s test for visual responses." % (len(sorted_visual), len(responsive_anova), resp_test_type))
 
 
     # =========================================================================
@@ -678,7 +750,7 @@ def calculate_roi_responsivity(options):
     H_std = np.std([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
     with open(summary_fpath, 'a') as f:
         print >> f, '\n**********************************************************************'
-        print >> f, '%i out of %i cells are visually responsive (split-plot ANOVA, p < 0.05)' % (len(sorted_visual), nrois_total)
+        print >> f, '%i out of %i cells are visually responsive (%s, p < 0.05)' % (len(sorted_visual), nrois_total, resp_test_type)
         print >> f, '%i out of %i visual are stimulus selective (Kruskal-Wallis, p < 0.05)' % (len(sorted_selective), len(sorted_visual))
         print >> f, 'Mean H=%.2f (std=%.2f)' % (H_mean, H_std)
         print >> f, '**********************************************************************'
@@ -694,7 +766,7 @@ def calculate_roi_responsivity(options):
              acquisition=optsE.acquisition,
              traceid=traceid,
              nrois_total=nrois_total,
-             responsivity_test='pyvt_splitplot_anova2',
+             responsivity_test='pyvt_%s' % resp_test_type, #'pyvt_splitplot_anova2',
              sorted_visual=sorted_visual,
              sorted_selective=sorted_selective,
              selectivity_test = 'kruskal_wallis',
@@ -723,3 +795,6 @@ def main(options):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
+
+
