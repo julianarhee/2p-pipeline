@@ -221,6 +221,11 @@ def get_good_RFs(A, fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
                            'r2_y': fov.RFs[roi].conditions[retino_el_cond].fit_results['r2']}) for roi in retino_good_rois)
         rf_fits[session] = retino_rdict
 
+    # Save to animal dir:
+    with open(os.path.join(rootdir, A.animalid, 'rf_fits.pkl'), 'wb') as f:
+        pkl.dump(rf_fits, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+
     return rf_fits 
   
 def hist_rf_widths(rf_fits, visual_area='visual area', ax=None, color='g'):
