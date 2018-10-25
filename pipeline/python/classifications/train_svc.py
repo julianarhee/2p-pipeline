@@ -30,7 +30,7 @@ from scipy import stats
 
 from pipeline.python.classifications import linearSVC_class as lsvc
 from pipeline.python.utils import print_elapsed_time, natural_keys, label_figure, replace_root
-from pipeline.python.rois.utils import get_roi_contours, plot_roi_contours
+from pipeline.python.rois import utils as util  #get_roi_contours, plot_roi_contours
 
 
 from sklearn.feature_selection import RFE
@@ -604,6 +604,22 @@ def load_tid_rois(mask_fpath, file_key=None):
     return masks_r
     
 def get_roi_masks(traceid_dir, rootdir='/n/coxfs01/2p-data'):
+    if isinstance(traceid_dir, list):
+        rundir = traceid_dir[0].split('/traces/')[0]
+        single_traceid = traceid_dir[0].split('/traces/')[-1]
+        acquisition_dir = os.path.split(rundir)[0]
+        stimtype = os.path.split(rundir)[-1].split('_')[0]
+        print "STIM:", stimtype
+        combo_dirs = glob.glob(os.path.join(acquisition_dir, 'combined_%s*' % stimtype, 'traces', '*%s*' % single_traceid))
+        assert len(combo_dirs) > 0, "No combo dirs, but multiple traceid dirs given..."
+        if len(combo_dirs) == 1:
+            traceid_dir = combo_dirs[0]
+        else:
+            for ci, cdir in enumerate(combo_dirs):
+                print ci, cdir
+            traceid_dir = combo_dirs[input('Select IDX of combo dir to use: ')]
+        print "USING traceid_dir", traceid_dir
+        
     run_dir = traceid_dir.split('/traces/')[0]
     traceid = traceid_dir.split('/traces/')[-1]
     acquisition_dir = os.path.split(run_dir)[0]
@@ -642,13 +658,16 @@ def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', n
     else:
         nomorph_str = ''
     
+    print "trans:", trans0, "trans:", trans1
+    
     if trans0 is None:
         trans0 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][0]
     if trans1 is None and len(clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans']) > 1:
         trans1 = clfs[clfs.keys()[0]]['classifier'].clfparams['const_trans'][1]
-    else:
-        trans1 = None
+
+    class_name = clfs[clfs.keys()[0]]['classifier'].clfparams['class_name']
     trans_types = [t for t in [trans0, trans1] if t is not None]
+    print "Trans:", trans_types
     
     TEST = {'by_config': {},
             'predicted': {},
@@ -675,7 +694,7 @@ def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', n
         sample_labels = C.sample_labels
         sdf = pd.DataFrame(clf.sconfigs).T
         if no_morphs:
-            sdf = sdf[sdf['morphlevel'].isin(clf.clfparams['class_subset'])]
+            sdf = sdf[sdf[class_name].isin(clf.clfparams['class_subset'])]
             
         # Keep track of all original transforms:
         if trans0 is not None:
@@ -691,7 +710,7 @@ def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', n
         if const_trans_dict is not None and len(const_trans_dict.keys()) > 0:
             keys, values = zip(*const_trans_dict.items())
             #values_flat = [val[0] for val in values]
-            train_list = [dict(zip(keys, v)) for v in itertools.product(values)]
+            train_list = [dict(zip(keys, v)) for v in itertools.product(*values)]
         else:
             # clf is trained on ALL configs:
             #tconfigs = traintest_results['by_configs'].keys()
@@ -796,7 +815,9 @@ def transform_performance_grid(TEST):
         grid_pairs = sorted(list(itertools.product(colvals, rowvals)), key=lambda x: (x[0], x[1]))
         for trans_config in grid_pairs:
             #print ncorrect_grid
-            if not all([t in ncorrect.keys() for t in trans_config]):
+            if placehold is True and not all([t in ncorrect.keys() for t in trans_config]):
+                continue
+            if not trans_config in ncorrect.keys():
                 continue
             rix = rowvals.index(trans_config[1])
             cix = colvals.index(trans_config[0])
@@ -804,6 +825,9 @@ def transform_performance_grid(TEST):
             if placehold: # second trans_config value is fake
                 nc = ncorrect[trans_config[0]]
                 cc = counts[trans_config[0]]
+            else:
+                nc = ncorrect[trans_config]
+                cc = counts[trans_config]
             if np.isnan(ncorrect_grid[rix, cix]):
                 ncorrect_grid[rix, cix] = nc #ncorrect[trans_config]
                 counts_grid[rix, cix] = cc #counts[trans_config]
@@ -900,25 +924,49 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # =============================================================================
 # LI -- gratings (6x4)
 # =============================================================================
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181005,20181005,20181006,20181007,20181017', 
+#           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
+#           '-R', 'combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static',
+#           '-t', 'traces001,traces001,traces001,traces001,traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'ori',
+##           '--subset', '0,106',
+#           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '5.6,16.8,28,5.6,16.8,28',
+#           '-T', '5,5,5,15,15,15',
+#           
+#           '--nproc=1'
+#           ]
+# =============================================================================
+
+
+# =============================================================================
+# LI - BLOBS 5x5x5
+# =============================================================================
+
 options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181005,20181005,20181006,20181007,20181017', 
-           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
-           '-R', 'combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static',
-           '-t', 'traces001,traces001,traces001,traces001,traces001',
+           '-S', '20181022',
+           '-A', 'FOV1_zoom4p0x',
+           '-R', 'combined_blobs_static', 
+           '-t', 'traces001',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'ori',
-#           '--subset', '0,106',
-           '-c', 'xpos,ypos',
+           '-p', 'corrected', '-N', 'morphlevel',
+           '--subset', '0,106',
+           '-c', 'xpos,yrot',
 #           '-v', '-5,0',
 #           '-T', '-15,-10,0,5',
 #           '-T', '-60,-30,30,60',
-           '-T', '5.6,16.8,28,5.6,16.8,28',
-           '-T', '5,5,5,15,15,15',
+           '-T', '-5,-5,0,0,0,5,5,5',
+           '-T', '60,30,60,30,0,60,30,0',
            
            '--nproc=1'
            ]
-# =============================================================================
+#
 
 
 # =============================================================================
@@ -942,7 +990,7 @@ options = ['-D', rootdir, '-i', 'JC022',
 #           
 #           '--nproc=1'
 #           ]
-#
+##
 
 
 #options = ['-D', rootdir, '-i', 'CE077', 
@@ -983,20 +1031,20 @@ options = ['-D', rootdir, '-i', 'JC022',
 #           '-V', 'LI',
 #           '--nproc=1'
 #           ]
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181016,20181018,20181020,20181020', 
-           '-A', 'FOV2_zoom2p7x,FOV2_zoom2p7x,FOV1_zoom2p7x,FOV2_zoom2p7x',
-           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static', 
-           '-t', 'traces001,traces001,traces001,traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'meanstim',
-           '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,106',
-#           '-c', 'ypos',
-#           '-v', '13',
-           '-V', 'LI',
-#           '--Cval=1.0',
-           '--nproc=1'
-           ]
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181016,20181018,20181020,20181020', 
+#           '-A', 'FOV2_zoom2p7x,FOV2_zoom2p7x,FOV1_zoom2p7x,FOV2_zoom2p7x',
+#           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static', 
+#           '-t', 'traces001,traces001,traces001,traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'meanstim',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+##           '-c', 'ypos',
+##           '-v', '13',
+#           '-V', 'LI',
+##           '--Cval=1.0',
+#           '--nproc=1'
+#           ]
 
 
 # =============================================================================
@@ -1046,7 +1094,7 @@ options = ['-D', rootdir, '-i', 'JC022',
 ##           '-v', '-5,0',
 #           '--nproc=1'
 #           ]
-
+#
 #T = lsvc.TransformClassifier(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
 #                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
 #                                          inputdata_type=optsE.inputdata_type, 
@@ -1056,12 +1104,12 @@ options = ['-D', rootdir, '-i', 'JC022',
 #                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie)
 #
 #T.load_dataset()
-##
+###
 #T.create_classifier_dirs()
-##
+###
 #T.initialize_classifiers()
-#
-#T.label_classifier_data()
+##
+##T.label_classifier_data()
 #
 #    
     
@@ -1152,8 +1200,8 @@ def main(options):
     # =========================================================================
     # Specify training meta parameters - this also sets the output dir:
     # =========================================================================
-    setC='best'
-    nfeatures_select='all'
+    setC='big'
+    nfeatures_select='best'
     full_train=True
     test_size=0.0 #0.33
     train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '0')
@@ -1206,11 +1254,11 @@ def main(options):
 #%
         clfs[fov]['RFE'] = get_clf_RFE(clfs[fov]['classifier'])
         clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
-        clfs[fov]['contours'] = get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
+        clfs[fov]['contours'] = util.get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
 
-    
-    with open(clfs_fpath, 'wb') as f:
-        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
+#    clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
+#    with open(clfs_fpath, 'wb') as f:
+#        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
         
     # Plot RFE results from original CLFs created at start:
     # -------------------------------------------------------------------------
@@ -1220,7 +1268,7 @@ def main(options):
             ax.imshow(clfs[fov]['fov'])
             ax.set_title(fov)
             ax.axis('off')
-            plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=ax, roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
+            util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=ax, roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
         
         else:
             fig, axes = pl.subplots(nrows=1, ncols=len(clfs.keys()), figsize=(20, 5))
@@ -1228,7 +1276,7 @@ def main(options):
                 axes[fi].imshow(clfs[fov]['fov'])
                 axes[fi].set_title(fov)
                 axes[fi].axis('off')
-                plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
+                util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
             
         pl.savefig(os.path.join(clf_output_dir, 'best_RFE_masks.png'))
         pl.close()
@@ -1237,10 +1285,10 @@ def main(options):
     # =============================================================================
     # TEST the trained classifier -- TRANSFORMATIONS.
     # =============================================================================
-    no_morphs = False
+    no_morphs = True
 
-    middle_morph = 53
-    m100 = 106 #max(clf.clfparams['class_subset'])
+    middle_morph = None #53
+    m100 = None #106 #max(clf.clfparams['class_subset'])
     if no_morphs:
         nomorph_str = '_nomorphs'
     else:
@@ -1254,6 +1302,7 @@ def main(options):
     else:
         trans0 = const_trans_types[0]
         trans1 = const_trans_types[1]
+    print "TRANS0: %s, TRANS1: %s" % (trans0, trans1)
     
     # Create secondary output dir to save all CV results from each individual fov
     # to main classifier dir:
@@ -1283,6 +1332,11 @@ def main(options):
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(test_transforms_dir, 'test_transforms_counts_grid_%s%s.png' % (train_set, nomorph_str)))
     #pl.close()
+    
+    test_set_fpath = os.path.join(test_transforms_dir, 'testset.json')
+    with open(test_set_fpath, 'w') as f:
+        json.dump(C.params['test_set'], f, indent=4)
+        
 
 #%%
     no_morphs = False
@@ -1293,7 +1347,7 @@ def main(options):
     if not no_morphs:
         
         prob_m100_list = {}
-        m100 = max(clf.clfparams['class_subset']) #106
+        m100 = max(clfs[clfs.keys()[0]]['classifier'].clfparams['class_subset']) #106
         
         #TRAIN = {'traindata': {}, 'testdata': {}, 'kept_rids': {}, 'svc': {}}
         #TEST = {'data': {}, 'labels': {}, 'predicted': {}}
@@ -1374,7 +1428,7 @@ def main(options):
 #        with open(train_morphs_fpath, 'wb') as f:
 #            pkl.dump(TRAIN, f, protocol=pkl.HIGHEST_PROTOCOL)        
 
-#%
+#%%
     # =============================================================================
     # TEST the trained classifier -- MORPH LINE: Split test data by VIEW.
     # =============================================================================
@@ -1474,7 +1528,7 @@ def main(options):
         pl.ylim([0, 1.0])
         pl.ylabel('perc. chose %i' % m100)
         pl.xlabel('morph level')
-        pl.savefig(os.path.join(test_morphs_dir, 'perc_choose_106_%s%s.png' % (train_set, view_str)))
+        pl.savefig(os.path.join(test_morphs_dir, 'perc_choose_106_%s%s_avgviews.png' % (train_set, view_str)))
 #        
 #        test_morphs_fpath = os.path.join(clf_subdir, 'TEST_clfs_morphs%s.pkl' % view_str)
 #        with open(test_morphs_fpath, 'wb') as f:

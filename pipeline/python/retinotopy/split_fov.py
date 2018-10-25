@@ -136,8 +136,13 @@ def load_retino_id(run_dir, retino_id):
 rootdir = '/n/coxfs01/2p-data'
 
 # Combine different conditions of the SAME acquisition:
+#animalid = 'JC015'
+#session = '20180919'
+#acquisition = 'FOV1_zoom2p0x'
+#retino_run = 'retino_run1'
+
 animalid = 'JC015'
-session = '20180919'
+session = '20180925'
 acquisition = 'FOV1_zoom2p0x'
 retino_run = 'retino_run1'
 
@@ -147,17 +152,18 @@ retino_run = 'retino_run1'
 
 cmap = cm.Spectral_r
 
+datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
 
-visualareas_fpath = os.path.join(rootdir, animalid, session, acquisition, 'visual_areas', 'visual_areas.pkl')
+visualareas_fpath = os.path.join(rootdir, animalid, session, acquisition, 'visual_areas', 'visual_areas_%s.pkl' % datestr)
 
 if os.path.exists(visualareas_fpath):
     with open(visualareas_fpath, 'rb') as f:
         fov = pkl.load(f)
 
-#%
+#%%
 else:
     
-    #% CREATE NEW:
+    #%%CREATE NEW:
     
     datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     

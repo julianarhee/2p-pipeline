@@ -1723,16 +1723,22 @@ class TransformClassifier():
             trans_value = []
             for trans in const_trans:
                 trans_value.append(sorted(sconfigs_df[trans].unique().tolist()))
+            train_all = True
         else:
             trans_value = [float(v) for v in trans_value]
-        
+            train_all = False
+            
         # Check that all provided trans-values are valid and get config IDs to include:
         const_trans_dict = dict((k, [v]) for k,v in zip([t for t in const_trans], [v for v in trans_value]))
 
         if const_trans_dict is not None:
             keys, values = zip(*const_trans_dict.items())
-            #values_flat = [val[0] for val in values]
-            transforms = [dict(zip(keys, v)) for v in itertools.product(*values)]
+            if train_all:
+                values_flat = [val[0] for val in values]
+                transforms = [dict(zip(keys, v)) for v in itertools.product(*values_flat)]
+            else:
+                transforms = [dict(zip(keys, v)) for v in itertools.product(*values)]
+
         else:
             transforms = []
             
@@ -1740,7 +1746,7 @@ class TransformClassifier():
             remove_pairs = []
             for config_set in transforms:
                 found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
-                if len(found_configs) == 0:
+                if len(found_configs) == 0 and train_all is False:
                     remove_pairs.append(config_set)
             if len(remove_pairs) > 0:
                 tmp_transforms = [sdict for sdict in transforms if sdict not in remove_pairs]
@@ -1868,7 +1874,7 @@ class LinearSVM():
     
         if self.clfparams['const_trans'] is not '':
             # Create SUBDIR for specific const-trans and trans-val pair:
-            const_trans_dict = dict((k, v) for k,v in zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
+            const_trans_dict = dict((k, v) for k,v in zip([t for t in clfparams['const_trans']], [v for v in clfparams['trans_value']]))
             print "TRANSFORMS for current clf:"
             pp.pprint(const_trans_dict)
             print "Testing EACH value of const transforms."

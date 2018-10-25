@@ -83,21 +83,34 @@ def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None,
     # loop over the contours individually
     for rid, cnt in enumerate(cnts):
         contour = np.squeeze(cnt[-1])
+        
 
         # draw the contours on the image
         orig = refRGB.copy()
 
+        if len(contour.shape) == 1:
+            xpos = contour[0]
+            ypos = contour[1]
+            single = True
+        else:
+            xpos = contour[-1, 0]
+            ypos = contour[-1, 1]
+            single = False
+            
         if len(roi_highlight) > 0 and rid in roi_highlight:
             col255 = tuple([cval/255. for cval in roi_color_highlight])
             if label_highlight:
-                ax.text(contour[-1, 0], contour[-1, 1], str(rid+1), color='gray', fontsize=fontsize)
+                ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
         else:
             col255 = tuple([cval/255. for cval in roi_color_default])
             if label_all:
-                ax.text(contour[-1, 0], contour[-1, 1], str(rid+1), color='gray', fontsize=fontsize)
+                ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
             
         #cv2.drawContours(orig, cnt, -1, col255, thickness)
-        ax.plot(contour[:, 0], contour[:, 1], color=col255)
+        if single:
+            ax.plot(contour[0], contour[1], color=col255)
+        else:
+            ax.plot(contour[-1, 0], contour[-1, 1], color=col255)
 
 
         ax.imshow(orig)
