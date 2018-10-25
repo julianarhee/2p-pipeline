@@ -221,17 +221,29 @@ def get_good_RFs(A, fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
                            'r2_y': fov.RFs[roi].conditions[retino_el_cond].fit_results['r2']}) for roi in retino_good_rois)
         rf_fits[session] = retino_rdict
 
+    # Save to animal dir:
+    with open(os.path.join(rootdir, A.animalid, 'rf_fits.pkl'), 'wb') as f:
+        pkl.dump(rf_fits, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+
     return rf_fits 
   
-def hist_rf_widths(rf_fits, visual_area='visual area', ax=None, color='g'):
+def hist_rf_widths(rf_fits, visual_area='visual area', ax=None, color='g', kde=True):
     rf_widths = [np.mean( [res['width_x'], res['width_y']] ) for session, rfdicts in rf_fits.items() for roi, res in rfdicts.items() ] 
     if ax is None:
         fig, ax = pl.subplots(1)
 
-    sns.distplot(rf_widths, label=visual_area, ax=ax,
+    if kde:
+        kde_kws = {"color": color, "lw": 3, "label": "KDE", "alpha": 0.5}
+        hist_kws = {"histtype": "step", "linewidth": 1, "alpha": 0.2, "color": color}
+    else:
+        kde_kws = {}
+        hist_kws = {"histtype": "step", "linewidth": 2, "alpha": 0.5, "color": color}
+    
+    sns.distplot(rf_widths, label=visual_area, ax=ax, kde=kde,
               rug=True, rug_kws={"color": color},
-              kde_kws={"color": color, "lw": 3, "label": "KDE", "alpha": 0.5},
-              hist_kws={"histtype": "step", "linewidth": 1, "alpha": 0.2, "color": color})
+              kde_kws=kde_kws,
+              hist_kws=hist_kws)
  
     #return fig
 #%%
