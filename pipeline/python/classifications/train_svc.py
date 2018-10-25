@@ -924,6 +924,25 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # =============================================================================
 # LI -- gratings (6x4)
 # =============================================================================
+options = ['-D', rootdir, '-i', 'JC015', 
+           '-S', '20180924,20180925', 
+           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+           '-R', 'gratings_run1,combined_gratings_static',
+           '-t', 'traces002,traces003',
+           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+           '-p', 'corrected', 
+           '-N', 'ori',
+#           '--subset', '0,106',
+           '-c', 'xpos,ypos',
+#           '-v', '-5,0',
+#           '-T', '-15,-10,0,5',
+#           '-T', '-60,-30,30,60',
+           '-T', '5.6,16.8,28,5.6,16.8,28',
+           '-T', '5,5,5,15,15,15',
+           
+           '--nproc=1'
+           ]
+
 #options = ['-D', rootdir, '-i', 'JC022', 
 #           '-S', '20181005,20181005,20181006,20181007,20181017', 
 #           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
@@ -949,23 +968,23 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # LI - BLOBS 5x5x5
 # =============================================================================
 
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181022',
-           '-A', 'FOV1_zoom4p0x',
-           '-R', 'combined_blobs_static', 
-           '-t', 'traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,106',
-           '-c', 'xpos,yrot',
-#           '-v', '-5,0',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-           '-T', '-5,-5,0,0,0,5,5,5',
-           '-T', '60,30,60,30,0,60,30,0',
-           
-           '--nproc=1'
-           ]
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181022',
+#           '-A', 'FOV1_zoom4p0x',
+#           '-R', 'combined_blobs_static', 
+#           '-t', 'traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+#           '-c', 'xpos,yrot',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '-5,-5,0,0,0,5,5,5',
+#           '-T', '60,30,60,30,0,60,30,0',
+#           
+#           '--nproc=1'
+#           ]
 #
 
 
@@ -1285,7 +1304,7 @@ def main(options):
     # =============================================================================
     # TEST the trained classifier -- TRANSFORMATIONS.
     # =============================================================================
-    no_morphs = True
+    no_morphs = False
 
     middle_morph = None #53
     m100 = None #106 #max(clf.clfparams['class_subset'])
