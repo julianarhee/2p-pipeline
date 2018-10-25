@@ -96,6 +96,11 @@ from sklearn import metrics
 
 
 #%%
+
+def intersection(lst1, lst2): 
+    return list(set(lst1) & set(lst2)) 
+
+
 # =============================================================================
 # Setting classifier params
 # =============================================================================
@@ -1523,7 +1528,7 @@ class TransformClassifier():
         return data_fpath
             
 
-    def load_dataset(self):
+    def load_dataset(self, visual_area_info=None):
         # Store DATASET:            
         dt = np.load(self.data_fpath)
         if 'arr_0' in dt.keys():
@@ -1581,10 +1586,37 @@ class TransformClassifier():
 
         self.data_identifier = '_'.join((self.animalid, self.session, self.acquisition, self.run, self.traceid))
         
-        self.sample_data, self.sample_labels = self.get_formatted_data()
+        if visual_area_info is not None:
+            (visual_area, visual_areas_fpath), = visual_area_info.items()
+            print "Getting ROIs for area: %s" % visual_area
+            with open(visual_areas_fpath, 'rb') as f:
+                areas = pkl.load(f)
+            if visual_area not in areas.regions.keys():
+                print "Specified visual area - %s - NOT FOUND."
+                for vi, va in enumerate(areas.regions.keys()):
+                    print vi, va
+                sel = input("Select IDX of area to use: ")
+                visual_area = areas.regions.keys()[sel]
+            
+            ret_analysis_id = areas.source.retinoID_rois
+            rdictpath = glob.glob(os.path.join(self.rootdir, areas.source.animalid, areas.source.session, areas.source.acquisition,
+                                               areas.source.run, 'retino_analysis', 'analysisids*.json'))[0]
+            with open(rdictpath, 'r') as f: rdicts = json.load(f)
+            retinoID = rdicts[ret_analysis_id]
+            
+            roi_masks = areas.get_roi_masks(retinoID)
+            nrois = roi_masks.shape[-1]
+            region_mask = areas.regions[visual_area]['region_mask']
+            # Mask ROIs with area mask:
+            region_mask_copy = np.copy(region_mask)
+            region_mask_copy[region_mask==0] = np.nan
+            
+            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
+
+        self.sample_data, self.sample_labels = self.get_formatted_data(included_rois=included_rois)
         
 
-    def get_formatted_data(self): #get_training_data(self):
+    def get_formatted_data(self, included_rois=None): #get_training_data(self):
         '''
         Returns input data formatted as:
             ntrials x nrois (data_type=='stat')
@@ -1595,8 +1627,15 @@ class TransformClassifier():
         assert self.params['inputdata_type'] in self.dataset.keys(), "Specified dtype %s not found. Select from %s." % (self.params['data_type'], str(self.dataset.keys()))
         Xdata = np.array(self.dataset[self.params['inputdata_type']])
         
+            
+        selected_rois = self.load_roi_list(roi_selector=self.params['roi_selector'])
+        if included_rois is not None:
+            roi_list = intersection(selected_rois, included_rois)
+        else:
+            roi_list = selected_rois
+            
         # Get subset of ROIs, if roi_selector is not 'all':
-        self.rois = self.load_roi_list(roi_selector=self.params['roi_selector'])
+        self.rois = roi_list
         if self.rois is not None:
             print "Selecting %i out of %i ROIs (selector: %s)" % (len(self.rois), Xdata.shape[-1], self.params['roi_selector'])
             Xdata = Xdata[:, self.rois]
