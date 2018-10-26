@@ -1598,21 +1598,23 @@ class TransformClassifier():
                 sel = input("Select IDX of area to use: ")
                 visual_area = areas.regions.keys()[sel]
             
-            ret_analysis_id = areas.source.retinoID_rois
-            rdictpath = glob.glob(os.path.join(self.rootdir, areas.source.animalid, areas.source.session, areas.source.acquisition,
-                                               areas.source.run, 'retino_analysis', 'analysisids*.json'))[0]
-            with open(rdictpath, 'r') as f: rdicts = json.load(f)
-            retinoID = rdicts[ret_analysis_id]
-            
-            roi_masks = areas.get_roi_masks(retinoID)
-            nrois = roi_masks.shape[-1]
-            region_mask = areas.regions[visual_area]['region_mask']
-            # Mask ROIs with area mask:
-            region_mask_copy = np.copy(region_mask)
-            region_mask_copy[region_mask==0] = np.nan
-            
-            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
-
+#            ret_analysis_id = areas.source.retinoID_rois
+#            rdictpath = glob.glob(os.path.join(self.rootdir, areas.source.animalid, areas.source.session, areas.source.acquisition,
+#                                               areas.source.run, 'retino_analysis', 'analysisids*.json'))[0]
+#            with open(rdictpath, 'r') as f: rdicts = json.load(f)
+#            retinoID = rdicts[ret_analysis_id]
+#            
+#            roi_masks = areas.get_roi_masks(retinoID)
+#            nrois = roi_masks.shape[-1]
+#            region_mask = areas.regions[visual_area]['region_mask']
+#            # Mask ROIs with area mask:
+#            region_mask_copy = np.copy(region_mask)
+#            region_mask_copy[region_mask==0] = np.nan
+#                        
+#            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
+            included_rois = [int(ri) for ri in visual_area['included_rois']
+        else:
+            included_rois = None
         self.sample_data, self.sample_labels = self.get_formatted_data(included_rois=included_rois)
         
 
