@@ -110,9 +110,7 @@ def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None,
         if single:
             ax.plot(contour[0], contour[1], color=col255)
         else:
-            ax.plot(contour[-1, 0], contour[-1, 1], color=col255)
-
-
+            ax.plot(contour[:, 0], contour[:, 1], color=col255)
         ax.imshow(orig)
         
 #%%
