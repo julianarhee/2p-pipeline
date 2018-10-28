@@ -47,230 +47,6 @@ from sklearn.model_selection import StratifiedKFold
 
 from sklearn.model_selection import permutation_test_score
 
-
-#%%
-
-def extract_options(options):
-
-    def comma_sep_list(option, opt, value, parser):
-        setattr(parser.values, option.dest, value.split(','))
-
-
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
-                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid',
-                          default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-#    parser.add_option('-S', '--session', action='store', dest='session',
-#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-#    parser.add_option('-R', '--run', action='store', dest='run',
-#                          default='', help="RUN name (e.g., gratings_run1)")
-#    parser.add_option('-t', '--traceid', action='store', dest='traceid',
-#                          default='', help="traceid name (e.g., traces001)")
-
-    # Run specific info:
-    parser.add_option('-S', '--session', dest='session_list', default=[], type='string', action='callback', callback=comma_sep_list, help="SESSIONS for corresponding runs [default: []]")
-
-    parser.add_option('-A', '--fov', dest='fov_list', default=[], type='string', action='callback', callback=comma_sep_list, help="FOVs for corresponding runs [default: []]")
-
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="TRACEIDs for corresponding runs [default: []]")
-
-    parser.add_option('-R', '--run', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
-    
-
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
-    parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
-
-    # Classifier info:
-    parser.add_option('-r', '--rois', action='store', dest='roi_selector', default='all', help="(options: all, visual)")
-    parser.add_option('-d', '--dtype', action='store', dest='data_type', default='stat', help="(options: frames, stat)")
-    stat_choices = {'stat': ['meanstim', 'meanstimdff', 'zscore'],
-                    'frames': ['trial', 'stimulus', 'post']}
-    parser.add_option('-s', '--stype', action='store', dest='stat_type', default='meanstim', 
-                      help="If dtype is STAT, options: %s. If dtype is FRAMES, options: %s" % (str(stat_choices['stat']), str(stat_choices['frames'])))
-
-    parser.add_option('-p', '--indata_type', action='store', dest='inputdata_type', default='corrected', help="data processing type (dff, corrected, raw, etc.)")
-    parser.add_option('--null', action='store_true', dest='get_null', default=False, help='Include a null class in addition to stim conditions')
-    parser.add_option('-N', '--name', action='store', dest='class_name', default='', help='Name of transform to classify (e.g., ori, xpos, morphlevel, etc.)')
-    
-    parser.add_option('--subset', dest='class_subset', default='', type='string', action='callback', 
-                          callback=comma_sep_list, help='Subset of class_name types to learn')
-    parser.add_option('-c', '--const', dest='const_trans', default='', type='string', action='callback', 
-                          callback=comma_sep_list, help="Transform name to hold constant if classifying a different transform")
-    parser.add_option('-v', '--tval', dest='trans_value', default='', type='string', action='callback', 
-                          callback=comma_sep_list, help="Value to set const_trans to")
-    parser.add_option('-T', '--testvals', dest='test_values', default=[], action='append', 
-                          help="Values to hold as test set (in order listed in const_trans assignment")
-    parser.add_option('--indie', action='store_true', dest='indie', default=False, help="set if each transform-value pair should be trained/tested independently")
-    parser.add_option('-V', '--area', action='store', dest='visual_area', default='', help='Name of visual area (e.g., LI, LL, etc.)')
-    parser.add_option('--segment', action='store_true', dest='select_visual_area', default=False, help="set if selecting subset of FOV for visual area")
-
-
-    parser.add_option('-L', '--clf', action='store', dest='classifier', default='LinearSVC', help='Classifier type (default: LinearSVC)')
-    parser.add_option('-k', '--cv', action='store', dest='cv_method', default='kfold', help='Method of cross-validation (default: kfold)')
-    parser.add_option('-f', '--folds', action='store', dest='cv_nfolds', default=5, help='N folds for CV (default: 5)')
-    parser.add_option('-C', '--cval', action='store', dest='C_val', default=1e9, help='Value for C param if using SVC (default: 1e9)')
-    parser.add_option('-g', '--groups', action='store', dest='cv_ngroups', default=1, help='N groups for CV, relevant only for data_type=frames (default: 1)')
-    parser.add_option('-b', '--bin', action='store', dest='binsize', default=10, help='Bin size, relevant only for data_type=frames (default: 10)')
-
-    parser.add_option('--Cval', action='store', dest='setC', default=1e9, help='C value or type to use for final trained classifier')
-    parser.add_option('--nfeatures', action='store', dest='nfeatures_select', default='', help='Whether to use RFE to find best N rois (default: best, can be int)')
-    parser.add_option('--partial', action='store_false', dest='full_train', default=True, help='Set flag to leave aside test_size of the training dataset for the test plots')
-    parser.add_option('--test-size', action='store', dest='test_size', default=0.33, help='Fraction of train data to set aside for plotting test resutls (default: 0.33)')
-
-    
-    
-    (options, args) = parser.parse_args(options)
-    
-    assert options.stat_type in stat_choices[options.data_type], "Invalid STAT selected for data_type %s. Run -h for options." % options.data_type
-
-    return options
-
-#%%
-
-#options = ['-D', '/mnt/odyssey', '-i', 'JC015', '-S', '20180915', '-A', 'FOV1_zoom2p7x',
-#           '-R', 'combined_gratings_static', '-t', 'traces001',
-#           '-r', 'visual', '-d', 'stat', '-s', 'meanstim',
-#           '-p', 'corrected', '-N', 'ori',
-#           '-c', 'xpos',
-#           '--nproc=4'
-#           ]
-
-
-#def get_transform_classifiers(optsE):
-def get_transform_classifiers(animalid, session, acquisition, run, traceid, rootdir='/n/coxfs01/2p-data',
-                         roi_selector='visual', data_type='stat', stat_type='meanstim',
-                         inputdata_type='corrected', 
-                         get_null=False, class_name='', class_subset='',
-                         const_trans='', trans_value='', test_set=[], indie=False,
-                         cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10,
-                         nprocesses=2, select_visual_area=False, visual_area=''):
-
-    nprocs = int(nprocesses)
-    
-    C = lsvc.TransformClassifier(animalid, session, acquisition, run, traceid, rootdir=rootdir,
-                         roi_selector=roi_selector, data_type=data_type, stat_type=stat_type,
-                         inputdata_type=inputdata_type, 
-                         get_null=get_null, class_name=class_name, class_subset=class_subset,
-                         const_trans=const_trans, trans_value=trans_value, test_set=test_set, indie=indie,
-                         cv_method=cv_method, cv_nfolds=cv_nfolds, cv_ngroups=cv_ngroups, C_val=C_val, binsize=binsize)
-    
-    if select_visual_area:
-        visual_areas_fpath = glob.glob(os.path.join(C.rootdir, C.animalid, C.session, C.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
-        visual_area_info = {visual_area: visual_areas_fpath}
-    else:
-        visual_area_info = None
-
-    C.load_dataset(visual_area_info=visual_area_info)
-    
-    C.create_classifier_dirs()
-    C.initialize_classifiers()
-    
-    C.label_classifier_data()
-    
-    t_train_mp = time.time()
-#    def trainer(clf_list, out_q):
-#        
-#        outdict = {}
-#        for clf in clf_list:
-#            clf.train_classifier()
-#            outdict[os.path.split(clf.classifier_dir)[-1]] = 'done!'
-#            print "Finished training", clf
-#        out_q.put(outdict)
-#        
-#    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
-#    clf_list = C.classifiers
-#    out_q = mp.Queue()
-#    chunksize = int(math.ceil(len(C.classifiers) / float(nprocs)))
-#    procs = []
-#    for i in range(nprocs):
-#        p = mp.Process(target=trainer, 
-#                       args=(clf_list[chunksize * i:chunksize * (i + 1)],
-#                             out_q))
-#        procs.append(p)
-#        p.start()
-#
-#    # Collect all results into single results dict. We should know how many dicts to expect:
-#    resultdict = {}
-#    for i in range(nprocs):
-#        resultdict.update(out_q.get())
-#
-#    # Wait for all worker processes to finish
-#    for p in procs:
-#        print "Finished:", p
-#        p.join()
-#        
-#    print_elapsed_time(t_train_mp)
-#    print resultdict
-
-    for clf in C.classifiers:
-        clf.do_cv()
-        with open(os.path.join(clf.classifier_dir, 'classifier_%s.pkl' % clf.hash), 'wb') as f:
-            pkl.dump(clf, f, protocol=pkl.HIGHEST_PROTOCOL)
-        print "Saved object to:", os.path.join(C.classifier_dir, os.path.join(clf.classifier_dir, 'classifier_%s.pkl' % clf.hash)) #'TransformClassifier.pkl')
-
-    # Replace 'dataset':
-    C.dataset = copy.copy(C.data_fpath)
-    with open(os.path.join(C.classifier_dir, 'TransformClassifier.pkl'), 'wb') as f:
-        pkl.dump(C, f, protocol=pkl.HIGHEST_PROTOCOL)
-        
-    print "*****************************"
-    print "Finished training all %i classifiers." % len(C.classifiers)
-    print "*****************************"
-   
-    # Reload dataset to return:
-    tmp_dset = np.load(C.data_fpath)
-    C.dataset = tmp_dset
-    
-    return C
-
-
-T = lsvc.TransformClassifier(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
-                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
-                                          inputdata_type=optsE.inputdata_type, 
-                                          get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
-                                          const_trans=optsE.const_trans, trans_value=optsE.trans_value,
-                                          cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
-                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie
-                                          )
-
-#visual_areas_fpath = glob.glob(os.path.join(T.rootdir, T.animalid, T.session, T.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
-#visual_area_info = {visual_area: visual_areas_fpath}
-visual_area_info = None
-
-T.load_dataset(visual_area_info=visual_area_info)
-T.create_classifier_dirs()
-
-##
-feature_select_method = 'rfe' # Choices: 'rfe', 'k_best', None
-feature_select_n = 'best' # Choices:  'best', int, None
-C_select = 'best' # Choices: 'best', None
-
-T.initialize_classifiers(feature_select_method=feature_select_method, 
-                         feature_select_n=feature_select_n, 
-                         C_select=C_select)
-
-#
-T.label_classifier_data()
-T.create_classifiers()
-
-
-clf = T.classifiers[0]
-
-clf.do_cv(scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500)
-
-full_train = False
-test_size=0.33
-clf.train_classifier(full_train=full_train, test_size=test_size)
-
-
 #%%
 
 def get_traceids_from_lists(animalid, session_list, fov_list, run_list, traceid_list, rootdir='/n/coxfs01/2p-data'):
@@ -323,240 +99,6 @@ def load_classifier_object(traceid_dir, rootdir='/n/coxfs01/2p-data', animalid='
             C.dataset = loaded_dset
         
     return C
-
-#%%
-
-#def train_classifier(clf, setC='big', nfeatures_select='all', full_train=False, test_size=0.33,
-#                                secondary_output_dir=None, data_identifier='dataID'):
-#
-#    # =============================================================================
-#    # Train the classifier:
-#    # =============================================================================
-#    #setC = optsE.setC #'best' # choices: 'best' (test diff values of C on log scale), 'big' (1E9), 'small' (w.0)
-#    #nfeatures_select = int(optsE.nfeatures_select) if optsE.nfeatures_select.isdigit() else optsE.nfeatures_select # 'best' # choices: 'best' (uses RFE to find cells with max. clf accuracy), int (uses RFE to find top N cells)
-#    #full_train = optsE.full_train #True
-#    #test_size = float(optsE.test_size) #0.33
-#    
-#    if full_train:
-#        train_set = 'fulltrain'
-#    else:
-#        train_set = 'testsize%.2f' % test_size
-#        
-#    if nfeatures_select == 'best':
-#        rfe_results = clf.load_RFE_results() #TODO:  This actually uses RFE results assuming default clf params (i.e., doesn't take into account params of specified clf)
-#    else:
-#        rfe_results = {}
-#    svc, cX, cy, kept_rids, clf_output_dir = initialize_svc(clf.cX, clf.cy, clf.clf.get_params(), 
-#                                                                      setC=setC, 
-#                                                                      nfeatures_select=nfeatures_select,
-#                                                                      rfe_results=rfe_results,
-#                                                                      full_train=full_train, 
-#                                                                      test_size=test_size, 
-#                                                                      classifier_base_dir=clf.classifier_dir,
-#                                                                      secondary_output_dir=secondary_output_dir,
-#                                                                      data_identifier=data_identifier)
-#    
-#    svc, traindata = train_and_validate_svc(svc, cX, cy, clf, clf_output_dir, full_train=full_train, test_size=test_size,
-#                                                                      secondary_output_dir=secondary_output_dir,
-#                                                                      data_identifier=data_identifier)
-#    
-#    return svc, traindata, kept_rids
-
-#
-# clfparams, sample_data, sample_labels, sconfigs, classifier_dir,
-#                         run_info, data_identifier=''):
-#        
-#def initialize_svc(cX, cy, start_params, setC='best', nfeatures_select='best', 
-#                             full_train=True, test_size=0.33, classifier_base_dir='/tmp',
-#                             rfe_results={}, secondary_output_dir=None, data_identifier='dataID'):
-#    svc = LinearSVC()
-#    svc.set_params(C=start_params['C'],
-#                   loss=start_params['loss'],
-#                   class_weight=start_params['class_weight'],
-#                   dual=start_params['dual'],
-#                   fit_intercept=start_params['fit_intercept'],
-#                   intercept_scaling=start_params['intercept_scaling'],
-#                   max_iter=start_params['max_iter'],
-#                   multi_class=start_params['multi_class'],
-#                   penalty=start_params['penalty'],
-#                   random_state=start_params['random_state'],
-#                   tol=start_params['tol'],
-#                   verbose=0)
-#    
-#    tmp_cX = np.copy(cX)
-#    cy = np.copy(cy)
-#       
-#    # Select features (i.e., cells):
-#    # ----------------
-#    if isinstance(nfeatures_select, int):
-#    
-#        rfe = RFE(svc, n_features_to_select=nfeatures_select)
-#        rfe.fit(tmp_cX, cy)
-#        
-#        removed_rids = np.where(rfe.ranking_!=1)[0]
-#        kept_rids = np.array([i for i in np.arange(0, tmp_cX.shape[-1]) if i not in removed_rids])
-#        feature_str = 'fit%i_RFE' % nfeatures_select
-#        cX = tmp_cX[:, kept_rids]
-#    
-#    elif nfeatures_select == 'best':
-#        kept_rids = rfe_results['best']['kept_rids']
-#        feature_str = 'bestRFE'
-#        cX = tmp_cX[:, kept_rids]
-#    
-#    else:
-#        kept_rids = range(tmp_cX.shape[-1]) #C.rois
-#        cX = np.copy(tmp_cX)
-#        feature_str = 'allcells'
-#    
-#    # Set C:
-#    # ----------------
-#    if setC == 'best':
-#        C_val = lsvc.get_best_C(svc, cX, cy)
-#        pl.savefig(os.path.join(classifier_base_dir, 'figures', 'C_values.png'))
-#        if secondary_output_dir is not None:
-#            pl.savefig(os.path.join(secondary_output_dir, 'C_values_%s.png' % data_identifier))
-#        pl.close()
-#    elif setC == 'big':
-#        C_val = 1E9 #clf.clfparams['C_val']
-#    elif setC == 'small':
-#        C_val = 1.0
-#    else:
-#        C_val = svc.C
-#    C_str = '%sC%.2f' % (setC, C_val)
-#    
-#    # Create output dir:
-#    # ----------------
-#    clf_subdir = '%s_%s' % (feature_str, C_str)
-#    clf_output_dir = os.path.join(classifier_base_dir, clf_subdir)
-#    if not os.path.exists(os.path.join(clf_output_dir, 'figures')): os.makedirs(os.path.join(clf_output_dir, 'figures'))
-#    print "Saving current CLF results to:", clf_output_dir
-#    
-#    # Set classifier parameters:
-#    # ----------------
-#    dual = cX.shape[0] > cX.shape[1]
-#    svc.C = C_val
-#    svc.dual = dual
-#    print svc
-#    
-#    return svc, cX, cy, kept_rids, clf_output_dir
-
-#
-#def train_and_validate_svc(svc, cX, cy, clf, clf_output_dir, full_train=False, test_size=0.33,
-#                           secondary_output_dir=None, data_identifier='dataID'):
-#    #nfolds = clf.clfparams['cv_nfolds']
-#    #kfold = StratifiedKFold(n_splits=nfolds, shuffle=True)
-#    
-#    
-#    # Do cross-validation and plot results:
-#    # -------------------------------------------------------------------------
-#    
-#    # Do CV in limited dataset:
-#    fig = lsvc.hist_cv_permutations(svc, cX, cy, clf.clfparams)
-#    label_figure(fig, clf.data_identifier)
-#    pl.savefig(os.path.join(clf_output_dir, 'figures', 'cv_permutation.png'))
-#    if secondary_output_dir is not None:
-#        pl.savefig(os.path.join(secondary_output_dir, 'cv_permutation_%s.png' % data_identifier))
-#    pl.close()
-#    
-#    #% Confusion matrix:
-#    predicted, true, classes, config_names = lsvc.get_cv_folds(svc, clf.clfparams, cX, cy, cy_labels=clf.cy_labels, output_dir=None)
-#    cmatrix, cstr = lsvc.get_confusion_matrix(predicted, true, classes, average_iters=True)
-#    lsvc.plot_confusion_matrix(cmatrix, classes, ax=None, normalize=True, title='%s conf matrix (n=%i)' % (cstr, clf.clfparams['cv_nfolds']), cmap=pl.cm.Blues)
-#    pl.savefig(os.path.join(clf_output_dir, 'figures', 'cv_confusion.png'))
-#    if secondary_output_dir is not None:
-#        pl.savefig(os.path.join(secondary_output_dir, 'cv_confusion_%s.png' % data_identifier))
-#    pl.close()
-#    
-#    # 
-#    # =============================================================================
-#    # Train the classifier with specified params:
-#    # =============================================================================
-#    X_test = None; test_true=None; test_predicted=None;
-#    traintest_results = {}
-#    if full_train:
-#        svc.fit(cX, cy)
-#        # TODO: fix this, can't just use all cv test results -- do it confusion-matrix style and get totals for each tested class
-#        for classix, classname in enumerate(classes):
-#            ncorrect = cmatrix[classix,classix]
-#            ntotal = np.sum(cmatrix[classix, :])
-#            traintest_results[classname] = float(ncorrect) / float(ntotal)
-#
-#        X_train = cX.copy()
-#        train_true = cy.copy()
-#    else:
-#        X_train, X_test, train_true, test_true = train_test_split(cX, cy, test_size=test_size, random_state=0, shuffle=True)
-#        
-#        svc.fit(X_train, train_true)
-#        test_predicted = svc.predict(X_test)
-#        #test_score = svc.score(X_test, test_true)
-#        for classix, classname in enumerate(sorted(np.unique(test_true))):
-#            sample_ixs = np.array([vi for vi,val in enumerate(test_true) if val == classname])
-#            curr_true = test_true[sample_ixs]
-#            curr_pred = test_predicted[sample_ixs]
-#            ncorrect = np.sum([1 if predval==trueval else 0 for predval,trueval in zip(curr_pred, curr_true)]) #np.sum([1 if p == classname else 0 for p in test_predicted])
-#            ntotal = len(sample_ixs)
-#            print  float(ncorrect) / float(ntotal)
-#            
-#            traintest_results[classname] = float(ncorrect) / float(ntotal)
-#
-#            
-#    # Also save CV results by config, if relevant:
-#    trained_configs = list(set([cfg for sublist in config_names for cfg in sublist]))
-#    traintest_by_config = dict((cfg, {'ncorrect': [], 'ntotal': []}) for cfg in trained_configs)
-#    for cfg in trained_configs:
-#        for fold in range(len(predicted)):
-#            tested_ixs = np.where(config_names[fold]==cfg)[0]
-#            if len(tested_ixs)> 0:
-#                curr_true = true[fold][tested_ixs]
-#                curr_pred = predicted[fold][tested_ixs]
-#                curr_ncorrect = sum([1 if tru==guess else 0 for tru, guess in zip(curr_true, curr_pred)])
-#                curr_ntotal = len(tested_ixs)
-#            else:
-#                curr_ncorrect = 0
-#                curr_ntotal = 0
-#            traintest_by_config[cfg]['ncorrect'].append(curr_ncorrect)
-#            traintest_by_config[cfg]['ntotal'].append(curr_ntotal)
-#        traintest_by_config[cfg]['percent_correct'] = np.nanmean([float(corr)/float(tot) if tot > 0 else np.nan for corr, tot in zip(traintest_by_config[cfg]['ncorrect'], traintest_by_config[cfg]['ntotal'])])
-#    traintest_results['by_config'] = traintest_by_config
-#
-##    testdata = {'data': X_test, 'labels': test_true, 'predicted': test_predicted}
-#    traindata = {'train_data': X_train, 
-#                 'train_labels': train_true,
-#                 'test_data': X_test,
-#                 'test_labels': test_true,
-#                 'predicted': test_predicted,
-#                 'results': traintest_results}
-#    
-#    return svc, traindata #X_test, test_true, test_predicted
-
-
-def get_test_data(sample_data, sample_labels, sdf, clfparams, limit_to_trained=True):
-    #sdf = pd.DataFrame(clf.sconfigs).T
-    
-    # Filter sconfigs by const-trans/trans-value pair:
-    if clfparams['const_trans'] != '' and limit_to_trained is True:
-        trans_sdf = copy.copy(sdf)
-        for ctrans, cval in zip(clfparams['const_trans'], clfparams['trans_value']):
-            print ctrans, cval
-            trans_sdf = trans_sdf[trans_sdf[ctrans].isin(cval)]
-    else:
-        trans_sdf = copy.copy(sdf)
-    test_values = [val for val in trans_sdf[clfparams['class_name']].unique() if val not in clfparams['class_subset']]
-    
-    test_sdf = trans_sdf[trans_sdf[clfparams['class_name']].isin(test_values)]
-    configs_included = test_sdf.index.tolist()
-    
-    kept_trial_ixs = np.array([fi for fi, config in enumerate(sample_labels) if config in configs_included])
-    print "N kept trials:", len(kept_trial_ixs)
-    
-    test_data = sample_data[kept_trial_ixs, :]
-    tmp_test_labels = sample_labels[kept_trial_ixs]
-    test_labels = [test_sdf[test_sdf.index==config][clfparams['class_name']][0] for config in tmp_test_labels]
-    
-    print "Test data:", test_data.shape
-    print "Test labels:", list(set(test_labels))
-
-    return test_data, test_labels
 
 
 #%%
@@ -636,27 +178,345 @@ def get_roi_masks(traceid_dir, rootdir='/n/coxfs01/2p-data'):
     return rois
         
 
-#glob.glob(os.path.join(optsE.rootdir, optsE.animalid, '2018*', 'FOV*', '*blobs*', 'traces', 'traces*', 'classifiers'))
+
 
 #%%
+
+def extract_options(options):
+
+    def comma_sep_list(option, opt, value, parser):
+        setattr(parser.values, option.dest, value.split(','))
+
+
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir',
+                          default='/nas/volume1/2photon/data',
+                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid',
+                          default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+#    parser.add_option('-S', '--session', action='store', dest='session',
+#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
+#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
+#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+#    parser.add_option('-R', '--run', action='store', dest='run',
+#                          default='', help="RUN name (e.g., gratings_run1)")
+#    parser.add_option('-t', '--traceid', action='store', dest='traceid',
+#                          default='', help="traceid name (e.g., traces001)")
+
+    # Run specific info:
+    parser.add_option('-S', '--session', dest='session_list', default=[], type='string', action='callback', callback=comma_sep_list, help="SESSIONS for corresponding runs [default: []]")
+
+    parser.add_option('-A', '--fov', dest='fov_list', default=[], type='string', action='callback', callback=comma_sep_list, help="FOVs for corresponding runs [default: []]")
+
+    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="TRACEIDs for corresponding runs [default: []]")
+
+    parser.add_option('-R', '--run', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
     
-    for fov in sorted(clfs.keys(), key=natural_keys):
-        C = copy.copy(trans_classifiers[fov]['C'])
-        clf = copy.copy(clfs[fov]['classifier'])
-        svc, traindata, kept_rids = train_classifier(clf, setC=setC, nfeatures_select=nfeatures_select, 
-                                                                               full_train=full_train, test_size=test_size,
-                                                                               secondary_output_dir=secondary_output_dir, 
-                                                                               data_identifier=clf.data_identifier)    
+
+    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    parser.add_option('--par', action='store_true', dest='multiproc', default=False, help="set if want to run MP on roi stats, when possible")
+    parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
+
+    # Classifier info:
+    parser.add_option('-r', '--rois', action='store', dest='roi_selector', default='all', help="(options: all, visual)")
+    parser.add_option('-d', '--dtype', action='store', dest='data_type', default='stat', help="(options: frames, stat)")
+    stat_choices = {'stat': ['meanstim', 'meanstimdff', 'zscore'],
+                    'frames': ['trial', 'stimulus', 'post']}
+    parser.add_option('-s', '--stype', action='store', dest='stat_type', default='meanstim', 
+                      help="If dtype is STAT, options: %s. If dtype is FRAMES, options: %s" % (str(stat_choices['stat']), str(stat_choices['frames'])))
+
+    parser.add_option('-p', '--indata_type', action='store', dest='inputdata_type', default='corrected', help="data processing type (dff, corrected, raw, etc.)")
+    parser.add_option('--null', action='store_true', dest='get_null', default=False, help='Include a null class in addition to stim conditions')
+    parser.add_option('-N', '--name', action='store', dest='class_name', default='', help='Name of transform to classify (e.g., ori, xpos, morphlevel, etc.)')
+    
+    parser.add_option('--subset', dest='class_subset', default='', type='string', action='callback', 
+                          callback=comma_sep_list, help='Subset of class_name types to learn')
+    parser.add_option('-c', '--const', dest='const_trans', default='', type='string', action='callback', 
+                          callback=comma_sep_list, help="Transform name to hold constant if classifying a different transform")
+    parser.add_option('-v', '--tval', dest='trans_value', default='', type='string', action='callback', 
+                          callback=comma_sep_list, help="Value to set const_trans to")
+    parser.add_option('-T', '--testvals', dest='test_values', default=[], action='append', 
+                          help="Values to hold as test set (in order listed in const_trans assignment")
+    parser.add_option('--indie', action='store_true', dest='indie', default=False, help="set if each transform-value pair should be trained/tested independently")
+    parser.add_option('-V', '--area', action='store', dest='visual_area', default='', help='Name of visual area (e.g., LI, LL, etc.)')
+    parser.add_option('--segment', action='store_true', dest='select_visual_area', default=False, help="set if selecting subset of FOV for visual area")
+
+
+    parser.add_option('-L', '--clf', action='store', dest='classifier', default='LinearSVC', help='Classifier type (default: LinearSVC)')
+    parser.add_option('-k', '--cv', action='store', dest='cv_method', default='kfold', help='Method of cross-validation (default: kfold)')
+    parser.add_option('-f', '--folds', action='store', dest='cv_nfolds', default=5, help='N folds for CV (default: 5)')
+    parser.add_option('-C', '--cval', action='store', dest='C_val', default=1e9, help='Value for C param if using SVC (default: 1e9, set to best to search)')
+    parser.add_option('-g', '--groups', action='store', dest='cv_ngroups', default=1, help='N groups for CV, relevant only for data_type=frames (default: 1)')
+    parser.add_option('-b', '--bin', action='store', dest='binsize', default=10, help='Bin size, relevant only for data_type=frames (default: 10)')
+
+    parser.add_option('--Cval', action='store', dest='setC', default=1e9, help='C value or type to use for final trained classifier')
+    parser.add_option('--nfeatures', action='store', dest='nfeatures_select', default='', help='Whether to use RFE to find best N rois (default: best, can be int)')
+    parser.add_option('--partial', action='store_false', dest='full_train', default=True, help='Set flag to leave aside test_size of the training dataset for the test plots')
+    parser.add_option('--test-size', action='store', dest='test_size', default=0.33, help='Fraction of train data to set aside for plotting test resutls (default: 0.33)')
+
+    
+    
+    (options, args) = parser.parse_args(options)
+    
+    assert options.stat_type in stat_choices[options.data_type], "Invalid STAT selected for data_type %s. Run -h for options." % options.data_type
+
+    return options
+
+#%%
+
+
+    
+def initialize_classifiers_for_each_fov(traceid_dirs, optsE):
+    visual_area = optsE.visual_area
+    print "VISUAL AREA: %s" % visual_area
+    select_visual_area = optsE.select_visual_area
+
+    test_set = []
+    if len(optsE.test_values) > 0:
+        tmp_value_list=[]
+        for vi, val_str in enumerate(optsE.test_values):
+            values = [float(v) for v in val_str.split(',')]
+            tmp_value_list.append(values)
+        assert len(list(set([len(values) for values in tmp_value_list]))) == 1, "Must provide corresponding value pairs if more than 1 transform varies."
+        assert len(optsE.const_trans) == len(tmp_value_list), "Must provide subset of test values for EACH transform: %s" % str(optsE.const_trans)
+        test_pairs = [(t1, t2) for t1, t2 in zip(tmp_value_list[0], tmp_value_list[1])] #list(itertools.product(*tmp_value_list))
         
-        sample_data = C.sample_data[:, kept_rids]
-        sample_labels = C.sample_labels
+        for cfg in test_pairs:
+            test_set.append(dict((tname, tvalue) for tname, tvalue in zip(optsE.const_trans, cfg)))
+    
+    test_set = list(np.unique(np.array(test_set)))
+    print "Holding %i configs for test_set." % len(test_set)
+
+
+    # Combine data arrays -- just  use stim-period zscore? (then dont have to deal w/ different trial structures)
+    trans_classifiers = dict()
+    for fov, traceid_dir in sorted(traceid_dirs.items(), key=lambda x: x[0]):
         
-        clf.svc = svc
-        clf.classifier_dir = clf_subdir
+        print "Getting TransformClassifiers() for: %s" % fov
+        curr_session = fov.split('_')[0]
+        curr_fov = '_'.join(fov.split('_')[1:3])
+        curr_traceid = os.path.split(traceid_dir)[-1].split('_')[0]
+        curr_run = os.path.split(traceid_dir.split('/traces/')[0])[-1]
+        print "SESSION: %s | FOV: %s | RUN: %s | traceid: %s" % (curr_session, curr_fov, curr_run, curr_traceid)
+#        C = load_classifier_object(traceid_dir, rootdir=optsE.rootdir, animalid=optsE.animalid, session=curr_session)
+#        print C
         
+#        if C is None:
+        C = initialize_transform_classifiers(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
+                                      roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
+                                      inputdata_type=optsE.inputdata_type, 
+                                      get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
+                                      const_trans=optsE.const_trans, trans_value=optsE.trans_value,
+                                      cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
+                                      C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses, test_set=test_set, 
+                                      indie=optsE.indie, select_visual_area=select_visual_area, visual_area=visual_area)
+        trans_classifiers[fov] = {'C': C, 'traceid_dir': traceid_dir}
+        
+    return trans_classifiers 
+
+
+
+def initialize_transform_classifiers(animalid, session, acquisition, run, traceid, rootdir='/n/coxfs01/2p-data',
+                         roi_selector='visual', data_type='stat', stat_type='meanstim',
+                         inputdata_type='corrected', 
+                         get_null=False, class_name='', class_subset='',
+                         const_trans='', trans_value='', test_set=[], indie=False,
+                         cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10,
+                         nprocesses=2, select_visual_area=False, visual_area=''):
+
+    nprocs = int(nprocesses)
+    
+    C = lsvc.TransformClassifier(animalid, session, acquisition, run, traceid, rootdir=rootdir,
+                         roi_selector=roi_selector, data_type=data_type, stat_type=stat_type,
+                         inputdata_type=inputdata_type, 
+                         get_null=get_null, class_name=class_name, class_subset=class_subset,
+                         const_trans=const_trans, trans_value=trans_value, test_set=test_set, indie=indie,
+                         cv_method=cv_method, cv_nfolds=cv_nfolds, cv_ngroups=cv_ngroups, C_val=C_val, binsize=binsize)
+    
+    if select_visual_area:
+        visual_areas_fpath = glob.glob(os.path.join(C.rootdir, C.animalid, C.session, C.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
+        visual_area_info = {visual_area: visual_areas_fpath}
+    else:
+        visual_area_info = None
+
+    C.load_dataset(visual_area_info=visual_area_info)
+    C.create_classifier_dirs()
+    
+    return C
+
+#
+#def create_transform_classifiers(C, feature_select_method='rfe', feature_select_n='best', C_select='best'):
+#    ##
+#    '''
+#    feature_select_method = 'rfe' # Choices: 'rfe', 'k_best', None
+#    feature_select_n = 'best' # Choices:  'best', int, None
+#    C_select = 'best' # Choices: 'best', None
+#    '''
+#    
+#    C.create_classifiers(feature_select_method=feature_select_method, 
+#                             feature_select_n=feature_select_n, 
+#                             C_select=C_select)
+    
+#    #
+#    C.label_classifier_data()
+#    C.create_classifiers()
+    
+#def train_transform_classifiers(scoring='accuracy', full_train=False, test_size=0.33):
+#    for clf in C.classifiers:
+#        
+#        clf.do_cv(scoring=scoring, permutation_test=True, n_jobs=4, n_permutations=500)
+#
+#        clf.train_classifier(full_train=full_train, test_size=test_size)
+#        
+#        clf.get_classifier_accuracy_by_stimconfig(full_train=full_train, test_size=test_size, row_label=None, col_label=None)
+#
+#    return C
+
+
+#    t_train_mp = time.time()
+#    def trainer(clf_list, out_q):
+#        
+#        outdict = {}
+#        for clf in clf_list:
+#            clf.train_classifier()
+#            outdict[os.path.split(clf.classifier_dir)[-1]] = 'done!'
+#            print "Finished training", clf
+#        out_q.put(outdict)
+#        
+#    # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+#    clf_list = C.classifiers
+#    out_q = mp.Queue()
+#    chunksize = int(math.ceil(len(C.classifiers) / float(nprocs)))
+#    procs = []
+#    for i in range(nprocs):
+#        p = mp.Process(target=trainer, 
+#                       args=(clf_list[chunksize * i:chunksize * (i + 1)],
+#                             out_q))
+#        procs.append(p)
+#        p.start()
+#
+#    # Collect all results into single results dict. We should know how many dicts to expect:
+#    resultdict = {}
+#    for i in range(nprocs):
+#        resultdict.update(out_q.get())
+#
+#    # Wait for all worker processes to finish
+#    for p in procs:
+#        print "Finished:", p
+#        p.join()
+#        
+#    print_elapsed_time(t_train_mp)
+#    print resultdict
+
+#    for clf in C.classifiers:
+#        clf.do_cv()
+#        with open(os.path.join(clf.classifier_dir, 'classifier_%s.pkl' % clf.hash), 'wb') as f:
+#            pkl.dump(clf, f, protocol=pkl.HIGHEST_PROTOCOL)
+#        print "Saved object to:", os.path.join(C.classifier_dir, os.path.join(clf.classifier_dir, 'classifier_%s.pkl' % clf.hash)) #'TransformClassifier.pkl')
+#
+#    # Replace 'dataset':
+#    C.dataset = copy.copy(C.data_fpath)
+#    with open(os.path.join(C.classifier_dir, 'TransformClassifier.pkl'), 'wb') as f:
+#        pkl.dump(C, f, protocol=pkl.HIGHEST_PROTOCOL)
+#        
+#    print "*****************************"
+#    print "Finished training all %i classifiers." % len(C.classifiers)
+#    print "*****************************"
+#   
+#    # Reload dataset to return:
+#    tmp_dset = np.load(C.data_fpath)
+#    C.dataset = tmp_dset
+#    
+#    return C
+
+
+#T = lsvc.TransformClassifier(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
+#                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
+#                                          inputdata_type=optsE.inputdata_type, 
+#                                          get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
+#                                          const_trans=optsE.const_trans, trans_value=optsE.trans_value,
+#                                          cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
+#                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie
+#                                          )
+#
+##visual_areas_fpath = glob.glob(os.path.join(T.rootdir, T.animalid, T.session, T.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
+##visual_area_info = {visual_area: visual_areas_fpath}
+#visual_area_info = None
+#
+#T.load_dataset(visual_area_info=visual_area_info)
+#T.create_classifier_dirs()
+#
+###
+#feature_select_method = 'rfe' # Choices: 'rfe', 'k_best', None
+#feature_select_n = 'best' # Choices:  'best', int, None
+#C_select = 'best' # Choices: 'best', None
+#
+#T.initialize_classifiers(feature_select_method=feature_select_method, 
+#                         feature_select_n=feature_select_n, 
+#                         C_select=C_select)
+#
+##
+#T.label_classifier_data()
+#T.create_classifiers()
+#
+#
+#clf = T.classifiers[0]
+#
+#clf.do_cv(scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500)
+#
+#full_train = False
+#test_size=0.33
+#clf.train_classifier(full_train=full_train, test_size=test_size)
+#
+#get_classifier_accuracy_by_stimconfig(clf)
+#
+
+#%%
+
+
+def get_test_data(sample_data, sample_labels, sdf, clfparams, limit_to_trained_views=True):
+    #sdf = pd.DataFrame(clf.sconfigs).T
+    
+    # Filter sconfigs by const-trans/trans-value pair:
+    if clfparams['const_trans'] != '' and limit_to_trained_views is True:
+        trans_sdf = copy.copy(sdf)
+        for ctrans, cval in zip(clfparams['const_trans'], clfparams['trans_value']):
+            print ctrans, cval
+            trans_sdf = trans_sdf[trans_sdf[ctrans].isin(cval)]
+    else:
+        trans_sdf = copy.copy(sdf)
+    test_values = [val for val in trans_sdf[clfparams['class_name']].unique() if val not in clfparams['class_subset']]
+    
+    test_sdf = trans_sdf[trans_sdf[clfparams['class_name']].isin(test_values)]
+    configs_included = test_sdf.index.tolist()
+
+    kept_trial_ixs = np.array([fi for fi, config in enumerate(sample_labels) if config in configs_included])
+    print "N kept trials:", len(kept_trial_ixs)
+    
+    test_data = sample_data[kept_trial_ixs, :]
+    tmp_test_labels = sample_labels[kept_trial_ixs]
+    test_labels = [test_sdf[test_sdf.index==config][clfparams['class_name']][0] for config in tmp_test_labels]
+    
+    print "Test data:", test_data.shape
+    print "Test labels:", list(set(test_labels))
+
+    return test_data, test_labels
+
+
+
+#glob.glob(os.path.join(optsE.rootdir, optsE.animalid, '2018*', 'FOV*', '*blobs*', 'traces', 'traces*', 'classifiers'))
+
+
+    
+        #%%
+           
 #def train_and_test_transforms(trans_classifiers, clfs, clf_subdir, setC='big', nfeatures_select='best', 
 #                              full_train=False, test_size=0.2, secondary_output_dir=None,
 #                              no_morphs=False, trans0=None, trans1=None, middle_morph=53, m100=106):
+             
 def test_classifier_on_transforms(clf, test_data, test_labels, clf_subdir, trans0=None, trans1=None, no_morphs=True):
     if no_morphs:
         nomorph_str = '_nomorphs'
@@ -835,48 +695,6 @@ def transform_performance_grid(TEST):
     return performance_grid, counts_grid
 
 
-def plot_transform_grid(performance_grid, rowvals=[], colvals=[], 
-                                          ylabel='rows', xlabel='columns', 
-                                          cmap='hot', vmin=0.5, vmax=1.0,
-                                          data_identifier='', ax=None):
-    
-    if ax is None:
-        fig, ax = pl.subplots(1, figsize=(15,8))
-
-        
-    if len(rowvals) != performance_grid.shape[0]:
-        print "Not enough ROW labels:", rowvals
-        rowvals = np.arange(performance_grid.shape[0])
-    if len(colvals) != performance_grid.shape[1]:
-        print "Not enough COL labels:", colvals
-        colvals = np.arange(performance_grid.shape[1])
-        
-    im = ax.imshow(performance_grid, cmap=cmap, vmin=vmin, vmax=vmax)
-    ax.set_xticks(range(len(colvals)))
-    ax.set_xticklabels(colvals)
-    ax.set_xlabel(xlabel)
-    ax.set_yticks(range(len(rowvals)))
-    ax.set_yticklabels(rowvals)
-    ax.set_ylabel(ylabel)
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    pl.colorbar(im, cax=cax)
-    
-    # Loop over data dimensions and create text annotations.
-    for i in range(len(rowvals)):
-        for j in range(len(colvals)):
-            if performance_grid[i, j] >= vmax*0.75:
-                text = ax.text(j, i, '%.2f' % performance_grid[i, j],
-                           ha="center", va="center", color="k")
-            else:
-                text = ax.text(j, i, '%.2f' % performance_grid[i, j],
-                           ha="center", va="center", color="w")
-        
-    #pl.colorbar()
-    
-    return fig
-
 #%%
 
 def get_morph_percents_m100(trans_classifiers, clfs, setC='big', nfeatures_select='best', full_train=False, test_size=0.2, secondary_output_dir=None):
@@ -1025,29 +843,54 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # =============================================================================
 
 
-# =============================================================================
-# LI -- gratings (6x4)
-# =============================================================================
 options = ['-D', rootdir, '-i', 'JC015', 
-           '-S', '20180924,20180925', 
-           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
-           '-R', 'gratings_run1,combined_gratings_static',
-           '-t', 'traces002,traces003',
+           '-S', '20180915,20180917', 
+           '-A', 'FOV1_zoom2p7x,FOV1_zoom2p0x',
+           '-R', 'combined_gratings_static,combined_gratings_static',
+           '-t', 'traces002,traces002',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', 
            '-N', 'ori',
 #           '--subset', '0,106',
+#           '--indie',
 #           '-c', 'xpos,ypos',
 #           '-v', '-5,0',
 #           '-T', '-15,-10,0,5',
 #           '-T', '-60,-30,30,60',
-           '-V', 'LM-LI',
+           '-C', 'best', 
+           '-V', 'LM',
 #           '--segment',
 #           '-T', '5.6,16.8,28,5.6,16.8,28',
 #           '-T', '5,5,5,15,15,15',
            
            '--nproc=1'
            ]
+
+
+
+# =============================================================================
+# LI -- gratings (6x4)
+# =============================================================================
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180924,20180925', 
+#           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+#           '-R', 'gratings_run1,combined_gratings_static',
+#           '-t', 'traces002,traces003',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'ori',
+##           '--subset', '0,106',
+##           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-V', 'LM-LI',
+##           '--segment',
+##           '-T', '5.6,16.8,28,5.6,16.8,28',
+##           '-T', '5,5,5,15,15,15',
+#           
+#           '--nproc=1'
+#           ]
 
 #options = ['-D', rootdir, '-i', 'JC022', 
 #           '-S', '20181005,20181005,20181006,20181007,20181017', 
@@ -1247,72 +1090,33 @@ options = ['-D', rootdir, '-i', 'JC015',
 
 def main(options):
     #%%
+
+    # -------------------------------------------------------------------------
+    # MODEL SELECTION PARAMS:
+    feature_select_method='rfe'
+    feature_select_n='best'
+    C_select='best'
+    # -------------------------------------------------------------------------
+    
+    
     optsE = extract_options(options)
     visual_area = optsE.visual_area
-    print "VISUAL AREA: %s" % visual_area
-    select_visual_area = optsE.select_visual_area
-
-    test_set = []
-    if len(optsE.test_values) > 0:
-        tmp_value_list=[]
-        for vi, val_str in enumerate(optsE.test_values):
-            values = [float(v) for v in val_str.split(',')]
-            tmp_value_list.append(values)
-        assert len(list(set([len(values) for values in tmp_value_list]))) == 1, "Must provide corresponding value pairs if more than 1 transform varies."
-        assert len(optsE.const_trans) == len(tmp_value_list), "Must provide subset of test values for EACH transform: %s" % str(optsE.const_trans)
-        test_pairs = [(t1, t2) for t1, t2 in zip(tmp_value_list[0], tmp_value_list[1])] #list(itertools.product(*tmp_value_list))
-        
-        for cfg in test_pairs:
-            test_set.append(dict((tname, tvalue) for tname, tvalue in zip(optsE.const_trans, cfg)))
     
-    test_set = list(np.unique(np.array(test_set)))
-    print "Holding %i configs for test_set." % len(test_set)
-            
+    
     
     traceid_dirs = get_traceids_from_lists(optsE.animalid, optsE.session_list, optsE.fov_list, optsE.run_list, optsE.traceid_list, rootdir=rootdir)
+    trans_classifiers = initialize_classifiers_for_each_fov(traceid_dirs, optsE)
 
-    # Combine data arrays -- just  use stim-period zscore? (then dont have to deal w/ different trial structures)
-    trans_classifiers = dict()
-    for fov, traceid_dir in sorted(traceid_dirs.items(), key=lambda x: x[0]):
-        
-        print "Getting TransformClassifiers() for: %s" % fov
-        curr_session = fov.split('_')[0]
-        curr_fov = '_'.join(fov.split('_')[1:3])
-        curr_traceid = os.path.split(traceid_dir)[-1].split('_')[0]
-        curr_run = os.path.split(traceid_dir.split('/traces/')[0])[-1]
-        print "SESSION: %s | FOV: %s | RUN: %s | traceid: %s" % (curr_session, curr_fov, curr_run, curr_traceid)
-        C = load_classifier_object(traceid_dir, rootdir=optsE.rootdir, animalid=optsE.animalid, session=curr_session)
-        print C
-        
-        if C is None:
-            C = get_transform_classifiers(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
-                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
-                                          inputdata_type=optsE.inputdata_type, 
-                                          get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
-                                          const_trans=optsE.const_trans, trans_value=optsE.trans_value,
-                                          cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
-                                          C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses, test_set=test_set, 
-                                          indie=optsE.indie, select_visual_area=select_visual_area, visual_area=visual_area)
-            
-            
-        if optsE.rootdir not in C.classifier_dir:
-            C.classifier_dir = replace_root(C.classifier_dir, optsE.rootdir, optsE.animalid, curr_session)
-            for clf in C.classifiers:
-                clf.classifier_dir = replace_root(clf.classifier_dir, optsE.rootdir, optsE.animalid, curr_session)
-
-        trans_classifiers[fov] = {'C': C, 'traceid_dir': traceid_dir}
-        
-    
-    #%
+    # Create output dir(s) for all classifiers for this visual area:
+    # -------------------------------------------------------------------------
     fov_list = sorted(trans_classifiers.keys(), key=natural_keys)
-    #visual_area = 'LI'
     grouped_fovs = '_'.join(sorted(fov_list, key=natural_keys))
     print grouped_fovs
     output_dir = os.path.join(optsE.rootdir, optsE.animalid, visual_area, grouped_fovs)
     if not os.path.exists(output_dir): os.makedirs(output_dir)
     print "-- Saving all current %s output to:\n%s" % (visual_area, output_dir)
     
-    clf_names = list(set([clfdict['C'].classifiers[0].classifier_dir.split('/classifiers/')[-1] for fov, clfdict in trans_classifiers.items()]))
+    clf_names = list(set( [os.path.split(trans_classifier['C'].classifier_dir)[-1] for fov, trans_classifier in trans_classifiers.items()] ))
     if len(clf_names) > 1:
         print "*** WARNING *** Looks like you're trying to combine different types of classifiers:\n    %s" % clf_names
         for ci,cname in enumerate(clf_names):
@@ -1322,96 +1126,219 @@ def main(options):
     else:
         clf_name = clf_names[0]
     
-    clf_output_dir = os.path.join(output_dir, 'classifiers', clf_name)
+    meta_params_str = '%s_%s_C_%s' % ('all' if feature_select_method is None else feature_select_method,
+                                      'features' if feature_select_n is None else str(feature_select_n),
+                                      C_select if isinstance(C_select, str) else '%.4f' % optsE.C_val)
+    print meta_params_str
+    
+    clf_output_dir = os.path.join(output_dir, 'classifiers', clf_name, meta_params_str)
     if not os.path.exists(clf_output_dir): os.makedirs(clf_output_dir)
     
-    print "Saving TransformClassifier output to:\n    -->%s" % clf_output_dir
+    
+
+#%
+    print "*******************************************************************"
+    print "Created TransformClassifier() object for visual area: %s" % visual_area
+    print "Saving joint TransformClassifier output to:\n    -->%s" % clf_output_dir
+    for fov, trans_classifier in sorted(trans_classifiers.items(), key=lambda x: x[0]):
+        print fov
+        # Update classifer dir to GROUPED dir:
+        trans_classifier['C'].classifier_dir = clf_output_dir  
+        trans_classifier['C'].create_classifiers(feature_select_method='rfe', feature_select_n='best', C_select='best')
+    print "Creating %i LinearSVM() objects for each of %i FOVs." % (len(trans_classifiers[trans_classifiers.keys()[0]]['C'].classifiers), len(trans_classifiers.keys()))
+    print "*******************************************************************"
+
+
+    #%
+
+    # -------------------------------------------------------------------------
+    # TRAINING PARAMS:
+    scoring = 'accuracy'
+    full_train = False
+    test_size = 0.33
+    col_label = 'xpos'
+    row_label = 'ypos'
+    # -------------------------------------------------------------------------
+
+    print "*******************************************************************"
+    print "TRAINING."
+    for fov, trans_classifier in trans_classifiers.items():
+        trans_classifier['C'].train_classifiers(scoring=scoring, full_train=full_train, test_size=test_size, col_label=col_label, row_label=row_label)
+
+    print "*******************************************************************"
+
+    for fov, trans_classifier in trans_classifiers.items():
+        trans_classifiers_fpath = os.path.join(clf_output_dir, 'transform_classifiers_%s.pkl' % fov)
+        trans_classifier['C'].dataset = trans_classifier['C'].data_fpath
+        
+    trans_classifiers_fpath = os.path.join(clf_output_dir, 'transform_classifiers.pkl')
+    with open(trans_classifiers_fpath, 'wb') as f:
+        pkl.dump(trans_classifiers, f, protocol=pkl.HIGHEST_PROTOCOL)
+    
+
+    #%% 
+    print "*******************************************************************"
+    print "TESTING classifier:"
+    
+    #% Plot accuracy by stim-config across all FOVs:
+    data_identifier = '_'.join(sorted(trans_classifiers.keys(), key=natural_keys))
+    print data_identifier
+
+#            test_transforms_dir = os.path.join(self.classifier_dir, 'test_transforms')
+#            if not os.path.exists(test_transforms_dir): os.makedirs(test_transforms_dir)
+#            clf.get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label, output_dir=test_transforms_dir)
+    
+    accuracy_grid = np.zeros((4, 5))
+    counts_grid = np.zeros((4, 5))
+    nclfs = 0
+    for fov, trans_classifier in sorted(trans_classifiers.items(), key=lambda x: x[0]):
+
+        for cix in range(len(trans_classifier['C'].classifiers)):
+            print "%s:  Testing %i of %i classifiers in." % (fov, (cix+1), len(trans_classifier['C'].classifiers))
+                
+            clf = trans_classifier['C'].classifiers[cix]
+            kept_rids = clf.model_selection.features['kept_rids']
+                    
+            sample_data = trans_classifier['C'].sample_data[:, kept_rids]
+            sample_labels = trans_classifier['C'].sample_labels
+            sdf = pd.DataFrame(trans_classifier['C'].sconfigs).T
+            clfparams = trans_classifier['C'].classifiers[cix].clfparams
+            
+            if clf.clfparams['const_trans'] != '':
+                trans_types = [trans_type for trans_type in clf.run_info['trans_types'] if trans_type != clfparams['class_name']]
+                all_transforms = dict((trans, list(sdf[trans].unique())) for trans in trans_types)
+                all_configs_list = [dict(zip(clfparams['const_trans'], v)) for v in itertools.product(*all_transforms.values())]
+                
+                train_configs = [dict((trans, val) for trans, val in zip(clfparams['const_trans'], clfparams['trans_value']))]
+                test_configs = [tdict for tdict in all_configs_list if tdict not in train_configs]
+                print "N train configs: %i, N test configs: %i" % (len(train_configs), len(test_configs))
+        
+                train_config_names = [cfg for cfg, stim in clf.sconfigs.items() if all([stim[trans]==val for tdict in train_configs for trans, val in tdict.items()])]
+                test_config_names = [cfg for cfg in clf.sconfigs.keys() if cfg not in train_config_names]
+                
+                test_indices = np.array([ti for ti, tval in enumerate(sample_labels) if tval in test_config_names])
+                config_labels = sample_labels[test_indices]
+                test_data = sample_data[test_indices, :]
+                test_labels = [clf.sconfigs[cfg][clfparams['class_name']] for cfg in config_labels]
+                
+                
+                trainset_sz = clf.train_results['train_data'].shape[0]
+                validate_sz = 0 if clf.train_results['test_data'] is None else clf.train_results['test_data'].shape[0]
+                if test_data.shape[0] + trainset_sz + validate_sz > sample_data.shape:
+                    print "*** @@@ ERROR @@@ ***"
+                    print "N train samples (%i) + N test samples (%i) >> original sample size (%i) -- Might be an overlap..."  % (trainset_sz+validate_sz, test_data.shape[0], sample_data.shape[0])
+                elif test_data.shape[0] + trainset_sz + validate_sz < sample_data.shape[0]:
+                    print "--- warning... ---"
+                    print "Not all samples (%i) used:  Train set (%i) | Validate set (%i) | Test set (%i)" %  (sample_data.shape[0], trainset_sz, validate_sz, test_data.shape[0])
+                    
+            else:
+                test_data = None
+                test_labels = None
+                config_labels = None
+                
+            trans_classifier['C'].classifiers[cix].test_classifier(test_data=test_data, test_labels=test_labels, config_labels=config_labels)
+            
+            curr_output_dir = trans_classifier['C'].classifiers[cix].classifier_dir
+            pcorrect, counts, config_grid = trans_classifier['C'].classifiers[cix].get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label, output_dir=curr_output_dir)
+            #%
+            pcorrect[np.isnan(pcorrect)] = 0.
+            counts[np.isnan(counts)] = 0.
+            
+            accuracy_grid += pcorrect
+            counts_grid += counts
+            
+            nclfs += 1
+    
+    print "*******************************************************************"
+
+            
+#%%
+accuracy = accuracy_grid / nclfs
+
+chance_level = 1./len(clf.class_labels)
+
+rowvals = sorted(list(set([stim[1] for stim in config_grid.keys()])))
+colvals = sorted(list(set([stim[0] for stim in config_grid.keys()])))
+fig = lsvc.plot_transform_grid(accuracy, rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
+                         cmap='hot', vmin=chance_level, vmax=1.0)
+label_figure(fig, data_identifier)
+
+
+pl.savefig(os.path.join(clf_output_dir, 'test_transforms_performance_grid_all_datasets.png'))
+
+
+         
+            #%%
+    
+#    accuracy_grid = np.zeros((4, 5))
+    for fov, trans_classifier in trans_classifiers.items():
+        
+        clf = trans_classifier['C'].classifiers[0]
+        pcorrect, counts, config_grid = clf.get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label)
+    
+        accuracy_grid += pcorrect
+    
+    accuracy = accuracy_grid / len(trans_classifiers.keys())
+    
+    
+    rowvals = sorted(list(set([stim[1] for stim in config_grid.keys()])))
+    colvals = sorted(list(set([stim[0] for stim in config_grid.keys()])))
+    fig = lsvc.plot_transform_grid(accuracy, rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
+                             cmap='hot', vmin=0.5, vmax=1.0)
+    label_figure(fig, data_identifier)
+    
+    
+    pl.savefig(os.path.join(clf_output_dir, 'test_transforms', 'test_transforms_performance_grid_all_datasets.png'))
+    
     
     #%%
-    # =========================================================================
-    # Specify training meta parameters - this also sets the output dir:
-    # =========================================================================
-    setC='big'
-    nfeatures_select='best'
-    full_train=True
-    test_size=0.0 #0.33
-    train_set = '%s_%s' % ('full' if full_train else 'partial', str(test_size) if not full_train else '0')
-    no_morphs = False #False
-    # =========================================================================
+
     
-    trained_labels = list(set([int(i) for fov, tdict in trans_classifiers.items() for i in tdict['C'].classifiers[0].clfparams['class_subset']]))
-    
-    if no_morphs:
-        class_subset = '%s_%s' % (trans_classifiers[trans_classifiers.keys()[0]]['C'].classifiers[0].clfparams['class_name'], '_'.join([str(l) for l in trained_labels]))
-    else:
-        class_subset = '%s_all' % trans_classifiers[trans_classifiers.keys()[0]]['C'].classifiers[0].clfparams['class_name']
-    
-    if nfeatures_select.isdigit():
-        nfeatures_select = int(nfeatures_select)
+    for fov, trans_classifier in trans_classifiers.items():
+        print "----------- getting fov and rois for %s" % fov
         
+        trans_classifier['fov'] = get_fov(trans_classifier['traceid_dir']) 
+        #if 'rois' not in trans_classifier.keys():
+        #trans_classifier['rois'] = {}
+        #trans_classifier['rois']['masks'] = get_roi_masks(trans_classifier['C'].classifiers[0].run_info['traceid_dir'])
+        #trans_classifier['rois']['contours'] = util.get_roi_contours(trans_classifier['rois']['masks'])
     
-    # Create output dirs:
-    # -------------------------------------------------------------------------
-    clf_desc = '%s_C_%s_features_%s_%s' % (class_subset, str(setC), str(nfeatures_select), train_set)
-    clf_subdir = os.path.join(clf_output_dir, clf_desc)
-    if not os.path.exists(clf_subdir): os.makedirs(clf_subdir)
-
-    test_transforms_dir = os.path.join(clf_subdir, 'test_transforms')
-    test_morphs_dir = os.path.join(clf_subdir, 'test_morphs')
-    if not os.path.exists(os.path.join(test_transforms_dir, 'cross_validation')): os.makedirs(os.path.join(test_transforms_dir, 'cross_validation'))
-    if not os.path.exists(os.path.join(test_morphs_dir, 'cross_validation')): os.makedirs(os.path.join(test_morphs_dir, 'cross_validation'))
-
-
-    # Load or create classifier dicts that combine all specified fovs:
-    # -------------------------------------------------------------------------
-#    clfs_fpath = os.path.join(clf_subdir, 'classifiers.pkl')
-#    if os.path.exists(clfs_fpath):
-#        print "--- Loading existing classifier dict.---"
-#        with open(clfs_fpath, 'rb') as f:
-#            clfs = pkl.load(f)
-#    else:
-    
-    clfs_fpath = os.path.join(clf_subdir, 'classifiers.pkl')
-    
-    clfs = dict((fov, {}) for fov in sorted(trans_classifiers.keys(), key=natural_keys))
-    print "--- Creating NEW classifier dict.---"
-
-    for fov in trans_classifiers.keys():
-        print "... ... loading %s" % fov
-        C = trans_classifiers[fov]['C']
-        clf = clfs[fov]['classifier']
-        traceid_dir = trans_classifiers[fov]['traceid_dir']
-        clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
-        clfs[fov]['fov'] = get_fov(traceid_dir) 
-#%
-        clfs[fov]['RFE'] = clf.get_clf_RFE()
-        clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
-        clfs[fov]['contours'] = util.get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
-
-#    clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
-#    with open(clfs_fpath, 'wb') as f:
-#        pkl.dump(clfs, f, protocol=pkl.HIGHEST_PROTOCOL)
         
-    # Plot RFE results from original CLFs created at start:
-    # -------------------------------------------------------------------------
-    if not os.path.exists(os.path.join(clf_output_dir, 'best_RFE_masks.png')):
-        if len(clfs.keys()) == 1:
-            fig, ax = pl.subplots(1, figsize=(10,10))
-            ax.imshow(clfs[fov]['fov'])
-            ax.set_title(fov)
-            ax.axis('off')
-            util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=ax, roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
-        
-        else:
-            fig, axes = pl.subplots(nrows=1, ncols=len(clfs.keys()), figsize=(20, 5))
-            for fi, fov in enumerate(sorted(clfs.keys(), key=natural_keys)):
-                axes[fi].imshow(clfs[fov]['fov'])
-                axes[fi].set_title(fov)
-                axes[fi].axis('off')
-                util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
-            
-        pl.savefig(os.path.join(clf_output_dir, 'best_RFE_masks.png'))
-        pl.close()
+#        
+#        
+#    for fov in trans_classifiers.keys():
+#        print "... ... loading %s" % fov
+#        C = trans_classifiers[fov]['C']
+#        clf = clfs[fov]['classifier']
+#        traceid_dir = trans_classifiers[fov]['traceid_dir']
+#        clfs[fov]['classifier'] = copy.copy(C.classifiers[0])
+#        clfs[fov]['fov'] = get_fov(traceid_dir) 
+##%
+#        clfs[fov]['RFE'] = clf.get_clf_RFE()
+#        clfs[fov]['rois'] = get_roi_masks(clfs[fov]['classifier'].run_info['traceid_dir'])
+#        clfs[fov]['contours'] = util.get_roi_contours(clfs[fov]['rois'], roi_axis=-1)
+#
+#
+#    # Plot RFE results from original CLFs created at start:
+#    # -------------------------------------------------------------------------
+#    if not os.path.exists(os.path.join(clf_output_dir, 'best_RFE_masks.png')):
+#        if len(clfs.keys()) == 1:
+#            fig, ax = pl.subplots(1, figsize=(10,10))
+#            ax.imshow(clfs[fov]['fov'])
+#            ax.set_title(fov)
+#            ax.axis('off')
+#            util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=ax, roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
+#        
+#        else:
+#            fig, axes = pl.subplots(nrows=1, ncols=len(clfs.keys()), figsize=(20, 5))
+#            for fi, fov in enumerate(sorted(clfs.keys(), key=natural_keys)):
+#                axes[fi].imshow(clfs[fov]['fov'])
+#                axes[fi].set_title(fov)
+#                axes[fi].axis('off')
+#                util.plot_roi_contours(clfs[fov]['fov'], clfs[fov]['contours'], clip_limit=0.2, ax=axes[fi], roi_highlight=clfs[fov]['RFE']['best']['kept_rids'], label_highlight=True, fontsize=8)
+#            
+#        pl.savefig(os.path.join(clf_output_dir, 'best_RFE_masks.png'))
+#        pl.close()
         
 #%%
     # =============================================================================
