@@ -1061,7 +1061,7 @@ def plot_confusion_matrix_subplots(predicted, true, classes, cv_method='kfold',
     #% Plot confusion matrix:
     # -----------------------------------------------------------------------------
     sns.set_style('white')
-    fig = pl.figure(figsize=(10,4))
+    fig = pl.figure(figsize=(20,8))
     ax1 = fig.add_subplot(1,2,1)
     plot_confusion_matrix(cmatrix, classes=classes, ax=ax1, normalize=False,
                       title='Confusion matrix (%s, %s)' % (conf_mat_str, cv_method))
@@ -1177,14 +1177,14 @@ def plot_confusion_matrix(cmatrix, classes,
     im = ax.imshow(cmatrix, interpolation='nearest', cmap=cmap, vmax=cmax)
     tick_marks = np.arange(len(classes))
     ax.set_xticks(tick_marks)
-    ax.set_xticklabels(classes, rotation=45, fontsize=10)
+    ax.set_xticklabels(classes, rotation=45, fontsize=8)
     ax.set_yticks(tick_marks)
-    ax.set_yticklabels(classes, fontsize=10)
-    fmt = '.2f' if normalize else 'd'
+    ax.set_yticklabels(classes, fontsize=8)
+    fmt = '.1f' if normalize else 'd'
     thresh = cmatrix.max() / 2.
     for i, j in itertools.product(range(cmatrix.shape[0]), range(cmatrix.shape[1])):
         ax.text(j, i, format(cmatrix[i, j], fmt),
-                 horizontalalignment="center",
+                 horizontalalignment="center", fontsize=6,
                  color="white" if cmatrix[i, j] > thresh else "black")
 
     #pl.tight_layout()
@@ -1613,12 +1613,18 @@ class TransformClassifier():
             orig_sconfigs = self.dataset['sconfigs']
         else:
             orig_sconfigs = self.dataset['sconfigs'][()]
-            
+
         # Make sure numbers are rounded:
         for cname, cdict in orig_sconfigs.items():
             for stimkey, stimval in cdict.items():
                 if isinstance(stimval, (int, float)):
                     orig_sconfigs[cname][stimkey] = round(stimval, 1)
+                    
+        # Add combined 'position' variable to stim configs if class_name == 'position:
+        for cname, config in orig_sconfigs.items():
+            pos = '_'.join([str(config['xpos']), str(config['ypos'])])
+            config.update({'position': pos})
+            
                 
         if int(self.session) < 20180602:
             # Rename morphs:
@@ -1790,9 +1796,6 @@ class TransformClassifier():
                 
             else:
                 transforms_desc = '_'.join('%s%s' % (k, str(v)) for tdict in train_transforms_list for k,v in tdict.items())
-                transforms_desc = transforms_desc.replace(' ', '')
-                transforms_desc = transforms_desc.replace('[','(').replace(']', ')')
-
             #transforms_desc = '_'.join('%i%s' % (len(v) if (isinstance(v, list) and len(v) > 1) else v if isinstance(v, (int, float)) else v[0], k) for tdict in train_transforms_list for k,v in tdict.items()) #train_transforms_list.items())
 
         else:
@@ -1800,8 +1803,17 @@ class TransformClassifier():
             transforms_desc = 'alltransforms'
             
         if len(self.params['test_set']) > 0:
-            transforms_desc = '%s_holdtest%s' % (transforms_desc, len(self.params['test_set']))
-        
+            testkeys = sorted(self.params['test_set'][0].keys())
+            tvals = []
+            for tkey in testkeys:
+                tvals.append(list(set([tdict[tkey] for tdict in self.params['test_set']])))
+            test_str = '_'.join( ['_'.join([str(s) for s in spair]) for spair in [(t, tv) for t, tv in zip(testkeys, tvals)]] )
+            transforms_desc = '%s_holdtest_%i_%s' % (transforms_desc, len(self.params['test_set']), test_str) # len(T.params['test_set']))
+
+        transforms_desc = transforms_desc.replace(' ', '')
+        transforms_desc = transforms_desc.replace('[','(').replace(']', ')')
+        print transforms_desc
+
         # What is the input data type:
         data_desc = '%s_%s_%s' % (self.params['data_type'], self.params['inputdata_type'], self.params['stat_type'])
 
@@ -1852,6 +1864,7 @@ class TransformClassifier():
             transforms = []
             
         if len(transforms) > 0:
+            # Get rid of combinations that weren't actually tested
             remove_pairs = []
             for config_set in transforms:
                 found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
@@ -1953,6 +1966,7 @@ class TransformClassifier():
 #        self.create_classifiers()
         print "------------ Labeling classifier data."
         for ci, clf in enumerate(self.classifiers):
+            print "... %i of %i clfs." % ((ci+1), len(self.classifiers)) #))))
             clf.label_training_data()
             clf.create_classifier()
             print "Created %i of %i classifiers: %s" % (ci+1, len(self.classifiers), clf.classifier_dir)
@@ -2047,7 +2061,7 @@ class LinearSVM():
         # Check that nsamples are the same for all groups:
         counts_by_class = Counter(cy)
         print counts_by_class
-        tmp_cX = cX.copy(); tmp_cy = cy.copy();
+        tmp_cX = cX.copy(); tmp_cy = copy.copy(cy) #.copy();
         remove_ixs=[]
         if len(list(set([v for k,v in counts_by_class.items()]))) > 1:
             print "Uneven n samples for each class."
@@ -2078,7 +2092,10 @@ class LinearSVM():
         cX = self.cX
         cy_tmp = self.cy
         cy = np.array([self.sconfigs[cv][self.clfparams['class_name']] if cv != 'bas' else 'bas' for cv in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
     
@@ -2116,7 +2133,10 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) # sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
 
@@ -2160,13 +2180,17 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
 
 
     def group_by_class_and_transform_subset(self):
-        const_trans_dict = dict((k, v) if isinstance(v, list) else (k, [v]) for k,v in zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
+        const_trans_dict = dict((k, v) if isinstance(v, list) else (k, [v]) for k,v in 
+                                    zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
         sconfigs_df = pd.DataFrame(self.sconfigs).T
         configs_subset = sconfigs_df[sconfigs_df[self.clfparams['class_name']].isin(self.clfparams['class_subset'])].index.tolist()
         sconfigs_df = sconfigs_df[sconfigs_df.index.isin(configs_subset)]
@@ -2212,7 +2236,10 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
     
@@ -2743,7 +2770,11 @@ class LinearSVM():
 
         
     def split_test_results_by_stimconfig(self):
-        trans_types = [trans for trans in self.run_info['trans_types'] if trans != self.clfparams['class_name']]
+        if self.clfparams['class_name'] == 'position':
+            # We actually train on stimconfig, and should be averaging across object ID (or orientation):
+            trans_types = ['position']
+        else:
+            trans_types = [trans for trans in self.run_info['trans_types'] if trans != self.clfparams['class_name']]
         print "Transform types:", trans_types
         
         sdf = pd.DataFrame(self.sconfigs).T 
@@ -2772,7 +2803,10 @@ class LinearSVM():
         accuracy={}; counts={};
         test_configs = list(set(self.test_results['results_by_config'].keys()))
         for config, g in grouped_sdf:
-            print config, len(g.index.tolist())
+            if 'position' in trans_types:
+                # Convert str to tuple for indexing:
+                config = tuple([float(p) for p in config.split('_')])
+            print '%s: %i cfgs' % (str(config), len(g.index.tolist()))
             # Get mean accuracy (averaged across cv folds) for included configs:
             tmp_curr_configs = g.index.tolist()
             curr_configs = [t for t in tmp_curr_configs if t in test_configs]

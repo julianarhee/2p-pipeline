@@ -432,7 +432,7 @@ def initialize_transform_classifiers(animalid, session, acquisition, run, tracei
 #    
 #    return C
 
-
+#
 #T = lsvc.TransformClassifier(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
 #                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
 #                                          inputdata_type=optsE.inputdata_type, 
@@ -459,7 +459,7 @@ def initialize_transform_classifiers(animalid, session, acquisition, run, tracei
 #                         C_select=C_select)
 #
 ##
-#T.label_classifier_data()
+##T.label_classifier_data()
 #T.create_classifiers()
 #
 #
@@ -471,8 +471,8 @@ def initialize_transform_classifiers(animalid, session, acquisition, run, tracei
 #test_size=0.33
 #clf.train_classifier(full_train=full_train, test_size=test_size)
 #
-#get_classifier_accuracy_by_stimconfig(clf)
-#
+#clf.get_classifier_accuracy_by_stimconfig()
+
 
 #%%
 
@@ -856,17 +856,17 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 #           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
 #           '-p', 'corrected', 
 #           '-N', 'ori',
-##           '--subset', '0,106',
+##           '--subset', '0,180',
 ##           '--indie',
-##           '-c', 'xpos,ypos',
+#           '-c', 'xpos,ypos',
 ##           '-v', '-5,0',
 ##           '-T', '-15,-10,0,5',
 ##           '-T', '-60,-30,30,60',
 #           '-C', 'best', 
 #           '-V', 'LM',
 ##           '--segment',
-##           '-T', '5.6,16.8,28,5.6,16.8,28',
-##           '-T', '5,5,5,15,15,15',
+#           '-T', '-10,-10,-20,-20',
+#           '-T', '-5,-15,-5,-15',
 #           
 #           '--nproc=1'
 #           ]
@@ -896,30 +896,56 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 #           '--nproc=1'
 #           ]
 
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180919,20180924', 
+#           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+#           '-R', 'combined_gratings_static,gratings_run1',
+#           '-t', 'traces003,traces002',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'ori',
+##           '--subset', '0,106',
+##           '--indie',
+#           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-C', 'best', 
+#           '-V', 'LM',
+##           '--segment',
+#           '-T', '16.8,16.8,28,28',
+#           '-T', '5,15,5,15',
+##           '-T', '16.8,16.8,28,28',
+##           '-T', '5,15,5,15',
+#           
+#           '--nproc=1'
+#           ]
+
+
 # LM/I -- blobs (6x4)
 # -----------------------------------------------------
-options = ['-D', rootdir, '-i', 'JC015', 
-           '-S', '20180919,20180924', 
-           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
-           '-R', 'combined_blobs_static,combined_blobs_static',
-           '-t', 'traces003,traces002',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'morphlevel',
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180919,20180924', 
+#           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+#           '-R', 'combined_blobs_static,combined_blobs_static',
+#           '-t', 'traces003,traces002',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'morphlevel',
 #           '--subset', '0,106',
 #           '--indie',
 #           '-c', 'xpos,ypos',
-#           '-v', '-5,0',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-           '-C', 'best', 
-           '-V', 'LM',
-#           '--segment',
-#           '-T', '5.6,16.8,28,5.6,16.8,28',
-#           '-T', '5,5,5,15,15,15',
-           
-           '--nproc=1'
-           ]
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-C', 'best', 
+#           '-V', 'LM',
+##           '--segment',
+##           '-T', '5.6,16.8,28,5.6,16.8,28',
+##           '-T', '5,5,5,15,15,15',
+#           
+#           '--nproc=1'
+#           ]
 
 
 
@@ -949,24 +975,24 @@ options = ['-D', rootdir, '-i', 'JC015',
 #           '--nproc=1'
 #           ]
 
-#options = ['-D', rootdir, '-i', 'JC022', 
-#           '-S', '20181005,20181005,20181006,20181007,20181017', 
-#           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
-#           '-R', 'combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static',
-#           '-t', 'traces001,traces001,traces001,traces001,traces001',
-#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-#           '-p', 'corrected', 
-#           '-N', 'ori',
-##           '--subset', '0,106',
+options = ['-D', rootdir, '-i', 'JC022', 
+           '-S', '20181005,20181005,20181006,20181007,20181017', 
+           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
+           '-R', 'combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static,combined_gratings_static',
+           '-t', 'traces001,traces001,traces001,traces001,traces001',
+           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+           '-p', 'corrected', 
+           '-N', 'position',
+#           '--subset', '0,106',
 #           '-c', 'xpos,ypos',
-##           '-v', '-5,0',
-##           '-T', '-15,-10,0,5',
-##           '-T', '-60,-30,30,60',
+#           '-v', '-5,0',
+#           '-T', '-15,-10,0,5',
+#           '-T', '-60,-30,30,60',
 #           '-T', '5.6,16.8,28,5.6,16.8,28',
 #           '-T', '5,5,5,15,15,15',
-#           
-#           '--nproc=1'
-#           ]
+           '-V', 'LI',
+           '--nproc=1'
+           ]
 # =============================================================================
 
 
@@ -1158,9 +1184,7 @@ def main(options):
     
     optsE = extract_options(options)
     visual_area = optsE.visual_area
-    
-    
-    
+
     traceid_dirs = get_traceids_from_lists(optsE.animalid, optsE.session_list, optsE.fov_list, optsE.run_list, optsE.traceid_list, rootdir=rootdir)
     trans_classifiers = initialize_classifiers_for_each_fov(traceid_dirs, optsE)
 
@@ -1206,13 +1230,13 @@ def main(options):
     print "*******************************************************************"
 
 
-    #%
+    #%%
 
     # -------------------------------------------------------------------------
     # TRAINING PARAMS:
     scoring = 'accuracy'
-    full_train = False
-    test_size = 0.33
+    full_train = True #False
+    test_size = 0.0 #0.33
     col_label = 'xpos'
     row_label = 'ypos'
     # -------------------------------------------------------------------------
@@ -1224,6 +1248,7 @@ def main(options):
 
     print "*******************************************************************"
 
+    # Save trained classifier to disk, replace dataset npz object with filepath:
     for fov, trans_classifier in trans_classifiers.items():
         trans_classifiers_fpath = os.path.join(clf_output_dir, 'transform_classifiers_%s.pkl' % fov)
         trans_classifier['C'].dataset = trans_classifier['C'].data_fpath
@@ -1246,7 +1271,7 @@ def main(options):
 #            clf.get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label, output_dir=test_transforms_dir)
     
     nr = 4
-    nc = 6
+    nc = 5
     accuracy_grid = np.zeros((nr, nc))
     counts_grid = np.zeros((nr, nc))
     nclfs = 0
@@ -1264,17 +1289,30 @@ def main(options):
             clfparams = trans_classifier['C'].classifiers[cix].clfparams
             
             if clf.clfparams['const_trans'] != '':
+                # Get all non-class transform types (xpos, ypos, etc.):
                 trans_types = [trans_type for trans_type in clf.run_info['trans_types'] if trans_type != clfparams['class_name']]
                 all_transforms = dict((trans, list(sdf[trans].unique())) for trans in trans_types)
                 all_configs_list = [dict(zip(clfparams['const_trans'], v)) for v in itertools.product(*all_transforms.values())]
                 
+                # Separate all transform combos into trained set and test set:
                 train_configs = [dict((trans, val) for trans, val in zip(clfparams['const_trans'], clfparams['trans_value']))]
+                if isinstance(clfparams['trans_value'][0], list) and \
+                    any([len(clfparams['trans_value'][t]) > 1 for t in range(len(clfparams['trans_value']))]) \
+                    and len(train_configs)==1:
+                    
+                    keys, vals = zip(*train_configs[0].items())
+                    tconfigs = [dict(zip(keys, v)) for v in itertools.product(*vals)]
+                    train_configs = [tdict for tdict in tconfigs if tdict not in clfparams['test_set']]
+                    
+                    
                 test_configs = [tdict for tdict in all_configs_list if tdict not in train_configs]
                 print "N train configs: %i, N test configs: %i" % (len(train_configs), len(test_configs))
         
+                # Get correponding config names (config00x) for each stim config in train and test sets:
                 train_config_names = [cfg for cfg, stim in clf.sconfigs.items() if all([stim[trans]==val for tdict in train_configs for trans, val in tdict.items()])]
                 test_config_names = [cfg for cfg in clf.sconfigs.keys() if cfg not in train_config_names]
                 
+                # Grab subset of the data corresponding to the test sets:
                 test_indices = np.array([ti for ti, tval in enumerate(sample_labels) if tval in test_config_names])
                 config_labels = sample_labels[test_indices]
                 test_data = sample_data[test_indices, :]
@@ -1310,26 +1348,84 @@ def main(options):
     
     print "*******************************************************************"
 
-            
+                
+    #%
+        
+    # Plot average of ALL fovs and configs:
+    # -------------------------------------
+    accuracy = accuracy_grid / nclfs
+    
+    chance_level = 1./len(clf.class_labels)
+    
+    rowvals = sorted(list(set([stim[1] for stim in config_grid.keys()])))
+    colvals = sorted(list(set([stim[0] for stim in config_grid.keys()])))
+    fig = lsvc.plot_transform_grid(accuracy, rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
+                             cmap='hot', vmin=chance_level, vmax=1.0)
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(clf_output_dir, 'test_transforms_performance_grid_all_datasets.png'))
+
+
+    counts = counts_grid / nclfs
+        
+    rowvals = sorted(list(set([stim[1] for stim in config_grid.keys()])))
+    colvals = sorted(list(set([stim[0] for stim in config_grid.keys()])))
+    fig = lsvc.plot_transform_grid(counts, rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
+                             cmap='Blues_r', vmin=0, vmax=counts.max())
+    label_figure(fig, data_identifier)
+    
+    
+    pl.savefig(os.path.join(clf_output_dir, 'test_transforms_counts_grid_all_datasets.png'))
+
 #%%
     
-# Plot average of ALL fovs and configs:
-# -------------------------------------
-accuracy = accuracy_grid / nclfs
-
-chance_level = 1./len(clf.class_labels)
-
-rowvals = sorted(list(set([stim[1] for stim in config_grid.keys()])))
-colvals = sorted(list(set([stim[0] for stim in config_grid.keys()])))
-fig = lsvc.plot_transform_grid(accuracy, rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
-                         cmap='hot', vmin=chance_level, vmax=1.0)
-label_figure(fig, data_identifier)
-
-
-pl.savefig(os.path.join(clf_output_dir, 'test_transforms_performance_grid_all_datasets.png'))
-
-
-         
+    # If training on position (xpos, ypos), visualize coefficients for each feature (i.e., roi)
+    # arranged by xpos, ypos to see if nearby positions hve higher/lower weights:
+        
+    if optsE.class_name == 'position':
+        for fov, trans_classifier in sorted(trans_classifiers.items(), key=lambda x: x[0]):
+            clf = trans_classifier['C'].classifiers[0]
+            weights = clf.svc.coef_
+            print "%s: classifier trained on %i labels (%i features)" % (fov, weights.shape[0], weights.shape[1])
+            
+            orig_roi_ids = trans_classifier['C'].rois
+            best_rids = orig_roi_ids[clf.model_selection.features['kept_rids']]
+            
+            print "Best cells (N=%i):" % len(best_rids), best_rids
+            
+            position_list = [(class_ix, tuple([float(p) for p in position_str.split('_')])) for class_ix, position_str in enumerate(clf.svc.classes_)]
+            nr = 4
+            nc = 5
+        
+            ncols = 12
+            nrows = 8
+            nrois_to_plot = ncols * nrows
+            fig = pl.figure(figsize=(20,25)) #, axes = pl.subplots(10, 10, sharex=True, sharey=True, figsize=(20,25)) #figure();
+            gs1 = gridspec.GridSpec(nrows, ncols)
+            gs1.update(wspace=0.1, hspace=0.3) # set the spacing between axes. 
+        
+            for ai, roi in enumerate(best_rids[0:nrois_to_plot]):
+                curr_roi_weights = weights[:, ai]
+                weights_grid = np.zeros((nr, nc))
+                for class_ix, pos in position_list:
+                    ri = rowvals.index(pos[1])
+                    ci = colvals.index(pos[0])
+                    weights_grid[ri, ci] = curr_roi_weights[class_ix]
+                    
+                ax = pl.subplot(gs1[ai])
+                im = ax.imshow(weights_grid, cmap='hot')    
+                #ax.axis('off')
+                ax.set_title(roi, fontsize=8)
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+                if ai == nrois_to_plot - 1:
+                    divider = make_axes_locatable(ax)
+                    cax = divider.append_axes("right", size="5%", pad=0.05)
+                    pl.colorbar(im, cax=cax)
+            cax.yaxis.set_ticks_position('right')
+        
+            pl.savefig(os.path.join(clf_output_dir, 'feature_weights_by_position_top%i_%s.png' % (nrois_to_plot, fov)))
+            pl.close()
+             
             #%%
     
 #    accuracy_grid = np.zeros((4, 5))
