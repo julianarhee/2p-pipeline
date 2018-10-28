@@ -843,14 +843,69 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # =============================================================================
 
 
+# =============================================================================
+# LM -- gratings (5x4)
+# =============================================================================
+
+# Decent:
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180915,20180917', 
+#           '-A', 'FOV1_zoom2p7x,FOV1_zoom2p0x',
+#           '-R', 'combined_gratings_static,combined_gratings_static',
+#           '-t', 'traces002,traces002',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'ori',
+##           '--subset', '0,106',
+##           '--indie',
+##           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-C', 'best', 
+#           '-V', 'LM',
+##           '--segment',
+##           '-T', '5.6,16.8,28,5.6,16.8,28',
+##           '-T', '5,5,5,15,15,15',
+#           
+#           '--nproc=1'
+#           ]
+
+# LM/I -- gratings (6x4)
+# -----------------------------------------------------
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180919,20180924,20180925', 
+#           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x,FOV1_zoom2p0x',
+#           '-R', 'combined_gratings_static,gratings_run1,combined_gratings_static',
+#           '-t', 'traces003,traces002,traces003',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'ori',
+##           '--subset', '0,106',
+#           '--indie',
+#           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-C', 'best', 
+#           '-V', 'LM',
+##           '--segment',
+##           '-T', '5.6,16.8,28,5.6,16.8,28',
+##           '-T', '5,5,5,15,15,15',
+#           
+#           '--nproc=1'
+#           ]
+
+# LM/I -- blobs (6x4)
+# -----------------------------------------------------
 options = ['-D', rootdir, '-i', 'JC015', 
-           '-S', '20180915,20180917', 
-           '-A', 'FOV1_zoom2p7x,FOV1_zoom2p0x',
-           '-R', 'combined_gratings_static,combined_gratings_static',
-           '-t', 'traces002,traces002',
+           '-S', '20180919,20180924', 
+           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+           '-R', 'combined_blobs_static,combined_blobs_static',
+           '-t', 'traces003,traces002',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
            '-p', 'corrected', 
-           '-N', 'ori',
+           '-N', 'morphlevel',
 #           '--subset', '0,106',
 #           '--indie',
 #           '-c', 'xpos,ypos',
@@ -865,6 +920,8 @@ options = ['-D', rootdir, '-i', 'JC015',
            
            '--nproc=1'
            ]
+
+
 
 
 
@@ -1188,8 +1245,10 @@ def main(options):
 #            if not os.path.exists(test_transforms_dir): os.makedirs(test_transforms_dir)
 #            clf.get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label, output_dir=test_transforms_dir)
     
-    accuracy_grid = np.zeros((4, 5))
-    counts_grid = np.zeros((4, 5))
+    nr = 4
+    nc = 6
+    accuracy_grid = np.zeros((nr, nc))
+    counts_grid = np.zeros((nr, nc))
     nclfs = 0
     for fov, trans_classifier in sorted(trans_classifiers.items(), key=lambda x: x[0]):
 
@@ -1253,6 +1312,9 @@ def main(options):
 
             
 #%%
+    
+# Plot average of ALL fovs and configs:
+# -------------------------------------
 accuracy = accuracy_grid / nclfs
 
 chance_level = 1./len(clf.class_labels)

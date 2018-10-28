@@ -2227,9 +2227,10 @@ class LinearSVM():
         if method == 'rfe':
             rfe = RFECV(estimator=self.svc, step=1, cv=StratifiedKFold(self.clfparams['cv_nfolds']), scoring=scoring, n_jobs=n_jobs)
             fit = rfe.fit(self.cX, self.cy)
-            best_score = fit.grid_scores_[fit.n_features_]
-            nfeatures_best = fit.n_features_
+            best_score = fit.grid_scores_[fit.n_features_ - 1]
             kept_rids = fit.get_support(indices=True)
+            nfeatures_best = len(kept_rids) #fit.n_features_
+            print "N features", nfeatures_best, fit.n_features_, fit.grid_scores_.shape
             all_scores = fit.grid_scores_
         elif method == 'k_best':
             scoring = 'R^2'
