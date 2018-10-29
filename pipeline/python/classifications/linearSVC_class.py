@@ -1033,12 +1033,16 @@ def get_confusion_matrix(predicted, true, classes, average_iters=True):
     # Compute confusion matrix:
     # -----------------------------------------------------------------------------
     if average_iters:
-        cmatrix = confusion_matrix(true[0], predicted[0], labels=classes)
-        for iter_idx in range(len(predicted))[1:]:
-            print "adding iter %i" % iter_idx
-            cmatrix += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=classes)
-        conf_mat_str = 'AVG'
+        if not isinstance(predicted[0], (int, float)) and len(predicted[0]) > 1:
+            cmatrix = confusion_matrix(true[0], predicted[0], labels=classes)
+            for iter_idx in range(len(predicted))[1:]:
+                print "adding iter %i" % iter_idx
+                cmatrix += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=classes)
+            conf_mat_str = 'AVG'
         #cmatrix_tframes /= float(len(pred_results))
+        else:
+            cmatrix = confusion_matrix(true, predicted, labels=classes)
+            conf_mat_str = 'single_test'
     else:
         avg_scores = []
         for y_pred, y_test in zip(predicted, true):
@@ -1153,8 +1157,8 @@ def plot_normed_confusion_matrix(predicted, true, classes, normalize=True, cv_me
 def plot_confusion_matrix(cmatrix, classes,
                           ax=None,
                           normalize=False,
-                          title='Confusion matrix',
-                          cmap=pl.cm.Blues, cmax=1.0):
+                          title='Confusion matrix', clim=None,
+                          cmap=pl.cm.Blues, cmin=0, cmax=1.0):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -1162,6 +1166,8 @@ def plot_confusion_matrix(cmatrix, classes,
     if normalize:
         cmatrix = cmatrix.astype('float') / cmatrix.sum(axis=1)[:, np.newaxis]
         print("Normalized confusion matrix")
+        if clim=='max':
+            cmax = cmatrix.max()
     else:
         print('Confusion matrix, without normalization')
 
