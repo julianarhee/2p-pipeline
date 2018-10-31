@@ -101,7 +101,7 @@ from sklearn import metrics
 def plot_transform_grid(performance_grid, rowvals=[], colvals=[], 
                                           ylabel='rows', xlabel='columns', 
                                           cmap='hot', vmin=0.5, vmax=1.0,
-                                          data_identifier='', ax=None):
+                                          data_identifier='', ax=None, title=None):
     return_fig = False
     if ax is None:
         fig, ax = pl.subplots(1, figsize=(15,8))
@@ -112,8 +112,11 @@ def plot_transform_grid(performance_grid, rowvals=[], colvals=[],
     if len(colvals) != performance_grid.shape[1]:
         print "Not enough COL labels:", colvals
         colvals = np.arange(performance_grid.shape[1])
-        
+    
+    
     im = ax.imshow(performance_grid, cmap=cmap, vmin=vmin, vmax=vmax)
+    if title is not None:
+        ax.set_title(title)
     ax.set_xticks(range(len(colvals)))
     ax.set_xticklabels(colvals)
     ax.set_xlabel(xlabel)
@@ -1033,7 +1036,7 @@ def get_confusion_matrix(predicted, true, classes, average_iters=True):
     # Compute confusion matrix:
     # -----------------------------------------------------------------------------
     if average_iters:
-        if not isinstance(predicted[0], (int, float)) and len(predicted[0]) > 1:
+        if not isinstance(predicted[0], (int, float, str)) and len(predicted[0]) > 1:
             cmatrix = confusion_matrix(true[0], predicted[0], labels=classes)
             for iter_idx in range(len(predicted))[1:]:
                 print "adding iter %i" % iter_idx
@@ -1613,7 +1616,13 @@ class TransformClassifier():
             self.run_info = self.dataset['run_info']
         else:
             self.run_info = self.dataset['run_info'][()]
-
+        
+        # Make sure specified const_trans are actually tested transforms:
+        if self.params['const_trans'] != '':
+            tested_transforms = [t for t in self.params['const_trans'] if t in self.run_info['trans_types']]
+            self.params['const_trans'] = tested_transforms
+        
+        
         # Store stim configs:
         if isinstance(self.dataset['sconfigs'], dict):
             orig_sconfigs = self.dataset['sconfigs']
@@ -1709,10 +1718,10 @@ class TransformClassifier():
             roi_list = selected_rois
             
         # Get subset of ROIs, if roi_selector is not 'all':
-        self.rois = roi_list
+        self.rois = np.array(roi_list)
         if self.rois is not None:
             print "Selecting %i out of %i ROIs (selector: %s)" % (len(self.rois), Xdata.shape[-1], self.params['roi_selector'])
-            Xdata = Xdata[:, self.rois]
+            Xdata = np.squeeze(Xdata[:, self.rois])
         
         # Determine whether all trials have the same structure or not:
         multiple_durs = isinstance(self.run_info['nframes_on'], list)
@@ -1758,6 +1767,11 @@ class TransformClassifier():
         for opt, choices in valid_choices.items():
             assert train_params[opt] in choices, "Specified %s --%s-- NOT valid. Select from %s" % (opt, train_params[opt], str(choices))                
         
+#        # Make sure specified const_trans are actually tested transforms:
+#        if train_params['const_trans'] != '':
+#            tested_transforms = [t for t in train_params['const_trans'] if t in self.run_info['trans_types']]
+#            train_params['const_trans'] = tested_transforms
+#        
         self.params = get_classifier_params(
                                     classifier = 'LinearSVC', 
                                     cv_method = train_params['cv_method'], 
@@ -2035,7 +2049,9 @@ class LinearSVM():
             pp.pprint(const_trans_dict)
             print "Testing EACH value of const transforms."
             if any([(isinstance(v, list) and len(v) > 1) for k, v in const_trans_dict.items()]):
-                transforms_desc = '_'.join('%s_%i' % (k, len(v)) for k,v in const_trans_dict.items())
+                transforms_desc = '_'.join('%i%s' % (len(v), k) for k,v in const_trans_dict.items())
+            elif any([(isinstance(v, list) and len(v)==1) for k, v in const_trans_dict.items()]):
+                transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v[0])) if v[0] < 0 else '%s_%.1f' % (k, v[0]) for k,v in const_trans_dict.items())
             else:
                 transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v)) if v < 0 else '%s_%.1f' % (k, v) for k,v in const_trans_dict.items())
             self.classifier_dir = os.path.join(self.classifier_dir, transforms_desc)
@@ -2250,8 +2266,11 @@ class LinearSVM():
         return cX, cy, class_labels, cy_tmp
     
 
-    def iterate_feature_selection(self, method='RFE', scoring='accuracy', n_jobs=4, output_dir=None, figname=None):
+    def iterate_feature_selection(self, method='rfe', scoring='accuracy', n_jobs=4, output_dir=None, figname=None):
         feature_selection = {}
+        
+        valid_choices = ['rfe', 'k_best']
+        assert method in valid_choices, "Invalid feature selection method chosen. Select from: %s" % str(valid_choices)
         
         nrois_total = self.cX.shape[-1]
 
@@ -2299,7 +2318,7 @@ class LinearSVM():
         return feature_selection
             
 
-    def do_model_selection(self, scoring='accuracy', output_dir=None):
+    def do_model_selection(self, scoring='accuracy', output_dir=None, meta_params_str='metaparams'):
         #output_dir = os.path.join(self.classifier_dir, 'cv_model_selection')
         
         feature_selection = self.model_selection.features
@@ -2310,7 +2329,7 @@ class LinearSVM():
             print "Finding optimal C value..."
             self.clfparams['C_val'] = get_best_C(self.svc, self.cX, self.cy, 
                                               output_dir=output_dir, 
-                                              figname='findC_%s.png' % self.data_id)
+                                              figname='findC_%s_%s.png' % (meta_params_str, self.data_id))
             
         print "[PARAMS]: C = %.5f" % self.clfparams['C_val']
         self.svc.C = self.clfparams['C_val']
@@ -2319,15 +2338,23 @@ class LinearSVM():
             if self.model_selection.features['nfeatures'] is None or self.model_selection.features['nfeatures'] == 'best':
                 feature_selection = self.iterate_feature_selection(method=self.model_selection.features['method'],
                                                                    scoring=scoring, output_dir=output_dir,
-                                                                   figname='feature_selection_%s_%s_%s.png' % (self.model_selection.features['method'], scoring, self.data_id))
+                                                                   figname='feature_selection_%s_%s_%s.png' % (meta_params_str, 
+                                                                                                               scoring, self.data_id))
                 cX_tmp = self.cX[:, feature_selection['kept_rids']]
             else:
+                if self.model_selection.features['nfeatures'] > self.cX.shape[0]:
+                    self.model_selection.features['nfeatures'] = self.cX.shape[0]-1
+                    
                 if self.model_selection.features['method'] == 'k_best':
                     feature_fit = SelectKBest(f_classif, k=self.model_selection.features['nfeatures']).fit(self.cX, self.cy)
+                    kids = feature_fit.get_support(indices=True)
+                    kbest_scores = cross_val_score(self.svc, self.cX[:, kids], self.cy)
+                    scoring = np.mean(kbest_scores)
                 elif self.model_selection.features['method'] == 'RFE':
                     feature_fit = RFE(self.svc, n_features_to_select=self.model_selection.features['nfeatures'])
+                    scoring = feature_fit.score(self.cX, self.cy)
                 feature_selection['kept_rids'] = feature_fit.get_support(indices=True)
-                feature_selection['score'] = feature_fit.score(self.cX, self.cy)
+                feature_selection['score'] = scoring
                 cX_tmp = feature_fit.transform(self.cX)
             
             self.cX = cX_tmp
@@ -2339,10 +2366,21 @@ class LinearSVM():
         Does some model selection to choose classifier parameters and data subsets.
         Creates classifier sub-dir for feature-selection and C-value    
         '''
+        feature_select_method = self.model_selection.features['method']
+        feature_select_n = self.model_selection.features['nfeatures']
+        C_select = self.model_selection.findC
+        
+        meta_params_str = '%s_%s_C_%s' % ('all' if feature_select_method is None else feature_select_method,
+                                          'features' if feature_select_n is None else str(feature_select_n),
+                                          C_select if isinstance(C_select, str) else '%.4f' % self.clfparams['C_val'])
+                
         output_dir = os.path.join(self.classifier_dir, 'cv_model_selection')
+        if not os.path.exists(output_dir): os.makedirs(output_dir)
+        print "MODEL SELECTION: Saving to subdir: ./cv_model_selection"
+        
         # 1.  Do model selection, if relevant:
         # --------------------------------------------
-        self.do_model_selection(output_dir=output_dir)
+        self.do_model_selection(output_dir=output_dir, meta_params_str=meta_params_str)
         
         # Save clfparams and check file hash:
         # --------------------------------------------
@@ -2357,7 +2395,7 @@ class LinearSVM():
             
         # Create output dir:
         # --------------------------------------------
-        clf_subdir = '%s_%s' % (feature_str, C_str)
+        model_select_str = '%s_%s' % (feature_str, C_str)
 #        clf_output_dir = os.path.join(self.classifier_dir, clf_subdir)
 #        if not os.path.exists(os.path.join(clf_output_dir, 'figures')): os.makedirs(os.path.join(clf_output_dir, 'figures'))
 #        if not os.path.exists(os.path.join(clf_output_dir, 'results')): os.makedirs(os.path.join(clf_output_dir, 'results'))
@@ -2365,7 +2403,7 @@ class LinearSVM():
 #        print "Saving current CLF results to:", clf_output_dir
 #        self.classifier_dir = clf_output_dir
         
-        clfparams_fpath = os.path.join(output_dir, 'clfparams_%s_%s_%s.json' % (clfparams_hash[0:6], self.data_id, clf_subdir))
+        clfparams_fpath = os.path.join(output_dir, 'clfparams_%s_%s_%s_%s.json' % (clfparams_hash[0:6], self.data_id, meta_params_str, model_select_str))
         with open(clfparams_fpath, 'w') as f: 
             json.dump(self.clfparams, f, indent=4, sort_keys=True)
         
@@ -2528,9 +2566,18 @@ class LinearSVM():
         self.train_params['full_train'] = full_train
         self.train_params['test_size'] = test_size
         
-        sdf = pd.DataFrame(self.sconfigs).T
-        classes = list(sdf[self.clfparams['class_name']].unique())
+        if self.train_params['full_train']:
+            training_regime = 'trainfull'
+        else:
+            training_regime = 'trainpart_testsize%.2f' % self.train_params['test_size']
         
+        
+        sdf = pd.DataFrame(self.sconfigs).T
+        if self.clfparams['class_subset'] == '':
+            classes = list(sdf[self.clfparams['class_name']].unique())
+        else:
+            classes = self.clfparams['class_subset']
+        print "----- ----- Training classifier on %i labels: %s" % (len(classes), str(classes))
         
         X_test = None; test_true=None; test_predicted=None;
         traintest_results = {'by_class': {},
@@ -2605,7 +2652,8 @@ class LinearSVM():
                      'test_labels': test_true,
                      'predicted': test_predicted,
                      'results_by_config': traintest_results['by_config'],
-                     'results_by_class': traintest_results['by_class']}
+                     'results_by_class': traintest_results['by_class'],
+                     'training_regime': training_regime}
         
         self.train_results = traindata
         
@@ -2625,28 +2673,50 @@ class LinearSVM():
             test_by_class = dict((cfg, {}) for cfg in tested_classes)
             for tested_class in tested_classes:
                 curr_trials = np.where(np.array(test_labels) == tested_class)[0]
-                curr_predictions = predicted_classes[curr_trials]
-                test_by_class[tested_class]['ncorrect'] = float(np.sum([p==tested_class for p in curr_predictions]))
-                test_by_class[tested_class]['ntotal'] = float(len(curr_trials))
-                test_by_class[tested_class]['percent_correct'] = test_by_class[tested_class]['ncorrect'] / test_by_class[tested_class]['ntotal'] 
-                
-                
+#                curr_predictions = predicted_classes[curr_trials]
+#                test_by_class[tested_class]['ncorrect'] = float(np.sum([p==tested_class for p in curr_predictions]))
+#                test_by_class[tested_class]['ntotal'] = float(len(curr_trials))
+                test_by_class[tested_class]['predicted'] = predicted_classes[curr_trials]
+                test_by_class[tested_class]['true'] = test_labels[curr_trials]
+                test_by_class[tested_class]['indices'] = curr_trials
+
+#                
+#                # Also add held-out set tested during training/validation:
+#                if self.train_params['full_train'] is False:
+#                    test_by_class[tested_class]['ncorrect'] += float(np.sum([p==tested_class for p in self.train_results['predicted']]))
+#                    test_by_class[tested_class]['ntotal'] += float(len(self.train_results['predicted']))
+
+#                test_by_class[tested_class]['percent_correct'] = test_by_class[tested_class]['ncorrect'] / test_by_class[tested_class]['ntotal'] 
+            
+            # Save results split by stimulus config:
             tested_configs = sorted(list(set(config_labels)), key=natural_keys)
             test_by_config = dict((cfg, {}) for cfg in tested_configs)
             for cfg in tested_configs:
                 curr_trials = np.where(config_labels == cfg)[0]
-                true_label = list(set([pred for pi, pred in enumerate(test_labels) if pi in curr_trials]))[0]
-                curr_predictions = predicted_classes[curr_trials]
+#                true_label = list(set([pred for pi, pred in enumerate(test_labels) if pi in curr_trials]))[0]
+#                curr_predictions = predicted_classes[curr_trials]                
+#                test_by_config[cfg]['ncorrect'] = float(np.sum([p==true_label for p in curr_predictions]))
+#                test_by_config[cfg]['ntotal'] = float(len(curr_trials))
+#                test_by_config[cfg]['percent_correct'] = test_by_config[cfg]['ncorrect']  / test_by_config[cfg]['ntotal']
+                test_by_config[cfg]['predicted'] = predicted_classes[curr_trials]
+                test_by_config[cfg]['true'] = test_labels[curr_trials]
+                test_by_config[cfg]['indices'] = curr_trials
+#            
+#            if self.train_params['full_train'] is False:
+#                # Add held-out test set from cross-validation, if relevant:
+#                train_configs = self.train_results['results_by_config'].keys()
+#                for cfg in train_configs:
+#                    if cfg not in test_by_config.keys():
+#                        print "Adding training held-out tested configs"
+#                        test_by_config[cfg] = self.train_results['results_by_config'][cfg]
+
                 
-                test_by_config[cfg]['ncorrect'] = float(np.sum([p==true_label for p in curr_predictions]))
-                test_by_config[cfg]['ntotal'] = float(len(curr_trials))
-                test_by_config[cfg]['percent_correct'] = test_by_config[cfg]['ncorrect']  / test_by_config[cfg]['ntotal']
-            
             test_results = {'test_data': test_data,
                             'test_labels': test_labels,
-                            'predicted': predicted_classes,
+                            'predicted_classes': predicted_classes,
                             'results_by_config': test_by_config,
-                            'results_by_class': test_by_class}
+                            'results_by_class': test_by_class,
+                            'config_labels': config_labels}
             
         self.test_results = test_results
             
@@ -2678,26 +2748,51 @@ class LinearSVM():
     
     
     
-    def get_classifier_accuracy_by_stimconfig(self, row_label=None, col_label=None, output_dir=None, figname=None): # full_train=False, test_size=0.33):
+    def get_classifier_accuracy_by_stimconfig(self, m50=53, m100=106, row_label=None, col_label=None, output_dir=None, figname=None): # full_train=False, test_size=0.33):
 #        
 #        if output_dir is None:
 #            test_transforms_dir = os.path.join(self.classifier_dir, 'test_transforms')
 #            if not os.path.exists(test_transforms_dir): os.makedirs(test_transforms_dir)
-        
+        sdf = pd.DataFrame(self.sconfigs).T 
+
         if self.train_params['full_train']:
             train_set = 'fulltrain'
         else:
             train_set = 'testsize%.2f' % self.train_params['test_size']
         
-        accuracy, counts = self.split_test_results_by_stimconfig()
+        test_results_accuracy = self.convert_predictions_to_accuracy(m50=m50, m100=m100)
+        accuracy, counts = self.split_test_results_by_stimconfig(test_results_accuracy)
         
 #        row_label = 'ypos'
 #        col_label = 'xpos'
         accuracy_grid, counts_grid, config_grid = self.get_stimconfig_grid(accuracy, counts, row_label=row_label, col_label=col_label)
         
         # Plot PERFORMANCE:
-        rowvals = sorted(list(set([stim[1] for stim in accuracy.keys()])))
-        colvals = sorted(list(set([stim[0] for stim in accuracy.keys()])))
+        ignore_row = False; ignore_column = False;
+        if isinstance(accuracy.keys()[0], (float, int)):
+            if col_label is not None:
+                colvals = sorted(list(sdf[col_label].unique()))
+                if len(colvals) == 1:
+                    ignore_column = True
+                else:
+                    ignore_column = False
+            if row_label is not None:
+                rowvals = sorted(list(sdf[row_label].unique()))
+                if len(rowvals) == 1:
+                    ignore_row = True
+                else:
+                    ignore_row = False
+            
+        if ignore_row:
+            colvals = sorted(list(set([stim for stim in accuracy.keys()])))
+            rowvals = np.ones((len(colvals),)) * rowvals[0]
+        if ignore_column:
+            rowvals = sorted(list(set([stim for stim in accuracy.keys()])))
+            colvals = np.ones((len(rowvals),)) * colvals[0]
+        else:
+            rowvals = sorted(list(set([stim[1] for stim in accuracy.keys()])))
+            colvals = sorted(list(set([stim[0] for stim in accuracy.keys()])))
+            
         fig, axes = pl.subplots(1,2,figsize=(14,8)) #, sharey=True)
         
         chance_level = 1./len(self.class_labels)
@@ -2721,8 +2816,16 @@ class LinearSVM():
     
     def get_stimconfig_grid(self, accuracy, counts, row_label=None, col_label=None):
         sdf = pd.DataFrame(self.sconfigs).T 
-        if row_label is None or col_label is None:
+        if self.clfparams['class_name'] == 'position':
+            # We actually train on stimconfig, and should be averaging across object ID (or orientation):
+            trans_types = ['position']
+        else:
             trans_types = [trans for trans in self.run_info['trans_types'] if trans != self.clfparams['class_name']]
+
+
+        if row_label is None or col_label is None:
+#            trans_types = [trans for trans in clf.run_info['trans_types'] if trans != clf.clfparams['class_name']]
+
             if len(trans_types) > 0:
                 print "No row or column label specified. Found %i transform types: %s" % (len(trans_types), ', '.join(trans_types))
                 if len(trans_types) == 1:
@@ -2731,6 +2834,7 @@ class LinearSVM():
                 elif len(trans_types) > 1:
                     row_label = trans_types[0]
                     col_label = trans_types[1]
+        
         placehold = False
         if col_label is not None:
             colvals = sorted(list(sdf[col_label].unique()))
@@ -2753,16 +2857,36 @@ class LinearSVM():
         for trans_config in grid_pairs:
             if placehold is True and not all([t in accuracy.keys() for t in trans_config]):
                 continue
-            if not trans_config in accuracy.keys():
-                continue
+            if len(colvals) == 1:
+                if trans_config[1] not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config[1]
+                    
+            elif len(rowvals) == 1:
+                if trans_config[0] not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config[0]
+                    
+            elif (len(colvals) > 1 and len(rowvals) > 1):
+                if trans_config not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config
+            
+            if 'position' in trans_types and isinstance(trans_config, str):
+                # Convert str to tuple for indexing:
+                trans_config = tuple([float(p) for p in dict_key.split('_')])
+                dict_key = trans_config
             rix = rowvals.index(trans_config[1])
             cix = colvals.index(trans_config[0])
             if placehold: # second trans_config value is fake
-                nc = accuracy[trans_config]
-                cc = counts[trans_config]
+                nc = accuracy[dict_key]
+                cc = counts[dict_key]
             else:
-                nc = accuracy[trans_config]
-                cc = counts[trans_config]
+                nc = accuracy[dict_key]
+                cc = counts[dict_key]
                 
             if np.isnan(ncorrect_grid[rix, cix]):
                 ncorrect_grid[rix, cix] = nc #ncorrect[trans_config]
@@ -2775,7 +2899,7 @@ class LinearSVM():
         return ncorrect_grid, counts_grid, config_grid
 
         
-    def split_test_results_by_stimconfig(self):
+    def split_test_results_by_stimconfig(self, test_results_accuracy):
         if self.clfparams['class_name'] == 'position':
             # We actually train on stimconfig, and should be averaging across object ID (or orientation):
             trans_types = ['position']
@@ -2807,7 +2931,7 @@ class LinearSVM():
         
         grouped_sdf = sdf.groupby(trans_types)
         accuracy={}; counts={};
-        test_configs = list(set(self.test_results['results_by_config'].keys()))
+        test_configs = [t for t in list(set(test_results_accuracy.keys())) if test_results_accuracy[t]['ntotal'] > 0]
         for config, g in grouped_sdf:
             if 'position' in trans_types:
                 # Convert str to tuple for indexing:
@@ -2816,8 +2940,8 @@ class LinearSVM():
             # Get mean accuracy (averaged across cv folds) for included configs:
             tmp_curr_configs = g.index.tolist()
             curr_configs = [t for t in tmp_curr_configs if t in test_configs]
-            curr_scores = np.mean([self.test_results['results_by_config'][cfg]['percent_correct'] for cfg in curr_configs]) #g.index.tolist()])
-            curr_counts = np.sum([self.test_results['results_by_config'][cfg]['ntotal'] for cfg in curr_configs]) # g.index.tolist()])
+            curr_scores = np.mean([test_results_accuracy[cfg]['percent_correct'] for cfg in curr_configs]) #g.index.tolist()])
+            curr_counts = np.sum([test_results_accuracy[cfg]['ntotal'] for cfg in curr_configs]) # g.index.tolist()])
             accuracy[config] = curr_scores
             counts[config] = curr_counts
             #counts[config] = clf.train_results['train_labels']
@@ -2825,6 +2949,42 @@ class LinearSVM():
         return accuracy, counts
 
 
+    def convert_predictions_to_accuracy(self, m50=53, m100=106):
+        sdf = pd.DataFrame(self.sconfigs).T
+        
+        test_by_config = self.test_results['results_by_config']
+        orig_configs = self.test_results['config_labels']
+        tested_configs = sorted(list(set(orig_configs)), key=natural_keys)
+        
+        test_results_accuracy = dict((cfg, {}) for cfg in tested_configs)
+        for tested_config in tested_configs:
+            if self.clfparams['class_name'] == 'morphlevel':
+                if sdf.loc[tested_config]['morphlevel'] == m50:
+                    ncorrect = np.nan; ntotal=np.nan; pcorrect=np.nan;
+                else:
+                    config_names_all = orig_configs[test_by_config[tested_config]['indices']]
+                    true_labels_all = np.array([sdf.loc[cfg]['morphlevel'] for cfg in config_names_all])
+                    #print "----- ----- excluding middle morphs (%i) to calculate accuracy." % m50
+                    excluding_midmorph_ixs = np.array([ti for ti, tvalue in enumerate(true_labels_all) if tvalue != m50])
+                    
+                    # Take only those tested samples that are NOT mid morphs so we can calculate %-correct:
+                    curr_preds = test_by_config[tested_config]['predicted'][excluding_midmorph_ixs]
+                    curr_trues = [0 if tl < m50 else m100 for tl in true_labels_all[excluding_midmorph_ixs]]
+                    ncorrect = sum([p==t for p, t in zip(curr_preds, curr_trues)])
+                    ntotal = len(excluding_midmorph_ixs)
+                    pcorrect = float(ncorrect) / float(ntotal)
+            else:
+                ncorrect = sum([p==t for p, t in zip(test_by_config[tested_config]['predicted'], test_by_config[tested_config]['true'])])
+                ntotal = len(test_by_config[tested_config]['indices'])
+                pcorrect = float(ncorrect) / float(ntotal)
+                
+            if not np.isnan(ntotal):
+                print "%s: Morph %i - %i, %i (%.2f)" % (tested_config, sdf.loc[tested_config]['morphlevel'], ncorrect, ntotal, pcorrect)
+            test_results_accuracy[tested_config] = {'ncorrect': ncorrect, 'ntotal': ntotal, 'percent_correct': pcorrect}
+            
+        return test_results_accuracy
+    
+        
     
 #%%
     
