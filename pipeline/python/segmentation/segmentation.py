@@ -181,12 +181,16 @@ class Segmentations():
                                         self.source.session, self.source.acquisition,
                                         self.source.retino_run)
         retino_params = load_retino_params(retino_dir, retino_analysis_id) 
+        if self.source.rootdir not in retino_params['DST']:
+            retino_params['DST'] = replace_root(retino_params['DST'], self.source.rootdir, self.source.animalid, self.source.session)
+
         scale_factor = int(retino_params['PARAMS']['downsample_factor'])
 
         # Load data:
         # -----------------------------------------------------------------------------
         if use_single_ref:
-            curr_fpath = self.source.analysis_files[retino_file_ix]
+            curr_fpath = [f for f in self.source.analysis_files if 'File%03d' % retino_file_ix in f][0]
+            #curr_fpath = self.source.analysis_files[retino_file_ix]
             ret = h5py.File(curr_fpath, 'r')
             if analysis_type == 'pixels':
                 tmp_phasemap = ret['phase_array'][:].reshape((self.source.dims[0]/scale_factor, self.source.dims[1]/scale_factor))
@@ -244,9 +248,10 @@ class Segmentations():
         return self.fov.image
 
     def get_roi_masks(self, retino_params):
-                       
+        if self.source.rootdir not in retino_params['DST']:
+            retino_params['DST'] = replace_root(retino_params['DST'], self.source.rootdir, self.source.animalid, self.source.session) 
         analysis_output_files = glob.glob(os.path.join(retino_params['DST'], 'files', '*.h5'))
-
+        print os.listdir(os.path.join(retino_params['DST'], 'files')) #analysis_output_files
         # Read in first file to get masks and dims:
         # -----------------------------------------------------------------------------
         ret = h5py.File(analysis_output_files[0], 'r')

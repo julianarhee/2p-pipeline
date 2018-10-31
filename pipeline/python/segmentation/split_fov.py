@@ -142,11 +142,12 @@ def create_segmentation_object(animalid, session, acquisition, rootdir='/n/coxfs
         which_ref = input("Select 1 to use SINGLE condition, or 0 to use AVERAGED conditions: ")
         if which_ref == 1:
             fov.use_single_ref = True
-            if fov.retino_file_ix is None:
-                fov.retino_file_ix = input('Enter file num (1-indexed) to use as single reference: ')
+#            if fov.retino_file_ix is None:
+            fov.retino_file_ix = input('Enter file num (1-indexed) to use as single reference: ')
         else:
             fov.use_single_ref = False
- 
+
+    #if fov.use_single_ref:
     label_figure(fig, fov.data_identifier)
     pl.savefig(os.path.join(fov.output_dir, 'figures', 'averaged_conditions.png'))
     pl.close()
@@ -202,12 +203,12 @@ def process_phasemap(fov, kernel_type=None, kernel_size=21, morph_kernel=5, morp
                                                               cmap=cmap) 
 
     return mask_template
-
-def save_visual_area(fov, cmap='Spectral_r', visual_area=None):
+#%%
+def save_visual_area(fov, cmap='Spectral_r', visual_area=None, retino_file_ix=1):
 
     mask_template = fov.preprocessing['mask_template']
 
-    #%%
+    #%
     # 2.  Select regions from segmentation:
     # -----------------------------------------------------------------------------
     labeled_image, region_id, region_mask = fov.select_visual_area(mask_template)
@@ -224,7 +225,7 @@ def save_visual_area(fov, cmap='Spectral_r', visual_area=None):
     roi_contours = get_roi_contours(roi_masks, roi_axis=-1)
 
     # Get roi phase map:
-    roi_phasemap = fov.get_phase_map(analysis_type='rois', use_azimuth=True, use_single_ref=True, retino_file_ix=1)
+    roi_phasemap = fov.get_phase_map(analysis_type='rois', use_azimuth=True, use_single_ref=True, retino_file_ix=retino_file_ix)
     roi_phase_mask = np.copy(roi_phasemap)
     roi_phase_mask[roi_phasemap==0] = np.nan
   
@@ -273,11 +274,11 @@ def save_visual_area(fov, cmap='Spectral_r', visual_area=None):
 
     pl.close()
 
-    #%%
+    #%
 
     fov.save_visual_area(selected_area, region_name, region_id, region_mask, included_rois)
 
-    #%%
+    #%
     segmentation_fpath = fov.save_me()
    
     return segmentation_fpath
@@ -317,10 +318,10 @@ def do_fov_segmentation(animalid, session, acquisition, rootdir='/n/coxfs01/2p-d
                                 use_azimuth=use_azimuth, use_single_ref=use_single_ref, 
                                 retino_file_ix=retino_file_ix)
 
-        mask_template = process_phasemap(fov, visual_area=visual_area, kernel_type=kernel_type, kernel_size=kernel_size, 
+        mask_template = process_phasemap(fov, kernel_type=kernel_type, kernel_size=kernel_size, 
                                 morph_kernel=morph_kernel, morph_iterations=morph_iterations, cmap=cmap)
 
-    segmentation_fpath = save_visual_area(fov, visual_area=visual_area, cmap=cmap)
+    segmentation_fpath = save_visual_area(fov, visual_area=visual_area, cmap=cmap, retino_file_ix=retino_file_ix)
 
 
 def main(options):
@@ -360,4 +361,6 @@ if __name__ == '__main__':
     main(sys.argv[1:])
 
             
-
+#%%
+    
+#    options = ['--slurm', '-i', 'JC015', '-S', '20180924', '-A', 'FOV1_zoom2p0x', '-f', '5', '--single', '-V', 'LI', '--test']
