@@ -48,6 +48,7 @@ import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
+from pipeline.python.segmentation.segmentation import Segmentations
 from pipeline.python.paradigm import utils as fmt
 from pipeline.python.classifications import utils as util
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -1668,6 +1669,7 @@ class TransformClassifier():
         if visual_area_info is not None:
             (visual_area, visual_areas_fpath), = visual_area_info.items()
             print "Getting ROIs for area: %s" % visual_area
+            print "Loading file:", visual_areas_fpath
             with open(visual_areas_fpath, 'rb') as f:
                 areas = pkl.load(f)
             if visual_area not in areas.regions.keys():
@@ -1691,7 +1693,7 @@ class TransformClassifier():
 #            region_mask_copy[region_mask==0] = np.nan
 #                        
 #            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
-            included_rois = [int(ri) for ri in visual_area['included_rois']]
+            included_rois = [int(ri) for ri in areas.regions[visual_area]['included_rois']]
         else:
             included_rois = None
         self.sample_data, self.sample_labels = self.get_formatted_data(included_rois=included_rois)
@@ -1713,6 +1715,7 @@ class TransformClassifier():
             
         selected_rois = self.load_roi_list(roi_selector=self.params['roi_selector'])
         if included_rois is not None:
+            print "---> only including specified ROIs from visual area."
             roi_list = intersection(selected_rois, included_rois)
         else:
             roi_list = selected_rois

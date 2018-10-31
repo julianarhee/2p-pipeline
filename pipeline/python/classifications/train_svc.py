@@ -338,7 +338,7 @@ def initialize_transform_classifiers(animalid, session, acquisition, run, tracei
                          cv_method=cv_method, cv_nfolds=cv_nfolds, cv_ngroups=cv_ngroups, C_val=C_val, binsize=binsize)
     
     if select_visual_area:
-        visual_areas_fpath = glob.glob(os.path.join(C.rootdir, C.animalid, C.session, C.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
+        visual_areas_fpath = sorted(glob.glob(os.path.join(C.rootdir, C.animalid, C.session, C.acquisition, 'visual_areas', 'segmentation_*.pkl')), key=natural_keys)[::-1][0]
         visual_area_info = {visual_area: visual_areas_fpath}
     else:
         visual_area_info = None
@@ -571,7 +571,50 @@ options = ['-D', rootdir, '-i', 'JC022',
 #
 #    
     
-    
+#%%
+
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181007,20181017', 
+#           '-A', 'FOV1_zoom2p2x,FOV1_zoom2p7x',
+#           '-R', 'combined_blobs_static,combined_blobs_static',
+#           '-t', 'traces001,traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', 
+#           '-N', 'morphlevel',
+#           '--subset', '0,106',
+##           '--segment',
+#           '-c', 'xpos,ypos',
+##           '--indie',
+##           '-v', '0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '16.8,28,16.8,28',
+#           '-T', '-5,-5,-15,-15',
+#           '-V', 'LI',
+#           '--nproc=1'
+#           ]
+
+options = ['-D', rootdir, '-i', 'JC022', 
+           '-S', '20181022', 
+           '-A', 'FOV1_zoom4p0x',
+           '-R', 'combined_blobs_static',
+           '-t', 'traces001',
+           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+           '-p', 'corrected', 
+           '-N', 'yrot',
+#           '--subset', '0,106',
+#           '--segment',
+#           '-c', 'xpos,ypos',
+#           '--indie',
+#           '-v', '0',
+#           '-T', '-15,-10,0,5',
+#           '-T', '-60,-30,30,60',
+#           '-T', '16.8,28,16.8,28',
+#           '-T', '-5,-5,-15,-15',
+           '-V', 'LI',
+           '--nproc=1'
+           ]
+
 #%%
 
 def main(options):
@@ -581,14 +624,14 @@ def main(options):
     # MODEL SELECTION PARAMS:
     feature_select_method='rfe' #'rfe' #'rfe'
     feature_select_n='best' #'best' #'best'
-    C_select='big' #'best'
+    C_select='best' #'best'
     # -------------------------------------------------------------------------
     
     # -------------------------------------------------------------------------
     # TRAINING PARAMS:
     scoring = 'accuracy'
     full_train = False #False
-    test_size = 0.20 #0.33 #0.33
+    test_size = 0.33 #0.33 #0.33 #0.20 #0.33 #0.33
     create_new = True
 #    test_subset_only = True
 
@@ -596,7 +639,7 @@ def main(options):
     m100 = 106 #106
     
     col_label = 'xpos' # 'xpos'
-    row_label = 'ypos' #'ypos'
+    row_label = 'morphlevel' #'ypos'
     # -------------------------------------------------------------------------
 
     if full_train is False:
@@ -702,7 +745,7 @@ def main(options):
         print "TESTING classifier on generalization:"
             
         test_class_subset_only = False 
-        limit_test_to_trained_views = True
+        limit_test_to_trained_views = False
 
         transforms_subset_str = 'class_subset_only' if test_class_subset_only else 'all_classes'
 
@@ -710,10 +753,11 @@ def main(options):
         data_identifier = '_'.join(sorted(trans_classifiers.keys(), key=natural_keys))
         print data_identifier
 
-        nr = 4
-        nc = 6
+        nr = 5
+        nc = 5
         sdf = pd.DataFrame(trans_classifier['C'].classifiers[0].sconfigs).T
         
+        accuracy_list = []; counts_list =[];
         accuracy_grid_all = np.zeros((nr, nc))
         counts_grid_all = np.zeros((nr, nc))
         nclfs_all = 0
@@ -832,6 +876,7 @@ def main(options):
 #                nclfs_all += 1
     
             if optsE.indie:
+                
                 accuracy_fov = accuracy_grid_fov #/ (nclfs_fov-1)
                 counts_fov = counts_grid_fov #/ (nclfs_fov-1)
             else:
@@ -856,6 +901,9 @@ def main(options):
                     
             accuracy_grid_all += accuracy_fov
             counts_grid_all += counts_fov
+            
+            accuracy_list.append(accuracy_fov)
+            counts_list.append(counts_fov)
             
             nclfs_all += 1
         print "*******************************************************************"
@@ -887,7 +935,12 @@ def main(options):
         pl.savefig(os.path.join(train_test_dir, 'test_transforms_%s_grid_all_datasets.png' % (transforms_subset_str)))
 
 
-        pl.close('all')
+        #pl.close('all')
+        
+        max_vals = np.array([max([f1, f2]) for f1, f2 in zip(accuracy_list[0].ravel(), accuracy_list[1].ravel())])
+        max_grid = max_vals.reshape(accuracy_grid_all.shape)
+        pl.figure(); pl.imshow(max_grid, cmap='hot', vmin=chance_level, vmax=1.0)
+        
 #%%
     # Plot confusion matrix for CLASS LABEL:
     # -------------------------------------------------------------------------
@@ -959,7 +1012,7 @@ def main(options):
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(train_test_dir, 'confusion%s_%s_cv_test_%i%s_allfovs.png' % (cmap_str, transforms_subset_str, len(classes), optsE.class_name))) #
 
-    pl.close('all')
+    #pl.close('all')
  
         
 #%%
