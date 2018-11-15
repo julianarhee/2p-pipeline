@@ -678,10 +678,11 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, ax=None):
     
     r2_values = [np.mean([roi.conditions[0].fit_results['r2'], roi.conditions[1].fit_results['r2']]) for roi in ROIs]
     
-    for ei,e in enumerate(ells[0:20]):
+    for ei,e in enumerate(ells): #[0:20]):
         ax.add_artist(e)
         #e.set_clip_box(ax.bbox)
-        e.set_alpha(r2_values[0])
+        print r2_values[ei]
+        e.set_alpha(r2_values[ei])
         #e.set_alpha(0.2)
         e.set_facecolor('none')
         e.set_linestyle('-')
