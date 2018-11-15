@@ -714,11 +714,11 @@ class SessionSummary():
         cax = divider.append_axes('right', size='5%', pad=0.05)
         pl.colorbar(im, cax=cax)
         axes_flat[aix].set_title('dF/F map')
-        cax.yaxis.set_ticks_position('right')
         bb = axes_flat[aix].get_position().bounds
         new_bb = [bb[0]*0.75, bb[1]*1.02, bb[2]*1.0, bb[3]*1.0]
         axes_flat[aix].set_position(new_bb)
-        
+        cax.yaxis.set_ticks_position('right')
+       
         
     def plot_retinotopy_to_screen(self, axes_flat=None, aix=0):
         if axes_flat is None:

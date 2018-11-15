@@ -116,6 +116,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             curr_dset = np.load(darray_fpath)
             
             D[curr_run] = {'data':  curr_dset['corrected'],
+                           'dff': curr_dset['dff'],
                             'meanstim': curr_dset['meanstim'],
                             'zscore': curr_dset['zscore'],
                            'labels_df':  pd.DataFrame(data=curr_dset['labels_data'], columns=curr_dset['labels_columns']),
@@ -158,6 +159,8 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
     
         # Combine runs in order of their alphanumeric name:
         tmp_data = np.vstack([D[curr_run]['data'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
+        tmp_data_dff = np.vstack([D[curr_run]['dff'] for curr_run in sorted(D.keys(), key=natural_keys)]) 
+
         tmp_data_meanstim = np.vstack([D[curr_run]['meanstim'] for curr_run in sorted(D.keys(), key=natural_keys)])
         tmp_data_zscore = np.vstack([D[curr_run]['zscore'] for curr_run in sorted(D.keys(), key=natural_keys)])
         tmp_labels_df = pd.concat([D[curr_run]['labels_df'] for curr_run in sorted(D.keys(), key=natural_keys)], axis=0).reset_index(drop=True)
@@ -198,6 +201,8 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
             
             labels_df = tmp_labels_df.iloc[kept_frame_ixs, :].reset_index(drop=True)
             data = tmp_data[kept_frame_ixs, :]
+            data_dff = tmp_data_dff[kept_frame_ixs, :]
+
             data_meanstim = tmp_data_meanstim[kept_trial_indices, :]
             data_zscore = tmp_data_zscore[kept_trial_indices, :]
             
@@ -208,6 +213,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         else:
             labels_df = tmp_labels_df
             data = tmp_data
+            data_dff = tmp_data_dff
             data_meanstim = tmp_data_meanstim
             data_zscore = tmp_data_zscore
             
@@ -219,6 +225,7 @@ def combine_static_runs(check_blobs_dir, combined_name='combined', create_new=Fa
         # Save it:
         np.savez(combo_dpath,
                  corrected=data,
+                 dff=data_dff, 
                  meanstim=data_meanstim,
                  zscore=data_zscore,
                  ylabels=ylabels,

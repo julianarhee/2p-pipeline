@@ -360,6 +360,7 @@ class ActivityInfo:
             ss_res = np.sum((y - y_fit)**2)
             ss_tot = np.sum((y-np.mean(y))**2)
             r_squared = 1 - (ss_res / ss_tot)
+            #assert r_squared >= 0, "R2 is negative..."
             #print("R2:", r_squared)
             A, x0, sigma = popt
             
@@ -678,11 +679,14 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, ax=None):
     
     r2_values = [np.mean([roi.conditions[0].fit_results['r2'], roi.conditions[1].fit_results['r2']]) for roi in ROIs]
     
-    for ei,e in enumerate(ells[0:20]):
+    for ei,e in enumerate(ells): #[0:20]):
         ax.add_artist(e)
         #e.set_clip_box(ax.bbox)
-        e.set_alpha(r2_values[0])
-        #e.set_alpha(0.2)
+        if r2_values[ei] < 0:
+            continue
+        print r2_values[ei]
+        #e.set_alpha(r2_values[ei])
+        e.set_alpha(0.2)
         e.set_facecolor('none')
         e.set_linestyle('-')
         e.set_edgecolor('k')
