@@ -110,6 +110,7 @@ def extract_options(options):
                           help="Values to hold as test set (in order listed in const_trans assignment")
     parser.add_option('--indie', action='store_true', dest='indie', default=False, help="set if each transform-value pair should be trained/tested independently")
     parser.add_option('-V', '--area', action='store', dest='visual_area', default='', help='Name of visual area (e.g., LI, LL, etc.)')
+    parser.add_option('--segment', action='store_true', dest='select_visual_area', default=False, help="set if selecting subset of FOV for visual area")
 
 
     parser.add_option('-L', '--clf', action='store', dest='classifier', default='LinearSVC', help='Classifier type (default: LinearSVC)')
@@ -150,7 +151,7 @@ def get_transform_classifiers(animalid, session, acquisition, run, traceid, root
                          get_null=False, class_name='', class_subset='',
                          const_trans='', trans_value='', test_set=[], indie=False,
                          cv_method='kfold', cv_nfolds=5, cv_ngroups=1, C_val=1e9, binsize=10,
-                         nprocesses=2):
+                         nprocesses=2, select_visual_area=False, visual_area=''):
 
     nprocs = int(nprocesses)
     
@@ -161,14 +162,19 @@ def get_transform_classifiers(animalid, session, acquisition, run, traceid, root
                          const_trans=const_trans, trans_value=trans_value, test_set=test_set, indie=indie,
                          cv_method=cv_method, cv_nfolds=cv_nfolds, cv_ngroups=cv_ngroups, C_val=C_val, binsize=binsize)
     
+    if select_visual_area:
+        visual_areas_fpath = glob.glob(os.path.join(C.rootdir, C.animalid, C.session, C.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
+        visual_area_info = {visual_area: visual_areas_fpath}
+    else:
+        visual_area_info = None
 #    C = lsvc.TransformClassifier(optsE.animalid, optsE.session, optsE.acquisition, optsE.run, optsE.traceid,
 #                                rootdir=optsE.rootdir, roi_selector=optsE.roi_selector, data_type=optsE.data_type,
 #                                stat_type=optsE.stat_type, inputdata_type=optsE.inputdata_type,
 #                                get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
 #                                const_trans=optsE.const_trans, trans_value=optsE.trans_value, 
 #                                cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, binsize=optsE.binsize)
-#    
-    C.load_dataset()
+#    visual_area_info=visual_area_info)
+    C.load_dataset(visual_area_info=visual_area_info)
     
     C.create_classifier_dirs()
     C.initialize_classifiers()
@@ -924,6 +930,27 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # =============================================================================
 # LI -- gratings (6x4)
 # =============================================================================
+options = ['-D', rootdir, '-i', 'JC015', 
+           '-S', '20180924,20180925', 
+           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
+           '-R', 'gratings_run1,combined_gratings_static',
+           '-t', 'traces002,traces003',
+           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+           '-p', 'corrected', 
+           '-N', 'ori',
+#           '--subset', '0,106',
+           '-c', 'xpos,ypos',
+#           '-v', '-5,0',
+#           '-T', '-15,-10,0,5',
+#           '-T', '-60,-30,30,60',
+           '-V', 'LI',
+           '--segment',
+           '-T', '5.6,16.8,28,5.6,16.8,28',
+           '-T', '5,5,5,15,15,15',
+           
+           '--nproc=1'
+           ]
+
 #options = ['-D', rootdir, '-i', 'JC022', 
 #           '-S', '20181005,20181005,20181006,20181007,20181017', 
 #           '-A', 'FOV2_zoom2p7x,FOV3_zoom2p7x,FOV1_zoom2p7x,FOV1_zoom2p2x,FOV1_zoom2p7x',
@@ -949,23 +976,23 @@ rootdir = '/n/coxfs01/2p-data' #-data'
 # LI - BLOBS 5x5x5
 # =============================================================================
 
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181022',
-           '-A', 'FOV1_zoom4p0x',
-           '-R', 'combined_blobs_static', 
-           '-t', 'traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', '-N', 'morphlevel',
-           '--subset', '0,106',
-           '-c', 'xpos,yrot',
-#           '-v', '-5,0',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-           '-T', '-5,-5,0,0,0,5,5,5',
-           '-T', '60,30,60,30,0,60,30,0',
-           
-           '--nproc=1'
-           ]
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181022',
+#           '-A', 'FOV1_zoom4p0x',
+#           '-R', 'combined_blobs_static', 
+#           '-t', 'traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+#           '-c', 'xpos,yrot',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '-5,-5,0,0,0,5,5,5',
+#           '-T', '60,30,60,30,0,60,30,0',
+#           
+#           '--nproc=1'
+#           ]
 #
 
 
@@ -1101,9 +1128,13 @@ options = ['-D', rootdir, '-i', 'JC022',
 #                                          get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
 #                                          const_trans=optsE.const_trans, trans_value=optsE.trans_value,
 #                                          cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
-#                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie)
+#                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie
+#                                          )
 #
-#T.load_dataset()
+#visual_areas_fpath = glob.glob(os.path.join(T.rootdir, T.animalid, T.session, T.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
+#visual_area_info = {visual_area: visual_areas_fpath}
+#
+#T.load_dataset(visual_area_info=visual_area_info)
 ###
 #T.create_classifier_dirs()
 ###
@@ -1121,6 +1152,7 @@ def main(options):
     optsE = extract_options(options)
     visual_area = optsE.visual_area
     print "VISUAL AREA: %s" % visual_area
+    select_visual_area = optsE.select_visual_area
 
     test_set = []
     if len(optsE.test_values) > 0:
@@ -1156,6 +1188,7 @@ def main(options):
         print "SESSION: %s | FOV: %s | RUN: %s | traceid: %s" % (curr_session, curr_fov, curr_run, curr_traceid)
         C = load_classifier_object(traceid_dir, rootdir=optsE.rootdir, animalid=optsE.animalid, session=curr_session)
         print C
+        
         if C is None:
             C = get_transform_classifiers(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
                                           roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
@@ -1163,7 +1196,8 @@ def main(options):
                                           get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
                                           const_trans=optsE.const_trans, trans_value=optsE.trans_value,
                                           cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
-                                          C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses, test_set=test_set, indie=optsE.indie)
+                                          C_val=optsE.C_val, binsize=optsE.binsize, nprocesses=optsE.nprocesses, test_set=test_set, 
+                                          indie=optsE.indie, select_visual_area=select_visual_area, visual_area=visual_area)
         if optsE.rootdir not in C.classifier_dir:
             C.classifier_dir = replace_root(C.classifier_dir, optsE.rootdir, optsE.animalid, curr_session)
             for clf in C.classifiers:
@@ -1285,7 +1319,7 @@ def main(options):
     # =============================================================================
     # TEST the trained classifier -- TRANSFORMATIONS.
     # =============================================================================
-    no_morphs = True
+    no_morphs = False
 
     middle_morph = None #53
     m100 = None #106 #max(clf.clfparams['class_subset'])
