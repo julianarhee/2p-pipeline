@@ -55,16 +55,16 @@ def get_retinotopy_sconfigs(acquisition_dir, retino_run='retino_'):
 class struct():
     pass 
 
-rootdir = '/n/coxfs01/2p-data'
-
-#%%
-
-animalid = 'JC022'
-session = '20181005'
-acquisition = 'FOV3_zoom2p7x'
-
-acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-
+#rootdir = '/n/coxfs01/2p-data'
+#
+##%%
+#
+#animalid = 'JC022'
+#session = '20181005'
+#acquisition = 'FOV3_zoom2p7x'
+#
+#acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
+#
 # Create class for VISUAL AREA
 class FOV():
     def __init__(self, animalid, session, acquisition, rootdir='/n/coxfs01/2p-data'):
@@ -166,11 +166,11 @@ class FOV():
         
 #%%
 # Combine different conditions of the SAME acquisition:
-animalid = 'JC015'
-session = '20180919'
-acquisition = 'FOV1_zoom2p0x'
-retino_run = 'retino_run1'
-
+#animalid = 'JC015'
+#session = '20180919'
+#acquisition = 'FOV1_zoom2p0x'
+#retino_run = 'retino_run1'
+#
 #use_azimuth = True
 #use_single_ref = True
 #retino_file_ix = 0

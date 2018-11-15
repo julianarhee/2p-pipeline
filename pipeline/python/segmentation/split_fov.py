@@ -56,79 +56,6 @@ def load_retino_id(run_dir, retino_id):
     with open(rdict_path, 'r') as f: rdict = json.load(f)
     retinoID = rdict[retino_id]
     return retinoID
-#
-#
-#def get_roi_contours(roi_masks, roi_axis=0):
-#    
-#    cnts = []
-#    nrois = roi_masks.shape[roi_axis]
-#    for ridx in range(nrois):
-#        if roi_axis == 0:
-#            im = np.copy(roi_masks[ridx, :, :])
-#        else:
-#            im = np.copy(roi_masks[:, :, ridx])
-#        im[im>0] = 1
-#        im[im==0] = np.nan #1
-#        im = im.astype('uint8')
-#        edged = cv2.Canny(im, 0, 0.9)
-#        tmp_cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-#        tmp_cnts = tmp_cnts[0] if imutils.is_cv2() else tmp_cnts[1]
-#        cnts.append((ridx, tmp_cnts[0]))
-#    print "Created %i contours for rois." % len(cnts)
-#
-#    return cnts
-#
-#def uint16_to_RGB(img):
-#    im = img.astype(np.float64)/img.max()
-#    im = 255 * im
-#    im = im.astype(np.uint8)
-#    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
-#    return rgb
-#
-#def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None, 
-#                          roi_highlight = [],
-#                          label_all=False, roi_color_default=(127, 127, 127),
-#                          label_highlight=False, roi_color_highlight=(0, 255, 0),
-#                          thickness=1, fontsize=12):
-#
-#
-#    if ax is None:
-#        fig, ax = pl.subplots(1, figsize=(10,10))
-#
-#
-#    #clip_limit=0.02
-#    # Create ZPROJ img to draw on:
-#    refRGB = uint16_to_RGB(zproj)        
-##    p2, p98 = np.percentile(refRGB, (1, 99))
-##    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
-#    im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
-#    im_adapthist *= 256
-#    im_adapthist= im_adapthist.astype('uint8')
-#    ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
-#
-#    orig = im_adapthist.copy()
-#
-#    # loop over the contours individually
-#    for rid, cnt in enumerate(cnts):
-#        contour = np.squeeze(cnt[-1])
-#
-#        # draw the contours on the image
-#        orig = refRGB.copy()
-#
-#        if len(roi_highlight) > 0 and rid in roi_highlight:
-#            col255 = tuple([cval/255. for cval in roi_color_highlight])
-#            if label_highlight:
-#                ax.text(contour[-1, 0], contour[-1, 1], str(rid+1), color='gray', fontsize=fontsize)
-#        else:
-#            col255 = tuple([cval/255. for cval in roi_color_default])
-#            if label_all:
-#                ax.text(contour[-1, 0], contour[-1, 1], str(rid+1), color='gray', fontsize=fontsize)
-#            
-#        #cv2.drawContours(orig, cnt, -1, col255, thickness)
-#        ax.plot(contour[:, 0], contour[:, 1], color=col255)
-#
-#
-#        ax.imshow(orig)
 
 
     
@@ -136,8 +63,13 @@ def load_retino_id(run_dir, retino_id):
 rootdir = '/n/coxfs01/2p-data'
 
 # Combine different conditions of the SAME acquisition:
+#animalid = 'JC015'
+#session = '20180919'
+#acquisition = 'FOV1_zoom2p0x'
+#retino_run = 'retino_run1'
+
 animalid = 'JC015'
-session = '20180919'
+session = '20180925'
 acquisition = 'FOV1_zoom2p0x'
 retino_run = 'retino_run1'
 
@@ -148,16 +80,16 @@ retino_run = 'retino_run1'
 cmap = cm.Spectral_r
 
 
-visualareas_fpath = os.path.join(rootdir, animalid, session, acquisition, 'visual_areas', 'visual_areas.pkl')
+visualareas_fpath = os.path.join(rootdir, animalid, session, acquisition, 'visual_areas', 'visual_areas_%s.pkl' % datestr)
 
 if os.path.exists(visualareas_fpath):
     with open(visualareas_fpath, 'rb') as f:
         fov = pkl.load(f)
 
-#%
+#%%
 else:
     
-    #% CREATE NEW:
+    #%%CREATE NEW:
     
     datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     
