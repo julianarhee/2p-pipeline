@@ -2621,7 +2621,7 @@ def run_trace_extraction(options):
         psth_opts.extend(['-d', optsE.psth_dtype])
         if optsE.psth_rows is not None and optsE.psth_rows != 'None':
             psth_opts.extend(['-r', optsE.psth_rows])
-        if optsE.psth_cols is not None and optsE.post_cols != 'None':
+        if optsE.psth_cols is not None and optsE.psth_cols != 'None':
             psth_opts.extend(['-c', optsE.psth_cols])
         if optsE.psth_hues is not None and optsE.psth_hues!='None':
             print "Specified HUE:", optsE.psth_hues
