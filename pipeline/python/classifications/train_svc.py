@@ -477,143 +477,139 @@ def initialize_transform_classifiers(animalid, session, acquisition, run, tracei
 
 
 #%%
-    
-#options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC022', '-S', '20181018', '-A', 'FOV2_zoom2p7x',
-#           '-R', 'combined_blobs_static', '-t', 'traces001',
+#
+#rootdir = '/n/coxfs01/2p-data'
+#options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180924',
+#           '-A', 'FOV1_zoom2p0x',
+#           '-R', 'combined_blobs_static', 
+#           '-t', 'traces002',
 #           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
 #           '-p', 'corrected', '-N', 'morphlevel',
 #           '--subset', '0,106',
+#           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+#           '-T', '5.6,5.6,16.8,16.8',
+#           '-T', '5,15,5,15',
+##           '-T', '0,0,-5,-5',
+##           '-T', '0,30,0,30',
+#           '-V', 'LI',
+##           '--segment',
 #           '--nproc=1'
 #           ]
 
-rootdir = '/n/coxfs01/2p-data' #-data'
-options = ['-D', rootdir, '-i', 'JC015', 
-           '-S', '20180919,20180924', 
-           '-A', 'FOV1_zoom2p0x,FOV1_zoom2p0x',
-           '-R', 'combined_blobs_static,combined_blobs_static',
-           '-t', 'traces003,traces002',
+
+# LM LM LM 
+#    options = ['-D', rootdir, '-i', 'JC015', 
+#           '-S', '20180919', 
+#           '-A', 'FOV1_zoom2p0x',
+#           '-R', 'combined_blobs_static', 
+#           '-t', 'traces003',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+#           '-c', 'xpos,ypos',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '5.6,5.6,16.8,16.8',
+#           '-T', '5,15,5,15',
+#           '-V', 'LM_blobs_test',
+#           '--nproc=1'
+#           ]
+    
+#options = ['-D', rootdir, '-i', 'CE077', 
+#           '-S', '20180518,20180521,20180521,20180523,20180602,20180609,20180612', 
+#           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV2_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x',
+#           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,blobs_run1', 
+#           '-t', 'traces002,traces002,traces002,traces002,traces001,traces001,traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+#           '-c', 'xpos,yrot',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '0,0,-5,-5',
+#           '-T', '0,30,0,30',
+#           '-V', 'LM_blobs_transforms',
+#           '--nproc=1'
+#           ]
+#    
+    
+# LI LI LI
+options = ['-D', rootdir, '-i', 'JC022', 
+           '-S', '20181007',
+           '-A', 'FOV1_zoom2p2x',
+           '-R', 'combined_blobs_static', 
+           '-t', 'traces001',
            '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'morphlevel',
+           '-p', 'corrected', '-N', 'morphlevel',
            '--subset', '0,106',
            '-c', 'xpos,ypos',
            '--indie',
-#           '-v', '0',
+#           '-v', '-5,0',
 #           '-T', '-15,-10,0,5',
 #           '-T', '-60,-30,30,60',
-#           '-T', '5.6,16.8,28,5.6,16.8,28',
-#           '-T', '5,5,5,15,15,15',
-           '-V', 'LM-LI',
+#           '-T', '5.6,5.6,16.8,16.8',
+#           '-T', '5,15,5,15',
+           '-V', 'LI_blobs_test2',
            '--nproc=1'
            ]
-
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181016,20181018', 
-           '-A', 'FOV1_zoom2p7x,FOV2_zoom2p7x',
-           '-R', 'combined_blobs_static,combined_blobs_static',
-           '-t', 'traces001,traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'morphlevel',
-           '--subset', '0,97',
-           '-c', 'ypos',
-           '--indie',
-#           '-v', '-13',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-#           '-T', '5.6,16.8,28,5.6,16.8,28',
-#           '-T', '5,5,5,15,15,15',
-           '-V', 'LI-LL',
-           '--nproc=1'
-           ]
-
-
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181016,20181018,20181020', 
-           '-A', 'FOV1_zoom2p7x,FOV2_zoom2p7x,FOV1_zoom2p7x',
-           '-R', 'combined_blobs_static,combined_blobs_static,combined_blobs_static',
-           '-t', 'traces001,traces001,traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'morphlevel',
-           '--subset', '0,106',
-           '-c', 'ypos',
-           '--indie',
-#           '-v', '13',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-#           '-T', '5.6,16.8,28,5.6,16.8,28',
-#           '-T', '5,5,5,15,15,15',
-           '-V', 'LI-LL',
-           '--nproc=1'
-           ]
-
-#
-#T = lsvc.TransformClassifier(optsE.animalid, curr_session, curr_fov, curr_run, curr_traceid, rootdir=optsE.rootdir,
-#                                          roi_selector=optsE.roi_selector, data_type=optsE.data_type, stat_type=optsE.stat_type,
-#                                          inputdata_type=optsE.inputdata_type, 
-#                                          get_null=optsE.get_null, class_name=optsE.class_name, class_subset=optsE.class_subset,
-#                                          const_trans=optsE.const_trans, trans_value=optsE.trans_value,
-#                                          cv_method=optsE.cv_method, cv_nfolds=optsE.cv_nfolds, cv_ngroups=optsE.cv_ngroups, 
-#                                          C_val=optsE.C_val, binsize=optsE.binsize, test_set=test_set, indie=optsE.indie
-#                                          )
-#
-#visual_areas_fpath = glob.glob(os.path.join(T.rootdir, T.animalid, T.session, T.acquisition, 'visual_areas', 'visual_areas_*.pkl'))[0]
-#visual_area_info = {visual_area: visual_areas_fpath}
-#
-#T.load_dataset(visual_area_info=visual_area_info)
-###
-#T.create_classifier_dirs()
-###
-#T.initialize_classifiers()
-##
-##T.label_classifier_data()
-#
-#    
     
-#%%
-
 #options = ['-D', rootdir, '-i', 'JC022', 
-#           '-S', '20181007,20181017', 
+#           '-S', '20181007,20181017',
 #           '-A', 'FOV1_zoom2p2x,FOV1_zoom2p7x',
-#           '-R', 'combined_blobs_static,combined_blobs_static',
+#           '-R', 'combined_blobs_static,combined_blobs_static', 
 #           '-t', 'traces001,traces001',
 #           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-#           '-p', 'corrected', 
-#           '-N', 'morphlevel',
+#           '-p', 'corrected', '-N', 'morphlevel',
 #           '--subset', '0,106',
-##           '--segment',
 #           '-c', 'xpos,ypos',
-##           '--indie',
-##           '-v', '0',
+##           '-v', '-5,0',
 ##           '-T', '-15,-10,0,5',
 ##           '-T', '-60,-30,30,60',
-#           '-T', '16.8,28,16.8,28',
-#           '-T', '-5,-5,-15,-15',
-#           '-V', 'LI',
+#           '-T', '5.6,5.6,16.8,16.8',
+#           '-T', '5,15,5,15',
+#           '-V', 'LI_blobs_test',
+#           '--nproc=1'
+#           ]
+#options = ['-D', rootdir, '-i', 'JC022', 
+#           '-S', '20181022',
+#           '-A', 'FOV1_zoom4p0x',
+#           '-R', 'combined_blobs_static', 
+#           '-t', 'traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
+#           '--subset', '0,106',
+#           '-c', 'xpos,yrot',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '0,0,5,5',
+#           '-T', '30,60,30,60',
+#           '-V', 'LI_blobs_testyrot',
 #           '--nproc=1'
 #           ]
 
-options = ['-D', rootdir, '-i', 'JC022', 
-           '-S', '20181022', 
-           '-A', 'FOV1_zoom4p0x',
-           '-R', 'combined_blobs_static',
-           '-t', 'traces001',
-           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
-           '-p', 'corrected', 
-           '-N', 'yrot',
+
+#options = ['-D', rootdir, '-i', 'CE077', 
+#           '-S', '20180515,20180516,20180518,20180521,20180521,20180523,20180602,20180609,20180612', 
+#           '-A', 'FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV2_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x,FOV1_zoom1x',
+#           '-R', 'blobs_run3,blobs_run3,combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,combined_blobs_static,blobs_run1', 
+#           '-t', 'traces001,traces001,traces002,traces002,traces002,traces002,traces001,traces001,traces001',
+#           '-r', 'visual', '-d', 'stat', '-s', 'zscore',
+#           '-p', 'corrected', '-N', 'morphlevel',
 #           '--subset', '0,106',
-#           '--segment',
-#           '-c', 'xpos,ypos',
-#           '--indie',
-#           '-v', '0',
-#           '-T', '-15,-10,0,5',
-#           '-T', '-60,-30,30,60',
-#           '-T', '16.8,28,16.8,28',
-#           '-T', '-5,-5,-15,-15',
-           '-V', 'LI',
-           '--nproc=1'
-           ]
+#           '-c', 'xpos,yrot',
+##           '-v', '-5,0',
+##           '-T', '-15,-10,0,5',
+##           '-T', '-60,-30,30,60',
+#           '-T', '-5,-5,0,0,0,5,5,5',
+#           '-T', '60,30,60,30,0,60,30,0',
+#           
+#           '--nproc=1'
+#           ]
 
 #%%
 
@@ -624,14 +620,14 @@ def main(options):
     # MODEL SELECTION PARAMS:
     feature_select_method='rfe' #'rfe' #'rfe'
     feature_select_n='best' #'best' #'best'
-    C_select='best' #'best'
+    C_select='big' #'best'
     # -------------------------------------------------------------------------
     
     # -------------------------------------------------------------------------
     # TRAINING PARAMS:
     scoring = 'accuracy'
-    full_train = False #False
-    test_size = 0.33 #0.33 #0.33 #0.20 #0.33 #0.33
+    full_train = True #False
+    test_size = 0 #.33 #0.33 #0.33 #0.20 #0.33 #0.33
     create_new = True
 #    test_subset_only = True
 
@@ -639,7 +635,7 @@ def main(options):
     m100 = 106 #106
     
     col_label = 'xpos' # 'xpos'
-    row_label = 'morphlevel' #'ypos'
+    row_label = 'ypos' #'ypos'
     # -------------------------------------------------------------------------
 
     if full_train is False:
@@ -743,18 +739,21 @@ def main(options):
         #%%
         print "*******************************************************************"
         print "TESTING classifier on generalization:"
-            
-        test_class_subset_only = False 
-        limit_test_to_trained_views = False
+        
+        test_class_subset_only = True 
+        limit_test_to_trained_views = False # True
+        include_cv = True
 
         transforms_subset_str = 'class_subset_only' if test_class_subset_only else 'all_classes'
 
         #% Plot accuracy by stim-config across all FOVs:
         data_identifier = '_'.join(sorted(trans_classifiers.keys(), key=natural_keys))
         print data_identifier
-
-        nr = 5
-        nc = 5
+        
+        col_label = 'xpos' # 'xpos'
+        row_label = 'ypos' #'ypos'
+        nr = 4 #5 #4
+        nc = 6 #5 #6
         sdf = pd.DataFrame(trans_classifier['C'].classifiers[0].sconfigs).T
         
         accuracy_list = []; counts_list =[];
@@ -857,12 +856,37 @@ def main(options):
                     print "--- warning... ---"
                     print "Not all samples (%i) used:  Train set (%i) | Test set (%i)" %  (sample_data.shape[0], trainset_sz, testset_sz)
 
-                test_results = trans_classifier['C'].classifiers[cix].test_classifier(test_data=test_data, test_labels=test_labels, config_labels=test_labels_config_names)
+                test_results = trans_classifier['C'].classifiers[cix].test_classifier(test_data=test_data, test_labels=test_labels, 
+                                                                                       config_labels=test_labels_config_names, include_cv=include_cv)
                 
                 curr_output_dir = clf.classifier_dir
-                pcorrect, counts, config_grid = clf.get_classifier_accuracy_by_stimconfig(m50=m50, m100=m100, row_label=row_label, col_label=col_label, \
+                
+                if include_cv:
+                    train_cv_append_labels = train_config_names
+                else:
+                    train_cv_append_labels = None
+                    
+                pcorrect, counts, config_grid = clf.get_classifier_accuracy_by_stimconfig(m50=m50, m100=m100, train_cv_append_labels=train_cv_append_labels,
+                                                                                          row_label=row_label, col_label=col_label, \
                                                                                           output_dir=curr_output_dir)
                 #%
+                if pcorrect.shape != accuracy_grid_fov.shape:
+                    print "Unmatched shape!"
+                    tmp_pcorrect = np.zeros((nr, nc))
+                    tmp_counts = np.zeros((nr, nc))
+                    rowvals = [-60.0, -30.0, 0.0, 30.0, 60.0]
+                    colvals = [-15.0, -10.0, -5.0, 0.0, 5.0]
+                    
+                    for keycoord,coords in config_grid.items():
+                        rix = rowvals.index(keycoord[1])
+                        cix = colvals.index(keycoord[0])
+                        
+                        tmp_pcorrect[rix, cix] = pcorrect[coords[0], coords[1]] 
+                        tmp_counts[rix, cix] = counts[coords[0], coords[1]]
+                        
+                    pcorrect = tmp_pcorrect
+                    counts = tmp_counts
+                        
                 pcorrect[np.isnan(pcorrect)] = 0.
                 counts[np.isnan(counts)] = 0.
                 
@@ -877,8 +901,8 @@ def main(options):
     
             if optsE.indie:
                 
-                accuracy_fov = accuracy_grid_fov #/ (nclfs_fov-1)
-                counts_fov = counts_grid_fov #/ (nclfs_fov-1)
+                accuracy_fov = accuracy_grid_fov / (nclfs_fov-1)
+                counts_fov = counts_grid_fov / (nclfs_fov-1)
             else:
                 accuracy_fov = accuracy_grid_fov / (nclfs_fov)
                 counts_fov = counts_grid_fov / (nclfs_fov)
@@ -927,19 +951,19 @@ def main(options):
         
         fig, axes = pl.subplots(1,2,figsize=(15,8))
         lsvc.plot_transform_grid(accuracy_all, ax=axes[0], rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
-                                 cmap='hot', vmin=chance_level, vmax=1.0, title='test accuracy, all fovs')
+                                 cmap='hot', vmin=0, vmax=2.0, title='test accuracy, all fovs')
         lsvc.plot_transform_grid(counts_all, ax=axes[1], rowvals=rowvals, colvals=colvals, ylabel=row_label, xlabel=col_label,
                                  cmap='Blues_r', vmin=0, vmax=counts.max(), title='test counts, all fovs')
         
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(train_test_dir, 'test_transforms_%s_grid_all_datasets.png' % (transforms_subset_str)))
+        pl.savefig(os.path.join(train_test_dir, 'test_transforms_%s_grid_all_datasets_chance0.pdf' % (transforms_subset_str)))
 
 
         #pl.close('all')
         
-        max_vals = np.array([max([f1, f2]) for f1, f2 in zip(accuracy_list[0].ravel(), accuracy_list[1].ravel())])
-        max_grid = max_vals.reshape(accuracy_grid_all.shape)
-        pl.figure(); pl.imshow(max_grid, cmap='hot', vmin=chance_level, vmax=1.0)
+        #max_vals = np.array([max([f1, f2]) for f1, f2 in zip(accuracy_list[0].ravel(), accuracy_list[1].ravel())])
+        #max_grid = max_vals.reshape(accuracy_grid_all.shape)
+        #pl.figure(); pl.imshow(max_grid, cmap='hot', vmin=chance_level, vmax=1.0)
         
 #%%
     # Plot confusion matrix for CLASS LABEL:
@@ -1010,6 +1034,7 @@ def main(options):
     lsvc.plot_confusion_matrix(confusion_matrix_cv_all, classes=classes, ax=axes[0], normalize=True,
                                title='cv - all fovs', cmin=0, clim=clim)
     label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(train_test_dir, 'confusion%s_%s_cv_test_%i%s_allfovs.pdf' % (cmap_str, transforms_subset_str, len(classes), optsE.class_name))) #
     pl.savefig(os.path.join(train_test_dir, 'confusion%s_%s_cv_test_%i%s_allfovs.png' % (cmap_str, transforms_subset_str, len(classes), optsE.class_name))) #
 
     #pl.close('all')
