@@ -710,14 +710,15 @@ class SessionSummary():
             
         im = axes_flat[aix].imshow(self.zproj['data'], cmap='gray')
         axes_flat[aix].axis('off')
-        divider = make_axes_locatable(axes_flat[aix])
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        pl.colorbar(im, cax=cax)
         axes_flat[aix].set_title('dF/F map')
         bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*0.75, bb[1]*1.02, bb[2]*1.0, bb[3]*1.0]
+        new_bb = [bb[0]*0.75, bb[1]*1.05, bb[2]*1.0, bb[3]*1.0]
         axes_flat[aix].set_position(new_bb)
-        cax.yaxis.set_ticks_position('right')
+        divider = make_axes_locatable(axes_flat[aix])
+        cax = divider.append_axes('right', size='5%', pad=0.5)
+        cb = pl.colorbar(im, cax=cax, orientation='vertical', ticklocation='right')
+        #cax.yaxis.set_ticks_position('right')
+        cax.yaxis.set_label_position('right')
        
         
     def plot_retinotopy_to_screen(self, axes_flat=None, aix=0):
@@ -733,7 +734,7 @@ class SessionSummary():
                                          self.retinotopy['source'], self.retinotopy['traceid'], 
                                          ax=axes_flat[aix])
         bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*0.9, bb[1]*1.02, bb[2]*1.1, bb[3]*1.2]
+        new_bb = [bb[0]*0.9, bb[1]*1.0, bb[2]*1.1, bb[3]*1.2]
         axes_flat[aix].set_position(new_bb)
         
         
