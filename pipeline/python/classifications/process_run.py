@@ -36,10 +36,11 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     if stimtype == '':
         stimtype = run_list[0].split('_')[0]
-        
+       
+    # Combine runs: 
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
 
-    
+    # Load combined dataset, and make trial nums equal for stats, etc.: 
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
     dataset = np.load(data_fpath)
     
@@ -101,9 +102,11 @@ def extract_options(options):
 
     # Run specific info:
     #parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="traceids for corresponding runs [default: []]")
-
-    parser.add_option('-R', '--run', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
+    parser.add_option('--all', dest='combine_all', default=False, action='store_true', help='set flag to combine all runs (with prefix specified by stimtype -s) with matching traceids (specified by -t)')
+    parser.add_option('-t', '--traceids', dest='traceid', default=None, action='store', help='common traceid (e.g., traces001) for combing all runs of a given stimtype (set --all)')
+   
+    parser.add_option('-T', '--traceid-list', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="traceids for corresponding runs [default: []]")
+    parser.add_option('-R', '--run-list', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
     parser.add_option('-s', '--stim', dest='stimtype', default='', action='store', help='stimulus type (must be: gratings, blobs, or objects in run name)')
 
     parser.add_option('-d', '--dtype', dest='data_type', default='corrected', action='store', help='data_type (corrected, dff, etc.) for raw data (default: corrected)')
@@ -135,6 +138,23 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180521', '-A', 'F
 def main(options):
     optsE = extract_options(options)
 
+    if optsE.combine_all:
+        # Get all runs of specified stimtype:
+        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+        found_runs = sorted(glob.glob(os.path.join(acquisition_dir, '%s_*' % optsE.stimtype)), key=natural_keys)
+        print "Found %i runs of stimtype: %s" % (len(found_runs), optsE.stimtype)
+        for fi, frun in enumerate(found_runs):
+            print fi, frun
+            
+        optsE.run_list = [os.path.split(found_run)[-1] for found_run in found_runs] 
+        optsE.traceid_list = [optsE.traceids for _ in range(len(optsE.run_list))]
+
+    print "******************************************"
+    print "Processing runs [traceids]:"
+    for run, traceid in zip(optsE.run_list, optsE.traceid_list):
+        print run, traceid
+    print "******************************************"
+    
     processed_run_fpath = process_run_data(optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list, optsE.traceid_list, rootdir=optsE.rootdir,
                                            stimtype=optsE.stimtype, data_type=optsE.data_type, metric=optsE.metric,
                                            make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nprocesses))
