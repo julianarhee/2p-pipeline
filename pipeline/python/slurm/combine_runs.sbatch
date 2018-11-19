@@ -26,5 +26,5 @@ echo ${4}
 echo ${5}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/get_traces.py --slurm -i ${1} -S ${2} -A ${3} --all -s {4} -t {5} -n 8 --new 
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/process_run.py --slurm -i ${1} -S ${2} -A ${3} --all -s ${4} -t ${5} -n 8 --new --psth -f dff -r ${6} -c ${7} -H ${8}
 
