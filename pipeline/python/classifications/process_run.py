@@ -21,6 +21,7 @@ from pipeline.python.visualization import get_session_summary as ss
 from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
+from pipeline.python.paradigm import plot_responses as psth
 
 #animalid = optsE.animalid
 #session = optsE.session
@@ -36,10 +37,14 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     if stimtype == '':
         stimtype = run_list[0].split('_')[0]
-        
+      
+    print "STIM: %s" % stimtype
+    is_gratings = 'grating' in stimtype
+ 
+    # Combine runs: 
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
 
-    
+    # Load combined dataset, and make trial nums equal for stats, etc.: 
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
     dataset = np.load(data_fpath)
     
@@ -59,7 +64,7 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     # Group data by ROIs:
     roidata, labels_df, sconfigs = ss.get_data_and_labels(dataset, data_type=data_type)
     df_by_rois = resp.group_roidata_stimresponse(roidata, labels_df)
-    data, transforms_tested = ss.get_object_transforms(df_by_rois, roistats, sconfigs, metric=metric)
+    data, transforms_tested = ss.get_object_transforms(df_by_rois, roistats, sconfigs, metric=metric, is_gratings=is_gratings)
      
     object_dict = {'source': run,
                    'traceid': traceid,
@@ -101,9 +106,11 @@ def extract_options(options):
 
     # Run specific info:
     #parser.add_option('-g', '--gratings-traceid', dest='gratings_traceid_list', default=[], action='append', nargs=1, help="traceid for GRATINGS [default: []]")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="traceids for corresponding runs [default: []]")
-
-    parser.add_option('-R', '--run', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
+    parser.add_option('--all', dest='combine_all', default=False, action='store_true', help='set flag to combine all runs (with prefix specified by stimtype -s) with matching traceids (specified by -t)')
+    parser.add_option('-t', '--traceids', dest='traceid', default=None, action='store', help='common traceid (e.g., traces001) for combing all runs of a given stimtype (set --all)')
+   
+    parser.add_option('-T', '--traceid-list', dest='traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help="traceids for corresponding runs [default: []]")
+    parser.add_option('-R', '--run-list', dest='run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of run IDs [default: []')
     parser.add_option('-s', '--stim', dest='stimtype', default='', action='store', help='stimulus type (must be: gratings, blobs, or objects in run name)')
 
     parser.add_option('-d', '--dtype', dest='data_type', default='corrected', action='store', help='data_type (corrected, dff, etc.) for raw data (default: corrected)')
@@ -112,6 +119,15 @@ def extract_options(options):
     parser.add_option('--equal', action='store_true', dest='make_equal', default=False, help="set if make ntrials per cond equal (need for roistats)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to re-extract data summaries")
     parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
+
+    # PLOTTING PSTH opts:
+    parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts')
+    parser.add_option('-f', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
+
+    parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
+    parser.add_option('-c', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
+    parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
+
 
     (options, args) = parser.parse_args(options)
     if options.slurm is True and '/n/coxfs01' not in options.rootdir:
@@ -135,12 +151,50 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180521', '-A', 'F
 def main(options):
     optsE = extract_options(options)
 
+    if optsE.combine_all:
+        # Get all runs of specified stimtype:
+        acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
+        found_runs = sorted(glob.glob(os.path.join(acquisition_dir, '%s_*' % optsE.stimtype)), key=natural_keys)
+        print "Found %i runs of stimtype: %s" % (len(found_runs), optsE.stimtype)
+        for fi, frun in enumerate(found_runs):
+            print fi, frun
+            
+        optsE.run_list = [os.path.split(found_run)[-1] for found_run in found_runs] 
+        optsE.traceid_list = [optsE.traceid for _ in range(len(optsE.run_list))]
+
+    print "******************************************"
+    print "Processing runs [traceids]:"
+    for run, traceid in zip(optsE.run_list, optsE.traceid_list):
+        print run, traceid
+    print "******************************************"
+    
     processed_run_fpath = process_run_data(optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list, optsE.traceid_list, rootdir=optsE.rootdir,
                                            stimtype=optsE.stimtype, data_type=optsE.data_type, metric=optsE.metric,
                                            make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nprocesses))
 
     print "Finished processing data!"
     print "Saved processed run to:\n--> %s" % processed_run_fpath
-    
+   
+    # PLOT:
+    if optsE.plot_psth is True and optsE.stimtype is not None:
+        psth_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session, '-A', optsE.acquisition, '-R', 'combined_%s_static' % optsE.stimtype, '-t', optsE.traceid]
+        psth_opts.extend(['-d', optsE.psth_dtype])
+        if optsE.psth_rows is not None and optsE.psth_rows != 'None':
+            psth_opts.extend(['-r', optsE.psth_rows])
+        if optsE.psth_cols is not None and optsE.psth_cols != 'None':
+            psth_opts.extend(['-c', optsE.psth_cols])
+        if optsE.psth_hues is not None and optsE.psth_hues!='None':
+            print "Specified HUE:", optsE.psth_hues
+            psth_opts.extend(['-H', optsE.psth_hues])
+        psth_opts.extend(['--shade'])
+
+        psth_dir = psth.make_clean_psths(psth_opts)
+
+        print "*******************************************************************"
+        print "DONE!"
+        print "All output saved to: %s" % psth_dir
+        print "*******************************************************************"
+ 
+      
 if __name__ == '__main__':
     main(sys.argv[1:]) 

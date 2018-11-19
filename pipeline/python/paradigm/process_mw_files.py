@@ -1178,6 +1178,8 @@ def save_trials(trial, paradigm_outdir, curr_dfn_base):
     with open(os.path.join(paradigm_outdir, trialinfo_json), 'w') as f:
         json.dump(trial, f, sort_keys=True, indent=4)
 
+    return os.path.join(paradigm_outdir, trialinfo_json)
+
 
 def create_stimorder_files(sourcepath):
     '''
@@ -1198,9 +1200,7 @@ def create_stimorder_files(sourcepath):
             f.write('\n'.join([str(n) for n in stimorder])+'\n')
 
 # In[5]:
-
-def parse_mw_trials(options):
-
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -1231,6 +1231,13 @@ def parse_mw_trials(options):
                       dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
 
     (options, args) = parser.parse_args(options)
+
+    return options
+
+
+def parse_mw_trials(options):
+
+    options = extract_options(options)
 
     trigger_varname = options.frametrigger_varname
     rootdir = options.rootdir

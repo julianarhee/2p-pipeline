@@ -349,6 +349,8 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
         print "Combining runs:", check_run_dir
         combo_dpath = util.combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new, make_equal=make_equal)
         traceid_dirs = combo_dpath.split('/data_arrays')[0]
+    elif len(check_run_dir) == 1 and 'combined' in check_run_dir[0]:
+        traceid_dirs = check_run_dir[0]
     else:
         #print os.listdir(glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype))[0])
         if any(['combined' in d for d in run_list]):
@@ -385,7 +387,7 @@ def run_gratings_classifier(dataset, sconfigs, traceid):
     return cmatrix, classes, clfparams
 
 
-def get_object_transforms(df_by_rois, roistats, sconfigs, metric='zscore'):
+def get_object_transforms(df_by_rois, roistats, sconfigs, is_gratings=False, metric='zscore'):
 
     responses_by_config = dict((roi, df_by_rois.get_group(roi).groupby('config')[metric].mean()) for roi in roistats['rois_visual'])
 
@@ -397,8 +399,12 @@ def get_object_transforms(df_by_rois, roistats, sconfigs, metric='zscore'):
     for roi, rdf in responses_by_config.items():
         responses.append(pd.concat([sconfigs_df, rdf, pd.Series(data=[roi for _ in range(rdf.shape[0])], index=rdf.index, name='roi')], axis=1))
     responses = pd.concat(responses, axis=0)    
-    
-    df_columns = ['object', 'roi', metric]
+   
+    if is_gratings:
+        df_columns = ['ori', 'roi', metric]
+        transforms_tested = [t for t in transforms_tested if t != 'ori']
+    else: 
+        df_columns = ['object', 'roi', metric]
     df_columns.extend(transforms_tested)
     
     data = responses[df_columns]
@@ -432,6 +438,11 @@ class SessionSummary():
         self.get_zproj_image()
         self.get_retinotopy()
         info_str = [self.animalid, self.session, self.acquisition, self.retinotopy['source'], self.retinotopy['traceid']]
+       
+        print "*********************************************"
+        print "Getting data:"
+        for k,t in self.traceid_dirs.items():
+            print k, t
 
         if 'gratings' in self.traceid_dirs.keys():# is not None:
             self.get_gratings(metric='meanstim')
@@ -680,7 +691,7 @@ class SessionSummary():
             # Group data by ROIs:
             blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
             blobs_df_by_rois = resp.group_roidata_stimresponse(blobs_roidata, blobs_labels_df)
-            data, transforms_tested = get_object_transforms(blobs_df_by_rois, blobs_roistats, blobs_sconfigs, metric=metric)
+            data, transforms_tested = get_object_transforms(blobs_df_by_rois, blobs_roistats, blobs_sconfigs, metric=metric, is_gratings=False)
          
             object_dict = {'source': blobs_run,
                            'traceid': blobs_traceid,
@@ -761,9 +772,11 @@ class SessionSummary():
         az_rfs = [roi.conditions[1].RF_degrees for ri, roi in enumerate(self.retinotopy['data']) if ri in plot_rois]
         
         n_badfits = nrois - len(fit_rois)
-
-        sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond0_name, color='orange')
-        sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
+        
+        print "RF FIT: fit %i rois." % len(fit_rois)
+        if len(fit_rois) > 0: 
+            sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond0_name, color='orange')
+            sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
         bb = axes_flat[aix].get_position().bounds
         new_bb = [bb[0]*1.05, bb[1]*1.02, bb[2]*0.8, bb[3]]
         axes_flat[aix].set_position(new_bb)

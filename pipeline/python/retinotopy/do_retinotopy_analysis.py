@@ -14,6 +14,8 @@ import pylab as pl
 import numpy as np
 from scipy import ndimage
 import cv2
+import glob
+from pipeline.python.paradigm import process_mw_files as mw
 
 from pipeline.python.utils import natural_keys, replace_root
 from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
@@ -721,7 +723,23 @@ def do_analysis(options):
 
 	#-----Get info from paradigm file
 	para_file_dir = os.path.join(run_dir,'paradigm','files')
-	para_file =  [f for f in os.listdir(para_file_dir) if f.endswith('.json')][0]#assuming a single file for all tiffs in run
+        if not os.path.exists(para_file_dir): os.makedirs(para_file_dir)
+	para_files =  [f for f in os.listdir(para_file_dir) if f.endswith('.json')]#assuming a single file for all tiffs in run
+        if len(para_files) == 0:
+            # Paradigm info not extracted yet:
+            raw_para_files = [f for f in glob.glob(os.path.join(run_dir, 'raw*', 'paradigm_files', '*.mwk')) if not f.startswith('.')]
+            print run_dir
+            assert len(raw_para_files) == 1, "No raw .mwk file found, and no processed .mwk file found. Aborting!"
+            raw_para_file = raw_para_files[0]           
+            print "Extracting .mwk trials: %s" % raw_para_file 
+            fn_base = os.path.split(raw_para_file)[1][:-4]
+            trials = mw.extract_trials(raw_para_file, retinobar=True, trigger_varname='frame_trigger', verbose=True)
+            para_fpath = mw.save_trials(trials, para_file_dir, fn_base)
+            para_file = os.path.split(para_fpath)[-1]
+        else:
+            assert len(para_files) == 1, "Unable to find unique .mwk file..."
+            para_file = para_files[0]
+ 
 	print 'Getting paradigm file info from %s'%(os.path.join(para_file_dir, para_file))
 
 	with open(os.path.join(para_file_dir, para_file), 'r') as r:
