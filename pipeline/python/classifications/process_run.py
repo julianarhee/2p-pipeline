@@ -21,6 +21,7 @@ from pipeline.python.visualization import get_session_summary as ss
 from pipeline.python.paradigm import utils as util
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
+from pipeline.python.paradigm import plot_responses as psth
 
 #animalid = optsE.animalid
 #session = optsE.session
@@ -36,7 +37,10 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     if stimtype == '':
         stimtype = run_list[0].split('_')[0]
-       
+      
+    print "STIM: %s" % stimtype
+    is_gratings = 'grating' in stimtype
+ 
     # Combine runs: 
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
 
@@ -60,7 +64,7 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     # Group data by ROIs:
     roidata, labels_df, sconfigs = ss.get_data_and_labels(dataset, data_type=data_type)
     df_by_rois = resp.group_roidata_stimresponse(roidata, labels_df)
-    data, transforms_tested = ss.get_object_transforms(df_by_rois, roistats, sconfigs, metric=metric)
+    data, transforms_tested = ss.get_object_transforms(df_by_rois, roistats, sconfigs, metric=metric, is_gratings=is_gratings)
      
     object_dict = {'source': run,
                    'traceid': traceid,
@@ -116,6 +120,15 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to re-extract data summaries")
     parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
 
+    # PLOTTING PSTH opts:
+    parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts')
+    parser.add_option('-f', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
+
+    parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
+    parser.add_option('-c', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
+    parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
+
+
     (options, args) = parser.parse_args(options)
     if options.slurm is True and '/n/coxfs01' not in options.rootdir:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -147,7 +160,7 @@ def main(options):
             print fi, frun
             
         optsE.run_list = [os.path.split(found_run)[-1] for found_run in found_runs] 
-        optsE.traceid_list = [optsE.traceids for _ in range(len(optsE.run_list))]
+        optsE.traceid_list = [optsE.traceid for _ in range(len(optsE.run_list))]
 
     print "******************************************"
     print "Processing runs [traceids]:"
@@ -161,6 +174,27 @@ def main(options):
 
     print "Finished processing data!"
     print "Saved processed run to:\n--> %s" % processed_run_fpath
-    
+   
+    # PLOT:
+    if optsE.plot_psth is True and optsE.stimtype is not None:
+        psth_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session, '-A', optsE.acquisition, '-R', 'combined_%s_static' % optsE.stimtype, '-t', optsE.traceid]
+        psth_opts.extend(['-d', optsE.psth_dtype])
+        if optsE.psth_rows is not None and optsE.psth_rows != 'None':
+            psth_opts.extend(['-r', optsE.psth_rows])
+        if optsE.psth_cols is not None and optsE.psth_cols != 'None':
+            psth_opts.extend(['-c', optsE.psth_cols])
+        if optsE.psth_hues is not None and optsE.psth_hues!='None':
+            print "Specified HUE:", optsE.psth_hues
+            psth_opts.extend(['-H', optsE.psth_hues])
+        psth_opts.extend(['--shade'])
+
+        psth_dir = psth.make_clean_psths(psth_opts)
+
+        print "*******************************************************************"
+        print "DONE!"
+        print "All output saved to: %s" % psth_dir
+        print "*******************************************************************"
+ 
+      
 if __name__ == '__main__':
     main(sys.argv[1:]) 
