@@ -36,7 +36,7 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     if stimtype == '':
-        stimtype = run_list[0].split('_')[0]
+        stimtype = run_list[0].split('_')[0:-1]
       
     print "STIM: %s" % stimtype
     is_gratings = 'grating' in stimtype
@@ -154,7 +154,7 @@ def main(options):
     if optsE.combine_all:
         # Get all runs of specified stimtype:
         acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-        found_runs = sorted(glob.glob(os.path.join(acquisition_dir, '%s_*' % optsE.stimtype)), key=natural_keys)
+        found_runs = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % optsE.stimtype)), key=natural_keys)
         print "Found %i runs of stimtype: %s" % (len(found_runs), optsE.stimtype)
         for fi, frun in enumerate(found_runs):
             print fi, frun
