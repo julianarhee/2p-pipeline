@@ -423,7 +423,11 @@ class SessionSummary():
         self.create_new = optsE.create_new
         self.nproc = int(optsE.nprocesses)
         self.traceid_dirs = get_data_sources(optsE)
-        self.zproj = {'source': None, 'type': 'dff' if optsE.use_dff else 'mean', 'data': None}
+        self.zproj = {'source': None, 'type': 'dff' if optsE.use_dff else 'mean', 'data': None, 'retinorun_name': None}
+        if optsE.retino_run is None:
+            self.zproj['retinorun_name'] = 'retino*'
+        else:
+            self.zproj['retinorun_name'] = optsE.retino_run
         self.retinotopy = {'source': None, 'traceid': optsE.retino_traceid, 'data': None}
         self.gratings = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
         self.blobs = {'source': None, 'traceid': None, 'roistats': None, 'roidata': None, 'sconfigs': None}
@@ -562,7 +566,7 @@ class SessionSummary():
         else:
             acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             
-            self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, 'retino*'))[0])[-1] 
+            self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, '%s' % self.zproj['retinorun_name']))[0])[-1] 
     
             if self.zproj['type'] == 'dff':
                 self.zproj['data'] = create_activity_map(acquisition_dir, self.zproj['source'], rootdir=self.rootdir)
@@ -591,7 +595,7 @@ class SessionSummary():
                 traceid = '%s*' % self.retinotopy['traceid']
                 
             retinovis_fpath = glob.glob(os.path.join(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                                 'retino_*', 'retino_analysis', traceid, 'visualization', '*.png'))[0]
+                                                 '%s' % self.zproj['retinorun_name'], 'retino_analysis', traceid, 'visualization', '*.png'))[0]
             
             retino_run = os.path.split(retinovis_fpath.split('/retino_analysis')[0])[1]
             retino_traceid = retinovis_fpath.split('/retino_analysis')[1].split('/')[1]
@@ -599,7 +603,8 @@ class SessionSummary():
             ROIs, retinoid = RF.get_RF_size_estimates(acquisition_dir, 
                                      fitness_thr=fitness_thr, 
                                      size_thr=size_thr, 
-                                     analysis_id=retino_traceid)
+                                     analysis_id=retino_traceid, 
+                                     retino_run=retino_run)
             
             self.retinotopy['source'] = retino_run
             self.retinotopy['data'] = ROIs
@@ -984,7 +989,8 @@ def extract_options(options):
     parser.add_option('-B', '--blobs-run', dest='blobs_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of blob run IDs [default: []')
     parser.add_option('-o', '--objects-traceid', dest='objects_traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object traceids [default: []')
     parser.add_option('-O', '--objects-run', dest='objects_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object run IDs [default: []')
-   
+    parser.add_option('-R', '--retino-run', dest='retino_run', default=None, action='store', help='Specific retino_run to use')
+  
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      
     (options, args) = parser.parse_args(options)

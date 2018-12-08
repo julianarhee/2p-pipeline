@@ -458,9 +458,9 @@ class RetinoROI:
 
 
 
-def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None):
+def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None, retino_run='retino*'):
     print "*** GETTING ESTIMATES ***"
-    run_dir = glob.glob(os.path.join(acquisition_dir, 'retino*'))[0]
+    run_dir = glob.glob(os.path.join(acquisition_dir, '%s' % retino_run))[0]
     run = os.path.split(run_dir)[1]
     
     session_dir = os.path.split(acquisition_dir)[0]
@@ -513,7 +513,9 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     # Load paradigm info
     # =============================================================================
     print 'Getting paradigm file info'
+    print os.listdir(os.path.join(run_dir, 'paradigm', 'files'))
     paradigm_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+    print paradigm_fpath
     with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
     # pp.pprint(mwinfo)
     
