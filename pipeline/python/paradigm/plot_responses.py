@@ -326,6 +326,8 @@ def make_clean_psths(options):
         if rows is None:
             if 'morphlevel' in trans_types and subplot_hue != 'morphlevel':
                 rows = 'morphlevel'
+            elif 'ori' in trans_types:
+                rows = [t for t in trans_types if t != 'ori'][0]
             else:
                 rows = 'object'
         # And make the COLS whatever other transform there is:
