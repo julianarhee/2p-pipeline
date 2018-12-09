@@ -184,7 +184,10 @@ def do_bidir_correction(options):
         eng.add_repo_paths(cvx_path, repo_prefix, nargout=0)
         eng.do_bidi_correction(paramspath, runmeta_path, nargout=0)
         eng.quit()
-    
+    print "================================================="
+    print "BIDI file step complete."
+    print "================================================="
+   
    # print write_dir
     
     # -------------------------------------------------------------
@@ -216,6 +219,10 @@ def do_bidir_correction(options):
 #
     # ========================================================================================
 
+    print "************************************************"
+    print "***** completed correct_bidir_motion step. *****"
+    print "************************************************"
+
     return write_hash, pid_hash #PID #pid_hash
 
 
@@ -223,7 +230,6 @@ def main(options):
     
     # Do bidi correction:    
     bidir_hash, pid_hash = do_bidir_correction(options)
-    #pid_hash = PID['pid_hash']
     print "PID %s: Finished bidir-correction step: output dir hash %s" % (pid_hash, bidir_hash)
  
     options = extract_options(options)
