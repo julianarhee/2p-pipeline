@@ -471,10 +471,10 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
 
         trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
         # CHeck if should add ITI:
-        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
-        if len(check_durs) > 0:
-            iti_to_add = int(check_durs)
-            trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
+#        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
+#        if len(check_durs) > 0:
+#            iti_to_add = int(check_durs)
+#            trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
         #print "trigger times:", trigg_times
         
         
@@ -528,7 +528,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         ### Get Image events:
         if stimtype=='image':
             if dynamic:
-                print "User specified DYNAIMC image stimulus (this is not a movie)."
+                print "User specified DYNAMIC image stimulus (this is not a movie)."
                 image_evs = []
                 # Identify blank-screen pixel-clock events. A non-dynamic image should not change more than once 
                 # between blank-screen events. There are 2 blank screen events after the first stimulus: 
@@ -735,7 +735,7 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
 
         # Get condition/run info:
         condition_evs = df.get_events('condition')
-        print len(condition_evs)
+        #print len(condition_evs)
         condition_names = ['left', 'right', 'bottom', 'top']  # 0=left start, 1=right start, 2=bottom start, 3=top start
         run_start_idxs = [i+1 for i,v in enumerate(condition_evs[0:len(condition_evs)-1]) if v.value==-1 and condition_evs[i+1].value>=0]  # non-run values for "condition" is -1
         run_start_idxs = [run_start_idxs[selected_run] for selected_run in user_run_selection]
@@ -1094,7 +1094,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
         unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 1) for t in trial.keys()])))
-        print "STIM DURS:", unique_stim_durs 
+        #print "STIM DURS:", unique_stim_durs 
         if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
             if len(unique_stim_durs) == 2:
