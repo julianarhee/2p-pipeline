@@ -194,7 +194,7 @@ def extract_options(options):
                           
 options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209',
            '-A', 'FOV1_zoom2p0x', '-R', 'gratings_run1', '-t', 'cnmf001',
-           '-d', 'dff', '--shade', '-r', 'size', '-c', 'xpos', '-H', 'ori'
+           '-d', 'dff', '--shade', '-r', 'size', '-c', 'xpos', '-H', 'ori', '--calc-dff'
            ]
                
 def make_clean_psths(options):
@@ -375,9 +375,15 @@ def make_clean_psths(options):
         plot_type = 'trials'
     else:
         plot_type = 'shade'
+        
+        
     psth_dir = os.path.join(traceid_dir, 'figures', 'psth_%s_%s%s' % (inputdata, plot_type, figdir_append))
     if filetype == 'pdf':
         psth_dir = '%s_hq' % psth_dir
+        
+        
+    if calculate_dff:
+        psth_dir = '%s_dff' % psth_dir
         
     if not os.path.exists(psth_dir):
         os.makedirs(psth_dir)
