@@ -394,6 +394,8 @@ def extract_options(options):
                           action='append',
                           help="Index of files to exclude (0-indexed)")
     
+    parser.add_options('--downsample', action='store', dest='downsample_factor', default=1.0, help='[nmf]: Downsample factor (default=1, use 0.5 or 0.2 if huge files)')
+    
     parser.add_option('--gSig', action='store', dest='gSig', default=3, help='[nmf]: Half size of neurons [default: 3]')
     parser.add_option('--K', action='store', dest='K', default=20, help='[nmf]: N expected components per patch [default: 20]')
     parser.add_option('--patch', action='store', dest='rf', default=25, help='[nmf]: Half size of patch [default: 25]')
@@ -627,7 +629,7 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
         s_min = float(s_min)
     gnb = int(optsE.gnb)
      
-    gSig = (optsE.gSig, optsE.gSig)
+    gSig = (int(optsE.gSig), int(optsE.gSig))
     rf = optsE.rf
     stride_cnmf = optsE.stride_cnmf
     roi_source = None
@@ -840,7 +842,7 @@ def run_cnmf(options):
     fnames = sorted([f for f in fnames if '_deinterleaved' not in f], key=natural_keys)
     
     border_to_0 = int(optsE.border_to_0)
-    downsample_factor = (1,1,1)
+    downsample_factor = (1, 1, float(optsE.downsample_factor)) # 0.5 #(1,1,1)
     fname_new, mmap_basedir = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, 
                                        dview=dview, border_to_0=border_to_0, 
                                        downsample_factor=downsample_factor, add_offset=add_offset)
@@ -852,11 +854,12 @@ def run_cnmf(options):
     si_info_path = glob.glob(os.path.join(acquisition_dir, '%s*' % optsE.run, '*.json'))[0]
     with open(si_info_path, 'r') as f:
         si_info = json.load(f)
-    fr = si_info['frame_rate'] # 44.69
+    
+    fr = si_info['frame_rate'] * downsample_factor[-1] # 44.69
     
     #% Set output dir for figures and results:
     # -------------------------------------------------------------------------
-    traceid_dir = cmn.get_cnmf_outdirs(acquisition_dir, optsE.run, datestr=optsE.datestr)
+    traceid_dir = get_cnmf_outdirs(acquisition_dir, run_name, datestr=optsE.datestr)
     
 
     #%% ### Load memmapped file (all runs):
