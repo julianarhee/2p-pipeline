@@ -525,7 +525,7 @@ def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
             else:
                 current_cnmf = [c for c in existing_cnmfs if datestr in c][0]
             cnmf_num = int(os.path.split(current_cnmf)[-1].split('_')[0][4:])
-            datestr = os.path.split(current_cnmf)[-1].split('_')[1:]
+            datestr = '_'.join(os.path.split(current_cnmf)[-1].split('_')[1:])
         except Exception as e:
             print "Creating new CNMF id."
             new_cnmf = True
