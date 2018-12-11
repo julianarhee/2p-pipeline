@@ -408,12 +408,15 @@ def extract_options(options):
     
     return options
 
-def get_mmap(fnames, run, excluded_files=[], dview=None, border_to_0=0, downsample_factor=(1,1,1), add_offset=False):
+def get_mmap(fnames, fbase=None, excluded_files=[], dview=None, border_to_0=0, downsample_factor=(1,1,1), add_offset=False):
     
     
     #downsample_factor = (1,1,1) # Use fractions if want to downsample
     #border_to_0 = 2
-    fbase = run.split('_')[0]
+    if fbase is None:
+        fbase = os.path.split(fnames[0].split('/processed/')[0])[-1].split('_')[0] # Just use stim-type <stim>_runx
+        
+    #fbase = run.split('_')[0]
     
     fname_new = get_mmap_file(fnames, excluded_files=excluded_files, file_base=fbase, 
                                   dview=dview, 
@@ -789,11 +792,13 @@ def run_cnmf(options):
 
 #%  ### Create memmapped files:
     # -------------------------------------------------------------------------
-    fnames = sorted(glob.glob(os.path.join(acquisition_dir, optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
+#    fnames = sorted(glob.glob(os.path.join(acquisition_dir, optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
+    fnames = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
+    fnames = sorted([f for f in fnames if '_deinterleaved' not in f], key=natural_keys)
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
-    fname_new = get_mmap(fnames, optsE.run, excluded_files=excluded_files, dview=dview, 
+    fname_new = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
                          border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
     
     # Get SI info:
@@ -1429,9 +1434,9 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
 # In[ ]:
 
 
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
-           '-R', 'gratings_rotating_drifting', '--nproc=12', '--seed', '-r', 'rois001',
-           '--border=2']
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209',
+           '-R', 'gratings', '--nproc=16', '--seed', '-r', 'rois001',
+           '--border=4']
 
 #%%
 def main(options):
