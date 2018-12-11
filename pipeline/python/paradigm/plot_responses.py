@@ -562,7 +562,7 @@ def make_clean_psths(options):
             # Set y-axis to be the same, if specified:
             if scale_y:
                 axesf[pi].set_ylim([0, dfmax])
-            if 'df' in inputdata:
+            if 'df' in inputdata or calculate_dff is True:
                 axesf[pi].set_yticks((0, 1))
             sns.despine(offset=4, trim=True, ax=axesf[pi])
           
