@@ -101,10 +101,23 @@ def get_mmap_file(fnames, excluded_files=[],
                   dview=None, file_base='run', 
                   downsample_factor=(1, 1, 1), border_to_0=0, create_new=False, add_offset=False):
     
-    # Get tifs to convert into mmapped files:
-    #fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
-    tif_src_dir = os.path.split(fnames[0])[0]
-    print "Found %i tifs in src: %s" % (len(fnames), tif_src_dir)
+    # Check fnames list to see if this is multiple runs combined:
+    run_list = list(set([ os.path.split(f.split('/processed/')[0])[-1] for f in fnames ]))
+    if len(run_list) > 1:
+        combined_runs = True
+        acquisition_dir = os.path.split(fnames[0].split('/processed/')[0])[0]
+        processid, processtype, _ = fnames[0].split('/processed/')[-1].split('/')
+        stim_type = run_list[0].split('_run')[0]
+        combined_run_name = 'combined_%s_static' % stim_type
+        mmap_subdir = '_'.join([processid.split('_')[0], processtype.split('_')[0], 'memmap'])
+        mmap_base = os.path.join(acquisition_dir, combined_run_name, 'processed', mmap_subdir)
+        tif_src_dir = sorted(list(set([ os.path.split(f)[0] for f in fnames ])), key=natural_keys)
+    else:
+        combined_runs = False
+        tif_src_dir = os.path.split(fnames[0])[0]
+        mmap_base = '%s_memmap' % (os.path.split(fnames[0])[0])
+
+    print "Memmapping %i tifs to output dir: %s" % (len(fnames), mmap_base)
 
     # Re-use exiting mmapped files, but may want to concatenate differing .tif files
     # Add prefix showing which files excluded, if any, so as not to overwrite.
@@ -119,11 +132,10 @@ def get_mmap_file(fnames, excluded_files=[],
                  'excluded_files': list(excluded_files),
                  'add_offset': add_offset}
  
-    mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
     # Create output dir:
     mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
 
-    mmap_basedir = '%s_memmap_%s' % (os.path.split(fnames[0])[0], mhash[0:6])
+    mmap_basedir = '%s_%s' % (mmap_base, mhash[0:6]) #'%s_memmap_%s' % (os.path.split(fnames[0])[0], mhash[0:6])
     mmap_filedir = os.path.join(mmap_basedir, 'files')
     if not os.path.exists(mmap_filedir):
         os.makedirs(mmap_filedir)
@@ -133,16 +145,15 @@ def get_mmap_file(fnames, excluded_files=[],
         
     # Check for existing mmap files, and create them if not found:
     existing_files = glob.glob(os.path.join(mmap_filedir, '%s*.mmap' % file_base))
-    mmap_files = True
+    do_memmap = True
     if create_new is False:
         try:
             assert len(existing_files) == len(fnames), "Incorrect num .mmap files found (%i)" % len(existing_files)
-            mmap_files = False
+            do_memmap = False
         except:
-            mmap_files = True # If assertion fails, mmap_files
+            do_memmap = True # If assertion fails, mmap_files
 
-    if mmap_files:
-        
+    if do_memmap:
         # Basename should include path, otherwise will be saved in current dir
         base_name = os.path.join(mmap_filedir, file_base) 
         print "Creating mmap files with base: %s" % base_name
@@ -152,7 +163,7 @@ def get_mmap_file(fnames, excluded_files=[],
     
     try:
         final_mmap = glob.glob(os.path.join(mmap_basedir, '%s*.mmap' % prefix))
-        assert len(final_mmap)==1, "Full concatenated .mmap not found."
+        assert len(final_mmap)==1, "Full, concatenated master .mmap not found."
         return final_mmap[0]
     
     except Exception as e:
@@ -164,8 +175,9 @@ def get_mmap_file(fnames, excluded_files=[],
         if len(mmap_names) > 1:
             final_mmap = cm.save_memmap_join(mmap_names, base_name=os.path.join(mmap_basedir, prefix), n_chunks=20, dview=dview)
         else:
-            print('One file only, not saving!')
+            print('One file only, not saving master memmap file.')
             final_mmap = mmap_names[0]
+            
         return final_mmap
 
 #%%
@@ -764,12 +776,13 @@ def evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir,
 #options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180702',
 #           '-R', 'gratings_rotating_drifting', '--nproc=12', '--seed', '-r', 'rois001',
 #           '--border=2']
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629',
-'-A', 'FOV1_zoom1x', '-R', 'gratings_drifting', '--seed',
-'-r', '/n/coxfs01/2p-data/CE077/20180629/FOV1_zoom1x/gratings_rotating_drifting/traces/cnmf/cnmf_20180803_17_04_21/results/results_refined_20180803_17_13_07.npz',
-'--border=2', '--nproc=4', '--suffix=offset', '-q', 20, '-w', 30, '-t', '20180807_10_38_14']
-
-
+#    
+#options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180629',
+#'-A', 'FOV1_zoom1x', '-R', 'gratings_drifting', '--seed',
+#'-r', '/n/coxfs01/2p-data/CE077/20180629/FOV1_zoom1x/gratings_rotating_drifting/traces/cnmf/cnmf_20180803_17_04_21/results/results_refined_20180803_17_13_07.npz',
+#'--border=2', '--nproc=4', '--suffix=offset', '-q', 20, '-w', 30, '-t', '20180807_10_38_14']
+#
+#
 
 #%%
     
@@ -800,12 +813,12 @@ def run_cnmf(options):
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
-    fname_new = cmn.get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
+    fname_new = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
                          border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
     
     # Get SI info:
     # -------------------------------------------------------------------------
-    si_info_path = (os.path.join(acquisition_dir, optsE.run, '%s.json' % optsE.run))
+    si_info_path = glob.gob(os.path.join(acquisition_dir, '%s_run*' % optsE.run, '*.json'))[0]
     with open(si_info_path, 'r') as f:
         si_info = json.load(f)
     fr = si_info['frame_rate'] # 44.69
@@ -1436,8 +1449,8 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
 # In[ ]:
 
 
-options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209',
-           '-R', 'gratings', '--nproc=16', '--seed', '-r', 'rois001',
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209', '-A', 'FOV1_zoom2p0x',
+           '-R', 'gratings', '--nproc=2', '--seed', '-r', 'rois001',
            '--border=4']
 
 #%%
