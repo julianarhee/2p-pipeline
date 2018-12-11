@@ -1262,7 +1262,7 @@ def caiman_to_darrays(run_dir, raw_df, downsample_factor=(1, 1, 1),
         scan_info = json.load(fr)
     framerate = scan_info['frame_rate'] * downsample_factor[-1]
     frame_tsecs = np.array(scan_info['frame_tstamps_sec'])
-    ds = 1./downsample_factor[-1]
+    ds = int(1/downsample_factor[-1])
     frame_tsecs = frame_tsecs[0::ds]
     ntiffs_in_run = scan_info['ntiffs']
     if ntiffs is None:
