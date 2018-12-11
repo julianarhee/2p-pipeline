@@ -406,7 +406,11 @@ def extract_options(options):
     parser.add_option('--noise', action='store', dest='noise_range', default='0.25,0.5', help='[nmf]: Noise range for PSD [default: 0.25,0.5]')
     parser.add_option('--smin', action='store', dest='s_min', default=None, help='[nmf]: Min spike level [default: None]')
     parser.add_option('--gnb', action='store', dest='gnb', default=1, help='[nmf]: N background components [default: 1]')
-
+    
+    parser.add_option('--rval', action='store', dest='rval_thr', default=0.7, help='[nmf]: space correlation threshold (if above this, accept) [default: 0.7]')
+    parser.add_option('--snr', action='store', dest='min_SNR', default=1.5, help='[nmf]: peak SNR for accepted components (if above this, acept) [default: 1.5]')
+    parser.add_option('--decay', action='store', dest='decay_time', default=3.0, help='[nmf]: length of transient [default: 3.0]')
+    
     parser.add_option('--nproc', action='store', dest='n_processes', default=4, help='[nmf]: N processes (default: 4)')
     parser.add_option('--seed', action='store_true', dest='manual_seed', default=False, help='Set true if seed ROIs with manual')
     parser.add_option('--offset', action='store_true', dest='add_offset', default=False, help='Set true if add min value to all movies to make (mostly) nonneg')
@@ -414,7 +418,7 @@ def extract_options(options):
   
     parser.add_option('-r', '--rois', action='store', dest='roi_source', default='rois001', help='Manual ROI set to use as seeds (must set --seed, default: rois001)')
     parser.add_option('-q', action='store', dest='quantile_min', default=10, help='Quantile min for drift correction (default: 10)')
-    parser.add_option('-w', action='store', dest='window_size', default=30, help='Window size for drift correction (default: 30)')
+    parser.add_option('-w', action='store', dest='window_size', default=30, help='Window size for drift correction (default: 30 sec)')
 
 
     (options, args) = parser.parse_args(options)
@@ -612,8 +616,12 @@ def filter_bad_seeds(cnm, images, fr, dims, gSig, traceid_dir, dview=None,
     return A_in, C_in, b_in, f_in
 
 
-
-def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, images=None):
+def get_seeds(fname_new, fr, optsE, traceid_dir, decay_time=4.0,
+                  min_SNR=1.2, rval_thr=0.7, n_processes=1, 
+                  dview=None, images=None):
+#        decay_time = 4.0 #.0    # length of transient
+#        min_SNR = 1.2      # peak SNR for accepted components (if above this, acept)
+#        rval_thr = 0.7     # space correlation threshold (if above this, accept)
     
     original_source = True
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
@@ -711,9 +719,9 @@ def get_seeds(fname_new, fr, optsE, traceid_dir, n_processes=1, dview=None, imag
 
         # #### Evaluate components:
         #fr = 44.69             # approximate frame rate of data
-        decay_time = 4.0 #.0    # length of transient
-        min_SNR = 1.2      # peak SNR for accepted components (if above this, acept)
-        rval_thr = 0.7     # space correlation threshold (if above this, accept)
+#        decay_time = 4.0 #.0    # length of transient
+#        min_SNR = 1.2      # peak SNR for accepted components (if above this, acept)
+#        rval_thr = 0.7     # space correlation threshold (if above this, accept)
         #use_cnn = False # use the CNN classifier
         #min_cnn_thr = None  # if cnn classifier predicts below this value, reject
         dims = [d1, d2]
@@ -878,10 +886,15 @@ def run_cnmf(options):
     # #############################################################################
     # Get seeds for cNMF (either patches or manual ROIs)
     # #############################################################################
-
+    decay_time = float(optsE.decay_time)
+    min_SNR = float(optsE.min_SNR)
+    rval_thr = float(optsE.rval_thr)
     A_in, C_in, b_in, f_in, cnmf_params = get_seeds(fname_new, fr, optsE, 
                                                     traceid_dir, n_processes=n_processes, dview=dview,
-                                                    images=images)
+                                                    images=images,
+                                                    decay_time=decay_time,
+                                                    min_SNR=min_SNR, 
+                                                    rval_thr=rval_thr)
 
     
     #%% 
@@ -940,9 +953,9 @@ def run_cnmf(options):
     #%%
     # #### Evaluate refined run:
     print "*** Evaluating final run ***"
-    decay_time = 4.0    # length of transient
+    decay_time = float(optsE.decay_time)    # length of transient
     min_SNR = 2.0      # peak SNR for accepted components (if above this, acept)
-    rval_thr = 0.6     # space correlation threshold (if above this, accept)
+    rval_thr = 0.8     # space correlation threshold (if above this, accept)
 #    use_cnn = False # use the CNN classifier
 #    min_cnn_thr = None  # if cnn classifier predicts below this value, reject
 #    dims = [d1, d2]
@@ -1355,7 +1368,7 @@ def caiman_to_darrays(run_dir, raw_df, downsample_factor=(1, 1, 1),
                     [np.tile(parsed_frames[t]['frames_in_run'].attrs['trial'], parsed_frames[t]['frames_in_file'].shape) \
                      for t in trials_in_block])
     
-    assert len(config_labels)==len(trial_labels), "Mismatch in n frames per trial, %s" % dfn
+    assert len(config_labels)==len(trial_labels), "Mismatch in n frames per trial, %s" % parsed_frames_fpath
 
     # #### Parse full file into "trial" structure using frame indices:
     currtrials_df = raw_df.loc[frame_indices,:]  # DF (nframes_per_trial*ntrials_in_tiff X nrois)
@@ -1517,7 +1530,7 @@ options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209', '-A', 'F
 def main(options):
     
     # First check that we don't need to re-extract:
-    optsE = cmn.extract_options(options)
+    optsE = extract_options(options)
     create_new = optsE.create_new
     check_results = [] 
     if optsE.datestr is not None:
@@ -1543,24 +1556,43 @@ def main(options):
     data_fpath = format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=False)
     
     # Plot df/f PSTH figures for each ROI:
-    optsE = extract_options(options)
     cnmf_traceid = os.path.split(results_fpath.split('/results')[0])[-1]
-    plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
-                 '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
-                 '-d', 'dff']
-    if 'rotating' in optsE.run:
-        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
-    psth_dir = pplot.make_clean_psths(plot_opts)
 
+    run_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
+		'-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid]
+    if optsE.slurm:
+        run_opts.extend(['--slurm'])
         
-    # Plot PSTHs with inferred spikes to compare:
-    plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
-                 '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
-                 '-d', 'spikes']
-    if 'rotating' in optsE.run:
-        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
+    if optsE.plot_psth:
+        psth_opts = copy.copy(run_opts)
+        psth_opts.extend(['-d', optsE.psth_dtype])
+        if optsE.psth_dtype == 'corrected' and optsE.psth_calc_dff != 'None':
+            psth_opts.extend(['--calc-dff'])
+            
+        if optsE.psth_rows is not None and optsE.psth_rows != 'None':
+            psth_opts.extend(['-r', optsE.psth_rows])
+        if optsE.psth_cols is not None and optsE.psth_cols != 'None':
+            psth_opts.extend(['-c', optsE.psth_cols])
+        if optsE.psth_hues is not None and optsE.psth_hues!='None':
+            print "Specified HUE:", optsE.psth_hues
+            psth_opts.extend(['-H', optsE.psth_hues])
+        psth_opts.extend(['--shade'])
+
+#    plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
+#                 '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
+#                 '-d','dff']
+#    if 'rotating' in optsE.run:
+#        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
+#    psth_dir = pplot.make_clean_psths(plot_opts)
+#
+#    # Plot PSTHs with inferred spikes to compare:
+#    plot_opts = ['-D', optsE.rootdir, '-i', optsE.animalid, '-S', optsE.session,
+#                 '-A', optsE.acquisition, '-R', optsE.run, '-t', cnmf_traceid,
+#                 '-d', 'spikes']
+#    if 'rotating' in optsE.run:
+#        plot_opts.extend(['-r', 'stim_dur', '-c', 'ori', '-H', 'direction'])
         
-    psth_dir = pplot.make_clean_psths(plot_opts)
+    psth_dir = pplot.make_clean_psths(psth_opts)
 
     print "*******************************************************************"
     print "DONE!"
