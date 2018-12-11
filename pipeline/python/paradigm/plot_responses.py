@@ -564,7 +564,7 @@ def make_clean_psths(options):
                 axesf[pi].set_ylim([0, dfmax])
             if 'df' in inputdata or calculate_dff is True:
                 axesf[pi].set_yticks((0, 1))
-            sns.despine(offset=4, trim=True, ax=axesf[pi])
+            sns.despine(offset=4, trim=False, ax=axesf[pi])
           
             # Add annotation for n trials in stim config:    
             axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
