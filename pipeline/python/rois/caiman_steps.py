@@ -58,9 +58,6 @@ import numpy as np
 #bpl.output_notebook()
 
 
-# In[24]:
-
-
 import os
 import glob
 import json
@@ -78,6 +75,8 @@ from pipeline.python.utils import natural_keys
 from pipeline.python.paradigm import utils as util
 from pipeline.python.paradigm import plot_responses as pplot
 
+
+#%%
 
 def tifs_to_mmaps(fnames, dview=None, base_name='Yr', downsample_factor=(1, 1, 1), border_to_0=0, add_offset=False):
     # read first few pages of each tif and find the min value to add:
@@ -504,13 +503,39 @@ def get_cnmf_params(fname_new, excluded_files=[], final_frate=44.69,
     
     return cnmf_params
 
-def get_cnmf_outdirs(acquisition_dir, run, datestr=None):
-    traceid_basedir = os.path.join(acquisition_dir, run, 'traces', 'cnmf')
+def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
+    traceid_basedir = os.path.join(acquisition_dir, run, 'traces')
     if not os.path.exists(traceid_basedir):
         os.makedirs(traceid_basedir)
+        
+    new_cnmf = False
+    if cnmf_id is not None:
+        existing_cnmfs = glob.glob(os.path.join(traceid_basedir, '%s*' % cnmf_id))
+        try:
+            assert len(existing_cnmfs) > 0, "No cnmf dirs with ID -- %s -- found." % cnmf_id
+            if datestr is None:
+                current_cnmf = sorted(existing_cnmfs, key=natural_keys)[::-1][-1]
+            else:
+                current_cnmf = [c for c in existing_cnmfs if datestr in c][0]
+            cnmf_num = int(os.path.split(current_cnmf)[-1].split('_')[0][4:])
+        except Exception as e:
+            print "Creating new CNMF id."
+            new_cnmf = True
+            
+    if new_cnmf:
+        existing_cnmfs = glob.glob(os.path.join(traceid_basedir, 'cnmf*'))
+        if len(existing_cnmfs) > 1:
+            last_cnmf_id = os.path.split(sorted(existing_cnmfs, key=natural_keys)[-1])[-1]
+            last_cnmf_num = int(last_cnmf_id.split('_')[0][4:])
+            cnmf_num = last_cnmf_num + 1
+        else:
+            cnmf_num = 1
+                
     if datestr is None:
         datestr = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")    
-    traceid_dir = os.path.join(traceid_basedir, 'cnmf_%s' % datestr)
+    
+    
+    traceid_dir = os.path.join(traceid_basedir, 'cnmf%03d_%s' % (cnmf_num, datestr))
     
     if not os.path.exists(os.path.join(traceid_dir, 'figures')):
         os.makedirs(os.path.join(traceid_dir, 'figures'))
@@ -814,8 +839,9 @@ def run_cnmf(options):
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
-    fname_new, mmap_basedir = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
-                         border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
+    fname_new, mmap_basedir = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, 
+                                       dview=dview, border_to_0=border_to_0, 
+                                       downsample_factor=downsample_factor, add_offset=add_offset)
     
     run_name = os.path.split(mmap_basedir.split('/processed/')[0])[-1]
     
