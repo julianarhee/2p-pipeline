@@ -105,7 +105,7 @@ def get_mmap_file(fnames, excluded_files=[],
     #fnames = glob.glob(os.path.join(tif_src_dir, '*.tif'))
     tif_src_dir = os.path.split(fnames[0])[0]
     print "Found %i tifs in src: %s" % (len(fnames), tif_src_dir)
-    
+
     # Re-use exiting mmapped files, but may want to concatenate differing .tif files
     # Add prefix showing which files excluded, if any, so as not to overwrite.
     if len(excluded_files) > 0:
@@ -118,17 +118,19 @@ def get_mmap_file(fnames, excluded_files=[],
                  'border_to_0': border_to_0,
                  'excluded_files': list(excluded_files),
                  'add_offset': add_offset}
-    with open(os.path.join(mmap_basedir, 'mmap_info.json'), 'w') as f:
-        json.dump(mmap_info, f, indent=4, sort_keys=True)
  
     mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
-        
     # Create output dir:
+    mhash = hashlib.md5(json.dumps(mmap_info, sort_keys=True, ensure_ascii=True)).hexdigest()
+
     mmap_basedir = '%s_memmap_%s' % (os.path.split(fnames[0])[0], mhash[0:6])
     mmap_filedir = os.path.join(mmap_basedir, 'files')
     if not os.path.exists(mmap_filedir):
         os.makedirs(mmap_filedir)
-
+        
+    with open(os.path.join(mmap_basedir, 'mmap_info.json'), 'w') as f:
+        json.dump(mmap_info, f, indent=4, sort_keys=True)
+        
     # Check for existing mmap files, and create them if not found:
     existing_files = glob.glob(os.path.join(mmap_filedir, '%s*.mmap' % file_base))
     mmap_files = True
@@ -798,7 +800,7 @@ def run_cnmf(options):
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
-    fname_new = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
+    fname_new = cmn.get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
                          border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
     
     # Get SI info:
