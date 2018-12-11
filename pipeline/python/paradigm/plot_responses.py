@@ -107,7 +107,9 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     parser.add_option('--filter', action='store_true', dest='filter_noise',
                           default=False, help='Set to filter our noisy spikes') 
-
+    parser.add_option('--calc-dff', action='store_true', dest='calculate_dff',
+                          default=False, help='Set to use baseline mean to calculate dff') 
+    
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -190,7 +192,11 @@ def extract_options(options):
             
 #%%
                           
-                          
+options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209',
+           '-A', 'FOV1_zoom2p0x', '-R', 'gratings_run1', '-t', 'cnmf001',
+           '-d', 'dff', '--shade', '-r', 'size', '-c', 'xpos', '-H', 'ori'
+           ]
+               
 def make_clean_psths(options):
     
     optsE = extract_options(options)
@@ -221,6 +227,7 @@ def make_clean_psths(options):
     filetype = optsE.filetype
         
     filter_noise = optsE.filter_noise
+    calculate_dff = optsE.calculate_dff
     
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
@@ -478,6 +485,14 @@ def make_clean_psths(options):
                     subdata = tracemat - bas_grand_mean
                 else:
                     subdata = tracemat
+                    
+                if calculate_dff:
+                    stim_on = list(set(labels_df[labels_df['config']==curr_config]['stim_on_frame']))[0]
+                    nframes_on = list(set(labels_df[labels_df['config']==curr_config]['nframes_on']))[0]
+                    baseline_mat = tracemat[:, 0:stim_on]
+                    basemat = np.mean(baseline_mat, axis=1)
+                    subdata = (tracemat.T / basemat).T
+
 
                 if plot_median:
                     trace_mean = np.median(subdata, axis=0)
