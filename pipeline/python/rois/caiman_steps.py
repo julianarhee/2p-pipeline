@@ -528,7 +528,7 @@ def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
             
     if new_cnmf:
         existing_cnmfs = glob.glob(os.path.join(traceid_basedir, 'cnmf*'))
-        if len(existing_cnmfs) > 1:
+        if len(existing_cnmfs) > 0:
             last_cnmf_id = os.path.split(sorted(existing_cnmfs, key=natural_keys)[-1])[-1]
             last_cnmf_num = int(last_cnmf_id.split('_')[0][4:])
             cnmf_num = last_cnmf_num + 1
@@ -1505,21 +1505,25 @@ def caiman_to_darrays(run_dir, raw_df, downsample_factor=(1, 1, 1),
 # In[ ]:
 
 
+#options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209', '-A', 'FOV1_zoom2p0x',
+#           '-R', 'gratings', '--nproc=2', '--seed', '-r', 'rois001',
+#           '--border=4']
+
 options = ['-D', '/n/coxfs01/2p-data', '-i', 'JC026', '-S', '20181209', '-A', 'FOV1_zoom2p0x',
-           '-R', 'gratings', '--nproc=2', '--seed', '-r', 'rois001',
+           '-R', 'gratings_run1', '--nproc=16', '--gSig=5', 
            '--border=4']
 
 #%%
 def main(options):
     
     # First check that we don't need to re-extract:
-    optsE = extract_options(options)
+    optsE = cmn.extract_options(options)
     create_new = optsE.create_new
     check_results = [] 
     if optsE.datestr is not None:
         check_results = glob.glob(os.path.join(optsE.rootdir, optsE.animalid, optsE.session,
-                                           optsE.acquisition, optsE.run, 'traces', 'cnmf', 
-                                           optsE.datestr, 'results', 'results_refined_*.npz'))
+                                           optsE.acquisition, optsE.run, 'traces', 'cnmf*', 
+                                           'results', 'results_refined_*.npz'))
         if len(check_results) > 0:
             print "Found results:\n%s" % str(check_results)
             create_new = False
