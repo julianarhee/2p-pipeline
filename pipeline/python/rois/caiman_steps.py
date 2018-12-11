@@ -394,7 +394,7 @@ def extract_options(options):
                           action='append',
                           help="Index of files to exclude (0-indexed)")
     
-    parser.add_options('--downsample', action='store', dest='downsample_factor', default=1.0, help='[nmf]: Downsample factor (default=1, use 0.5 or 0.2 if huge files)')
+    parser.add_option('--downsample', action='store', dest='downsample_factor', default=1.0, help='[nmf]: Downsample factor (default=1, use 0.5 or 0.2 if huge files)')
     
     parser.add_option('--gSig', action='store', dest='gSig', default=3, help='[nmf]: Half size of neurons [default: 3]')
     parser.add_option('--K', action='store', dest='K', default=20, help='[nmf]: N expected components per patch [default: 20]')
