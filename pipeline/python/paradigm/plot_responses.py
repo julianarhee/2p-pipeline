@@ -497,7 +497,7 @@ def make_clean_psths(options):
                     nframes_on = list(set(labels_df[labels_df['config']==curr_config]['nframes_on']))[0]
                     baseline_mat = tracemat[:, 0:stim_on]
                     basemat = np.mean(baseline_mat, axis=1)
-                    subdata = (tracemat.T / basemat).T
+                    subdata = ((tracemat.T - basemat) / basemat).T
 
 
                 if plot_median:
