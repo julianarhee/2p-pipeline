@@ -417,9 +417,17 @@ def extract_options(options):
     parser.add_option('--offset', action='store_true', dest='add_offset', default=False, help='Set true if add min value to all movies to make (mostly) nonneg')
     parser.add_option('--suffix', action='store', dest='tif_suffix', default='', help='suffix to add to mcorrected_ dir, if relevant (e.g., unsigned)')
   
-    parser.add_option('-r', '--rois', action='store', dest='roi_source', default='rois001', help='Manual ROI set to use as seeds (must set --seed, default: rois001)')
+    parser.add_option('-o', '--rois', action='store', dest='roi_source', default='rois001', help='Manual ROI set to use as seeds (must set --seed, default: rois001)')
     parser.add_option('-q', action='store', dest='quantile_min', default=10, help='Quantile min for drift correction (default: 10)')
     parser.add_option('-w', action='store', dest='window_size', default=30, help='Window size for drift correction (default: 30 sec)')
+
+    # PLOTTING PSTH opts:
+    parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts.')
+    parser.add_option('-D', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
+
+    parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
+    parser.add_option('-C', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
+    parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
 
 
     (options, args) = parser.parse_args(options)
