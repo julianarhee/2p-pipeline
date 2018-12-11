@@ -200,7 +200,7 @@ def make_clean_psths(options):
     traceid = optsE.traceid #traceid_list[0]
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     if 'cnmf' in traceid:
-        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
+        traceid_dir = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid))[0]
     else:
         traceid_dir = [t for t in glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid)) if 'ORIG' not in t][0]
 
