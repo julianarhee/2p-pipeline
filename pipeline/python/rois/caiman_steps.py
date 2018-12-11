@@ -164,7 +164,7 @@ def get_mmap_file(fnames, excluded_files=[],
     try:
         final_mmap = glob.glob(os.path.join(mmap_basedir, '%s*.mmap' % prefix))
         assert len(final_mmap)==1, "Full, concatenated master .mmap not found."
-        return final_mmap[0]
+        return final_mmap[0], mmap_basedir
     
     except Exception as e:
         # Join mmap files into 1:
@@ -178,7 +178,7 @@ def get_mmap_file(fnames, excluded_files=[],
             print('One file only, not saving master memmap file.')
             final_mmap = mmap_names[0]
             
-        return final_mmap
+        return final_mmap, mmap_basedir
 
 #%%
 
@@ -432,12 +432,12 @@ def get_mmap(fnames, fbase=None, excluded_files=[], dview=None, border_to_0=0, d
         
     #fbase = run.split('_')[0]
     
-    fname_new = get_mmap_file(fnames, excluded_files=excluded_files, file_base=fbase, 
+    fname_new, mmap_basedir = get_mmap_file(fnames, excluded_files=excluded_files, file_base=fbase, 
                                   dview=dview, 
                                   downsample_factor=downsample_factor, 
                                   border_to_0=border_to_0, add_offset=add_offset)
 
-    return fname_new
+    return fname_new, mmap_basedir
 
 def get_Cn(images, traceid_dir):
     cn_path = os.path.join(traceid_dir, 'Cn.npz')
@@ -808,17 +808,20 @@ def run_cnmf(options):
 #%  ### Create memmapped files:
     # -------------------------------------------------------------------------
 #    fnames = sorted(glob.glob(os.path.join(acquisition_dir, optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
-    fnames = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
+    
+    fnames = sorted(glob.glob(os.path.join(acquisition_dir, '%s*' % optsE.run, 'processed', 'processed001*', 'mcorrected_*%s' % tif_suffix, '*.tif')), key=natural_keys)
     fnames = sorted([f for f in fnames if '_deinterleaved' not in f], key=natural_keys)
     
     border_to_0 = int(optsE.border_to_0)
     downsample_factor = (1,1,1)
-    fname_new = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
+    fname_new, mmap_basedir = get_mmap(fnames, fbase=optsE.run, excluded_files=excluded_files, dview=dview, 
                          border_to_0=border_to_0, downsample_factor=downsample_factor, add_offset=add_offset)
+    
+    run_name = os.path.split(mmap_basedir.split('/processed/')[0])[-1]
     
     # Get SI info:
     # -------------------------------------------------------------------------
-    si_info_path = glob.gob(os.path.join(acquisition_dir, '%s_run*' % optsE.run, '*.json'))[0]
+    si_info_path = glob.glob(os.path.join(acquisition_dir, '%s*' % optsE.run, '*.json'))[0]
     with open(si_info_path, 'r') as f:
         si_info = json.load(f)
     fr = si_info['frame_rate'] # 44.69
