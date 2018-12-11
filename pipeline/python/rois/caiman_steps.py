@@ -388,7 +388,8 @@ def extract_options(options):
                           default='raw', help="trace type [default: 'raw']")
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set if run a new source extraction instance")
-    parser.add_option('-t', '--traceid', dest='datestr', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
+    parser.add_option('-d', '--datestr', dest='datestr', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
+    parser.add_option('-t', '--cnmf-id', dest='cnmf_id', default=None, action='store', help="cnmf ID: e.g., cnmf001")
 
     parser.add_option('-x', '--exclude', dest='excluded_files', default=[], nargs=1,
                           action='append',
@@ -524,6 +525,7 @@ def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
             else:
                 current_cnmf = [c for c in existing_cnmfs if datestr in c][0]
             cnmf_num = int(os.path.split(current_cnmf)[-1].split('_')[0][4:])
+            datestr = os.path.split(current_cnmf)[-1].split('_')[1:]
         except Exception as e:
             print "Creating new CNMF id."
             new_cnmf = True
@@ -867,7 +869,7 @@ def run_cnmf(options):
     
     #% Set output dir for figures and results:
     # -------------------------------------------------------------------------
-    traceid_dir = get_cnmf_outdirs(acquisition_dir, run_name, datestr=optsE.datestr)
+    traceid_dir = get_cnmf_outdirs(acquisition_dir, run_name, cnmf_id=optsE.cnmf_id, datestr=optsE.datestr)
     
 
     #%% ### Load memmapped file (all runs):
