@@ -817,7 +817,7 @@ def evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir,
     
 def run_cnmf(options):
     
-    optsE = cmn.extract_options(options)
+    optsE = extract_options(options)
         
     # Start cluster:
     single_thread=False
