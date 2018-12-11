@@ -508,7 +508,7 @@ def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
     if not os.path.exists(traceid_basedir):
         os.makedirs(traceid_basedir)
         
-    new_cnmf = False
+    new_cnmf=False; cnmf_num=None;
     if cnmf_id is not None:
         existing_cnmfs = glob.glob(os.path.join(traceid_basedir, '%s*' % cnmf_id))
         try:
@@ -521,6 +521,8 @@ def get_cnmf_outdirs(acquisition_dir, run, cnmf_id=None, datestr=None):
         except Exception as e:
             print "Creating new CNMF id."
             new_cnmf = True
+    else:
+        new_cnmf = True
             
     if new_cnmf:
         existing_cnmfs = glob.glob(os.path.join(traceid_basedir, 'cnmf*'))
@@ -813,7 +815,7 @@ def evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir,
     
 def run_cnmf(options):
     
-    optsE = extract_options(options)
+    optsE = cmn.extract_options(options)
         
     # Start cluster:
     single_thread=False
@@ -854,7 +856,7 @@ def run_cnmf(options):
     
     #% Set output dir for figures and results:
     # -------------------------------------------------------------------------
-    traceid_dir = get_cnmf_outdirs(acquisition_dir, optsE.run, datestr=optsE.datestr)
+    traceid_dir = cmn.get_cnmf_outdirs(acquisition_dir, optsE.run, datestr=optsE.datestr)
     
 
     #%% ### Load memmapped file (all runs):
