@@ -398,7 +398,7 @@ def make_clean_psths(options):
             hue_labels = object_transformations[rows]
         
         unspec_trans_type = unspecified_trans_types[0]
-        unspec_trans_values = transform_dict[unspec_trans_type]
+        unspec_trans_values = sorted(transform_dict[unspec_trans_type])
         n_unspec_trans_levels = len(unspec_trans_values)
         
         trace_colors = dict((hue_base, dict((gvalue, sns.color_palette(colorbank[hi], n_unspec_trans_levels)[glevel]) \
