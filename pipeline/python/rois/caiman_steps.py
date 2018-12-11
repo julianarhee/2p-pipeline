@@ -423,7 +423,7 @@ def extract_options(options):
 
     # PLOTTING PSTH opts:
     parser.add_option('--psth', action='store_true', dest='plot_psth', default=False, help='Set flag to plot PSTHs for all ROIs. Set plotting grid opts.')
-    parser.add_option('-D', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
+    parser.add_option('-p', action='store', dest='psth_dtype', default='corrected', help='Data type to plot for PSTHs.')
 
     parser.add_option('-r', '--rows', action='store', dest='psth_rows', default=None, help='PSTH: transform to plot on ROWS of grid')
     parser.add_option('-C', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
@@ -433,6 +433,10 @@ def extract_options(options):
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
+    if options.datestr == 'None':
+        options.datestr = None
+    if options.cnmf_id == 'None':
+        options.cnmf_id = None
     
     return options
 
