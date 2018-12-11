@@ -936,6 +936,7 @@ def run_cnmf(options):
              cnm=cnm2)
     cnm2.dview=dview
     print "... and npz"
+    
     #%%
     # #### Evaluate refined run:
     print "*** Evaluating final run ***"
@@ -945,7 +946,7 @@ def run_cnmf(options):
 #    use_cnn = False # use the CNN classifier
 #    min_cnn_thr = None  # if cnn classifier predicts below this value, reject
 #    dims = [d1, d2]
-    gSig = (optsE.gSig, optsE.gSig)
+    gSig = (int(optsE.gSig), int(optsE.gSig))
     
     cnm2 = evaluate_cnmf(cnm2, images, fr, dims, gSig, traceid_dir, dview=dview,
                          decay_time=decay_time, min_SNR=min_SNR, rval_thr=rval_thr, Cn=Cn)
@@ -976,6 +977,9 @@ def run_cnmf(options):
     ntiffs = si_info['ntiffs'] - len(excluded_files)
     print "Creating movie for 1 out of %i tiffs." % ntiffs
     nvolumes = T/ntiffs
+    
+#    nruns = len(list(set([fname.split('/processed/')[0] for fname in fnames])))
+#    nvolumes = T / nruns
     C = C[:, 0:int(nvolumes)]
     f = f[:, 0:int(nvolumes)]
     
@@ -1007,12 +1011,12 @@ def run_cnmf(options):
     #YrA = YrA_tot
     #f = f_tot
     #b = b_tot
-    #cm.utils.visualization.view_patches_bar(Yr, cnm2.A[:, idx_components],
-    #                                        cnm2.C[idx_components, :], cnm2.b, cnm2.f,
-    #                                        d1, d2,
-    #                                        YrA=cnm2.YrA[idx_components, :], img=Cn)
-    #
-    #    
+#    cm.utils.visualization.view_patches_bar(Yr, cnm2.A[:, cnm2.idx_components],
+#                                            cnm2.C[cnm2.idx_components, :], cnm2.b, cnm2.f,
+#                                            d1, d2,
+#                                            YrA=cnm2.YrA[cnm2.idx_components, :], img=Cn)
+#    
+#        
     #
     ## In[ ]:
     #
@@ -1111,12 +1115,17 @@ def format_cnmf_results(results_fpath, excluded_files=[], remove_bad_components=
     # Get deconvolved traces (spikes):
     S_df = pd.DataFrame(data=S.T, columns=raw_df.columns)
     
-    si_info_path = (os.path.join(acquisition_dir, run, '%s.json' % run))
+    if 'combined' in run: 
+        run_base = run.split('_static')[0].split('combined_')[-1]
+    else:
+        run_base = run
+        
+    si_info_path = glob.glob(os.path.join(acquisition_dir, '%s*' % run_base, '*.json'))[0]
     with open(si_info_path, 'r') as f:
         si_info = json.load(f)
         
     ntiffs = si_info['ntiffs'] - len(excluded_files)
-
+    
     #% Turn all this info into "standard" data frame arrays:
     labels_df, raw_df, corrected_df, F0_df, dFF_df, spikes_df = caiman_to_darrays(run_dir, raw_df, 
                                                                               corrected_df=corrected_df, 
@@ -1230,7 +1239,8 @@ def arrays_to_trials(trials_in_block, frame_tsecs, parsed_frames, mwinfo, framer
     return frame_indices, stim_onset_idxs
 
 
-def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None, 
+def caiman_to_darrays(run_dir, raw_df, downsample_factor=(1, 1, 1),
+                      corrected_df=None, dFF_df=None, 
                       F0_df=None, S_df=None, output_dir='tmp', ntiffs=None, excluded_files=[],
                       fmt='hdf5', trace_arrays_type='caiman'):
     
@@ -1241,20 +1251,32 @@ def caiman_to_darrays(run_dir, raw_df, corrected_df=None, dFF_df=None,
     # Get SCAN IMAGE info for run:
     # -------------------------------------------------------------------------
     run = os.path.split(run_dir)[-1]
-    with open(os.path.join(run_dir, '%s.json' % run), 'r') as fr:
+    fov_dir = os.path.split(run_dir)[0]
+    if 'combined' in run:
+        run_base = run.split('_static')[0].split('combined_')[-1]
+    else:
+        run_base = run
+    
+    runinfo_fpath = glob.glob(os.path.join(fov_dir, '%s*' % run_base, '*.json'))[0]
+    with open(runinfo_fpath, 'r') as fr:
         scan_info = json.load(fr)
-    framerate = scan_info['frame_rate']
+    framerate = scan_info['frame_rate'] * downsample_factor[-1]
     frame_tsecs = np.array(scan_info['frame_tstamps_sec'])
-    ntiffs_total = scan_info['ntiffs']
+    ds = 1./downsample_factor[-1]
+    frame_tsecs = frame_tsecs[0::ds]
+    ntiffs_in_run = scan_info['ntiffs']
     if ntiffs is None:
-        ntiffs = int(ntiffs_total)
+        ntiffs = int(ntiffs_in_run)
             
     # Need to make frame_tsecs span all TIFs:
     frame_tsecs_ext = np.hstack([frame_tsecs for i in range(ntiffs)])
+    print "N frame tstamps to align, TOTAL:", len(frame_tsecs_ext)
 
     # Load MW info to get stimulus details:
     # -------------------------------------------------------------------------
     paradigm_dir = os.path.join(run_dir, 'paradigm')
+    #mw_fpaths = glob.glob(os.path.join(fov_dir, '%s*' % run_base, 'paradigm', 'trials_*.json'))
+    
     mw_fpath = [os.path.join(paradigm_dir, m) for m in os.listdir(paradigm_dir) if 'trials_' in m and m.endswith('json')][0]
     with open(mw_fpath,'r') as m:
         mwinfo = json.load(m)
