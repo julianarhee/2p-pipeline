@@ -514,7 +514,7 @@ def get_rdata_dataframe(data_fpath):
 def main(options):
     
     data_fpath = create_rdata_array(options)
-    get_rdata_dataframe(data_fpath)
+    #get_rdata_dataframe(data_fpath)
     
     print "*******************************************************************"
     print "DONE!"
