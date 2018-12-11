@@ -1210,7 +1210,7 @@ def arrays_to_trials(trials_in_block, frame_tsecs, parsed_frames, mwinfo, framer
     
     sdurs = []
     for on,off in zip(stim_onset_idxs, stim_offset_idxs):
-        dur = round((off - on) / framerate)
+        dur = round(float(off - on) / framerate, 1)
         sdurs.append(dur)
     print "unique durs:", list(set(sdurs))
 
@@ -1437,7 +1437,7 @@ def caiman_to_darrays(run_dir, raw_df, downsample_factor=(1, 1, 1),
     if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
         stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
     else:
-        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3) for t in trial_list]))
+        stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3, 1) for t in trial_list]))
     nframes_on = np.array([int(round(dur*framerate)) for dur in stim_durs])
    
     # Format pd DataFrames:
