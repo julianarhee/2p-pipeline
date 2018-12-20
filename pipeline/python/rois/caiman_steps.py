@@ -1580,7 +1580,7 @@ def main(options):
     if optsE.plot_psth:
         psth_opts = copy.copy(run_opts)
         psth_opts.extend(['-d', optsE.psth_dtype])
-        if optsE.psth_dtype == 'corrected' and optsE.psth_calc_dff != 'None':
+        if optsE.psth_dtype == 'corrected': # and optsE.psth_calc_dff != 'None':
             psth_opts.extend(['--calc-dff'])
             
         if optsE.psth_rows is not None and optsE.psth_rows != 'None':
