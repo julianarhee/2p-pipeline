@@ -430,7 +430,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
 
         else:
             #itis = df.get_events('ITI_time')
-            info['ITI'] = iti_standard_dur[0]
+            info['ITI'] = iti_standard_dur #[0]
 
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
