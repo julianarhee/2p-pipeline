@@ -450,15 +450,15 @@ class SessionSummary():
 
         if 'gratings' in self.traceid_dirs.keys():# is not None:
             self.get_gratings(metric='meanstim')
-            info_str.extend([str(self.gratings['source']), ''.join(self.gratings['traceid'].split('_')[0::2])])
+            info_str.extend([str(self.gratings['source']), ''.join(self.gratings['traceid'].split('_')[0])])
 
         if 'blobs' in self.traceid_dirs.keys():
             self.get_objects(object_type='blobs', metric='zscore')
-            info_str.extend([str(self.blobs['source']), ''.join(self.blobs['traceid'].split('_')[0::2])])
+            info_str.extend([str(self.blobs['source']), ''.join(self.blobs['traceid'].split('_')[0])])
 
         if 'objects' in self.traceid_dirs.keys():
             self.get_objects(object_type='objects', metric='zscore')
-            info_str.extend([str(self.objects['source']), ''.join(self.objects['traceid'].split('_')[0::2])])
+            info_str.extend([str(self.objects['source']), ''.join(self.objects['traceid'].split('_')[0])])
 
         print info_str
         self.data_identifier ='_'.join(info_str)
