@@ -264,17 +264,17 @@ def hist_roi_stats(df_by_rois, roistats, ax=None):
     nrois_total = len(df_by_rois.groups.keys())
     visual_pval= 0.05; visual_test = roistats['visual_test'].split('_')[-1];
     visual_str = 'visual: %i/%i (p<%.2f, %s)' % (len(roistats['rois_visual']), nrois_total, visual_pval, visual_test)
-    texth = ax.get_ylim()[-1] + 2
-    textw = ax.get_xlim()[0] + .1
-    ax.text(textw, texth, visual_str, fontdict=dict(color='magenta', size=10))
+    texth = ax.get_ylim()[-1] #- 0.5 #+ 2
+    textw = 0.01 #ax.get_xlim()[0] + .001
+    ax.text(textw, texth-0.5, visual_str, fontdict=dict(color='magenta', size=16))
     
     selective_pval = 0.05; #selective_test = str(roistats['selectivity_test']);
     selective_str = 'sel: %i/%i (p<%.2f, %s)' % (len(roistats['rois_selective']), len(roistats['rois_visual']), selective_pval, roistats['selective_test'])
-    ax.text(textw, texth-1, selective_str, fontdict=dict(color='cornflowerblue', size=10))
-    ax.set_ylim([0, texth + 2])
+    ax.text(textw, texth-1.0, selective_str, fontdict=dict(color='cornflowerblue', size=16))
+    #ax.set_ylim([0, texth + 2])
     ax.set_xlim([0, ax.get_xlim()[-1]])
     
-    sns.despine(trim=True, offset=4, ax=ax)
+    sns.despine(trim=False, offset=4, ax=ax)
     
     return
 
@@ -472,48 +472,70 @@ class SessionSummary():
     def plot_summary(self, ignore_null=False, selective=True):
         
         if 'blobs' in self.traceid_dirs.keys() and 'objects' in self.traceid_dirs.keys(): 
-            fig = pl.figure(figsize=(35,35))
-            spec = gridspec.GridSpec(ncols=3, nrows=4)
+            ntransforms_plot = max([2, len(self.blobs['transforms_tested']), len(self.objects['transforms_tested']) ])
+            nrows = 4
+
         elif 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
-            if 'gratings' not in self.traceid_dirs.keys():
-                fig = pl.figure(figsize=(35,20))
-                spec = gridspec.GridSpec(ncols=3, nrows=2)
+            if 'blobs' in self.traceid_dirs.keys():
+                ntransforms_plot = max([2, len(self.blobs['transforms_tested'])])
             else:
-                fig = pl.figure(figsize=(35,25))
-                spec = gridspec.GridSpec(ncols=3, nrows=3)
-              
+                ntransforms_plot = max([2, len(self.objects['transforms_tested'])])
+
+            if 'gratings' not in self.traceid_dirs.keys():
+                nrows = 2
+            else:
+                nrows = 3
+             
         elif 'gratings' in self.traceid_dirs.keys():
-            fig = pl.figure(figsize=(35,20))
-            spec = gridspec.GridSpec(ncols=3, nrows=2)
+            ntransforms_plot = 2
+            nrows = 2
         else:
             # Only have retino and FOV:
-            fig = pl.figure(figsize=(35,10))
-            spec = gridspec.GridSpec(ncols=3, nrows=1)
-        spec.update(left=0.02, right=0.98, wspace=0.05)
-        for pr in range(spec.get_geometry()[0]):
-            for pc in range(spec.get_geometry()[1]):
-                fig.add_subplot(spec[pr, pc])
-    
+            ntransforms_plot = 2
+            nrows = 1
+
+        fig = pl.figure(figsize=(40,10*nrows))
+        print "++++++++++GRID SPEC+++++++++++++++++"
+        print "Nrows: %i, Ncols: %i" % (ntransforms_plot+1, nrows)
+
         self.fig = fig
-         
-        self.plot_zproj_image(fig.axes, aix=0)
-        self.plot_retinotopy_to_screen(fig.axes, aix=1)
-        self.plot_estimated_RF_size(fig.axes, aix=2, ignore_null=ignore_null)
+        ax1 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 0), colspan=1) 
+        self.plot_zproj_image(ax=ax1) #fig.axes, aix=0)
+
+        ax2 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 1), colspan=2)
+        self.plot_retinotopy_to_screen(ax=ax2) #fig.axes, aix=1)
+        
+        ax3 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 3), colspan=1)
+        self.plot_estimated_RF_size(ax=ax3, ignore_null=ignore_null)  #fig.axes, aix=2, ignore_null=ignore_null)
         if 'gratings' in self.traceid_dirs.keys():
-            self.plot_responsivity_gratings(axes_flat=fig.axes, aix=3)
-            self.plot_OSI_histogram(axes_flat=fig.axes, aix=4)
-            self.plot_confusion_gratings(axes_flat=fig.axes, aix=5)
-            obj_startix = 6
+            ax4 = pl.subplot2grid((nrows, ntransforms_plot+1), (1, 0), colspan=1)
+            self.plot_responsivity_gratings(ax=ax4)
+
+            ax5 = pl.subplot2grid((nrows, ntransforms_plot+1), (1, 1), colspan=1)
+            self.plot_OSI_histogram(ax=ax5)
+
+            ax6 = pl.subplot2grid((nrows, ntransforms_plot+1), (1, 2), colspan=1)
+            self.plot_confusion_gratings(ax=ax6)
+
+            obj_start_row = 2
         else:
-            obj_startix = 3
-        if 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
-            self.plot_responsivity_objects(axes_flat=fig.axes, aix=obj_startix)
+            obj_start_row = 1
+
         if 'blobs' in self.traceid_dirs.keys():
-            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='blobs')
-            obj_startix = obj_startix + 3
+            ax7 = pl.subplot2grid((nrows, ntransforms_plot+1), (obj_start_row, 0), colspan=1)
+            self.plot_responsivity_objects(ax=ax7, object_type='blobs')
+            ntransforms_blobs = len(self.blobs['transforms_tested'])
+            ax8 = pl.subplot2grid((nrows, ntransforms_plot+1), (obj_start_row, 1), colspan=1) 
+            self.plot_transforms_objects(ax=ax8, selective=selective, object_type='blobs', nrows=nrows, ncols=ntransforms_plot+1, row_start=obj_start_row, col_start=1)
+            obj_start_row += 1
+
         if 'objects' in self.traceid_dirs.keys():
-            self.plot_transforms_objects(axes_flat=fig.axes, aix=obj_startix+1, selective=selective, object_type='objects')
-            
+            ax9 = pl.subplot2grid((ntransforms_plot+1, nrows), (obj_start_row, 0), colspan=1)
+            self.plot_responsivity_objects(ax=ax9, object_type='objects')
+            ntransforms_objects = len(self.objects['transforms_tested'])
+            ax10 = pl.subplot2grid((ntransforms_plot+1, nrows), (obj_start_row, 1), colspan=ntransforms_objects) 
+            self.plot_transforms_objects(ax=ax10, selective=selective, object_type='objects', nrows=nrows, ncols=ntransforms_plot+1, row_start=obj_start_row, col_start=1)
+           
 
 
     def load_sessionsummary_step(self, key='', traceset=''):
@@ -717,51 +739,41 @@ class SessionSummary():
             self.save_sessionsummary_step(key=object_type, val=object_dict, traceset=self.traceset)
         
         
-    def plot_zproj_image(self, axes_flat=None, aix=0):
+    def plot_zproj_image(self, ax=None): #axes_flat=None, aix=0):
         # SUBPLOT 0:  Mean / zproj image
         # -----------------------------------------------------------------------------
-        if axes_flat is None:
+        if ax is None: # axes_flat is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
+            #axes_flat = fig.axes
             
-        im = axes_flat[aix].imshow(self.zproj['data'], cmap='gray')
-        axes_flat[aix].axis('off')
-        axes_flat[aix].set_title('dF/F map')
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*0.75, bb[1]*1.05, bb[2]*1.0, bb[3]*1.0]
-        axes_flat[aix].set_position(new_bb)
-        divider = make_axes_locatable(axes_flat[aix])
+        im = ax.imshow(self.zproj['data'], cmap='gray')
+        ax.axis('off')
+        ax.set_title('dF/F map')
+        divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='5%', pad=0.5)
         cb = pl.colorbar(im, cax=cax, orientation='vertical', ticklocation='right')
-        #cax.yaxis.set_ticks_position('right')
+        cax.yaxis.set_ticks_position('right')
         cax.yaxis.set_label_position('right')
        
         
-    def plot_retinotopy_to_screen(self, axes_flat=None, aix=0):
-        if axes_flat is None:
+    def plot_retinotopy_to_screen(self, ax=None):
+        if ax is None: 
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
             
         # SUBPLOT 1:  Retinotopy:
-        # -----------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
-        axes_flat[aix].clear()
         RF.plot_RF_position_and_size(self.retinotopy['data'], acquisition_dir, 
                                          self.retinotopy['source'], self.retinotopy['traceid'], 
-                                         ax=axes_flat[aix])
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*0.9, bb[1]*1.0, bb[2]*1.1, bb[3]*1.2]
-        axes_flat[aix].set_position(new_bb)
+                                         ax=ax) 
         
         
-    def plot_estimated_RF_size(self, axes_flat=None, aix=0, ignore_null=False):
-        if axes_flat is None:
+    def plot_estimated_RF_size(self, ax=None, ignore_null=False):
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
             
         # SUBPLOT 2:  Estimated RF sizes:
-        # -----------------------------------------------------------------------------    
-        axes_flat[aix].clear()
+        # ------------------------------------------------------------------------  
         cond0_name = self.retinotopy['data'][0].conditions[0].name
         cond1_name = self.retinotopy['data'][0].conditions[1].name
 
@@ -780,110 +792,75 @@ class SessionSummary():
         
         print "RF FIT: fit %i rois." % len(fit_rois)
         if len(fit_rois) > 0: 
-            sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond0_name, color='orange')
-            sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=axes_flat[aix], label=cond1_name, color='cornflowerblue')
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*1.05, bb[1]*1.02, bb[2]*0.8, bb[3]]
-        axes_flat[aix].set_position(new_bb)
-        axes_flat[aix].legend()
-        axes_flat[aix].set_title('distN of estimated RF sizes')
+            sns.distplot(az_rfs, kde=False, bins=len(plot_rois), ax=ax, label=cond0_name, color='orange')
+            sns.distplot(el_rfs, kde=False, bins=len(plot_rois), ax=ax, label=cond1_name, color='cornflowerblue')
+        ax.legend()
+        ax.set_title('distN of estimated RF sizes')
         
-        texth = axes_flat[aix].get_ylim()[-1] + 2
-        textw = axes_flat[aix].get_xlim()[0] + .1
-        axes_flat[aix].text(textw, texth-1, "N no fit: %i" % n_badfits, fontdict=dict(color='k', size=10))
+        texth = ax.get_ylim()[-1] + 2
+        textw = ax.get_xlim()[0] + .1
+        ax.text(textw, texth-1, "N no fit: %i" % n_badfits, fontdict=dict(color='k', size=10))
         
-    def plot_responsivity_gratings(self, axes_flat=None, aix=0):
-        if axes_flat is None:
+    def plot_responsivity_gratings(self, ax=None):
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
             
         # SUBPLOT 3:  Histogram of visual vs. selective ROIs (use zscores)
-        # -----------------------------------------------------------------------------
-        axes_flat[aix].clear()
-        hist_roi_stats(self.gratings['roidata'], self.gratings['roistats'], ax=axes_flat[aix])
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
-        axes_flat[aix].set_position(new_bb)
-        axes_flat[aix].set_title('gratings: distN of zscores')
-        axes_flat[aix].set_xlabel('zscore')
-        
+        # ------------------------------------------------------------------------
+        hist_roi_stats(self.gratings['roidata'], self.gratings['roistats'], ax=ax)
+        ax.set_title('gratings', fontsize=24)
+        ax.set_xlabel('zscore', fontsize=24)
+#        
         #%
         
         # SUBPLOT 4:  DistN of preferred orientations:
-        # -----------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         
-    def plot_OSI_histogram(self, axes_flat=None, aix=0):
-        if axes_flat is None:
+    def plot_OSI_histogram(self, ax=None): #axes_flat=None, aix=0):
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
+            #axes_flat = fig.axes
             
         cmap = 'hls'
         noris = len(np.unique([v['ori'] for k, v in self.gratings['sconfigs'].items()]))
         colorvals = sns.color_palette(cmap, noris) # len(gratings_sconfigs))
         if len(self.gratings['selectivity'].keys()) > 0:
-            osi.hist_preferred_oris(self.gratings['selectivity'], colorvals, metric=self.gratings['metric'], save_and_close=False, ax=axes_flat[aix])
-        sns.despine(trim=True, offset=4, ax=axes_flat[aix])
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0], bb[1], bb[2]*0.9, bb[3]*0.9]
-        axes_flat[aix].set_position(new_bb)
-        axes_flat[aix].set_title('orientation selectivity')
+            osi.hist_preferred_oris(self.gratings['selectivity'], colorvals, metric=self.gratings['metric'], save_and_close=False, ax=ax) 
+        ax.set_title('orientation selectivity', fontsize=24)
         
         
-    def plot_confusion_gratings(self, axes_flat=None, aix=0):
-        if axes_flat is None:
+    def plot_confusion_gratings(self, ax=None):
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
             
         # SUBPLOT 5:  Decoding performance for linear classifier on orientations:
-        # -----------------------------------------------------------------------------
-        axes_flat[aix].clear()
+        # -------------------------------------------------------------------------
     
-        lsvc.plot_confusion_matrix(self.gratings['SVC']['cmatrix'], classes=self.gratings['SVC']['classes'], ax=axes_flat[aix], normalize=True)
-        sns.despine(trim=True, offset=4, ax=axes_flat[aix])
-        bb = axes_flat[aix].get_position().bounds
-        new_bb = [bb[0], bb[1]*1.05, bb[2]*0.95, bb[3]*0.95]
-        axes_flat[aix].set_position(new_bb)
+        lsvc.plot_confusion_matrix(self.gratings['SVC']['cmatrix'], classes=self.gratings['SVC']['classes'], ax=ax, normalize=True)
     
-    def plot_responsivity_objects(self, axes_flat=None, aix=0):
-        if axes_flat is None:
+    def plot_responsivity_objects(self, ax=None, object_type='blobs'): 
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
 
         # SUBPLOT 6:  Complex stimuli...
-        # -----------------------------------------------------------------------------
-        axes_flat[aix].clear()
-        if 'blobs' in self.traceid_dirs.keys():
-            hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=axes_flat[aix])
-            axes_flat[aix].set_title('blobs: distN of zscores')
+        # -------------------------------------------------------------------------
+        if object_type == 'blobs': #in self.traceid_dirs.keys():
+            hist_roi_stats(self.blobs['roidata'], self.blobs['roistats'], ax=ax)
+            ax.set_title('%s' % self.blobs['source'], fontsize=24)
+            ax.set_xlabel('zscore', fontsize=24)
+        else:
+            hist_roi_stats(self.objects['roidata'], self.objects['roistats'], ax=ax)
+            ax.set_title('%s' % self.objects['source'], fontsize=24)
 
-            bb = axes_flat[aix].get_position().bounds
-            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
-            axes_flat[aix].set_position(new_bb)
-            axes_flat[aix].set_xlabel('zscore')
-            aix = aix + 3 # increment axis index
-            print "incrementing object plot Ixs:", aix
-        
-        if 'objects' in self.traceid_dirs.keys():
-            hist_roi_stats(self.objects['roidata'], self.objects['roistats'], ax=axes_flat[aix])
-            axes_flat[aix].set_title('objects: distN of zscores')
- 
-            bb = axes_flat[aix].get_position().bounds
-            new_bb = [bb[0]*1.7, bb[1]*1.01, bb[2]*0.8, bb[3]*0.95]
-            axes_flat[aix].set_position(new_bb)
-            axes_flat[aix].set_xlabel('zscore')
-     
-
-    def plot_transforms_objects(self, axes_flat=None, aix=0, selective=True, object_type='blobs'):
-        if axes_flat is None:
+    def plot_transforms_objects(self, ax=None, selective=True, object_type='blobs', row_start=0, col_start=0, ncols=1, nrows=1):
+        if ax is None:
             fig, ax = pl.subplots()
-            axes_flat = fig.axes
         if object_type == 'blobs':
             plotdata = self.blobs
         elif object_type == 'objects':
             plotdata = self.objects
        
         ylabel = plotdata['metric']
-        xlabel = plotdata['transforms_tested'][0]
         metric = plotdata['metric']
         transforms_tested = plotdata['transforms_tested']
         object_list = plotdata['transforms']['object'].unique()
@@ -904,36 +881,29 @@ class SessionSummary():
         markers = ['o', 'P', '*', 'X', 's', 'd', 'p', 'H', '1', '2', '3', '4','<','>','_']
         marker_kws = {'markersize': 15, 'linewidth': 2, 'alpha': 0.3}
         print "Plotting %i rois" % nrois_plot
- 
+
+        curr_col = col_start
         for trans_ix, transform in enumerate(transforms_tested):
-            tix = aix + trans_ix
             plot_list = []
             for roi, df in rois:
                 if roi not in rois_to_plot:
                     continue
                 
                 df2 = df.pivot_table(index='object', columns=transform, values=metric)
-                #new_df = pd.concat([df2, pd.Series(data=[roi for _ in range(df2.shape[0])], index=df2.index, name='roi')], axis=1)
                 plot_list.append(df2)
                 
             data = pd.concat(plot_list, axis=0)
-            #%
-            axes_flat[tix].clear()
-        
+            print "***(%i, %i) - row: %i, col: %i" % (ncols, nrows, row_start, curr_col)
+
+            ax0 = pl.subplot2grid((nrows, ncols), (row_start, curr_col), colspan=1) 
             for ridx, r in enumerate(np.arange(0, data.shape[0], nobjects)):
                 for object_ix in range(nobjects):
-                    axes_flat[tix].plot(data.iloc[r+object_ix, :], color=colors[ridx], marker=markers[object_ix], **marker_kws) #'.-')
-            axes_flat[tix].set_xticks(data.keys().tolist())
-            axes_flat[tix].set_ylabel(ylabel) #self.blobs['metric'])
-            axes_flat[tix].set_xlabel(xlabel)
-            axes_flat[tix].set_title(transform)
-            
-            bb = axes_flat[tix].get_position().bounds
-            new_bb = [bb[0], bb[1]*0.95, bb[2]*0.9, bb[3]]
-            axes_flat[tix].set_position(new_bb)
-            axes_flat[tix].set_xlabel('zscore')
-        
-            sns.despine(ax=axes_flat[tix])
+                    ax0.plot(data.iloc[r+object_ix, :], color=colors[ridx], marker=markers[object_ix], **marker_kws) #'.-')
+            ax0.set_xticks(data.keys().tolist())
+            ax0.set_ylabel(ylabel) #self.blobs['metric'])
+            ax0.set_title(transform, fontsize=24)
+            curr_col += 1            
+            sns.despine(ax=ax0, trim=True, offset=4)
         
         legend_objects = []
         object_names = data.iloc[0:nobjects].index.tolist()
@@ -942,7 +912,7 @@ class SessionSummary():
                                          marker=markers[object_ix], label=object_names[object_ix], 
                                          linewidth=2, markersize=15))
             
-        axes_flat[tix].legend(handles=legend_objects, loc=2, bbox_to_anchor=(0.0, 0.99), ncol=nobjects) # loc='upper right')
+        ax0.legend(handles=legend_objects, loc=2, bbox_to_anchor=(0.0, 0.99), ncol=nobjects) # loc='upper right')
         
         
         
@@ -997,26 +967,6 @@ def extract_options(options):
     if options.slurm is True and '/n/coxfs01' not in options.rootdir:
         options.rootdir = '/n/coxfs01/2p-data'
     return options
-
-#%%
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-
-#           '-d', 'corrected',
-#           '-g', 'traces003', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
-#           ]
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180521', '-A', 'FOV1_zoom1x',
-#           '-d', 'corrected',
-#           '-g', 'traces002', '-b', 'traces002', '-b', 'traces002', '-r', 'analysis001'
-#           ]
-
-#options = ['-D', '/mnt/odyssey', '-i', 'JC022', '-S', '20181007', '-A', 'FOV1_zoom2p2x',
-#           '-g', 'traces001_4034e0_traces001_35937c_traces001_00946b', 
-#           '-r', 'analysis003',
-#           '-b', 'traces001_2fc6e5_traces001_3d32a5_traces001_a0959e',
-#           '-o', 'traces001_32d2df_traces001_cca253_traces001_1ae4ac_traces001_8d6d99',
-#           '-n', 4,
-#           '--redo']
-
 options = ['-D', '/n/coxfs01/2p-data', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
            '-r', 'analysis001',
            '-b', 'traces001',
