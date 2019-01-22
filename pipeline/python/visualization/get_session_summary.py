@@ -487,16 +487,16 @@ class SessionSummary():
                 nrows = 3
              
         elif 'gratings' in self.traceid_dirs.keys():
-            ntransforms_plot = 2
+            ntransforms_plot = 3
             nrows = 2
         else:
             # Only have retino and FOV:
-            ntransforms_plot = 2
+            ntransforms_plot = 3
             nrows = 1
 
         fig = pl.figure(figsize=(40,10*nrows))
         print "++++++++++GRID SPEC+++++++++++++++++"
-        print "Nrows: %i, Ncols: %i" % (ntransforms_plot+1, nrows)
+        print "Ncols: %i, Nrows: %i" % (ntransforms_plot+1, nrows)
 
         self.fig = fig
         ax1 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 0), colspan=1) 
