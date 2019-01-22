@@ -171,7 +171,6 @@ dependencies:
   - backports.functools-lru-cache==1.4
   - backports.shutil-get-terminal-size==1.0.0
   - backports.ssl-match-hostname==3.5.0.1
-  - caiman (/net/coxfs01/srv/export/coxfs01/share_root/2p-pipeline/repos/CaImAn)==1.0
   - checksumdir==1.1.4
   - cvxcanon==0.1.1
   - cvxopt==1.1.9
@@ -189,7 +188,6 @@ dependencies:
   - jupyter-console==5.2.0
   - jupyter-core==4.3.0
   - matlab-wrapper==0.9.8
-  - matlabengineforpython==R2015b
   - memory-profiler==0.50.0
   - multiprocess==0.70.5
   - multiprocessing==2.6.2.1
@@ -197,7 +195,6 @@ dependencies:
   - olefile==0.44
   - peakutils==1.1.0
   - pillow==5.0.0
-  - pipeline (/net/coxfs01/srv/export/coxfs01/share_root/2p-pipeline/repos/2p-pipeline)==0.1.0
   - prompt-toolkit==1.0.15
   - pymworks==2.0.1
   - pywavelets==0.5.2
