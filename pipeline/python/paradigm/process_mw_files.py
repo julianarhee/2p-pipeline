@@ -143,7 +143,7 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     return df, bounds
 
 
-def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=False):
+def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=False, auto=False):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
     if len(triggername)==0:
@@ -307,6 +307,10 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     if len(trigger_times)==1:
         user_run_selection = [0] #trigger_times[0]
+    elif auto is True:
+        user_run_selection = np.arange(0, len(trigger_times))
+        print "Selected ALL runs.\n"
+
     else:
         runs_selected = 0
         while not runs_selected:
@@ -442,7 +446,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     return info
 
 #%%
-def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False, auto=False):
 
     # Load run info:
     rundir = curr_dfn.split('/raw_')[0]
@@ -469,7 +473,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername, auto=auto)
         # CHeck if should add ITI:
 #        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
 #        if len(check_durs) > 0:
@@ -686,7 +690,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
 
 #%%
 
-def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, boundidx=0):
+def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, boundidx=0, auto=False):
     """
     Open MW file and get time-stamped boundaries for acquisition.
 
@@ -724,7 +728,7 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername, auto=auto)
         print "selected runs:", user_run_selection
         pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
 
@@ -840,7 +844,7 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
+def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0, auto=False):
     
     '''
     Extract relevant stimulus info for each trial across blocks.
@@ -849,9 +853,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     
     print "Current file: ", curr_dfn
     if retinobar is True:
-        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx)
+        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx, auto=auto)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -1230,6 +1234,10 @@ def extract_options(options):
     parser.add_option('--dynamic', action="store_true",
                       dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
 
+    parser.add_option('--auto', action="store_true",
+                      dest="auto", default=False, help="Set flag if NOT interactive.")
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -1245,6 +1253,7 @@ def parse_mw_trials(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    auto = options.auto
     
     dynamic = options.dynamic
     retinobar = options.retinobar #'grating'
@@ -1282,7 +1291,7 @@ def parse_mw_trials(options):
         curr_dfn = mw_dfns[didx]
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
-        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
         #print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 
