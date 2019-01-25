@@ -11,6 +11,7 @@ import os
 import optparse
 import sys
 import json
+import re
 import matplotlib as mpl
 mpl.use('agg')
 import numpy as np
@@ -289,13 +290,16 @@ def get_metricdf(dfpaths):
                 rundf = h5py.File(df, 'r')
                 if len(rundf) == 0:
                     continue
-                currconfig = paradigm_info[str(di+1)]['stimuli']['stimulus']
-                currtrial = 'trial%05d' % int(di+1)
+                curr_file = str(re.search('File(\d{3})', df).group(0))
+                file_index_str = str(int(curr_file[4:]))
+
+                currconfig = paradigm_info[file_index_str]['stimuli']['stimulus']
+                currtrial = 'trial%05d' % int(file_index_str)
                 run_name = os.path.split(df.split('/retino_analysis')[0])[-1]
                 if len(run_name.split('_')) > 3:
                     run_name = run_name.split('_')[0]
 
-                print "Getting mag-ratios for each ROI in run: %s, trial %i" % (run_name, di+1)
+                print "Getting mag-ratios for each ROI in run: %s, trial %s" % (run_name, file_index_str) # di+1)
                 roi_list = ['roi%05d' % int(r+1) for r in range(rundf['mag_ratio_array'].shape[0])]
                 phase_convert = -1 * rundf['phase_array'][:]
                 phase_convert = phase_convert % (2*np.pi)
@@ -386,6 +390,7 @@ def roi_retinotopy(options):
 
     # Get dataframe paths for runs to be compared:
     dfpaths = get_retino_datafile_paths(acquisition_dir, run, traceid)
+    print dfpaths
 
     # Get base dir for retinotopy output:
     analysis_fpaths = dfpaths[run]
