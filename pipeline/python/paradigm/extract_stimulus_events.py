@@ -66,6 +66,7 @@ import optparse
 import shutil
 import copy
 import traceback
+import glob
 import numpy as np
 import pandas as pd
 import cPickle as pkl
@@ -144,9 +145,19 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     frame_on_idxs = sorted(list(set(frame_on_idxs)))
     
     nexpected_frames = runinfo['nvolumes'] * runinfo['ntiffs']
+    print "NVOLUMES: %i" % runinfo['nvolumes']
+    print "N TIFFS: %i" % runinfo['ntiffs']
     nfound_frames = len(frame_on_idxs)
     frame_offsets = {}
     if nexpected_frames != nfound_frames:
+        # First check if there are discard frames (volumetric):
+        raw_dir = serialfn_path.split('/paradigm_files/')[0]
+        raw_si_path = glob.glob(os.path.join(raw_dir, '*SI*.json'))[0]
+        with open(raw_si_path, 'r') as f: rawsi = json.load(f)
+        nframes_per_volume = rawsi['File001']['SI']['hFastZ']['numFramesPerVolume'] #['numDiscardFlybackFrames'] 
+        nexpected_frames = nexpected_frames * nframes_per_volume 
+       
+    if nexpected_frames != nfound_frames: 
         nframes_off = nexpected_frames - nfound_frames
         print "*** Warning:  N expected (%i) does not match N found (%i).\n Missing %i frames." % (nexpected_frames, nfound_frames, nframes_off)
         if nframes_off < 0:
@@ -544,6 +555,11 @@ def extract_options(options):
                       dest="blank_start", default=True, help="Set flag if no ITI blank period before first trial.")
     parser.add_option('-b', '--boundidx', action="store",
                       dest="boundidx", default=0, help="Bound idx if single_run is True [default: 0]")
+
+    parser.add_option('--auto', action="store_true",
+                      dest="auto", default=False, help="Set flag if NOT interactive.")
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -713,6 +729,7 @@ def main(options):
     retinobar = options.retinobar
     phasemod = options.phasemod
     dynamic = options.dynamic
+    auto = options.auto
     
     trigger_varname = options.frametrigger_varname
     single_run = options.single_run
@@ -734,6 +751,8 @@ def main(options):
         mwopts.extend(['--multi'])
     if verbose is True:
         mwopts.extend(['--verbose'])
+    if auto is True:
+        mwopts.extend(['--auto'])
 
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)

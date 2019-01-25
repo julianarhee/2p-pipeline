@@ -20,6 +20,7 @@ from pipeline.python.paradigm import process_mw_files as mw
 
 from pipeline.python.utils import natural_keys, replace_root
 from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
+from pipeline.python.traces import get_traces as traces
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -37,6 +38,9 @@ def extract_options(options):
     parser.add_option('-d', '--analysis-id', action='store', dest='analysis_id', default='', 
                         help="ANALYSIS ID for retinoid param set to use (created with set_analysis_parameters.py, e.g., analysis001,  etc.)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
+
+    parser.add_option('-a', '--np-niter', action='store', dest='np_niter', default=10, help="n iterations for creating neuropil annulus (default: 10. standard is 20 for zoom2p0x, 10 for zoom4p0x")
+
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True and 'coxfs01' not in options.rootdir:
@@ -65,7 +69,10 @@ def block_mean_stack(stack0, ds_factor, along_axis=2):
         for i in range(0,stack0.shape[2]):
             stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
     else:
+        # This is for downsampling masks:
         im0 = block_mean(stack0[0,:,:],ds_factor) 
+        print "... block mean on MASKS by %i (target: %s)" % (ds_factor, str(im0.shape))
+
         stack1 = np.zeros((stack0.shape[0], im0.shape[0], im0.shape[1]))
         for i in range(stack0.shape[0]):
             stack1[i,:,:] = block_mean(stack0[i,:,:],ds_factor) 
@@ -87,7 +94,7 @@ def smooth_stack(stack0, fwhm):
             stack1[:,:,i] = smooth_array(stack0[:,:,i], fwhm) 
     return stack1
 
-def get_processed_stack(tiff_path_full,RETINOID):
+def get_processed_stack(tiff_path_full,RETINOID, slicenum=0):
     # Read in RAW tiff: 
     print('Loading file : %s'%(tiff_path_full))
     stack0 = tf.imread(tiff_path_full)
@@ -97,11 +104,18 @@ def get_processed_stack(tiff_path_full,RETINOID):
     runinfo_fpath = glob.glob(os.path.join(rundir, '*.json'))[0]
     with open(runinfo_fpath, 'r') as f: runinfo = json.load(f)
     nvolumes = runinfo['nvolumes']
-    if stack0.shape[0] != nvolumes and runinfo['nchannels'] == 2:
-        tmpstack = copy.copy(stack0)
-        stack0 = tmpstack[0::2, :, :]
-        print "Got SIGNAL channel 01 only."
- 
+    nslices = len(runinfo['slices'])
+    if stack0.shape[0] != nvolumes:
+        if runinfo['nchannels'] == 2:
+            tmpstack = copy.copy(stack0)
+            stack0 = tmpstack[0::2, :, :]
+            print "Got SIGNAL channel 01 only."
+        elif nslices > 1:
+            tmpstack = copy.copy(stack0)
+            stack0 = tmpstack[slicenum::nslices, :, :]
+            print "Got SLICE %i only." % int(slicenum+1)
+
+
     #swap axes for familiarity
     stack1 = np.swapaxes(stack0,0,2)
     stack1 = np.swapaxes(stack1,1,0)
@@ -214,15 +228,21 @@ def get_mask_traces(tiff_stack,masks):
 
 	
 
-def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir,masks_file):
+def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir,masks_file,slicenum=0, np_cfactor=0.7):
 
 
 	#intialize file to save data
-	data_fn = 'retino_data_%s.h5' %(tiff_fn[:-4])
+        
+	data_str = tiff_fn[:-4]
+        if 'Slice' not in data_str:
+            data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
+        print data_str
+
+        data_fn = 'retino_data_%s.h5' % data_str
 	file_grp = h5py.File(os.path.join(file_dir,data_fn),  'w')
 
 	 #get tiff stack
-	tiff_stack = get_processed_stack(tiff_path_full,RETINOID)
+	tiff_stack = get_processed_stack(tiff_path_full,RETINOID,slicenum=slicenum)
 	szx, szy, nframes = tiff_stack.shape
 
 	#save some details
@@ -231,7 +251,9 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 	file_grp.attrs['frame_rate'] = stack_info['frame_rate']
 	file_grp.attrs['stimfreq'] = stack_info['stimfreq']
 
-
+        s0 = data_str 
+	file_str = s0[s0.find('File'):s0.find('File')+7]
+        slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 
 	if RETINOID['PARAMS']['roi_type'] == 'pixels':
 
@@ -240,7 +262,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 
 	elif RETINOID['PARAMS']['roi_type'] == 'retino':
 		#get saved masks for this tiff stack
-		s0 = tiff_fn[:-4]
+		s0 = data_str #tiff_fn[:-4]
 		file_str = s0[s0.find('File'):s0.find('File')+7]
 		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 		masks = masks_file[file_str]['masks'][slice_str][:]
@@ -254,25 +276,81 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		
 	else:
 		#get saved masks for this tiff stack
-		s0 = tiff_fn[:-4]
-		file_str = masks_file.keys()[0]
-		print(file_str)
+                assert file_str in masks_file.keys(), "... warped mask for file %s not found." % file_str
+                mask_file_str = file_str         
+
 		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
-                print slice_str
-                print masks_file.keys()
-                print masks_file[masks_file.keys()[0]]['masks'].keys()
-                slice_str = masks_file[file_str]['masks'].keys()[0]
-		masks = masks_file[file_str]['masks'][slice_str][:]
+                #assert slice_str in masks_file[mask_file_str].keys(), "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str)
+                if slice_str not in masks_file[mask_file_str].keys():
+                    print "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str) 
+                    return
+
+                mask_slice_str = slice_str
+
+		print('... processing file | slice: %s | %s' % (file_str, slice_str))
+                
+
+                #print masks_file[masks_file.keys()[0]]['masks'].keys()
+                #slice_str = masks_file[file_str]['masks'].keys()[0]
+		#masks = masks_file[file_str]['masks'][slice_str][:]
+                masks = masks_file[mask_file_str][mask_slice_str]['maskarray'][:]
+                # reshape mask array
+                d1, d2 = masks_file[mask_file_str][mask_slice_str]['zproj'].shape
+                nrois = masks.shape[-1]
+                masks = np.reshape(masks, (d1, d2, nrois))
+                
+                # swap axes to make it nrois, d2, d1
+                masks = masks.T #np.swapaxes(0, 2)
+                print "Loaded processed masks: %s" % str(masks.shape)
+
 		#swap axes for familiarity
-		masks = np.swapaxes(masks,1,2)
+		masks = np.swapaxes(masks,1,2) # visualization  
+
                 if RETINOID['PARAMS']['downsample_factor'] is not None:
                     masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
                 print "MASKS:", masks.shape
-
+                print "TIFFS:", tiff_stack.shape
+                nrois, mask_d1, mask_d2 = masks.shape
+                tiff_d1, tiff_d2, nframes = tiff_stack.shape 
+                if mask_d1 > tiff_d1:
+                    ds_1 = mask_d1 / tiff_d1
+                    ds_2 = mask_d2/ tiff_d2
+                    print "Resizing masks from %s by (%i, %i)." % (str(masks.shape), ds_1, ds_2)
+                    masks_ds = np.empty((nrois, tiff_d1, tiff_d2), dtype=masks.dtype)
+                    for ri in range(nrois):
+                        mask_ds = cv2.resize(masks[ri, :, :], (mask_d1//ds_1, mask_d2//ds_2), interpolation=cv2.INTER_NEAREST)
+                        masks_ds[ri, :, :] = mask_ds
+                    masks = copy.copy(masks_ds)
+                    print "Resized masks: %s" % str(masks.shape)
+  
 		nmasks, szx, szy= masks.shape
 
 		#apply masks to stack
-		roi_trace = get_mask_traces(tiff_stack,masks)
+		#roi_trace = get_mask_traces(tiff_stack,masks)
+ 
+                # apply masks to stack and do neuropil correction:
+                np_maskarray = masks_file[mask_file_str][mask_slice_str]['np_maskarray'][:]
+
+                if RETINOID['PARAMS']['downsample_factor'] is not None:
+                    np_masks = np.reshape(np_maskarray, (d1, d2, nrois))
+                    # swap axes to make it nrois, d2, d1
+                    np_masks = np_masks.T #np.swapaxes(0, 2)
+
+		    #swap axes for familiarity
+		    np_masks = np.swapaxes(np_masks,1,2) # visualization  
+                    np_masks = block_mean_stack(np_masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
+                    print "Reshaping np masks: %s" % str(np_masks.shape)
+                    np_maskarray = np.reshape(np_masks, (nmasks, szx*szy)).T
+
+                masks_r = np.reshape(masks, (nmasks, szx*szy))
+                tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
+ 
+                soma_trace = masks_r.dot(tiffs_r)
+                np_trace = np_maskarray.T.dot(tiffs_r)
+                roi_trace = soma_trace - (np_cfactor * np_trace)
+ 
+                print "... applied masks. roi_trace shape: %s" % str(roi_trace.shape)
+
 
 	roi_trace = process_array(roi_trace, RETINOID, stack_info)
 
@@ -361,7 +439,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 	#visualize pixel-based results
 	if RETINOID['PARAMS']['roi_type'] == 'pixels':
 
-		fig_name = 'best_pixel_power_%s.png' %(tiff_fn[:-4])
+		fig_name = 'best_pixel_power_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.plot(freqs,mag_data[max_mod_idx,:])
 		plt.xlabel('Frequency (Hz)',fontsize=16)
@@ -372,7 +450,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'best_pixel_power_zoom_%s.png' %(tiff_fn[:-4])
+		fig_name = 'best_pixel_power_zoom_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.plot(freqs[0:top_freq_idx],mag_data[max_mod_idx,0:top_freq_idx])
 		plt.xlabel('Frequency (Hz)',fontsize=16)
@@ -388,7 +466,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		periodstartframes=np.round(np.arange(0,len(frametimes),stimperiod_frames))[:-1]
 		periodstartframes = periodstartframes.astype('int')
 
-		fig_name = 'best_pixel_frequency_fit_%s.png' %(tiff_fn[:-4])
+		fig_name = 'best_pixel_frequency_fit_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.plot(frametimes,roi_trace[max_mod_idx,:],'b')
 		plt.plot(frametimes,signal_fit,'r')
@@ -410,7 +488,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		varexp_map = np.reshape(varexp_array,(szy,szx))
 
 
-		fig_name = 'phase_map_%s.png' %(tiff_fn[:-4])
+		fig_name = 'phase_map_%s.png' % data_str #(tiff_fn[:-4])
 		#set phase map range for visualization
 		phase_map_disp=np.copy(phase_map)
 		phase_map_disp[phase_map<0]=-phase_map[phase_map<0]
@@ -422,28 +500,28 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'mag_map_%s.png' %(tiff_fn[:-4])
+		fig_name = 'mag_map_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(mag_map)
 		plt.colorbar()
 		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'mag_ratio_map_%s.png' %(tiff_fn[:-4])
+		fig_name = 'mag_ratio_map_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(mag_ratio_map)
 		plt.colorbar()
 		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'beta_map_%s.png' %(tiff_fn[:-4])
+		fig_name = 'beta_map_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(beta_map)
 		plt.colorbar()
 		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'var_exp_map_%s.png' %(tiff_fn[:-4])
+		fig_name = 'var_exp_map_%s.png' % data_str #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(varexp_map)
 		plt.colorbar()
@@ -455,7 +533,13 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                 
                 # Find corresponding avg img/file path by current file name:
                 curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s.tif' % curr_file))[0] 
+                curr_slice = 'Slice%02d' % int(slicenum+1)
+                #curr_slice = str(re.search('Slice(\d{2})', tiff_fn).group(0))
+
+
+                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
+                print "Loaded avg img: %s" % avg_img_path
+
                 im0 = tf.imread(avg_img_path)
 
 #		s0 = tiff_fn[:-4]
@@ -468,7 +552,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
 		im2 = np.dstack((im1,im1,im1))
 
-		fig_name = 'phase_map_overlay_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'phase_map_overlay_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 
 
 		fig=plt.figure()
@@ -480,7 +564,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 	else:
 
 		#make figure directory for stimulus type
-		fig_dir = os.path.join(tiff_fig_dir, file_str,'spectrum')
+		fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'spectrum')
 		if not os.path.exists(fig_dir):
 		    os.makedirs(fig_dir)
 
@@ -509,7 +593,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                     plt.close()
 
 
-		fig_dir = os.path.join(tiff_fig_dir, file_str,'timecourse')
+		fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'timecourse')
 		if not os.path.exists(fig_dir):
 		    os.makedirs(fig_dir)
 
@@ -548,7 +632,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 
 		for midx in range(nmasks):
                     maskpix = np.where(np.squeeze(masks[midx,:,:]))
-                    print(len(maskpix))
+                    #print(len(maskpix))
                     magratio_roi[maskpix]=mag_ratio_array[midx]
                     mag_roi[maskpix]=mag_array[midx]
                     varexp_roi[maskpix]=varexp_array[midx]
@@ -560,7 +644,10 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
                 # Find corresponding avg img/file path by current file name:
                 curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s.tif' % curr_file))[0] 
+                curr_slice = 'Slice%02d' % int(slicenum+1)
+                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
+                print "Loaded avg img: %s" % avg_img_path
+
                 im0 = tf.imread(avg_img_path)
 
 #		s0 = tiff_fn[:-4]
@@ -573,7 +660,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
 		im2 = np.dstack((im1,im1,im1))
 
-		fig_name = 'phase_info_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'phase_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
 		plt.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
@@ -581,7 +668,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'mag_info_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'mag_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
 		plt.imshow(mag_roi, alpha = 0.5)
@@ -589,7 +676,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'mag_ratio_info_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'mag_ratio_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
 		plt.imshow(magratio_roi, alpha = 0.5)
@@ -597,7 +684,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'varexp_info_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'varexp_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 		fig=plt.figure()
 		plt.imshow(im2,'gray')
 		plt.imshow(varexp_roi, alpha = 0.5)
@@ -605,7 +692,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		plt.savefig(os.path.join(fig_dir,fig_name))
 		plt.close()
 
-		fig_name = 'phase_nice_%s.png' % curr_file #(tiff_fn[:-4])
+		fig_name = 'phase_nice_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 		dpi = 80
 		szY,szX = im1.shape
 		# What size does the figure need to be in inches to fit the image?
@@ -625,7 +712,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                     os.makedirs(fig_dir)
 
                 if np.max(mag_ratio_array)>np.min(mag_ratio_array):
-                    fig_fn = 'roi_mag_ratio%s.png'%(tiff_fn[:-4])
+                    fig_fn = 'roi_mag_ratio_%s.png'% data_str #(tiff_fn[:-4])
                     bin_loc = np.arange(0,np.max(mag_ratio_array)+.002,.002)
                     plt.hist(mag_ratio_array,bin_loc)
                     plt.xlabel('Magnitude Ratio')
@@ -634,7 +721,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                     plt.close()
 
                 if np.max(phase_array)>np.min(phase_array):
-                    fig_fn = 'roi_phase%s.png'%(tiff_fn[:-4])
+                    fig_fn = 'roi_phase_%s.png'% data_str #(tiff_fn[:-4])
                     bin_loc = np.arange(0,(2*np.pi)+.2,.2)
                     plt.hist(phase_array,bin_loc)
                     plt.xlabel('Phase')
@@ -643,7 +730,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                     plt.close()
 
                 if np.max(varexp_array)>np.min(varexp_array):
-                    fig_fn = 'roi_varexp%s.png'%(tiff_fn[:-4])
+                    fig_fn = 'roi_varexp_%s.png' % data_str #(tiff_fn[:-4])
                     bin_loc = np.arange(0,np.max(varexp_array)+.01,.01)
                     plt.hist(varexp_array,bin_loc)
                     plt.xlabel('Variance Explained')
@@ -663,6 +750,8 @@ def do_analysis(options):
     acquisition = options.acquisition
     analysis_id = options.analysis_id
     run = options.run
+
+    np_niter = int(options.np_niter)
 
     #%%
     # =============================================================================
@@ -734,14 +823,15 @@ def do_analysis(options):
     ntiffs = runinfo['ntiffs']
 
     #Set file and figure directory
-    file_dir = os.path.join(RETINOID['DST'],'files')
-    if rootdir not in file_dir:
-        file_dir = replace_root(file_dir, rootdir, animalid, session)
+    retino_dest_dir = RETINOID['DST']
+    if rootdir not in retino_dest_dir:
+        retino_dest_dir = replace_root(retino_dest_dir, rootdir, animalid, session)
+
+    file_dir = os.path.join(retino_dest_dir, 'files')
     if not os.path.exists(file_dir):
         os.makedirs(file_dir)
                     
-    fig_base_dir = os.path.join(RETINOID['DST'],'figures')
-    if rootdir not in fig_base_dir: fig_base_dir = replace_root(fig_base_dir, rootdir, animalid, session)
+    fig_base_dir = os.path.join(retino_dest_dir, 'figures')
     if not os.path.exists(fig_base_dir):
         os.makedirs(fig_base_dir)
 
@@ -790,8 +880,17 @@ def do_analysis(options):
             rid_dst = RID['DST']
             notnative = False
 
-        mask_path = os.path.join(rid_dst, 'masks.hdf5')
-        masks_file = h5py.File(mask_path,  'r')#read
+        #mask_path = os.path.join(rid_dst, 'masks.hdf5')
+        #masks_file = h5py.File(mask_path,  'r')#read
+        mask_path = os.path.join(retino_dest_dir, 'MASKS.hdf5')
+        if not os.path.exists(mask_path):
+            maskinfo = traces.get_mask_info(RETINOID, RID, nslices=nslices, rootdir=rootdir)
+            print "************ masks info **************"
+            print maskinfo
+
+            mask_path = traces.get_masks(mask_path, maskinfo, RID, save_warp_images=True, do_neuropil_correction=True, niter=np_niter, rootdir=rootdir)
+        masks_file = h5py.File(mask_path, 'r')
+
     else:
         masks_file = None
 
@@ -810,20 +909,26 @@ def do_analysis(options):
         stack_info['stimulus'] = parainfo[str(tiff_count+1)]['stimuli']['stimulus']
         stack_info['stimfreq'] = parainfo[str(tiff_count+1)]['stimuli']['scale']
         stack_info['frame_rate'] = runinfo['frame_rate']
+        stack_info['nslices'] = len(runinfo['slices'])
 
         #make figure directory for stimulus type
         tiff_fig_dir = os.path.join(fig_base_dir, stack_info['stimulus'])
         if not os.path.exists(tiff_fig_dir): os.makedirs(tiff_fig_dir)
-        
-        # Check if analyzed file exists for current tif, else analyze:
-        #curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-        fid_str = os.path.splitext(tiff_fn)[0]
-        data_fn = 'retino_data_%s.h5' % fid_str #(tiff_fn[:-4])
-        analyzed_fpath = os.path.join(file_dir, data_fn)
-        if os.path.isfile(analyzed_fpath) and os.stat(analyzed_fpath).st_size > 0: #check if we already analyzed this tiff
-            print('TIFF already analyzed!')
-        else:
-            analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file)
+       
+        for slicenum in range(nslices):
+ 
+            # Check if analyzed file exists for current tif, else analyze:
+            #curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
+            fid_str = os.path.splitext(tiff_fn)[0]
+            data_str = 'retino_data_%s' % fid_str #(tiff_fn[:-4])
+            if 'Slice' not in data_str:
+                data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
+            data_fn = '%s.h5' % data_str
+            analyzed_fpath = os.path.join(file_dir, data_fn)
+            if os.path.isfile(analyzed_fpath) and os.stat(analyzed_fpath).st_size > 0: #check if we already analyzed this tiff
+                print('TIFF already analyzed!')
+            else:
+                analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file, slicenum=slicenum)
 
     if RETINOID['PARAMS']['roi_type'] != 'pixels':
         masks_file.close()
