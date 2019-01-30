@@ -447,7 +447,7 @@ def make_clean_psths(options):
         #tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
         
         sns.set_style('ticks')
-        fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(20,3*nrows+5))
+        fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(5*ncols,3*nrows+5))
         axesf = axes.flat    
         traces_list = []
         skipped_axes = []
@@ -506,7 +506,7 @@ def make_clean_psths(options):
                         if len(np.where(np.isnan(subdata[ti, :]))[0]) > 0:
                             print "-- NaN: Trial %i, %i" % (ti+1, len(np.where(np.isnan(subdata[ti, :]))[0]))
                             continue
-                        axesf[pi].plot(tpoints, subdata[ti,:], color=curr_color, linewidth=0.5, alpha=0.5)
+                        axesf[pi].plot(tpoints, subdata[ti,:], color=curr_color, linewidth=0.2, alpha=0.5)
                 else:
                     # fill between with sem:
                     axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=curr_color, alpha=0.5)
@@ -546,7 +546,7 @@ def make_clean_psths(options):
             sns.despine(offset=4, trim=True, ax=axesf[pi])
           
             # Add annotation for n trials in stim config:    
-            axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
+            axesf[pi].text(-0.999, axesf[pi].get_ylim()[-1]*0.9, 'n=%i' % subdata.shape[0])   
 
             
             #pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
