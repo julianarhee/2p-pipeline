@@ -591,7 +591,11 @@ def raw_hdf_to_dataframe(traceid_dir, roi_list=[], fmt='pkl'):
             # Get frames x roi arrays (frames in single-plane):
             tracemat = np.array(tfile[curr_slice]['traces']['np_subtracted'])  # (nvolumes x nrois)
             #if len(roi_list)==0:
-            roi_list = sorted(['roi%05d' % int(r+1) for r in tfile[curr_slice].attrs['roi_indices']], key=natural_keys)
+            if 'roi_indices' not in tfile[curr_slice].attrs.keys():
+                roi_list = sorted(['roi%05d' % int(r+1) for r in range(tracemat.shape[1])], key=natural_keys)
+                print roi_list[0:5]
+            else:
+                roi_list = sorted(['roi%05d' % int(r+1) for r in tfile[curr_slice].attrs['roi_indices']], key=natural_keys)
             curr_df = pd.DataFrame(data=tracemat, columns=roi_list, index=range(tracemat.shape[0]))
             df_list.append(curr_df)
             
