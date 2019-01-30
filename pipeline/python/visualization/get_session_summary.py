@@ -349,7 +349,7 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
         print "Combining runs:", check_run_dir
         combo_dpath = util.combine_static_runs(check_run_dir, combined_name='combined_%s_static' % stimtype, create_new=create_new, make_equal=make_equal)
         traceid_dirs = combo_dpath.split('/data_arrays')[0]
-    elif len(check_run_dir) == 1 and 'combined' in check_run_dir[0]:
+    elif len(check_run_dir) == 1 and 'combined' in check_run_dir[0] or 'dynamic' in check_run_dir[0]:
         traceid_dirs = check_run_dir[0]
     else:
         #print os.listdir(glob.glob(os.path.join(acquisition_dir, '*%s*' % stimtype))[0])
