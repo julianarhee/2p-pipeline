@@ -65,7 +65,7 @@ def create_activity_map(acquisition_dir, run, rootdir=''):
     if len(pids.keys()) > 1:
         print "Multiple processing IDs found:"
         pkeys = []
-        for pix, pkey, pid in enumerate(pids.items()):
+        for pix, (pkey, pid) in enumerate(pids.items()):
             print pix, pkey
             print '%    ', pid
             pkeys.append(pkey)
