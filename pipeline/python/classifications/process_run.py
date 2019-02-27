@@ -161,6 +161,18 @@ def main(options):
             
         optsE.run_list = [os.path.split(found_run)[-1] for found_run in found_runs] 
         optsE.traceid_list = [optsE.traceid for _ in range(len(optsE.run_list))]
+        # Make sure traceids exist:
+        run_list = copy.copy(optsE.run_list)
+        traceid_list = copy.copy(optsE.traceid_list)
+        exclude_runs = []
+        for ri, (r, t) in enumerate(zip(sorted(optsE.run_list, key=natural_keys), optsE.traceid_list)):
+            found_dfile = glob.glob(os.path.join(acquisition_dir, r, 'traces', '%s*' % t, 'data_arrays', '*.npz'))
+            if len(found_dfile) == 0:
+                exclude_runs.append(ri)
+        print("*** Excluding: %s" % str(exclude_runs))
+
+        optsE.run_list = [r for ri, r in enumerate(sorted(run_list, key=natural_keys)) if ri not in exclude_runs]
+        optsE.traceid_list = [t for ti, t in enumerate(traceid_list) if ti not in exclude_runs]
 
     print "******************************************"
     print "Processing runs [traceids]:"
