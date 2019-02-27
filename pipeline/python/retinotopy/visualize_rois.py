@@ -400,6 +400,24 @@ def roi_retinotopy(options):
         os.makedirs(output_dir)
     print "Saving output figures to:", output_dir
 
+    # load screen coord info:
+    try:
+        screen_info_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*', 'screen_*.json'))
+        if len(screen_info_fpaths) == 0:
+            screen_info_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_*.json'))
+        assert len(screen_info_fpaths) > 0, "*** No SCREEN INFO file found in epi_maps."
+        screen_info_fpath = screen_info_fpaths[0]
+        with open(screen_info_fpath, 'r') as f:
+            screen = json.load(f)
+        screen_width = screen['screen_params']['screen_size_x_degrees']
+        screen_height = screen['screen_params']['screen_size_t_degrees']
+        screen_resolution = [screen['screen_params']['screen_size_x_pixels'], screen['screen_params']['screen_size_y_pixels']]
+    except Exception as e:
+        print("--- using default screen params ---")
+        screen_width = 81.28
+        screen_height = 45.77
+        screen_resolution = [1920, 1024]
+     
 
 
     # Create DF for easy plotting:
@@ -416,11 +434,11 @@ def roi_retinotopy(options):
     retino_info = {}
     for run in run_list:
         if run in boundingbox_runs:
-            retino_info[run] = get_retino_info(azimuth='right', elevation='top',
+            retino_info[run] = get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top',
                                           leftedge=leftedge, rightedge=rightedge,
                                           bottomedge=bottomedge, topedge=topedge)
         else:
-            retino_info[run] = get_retino_info(azimuth='right', elevation='top')
+            retino_info[run] = get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
 
     # Get conversions for retinotopy & grid protocols:
     acquisition_str = '%s_%s_%s' % (animalid, session, acquisition)
