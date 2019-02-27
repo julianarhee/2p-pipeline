@@ -19,6 +19,9 @@ import pylab as pl
 import seaborn as sns
 import pandas as pd
 import h5py
+import traceback
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 import glob
 from pipeline.python.utils import natural_keys
@@ -113,6 +116,7 @@ def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_me
 #    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
     pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
     pl.ylim([-1*retino_info['height']/2., retino_info['height']/2.])
+    print("Screen limits: %s" % str([-1*retino_info['width']/2., retino_info['width']/2.]))
 
     pl.xlabel('x position')
     pl.ylabel('y position')
@@ -368,9 +372,15 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
         # Get bounding box values from epi:
         epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
         epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
+        print("Found epi sessions: %s" % str(epi_sessions))
         if len(epi_sessions) > 0:
             epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
-            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
+            print("Most recent: %s" % str(epi_sesh))
+
+            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
+            if len(epi_fpaths) == 0:
+                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
+
         else:
             print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
             epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
@@ -379,7 +389,7 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
         
         # Each epi run should have only 2 .json files (1 for each condition):
         if len(epi_fpaths) > 2:
-            print("-- found %i screen boundaries files: --")
+            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
             repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
             for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
                 print(ei, repeat_epi)
@@ -389,7 +399,11 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
                 
                 selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
+                print("Found FOVs: %s" % str(selected_fovs))
+
                 if len(selected_fovs) == 0:
+                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
+                else:
                     selected_epi = selected_fovs[0]
                 
             epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
@@ -419,7 +433,7 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 screen['bb_right'] = screen['azimuth']/2.0
     
     except Exception as e:
-        traceback.print_tb()
+        traceback.print_exc()
         
     return screen
 
@@ -498,6 +512,11 @@ def roi_retinotopy(options):
          screen_height = screen_info['elevation']
          screen_resolution = screen_info['resolution']
 
+    print("*********************************")
+    pp.pprint(screen_info)
+    print("*********************************")
+
+
     # Create DF for easy plotting:
     print "Getting DF..."
 
@@ -517,6 +536,8 @@ def roi_retinotopy(options):
                                           bottomedge=bottomedge, topedge=topedge)
         else:
             retino_info[run] = get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
+    pp.pprint(retino_info)
+
 
     # Get conversions for retinotopy & grid protocols:
     acquisition_str = '%s_%s_%s' % (animalid, session, acquisition)
