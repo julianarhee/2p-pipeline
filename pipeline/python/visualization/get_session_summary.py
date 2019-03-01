@@ -477,9 +477,11 @@ class SessionSummary():
 
         elif 'blobs' in self.traceid_dirs.keys() or 'objects' in self.traceid_dirs.keys():
             if 'blobs' in self.traceid_dirs.keys():
-                ntransforms_plot = max([2, len(self.blobs['transforms_tested'])])
+                ntransforms_plot = max([3, len(self.blobs['transforms_tested']) + 1])
+                print("N transforms: %i" % len(self.blobs['transforms_tested']))
+
             else:
-                ntransforms_plot = max([2, len(self.objects['transforms_tested'])])
+                ntransforms_plot = max([3, len(self.objects['transforms_tested'])])
 
             if 'gratings' not in self.traceid_dirs.keys():
                 nrows = 2
@@ -503,6 +505,10 @@ class SessionSummary():
         self.plot_zproj_image(ax=ax1) #fig.axes, aix=0)
 
         ax2 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 1), colspan=2)
+        if self.retinotopy is None:
+            print("----> getting retinotopy data ...")
+            self.get_retinotopy()
+
         self.plot_retinotopy_to_screen(ax=ax2) #fig.axes, aix=1)
         
         ax3 = pl.subplot2grid((nrows, ntransforms_plot+1), (0, 3), colspan=1)
@@ -610,6 +616,9 @@ class SessionSummary():
                     
         else:
             acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
+            if self.retinotopy is None:
+                self.retinotopy = {'traceid': None}
+
             if self.retinotopy['traceid'] is None:
                 # just take the first found ROI analysis
                 traceid = 'analysis*'
@@ -622,7 +631,7 @@ class SessionSummary():
             retino_run = os.path.split(retinovis_fpath.split('/retino_analysis')[0])[1]
             retino_traceid = retinovis_fpath.split('/retino_analysis')[1].split('/')[1]
             
-            ROIs, retinoid = RF.get_RF_size_estimates(acquisition_dir, 
+            ROIs, retinoid, screen_info = RF.get_RF_size_estimates(acquisition_dir, 
                                      fitness_thr=fitness_thr, 
                                      size_thr=size_thr, 
                                      analysis_id=retino_traceid, 
@@ -633,6 +642,7 @@ class SessionSummary():
             self.retinotopy['traceid'] = retino_traceid
             self.retinotopy['fitness_thr'] = fitness_thr
             self.retinotopy['size_thr'] = size_thr
+            self.retinotopy['screen_info'] = screen_info
             
             # Save this step for now:
             self.save_sessionsummary_step(key='retinotopy', val=self.retinotopy, traceset=self.traceset)
@@ -764,7 +774,7 @@ class SessionSummary():
         # -------------------------------------------------------------------------
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         RF.plot_RF_position_and_size(self.retinotopy['data'], acquisition_dir, 
-                                         self.retinotopy['source'], self.retinotopy['traceid'], 
+                                         self.retinotopy['source'], self.retinotopy['traceid'], screen_info=self.retinotopy['screen_info'],
                                          ax=ax) 
         
         
