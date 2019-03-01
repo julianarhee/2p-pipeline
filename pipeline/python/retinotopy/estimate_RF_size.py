@@ -458,7 +458,7 @@ class RetinoROI:
 
 
 
-def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None, retino_run='retino*'):
+def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None, retino_run='retino*', slurm=False):
     print "*** GETTING ESTIMATES ***"
     run_dir = glob.glob(os.path.join(acquisition_dir, '%s' % retino_run))[0]
     run = os.path.split(run_dir)[1]
@@ -769,6 +769,7 @@ def estimate_RFs_and_plot(options):
     size_thr = optsE.size_thr
     analysis_id = optsE.retino_traceid
     run = optsE.run
+    slurm = otpsE.slurm
     
     # =============================================================================
     # Get run and analysis info using analysis-ID params:
@@ -778,7 +779,7 @@ def estimate_RFs_and_plot(options):
     ROIs, retinoid = get_RF_size_estimates(acquisition_dir, 
                                  fitness_thr=fitness_thr, 
                                  size_thr=size_thr, 
-                                 analysis_id=analysis_id)
+                                 analysis_id=analysis_id, slurm=slurm)
     
     roi_outdir = os.path.join(acquisition_dir, run, 'retino_analysis', retinoid, 'traces')
     if not os.path.exists(roi_outdir): os.makedirs(roi_outdir)

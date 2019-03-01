@@ -505,6 +505,7 @@ def roi_retinotopy(options):
         interactive = False
     else:
         interactive = True
+    print("INTERACTIVE:", interactive)
     screen_info = get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=interactive, rootdir=rootdir)
     if len(screen_info.keys()) == 0:
         screen_width = 81.28
