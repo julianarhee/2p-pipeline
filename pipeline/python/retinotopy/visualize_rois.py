@@ -87,8 +87,11 @@ def get_retino_info(width=81.28, height=45.77, resolution=[1600, 900],
 
 def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
 
-    angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
+    #angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
+    angX = rundf.xs(rinfo['azimuth'], axis=0)['phase_%s' % stat_type].values 
     angY = rundf.xs(rinfo['elevation'], axis=0)['phase_%s' % stat_type].values
+    #print rundf.xs(rinfo['azimuth'], axis=0).head()
+    #print rundf.head() #.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].head()
 
     # Convert phase range to linear-coord range:
     linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
@@ -141,7 +144,7 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
