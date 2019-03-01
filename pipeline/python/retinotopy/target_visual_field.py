@@ -18,8 +18,14 @@ import pandas as pd
 import pylab as pl
 import seaborn as sns
 import numpy as np
+import scipy as sp
+import statsmodels as sm
+
 
 from pipeline.python.utils import natural_keys, label_figure
+
+from scipy.signal import argrelextrema
+
 
 #%%
 def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
@@ -467,6 +473,94 @@ def get_center_of_mass(fit, mean_phase_az, mean_phase_el, screen, marker_scale=2
 
     return fig
 
+
+def find_local_min_max(xvals, yvals):
+    
+    lmins = argrelextrema(yvals, np.less)[0]
+    lmaxs = argrelextrema(yvals, np.greater)[0]
+    lmax_value = np.max([yvals[mx] for mx in lmaxs])
+    lmax = [mx for mx in lmaxs if yvals[mx] == lmax_value][0]
+    
+    if len(lmins) == 1:
+        lmin = lmins[0]
+        if xvals[lmins] < xvals[lmax]: 
+            # min is to the left (less than), so look for max on right
+            lmin2 = lmax + np.where(yvals[lmax:]-yvals[lmin] == np.min( np.abs(yvals[lmax:]-yvals[lmin]) ))[0]            
+        else:
+            lmin2 = lmax - np.where(yvals[:lmax]-yvals[lmin] == np.min( np.abs(yvals[:lmax]-yvals[lmin]) ))[0] 
+    else:
+        lmin = sorted(lmins)[0]
+        lmin2 = sorted(lmins)[-1]
+        
+    return lmax, lmin, lmin2
+    
+ 
+def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=None):
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+        
+    ax.plot(xvals, yvals, 'k')
+    ax.plot(xvals[maxval], yvals[maxval], 'r*') # plot local max
+    ax.plot(xvals[minval1], yvals[minval1], 'b*') # plot local minima
+    ax.plot(xvals[minval2], yvals[minval2], 'b*') # plot local minima
+    ax.set_title('%s' % title)
+    ax.set_ylabel('weighted kde')
+    
+    return
+
+
+
+def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=False, marker_scale=200):
+    
+    mean_fits = fit.mean(axis=1)
+    
+    # Convert phase to linear coords:
+    screen_left = -1*screen['azimuth']/2.
+    screen_right = screen['azimuth']/2. #screen['azimuth']/2.
+    screen_lower = -1*screen['elevation']/2.
+    screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    
+    linX = convert_values(mean_phase_az, screen_left, screen_right,
+                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linY = convert_values(mean_phase_el, screen_lower, screen_upper,
+                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+
+    fig = pl.figure(figsize=(10,6))
+    ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
+    
+    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
+    ax.scatter(linX, linY, s=mean_fits*marker_scale, alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
+    ax.set_xlim([screen_left, screen_right])
+    ax.set_ylim([screen_lower, screen_upper])
+    ax.set_xlabel('xpos (deg)')
+    ax.set_ylabel('ypos (deg)')     
+
+    
+    # Draw BB from epi:
+    ax.axvline(x=kde_results['az_bounds'][0], color='k', linestyle='--', linewidth=1)
+    ax.axvline(x=kde_results['az_bounds'][1], color='k', linestyle='--', linewidth=1)
+    ax.axhline(y=kde_results['el_bounds'][0], color='k', linestyle='--', linewidth=1)
+    ax.axhline(y=kde_results['el_bounds'][1], color='k', linestyle='--', linewidth=1)
+
+    if use_peak:
+        cgx = kde_results['az_max']
+        cgy = kde_results['el_max']
+        centroid_type = 'peak'
+    else:
+        cgx = kde_results['center_x'] #np.sum(linX * mean_fits) / np.sum(mean_fits)
+        cgy = kde_results['center_y'] #np.sum(linY * mean_fits) / np.sum(mean_fits)
+        centroid_type = 'center'
+        
+    print('%s x: %f' % (centroid_type, cgx))
+    print('%s y: %f' % (centroid_type, cgy))
+    ax.scatter(cgx, cgy, color='k', marker='+', s=1e4);
+    ax.text(cgx+3, cgy+3, '%s x, y:\n(%.2f, %.2f)' % (centroid_type, cgx, cgy), fontweight='bold')
+
+    return fig
+
+
+
 #%%
 
 
@@ -640,10 +734,9 @@ def main(options):
 #    ax.set_ylabel('ypos (deg)') 
     
     #%%
-    import scipy as sp
-    from sklearn.neighbors import KernelDensity
-    from sklearn.grid_search import GridSearchCV
-    
+#    from sklearn.neighbors import KernelDensity
+#    from sklearn.grid_search import GridSearchCV
+#    
     # 1.  Find best BW, KDE with sklearn:
 #    vals = np.linspace(screen_left, screen_right, len(mean_fits))
 #    grid = GridSearchCV(KernelDensity(),
@@ -680,7 +773,6 @@ def main(options):
 
 
     # 2. Use weights with KDEUnivariate (no FFT):
-    import statsmodels as sm
     weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX.values)
     weighted_kde_az.fit(weights=mean_fits.values, fft=False)
     weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY.values)
@@ -712,8 +804,52 @@ def main(options):
     j.savefig(os.path.join(output_dir, 'weighted_marginals.png'))
     
     
+
+
+#%%
+    kde_az =  weighted_kde_az.density.copy()
+    vals_az = weighted_kde_az.support.copy()
     
+    kde_el = weighted_kde_el.density.copy()
+    vals_el = weighted_kde_el.support.copy()
     
+    az_max, az_min1, az_min2 = find_local_min_max(vals_az, kde_az)
+    el_max, el_min1, el_min2 = find_local_min_max(vals_el, kde_el)
+
+    
+
+    fig, axes = pl.subplots(1,2, figsize=(10,5)) #pl.figure();
+    plot_kde_min_max(vals_az, kde_az, maxval=az_max, minval1=az_min1, minval2=az_min2, title='azimuth', ax=axes[0])
+    plot_kde_min_max(vals_el, kde_el, maxval=el_max, minval1=el_min1, minval2=el_min2, title='elevation', ax=axes[1])
+    
+    label_figure(fig, data_identifier)
+    fig.savefig(os.path.join(output_dir, 'weighted_kde_min_max.png'))
+    
+    az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
+    el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
+    kde_results = {'az_max': vals_az[az_max],
+                   'el_max': vals_el[el_max],
+                   'az_bounds': az_bounds,
+                   'el_bounds': el_bounds,
+                   'center_x': az_bounds[1] - (az_bounds[1]-az_bounds[0]) / 2.,
+                   'center_y': el_bounds[1] - (el_bounds[1]-el_bounds[0]) / 2. }
+
+
+    print("AZIMUTH bounds: %s" % str(kde_results['az_bounds']))
+    print("ELEV bounds: %s" % str(kde_results['el_bounds']))
+    print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
+    
+    use_peak = False
+    
+    fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, marker_scale=200)
+    if use_peak:
+        centroid_type = 'peak'
+    else:
+        centroid_type = 'center'
+        
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(output_dir, 'centroid_%s_rois_by_pos.png' % centroid_type))
+
 
     #%%
     
