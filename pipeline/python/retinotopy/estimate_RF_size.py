@@ -29,7 +29,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 from pipeline.python.utils import natural_keys, label_figure, replace_root
-
+from pipeline.python.retinotopy import visualize_rois as visroi
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
@@ -535,23 +535,30 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     # =============================================================================
     # Get screen info from epi runs
     # =============================================================================
-    try:
-        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))) > 0, "No .json file found in epi_maps"
-        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))[0]
-    except Exception as e:
-        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))) > 0, "No .json file found in epi_maps"
-        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))[0]
-    print "Loading screen info from: %s" % screen_info_fpath
-    with open(screen_info_fpath, 'r') as f:
-        screen_info = json.load(f)
-    
-    
-    if 'screen_size_t_degrees' in screen_info['screen_params'].keys():
-        el_degrees_per_cycle = screen_info['screen_params']['screen_size_t_degrees']
+#    try:
+#        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))) > 0, "No .json file found in epi_maps"
+#        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))[0]
+#    except Exception as e:
+#        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))) > 0, "No .json file found in epi_maps"
+#        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))[0]
+#    print "Loading screen info from: %s" % screen_info_fpath
+#    with open(screen_info_fpath, 'r') as f:
+#        screen_info = json.load(f)
+# 
+    if slurm: 
+        interactive=False
     else:
-        el_degrees_per_cycle = screen_info['screen_params']['screen_size_y_degrees']
-    az_degrees_per_cycle = screen_info['screen_params']['screen_size_x_degrees']
-    
+        interactive=True
+    screen_info = visroi.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
+    el_degrees_per_cycle = screen_info['elevation']
+    az_degrees_per_cycle = screen_info['azimuth']
+     
+#    if 'screen_size_t_degrees' in screen_info['screen_params'].keys():
+#        el_degrees_per_cycle = screen_info['screen_params']['screen_size_t_degrees']
+#    else:
+#        el_degrees_per_cycle = screen_info['screen_params']['screen_size_y_degrees']
+#    az_degrees_per_cycle = screen_info['screen_params']['screen_size_x_degrees']
+#    
     
     
     frate = runinfo['frame_rate']
