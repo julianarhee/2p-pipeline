@@ -29,7 +29,7 @@ from pipeline.python.utils import natural_keys
 
 
 #%%
-def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
+def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
     newrange = (newmax - newmin)
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
@@ -95,8 +95,10 @@ def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
     #print rundf.head() #.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].head()
 
     # Convert phase range to linear-coord range:
-    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=2*np.pi, oldmin=0) #0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(angY, rinfo['linminH'], rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
+    if rinfo['azimuth'] == 'right':
+        linX = convert_values(angX, newmax=rinfo['linminW'], newmin=rinfo['linmaxW'], oldmax=2*np.pi, oldmin=0) #0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    if rinfo['elevation'] == 'top': 
+        linY = convert_values(angY, newmax=rinfo['linminH'], newmin=rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
     linC = np.arctan2(linY,linX)
 
     return linX, linY, linC

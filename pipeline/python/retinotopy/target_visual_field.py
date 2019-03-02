@@ -20,7 +20,7 @@ import seaborn as sns
 import numpy as np
 import scipy as sp
 import statsmodels as sm
-
+import cPickle as pkl
 
 from pipeline.python.utils import natural_keys, label_figure
 
@@ -28,7 +28,7 @@ from scipy.signal import argrelextrema
 
 
 #%%
-def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
+def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
     newrange = (newmax - newmin)
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
@@ -354,13 +354,13 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
         screen_lower = -1*screen['elevation']/2.
         screen_upper = screen['elevation']/2. #screen['elevation']/2.
         
-        linX = convert_values(mean_phase_az, screen_left, screen_right,
-                              oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-        linY = convert_values(mean_phase_el, screen_lower, screen_upper,
-                              oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+        linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
+                             oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+        linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                             oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
         
         # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
-        ax2.scatter(mean_fits, linX, c=linX*-1, cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
+        ax2.scatter(mean_fits, linX, c=linX, cmap='nipy_spectral_r', vmin=screen_left, vmax=screen_right)
         ax2.set_ylim([screen_left, screen_right])
         ax2.invert_yaxis()
         ax2.set_xlabel('mean fit')
@@ -371,7 +371,7 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
         ax2.axhline(y=screen['bb_left'], color='k', linestyle='--', linewidth=1)
         
         # Draw elevation value as a function of mean fit (color code by standard cmap, too)
-        ax3.scatter(mean_fits, linY, c=linY*-1, cmap='nipy_spectral', vmin=screen_lower, vmax=screen_upper)
+        ax3.scatter(mean_fits, linY, c=linY, cmap='nipy_spectral_r', vmin=screen_lower, vmax=screen_upper)
         ax3.set_ylim([screen_lower, screen_upper])
         ax3.invert_yaxis()
         ax3.set_xlabel('mean fit')
@@ -419,7 +419,11 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
     
     
     label_figure(fig, data_identifier)
-    figname = 'compare_fit_and_pos_by_condition_%s_%s.png' % (fov, retinoid)
+    if use_linear:
+        phase_space = 'phase'
+    else:
+        phase_space = 'linspace'
+    figname = 'compare_fit_and_pos_by_condition_%s_%s_%s.png' % (fov, retinoid, phase_space)
     
     pl.savefig(os.path.join(output_dir, 'visualization', figname))
     
@@ -427,7 +431,7 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
 
 #%%
 
-def get_center_of_mass(fit, mean_phase_az, mean_phase_el, screen, marker_scale=200):
+def get_center_of_mass(fit, linX, linY, screen, marker_scale=200):
     
     mean_fits = fit.mean(axis=1)
     
@@ -436,11 +440,6 @@ def get_center_of_mass(fit, mean_phase_az, mean_phase_el, screen, marker_scale=2
     screen_right = screen['azimuth']/2. #screen['azimuth']/2.
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
-    
-    linX = convert_values(mean_phase_az, screen_left, screen_right,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, screen_lower, screen_upper,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
 
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
@@ -485,14 +484,14 @@ def find_local_min_max(xvals, yvals):
         lmin = lmins[0]
         if xvals[lmins] < xvals[lmax]: 
             # min is to the left (less than), so look for max on right
-            lmin2 = lmax + np.where(yvals[lmax:]-yvals[lmin] == np.min( np.abs(yvals[lmax:]-yvals[lmin]) ))[0]            
+            lmin2 = lmax + np.where(np.abs(yvals[lmax:]-yvals[lmin]) == np.min( np.abs(yvals[lmax:]-yvals[lmin]) ))[0]            
         else:
-            lmin2 = lmax - np.where(yvals[:lmax]-yvals[lmin] == np.min( np.abs(yvals[:lmax]-yvals[lmin]) ))[0] 
+            lmin2 = lmax - np.where(np.abs(yvals[:lmax]-yvals[lmin]) == np.min( np.abs(yvals[:lmax]-yvals[lmin]) ))[0] 
     else:
         lmin = sorted(lmins)[0]
         lmin2 = sorted(lmins)[-1]
         
-    return lmax, lmin, lmin2
+    return lmax, lmin, lmin2, lmaxs, lmins
     
  
 def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=None):
@@ -511,7 +510,7 @@ def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=
 
 
 
-def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=False, marker_scale=200):
+def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=False, lc='k', marker_scale=200):
     
     mean_fits = fit.mean(axis=1)
     
@@ -521,11 +520,16 @@ def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
     
-    linX = convert_values(mean_phase_az, screen_left, screen_right,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, screen_lower, screen_upper,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-
+#    linX = convert_values(mean_phase_az, newmin=screen_left, newmax=screen_right,
+#                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+#    linY = convert_values(mean_phase_el, newmin=screen_lower, newmax=screen_upper,
+#                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    
+                      
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     
@@ -538,10 +542,10 @@ def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use
 
     
     # Draw BB from epi:
-    ax.axvline(x=kde_results['az_bounds'][0], color='k', linestyle='--', linewidth=1)
-    ax.axvline(x=kde_results['az_bounds'][1], color='k', linestyle='--', linewidth=1)
-    ax.axhline(y=kde_results['el_bounds'][0], color='k', linestyle='--', linewidth=1)
-    ax.axhline(y=kde_results['el_bounds'][1], color='k', linestyle='--', linewidth=1)
+    ax.axvline(x=kde_results['az_bounds'][0], color=lc, linestyle='--', linewidth=1)
+    ax.axvline(x=kde_results['az_bounds'][1], color=lc, linestyle='--', linewidth=1)
+    ax.axhline(y=kde_results['el_bounds'][0], color=lc, linestyle='--', linewidth=1)
+    ax.axhline(y=kde_results['el_bounds'][1], color=lc, linestyle='--', linewidth=1)
 
     if use_peak:
         cgx = kde_results['az_max']
@@ -612,8 +616,8 @@ def extract_options(options):
 
 #%%
 
-options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-#options = ['-i', 'JC059', '-S', '20190227', '-A', 'FOV3']
+#options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
+options = ['-i', 'JC059', '-S', '20190227', '-A', 'FOV1']
 
 
 #%%
@@ -677,24 +681,6 @@ def main(options):
     
     # Get screen info:
     screen = get_screen_info(animalid, session, rootdir=rootdir)
-
-
-    #%%
-    
-    # Get CoM:
-    mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-    mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-    
-    fig = get_center_of_mass(fit, mean_phase_az, mean_phase_el, screen, marker_scale=200)
-        
-    label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'mean_xy_CoM.png'))
-    
-    
-    #%%
-    
-    
-    mean_fits = fit.mean(axis=1)
     
     # Convert phase to linear coords:
     screen_left = -1*screen['azimuth']/2.
@@ -702,11 +688,110 @@ def main(options):
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
     
-    linX = convert_values(mean_phase_az, screen_left, screen_right,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, screen_lower, screen_upper,
-                          oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    #%%
+    
+    # Get CoM:
+    mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+    mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
 
+
+#    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left, #screen_left, #screen_left, screen_right,
+#                          oldmax=2*np.pi, oldmin=0)
+#                          #oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+#    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_lower, screen_upper,
+#                          oldmax=2*np.pi, oldmin=0)
+#                          #oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+
+    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    
+                          
+    fig = get_center_of_mass(fit, linX, linY, screen, marker_scale=200)
+        
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(output_dir, 'mean_xy_CoM.png'))
+    
+    
+    fig, ax = pl.subplots(figsize=(10,5)) # pl.figure()
+    ax.scatter(mean_phase_az, mean_phase_el)
+    ax.invert_xaxis()
+    ax.invert_yaxis()
+    fig.savefig('roi_centers_phase_space_sanitycheck.png')
+    
+    #
+    #%% 
+    select_rois = 'gratings_run1' #combined_gratings_static' # 'combined_gratings_static' # None #'gratings_run1'
+    labeled_rois = []
+    # Load "selective cells" and label:
+    if select_rois is not None:
+        fov_dir = os.path.split(run_dir)[0]
+        # Get traceids of selected run extracted with same ROIs as retino:
+        select_rois_dir = glob.glob(os.path.join(fov_dir, select_rois))[0]
+        if 'combined' in select_rois:
+            # Load one of the combined runs:
+            combo_base = select_rois.split('_')[1]
+            traceids_fpath = glob.glob(os.path.join(fov_dir, '%s_run*' % combo_base, 'traces', 'traceids*.json'))[0]
+        else:
+            traceids_fpath = glob.glob(os.path.join(select_rois_dir, 'traces', 'traceids*.json'))[0]
+        with open(traceids_fpath, 'r') as f:
+            tids = json.load(f)
+        matching_traceids = [t for t, tinfo in tids.items() if tinfo['PARAMS']['roi_id'] == retinoid_info['PARAMS']['roi_id']]
+        assert len(matching_traceids) > 0, "ERROR: No traceids for run -- %s -- with retino roi id (%s)" % (select_rois, retinoid_info['PARAMS']['roi_id'])
+        traceid = matching_traceids[0]
+        
+        roistats_fpath = glob.glob(os.path.join(select_rois_dir, 'traces', '%s*' % traceid, 'sorted_rois', 'roistats*.npz'))[0]
+        roistats = np.load(roistats_fpath)
+        labeled_rois = roistats['sorted_selective']
+        if len(labeled_rois) > 20:
+            labeled_rois = labeled_rois[0:20]
+        
+    
+    #%%
+    # -----------------------------------------------------------------------------
+    # Visualize FITS by condition:
+    # -----------------------------------------------------------------------------
+#    use_linear = True
+#    fit_thresh_az = 0.2
+#    fit_thresh_el = 0.2
+    
+    fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
+                                                 labeled_rois=[], use_linear=True,
+                                                 fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
+                                                 data_identifier=data_identifier, fov=fov, retinoid=retinoid,
+                                                 output_dir=processed_dir)
+    
+    #%%
+    #fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
+#    fig, ax = pl.subplots(figsize=(10,6))
+#    
+#
+#    mean_fits = fit.mean(axis=1)
+#    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
+#    ax.scatter(linX, linY, s=mean_fits*200, alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
+#    ax.set_xlim([screen_left, screen_right])
+#    ax.set_ylim([screen_lower, screen_upper])
+#    ax.set_xlabel('xpos (deg)')
+#    ax.set_ylabel('ypos (deg)')     
+#    for ri in good_fits:
+#        ax.text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
+#        
+#
+
+    mean_fits = fit.mean(axis=1)
+    
+#    linX = convert_values(mean_phase_az, newmin=screen_left, newmax=screen_right,
+#                         oldmax=2*np.pi, oldmin=0) # If cond is 'right':  positive values = 0, negative values = 2pi
+#    linY = convert_values(mean_phase_el, newmin=screen_lower, newmax=screen_upper,
+#                         oldmax=2*np.pi, oldmin=0) # If cond is 'top':  positive values = 0, negative values = 2pi
+    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    
+                          
+                        
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     screen_divs_az = int(round(screen['azimuth']))
@@ -724,7 +809,9 @@ def main(options):
     ax.imshow(smoothed.T)
     ax.invert_yaxis()
 
-
+    label_figure(fig, data_identifier)
+    fig.savefig(os.path.join(output_dir, 'smoothed_heatmap_rois_on_screen.png'))
+    
 
 #    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
 #    ax.scatter(linX, linY, s=mean_fits*marker_scale, alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
@@ -813,8 +900,8 @@ def main(options):
     kde_el = weighted_kde_el.density.copy()
     vals_el = weighted_kde_el.support.copy()
     
-    az_max, az_min1, az_min2 = find_local_min_max(vals_az, kde_az)
-    el_max, el_min1, el_min2 = find_local_min_max(vals_el, kde_el)
+    az_max, az_min1, az_min2, az_maxima, az_minima = find_local_min_max(vals_az, kde_az)
+    el_max, el_min1, el_min2, el_maxima, el_minima = find_local_min_max(vals_el, kde_el)
 
     
 
@@ -827,8 +914,20 @@ def main(options):
     
     az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
     el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
+    # Make sure bounds are within screen:
+    if az_bounds[0] < screen_left:
+        az_bounds[0] = screen_left
+    if az_bounds[1] > screen_right:
+        az_bounds[1] = screen_right
+    if el_bounds[0] < screen_lower:
+        el_bounds[0] = screen_lower
+    if el_bounds[1] > screen_upper:
+        el_bounds[1] = screen_upper
+        
     kde_results = {'az_max': vals_az[az_max],
                    'el_max': vals_el[el_max],
+                   'az_maxima': [vals_az[azm] for azm in az_maxima],
+                   'el_maxima': [vals_el[elm] for elm in el_maxima],
                    'az_bounds': az_bounds,
                    'el_bounds': el_bounds,
                    'center_x': az_bounds[1] - (az_bounds[1]-az_bounds[0]) / 2.,
@@ -839,16 +938,23 @@ def main(options):
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
     
-    use_peak = False
+    use_peak = True
     
-    fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, marker_scale=200)
+    fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
     if use_peak:
         centroid_type = 'peak'
     else:
         centroid_type = 'center'
         
+    for ri in good_fits:
+        fig.axes[0].text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
+        
+ 
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(output_dir, 'centroid_%s_rois_by_pos.png' % centroid_type))
+    
+    with open(os.path.join(output_dir, 'fit_centroid_results.json'), 'w') as f:
+        json.dump(kde_results, f, sort_keys=True, indent=4)
 
 
     #%%
@@ -857,48 +963,9 @@ def main(options):
     fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
                                   fov=fov, retinoid=retinoid, output_dir=processed_dir)
 
+    
 
-    #%% 
-    select_rois = 'combined_gratings_static' # None #'gratings_run1'
-    labeled_rois = []
-    # Load "selective cells" and label:
-    if select_rois is not None:
-        fov_dir = os.path.split(run_dir)[0]
-        # Get traceids of selected run extracted with same ROIs as retino:
-        select_rois_dir = glob.glob(os.path.join(fov_dir, select_rois))[0]
-        if 'combined' in select_rois:
-            # Load one of the combined runs:
-            combo_base = select_rois.split('_')[1]
-            traceids_fpath = glob.glob(os.path.join(fov_dir, '%s_run*' % combo_base, 'traces', 'traceids*.json'))[0]
-        else:
-            traceids_fpath = glob.glob(os.path.join(select_rois_dir, 'traces', 'traceids*.json'))[0]
-        with open(traceids_fpath, 'r') as f:
-            tids = json.load(f)
-        matching_traceids = [t for t, tinfo in tids.items() if tinfo['PARAMS']['roi_id'] == retinoid_info['PARAMS']['roi_id']]
-        assert len(matching_traceids) > 0, "ERROR: No traceids for run -- %s -- with retino roi id (%s)" % (select_rois, retinoid_info['PARAMS']['roi_id'])
-        traceid = matching_traceids[0]
-        
-        roistats_fpath = glob.glob(os.path.join(select_rois_dir, 'traces', '%s*' % traceid, 'sorted_rois', 'roistats*.npz'))[0]
-        roistats = np.load(roistats_fpath)
-        labeled_rois = roistats['sorted_selective']
-        if len(labeled_rois) > 20:
-            labeled_rois = labeled_rois[0:20]
-        
-    
-    #%%
-    # -----------------------------------------------------------------------------
-    # Visualize FITS by condition:
-    # -----------------------------------------------------------------------------
-#    use_linear = True
-#    fit_thresh_az = 0.2
-#    fit_thresh_el = 0.2
-    
-    fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
-                                                 labeled_rois=[], use_linear=use_linear,
-                                                 fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
-                                                 data_identifier=data_identifier, fov=fov, retinoid=retinoid,
-                                                 output_dir=processed_dir)
-    
+
     #%%
 
 
