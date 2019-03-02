@@ -420,9 +420,9 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
     
     label_figure(fig, data_identifier)
     if use_linear:
-        phase_space = 'phase'
-    else:
         phase_space = 'linspace'
+    else:
+        phase_space = 'phase'
     figname = 'compare_fit_and_pos_by_condition_%s_%s_%s.png' % (fov, retinoid, phase_space)
     
     pl.savefig(os.path.join(output_dir, 'visualization', figname))
@@ -617,7 +617,7 @@ def extract_options(options):
 #%%
 
 #options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-options = ['-i', 'JC059', '-S', '20190227', '-A', 'FOV1']
+options = ['-i', 'JC059', '-S', '20190228', '-A', 'FOV1']
 
 
 #%%
@@ -688,8 +688,16 @@ def main(options):
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
     
+
+
     #%%
     
+    threshold = 0.2
+    fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
+                                  fov=fov, retinoid=retinoid, output_dir=processed_dir)
+
+    
+#%%
     # Get CoM:
     mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
     mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
@@ -722,7 +730,7 @@ def main(options):
     
     #
     #%% 
-    select_rois = 'gratings_run1' #combined_gratings_static' # 'combined_gratings_static' # None #'gratings_run1'
+    select_rois = None #'gratings_run1' #'gratings_run1' #'gratings_run1' #combined_gratings_static' # 'combined_gratings_static' # None #'gratings_run1'
     labeled_rois = []
     # Load "selective cells" and label:
     if select_rois is not None:
@@ -938,7 +946,7 @@ def main(options):
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
     
-    use_peak = True
+    use_peak = False
     
     fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
     if use_peak:
@@ -955,15 +963,6 @@ def main(options):
     
     with open(os.path.join(output_dir, 'fit_centroid_results.json'), 'w') as f:
         json.dump(kde_results, f, sort_keys=True, indent=4)
-
-
-    #%%
-    
-    threshold = 0.2
-    fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
-                                  fov=fov, retinoid=retinoid, output_dir=processed_dir)
-
-    
 
 
     #%%
