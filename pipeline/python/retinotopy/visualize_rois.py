@@ -12,6 +12,7 @@ import optparse
 import sys
 import json
 import re
+import datetime
 import matplotlib as mpl
 mpl.use('agg')
 import numpy as np
@@ -94,7 +95,7 @@ def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
     #print rundf.head() #.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].head()
 
     # Convert phase range to linear-coord range:
-    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=2*np.pi, oldmin=0) #0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
     linY = convert_values(angY, rinfo['linminH'], rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
     linC = np.arctan2(linY,linX)
 
@@ -114,7 +115,7 @@ def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_me
         pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
         magcmap=mpl.cm.inferno
 
-    pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
+    #pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
 #    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
 #    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
     pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
@@ -133,6 +134,8 @@ def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_me
     cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
 
     if save_and_close is True:
+        datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        figname = '%s_%s.png' % (os.path.splitext(figname)[0], datestr)
         pl.savefig(os.path.join(output_dir, figname))
         pl.close()
 
@@ -552,11 +555,13 @@ def roi_retinotopy(options):
                                       save_and_close=False)
 
     if color_position:
-        cmap_str = 'Cmagr'
+        cmap_str = 'Cpos' #magr'
     else:
-        cmap_str = 'Cpos'
+        cmap_str = 'Cmagr' #pos'
+       
+    datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
-    figname = '%s_%s_magratio_mean_%s.png' % (acquisition_str, run, cmap_str)
+    figname = '%s_%s_magratio_mean_%s_%s.png' % (acquisition_str, run, cmap_str, datestr)
     pl.savefig(os.path.join(output_dir, figname))
 
 
