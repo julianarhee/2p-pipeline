@@ -120,7 +120,7 @@ def plot_signal_fits_by_roi(fit, magratio, threshold=0.2,
     label_figure(fig, data_identifier)
     figname = 'var_exp_by_roi_%s_%s.png' % (fov, retinoid)
     
-    pl.savefig(os.path.join(output_dir, 'visualization', figname))
+    pl.savefig(os.path.join(output_dir, figname))
 
     return fig
 
@@ -260,7 +260,7 @@ def label_rois(ax, xlocs, ylocs, roi_list, supp_roi_list=[]):
             
     return
     
-def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen,
+def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, use_circ=False,
                                 labeled_rois=[], use_linear=True, fit_thresh_az=0.2, fit_thresh_el=0.2,
                                 data_identifier='', fov='FOV', retinoid='retinoID', output_dir='/tmp'):
     
@@ -333,10 +333,14 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
     #%
     #use_linear = True
     
-    #mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-    #mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
-    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+    if use_circ:
+        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+    else:
+        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+
+    print "MEAN PHASE", mean_phase_el.head()
 
     
     
@@ -428,7 +432,7 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
         phase_space = 'phase'
     figname = 'compare_fit_and_pos_by_condition_%s_%s_%s.png' % (fov, retinoid, phase_space)
     
-    pl.savefig(os.path.join(output_dir, 'visualization', figname))
+    pl.savefig(os.path.join(output_dir, figname))
     
     return fig, good_fits
 
@@ -612,6 +616,12 @@ def extract_options(options):
                       help="fit threshold for elevation [default: 0.2]")
     parser.add_option('-a', '--thr-az', action='store', dest='fit_thresh_az', default=0.2, \
                       help="fit threshold for azimuth [default: 0.2]")
+    parser.add_option('-r', '--thr', action='store', dest='threshold', default=0.2, \
+                      help="fit threshold for all conds [default: 0.2]")
+    parser.add_option('--peak', action='store_true', dest='use_peak', default=False, \
+                      help='Flag to use PEAK instead of centroid of found CoMs.')
+    parser.add_option('--circ', action='store_true', dest='use_circ', default=False, \
+                      help='Flag to average by circular.')
     
     (options, args) = parser.parse_args(options)
 
@@ -638,6 +648,8 @@ def main(options):
     use_linear = opts.use_linear
     fit_thresh_az = float(opts.fit_thresh_az)
     fit_thresh_el = float(opts.fit_thresh_el) #0.2
+    use_circ = opts.use_circ
+    
     
     #%%
     
@@ -695,17 +707,20 @@ def main(options):
 
     #%%
     
-    threshold = 0.2
+    threshold = opts.threshold
     fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
-                                  fov=fov, retinoid=retinoid, output_dir=processed_dir)
+                                  fov=fov, retinoid=retinoid, output_dir=output_dir)
 
     
 #%%
     # Get CoM:
-    #mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-    #mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
-    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+    if use_circ:
+        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+    else:
+        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+
 
 #    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left, #screen_left, #screen_left, screen_right,
 #                          oldmax=2*np.pi, oldmin=0)
@@ -764,15 +779,15 @@ def main(options):
     # -----------------------------------------------------------------------------
     # Visualize FITS by condition:
     # -----------------------------------------------------------------------------
-#    use_linear = True
+    use_linear = True
 #    fit_thresh_az = 0.2
 #    fit_thresh_el = 0.2
     
     fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
-                                                 labeled_rois=[], use_linear=True,
+                                                 labeled_rois=[], use_linear=use_linear, use_circ=use_circ,
                                                  fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
                                                  data_identifier=data_identifier, fov=fov, retinoid=retinoid,
-                                                 output_dir=processed_dir)
+                                                 output_dir=output_dir)
     
     #%%
     #fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
@@ -808,7 +823,9 @@ def main(options):
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     screen_divs_az = int(round(screen['azimuth']))
     screen_divs_el = int(round(screen['elevation']))
-    heatmap, xedges, yedges = np.histogram2d(linX.values, linY.values, bins=(screen_divs_az, screen_divs_el))
+    #heatmap, xedges, yedges = np.histogram2d(linX.values, linY.values, bins=(screen_divs_az, screen_divs_el))
+    heatmap, xedges, yedges = np.histogram2d(linX, linY, bins=(screen_divs_az, screen_divs_el))
+
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
 
     ax.imshow(heatmap.T, extent=extent, origin='lower')
@@ -859,9 +876,11 @@ def main(options):
     elev_x, elev_y = j.ax_marg_y.lines[0].get_data()
     azim_x, azim_y = j.ax_marg_x.lines[0].get_data()
 
-    smstats_kde_az = sp.stats.gaussian_kde(linX.values) #, weights=mean_fits)
+    #smstats_kde_az = sp.stats.gaussian_kde(linX.values) #, weights=mean_fits)
+    smstats_kde_az = sp.stats.gaussian_kde(linX) #, weights=mean_fits)
     az_vals = np.linspace(screen_left, screen_right, len(mean_fits))
-    smstats_kde_el = sp.stats.gaussian_kde(linY.values)
+    #smstats_kde_el = sp.stats.gaussian_kde(linY.values)
+    smstats_kde_el = sp.stats.gaussian_kde(linY)
     el_vals = np.linspace(screen_lower, screen_upper, len(mean_fits))
     smstats_az = smstats_kde_az(az_vals)
     smstats_el = smstats_kde_el(el_vals)
@@ -872,9 +891,11 @@ def main(options):
 
 
     # 2. Use weights with KDEUnivariate (no FFT):
-    weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX.values)
+    #weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX.values)
+    weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX)
     weighted_kde_az.fit(weights=mean_fits.values, fft=False)
-    weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY.values)
+    #weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY.values)
+    weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY)
     weighted_kde_el.fit(weights=mean_fits.values, fft=False)
     
     fig, axes = pl.subplots(1,2, figsize=(10,5))
@@ -950,17 +971,19 @@ def main(options):
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
     
-    use_peak = False
+    use_peak = opts.use_peak
     
     fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
     if use_peak:
         centroid_type = 'peak'
     else:
         centroid_type = 'center'
-        
+       
+    print("LINX:", linX.shape)
     for ri in good_fits:
-        fig.axes[0].text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
-        
+        #fig.axes[0].text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
+        fig.axes[0].text(linX[ri], linY[ri], '%s' % (ri+1))
+
  
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(output_dir, 'centroid_%s_rois_by_pos.png' % centroid_type))
