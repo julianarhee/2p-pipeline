@@ -333,12 +333,12 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
     #%
     #use_linear = True
     
-    if use_circ:
-        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
-        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
-    else:
-        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+#    if use_circ:
+    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+#    else:
+#        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+#        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
 
     print "MEAN PHASE", mean_phase_el.head()
 
@@ -629,8 +629,8 @@ def extract_options(options):
 
 #%%
 
-#options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-options = ['-i', 'JC059', '-S', '20190228', '-A', 'FOV1']
+options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
+#options = ['-i', 'JC059', '-S', '20190228', '-A', 'FOV1']
 
 
 #%%
@@ -680,7 +680,7 @@ def main(options):
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
 
     # Create output dir:
-    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field')
+    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field2')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -714,13 +714,12 @@ def main(options):
     
 #%%
     # Get CoM:
-    if use_circ:
-        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
-        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
-    else:
-        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-
+    #if use_circ:
+    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+#    else:
+#        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+#        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
 
 #    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left, #screen_left, #screen_left, screen_right,
 #                          oldmax=2*np.pi, oldmin=0)

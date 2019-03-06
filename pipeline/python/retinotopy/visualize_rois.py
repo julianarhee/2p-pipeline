@@ -15,6 +15,7 @@ import re
 import datetime
 import matplotlib as mpl
 mpl.use('agg')
+import scipy as sp
 import numpy as np
 import pylab as pl
 import seaborn as sns
@@ -100,40 +101,52 @@ def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
     if rinfo['elevation'] == 'top': 
         linY = convert_values(angY, newmax=rinfo['linminH'], newmin=rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
     linC = np.arctan2(linY,linX)
-
+    #linC = linX.copy()
+    
     return linX, linY, linC
 
 
 def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_mean',
-                        alpha_min=0, alpha_max=1, color_position=False,
+                        alpha_min=0, alpha_max=1, color_position=False, pos_cmap='hsv', 
                         output_dir='', figname='roi_retinotopy.png', save_and_close=True):
+    
+    screen_left = -1*retino_info['width']/2.
+    screen_right = retino_info['width']/2.
+    screen_bottom = -1*retino_info['height']/2.
+    screen_top = retino_info['height']/2.
     sns.set()
     fig = pl.figure(figsize=(10,8))
     ax = fig.add_subplot(111) #, aspect=retino_info['aspect'])
     if color_position is True:
-        pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
+        print("... plotting hue as POSITION")
+        #poscmap = 'nipy_spectral_r' # hsv
+        pl.scatter(linX, linY, s=150, c=rgbas, cmap=pos_cmap, vmin=screen_left, vmax=screen_right) # vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
         magcmap = mpl.cm.Greys
     else:
+        print("... plotting hue as MAG RATIO")
         pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
         magcmap=mpl.cm.inferno
 
     #pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
 #    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
 #    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
-    pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
-    pl.ylim([-1*retino_info['height']/2., retino_info['height']/2.])
-    print("Screen limits: %s" % str([-1*retino_info['width']/2., retino_info['width']/2.]))
+    pl.xlim([screen_left, screen_right])
+    pl.ylim([screen_bottom, screen_top])
+    print("Screen limits (AZ): %s" % str([screen_left, screen_right]))
 
     pl.xlabel('x position')
     pl.ylabel('y position')
     pl.title('ROI position selectivity (%s)' % curr_metric)
     pos = ax.get_position()
     ax2 = fig.add_axes([pos.x0+.8, pos.y0, 0.01, pos.height])
-    #magcmap = mpl.cm.Greys
-#    if alpha_max < 0.05:
-#        alpha_max = 0.05
     magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
     cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
+
+    if color_position is True:
+        ax3 = fig.add_axes([pos.x0+.84, pos.y0, 0.01, pos.height])
+        poscols = mpl.colors.Normalize(vmin=screen_left, vmax=screen_right)
+        cb = mpl.colorbar.ColorbarBase(ax3, cmap=pos_cmap, norm=poscols, orientation='vertical')
+
 
     if save_and_close is True:
         datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -167,6 +180,7 @@ def extract_options(options):
     parser.add_option('--default', action='store_true', dest='auto', default=False, help="set if want to use all defaults")
 
     parser.add_option('--positions', action='store_true', dest='color_position', default=False, help="set if want to view position responses as color map (retinotopy)")
+    parser.add_option('--hue', action='store', dest='hue_pos', default=None, help="Set to color-code by position ('az', 'el', or None with --position flagged to plot arctan)")
 
     parser.add_option('-B', '--bbox', dest='boundingbox_runs', default=[], nargs=1, action='append', help="RUN that is a bounding box run (only for retino)")
     parser.add_option('-l', '--left', dest='leftedge', default=None, action='store', help="left edge of bounding box")
@@ -216,13 +230,10 @@ def assign_mag_ratios(dataframes, run, stat_type='mean', metric_type='magratio')
 
 
 def visualize_position_data(dataframes, zdf, retino_info,
-                            set_response_alpha=True, stat_type='mean', color_position=False,
+                            set_response_alpha=True, stat_type='mean', color_position=False, hue_pos=None,
                             acquisition_str='', output_dir='/tmp', save_and_close=True):
 
-    # Get RGBA mapping normalized to mag-ratio values:
-    norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
-    cmap = mpl.cm.get_cmap('hsv')
-    mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
 
     retino_runs = [k for k in retino_info.keys() if 'retino' in k]
     if color_position is False and len(retino_runs)>1:
@@ -248,7 +259,28 @@ def visualize_position_data(dataframes, zdf, retino_info,
         visinfo[run]['linC'] = linC
         visinfo[run]['metric'] = curr_metric
 
-        rgbas = np.array([mapper.to_rgba(v) for v in linC])
+        # Get RGBA mapping normalized to mag-ratio values:
+        if color_position is True:
+            if hue_pos is None:
+                norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
+                cmap_name = 'hsv'
+            else:
+                if hue_pos == 'az':
+                    norm = mpl.colors.Normalize(vmin=retino_info[run]['linminW'], vmax=retino_info[run]['linmaxW'])
+                else:
+                    norm = mpl.colors.Normalize(vmin=retino_info[run]['linminH'], vmax=retino_info[run]['linmaxH'])
+                cmap_name = 'nipy_spectral_r' # Assumes we are using RIGHT (or Top?)
+    
+        cmap = mpl.cm.get_cmap(cmap_name)
+        mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        
+        if hue_pos == 'az':
+            rgbas = np.array([mapper.to_rgba(v) for v in linX])
+        elif hue_pos == 'el':
+            rgbas = np.array([mapper.to_rgba(v) for v in linY])
+        else:
+            rgbas = np.array([mapper.to_rgba(v) for v in linC])
+
         magratios = zdf[curr_metric]
         if alpha_min is None:
             alpha_min = magratios.min()
@@ -268,15 +300,21 @@ def visualize_position_data(dataframes, zdf, retino_info,
             # Plot each ROI's "position" color-coded with angle map:
             if color_position is True:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cpos.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
-                                    alpha_min=zdf[curr_metric].min(), alpha_max=zdf[curr_metric].max(),
-                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                hue_vals = rgbas.copy()
+                alpha_min = zdf[curr_metric].min()
+                alpha_max = zdf[curr_metric].max()
+                
             else:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cmagr.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
-                                    alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
-                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                hue_vals = magratios.copy()
+#                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
+#                                    alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
+#                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
 
+            plot_roi_retinotopy(linX, linY, hue_vals, retino_info[run], curr_metric=curr_metric, pos_cmap=cmap_name, 
+                                alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
+                                output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                
     return visinfo
 
 
@@ -327,9 +365,13 @@ def get_metricdf(dfpaths):
                                        'run': run_name
                                        }))
             data = pd.concat(currdf, axis=0)
+#            metricdf1 = data.groupby(['config', 'roi']).agg({'magratio': {'magratio_mean': 'mean', 'magratio_max': 'max'},
+#                                                            'phase': {'phase_mean': 'mean'}
+#                                                            })
             metricdf = data.groupby(['config', 'roi']).agg({'magratio': {'magratio_mean': 'mean', 'magratio_max': 'max'},
-                                                            'phase': {'phase_mean': 'mean'}
+                                                            'phase': {'phase_mean': sp.stats.circmean}
                                                             })
+    
             # Get phases at max mag-ratio:
             phases_at_max = [data[(data['roi']==ind[1]) & (data['config']==ind[0]) & (data['magratio']==val)]['phase'].values[0]
                                 for ind, val in zip(metricdf['magratio']['magratio_max'].index.tolist(), metricdf['magratio']['magratio_max'].values)]
@@ -474,6 +516,7 @@ def roi_retinotopy(options):
         topedge = float(options.topedge)
         bottomedge = float(options.bottomedge)
     color_position = options.color_position
+    hue_pos = options.hue_pos
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
@@ -554,6 +597,7 @@ def roi_retinotopy(options):
                                       set_response_alpha=set_response_alpha,
                                       stat_type=stat_type,
                                       color_position=color_position,
+                                      hue_pos=hue_pos,
                                       save_and_close=False)
 
     if color_position:
