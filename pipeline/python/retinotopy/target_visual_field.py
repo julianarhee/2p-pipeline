@@ -744,7 +744,7 @@ def main(options):
     ax.scatter(mean_phase_az, mean_phase_el)
     ax.invert_xaxis()
     ax.invert_yaxis()
-    fig.savefig('roi_centers_phase_space_sanitycheck.png')
+    fig.savefig(os.path.join(output_dir, 'roi_centers_phase_space_sanitycheck.png'))
     
     #
     #%% 
