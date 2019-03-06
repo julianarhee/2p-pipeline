@@ -333,8 +333,11 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
     #%
     #use_linear = True
     
-    mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-    mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+    #mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+    #mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+
     
     
     # Convert phase to linear coords:
@@ -665,7 +668,7 @@ def main(options):
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
 
     # Create output dir:
-    output_dir = os.path.join(processed_dir, 'visualization')
+    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -699,9 +702,10 @@ def main(options):
     
 #%%
     # Get CoM:
-    mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-    mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-
+    #mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
+    #mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
+    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
+    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
 
 #    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left, #screen_left, #screen_left, screen_right,
 #                          oldmax=2*np.pi, oldmin=0)
