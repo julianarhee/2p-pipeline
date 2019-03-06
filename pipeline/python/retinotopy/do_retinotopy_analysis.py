@@ -231,9 +231,9 @@ def get_mask_traces(tiff_stack,masks):
 def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir,masks_file,slicenum=0, np_cfactor=0.7):
 
 
-	#intialize file to save data
+    #intialize file to save data
         
-	data_str = tiff_fn[:-4]
+    data_str = tiff_fn[:-4]
     s0 = data_str 
     file_str = s0[s0.find('File'):s0.find('File')+7]
     slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
@@ -243,7 +243,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
     print data_str
 
     data_fn = 'retino_data_%s.h5' % data_str
-	file_grp = h5py.File(os.path.join(file_dir,data_fn),  'w')
+    file_grp = h5py.File(os.path.join(file_dir,data_fn),  'w')
     
     # Initialize file to to save extracted ROI traces:
     traces_dir = os.path.join(file_dir.split('/files')[0], 'traces')
@@ -252,42 +252,42 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
     traces_fn = os.path.join(traces_dir, 'extracted_traces.h5')
     traces_outfile = h5py.File(traces_fn, 'a')
 
-	 #get tiff stack
-	tiff_stack = get_processed_stack(tiff_path_full,RETINOID,slicenum=slicenum)
-	szx, szy, nframes = tiff_stack.shape
+    #get tiff stack
+    tiff_stack = get_processed_stack(tiff_path_full,RETINOID,slicenum=slicenum)
+    szx, szy, nframes = tiff_stack.shape
 
-	#save some details
-	file_grp.attrs['SRC'] = tiff_path_full
-	file_grp.attrs['sz_info'] =  (szx, szy, nframes)
-	file_grp.attrs['frame_rate'] = stack_info['frame_rate']
-	file_grp.attrs['stimfreq'] = stack_info['stimfreq']
+    #save some details
+    file_grp.attrs['SRC'] = tiff_path_full
+    file_grp.attrs['sz_info'] =  (szx, szy, nframes)
+    file_grp.attrs['frame_rate'] = stack_info['frame_rate']
+    file_grp.attrs['stimfreq'] = stack_info['stimfreq']
 
 
-	if RETINOID['PARAMS']['roi_type'] == 'pixels':
+    if RETINOID['PARAMS']['roi_type'] == 'pixels':
 
-		#reshape stack
-		roi_trace = np.reshape(tiff_stack,(szx*szy, nframes))
+        #reshape stack
+        roi_trace = np.reshape(tiff_stack,(szx*szy, nframes))
 
-	elif RETINOID['PARAMS']['roi_type'] == 'retino':
-		#get saved masks for this tiff stack
-		s0 = data_str #tiff_fn[:-4]
-		file_str = s0[s0.find('File'):s0.find('File')+7]
-		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
-		masks = masks_file[file_str]['masks'][slice_str][:]
-                if RETINOID['PARAMS']['downsample_factor'] is not None:
-                    masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
+    elif RETINOID['PARAMS']['roi_type'] == 'retino':
+        #get saved masks for this tiff stack
+        s0 = data_str #tiff_fn[:-4]
+        file_str = s0[s0.find('File'):s0.find('File')+7]
+        slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
+        masks = masks_file[file_str]['masks'][slice_str][:]
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
 
-		nmasks,szx, szy= masks.shape
+        nmasks,szx, szy= masks.shape
 
-		#apply masks to stack
-		roi_trace = get_mask_traces(tiff_stack,masks)
-		
-	else:
-		#get saved masks for this tiff stack
+        #apply masks to stack
+        roi_trace = get_mask_traces(tiff_stack,masks)
+    
+    else:
+        #get saved masks for this tiff stack
         assert file_str in masks_file.keys(), "... warped mask for file %s not found." % file_str
         mask_file_str = file_str         
 
-		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
+        slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
         #assert slice_str in masks_file[mask_file_str].keys(), "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str)
         if slice_str not in masks_file[mask_file_str].keys():
             print "...warped mask for file %s -- slice %s --  not found." % (file_str, slice_str) 
@@ -310,8 +310,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         masks = masks.T #np.swapaxes(0, 2)
         print "...Loaded processed masks: %s" % str(masks.shape)
 
-		#swap axes for familiarity
-		masks = np.swapaxes(masks,1,2) # visualization  
+	#swap axes for familiarity
+	masks = np.swapaxes(masks,1,2) # visualization  
 
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
@@ -332,11 +332,11 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
             masks = copy.copy(masks_ds)
             print "...Resized masks: %s" % str(masks.shape)
   
-		nmasks, szx, szy= masks.shape
+	nmasks, szx, szy= masks.shape
 
-		#apply masks to stack
-		#roi_trace = get_mask_traces(tiff_stack,masks)
- 
+        #apply masks to stack
+        #roi_trace = get_mask_traces(tiff_stack,masks)
+
         # apply masks to stack and do neuropil correction:
         np_maskarray = masks_file[mask_file_str][mask_slice_str]['np_maskarray'][:]
         print("...NP masks: %s" % str(np_maskarray.shape))
@@ -356,12 +356,12 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
  
         #  TRACES outfile:  Save processed roi trace
-        mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), np_maskarray.shape, np_maskarray.dtype)
+        mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), masks_r.shape, masks_r.dtype)
         mset[...] = masks_r     
         mset.attrs['nmasks'] = nmasks
         mset.attrs['dims'] = (szx, szy)
         npset = traces_outfile.create_dataset('/'.join([file_str, 'np_masks']), np_maskarray.shape, np_maskarray.dtype)
-        npset[...] = masks_r     
+        npset[...] = np_maskarray     
         npset.attrs['nmasks'] = nmasks
         npset.attrs['dims'] = (szx, szy)
         
@@ -394,389 +394,397 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
     print("... Extracted traces!")
     
 
-	frame_rate = stack_info['frame_rate']
-	stimfreq = stack_info['stimfreq']
+    frame_rate = stack_info['frame_rate']
+    stimfreq = stack_info['stimfreq']
 
-	#Get fft  
-	print('Getting fft....')
-	fourier_data = np.fft.fft(roi_trace)
-
-
-	#Get magnitude and phase data
-	print('Analyzing phase and magnitude....')
-	mag_data=abs(fourier_data)
-	phase_data=np.angle(fourier_data)
-
-	#label frequency bins
-	freqs = np.fft.fftfreq(nframes, float(1/frame_rate))
-	idx = np.argsort(freqs)
-	freqs=freqs[idx]
-
-	#sort magnitude and phase data
-	mag_data=mag_data[:,idx]
-	phase_data=phase_data[:,idx]
-
-	#excluding DC offset from data
-	freqs=freqs[np.round(nframes/2)+1:]
-	mag_data=mag_data[:,np.round(nframes/2)+1:]
-	phase_data=phase_data[:,np.round(nframes/2)+1:]
-
-	freq_idx=np.argmin(np.absolute(freqs-stimfreq))#find out index of stimulation freq
-	top_freq_idx=np.where(freqs>1)[0][0]#find out index of 1Hz, to cut-off zoomed out plot
-	max_mod_idx=np.argmax(mag_data[:,freq_idx],0)#best pixel index
-
-	#unpack values from frequency analysis
-	mag_array = mag_data[:,freq_idx]                    
-	phase_array = phase_data[:,freq_idx]      
-
-	#get magnitude ratio
-	tmp=np.copy(mag_data)
-	np.delete(tmp,freq_idx,1)
-	nontarget_mag_array=np.sum(tmp,1)
-	mag_ratio_array=mag_array/nontarget_mag_array
+    #Get fft  
+    print('Getting fft....')
+    fourier_data = np.fft.fft(roi_trace)
 
 
-	#figure out timing of points (assuming constant rate)
-	frame_period = float(1/frame_rate)
-	frametimes = np.arange(frame_period,frame_period*(nframes+1),frame_period)
-	if len(frametimes)>nframes:
-		to_del = len(frametimes)-signal_length
-		frametimes = frametimes[:-to_del]
+    #Get magnitude and phase data
+    print('Analyzing phase and magnitude....')
+    mag_data=abs(fourier_data)
+    phase_data=np.angle(fourier_data)
 
-	#do regression, get some info from fit
-	t=frametimes*(2*np.pi)*stimfreq
-	phi=np.expand_dims(phase_array,1)
-	varexp_array, beta_array, signal_fit = do_regression(t,phi,roi_trace,roi_trace.shape[0],roi_trace.shape[1],\
-														 RETINOID['PARAMS']['roi_type'],max_mod_idx)
-	print('Saving data to file')
+    #label frequency bins
+    freqs = np.fft.fftfreq(nframes, float(1/frame_rate))
+    idx = np.argsort(freqs)
+    freqs=freqs[idx]
 
-	#save data values to structure
-	if 'mag_array' not in file_grp.keys():
-		magset = file_grp.create_dataset('mag_array',mag_array.shape, mag_array.dtype)
-		magset[...] = mag_array
-	if 'phase_array' not in file_grp.keys():
-		phaseset = file_grp.create_dataset('phase_array',phase_array.shape, phase_array.dtype)
-		phaseset[...] = phase_array
-	if 'mag_ratio_array' not in file_grp.keys():
-		ratioset = file_grp.create_dataset('mag_ratio_array',mag_ratio_array.shape, mag_ratio_array.dtype)
-		ratioset[...] = mag_ratio_array
-	if 'beta_array' not in file_grp.keys():
-		betaset = file_grp.create_dataset('beta_array',beta_array.shape, beta_array.dtype)
-		betaset[...] = beta_array
-	if 'var_exp_array' not in file_grp.keys():
-		varset = file_grp.create_dataset('var_exp_array',varexp_array.shape, varexp_array.dtype)
-		varset[...] = varexp_array
-	if RETINOID['PARAMS']['roi_type'] != 'pixels':
-		if 'masks' not in file_grp.keys():
-			mset = file_grp.create_dataset('masks',masks.shape, masks.dtype)
-			mset[...] = masks
-	file_grp.close()
+    #sort magnitude and phase data
+    mag_data=mag_data[:,idx]
+    phase_data=phase_data[:,idx]
+
+    #excluding DC offset from data
+    freqs=freqs[np.round(nframes/2)+1:]
+    mag_data=mag_data[:,np.round(nframes/2)+1:]
+    phase_data=phase_data[:,np.round(nframes/2)+1:]
+
+    freq_idx=np.argmin(np.absolute(freqs-stimfreq))#find out index of stimulation freq
+    top_freq_idx=np.where(freqs>1)[0][0]#find out index of 1Hz, to cut-off zoomed out plot
+    max_mod_idx=np.argmax(mag_data[:,freq_idx],0)#best pixel index
+
+    #unpack values from frequency analysis
+    mag_array = mag_data[:,freq_idx]                    
+    phase_array = phase_data[:,freq_idx]      
+
+    #get magnitude ratio
+    tmp=np.copy(mag_data)
+    np.delete(tmp,freq_idx,1)
+    nontarget_mag_array=np.sum(tmp,1)
+    mag_ratio_array=mag_array/nontarget_mag_array
 
 
-	#VISUALIZE!!!
-	print('Visualizing results')
-	print('Output folder: %s'%(tiff_fig_dir))
-	#visualize pixel-based results
-	if RETINOID['PARAMS']['roi_type'] == 'pixels':
+    #figure out timing of points (assuming constant rate)
+    frame_period = float(1/frame_rate)
+    frametimes = np.arange(frame_period,frame_period*(nframes+1),frame_period)
+    if len(frametimes)>nframes:
+        to_del = len(frametimes)-signal_length
+        frametimes = frametimes[:-to_del]
 
-		fig_name = 'best_pixel_power_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.plot(freqs,mag_data[max_mod_idx,:])
-		plt.xlabel('Frequency (Hz)',fontsize=16)
-		plt.ylabel('Magnitude',fontsize=16)
-		axes = plt.gca()
-		ymin, ymax = axes.get_ylim()
-		plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
+    #do regression, get some info from fit
+    t=frametimes*(2*np.pi)*stimfreq
+    phi=np.expand_dims(phase_array,1)
+    varexp_array, beta_array, signal_fit = do_regression(t,phi,roi_trace,roi_trace.shape[0],roi_trace.shape[1],\
+                                                                                                             RETINOID['PARAMS']['roi_type'],max_mod_idx)
+    print('Saving data to file')
 
-		fig_name = 'best_pixel_power_zoom_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.plot(freqs[0:top_freq_idx],mag_data[max_mod_idx,0:top_freq_idx])
-		plt.xlabel('Frequency (Hz)',fontsize=16)
-		plt.ylabel('Magnitude',fontsize=16)
-		axes = plt.gca()
-		ymin, ymax = axes.get_ylim()
-		plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
-
-		stimperiod_t=np.true_divide(1,stimfreq)
-		stimperiod_frames=stimperiod_t*frame_rate
-		periodstartframes=np.round(np.arange(0,len(frametimes),stimperiod_frames))[:-1]
-		periodstartframes = periodstartframes.astype('int')
-
-		fig_name = 'best_pixel_frequency_fit_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.plot(frametimes,roi_trace[max_mod_idx,:],'b')
-		plt.plot(frametimes,signal_fit,'r')
-		plt.xlabel('Time (s)',fontsize=16)
-		plt.ylabel('Pixel Value',fontsize=16)
-		axes = plt.gca()
-		ymin, ymax = axes.get_ylim()
-		for f in periodstartframes:
-			plt.axvline(x=frametimes[f], ymin=ymin, ymax = ymax, linewidth=1, color='k')
-		axes.set_xlim([frametimes[0],frametimes[-1]])
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
+    #save data values to structure
+    if 'mag_array' not in file_grp.keys():
+        magset = file_grp.create_dataset('mag_array',mag_array.shape, mag_array.dtype)
+        magset[...] = mag_array
+    if 'phase_array' not in file_grp.keys():
+        phaseset = file_grp.create_dataset('phase_array',phase_array.shape, phase_array.dtype)
+        phaseset[...] = phase_array
+    if 'mag_ratio_array' not in file_grp.keys():
+        ratioset = file_grp.create_dataset('mag_ratio_array',mag_ratio_array.shape, mag_ratio_array.dtype)
+        ratioset[...] = mag_ratio_array
+    if 'beta_array' not in file_grp.keys():
+        betaset = file_grp.create_dataset('beta_array',beta_array.shape, beta_array.dtype)
+        betaset[...] = beta_array
+    if 'var_exp_array' not in file_grp.keys():
+        varset = file_grp.create_dataset('var_exp_array',varexp_array.shape, varexp_array.dtype)
+        varset[...] = varexp_array
+   
+    # Add fit signal to retino output:
+    if 'signal_fit' not in file_grp.keys():
+        fitset = file_grp.create_dataset('signal_fit', signal_fit.shape, signal_fit.dtype)
+        fitset[...] = signal_fit
 
 
-		mag_map = np.reshape(mag_array,(szy,szx))
-		mag_ratio_map = np.reshape(mag_ratio_array,(szy,szx))
-		phase_map = np.reshape(phase_array,(szy,szx))
-		beta_map = np.reshape(beta_array,(szy,szx))
-		varexp_map = np.reshape(varexp_array,(szy,szx))
+        
+    if RETINOID['PARAMS']['roi_type'] != 'pixels':
+        if 'masks' not in file_grp.keys():
+            mset = file_grp.create_dataset('masks',masks.shape, masks.dtype)
+            mset[...] = masks
+    file_grp.close()
 
 
-		fig_name = 'phase_map_%s.png' % data_str #(tiff_fn[:-4])
-		#set phase map range for visualization
-		phase_map_disp=np.copy(phase_map)
-		phase_map_disp[phase_map<0]=-phase_map[phase_map<0]
-		phase_map_disp[phase_map>0]=(2*np.pi)-phase_map[phase_map>0]
+    #VISUALIZE!!!
+    print('Visualizing results')
+    print('Output folder: %s'%(tiff_fig_dir))
+    #visualize pixel-based results
+    if RETINOID['PARAMS']['roi_type'] == 'pixels':
 
-		fig=plt.figure()
-		plt.imshow(phase_map_disp,'nipy_spectral',vmin=0,vmax=2*np.pi)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
+        fig_name = 'best_pixel_power_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.plot(freqs,mag_data[max_mod_idx,:])
+        plt.xlabel('Frequency (Hz)',fontsize=16)
+        plt.ylabel('Magnitude',fontsize=16)
+        axes = plt.gca()
+        ymin, ymax = axes.get_ylim()
+        plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		fig_name = 'mag_map_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(mag_map)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
+        fig_name = 'best_pixel_power_zoom_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.plot(freqs[0:top_freq_idx],mag_data[max_mod_idx,0:top_freq_idx])
+        plt.xlabel('Frequency (Hz)',fontsize=16)
+        plt.ylabel('Magnitude',fontsize=16)
+        axes = plt.gca()
+        ymin, ymax = axes.get_ylim()
+        plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		fig_name = 'mag_ratio_map_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(mag_ratio_map)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
+        stimperiod_t=np.true_divide(1,stimfreq)
+        stimperiod_frames=stimperiod_t*frame_rate
+        periodstartframes=np.round(np.arange(0,len(frametimes),stimperiod_frames))[:-1]
+        periodstartframes = periodstartframes.astype('int')
 
-		fig_name = 'beta_map_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(beta_map)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
-
-		fig_name = 'var_exp_map_%s.png' % data_str #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(varexp_map)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
-
-		# #Read in average image (for viuslization)
-		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
-                
-                # Find corresponding avg img/file path by current file name:
-                curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-                curr_slice = 'Slice%02d' % int(slicenum+1)
-                #curr_slice = str(re.search('Slice(\d{2})', tiff_fn).group(0))
-
-
-                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
-                print "Loaded avg img: %s" % avg_img_path
-
-                im0 = tf.imread(avg_img_path)
-
-#		s0 = tiff_fn[:-4]
-#		s1 = s0[s0.find('Slice'):]
-#		avg_fn = 'vis_mean_%s.tif'%(s1)
-#		im0 = tf.imread(os.path.join(avg_dir, avg_fn))
-		if RETINOID['PARAMS']['downsample_factor'] is not None:
-			ds = int(RETINOID['PARAMS']['downsample_factor'])
-			im0 = block_mean(im0,ds)
-		im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
-		im2 = np.dstack((im1,im1,im1))
-
-		fig_name = 'phase_map_overlay_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        fig_name = 'best_pixel_frequency_fit_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.plot(frametimes,roi_trace[max_mod_idx,:],'b')
+        plt.plot(frametimes,signal_fit,'r')
+        plt.xlabel('Time (s)',fontsize=16)
+        plt.ylabel('Pixel Value',fontsize=16)
+        axes = plt.gca()
+        ymin, ymax = axes.get_ylim()
+        for f in periodstartframes:
+            plt.axvline(x=frametimes[f], ymin=ymin, ymax = ymax, linewidth=1, color='k')
+        axes.set_xlim([frametimes[0],frametimes[-1]])
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
 
-		fig=plt.figure()
-		plt.imshow(im2,'gray')
-		plt.imshow(phase_map_disp,'nipy_spectral',alpha=0.25,vmin=0,vmax=2*np.pi)
-		plt.colorbar()
-		plt.savefig(os.path.join(tiff_fig_dir,fig_name))
-		plt.close()
-	else:
-
-		#make figure directory for stimulus type
-		fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'spectrum')
-		if not os.path.exists(fig_dir):
-		    os.makedirs(fig_dir)
-
-		for midx in range(nmasks):
-		    fig_name = 'full_spectrum_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
-                    fig=plt.figure()
-                    plt.plot(freqs,mag_data[midx,:])
-                    plt.xlabel('Frequency (Hz)',fontsize=16)
-                    plt.ylabel('Magnitude',fontsize=16)
-                    axes = plt.gca()
-                    ymin, ymax = axes.get_ylim()
-                    plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
-                    plt.savefig(os.path.join(fig_dir,fig_name))
-                    plt.close()
-
-		for midx in range(nmasks):
-                    fig_name = 'zoom_spectrum_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
-                    fig=plt.figure()
-                    plt.plot(freqs[0:top_freq_idx],mag_data[midx,0:top_freq_idx])
-                    plt.xlabel('Frequency (Hz)',fontsize=16)
-                    plt.ylabel('Magnitude',fontsize=16)
-                    axes = plt.gca()
-                    ymin, ymax = axes.get_ylim()
-                    plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
-                    plt.savefig(os.path.join(fig_dir,fig_name))
-                    plt.close()
+        mag_map = np.reshape(mag_array,(szy,szx))
+        mag_ratio_map = np.reshape(mag_ratio_array,(szy,szx))
+        phase_map = np.reshape(phase_array,(szy,szx))
+        beta_map = np.reshape(beta_array,(szy,szx))
+        varexp_map = np.reshape(varexp_array,(szy,szx))
 
 
-		fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'timecourse')
-		if not os.path.exists(fig_dir):
-		    os.makedirs(fig_dir)
+        fig_name = 'phase_map_%s.png' % data_str #(tiff_fn[:-4])
+        #set phase map range for visualization
+        phase_map_disp=np.copy(phase_map)
+        phase_map_disp[phase_map<0]=-phase_map[phase_map<0]
+        phase_map_disp[phase_map>0]=(2*np.pi)-phase_map[phase_map>0]
 
-		stimperiod_t=np.true_divide(1,stimfreq)
-		stimperiod_frames=stimperiod_t*frame_rate
-		periodstartframes=np.round(np.arange(0,len(frametimes),stimperiod_frames))[:-1]
-		periodstartframes = periodstartframes.astype('int')
+        fig=plt.figure()
+        plt.imshow(phase_map_disp,'nipy_spectral',vmin=0,vmax=2*np.pi)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		for midx in range(nmasks):
-                    fig_name = 'timecourse_fit_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
-                    fig=plt.figure()
-                    plt.plot(frametimes,roi_trace[midx,:],'b')
-                    plt.plot(frametimes,signal_fit[midx,:],'r')
-                    plt.xlabel('Time (s)',fontsize=16)
-                    plt.ylabel('Pixel Value',fontsize=16)
-                    axes = plt.gca()
-                    ymin, ymax = axes.get_ylim()
-                    for f in periodstartframes:
-                            plt.axvline(x=frametimes[f], ymin=ymin, ymax = ymax, linewidth=1, color='k')
-                    axes.set_xlim([frametimes[0],frametimes[-1]])
-                    plt.savefig(os.path.join(fig_dir,fig_name))
-                    plt.close()
+        fig_name = 'mag_map_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(mag_map)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		#set phase map range for visualization
-		phase_array_disp=np.copy(phase_array)
-		phase_array_disp[phase_array<0]=-phase_array[phase_array<0]
-		phase_array_disp[phase_array>0]=(2*np.pi)-phase_array[phase_array>0]
+        fig_name = 'mag_ratio_map_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(mag_ratio_map)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		#mark rois
-		magratio_roi = np.empty((szy,szx))
-		magratio_roi[:] = np.NAN
+        fig_name = 'beta_map_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(beta_map)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		mag_roi = np.copy(magratio_roi)
-		varexp_roi = np.copy(magratio_roi)
-		phase_roi = np.copy(magratio_roi)
+        fig_name = 'var_exp_map_%s.png' % data_str #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(varexp_map)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
 
-		for midx in range(nmasks):
-                    maskpix = np.where(np.squeeze(masks[midx,:,:]))
-                    #print(len(maskpix))
-                    magratio_roi[maskpix]=mag_ratio_array[midx]
-                    mag_roi[maskpix]=mag_array[midx]
-                    varexp_roi[maskpix]=varexp_array[midx]
-                    phase_roi[maskpix]=phase_array_disp[midx]
+        # #Read in average image (for viuslization)
+        avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
+        
+        # Find corresponding avg img/file path by current file name:
+        curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
+        curr_slice = 'Slice%02d' % int(slicenum+1)
+        #curr_slice = str(re.search('Slice(\d{2})', tiff_fn).group(0))
 
-		fig_dir = tiff_fig_dir
 
-		# #Read in average image (for viuslization)
-		avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
-                # Find corresponding avg img/file path by current file name:
-                curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-                curr_slice = 'Slice%02d' % int(slicenum+1)
-                avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
-                print "Loaded avg img: %s" % avg_img_path
+        avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
+        print "Loaded avg img: %s" % avg_img_path
 
-                im0 = tf.imread(avg_img_path)
+        im0 = tf.imread(avg_img_path)
 
 #		s0 = tiff_fn[:-4]
 #		s1 = s0[s0.find('Slice'):]
 #		avg_fn = 'vis_mean_%s.tif'%(s1)
 #		im0 = tf.imread(os.path.join(avg_dir, avg_fn))
-		if RETINOID['PARAMS']['downsample_factor'] is not None:
-                    ds = int(RETINOID['PARAMS']['downsample_factor'])
-                    im0 = block_mean(im0,ds)
-		im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
-		im2 = np.dstack((im1,im1,im1))
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            ds = int(RETINOID['PARAMS']['downsample_factor'])
+            im0 = block_mean(im0,ds)
+        im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
+        im2 = np.dstack((im1,im1,im1))
 
-		fig_name = 'phase_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(im2,'gray')
-		plt.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
-		plt.colorbar()
-		plt.savefig(os.path.join(fig_dir,fig_name))
-		plt.close()
+        fig_name = 'phase_map_overlay_%s.png' % data_str #curr_file #(tiff_fn[:-4])
 
-		fig_name = 'mag_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(im2,'gray')
-		plt.imshow(mag_roi, alpha = 0.5)
-		plt.colorbar()
-		plt.savefig(os.path.join(fig_dir,fig_name))
-		plt.close()
 
-		fig_name = 'mag_ratio_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(im2,'gray')
-		plt.imshow(magratio_roi, alpha = 0.5)
-		plt.colorbar()
-		plt.savefig(os.path.join(fig_dir,fig_name))
-		plt.close()
+        fig=plt.figure()
+        plt.imshow(im2,'gray')
+        plt.imshow(phase_map_disp,'nipy_spectral',alpha=0.25,vmin=0,vmax=2*np.pi)
+        plt.colorbar()
+        plt.savefig(os.path.join(tiff_fig_dir,fig_name))
+        plt.close()
+    else:
 
-		fig_name = 'varexp_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-		fig=plt.figure()
-		plt.imshow(im2,'gray')
-		plt.imshow(varexp_roi, alpha = 0.5)
-		plt.colorbar()
-		plt.savefig(os.path.join(fig_dir,fig_name))
-		plt.close()
+        #make figure directory for stimulus type
+        fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'spectrum')
+        if not os.path.exists(fig_dir):
+            os.makedirs(fig_dir)
 
-		fig_name = 'phase_nice_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-		dpi = 80
-		szY,szX = im1.shape
-		# What size does the figure need to be in inches to fit the image?
-		figsize = szX / float(dpi), szY / float(dpi)
-		# Create a figure of the right size with one axes that takes up the full figure
-		fig = plt.figure(figsize=figsize)
-		ax = fig.add_axes([0, 0, 1, 1])
-		# Hide spines, ticks, etc.
-		ax.axis('off')
-		ax.imshow(im2,'gray')
-		ax.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
-		fig.savefig(os.path.join(fig_dir,fig_name), dpi=dpi, transparent=True)
-		plt.close()
+        for midx in range(nmasks):
+            fig_name = 'full_spectrum_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
+            fig=plt.figure()
+            plt.plot(freqs,mag_data[midx,:])
+            plt.xlabel('Frequency (Hz)',fontsize=16)
+            plt.ylabel('Magnitude',fontsize=16)
+            axes = plt.gca()
+            ymin, ymax = axes.get_ylim()
+            plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
+            plt.savefig(os.path.join(fig_dir,fig_name))
+            plt.close()
 
-                fig_dir = os.path.join(tiff_fig_dir,'histos')
-                if not os.path.exists(fig_dir):
-                    os.makedirs(fig_dir)
+        for midx in range(nmasks):
+            fig_name = 'zoom_spectrum_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
+            fig=plt.figure()
+            plt.plot(freqs[0:top_freq_idx],mag_data[midx,0:top_freq_idx])
+            plt.xlabel('Frequency (Hz)',fontsize=16)
+            plt.ylabel('Magnitude',fontsize=16)
+            axes = plt.gca()
+            ymin, ymax = axes.get_ylim()
+            plt.axvline(x=freqs[freq_idx], ymin=ymin, ymax = ymax, linewidth=1, color='r')
+            plt.savefig(os.path.join(fig_dir,fig_name))
+            plt.close()
 
-                if np.max(mag_ratio_array)>np.min(mag_ratio_array):
-                    fig_fn = 'roi_mag_ratio_%s.png'% data_str #(tiff_fn[:-4])
-                    bin_loc = np.arange(0,np.max(mag_ratio_array)+.002,.002)
-                    plt.hist(mag_ratio_array,bin_loc)
-                    plt.xlabel('Magnitude Ratio')
-                    plt.ylabel('ROI Count')
-                    plt.savefig(os.path.join(fig_dir,fig_fn))
-                    plt.close()
 
-                if np.max(phase_array)>np.min(phase_array):
-                    fig_fn = 'roi_phase_%s.png'% data_str #(tiff_fn[:-4])
-                    bin_loc = np.arange(0,(2*np.pi)+.2,.2)
-                    plt.hist(phase_array,bin_loc)
-                    plt.xlabel('Phase')
-                    plt.ylabel('ROI Count')
-                    plt.savefig(os.path.join(fig_dir,fig_fn))
-                    plt.close()
+        fig_dir = os.path.join(tiff_fig_dir, '%s_%s' % (file_str, slice_str),'timecourse')
+        if not os.path.exists(fig_dir):
+            os.makedirs(fig_dir)
 
-                if np.max(varexp_array)>np.min(varexp_array):
-                    fig_fn = 'roi_varexp_%s.png' % data_str #(tiff_fn[:-4])
-                    bin_loc = np.arange(0,np.max(varexp_array)+.01,.01)
-                    plt.hist(varexp_array,bin_loc)
-                    plt.xlabel('Variance Explained')
-                    plt.ylabel('ROI')
-                    plt.savefig(os.path.join(fig_dir,fig_fn))
-                    plt.close()
+        stimperiod_t=np.true_divide(1,stimfreq)
+        stimperiod_frames=stimperiod_t*frame_rate
+        periodstartframes=np.round(np.arange(0,len(frametimes),stimperiod_frames))[:-1]
+        periodstartframes = periodstartframes.astype('int')
+
+        for midx in range(nmasks):
+            fig_name = 'timecourse_fit_mask%04d_%s.png' %(midx+1,RETINOID['PARAMS']['roi_type'])
+            fig=plt.figure()
+            plt.plot(frametimes,roi_trace[midx,:],'b')
+            plt.plot(frametimes,signal_fit[midx,:],'r')
+            plt.xlabel('Time (s)',fontsize=16)
+            plt.ylabel('Pixel Value',fontsize=16)
+            axes = plt.gca()
+            ymin, ymax = axes.get_ylim()
+            for f in periodstartframes:
+                    plt.axvline(x=frametimes[f], ymin=ymin, ymax = ymax, linewidth=1, color='k')
+            axes.set_xlim([frametimes[0],frametimes[-1]])
+            plt.savefig(os.path.join(fig_dir,fig_name))
+            plt.close()
+
+        #set phase map range for visualization
+        phase_array_disp=np.copy(phase_array)
+        phase_array_disp[phase_array<0]=-phase_array[phase_array<0]
+        phase_array_disp[phase_array>0]=(2*np.pi)-phase_array[phase_array>0]
+
+        #mark rois
+        magratio_roi = np.empty((szy,szx))
+        magratio_roi[:] = np.NAN
+
+        mag_roi = np.copy(magratio_roi)
+        varexp_roi = np.copy(magratio_roi)
+        phase_roi = np.copy(magratio_roi)
+
+        for midx in range(nmasks):
+            maskpix = np.where(np.squeeze(masks[midx,:,:]))
+            #print(len(maskpix))
+            magratio_roi[maskpix]=mag_ratio_array[midx]
+            mag_roi[maskpix]=mag_array[midx]
+            varexp_roi[maskpix]=varexp_array[midx]
+            phase_roi[maskpix]=phase_array_disp[midx]
+
+        fig_dir = tiff_fig_dir
+
+        # #Read in average image (for viuslization)
+        avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
+        # Find corresponding avg img/file path by current file name:
+        curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
+        curr_slice = 'Slice%02d' % int(slicenum+1)
+        avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
+        print "Loaded avg img: %s" % avg_img_path
+
+        im0 = tf.imread(avg_img_path)
+
+#		s0 = tiff_fn[:-4]
+#		s1 = s0[s0.find('Slice'):]
+#		avg_fn = 'vis_mean_%s.tif'%(s1)
+#		im0 = tf.imread(os.path.join(avg_dir, avg_fn))
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            ds = int(RETINOID['PARAMS']['downsample_factor'])
+            im0 = block_mean(im0,ds)
+        im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
+        im2 = np.dstack((im1,im1,im1))
+
+        fig_name = 'phase_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(im2,'gray')
+        plt.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
+        plt.colorbar()
+        plt.savefig(os.path.join(fig_dir,fig_name))
+        plt.close()
+
+        fig_name = 'mag_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(im2,'gray')
+        plt.imshow(mag_roi, alpha = 0.5)
+        plt.colorbar()
+        plt.savefig(os.path.join(fig_dir,fig_name))
+        plt.close()
+
+        fig_name = 'mag_ratio_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(im2,'gray')
+        plt.imshow(magratio_roi, alpha = 0.5)
+        plt.colorbar()
+        plt.savefig(os.path.join(fig_dir,fig_name))
+        plt.close()
+
+        fig_name = 'varexp_info_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        fig=plt.figure()
+        plt.imshow(im2,'gray')
+        plt.imshow(varexp_roi, alpha = 0.5)
+        plt.colorbar()
+        plt.savefig(os.path.join(fig_dir,fig_name))
+        plt.close()
+
+        fig_name = 'phase_nice_%s.png' % data_str #curr_file #(tiff_fn[:-4])
+        dpi = 80
+        szY,szX = im1.shape
+        # What size does the figure need to be in inches to fit the image?
+        figsize = szX / float(dpi), szY / float(dpi)
+        # Create a figure of the right size with one axes that takes up the full figure
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_axes([0, 0, 1, 1])
+        # Hide spines, ticks, etc.
+        ax.axis('off')
+        ax.imshow(im2,'gray')
+        ax.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
+        fig.savefig(os.path.join(fig_dir,fig_name), dpi=dpi, transparent=True)
+        plt.close()
+
+        fig_dir = os.path.join(tiff_fig_dir,'histos')
+        if not os.path.exists(fig_dir):
+            os.makedirs(fig_dir)
+
+        if np.max(mag_ratio_array)>np.min(mag_ratio_array):
+            fig_fn = 'roi_mag_ratio_%s.png'% data_str #(tiff_fn[:-4])
+            bin_loc = np.arange(0,np.max(mag_ratio_array)+.002,.002)
+            plt.hist(mag_ratio_array,bin_loc)
+            plt.xlabel('Magnitude Ratio')
+            plt.ylabel('ROI Count')
+            plt.savefig(os.path.join(fig_dir,fig_fn))
+            plt.close()
+
+        if np.max(phase_array)>np.min(phase_array):
+            fig_fn = 'roi_phase_%s.png'% data_str #(tiff_fn[:-4])
+            bin_loc = np.arange(0,(2*np.pi)+.2,.2)
+            plt.hist(phase_array,bin_loc)
+            plt.xlabel('Phase')
+            plt.ylabel('ROI Count')
+            plt.savefig(os.path.join(fig_dir,fig_fn))
+            plt.close()
+
+        if np.max(varexp_array)>np.min(varexp_array):
+            fig_fn = 'roi_varexp_%s.png' % data_str #(tiff_fn[:-4])
+            bin_loc = np.arange(0,np.max(varexp_array)+.01,.01)
+            plt.hist(varexp_array,bin_loc)
+            plt.xlabel('Variance Explained')
+            plt.ylabel('ROI')
+            plt.savefig(os.path.join(fig_dir,fig_fn))
+            plt.close()
 
 
 def do_analysis(options):

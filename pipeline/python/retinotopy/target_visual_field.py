@@ -15,6 +15,8 @@ import sys
 import traceback
 
 import pandas as pd
+import matplotlib as mpl
+mpl.use('Agg')
 import pylab as pl
 import seaborn as sns
 import numpy as np
@@ -340,7 +342,7 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
 #        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
 #        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
 
-    print "MEAN PHASE", mean_phase_el.head()
+    #print "MEAN PHASE", mean_phase_el.head()
 
     
     
@@ -390,11 +392,11 @@ def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, 
         
         # Label good cells:
         label_rois(ax2, [mean_fits.iloc[ri] for ri in good_fits],
-                        [linX.iloc[ri] for ri in good_fits], 
+                        [linX[ri] for ri in good_fits], #[linX.iloc[ri] for ri in good_fits], 
                         good_fits, supp_roi_list=list(labeled_rois))
     
         label_rois(ax3, [mean_fits.iloc[ri] for ri in good_fits],
-                        [linY.iloc[ri] for ri in good_fits], 
+                        [linY[ri] for ri in good_fits], #[linY.iloc[ri] for ri in good_fits], 
                         good_fits, supp_roi_list=list(labeled_rois))
         
     #%
@@ -680,7 +682,7 @@ def main(options):
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
 
     # Create output dir:
-    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field2')
+    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 

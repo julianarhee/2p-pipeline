@@ -30,7 +30,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from pipeline.python.utils import natural_keys, label_figure, replace_root
 from pipeline.python.retinotopy import visualize_rois as visroi
-from pipelien.python.retinotopy import do_retinotopy_analysis as ra
+from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -80,15 +80,41 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
     rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
     unique_conditions = np.unique([rep[1] for rep in rep_list])
     conditions = dict((cond, [int(run) for run,config in rep_list if config==cond]) for cond in unique_conditions)
-    #print conditions
-    cstack = get_averaged_condition_stack(conditions, tiff_fpaths, RID)
-
+    print("CONDITIONS:", conditions)
+    
     rtraces = {}
-    for curr_cond in cstack.keys():
-        roi_traces = apply_masks_to_tifs(masks, cstack[curr_cond])
-        #print roi_traces.shape
-        rtraces[curr_cond] = roi_traces
 
+    # First check if extracted_traces file exists:
+    traces_fpath = glob.glob(os.path.join(output_dir, 'extracted_traces*.h5'))
+    extract_from_stack = False
+    try:
+        assert len(traces_fpath) == 1, "*** unable to find unique extracted_traces.h5 in dir:\n%s" % output_dir
+        traces_fpath = traces_fpath[0]
+        print("... Loading extracted traces: %s" % traces_fpath)
+        extracted = h5py.File(traces_fpath, 'r')
+        print("Found %i files of extracted traces." % len(extracted.keys()))
+        for curr_cond in conditions.keys():
+            curr_tstack = np.array([extracted['File%03d' % int(rep)]['corrected'][:] for rep in conditions[curr_cond]])
+            print("... cond: %s (stack size: %s)" % (curr_cond, str(curr_tstack.shape)))
+            rtraces[curr_cond] = np.mean(curr_tstack, axis=0)
+            print rtraces[curr_cond].shape
+
+    except Exception as e:
+        print e
+        print("Extracting ROI traces from tiff stacks...")
+        extract_from_stack = True
+    finally:
+        extracted.close()
+
+    if extract_from_stack: 
+        cstack = get_averaged_condition_stack(conditions, tiff_fpaths, RID)
+
+        for curr_cond in cstack.keys():
+            roi_traces = apply_masks_to_tifs(masks, cstack[curr_cond])
+            #print roi_traces.shape
+            rtraces[curr_cond] = roi_traces
+      
+ 
     # Smooth roi traces:
     traceinfo = dict((cond, dict()) for cond in rtraces.keys())
     for curr_cond in rtraces.keys():
@@ -463,6 +489,7 @@ class RetinoROI:
 
 def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None, retino_run='retino*', slurm=False):
     print "*** GETTING ESTIMATES ***"
+    print acquisition_dir
     run_dir = glob.glob(os.path.join(acquisition_dir, '%s' % retino_run))[0]
     run = os.path.split(run_dir)[1]
     
@@ -794,7 +821,7 @@ def estimate_RFs_and_plot(options):
     rootdir = optsE.rootdir
     animalid = optsE.animalid
     session = optsE.session
-    acquisition = optsE.session
+    acquisition = optsE.acquisition
     fitness_thr = optsE.fitness_thr
     size_thr = optsE.size_thr
     analysis_id = optsE.retino_traceid
