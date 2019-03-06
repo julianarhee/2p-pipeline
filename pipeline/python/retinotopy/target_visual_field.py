@@ -682,7 +682,7 @@ def main(options):
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
 
     # Create output dir:
-    output_dir = os.path.join(processed_dir, 'visualization', 'visual_field')
+    output_dir = os.path.join(processed_dir, 'visualization', 'VF_targeting')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
