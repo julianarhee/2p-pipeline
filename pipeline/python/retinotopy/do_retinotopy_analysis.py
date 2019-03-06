@@ -234,12 +234,23 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 	#intialize file to save data
         
 	data_str = tiff_fn[:-4]
-        if 'Slice' not in data_str:
-            data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
-        print data_str
+    s0 = data_str 
+    file_str = s0[s0.find('File'):s0.find('File')+7]
+    slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 
-        data_fn = 'retino_data_%s.h5' % data_str
+    if 'Slice' not in data_str:
+        data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
+    print data_str
+
+    data_fn = 'retino_data_%s.h5' % data_str
 	file_grp = h5py.File(os.path.join(file_dir,data_fn),  'w')
+    
+    # Initialize file to to save extracted ROI traces:
+    traces_dir = os.path.join(file_dir.split('/files')[0], 'traces')
+    if not os.path.exists(traces_dir): 
+        os.makedirs(traces_dir)
+    traces_fn = os.path.join(traces_dir, 'extracted_traces.h5')
+    traces_outfile = h5py.File(traces_fn, 'a')
 
 	 #get tiff stack
 	tiff_stack = get_processed_stack(tiff_path_full,RETINOID,slicenum=slicenum)
@@ -251,9 +262,6 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 	file_grp.attrs['frame_rate'] = stack_info['frame_rate']
 	file_grp.attrs['stimfreq'] = stack_info['stimfreq']
 
-        s0 = data_str 
-	file_str = s0[s0.find('File'):s0.find('File')+7]
-        slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 
 	if RETINOID['PARAMS']['roi_type'] == 'pixels':
 
@@ -276,83 +284,115 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 		
 	else:
 		#get saved masks for this tiff stack
-                assert file_str in masks_file.keys(), "... warped mask for file %s not found." % file_str
-                mask_file_str = file_str         
+        assert file_str in masks_file.keys(), "... warped mask for file %s not found." % file_str
+        mask_file_str = file_str         
 
 		slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
-                #assert slice_str in masks_file[mask_file_str].keys(), "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str)
-                if slice_str not in masks_file[mask_file_str].keys():
-                    print "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str) 
-                    return
+        #assert slice_str in masks_file[mask_file_str].keys(), "... warped mask for file %s -- slice %s --  not found." % (file_str, slice_str)
+        if slice_str not in masks_file[mask_file_str].keys():
+            print "...warped mask for file %s -- slice %s --  not found." % (file_str, slice_str) 
+            return
 
-                mask_slice_str = slice_str
-
-		print('... processing file | slice: %s | %s' % (file_str, slice_str))
+        mask_slice_str = slice_str
+        print('...processing file | slice: %s | %s' % (file_str, slice_str))
                 
 
-                #print masks_file[masks_file.keys()[0]]['masks'].keys()
-                #slice_str = masks_file[file_str]['masks'].keys()[0]
+        #print masks_file[masks_file.keys()[0]]['masks'].keys()
+        #slice_str = masks_file[file_str]['masks'].keys()[0]
 		#masks = masks_file[file_str]['masks'][slice_str][:]
-                masks = masks_file[mask_file_str][mask_slice_str]['maskarray'][:]
-                # reshape mask array
-                d1, d2 = masks_file[mask_file_str][mask_slice_str]['zproj'].shape
-                nrois = masks.shape[-1]
-                masks = np.reshape(masks, (d1, d2, nrois))
-                
-                # swap axes to make it nrois, d2, d1
-                masks = masks.T #np.swapaxes(0, 2)
-                print "Loaded processed masks: %s" % str(masks.shape)
+        masks = masks_file[mask_file_str][mask_slice_str]['maskarray'][:]
+        # reshape mask array
+        d1, d2 = masks_file[mask_file_str][mask_slice_str]['zproj'].shape
+        nrois = masks.shape[-1]
+        masks = np.reshape(masks, (d1, d2, nrois))
+        
+        # swap axes to make it nrois, d2, d1
+        masks = masks.T #np.swapaxes(0, 2)
+        print "...Loaded processed masks: %s" % str(masks.shape)
 
 		#swap axes for familiarity
 		masks = np.swapaxes(masks,1,2) # visualization  
 
-                if RETINOID['PARAMS']['downsample_factor'] is not None:
-                    masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
-                print "MASKS:", masks.shape
-                print "TIFFS:", tiff_stack.shape
-                nrois, mask_d1, mask_d2 = masks.shape
-                tiff_d1, tiff_d2, nframes = tiff_stack.shape 
-                if mask_d1 > tiff_d1:
-                    ds_1 = mask_d1 / tiff_d1
-                    ds_2 = mask_d2/ tiff_d2
-                    print "Resizing masks from %s by (%i, %i)." % (str(masks.shape), ds_1, ds_2)
-                    masks_ds = np.empty((nrois, tiff_d1, tiff_d2), dtype=masks.dtype)
-                    for ri in range(nrois):
-                        mask_ds = cv2.resize(masks[ri, :, :], (mask_d1//ds_1, mask_d2//ds_2), interpolation=cv2.INTER_NEAREST)
-                        masks_ds[ri, :, :] = mask_ds
-                    masks = copy.copy(masks_ds)
-                    print "Resized masks: %s" % str(masks.shape)
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
+            
+        print "...MASKS:", masks.shape
+        print "...TIFFS:", tiff_stack.shape
+        
+        nrois, mask_d1, mask_d2 = masks.shape
+        tiff_d1, tiff_d2, nframes = tiff_stack.shape 
+        if mask_d1 > tiff_d1:
+            ds_1 = mask_d1 / tiff_d1
+            ds_2 = mask_d2/ tiff_d2
+            print "...Resizing masks from %s by (%i, %i)." % (str(masks.shape), ds_1, ds_2)
+            masks_ds = np.empty((nrois, tiff_d1, tiff_d2), dtype=masks.dtype)
+            for ri in range(nrois):
+                mask_ds = cv2.resize(masks[ri, :, :], (mask_d1//ds_1, mask_d2//ds_2), interpolation=cv2.INTER_NEAREST)
+                masks_ds[ri, :, :] = mask_ds
+            masks = copy.copy(masks_ds)
+            print "...Resized masks: %s" % str(masks.shape)
   
 		nmasks, szx, szy= masks.shape
 
 		#apply masks to stack
 		#roi_trace = get_mask_traces(tiff_stack,masks)
  
-                # apply masks to stack and do neuropil correction:
-                np_maskarray = masks_file[mask_file_str][mask_slice_str]['np_maskarray'][:]
+        # apply masks to stack and do neuropil correction:
+        np_maskarray = masks_file[mask_file_str][mask_slice_str]['np_maskarray'][:]
+        print("...NP masks: %s" % str(np_maskarray.shape))
 
-                if RETINOID['PARAMS']['downsample_factor'] is not None:
-                    np_masks = np.reshape(np_maskarray, (d1, d2, nrois))
-                    # swap axes to make it nrois, d2, d1
-                    np_masks = np_masks.T #np.swapaxes(0, 2)
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            np_masks = np.reshape(np_maskarray, (d1, d2, nrois))
+            # swap axes to make it nrois, d2, d1
+            np_masks = np_masks.T #np.swapaxes(0, 2)
+            
+            #swap axes for familiarity
+            np_masks = np.swapaxes(np_masks,1,2) # visualization  
+            np_masks = block_mean_stack(np_masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
+            print "...Reshaping np masks: %s" % str(np_masks.shape)
+            np_maskarray = np.reshape(np_masks, (nmasks, szx*szy)).T
 
-		    #swap axes for familiarity
-		    np_masks = np.swapaxes(np_masks,1,2) # visualization  
-                    np_masks = block_mean_stack(np_masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
-                    print "Reshaping np masks: %s" % str(np_masks.shape)
-                    np_maskarray = np.reshape(np_masks, (nmasks, szx*szy)).T
-
-                masks_r = np.reshape(masks, (nmasks, szx*szy))
-                tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
+        masks_r = np.reshape(masks, (nmasks, szx*szy))
+        tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
  
-                soma_trace = masks_r.dot(tiffs_r)
-                np_trace = np_maskarray.T.dot(tiffs_r)
-                roi_trace = soma_trace - (np_cfactor * np_trace)
+        #  TRACES outfile:  Save processed roi trace
+        mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), np_maskarray.shape, np_maskarray.dtype)
+        mset[...] = masks_r     
+        mset.attrs['nmasks'] = nmasks
+        mset.attrs['dims'] = (szx, szy)
+        npset = traces_outfile.create_dataset('/'.join([file_str, 'np_masks']), np_maskarray.shape, np_maskarray.dtype)
+        npset[...] = masks_r     
+        npset.attrs['nmasks'] = nmasks
+        npset.attrs['dims'] = (szx, szy)
+        
+        # APply masks to tiff:
+        soma_trace = masks_r.dot(tiffs_r)
+        np_trace = np_maskarray.T.dot(tiffs_r)
+        roi_trace = soma_trace - (np_cfactor * np_trace)
  
-                print "... applied masks. roi_trace shape: %s" % str(roi_trace.shape)
+        print "... applied masks. roi_trace shape: %s" % str(roi_trace.shape)
+
+        #  TRACES outfile:  Save extracted traces
+        rset = traces_outfile.create_dataset('/'.join([file_str, 'raw']), soma_trace.shape, soma_trace.dtype)
+        rset[...] = soma_trace 
+        nset = traces_outfile.create_dataset('/'.join([file_str, 'neuropil']), np_trace.shape, np_trace.dtype)
+        nset[...] = np_trace 
+        #nset.attrs['correction_factor'] = np_cfactor
+        tset = traces_outfile.create_dataset('/'.join([file_str, 'corrected']), roi_trace.shape, roi_trace.dtype)
+        tset[...] = roi_trace 
+        tset.attrs['correction_factor'] = np_cfactor
 
 
 	roi_trace = process_array(roi_trace, RETINOID, stack_info)
+    
+    #  TRACES outfile:  Save processed roi trace
+    pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
+    pset[...] = roi_trace 
+    pset.attrs['source'] = tiff_path_full
+    pset.attrs['dims'] = szx, szy, nframes
+    traces_outfile.close()
+    print("... Extracted traces!")
+    
 
 	frame_rate = stack_info['frame_rate']
 	stimfreq = stack_info['stimfreq']
