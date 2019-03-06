@@ -838,7 +838,7 @@ def estimate_RFs_and_plot(options):
                                                          size_thr=size_thr, 
                                                          analysis_id=analysis_id, slurm=slurm)
                             
-    roi_outdir = os.path.join(acquisition_dir, run, 'retino_analysis', retinoid, 'visulization')
+    roi_outdir = os.path.join(acquisition_dir, run, 'retino_analysis', retinoid, 'visualization')
     if not os.path.exists(roi_outdir): os.makedirs(roi_outdir)
     roi_outfile = os.path.join(roi_outdir, '%s_RF_estimates.pkl' % retinoid)
     with open(roi_outfile, 'wb') as f:
