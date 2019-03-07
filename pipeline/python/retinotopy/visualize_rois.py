@@ -61,20 +61,30 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
 
     return lin_coord_x, lin_coord_y
 
-def get_retino_info(width=81.28, height=45.77, resolution=[1600, 900],
+def get_retino_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data',
                     azimuth='right', elevation='top',
                     leftedge=None, rightedge=None, bottomedge=None, topedge=None):
 
-    lin_coord_x, lin_coord_y = get_linear_coords(width, height, resolution, leftedge=leftedge, rightedge=rightedge, bottomedge=bottomedge, topedge=topedge)
+    screen_info = get_screen_info(animalid, session, fov=fov, interactive=interactive,
+                                  rootdir=rootdir)
+
+    lin_coord_x, lin_coord_y = get_linear_coords(screen_info['azimuth'], 
+                                                 screen_info['elevation'], 
+                                                 screen_info['resolution'], 
+                                                 leftedge=leftedge, rightedge=rightedge, 
+                                                 bottomedge=bottomedge, topedge=topedge)
+    
     linminW = lin_coord_x.min(); linmaxW = lin_coord_x.max()
     linminH = lin_coord_y.min(); linmaxH = lin_coord_y.max()
 
+        
+        
     retino_info = {}
-    retino_info['width'] = width
-    retino_info['height'] = height
-    retino_info['resolution'] = resolution
-    aspect_ratio = float(height)/float(width)
-    retino_info['aspect'] = aspect_ratio
+    retino_info['width'] = screen_info['azimuth']
+    retino_info['height'] = screen_info['elevation']
+    retino_info['resolution'] = screen_info['resolution']
+    #aspect_ratio = float(height)/float(width)
+    retino_info['aspect'] = retino_info['height'] / retino_info['width']#aspect_ratio
     retino_info['azimuth'] = azimuth
     retino_info['elevation'] = elevation
     retino_info['linminW'] = linminW
@@ -481,7 +491,12 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 screen['bb_upper'] = screen['elevation']/2.0
                 screen['bb_left']  = -1*screen['azimuth']/2.0
                 screen['bb_right'] = screen['azimuth']/2.0
-    
+
+
+        print("*********************************")
+        pp.pprint(screen)
+        print("*********************************")
+      
     except Exception as e:
         traceback.print_exc()
         
@@ -554,19 +569,19 @@ def roi_retinotopy(options):
     else:
         interactive = True
     print("INTERACTIVE:", interactive)
-    screen_info = get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=interactive, rootdir=rootdir)
-    if len(screen_info.keys()) == 0:
-        screen_width = 81.28
-        screen_height = 45.77
-        screen_resolution = [1920, 1024]
-    else:
-         screen_width = screen_info['azimuth']
-         screen_height = screen_info['elevation']
-         screen_resolution = screen_info['resolution']
-
-    print("*********************************")
-    pp.pprint(screen_info)
-    print("*********************************")
+#    screen_info = get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=interactive, rootdir=rootdir)
+#    if len(screen_info.keys()) == 0:
+#        screen_width = 81.28
+#        screen_height = 45.77
+#        screen_resolution = [1920, 1024]
+#    else:
+#        screen_width = screen_info['azimuth']
+#        screen_height = screen_info['elevation']
+#        screen_resolution = screen_info['resolution']
+#
+#    print("*********************************")
+#    pp.pprint(screen_info)
+#    print("*********************************")
 
 
     # Create DF for easy plotting:
@@ -583,11 +598,15 @@ def roi_retinotopy(options):
     retino_info = {}
     for run in run_list:
         if run in boundingbox_runs:
-            retino_info[run] = get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top',
-                                          leftedge=leftedge, rightedge=rightedge,
-                                          bottomedge=bottomedge, topedge=topedge)
+            retino_info[run] = get_retino_info(animalid, session, fov=acquisition.split('_')[0], 
+                                               interactive=interactive, rootdir=rootdir,
+                                               azimuth='right', elevation='top',
+                                               leftedge=leftedge, rightedge=rightedge,
+                                               bottomedge=bottomedge, topedge=topedge)
         else:
-            retino_info[run] = get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
+            retino_info[run] = get_retino_info(animalid, session, fov=acquisition.split('_')[0], 
+                                               interactive=interactive, rootdir=rootdir,
+                                               azimuth='right', elevation='top')
     pp.pprint(retino_info)
 
 
