@@ -25,7 +25,7 @@ import statsmodels as sm
 import cPickle as pkl
 
 from pipeline.python.utils import natural_keys, label_figure
-
+from pipeline.python.retinotopy import visualize_rois as visroi
 from scipy.signal import argrelextrema
 
 
@@ -127,130 +127,78 @@ def plot_signal_fits_by_roi(fit, magratio, threshold=0.2,
     return fig
 
 
-def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
-        
-    screen = {}
-    
-    try:
-        # Get bounding box values from epi:
-        epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
-        epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
-        print("Found epi sessions: %s" % str(epi_sessions))
-        if len(epi_sessions) > 0:
-            epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
-            print("Most recent: %s" % str(epi_sesh))
-
-            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
-            if len(epi_fpaths) == 0:
-                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
-
-        else:
-            print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
-            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
-        
-        assert len(epi_fpaths) > 0, "No epi screen info found!"
-        
-        # Each epi run should have only 2 .json files (1 for each condition):
-        if len(epi_fpaths) > 2:
-            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
-            repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
-            for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
-                print(ei, repeat_epi)
-            if interactive:
-                selected_epi = input("Select IDX of epi run to use: ")
-            else:
-                assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
-                
-                selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
-                print("Found FOVs: %s" % str(selected_fovs))
-
-                if len(selected_fovs) == 0:
-                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
-                else:
-                    selected_epi = selected_fovs[0]
-                
-            epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
-        
-        print("-- getting screen info from:", epi_fpaths)
-        
-        for epath in epi_fpaths:
-            with open(epath, 'r') as f:
-                epi = json.load(f)
-            
-            screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
-            screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
-            screen['resolution'] = [epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
-
-            if 'screen_boundaries' in epi.keys():
-                if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
-                    screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
-                    screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
-                elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
-                    screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
-                    screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
-            
-            else:
-                screen['bb_lower'] = -1*screen['elevation']/2.0
-                screen['bb_upper'] = screen['elevation']/2.0
-                screen['bb_left']  = -1*screen['azimuth']/2.0
-                screen['bb_right'] = screen['azimuth']/2.0
-    
-    except Exception as e:
-        traceback.print_exc()
-        
-    return screen
-
-#def get_screen_info(animalid, session, rootdir='/n/coxfs01/2p-data'):
+#def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
 #        
 #    screen = {}
 #    
-#    # Get bounding box values from epi:
-#    epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
-#    epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
-#    if len(epi_sessions) > 0:
-#        epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
-#        epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
-#    else:
-#        print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
-#        epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
-#    
-#    assert len(epi_fpaths) > 0, "No epi screen info found!"
-#    
-#    # Each epi run should have only 2 .json files (1 for each condition):
-#    if len(epi_fpaths) > 2:
-#        print("-- found %i screen boundaries files: --")
-#        repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
-#        for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
-#            print(ei, repeat_epi)
-#        selected_epi = input("Select IDX of epi run to use: ")
-#        epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
-#    
-#    print("-- getting screen info from:", epi_fpaths)
-#    
-#    for epath in epi_fpaths:
-#        with open(epath, 'r') as f:
-#            epi = json.load(f)
-#        
-#        screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
-#        screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
-#        
-#        if 'screen_boundaries' in epi.keys():
-#            if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
-#                screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
-#                screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
-#            elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
-#                screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
-#                screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
-#        
+#    try:
+#        # Get bounding box values from epi:
+#        epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
+#        epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
+#        print("Found epi sessions: %s" % str(epi_sessions))
+#        if len(epi_sessions) > 0:
+#            epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
+#            print("Most recent: %s" % str(epi_sesh))
+#
+#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
+#            if len(epi_fpaths) == 0:
+#                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
+#
 #        else:
-#            screen['bb_lower'] = -1*screen['elevation']/2.0
-#            screen['bb_upper'] = screen['elevation']/2.0
-#            screen['bb_left']  = -1*screen['azimuth']/2.0
-#            screen['bb_right'] = screen['azimuth']/2.0
+#            print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
+#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
+#        
+#        assert len(epi_fpaths) > 0, "No epi screen info found!"
+#        
+#        # Each epi run should have only 2 .json files (1 for each condition):
+#        if len(epi_fpaths) > 2:
+#            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
+#            repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
+#            for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
+#                print(ei, repeat_epi)
+#            if interactive:
+#                selected_epi = input("Select IDX of epi run to use: ")
+#            else:
+#                assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
+#                
+#                selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
+#                print("Found FOVs: %s" % str(selected_fovs))
+#
+#                if len(selected_fovs) == 0:
+#                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
+#                else:
+#                    selected_epi = selected_fovs[0]
+#                
+#            epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
+#        
+#        print("-- getting screen info from:", epi_fpaths)
+#        
+#        for epath in epi_fpaths:
+#            with open(epath, 'r') as f:
+#                epi = json.load(f)
 #            
+#            screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
+#            screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
+#            screen['resolution'] = [epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
+#
+#            if 'screen_boundaries' in epi.keys():
+#                if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
+#                    screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
+#                    screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
+#                elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
+#                    screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
+#                    screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
+#            
+#            else:
+#                screen['bb_lower'] = -1*screen['elevation']/2.0
+#                screen['bb_upper'] = screen['elevation']/2.0
+#                screen['bb_left']  = -1*screen['azimuth']/2.0
+#                screen['bb_right'] = screen['azimuth']/2.0
+#    
+#    except Exception as e:
+#        traceback.print_exc()
+#        
 #    return screen
-
-
 #%%
 
 def label_rois(ax, xlocs, ylocs, roi_list, supp_roi_list=[]):
@@ -528,7 +476,7 @@ def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=
 
 
 
-def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=False, lc='k', marker_scale=200):
+def plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=False, lc='k', marker_scale=200):
     
     mean_fits = fit.mean(axis=1)
     
@@ -542,12 +490,12 @@ def plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use
 #                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
 #    linY = convert_values(mean_phase_el, newmin=screen_lower, newmax=screen_upper,
 #                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    
-                      
+#    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
+#                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+#    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
+#                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+#    
+#                      
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     
@@ -706,7 +654,7 @@ def main(options):
     corrected_phase = correct_phase_wrap(phase)
     
     # Get screen info:
-    screen = get_screen_info(animalid, session, rootdir=rootdir)
+    screen = visroi.get_screen_info(animalid, session, rootdir=rootdir)
     
     # Convert phase to linear coords:
     screen_left = -1*screen['azimuth']/2.
@@ -718,33 +666,31 @@ def main(options):
 
     #%%
     
+    # Identify "good" cells by mag-ratio or FIT from regression (do_retinotopy_analysis)
+    # -------------------------------------------------------------------------
     threshold = opts.threshold
     fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
                                   fov=fov, retinoid=retinoid, output_dir=output_dir)
 
     
 #%%
-    # Get CoM:
-    #if use_circ:
+
+    # -------------------------------------------------------------------------
+    # Get AVERAGE of phase values across condition reps.
+    # Convert to linear coords.
+    # -------------------------------------------------------------------------
+
     mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
     mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
-#    else:
-#        mean_phase_az = corrected_phase[trials_by_cond['right']].mean(axis=1)
-#        mean_phase_el = corrected_phase[trials_by_cond['top']].mean(axis=1)
-
-#    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left, #screen_left, #screen_left, screen_right,
-#                          oldmax=2*np.pi, oldmin=0)
-#                          #oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-#    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_lower, screen_upper,
-#                          oldmax=2*np.pi, oldmin=0)
-#                          #oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
 
     linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
     linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
     
-                          
+    
+    # Plot CoM:
+    # -------------------------------------------------------------------------                          
     fig = get_center_of_mass(fit, linX, linY, screen, marker_scale=200)
         
     label_figure(fig, data_identifier)
@@ -759,6 +705,9 @@ def main(options):
     
     #
     #%% 
+    
+    # Add "good" ROIs from event-based runs (e.g., gratings if diagnostic)
+    # -------------------------------------------------------------------------
     select_rois = None #'gratings_run1' #'gratings_run1' #'gratings_run1' #combined_gratings_static' # 'combined_gratings_static' # None #'gratings_run1'
     labeled_rois = []
     # Load "selective cells" and label:
@@ -789,9 +738,7 @@ def main(options):
     # -----------------------------------------------------------------------------
     # Visualize FITS by condition:
     # -----------------------------------------------------------------------------
-    use_linear = True
-#    fit_thresh_az = 0.2
-#    fit_thresh_el = 0.2
+    #use_linear = True
     
     fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
                                                  labeled_rois=[], use_linear=use_linear, use_circ=use_circ,
@@ -800,22 +747,9 @@ def main(options):
                                                  output_dir=output_dir)
     
     #%%
-    #fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
-#    fig, ax = pl.subplots(figsize=(10,6))
-#    
-#
-#    mean_fits = fit.mean(axis=1)
-#    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
-#    ax.scatter(linX, linY, s=mean_fits*200, alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
-#    ax.set_xlim([screen_left, screen_right])
-#    ax.set_ylim([screen_lower, screen_upper])
-#    ax.set_xlabel('xpos (deg)')
-#    ax.set_ylabel('ypos (deg)')     
-#    for ri in good_fits:
-#        ax.text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
-#        
-#
 
+    # Smooth ROI centroid on screen and visualize as heatmap to find "hot spots"
+    # -------------------------------------------------------------------------
     mean_fits = fit.mean(axis=1)
     
 #    linX = convert_values(mean_phase_az, newmin=screen_left, newmax=screen_right,
@@ -835,9 +769,7 @@ def main(options):
     screen_divs_el = int(round(screen['elevation']))
     #heatmap, xedges, yedges = np.histogram2d(linX.values, linY.values, bins=(screen_divs_az, screen_divs_el))
     heatmap, xedges, yedges = np.histogram2d(linX, linY, bins=(screen_divs_az, screen_divs_el))
-
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-
     ax.imshow(heatmap.T, extent=extent, origin='lower')
 
 
@@ -983,7 +915,7 @@ def main(options):
     
     use_peak = opts.use_peak
     
-    fig = plot_kde_centers(kde_results, fit, mean_phase_az, mean_phase_el, screen, use_peak=use_peak, lc='r', marker_scale=200)
+    fig = plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=use_peak, lc='r', marker_scale=200)
     if use_peak:
         centroid_type = 'peak'
     else:
