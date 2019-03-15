@@ -595,6 +595,7 @@ class SessionSummary():
             acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
             
             self.zproj['source'] = os.path.split(glob.glob(os.path.join(acquisition_dir, '%s' % self.zproj['retinorun_name']))[0])[-1] 
+            print "RETINO:", self.zproj['source']
     
             if self.zproj['type'] == 'dff':
                 self.zproj['data'] = create_activity_map(acquisition_dir, self.zproj['source'], rootdir=self.rootdir)

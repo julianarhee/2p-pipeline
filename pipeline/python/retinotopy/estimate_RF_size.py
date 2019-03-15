@@ -736,7 +736,7 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=
     
     if ax is None:
         fig, ax = pl.subplots(figsize=(20,10))
-        
+     
     linX, linY = plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=screen_info, ax=ax)
         
     ells = [Ellipse(xy=[linX[ri], linY[ri]], width=az_rfs[ri], height=el_rfs[ri]) for ri in range(nrois)
@@ -755,7 +755,7 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=
         e.set_facecolor('none')
         e.set_linestyle('-')
         e.set_edgecolor('k')
-    return fig
+    return ax
 
 
 
@@ -779,7 +779,7 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
@@ -833,7 +833,7 @@ def estimate_RFs_and_plot(options):
     # =============================================================================
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     
-    ROIs, retinoid, screen_info = get_RF_size_estimates(acquisition_dir, 
+    ROIs, retinoid, screen_info = get_RF_size_estimates(acquisition_dir, retino_run=run,
                                                          fitness_thr=fitness_thr, 
                                                          size_thr=size_thr, 
                                                          analysis_id=analysis_id, slurm=slurm)

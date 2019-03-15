@@ -434,9 +434,13 @@ def find_local_min_max(xvals, yvals):
     
     lmins = argrelextrema(yvals, np.less)[0]
     lmaxs = argrelextrema(yvals, np.greater)[0]
+    print "local minima:", lmins
+    print "local maxima:", lmaxs
+        
     lmax_value = np.max([yvals[mx] for mx in lmaxs])
     lmax = [mx for mx in lmaxs if yvals[mx] == lmax_value][0]
     
+        
     if len(lmins) == 1:
         lmin = lmins[0]
         if xvals[lmins] < xvals[lmax]: 
@@ -444,6 +448,11 @@ def find_local_min_max(xvals, yvals):
             lmin2 = lmax + np.where(np.abs(yvals[lmax:]-yvals[lmin]) == np.min( np.abs(yvals[lmax:]-yvals[lmin]) ))[0]            
         else:
             lmin2 = lmax - np.where(np.abs(yvals[:lmax]-yvals[lmin]) == np.min( np.abs(yvals[:lmax]-yvals[lmin]) ))[0] 
+    elif len(lmins) == 0: # no local maxima, just take values at half-max:
+        halfmax = lmax_value/2. 
+        lmin = lmax - np.where( np.abs(yvals[:lmax] - halfmax) == np.min( np.abs(yvals[:lmax] - halfmax) ) )[0] 
+        lmin2 = lmax + np.where( np.abs(yvals[lmax:] - halfmax) == np.min( np.abs(yvals[lmax:] - halfmax) ) )[0] 
+
     else:
         lmin = sorted(lmins)[0]
         lmin2 = sorted(lmins)[-1]
