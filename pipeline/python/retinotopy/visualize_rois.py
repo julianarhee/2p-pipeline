@@ -260,17 +260,17 @@ def visualize_position_data(dataframes, zdf, retino_info,
         visinfo[run]['metric'] = curr_metric
 
         # Get RGBA mapping normalized to mag-ratio values:
-        if color_position is True:
-            if hue_pos is None:
-                norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
-                cmap_name = 'hsv'
+        if color_position is True and hue_pos is not None:
+            if hue_pos == 'az':
+                norm = mpl.colors.Normalize(vmin=retino_info[run]['linminW'], vmax=retino_info[run]['linmaxW'])
             else:
-                if hue_pos == 'az':
-                    norm = mpl.colors.Normalize(vmin=retino_info[run]['linminW'], vmax=retino_info[run]['linmaxW'])
-                else:
-                    norm = mpl.colors.Normalize(vmin=retino_info[run]['linminH'], vmax=retino_info[run]['linmaxH'])
-                cmap_name = 'nipy_spectral_r' # Assumes we are using RIGHT (or Top?)
-    
+                norm = mpl.colors.Normalize(vmin=retino_info[run]['linminH'], vmax=retino_info[run]['linmaxH'])
+            cmap_name = 'nipy_spectral_r' # Assumes we are using RIGHT (or Top?)
+        
+        else:
+            norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
+            cmap_name = 'hsv'
+        
         cmap = mpl.cm.get_cmap(cmap_name)
         mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
         
