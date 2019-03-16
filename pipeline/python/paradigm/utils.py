@@ -1901,7 +1901,7 @@ def get_transforms(stimconfigs):
     else:
         stimtype = 'image'
 
-    if 'position' in stimconfigs[stimconfigs.keys()[0]].keys():
+    if 'position' in stimconfigs[stimconfigs.keys()[0]].keys() and ('xpos' not in stimconfigs[stimconfigs.keys()[0]].keys() or 'ypos' not in stimconfigs[stimconfigs.keys()[0]].keys()):
         # Need to reformat scnofigs:
         sconfigs = format_stimconfigs(stimconfigs)
     else:
@@ -1965,7 +1965,8 @@ def format_stimconfigs(configs):
         stimtype = 'image'
     
     print "STIM TYPE:", stimtype
-        
+    print "configs:", configs
+ 
     # Split position into x,y:
     for config in stimconfigs.keys():
         stimconfigs[config]['xpos'] = configs[config]['position'][0]

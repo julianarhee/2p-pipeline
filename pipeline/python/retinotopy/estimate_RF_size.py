@@ -480,7 +480,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
 
 
 #%% PLOTTING:
-def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_size=100, ax=None):
+def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_size=100, ax=None, interactive=True):
     
     dfpaths = vis.get_retino_datafile_paths(acquisition_dir, run, retinoid.split('_')[0])
     
@@ -489,14 +489,15 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_siz
     zdf = vis.assign_mag_ratios(dataframes, run, stat_type='mean', metric_type='magratio') #=stat_type, run2_stat_type=stat_type)
     print zdf.head()
 
+    # Get path info:
+    acquisition = os.path.split(acquisition_dir)[-1]
+    session_dir = os.path.split(acquisition_dir)[0]
+    session = os.path.split(session_dir)[-1]
+    animalid = os.path.split( os.path.split(session_dir)[0])[-1]
+    rootdir = session_dir.split('/%s' % animalid)[0]
+
     # Get screen info:
-    if screen_info is None:
-        acquisition = os.path.split(acquisition_dir)[-1]
-        session_dir = os.path.split(acquisition_dir)[0]
-        session = os.path.split(session_dir)[-1]
-        animalid = os.path.split( os.path.split(session_dir)[0])[-1]
-        rootdir = session_dir.split('/%s' % animalid)[0]
- 
+    if screen_info is None: 
         screen_info = vis.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
 
     if len(screen_info.keys()) == 0:
@@ -508,7 +509,12 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_siz
         screen_height = screen_info['elevation']
         screen_resolution = screen_info['resolution']
 
-    retino_info = vis.get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
+    #retino_info = vis.get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
+    retino_info = vis.get_retino_info(animalid, session, fov=acquisition, interactive=interactive, rootdir=rootdir, \
+                        azimuth='right', elevation='top') #,
+#                        leftedge=None, rightedge=None, 
+#                        bottomedge=None, topedge=None)
+#
 
     #retino_info = vis.get_retino_info(azimuth='right', elevation='top')
     print("*********SCREEN************")
@@ -561,7 +567,7 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_siz
 #%
 
 
-def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=None, ax=None):
+def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=None, ax=None, interactive=True):
 
 
     assert len(np.unique([roi.conditions[0].name for roi in ROIs])) == 1
@@ -574,7 +580,7 @@ def plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=
     if ax is None:
         fig, ax = pl.subplots(figsize=(20,10))
      
-    linX, linY = plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=screen_info, ax=ax)
+    linX, linY = plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=screen_info, ax=ax, interactive=interactive)
         
     ells = [Ellipse(xy=[linX[ri], linY[ri]], width=az_rfs[ri], height=el_rfs[ri]) for ri in range(nrois)
                 if az_rfs[ri] > 0 and el_rfs[ri] > 0]
@@ -683,10 +689,13 @@ def estimate_RFs_and_plot(options):
         
     #az_rfs = [roi.conditions[0].RF_degrees for roi in ROIs]
     #sns.distplot(az_rfs, kde=False, bins=50)
-    
+    if slurm: 
+        interactive = False
+    else:
+        interactive = True 
     data_identifier = '|'.join([animalid, session, acquisition, run, retinoid])
-    fig = plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=screen_info, ax=None)
-    label_figure(fig, data_identifier)
+    ax = plot_RF_position_and_size(ROIs, acquisition_dir, run, retinoid, screen_info=screen_info, ax=None, interactive=interactive)
+    label_figure(ax.figure, data_identifier)
     pl.savefig(os.path.join(roi_outdir, 'RF_estimates_and_centroids_%s.png' % data_identifier.replace('|', '_')))
 
 #%%

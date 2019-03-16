@@ -236,8 +236,12 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         
     data_str = tiff_fn[:-4]
     s0 = data_str 
-    file_str = s0[s0.find('File'):s0.find('File')+7]
-    slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
+    file_str = str(re.search('File(\d{3})', tiff_fn).group(0))
+    slice_str = str(re.search('Slice(\d{2})', tiff_fn).group(0))
+    print "***** Analysing: %s, %s *****" % (file_str, slice_str)
+
+    #file_str = s0[s0.find('File'):s0.find('File')+7]
+    #slice_str = s0[s0.find('Slice'):s0.find('Slice')+7]
 
     if 'Slice' not in data_str:
         data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
@@ -963,7 +967,7 @@ def do_analysis(options):
 
         #get some info from paradigm and put into a dict to pass to some fxns later
         stack_info = dict()
-        tiffnum = int(str(re.search('File(\\d{3})', t).group(0))[4:])
+        tiffnum = int(str(re.search('File(\\d{3})', tiff_fn).group(0))[4:])
 
         stack_info['stimulus'] = parainfo[str(tiffnum)]['stimuli']['stimulus']
         stack_info['stimfreq'] = parainfo[str(tiffnum)]['stimuli']['scale']
