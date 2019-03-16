@@ -264,8 +264,26 @@ def get_meta(options):
             imgdescr = utils.get_image_description_SI(currtiffpath)
 
             scanimage_metadata['filenames'].append(rawtiff)
-            scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
+            if 'SI' not in SI_struct.keys():
+                scanimage_metadata[curr_file]['SI'] = None   
+            else: 
+                scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
             scanimage_metadata[curr_file]['imgdescr'] = imgdescr
+
+        file_keys = [f for f in scanimage_metadata.keys() if 'File0' in f]
+        print "SI files:", file_keys
+        complete_si_meta = sorted([f for f in file_keys if scanimage_metadata[f]['SI'] is not None], key=natural_keys)
+        print "Completed SI:", complete_si_meta
+          
+        missing_si = [f for f in file_keys if f not in complete_si_meta]
+        if len(missing_si) > 0:
+            for curr_file in missing_si:
+                print "Warning [%s]: Replacing missing SI info with: %s" % (curr_file, complete_si_meta[0])
+                # Use SI info from another file (same file structure)
+                scanimage_metadata[curr_file]['SI'] = scanimage_metadata[complete_si_meta[0]]['SI']
+                scanimage_metadata[curr_file]['imgdescr'] = scanimage_metadata[complete_si_meta[0]]['imgdescr']
+
+        
 
         # Save SIMETA info:
         if os.path.isfile(os.path.join(rawtiff_dir, raw_simeta_json)):

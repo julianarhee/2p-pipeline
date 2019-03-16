@@ -1971,7 +1971,7 @@ def format_stimconfigs(configs):
         stimconfigs[config]['xpos'] = configs[config]['position'][0]
         stimconfigs[config]['ypos'] = configs[config]['position'][1]
         stimconfigs[config]['size'] = configs[config]['scale'][0]
-        stimconfigs[config].pop('position', None)
+        #stimconfigs[config].pop('position', None)
         stimconfigs[config].pop('scale', None)
         stimconfigs[config]['stimtype'] = stimtype
         
