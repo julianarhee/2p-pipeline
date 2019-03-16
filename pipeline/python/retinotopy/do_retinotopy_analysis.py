@@ -41,6 +41,7 @@ def extract_options(options):
 
     parser.add_option('-a', '--np-niter', action='store', dest='np_niter', default=10, help="n iterations for creating neuropil annulus (default: 10. standard is 20 for zoom2p0x, 10 for zoom4p0x")
 
+
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True and 'coxfs01' not in options.rootdir:
@@ -858,7 +859,8 @@ def do_analysis(options):
 
     #roi_name = RETINOID['PARAMS']['roi_id']
     tiff_files = sorted([t for t in os.listdir(tiff_dir) if t.endswith('tif')], key=natural_keys)
-    #print "Found %i tiffs in dir %s.\nExtracting analysis with ROI set %s." % (len(tiff_files), tiff_dir, roi_name)
+
+
 
     # Get associated RUN info:
     runmeta_path = os.path.join(run_dir, '%s.json' % run)
@@ -943,6 +945,13 @@ def do_analysis(options):
         masks_file = None
 
 
+    # check for tiffs to exclude:
+    excluded_tiffs = RETINOID['PARAMS']['excluded_tiffs']
+    ex_tifs = [t for t in tiff_files if str(re.search('File(\\d{3})', t).group(0)) in excluded_tiffs]
+    print "EXCLUDING:", ex_tifs
+    tiff_files = [t for t in tiff_files if t not in ex_tifs]
+
+
     #%%
     # =============================================================================
     # Cyce through TIFF stacks and analayze
@@ -954,8 +963,10 @@ def do_analysis(options):
 
         #get some info from paradigm and put into a dict to pass to some fxns later
         stack_info = dict()
-        stack_info['stimulus'] = parainfo[str(tiff_count+1)]['stimuli']['stimulus']
-        stack_info['stimfreq'] = parainfo[str(tiff_count+1)]['stimuli']['scale']
+        tiffnum = int(str(re.search('File(\\d{3})', t).group(0))[4:])
+
+        stack_info['stimulus'] = parainfo[str(tiffnum)]['stimuli']['stimulus']
+        stack_info['stimfreq'] = parainfo[str(tiffnum)]['stimuli']['scale']
         stack_info['frame_rate'] = runinfo['frame_rate']
         stack_info['nslices'] = len(runinfo['slices'])
 
