@@ -230,7 +230,8 @@ def make_clean_psths(options):
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
     columns = optsE.columns
-    
+    plot_params = [subplot_hue, rows, columns]
+ 
     data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, optsE.traceid))
 
     
@@ -291,9 +292,8 @@ def make_clean_psths(options):
     if 'duration' in transform_dict.keys():
         transform_dict['stim_dur'] = transform_dict['duration']
         transform_dict.pop('duration')
-    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])        
-    print "Trans:", trans_types
-    print object_transformations #transform_dict
+    #print "Trans:", trans_types
+    #print object_transformations #transform_dict
 #
 #    if alt_axis is not None:
 #        trans_types.extend([alt_axis])
@@ -307,6 +307,17 @@ def make_clean_psths(options):
             sconfigs.pop(c)
             
     sconfigs_df = pd.DataFrame(sconfigs).T
+
+    if 'position' in plot_params and 'position' not in sconfigs_df.columns.tolist():
+        posvals = list(set(zip(sconfigs_df['xpos'].values, sconfigs_df['ypos'].values)))
+        print "Found %i unique positions." % len(posvals)
+        transform_dict['position'] = posvals
+        sconfigs_df['position'] = list(zip(sconfigs_df['xpos'], sconfigs_df['ypos']))
+
+
+    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])         
+    print "Trans:", trans_types
+    #print transform_dict
     print sconfigs_df.head()    
 
     # -------------------------------------------------------------------------
@@ -346,6 +357,9 @@ def make_clean_psths(options):
 
         unspecified_trans_types = [t for t in trans_types if t not in [rows, columns, subplot_hue]]
         
+        if 'position' in plot_params:
+            unspecified_trans_types = [t for t in unspecified_trans_types if t not in ['xpos', 'ypos']]
+
         
         nrows = len(transform_dict[rows])
         ncols = len(transform_dict[columns])        
@@ -390,7 +404,8 @@ def make_clean_psths(options):
     elif len(trans_types) > 2 and len(unspecified_trans_types) > 0:
         # Use different color gradients for each object to plot the unspecified transform, too:
         # X and Y already specified, so color-gradient will be the unspecified.
-        assert len(unspecified_trans_types) == 1, "More than 1 unspecified trans: %s" % str(unspecified_trans_types)
+        if len(unspecified_trans_types) > 1:
+            print "--- WARNING --- More than 1 unspecified trans: %s" % str(unspecified_trans_types)
         colorbank = ['Purples', 'Greens', 'Blues', 'Reds']
         if subplot_hue in transform_dict.keys():
             hue_labels = transform_dict[subplot_hue]
@@ -414,7 +429,7 @@ def make_clean_psths(options):
         print "Subplot hue: %s" % subplot_hue
         if subplot_hue in transform_dict.keys():
             hues = transform_dict[subplot_hue]
-            trace_labels = ['%s %i' % (subplot_hue, v) for v in sorted(transform_dict[subplot_hue])]
+            trace_labels = ['%s %s' % (subplot_hue, str(v)) for v in sorted(transform_dict[subplot_hue])]
         else:
             print "Hue is OBJECT"
             hues = object_transformations[rows]
