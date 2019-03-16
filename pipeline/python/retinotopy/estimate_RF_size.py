@@ -203,144 +203,6 @@ def apply_masks_to_tifs(masks, stack):
 
 
 #%%
-#-----------------------------------------------------
-#           HELPER FUNCTIONS FOR DATA PROCESSING
-#-----------------------------------------------------
-#
-#def block_mean(ar, fact):
-#	assert isinstance(fact, int), type(fact)
-#	sx, sy = ar.shape
-#	X, Y = np.ogrid[0:sx, 0:sy]
-#	regions = sy/fact * (X/fact) + Y/fact
-#	res = ndimage.mean(ar, labels=regions, index=np.arange(regions.max() + 1))
-#	res.shape = (sx/fact, sy/fact)
-#	return res
-#
-#def block_mean_stack(stack0, ds_factor, along_axis=2):
-#    if along_axis==2:
-#	im0 = block_mean(stack0[:,:,0],ds_factor) 
-#        #print im0.shape
-#	stack1 = np.zeros((im0.shape[0],im0.shape[1],stack0.shape[2]))
-#	for i in range(0,stack0.shape[2]):
-#            stack1[:,:,i] = block_mean(stack0[:,:,i],ds_factor) 
-#    else:
-# 	im0 = block_mean(stack0[0,:,:],ds_factor) 
-#	stack1 = np.zeros((stack0.shape[0], im0.shape[0], im0.shape[1]))
-#	for i in range(stack0.shape[0]):
-#            stack1[i,:,:] = block_mean(stack0[i,:,:],ds_factor) 
-#
-#    return stack1
-#
-#def smooth_array(inputArray,fwhm):
-#	szList=np.array([None,None,None,11,None,21,None,27,None,31,None,37,None,43,None,49,None,53,None,59,None,55,None,69,None,79,None,89,None,99])
-#	sigmaList=np.array([None,None,None,.9,None,1.7,None,2.6,None,3.4,None,4.3,None,5.1,None,6.4,None,6.8,None,7.6,None,8.5,None,9.4,None,10.3,None,11.2,None,12])
-#	sigma=sigmaList[fwhm]
-#	sz=szList[fwhm]
-#
-#	outputArray=cv2.GaussianBlur(inputArray, (sz,sz), sigma, sigma)
-#	return outputArray
-#
-#def smooth_stack(stack0, fwhm):
-#	stack1 = np.zeros(stack0.shape)
-#	for i in range(0,stack0.shape[2]):
-#		stack1[:,:,i] = smooth_array(stack0[:,:,i], fwhm) 
-#	return stack1
-
-#def get_processed_stack(tiff_path_full,RETINOID):
-#	# Read in RAW tiff: 
-#	print('Loading file : %s'%(tiff_path_full))
-#	stack0 = tf.imread(tiff_path_full)
-#        #print stack0.shape
-#	#swap axes for familiarity
-#	stack1 = np.swapaxes(stack0,0,2)
-#	stack1 = np.swapaxes(stack1,1,0)
-#	del stack0 # to save space
-#
-#	#block-reduce, if indicated
-#	if RETINOID['PARAMS']['downsample_factor'] is not None:
-#		print('Performing block-reduction on stack....')
-#                dsample = RETINOID['PARAMS']['downsample_factor']
-#                if dsample is None:
-#                    dsample = 1
-#                else:
-#                    dsample = int(dsample)
-#		stack1 = block_mean_stack(stack1, dsample)
-#
-#	#spatial smoothing, if indicated
-#	if RETINOID['PARAMS']['smooth_fwhm'] is not None:
-#		print('Performing spatial smoothing on stack....')
-#		stack1 = smooth_stack(stack1, int(RETINOID['PARAMS']['smooth_fwhm']))
-#	return stack1
-##		
-#def process_array(roi_trace, RETINOID, stack_info):
-#	
-#	frame_rate = stack_info['frame_rate']
-#	stimfreq = stack_info['stimfreq']
-#	#hard-code for now, in the future, get from mworks file
-#	if RETINOID['PARAMS']['minus_rolling_mean']:
-#		print('Removing rolling mean from traces...')
-#		detrend_roi_trace = np.zeros(roi_trace.shape)
-#
-#		windowsz = int(np.ceil((np.true_divide(1,stimfreq)*3)*frame_rate))
-#
-#		for roi in range(roi_trace.shape[0]):
-#			tmp0=roi_trace[roi,:];
-#			tmp1=np.concatenate((np.ones(windowsz)*tmp0[0], tmp0, np.ones(windowsz)*tmp0[-1]),0)
-#
-#			rolling_mean=np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
-#			rolling_mean=rolling_mean[windowsz:-windowsz]
-#
-#			detrend_roi_trace[roi,:]=np.subtract(tmp0,rolling_mean)
-#		roi_trace = detrend_roi_trace
-#		del detrend_roi_trace
-#	if RETINOID['PARAMS']['average_frames'] is not None:
-#		print('Performing temporal smoothing on traces...')
-#		smooth_roi_trace = np.zeros(roi_trace.shape)
-#
-#		windowsz = int(RETINOID['PARAMS']['average_frames'])
-#
-#		for roi in range(roi_trace.shape[0]):
-#			tmp0=roi_trace[roi,:];
-#			tmp1=np.concatenate((np.ones(windowsz)*tmp0[0], tmp0, np.ones(windowsz)*tmp0[-1]),0)
-#
-#			tmp2=np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
-#			tmp2=tmp2[windowsz:-windowsz]
-#
-#			smooth_roi_trace[roi,:]=tmp2
-#		roi_trace = smooth_roi_trace
-#		del smooth_roi_trace
-#	return roi_trace
-#
-#def do_regression(t,phi,roi_trace,npixels,tpoints,roi_type,signal_fit_idx):
-#	print('Doing regression')
-#	#doing regression to get amplitude and variance expained
-#	t=np.transpose(np.expand_dims(t,1))
-#	tmatrix=np.tile(t,(npixels,1))
-#
-#	phimatrix=np.tile(phi,(1,tpoints))
-#	Xmatrix=np.cos(tmatrix+phimatrix)
-#
-#	beta_array=np.zeros((npixels))
-#	varexp_array=np.zeros((npixels))
-#	if roi_type != 'pixels':
-#		signal_fit = np.zeros((npixels,tpoints))
-#
-#	for midx in range(npixels):
-#		x=np.expand_dims(Xmatrix[midx,:],1)
-#		y=roi_trace[midx,:]
-#		beta=np.matmul(np.linalg.pinv(x),y)
-#		beta_array[midx]=beta
-#		yHat=x*beta
-#		if roi_type == 'pixels':
-#			if midx == signal_fit_idx:
-#				signal_fit=np.squeeze(yHat)
-#		else:
-#			signal_fit[midx,:]=np.squeeze(yHat)
-#		SSreg=np.sum((yHat-np.mean(y,0))**2)
-#		SStotal=np.sum((y-np.mean(y,0))**2)
-#		varexp_array[midx]=SSreg/SStotal
-#
-#	return varexp_array, beta_array, signal_fit
 
 
 # ## Load retinotopy run source
@@ -471,10 +333,7 @@ class RetinoROI:
     
     def fit(self, condition, frames_per_degree, fitness_thr=0.5, size_thr=0.1):
         cond_ix = [ci for ci, cond in enumerate(self.conditions) if cond.name==condition]
-#        if len(cond_ix) == 0:
-#            self.conditions.append(ActivityInfo(condition, roi_trace))
-#            cond_ix = 0
-#        else:
+
         cond_ix = cond_ix[0]
         self.conditions[cond_ix].fit_gaussian_to_trace()
         self.conditions[cond_ix].estimate_RF_size(frames_per_degree, 
@@ -533,12 +392,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     runmeta_path = os.path.join(run_dir, '%s.json' % run)
     with open(runmeta_path, 'r') as r:
         runinfo = json.load(r)
-    
-#    nslices = len(runinfo['slices'])
-#    nchannels = runinfo['nchannels']
-#    nvolumes = runinfo['nvolumes']
-#    ntiffs = runinfo['ntiffs']
-
+ 
     
     # =============================================================================
     # Load paradigm info
@@ -566,16 +420,6 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     # =============================================================================
     # Get screen info from epi runs
     # =============================================================================
-#    try:
-#        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))) > 0, "No .json file found in epi_maps"
-#        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '*.json'))[0]
-#    except Exception as e:
-#        assert len(glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))) > 0, "No .json file found in epi_maps"
-#        screen_info_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi*', '20*', '*.json'))[0]
-#    print "Loading screen info from: %s" % screen_info_fpath
-#    with open(screen_info_fpath, 'r') as f:
-#        screen_info = json.load(f)
-# 
     if slurm: 
         interactive=False
     else:
@@ -583,14 +427,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     screen_info = visroi.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
     el_degrees_per_cycle = screen_info['elevation']
     az_degrees_per_cycle = screen_info['azimuth']
-     
-#    if 'screen_size_t_degrees' in screen_info['screen_params'].keys():
-#        el_degrees_per_cycle = screen_info['screen_params']['screen_size_t_degrees']
-#    else:
-#        el_degrees_per_cycle = screen_info['screen_params']['screen_size_y_degrees']
-#    az_degrees_per_cycle = screen_info['screen_params']['screen_size_x_degrees']
-#    
-    
+
     
     frate = runinfo['frame_rate']
     nframes = runinfo['nvolumes']
