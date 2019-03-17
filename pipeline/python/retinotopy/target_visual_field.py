@@ -402,7 +402,7 @@ def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=
 
 
 
-def plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=False, lc='k', marker_scale=200):
+def plot_kde_maxima(kde_results, fit, linX, linY, screen, use_peak=True, draw_bb=True, marker_scale=200):
     
     mean_fits = fit.mean(axis=1)
     
@@ -411,17 +411,7 @@ def plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=False, lc='k
     screen_right = screen['azimuth']/2. #screen['azimuth']/2.
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
-    
-#    linX = convert_values(mean_phase_az, newmin=screen_left, newmax=screen_right,
-#                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-#    linY = convert_values(mean_phase_el, newmin=screen_lower, newmax=screen_upper,
-#                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-#    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
-#                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-#    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
-#                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-#    
-#                      
+
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     
@@ -433,11 +423,11 @@ def plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=False, lc='k
     ax.set_ylabel('ypos (deg)')     
 
     
-    # Draw BB from epi:
-    ax.axvline(x=kde_results['az_bounds'][0], color=lc, linestyle='--', linewidth=1)
-    ax.axvline(x=kde_results['az_bounds'][1], color=lc, linestyle='--', linewidth=1)
-    ax.axhline(y=kde_results['el_bounds'][0], color=lc, linestyle='--', linewidth=1)
-    ax.axhline(y=kde_results['el_bounds'][1], color=lc, linestyle='--', linewidth=1)
+    if draw_bb:
+        ax.axvline(x=kde_results['az_bounds'][0], color='k', linestyle='--', linewidth=0.5)
+        ax.axvline(x=kde_results['az_bounds'][1], color='k', linestyle='--', linewidth=0.5)
+        ax.axhline(y=kde_results['el_bounds'][0], color='k', linestyle='--', linewidth=0.5)
+        ax.axhline(y=kde_results['el_bounds'][1], color='k', linestyle='--', linewidth=0.5)
 
     if use_peak:
         cgx = kde_results['az_max']
@@ -451,7 +441,16 @@ def plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=False, lc='k
     print('%s x: %f' % (centroid_type, cgx))
     print('%s y: %f' % (centroid_type, cgy))
     ax.scatter(cgx, cgy, color='k', marker='+', s=1e4);
-    ax.text(cgx+3, cgy+3, '%s x, y:\n(%.2f, %.2f)' % (centroid_type, cgx, cgy), fontweight='bold')
+    ax.text(cgx+3, cgy+3, '%s x, y:\n(%.2f, %.2f)' % (centroid_type, cgx, cgy), color='k', fontweight='bold')
+
+    # Also plot alternative maxima if they exist:
+    for az in kde_results['az_maxima']:
+        for el in kde_results['el_maxima']:
+            if az == kde_results['az_max'] and el == kde_results['el_max']:
+                continue
+            ax.scatter(az, el, color='b', marker='+', s=1e3);
+            ax.text(az+3, el+3, 'pk x, y:\n(%.2f, %.2f)' % (az, el), color='b', fontweight='bold')
+
 
     return fig
 
@@ -514,8 +513,8 @@ def extract_options(options):
 
 #%%
 
-options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-#options = ['-i', 'JC059', '-S', '20190228', '-A', 'FOV1']
+#options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
+options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis002']
 
 
 #%%
@@ -564,10 +563,6 @@ def main(options):
     # Get condition info for trials:
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
 
-    # Create output dir:
-    output_dir = os.path.join(processed_dir, 'visualization', 'VF_targeting')
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
 
     #%%
     
@@ -588,6 +583,19 @@ def main(options):
     screen_lower = -1*screen['elevation']/2.
     screen_upper = screen['elevation']/2. #screen['elevation']/2.
     
+    #%%
+    # Create output dir:
+
+    if len(trials_by_cond.keys()) == 4:
+        absolute = True
+        loctype = 'absolute'
+    else:
+        absolute = False
+        loctype = 'relative'
+        
+    output_dir = os.path.join(processed_dir, 'visualization', 'target_vf_%s' % loctype)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
 
     #%%
@@ -606,28 +614,82 @@ def main(options):
     # Convert to linear coords.
     # -------------------------------------------------------------------------
 
-    mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1)
-    mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1)
+    
+    mag_thr = magratio.max(axis=1).max() * 0.5 #0.02
+    #fit_thr = 0.20
+        
+    if absolute:
+        use_relative = False
+        mean_phase_left = sp.stats.circmean(phase[trials_by_cond['left']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_right = sp.stats.circmean(phase[trials_by_cond['right']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_bottom = sp.stats.circmean(phase[trials_by_cond['bottom']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_top = sp.stats.circmean(phase[trials_by_cond['top']], axis=1, low=-np.pi, high=np.pi)
+        
+        # Find strongly responding cells to calcualte delay
+        mean_mags = magratio.mean(axis=1)
+        strong_cells = mean_mags[mean_mags >= mag_thr].index.tolist()
+        print("ROIs with best mag-ratio (n=%i, thr=%.2f):" % (len(strong_cells), mag_thr), strong_cells)
+        
+#        mean_fits = fit.mean(axis=1)
+#        best_fits = mean_fits[mean_fits >= fit_thr].index.tolist()
+#        print("ROIs with best fit (n=%i, thr=%.2f):" % (len(best_fits), fit_thr), best_fits)
 
-    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
+        # Calculate delay map from non-corrected 
+        delay_az = (mean_phase_left[strong_cells] + mean_phase_right[strong_cells]) / 2.
+        avg_delay = delay_az.mean()
+        std_delay = delay_az.std()
+        print "Average delay (std): %.2f (%.2f)" % (avg_delay, std_delay)
     
+        delay_thr = np.pi/2 #1.0
+        if std_delay > delay_thr:
+            print "*** WARNING:  Bad delay in AZ condition (%.2f)" % avg_delay
+            use_relative = True
+    else:
+        use_relative = True
     
+    if not use_relative:
+        # Calculate absoluate maps if delay is reasonable:
+        mean_phase_az = (mean_phase_left - mean_phase_right) / 2.0
+        mean_phase_el = (mean_phase_bottom - mean_phase_top) / 2.0
+        
+        # Convert to linear coords:
+        # When converted to absolute (left-right), neg screen values = neg pi, pos screen values = pos pi
+        linX = convert_values(mean_phase_az, 
+                              newmin=screen_left, newmax=screen_right,
+                              oldmin=-np.pi, oldmax=np.pi) 
+        linY = convert_values(mean_phase_el, 
+                              newmin=screen_lower, newmax=screen_upper, 
+                              oldmin=-np.pi, oldmax=np.pi)  
+        
+    else:
+        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1, low=0, high=2*np.pi)
+        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1, low=0, high=2*np.pi)
+
+        # Convert to linear coords:
+        # If cond is 'right':  positive screen values = 0, negative screen values = 2pi
+        # If cond is 'top':  positive values = 0, negative values = 2pi
+        linX = convert_values(mean_phase_az, 
+                              newmin=screen_right, newmax=screen_left,
+                              oldmin=0, oldmax=2*np.pi)  
+        linY = convert_values(mean_phase_el, 
+                              newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                              oldmin=0, oldmax=2*np.pi)  
+    
+    # Plot ROI centers using phase values as sanity check against conversion to linear coords:
+    fig, ax = pl.subplots(figsize=(10,5)) # pl.figure()
+    ax.scatter(mean_phase_az, mean_phase_el)
+    if use_relative:
+        ax.invert_xaxis()
+        ax.invert_yaxis()
+    fig.savefig(os.path.join(output_dir, 'roi_centers_phase_space_sanitycheck_%s.png' % loctype))
+        
     # Plot CoM:
     # -------------------------------------------------------------------------                          
     fig = get_center_of_mass(fit, linX, linY, screen, marker_scale=200)
         
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'mean_xy_CoM.png'))
+    pl.savefig(os.path.join(output_dir, 'mean_xy_CoM_%s.png' % loctype))
     
-    
-    fig, ax = pl.subplots(figsize=(10,5)) # pl.figure()
-    ax.scatter(mean_phase_az, mean_phase_el)
-    ax.invert_xaxis()
-    ax.invert_yaxis()
-    fig.savefig(os.path.join(output_dir, 'roi_centers_phase_space_sanitycheck.png'))
     
     #
     #%% 
@@ -676,19 +738,6 @@ def main(options):
 
     # Smooth ROI centroid on screen and visualize as heatmap to find "hot spots"
     # -------------------------------------------------------------------------
-    mean_fits = fit.mean(axis=1)
-    
-#    linX = convert_values(mean_phase_az, newmin=screen_left, newmax=screen_right,
-#                         oldmax=2*np.pi, oldmin=0) # If cond is 'right':  positive values = 0, negative values = 2pi
-#    linY = convert_values(mean_phase_el, newmin=screen_lower, newmax=screen_upper,
-#                         oldmax=2*np.pi, oldmin=0) # If cond is 'top':  positive values = 0, negative values = 2pi
-    linX = convert_values(mean_phase_az, newmin=screen_right, newmax=screen_left,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
-                         oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    
-                          
-                        
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     screen_divs_az = int(round(screen['azimuth']))
@@ -707,7 +756,7 @@ def main(options):
     ax.invert_yaxis()
 
     label_figure(fig, data_identifier)
-    fig.savefig(os.path.join(output_dir, 'smoothed_heatmap_rois_on_screen.png'))
+    fig.savefig(os.path.join(output_dir, 'smoothed_heatmap_rois_on_screen_%s.png' % loctype))
     
 
 #    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
@@ -746,10 +795,10 @@ def main(options):
 
     #smstats_kde_az = sp.stats.gaussian_kde(linX.values) #, weights=mean_fits)
     smstats_kde_az = sp.stats.gaussian_kde(linX) #, weights=mean_fits)
-    az_vals = np.linspace(screen_left, screen_right, len(mean_fits))
+    az_vals = np.linspace(screen_left, screen_right, len(mean_mags))
     #smstats_kde_el = sp.stats.gaussian_kde(linY.values)
     smstats_kde_el = sp.stats.gaussian_kde(linY)
-    el_vals = np.linspace(screen_lower, screen_upper, len(mean_fits))
+    el_vals = np.linspace(screen_lower, screen_upper, len(mean_mags))
     smstats_az = smstats_kde_az(az_vals)
     smstats_el = smstats_kde_el(el_vals)
     #wa = kdea(vals)
@@ -761,10 +810,10 @@ def main(options):
     # 2. Use weights with KDEUnivariate (no FFT):
     #weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX.values)
     weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX)
-    weighted_kde_az.fit(weights=mean_fits.values, fft=False)
+    weighted_kde_az.fit(weights=mean_mags.values, fft=False)
     #weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY.values)
     weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY)
-    weighted_kde_el.fit(weights=mean_fits.values, fft=False)
+    weighted_kde_el.fit(weights=mean_mags.values, fft=False)
     
     fig, axes = pl.subplots(1,2, figsize=(10,5))
 
@@ -779,7 +828,7 @@ def main(options):
     axes[1].plot(el_vals, smstats_el, label='gauss-kde (unweighted)')
     axes[1].legend(fontsize=8)
     
-    pl.savefig(os.path.join(output_dir, 'compare_kde_weighted.png'))
+    pl.savefig(os.path.join(output_dir, 'compare_kde_weighted_%s.png' % loctype))
         
 
     # Plot weighted KDE to marginals on joint plot:
@@ -789,7 +838,7 @@ def main(options):
     j.ax_marg_y.set_xlim([0, max([j.ax_marg_y.get_xlim()[-1], weighted_kde_el.density.max()]) + 0.005])
     j.ax_marg_x.legend(fontsize=8)
     
-    j.savefig(os.path.join(output_dir, 'weighted_marginals.png'))
+    j.savefig(os.path.join(output_dir, 'weighted_marginals_%s.png' % loctype))
     
     
 
@@ -811,7 +860,7 @@ def main(options):
     plot_kde_min_max(vals_el, kde_el, maxval=el_max, minval1=el_min1, minval2=el_min2, title='elevation', ax=axes[1])
     
     label_figure(fig, data_identifier)
-    fig.savefig(os.path.join(output_dir, 'weighted_kde_min_max.png'))
+    fig.savefig(os.path.join(output_dir, 'weighted_kde_min_max_%s.png' % loctype))
     
     az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
     el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
@@ -839,24 +888,23 @@ def main(options):
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
     
-    use_peak = opts.use_peak
-    
-    fig = plot_kde_centers(kde_results, fit, linX, linY, screen, use_peak=use_peak, lc='r', marker_scale=200)
-    if use_peak:
-        centroid_type = 'peak'
-    else:
-        centroid_type = 'center'
-       
+    marker_scale = 100./round(magratio.mean().mean(), 3)
+    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, marker_scale=marker_scale)
     print("LINX:", linX.shape)
-    for ri in good_fits:
-        #fig.axes[0].text(linX.iloc[ri], linY.iloc[ri], '%s' % (ri+1))
+    for ri in strong_cells:
         fig.axes[0].text(linX[ri], linY[ri], '%s' % (ri+1))
-
- 
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'centroid_%s_rois_by_pos.png' % centroid_type))
+    pl.savefig(os.path.join(output_dir, 'centroid_peak_rois_by_pos_%s.png' % (loctype)))
+
+
+#    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=False, marker_scale=marker_scale)
+#    print("LINX:", linX.shape)
+#    for ri in strong_cells:
+#        fig.axes[0].text(linX[ri], linY[ri], '%s' % (ri+1))
+#    label_figure(fig, data_identifier)
+#    pl.savefig(os.path.join(output_dir, 'centroid_kdecenter_rois_by_pos_%s.png' % (loctype)))
     
-    with open(os.path.join(output_dir, 'fit_centroid_results.json'), 'w') as f:
+    with open(os.path.join(output_dir, 'fit_centroid_results_%s.json' % loctype), 'w') as f:
         json.dump(kde_results, f, sort_keys=True, indent=4)
 
 
