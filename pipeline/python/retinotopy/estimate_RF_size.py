@@ -348,7 +348,6 @@ class RetinoROI:
 
 def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analysis_id=None, retino_run='retino*', slurm=False):
     print "*** GETTING ESTIMATES ***"
-    print acquisition_dir
     run_dir = glob.glob(os.path.join(acquisition_dir, '%s' % retino_run))[0]
     run = os.path.split(run_dir)[1]
     
@@ -357,18 +356,18 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     session = os.path.split(session_dir)[1]
     animalid = os.path.split(os.path.split(session_dir)[0])[1]
     rootdir = os.path.split(os.path.split(session_dir)[0])[0]
-    print "SESSION:", session, "ACQ:", acquisition, analysis_id 
-    print "ANALYSIS ID:", analysis_id
+    print "SESSION:", session, "ACQ:", acquisition, analysis_id
+    print "RUN: %s, ANALYSIS ID: %s" % (run, analysis_id)
     if analysis_id is None:
         analysis_id = 'analysis'
         retino_roi_analysis = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id, 'visualization'))[0]
         retinoid_dir = os.path.split(retino_roi_analysis)[0]
 
     else:
-       retinoid_dir = glob.glob(os.path.join(rootdir, animalid, session, acquisition, 'retino*', 'retino_analysis', '%s*' % analysis_id))[0]
-    print retinoid_dir
+       retinoid_dir = glob.glob(os.path.join(rootdir, animalid, session, acquisition, '%s' % run, 'retino_analysis', '%s*' % analysis_id))[0]
     
-    retinoids_fpath = glob.glob(os.path.join(acquisition_dir, 'retino*', 'retino_analysis', 'analysisids_*.json'))[0]
+    
+    retinoids_fpath = glob.glob(os.path.join(acquisition_dir, '%s' % run, 'retino_analysis', 'analysisids_*.json'))[0]
     retinoid = os.path.split(retinoid_dir)[1]
     
     with open(retinoids_fpath, 'r') as f: rids = json.load(f)
@@ -410,6 +409,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     
     create_new = False
     print('... processing ROI traces')
+    print "RETINOID dir:", retinoid_dir
     traces = get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=create_new)
     
     #print "Conditions:",  traces['traces'].keys()
@@ -675,7 +675,8 @@ def estimate_RFs_and_plot(options):
     # Get run and analysis info using analysis-ID params:
     # =============================================================================
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
-    
+    print "RUN:", run
+ 
     ROIs, retinoid, screen_info = get_RF_size_estimates(acquisition_dir, retino_run=run,
                                                          fitness_thr=fitness_thr, 
                                                          size_thr=size_thr, 
