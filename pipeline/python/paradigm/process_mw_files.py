@@ -389,7 +389,9 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
         info['ncycles'] = ncycles
-        info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        #info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        cycle_dur = np.mean([d.value for d in df.get_events('cycle_dur') if d.value!=0])
+        info['target_freq'] = round(1./cycle_dur, 2)
         info['barwidth'] = df.get_events('bar_size_deg')[-1].value
         info['stimulus'] = stimulus_type
     else:
