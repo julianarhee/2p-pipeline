@@ -8,8 +8,8 @@ clc; clear all;
 % roi_id = 'rois007'; %'e4893c';
 
 rootdir = '/n/coxfs01/2p-data' %'/mnt/odyssey'
-animalid = 'JC038' %'JR063';
-session = '20190115' %'20171202_JR063';
+animalid = 'JC070' %'JR063';
+session = '20190316' %'20171202_JR063';
 roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:

@@ -515,6 +515,11 @@ def extract_options(options):
 
 #options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
 options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis002']
+#options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis002']
+#options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
+
+#options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV1', '-R', 'retino_run2', '-t', 'analysis002']
+options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
 
 
 #%%
@@ -616,6 +621,7 @@ def main(options):
 
     
     mag_thr = magratio.max(axis=1).max() * 0.5 #0.02
+    mag_thr = magratio.max(axis=1).max() * 0.25 #5 #0.02
     #fit_thr = 0.20
         
     if absolute:
