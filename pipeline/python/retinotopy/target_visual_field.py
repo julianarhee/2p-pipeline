@@ -514,8 +514,12 @@ def extract_options(options):
 
 #%%
 
-options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-#options = ['-i', 'JC059', '-S', '20190228', '-A', 'FOV1']
+#options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
+#options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis002']
+#options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
+
+#options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV1', '-R', 'retino_run2', '-t', 'analysis002']
+options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
 
 
 #%%
@@ -614,6 +618,37 @@ def main(options):
     linY = convert_values(mean_phase_el, newmin=screen_upper, newmax=screen_lower, #screen_upper,
                          oldmax=2*np.pi, oldmin=0)  # If cond is 'right':  positive values = 0, negative values = 2pi
     
+    mag_thr = magratio.max(axis=1).max() * 0.25 #5 #0.02
+    #fit_thr = 0.20
+        
+    if absolute:
+        use_relative = False
+        mean_phase_left = sp.stats.circmean(phase[trials_by_cond['left']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_right = sp.stats.circmean(phase[trials_by_cond['right']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_bottom = sp.stats.circmean(phase[trials_by_cond['bottom']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_top = sp.stats.circmean(phase[trials_by_cond['top']], axis=1, low=-np.pi, high=np.pi)
+        
+        # Find strongly responding cells to calcualte delay
+        mean_mags = magratio.mean(axis=1)
+        strong_cells = mean_mags[mean_mags >= mag_thr].index.tolist()
+        print("ROIs with best mag-ratio (n=%i, thr=%.2f):" % (len(strong_cells), mag_thr), strong_cells)
+        
+#        mean_fits = fit.mean(axis=1)
+#        best_fits = mean_fits[mean_fits >= fit_thr].index.tolist()
+#        print("ROIs with best fit (n=%i, thr=%.2f):" % (len(best_fits), fit_thr), best_fits)
+
+        # Calculate delay map from non-corrected 
+        delay_az = (mean_phase_left[strong_cells] + mean_phase_right[strong_cells]) / 2.
+        avg_delay = delay_az.mean()
+        std_delay = delay_az.std()
+        print "Average delay (std): %.2f (%.2f)" % (avg_delay, std_delay)
+    
+        delay_thr = np.pi/2 #1.0
+        if std_delay > delay_thr:
+            print "*** WARNING:  Bad delay in AZ condition (%.2f)" % avg_delay
+            use_relative = True
+    else:
+        use_relative = True
     
     # Plot CoM:
     # -------------------------------------------------------------------------                          

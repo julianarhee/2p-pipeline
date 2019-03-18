@@ -750,7 +750,9 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
 
         # Get all cycle info for each run (should be ncycles per run):
         ncycles = df.get_events('ncycles')[-1].value          # Use last value, since default value may be different
-        target_freq = df.get_events('cyc_per_sec')[-1].value
+        cyc_per_sec = df.get_events('cyc_per_sec')[-1].value
+        cycle_dur = np.mean([d.value for d in df.get_events('cycle_dur') if bounds[0][0] <= d.time <= bounds[0][1] and d.value!=0])
+        target_freq = round(1./cycle_dur, 2)
         print "Target frequency: {0:.2f} Hz, {ncycles} cycles.".format(target_freq, ncycles=ncycles)
 
         # Use frame trigger times for each run to get bar-update events for each run:
