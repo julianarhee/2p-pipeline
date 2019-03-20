@@ -313,7 +313,7 @@ def group_classifier_data(clfparams, cX, cy, sconfigs, relabel=False):
                 
             
         sgroups = sconfigs_df.groupby(stim_grouper)                                               # Group stimconfigs with top-level as class-label type
-        ordered_configs = {key: i for i, key in enumerate([str(g.index[0]) for k,g in sgroups])}  # Create a mapper for sorting the original configID list
+        #ordered_configs = {key: i for i, key in enumerate([str(g.index[0]) for k,g in sgroups])}  # Create a mapper for sorting the original configID list
         #sorted_ixs = [s for s, val in sorted(enumerate(cy_tmp), key=lambda d: ordered_configs[d[1]])]   # Get indices with which to sort original configID list
         sorted_ixs = [s for s, val in enumerate(cy_tmp)]   # Get indices with which to sort original configID list
 
