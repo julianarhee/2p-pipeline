@@ -390,13 +390,13 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
 
 	roi_trace = process_array(roi_trace, RETINOID, stack_info)
     
-    #  TRACES outfile:  Save processed roi trace
-    pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
-    pset[...] = roi_trace 
-    pset.attrs['source'] = tiff_path_full
-    pset.attrs['dims'] = szx, szy, nframes
-    traces_outfile.close()
-    print("... Extracted traces!")
+        #  TRACES outfile:  Save processed roi trace
+        pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
+        pset[...] = roi_trace 
+        pset.attrs['source'] = tiff_path_full
+        pset.attrs['dims'] = szx, szy, nframes
+        traces_outfile.close()
+        print("... Extracted traces!")
     
 
     frame_rate = stack_info['frame_rate']
