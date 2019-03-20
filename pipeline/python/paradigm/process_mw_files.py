@@ -389,7 +389,11 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
         info['ncycles'] = ncycles
-        info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        #info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        cyc_per_sec = df.get_events('cyc_per_sec')[-1].value
+        cycle_dur = np.mean([d.value for d in df.get_events('cycle_dur') if bounds[0][0] <= d.time <= bounds[0][1] and d.value!=0])
+        info['target_freq'] = round(1./cycle_dur, 2)
+
         info['barwidth'] = df.get_events('bar_size_deg')[-1].value
         info['stimulus'] = stimulus_type
     else:
@@ -904,6 +908,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         # GET TRIAL INFO FOR DB:
         trial_list = [(stimevents[k].ordernum, k) for k in stimevents.keys()]
         trial_list.sort(key=lambda x: x[0])
+        print trial_list
         trial = dict((i+1, dict()) for i in range(len(stimevents)))
 
         for trialidx,mvtrial in enumerate(trial_list):
@@ -916,6 +921,17 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimevents[mvname].states[0][1], 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round(stimevents[mvname].states[0][0]/1E3)
             trial[trialnum]['stim_off_times'] = round(stimevents[mvname].states[-1][0]/1E3)
+            trial[trialnum]['stiminfo'] ={
+                          'tstamps': [i[0] for i in stimevents[mvname].states],
+                          'values': stimevents[mvname].vals,
+                          'start_indices': stimevents[mvname].idxs,
+                          'order': stimevents[mvname].ordernum,
+                          'offset': stimevents[mvname].states[0][0] - stimevents[mvname].triggers[0],
+                          'trigger_times': stimevents[mvname].triggers}
+            #print "run %i: %s ms" % (ridx+1, str(trial['stiminfo'][run]['offset']/1E3))
+
+
+
     else:
 
         # If variable ITI, the number of ITI values that pass the duration test (see get_session_info())
@@ -925,7 +941,6 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             iti_durs = session_info['ITI']
         else:
             iti_durs = [session_info['ITI'] for i in range(len(stimevents))]
-
 
         ntrials = len(stimevents)
         post_itis = sorted(trialevents[2::2], key=get_timekey) # 0=pre-blank period, 1=first-static-stim-ON, 2=first-post-stim-ITI
@@ -1084,18 +1099,18 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     # Create "pydict" to store all MW stimulus/trial info in matlab-accessible format for GUI:
 
     if retinobar is True:
-        pydict = dict()
+        #trial = dict()
         print "Offset between first MW stimulus-display-update event and first SI frame-trigger:"
-        for ridx,run in enumerate(stimevents.keys()):
-            pydict[run] ={'time': [i[0] for i in stimevents[run].states],
-                          'pos': stimevents[run].vals,
-                          'idxs': stimevents[run].idxs,
-                          'ordernum': stimevents[run].ordernum,
-                          'MWdur': (stimevents[run].states[-1][0] - stimevents[run].states[0][0]) / 1E6,
-                          'offset': stimevents[run].states[0][0] - stimevents[run].triggers[0],
-                          'MWtriggertimes': stimevents[run].triggers}
-            print "run %i: %s ms" % (ridx+1, str(pydict[run]['offset']/1E3))
-
+#        for ridx,run in enumerate(stimevents.keys()):
+#            trial['stiminfo'][run] ={'time': [i[0] for i in stimevents[run].states],
+#                          'pos': stimevents[run].vals,
+#                          'idxs': stimevents[run].idxs,
+#                          'ordernum': stimevents[run].ordernum,
+#                          'MWdur': (stimevents[run].states[-1][0] - stimevents[run].states[0][0]) / 1E6,
+#                          'offset': stimevents[run].states[0][0] - stimevents[run].triggers[0],
+#                          'MWtriggertimes': stimevents[run].triggers}
+#            print "run %i: %s ms" % (ridx+1, str(trial['stiminfo'][run]['offset']/1E3))
+#
     else:
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
@@ -1166,6 +1181,11 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
+
+    print "********************************"
+    print "Finished extracting %i trials." % len(trial.keys())
+    print "********************************"
+
     return trial
 
 #%%

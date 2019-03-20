@@ -767,10 +767,11 @@ def main(options):
 
     # Set reference path and get SERIALDATA info:
     # ================================================================================
-    run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-    parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start, verbose=verbose)
+    if retinobar is False:
+        run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+        parsed_run_outfile = parse_acquisition_events(run_dir, blank_start=blank_start, verbose=verbose)
     print "----------------------------------------"
-    print "ACQUISITION INFO saved to:\n%s" % parsed_run_outfile
+    print "ACQUISITION INFO saved to dir: %s" % paradigm_outdir
     print "----------------------------------------"
 
 
