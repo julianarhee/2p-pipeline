@@ -23,6 +23,7 @@ import numpy as np
 import scipy as sp
 import statsmodels as sm
 import cPickle as pkl
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import visualize_rois as visroi
@@ -44,11 +45,23 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
     cond_list = list(set([cond_dict['stimuli']['stimulus'] for trial_num, cond_dict in conds.items()]))
     trials_by_cond = dict((cond, [int(k) for k, v in conds.items() if v['stimuli']['stimulus']==cond]) for cond in cond_list)
 
+    excluded_tifs = [] 
+    for cond, tif_list in trials_by_cond.items():
+        for tifnum in tif_list:
+            processed_tif = [f for f in processed_fpaths if 'File%03d' % tifnum in f]
+            if len(processed_tif) == 0:
+                print "No analysis found for file: %s" % tifnum
+                excluded_tifs.append(tifnum)
+        trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
+    print "TRIALS BY COND:"
+    print trials_by_cond 
+    trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
+    print "Trials:", trial_list
 
     fits = []
     phases = []
     mags = []
-    for trial_num, trial_fpath in zip(sorted([int(k) for k in conds.keys()]), sorted(processed_fpaths, key=natural_keys)):
+    for trial_num, trial_fpath in zip(sorted(trial_list), sorted(processed_fpaths, key=natural_keys)):
         
         print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
         df = h5py.File(trial_fpath, 'r')
@@ -404,9 +417,9 @@ def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=
 
 
 
-def plot_kde_maxima(kde_results, fit, linX, linY, screen, use_peak=True, draw_bb=True, marker_scale=200):
+def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, draw_bb=True, marker_scale=200):
     
-    mean_fits = fit.mean(axis=1)
+    mean_magratios = magratio.mean(axis=1)
     
     # Convert phase to linear coords:
     screen_left = -1*screen['azimuth']/2.
@@ -418,11 +431,22 @@ def plot_kde_maxima(kde_results, fit, linX, linY, screen, use_peak=True, draw_bb
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
     
     # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
-    ax.scatter(linX, linY, s=mean_fits*marker_scale, alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
+    im = ax.scatter(linX, linY, s=mean_magratios*marker_scale, c=mean_magratios, cmap='inferno', alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
     ax.set_xlim([screen_left, screen_right])
     ax.set_ylim([screen_lower, screen_upper])
     ax.set_xlabel('xpos (deg)')
     ax.set_ylabel('ypos (deg)')     
+
+    # Add color bar:
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05) 
+    alpha_min = mean_magratios.min()
+    alpha_max = mean_magratios.max() 
+    magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
+    magcmap=mpl.cm.inferno
+    pl.colorbar(im, cax=cax, cmap=magcmap, norm=magnorm)
+    cax.yaxis.set_ticks_position('right')
+
 
     
     if draw_bb:
