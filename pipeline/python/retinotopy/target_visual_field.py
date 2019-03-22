@@ -149,7 +149,7 @@ def label_rois(ax, xlocs, ylocs, roi_list, supp_roi_list=[]):
             
     return
     
-def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, use_circ=False,
+def visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, #use_circ=False,
                                 labeled_rois=[], use_linear=True, fit_thresh_az=0.2, fit_thresh_el=0.2,
                                 data_identifier='', fov='FOV', retinoid='retinoID', output_dir='/tmp'):
     
@@ -517,7 +517,7 @@ def extract_options(options):
                       help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='retino_run1', \
                       help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('-t', '--retinoid', action='store', dest='retinoid', default='analysis001', \
+    parser.add_option('-r', '--retinoid', action='store', dest='retinoid', default='analysis001', \
                       help="name of retino ID (roi analysis) [default: analysis001]")
     
     parser.add_option('--angular', action='store_false', dest='use_linear', default=True, \
@@ -528,11 +528,11 @@ def extract_options(options):
                       help="fit threshold for azimuth [default: 0.2]")
     parser.add_option('-r', '--thr', action='store', dest='threshold', default=0.2, \
                       help="fit threshold for all conds [default: 0.2]")
-    parser.add_option('--peak', action='store_true', dest='use_peak', default=False, \
-                      help='Flag to use PEAK instead of centroid of found CoMs.')
-    parser.add_option('--circ', action='store_true', dest='use_circ', default=False, \
-                      help='Flag to average by circular.')
-    
+#    parser.add_option('--peak', action='store_true', dest='use_peak', default=False, \
+#                      help='Flag to use PEAK instead of centroid of found CoMs.')
+#    parser.add_option('--circ', action='store_true', dest='use_circ', default=False, \
+#                      help='Flag to average by circular.')
+#    
     (options, args) = parser.parse_args(options)
 
     return options
@@ -563,7 +563,7 @@ def main(options):
     use_linear = opts.use_linear
     fit_thresh_az = float(opts.fit_thresh_az)
     fit_thresh_el = float(opts.fit_thresh_el) #0.2
-    use_circ = opts.use_circ
+    #use_circ = opts.use_circ
     
     
     #%%
@@ -761,7 +761,7 @@ def main(options):
     #use_linear = True
     
     fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
-                                                 labeled_rois=[], use_linear=use_linear, use_circ=use_circ,
+                                                 labeled_rois=[], use_linear=use_linear, #use_circ=use_circ,
                                                  fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
                                                  data_identifier=data_identifier, fov=fov, retinoid=retinoid,
                                                  output_dir=output_dir)

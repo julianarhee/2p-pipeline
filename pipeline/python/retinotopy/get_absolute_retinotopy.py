@@ -61,7 +61,7 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='',                       help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1',                       help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', action='store', dest='run', default='retino_run1',                       help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
-    parser.add_option('-t', '--retinoid', action='store', dest='retinoid', default='analysis001',                       help="name of retino ID (roi analysis) [default: analysis001]")
+    parser.add_option('-r', '--retinoid', action='store', dest='retinoid', default='analysis001',                       help="name of retino ID (roi analysis) [default: analysis001]")
     
     parser.add_option('--angular', action='store_false', dest='use_linear', default=True,                       help="Plot az/el coordinates in angular spce [default: plots linear coords]")
 #     parser.add_option('-e', '--thr-el', action='store', dest='fit_thresh_el', default=0.2, \
@@ -83,7 +83,7 @@ def extract_options(options):
 #options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
 #options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
-options = ['-i', 'JC070', '-S', '20190316', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis002']
+#options = ['-i', 'JC070', '-S', '20190316', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis002']
 
 
 opts = extract_options(options)
@@ -100,10 +100,6 @@ use_linear = opts.use_linear
 
 
 # # Select analyzed dataset
-
-# In[6]:
-
-
 #%%
 use_pixels = False
 
