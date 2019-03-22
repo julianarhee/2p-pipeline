@@ -526,7 +526,7 @@ def extract_options(options):
                       help="fit threshold for elevation [default: 0.2]")
     parser.add_option('-a', '--thr-az', action='store', dest='fit_thresh_az', default=0.2, \
                       help="fit threshold for azimuth [default: 0.2]")
-    parser.add_option('-r', '--thr', action='store', dest='threshold', default=0.2, \
+    parser.add_option('-t', '--thr', action='store', dest='threshold', default=0.2, \
                       help="fit threshold for all conds [default: 0.2]")
 #    parser.add_option('--peak', action='store_true', dest='use_peak', default=False, \
 #                      help='Flag to use PEAK instead of centroid of found CoMs.')
