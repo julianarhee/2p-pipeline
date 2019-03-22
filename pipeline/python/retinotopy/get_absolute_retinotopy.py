@@ -44,7 +44,7 @@ from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 # In[3]:
 
 
-get_ipython().magic(u'matplotlib notebook')
+#get_ipython().magic(u'matplotlib notebook')
 
 
 # In[4]:
@@ -84,6 +84,8 @@ def extract_options(options):
 #options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
 #options = ['-i', 'JC070', '-S', '20190316', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis002']
+
+options = ['-i', 'JC067', '-S', '20190320', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
 
 
 opts = extract_options(options)
@@ -248,7 +250,7 @@ use_magratio = True
 
 fit_thr = 0.2
 #mag_thr = 0.02
-mag_thr = magratio.max(axis=1).max() * 0.25 #0.02
+mag_thr = 0.02 #magratio.max(axis=1).max() * 0.25 #0.02
 
 if use_magratio:
     roi_metric = 'magratio'
