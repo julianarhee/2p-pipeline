@@ -313,6 +313,8 @@ pl.scatter(sorted_visual, np.array([avg_zscores_by_cond[rid].max() for rid in so
 pl.scatter(sorted_selective, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_selective]), label='selective') #, markersize=20, alpha=20)
 pl.ylabel('zscore')
 pl.xlabel('roi')
+
+pl.axhline(y=)
     
 pl.legend()
 

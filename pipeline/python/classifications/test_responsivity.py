@@ -715,7 +715,8 @@ def calculate_roi_responsivity(options):
     # Create output dir for ROI selection:
     # =========================================================================
     print "Creating OUTPUT DIRS for ROI analyses..."
-    sort_dir = os.path.join(traceid_dir, 'response_stats') #'sorted_rois')
+    datestring = datetime.datetime.now().strftime("%Y%m%d")
+    sort_dir = os.path.join(traceid_dir, 'response_stats_%s' % datestring) #'sorted_rois')
     if not os.path.exists(sort_dir):
         os.makedirs(sort_dir)
     print "Saving sorted ROI results to:\n    %s" % sort_dir
