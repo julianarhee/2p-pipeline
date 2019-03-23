@@ -195,7 +195,7 @@ def colorcode_histogram(bins, ppatches, color='m'):
         ppatches.patches[ind].set_alpha(0.5)
     
 #%%
-def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False, nproc=4):
+def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False, nproc=4, pval_selective=0.05, pval_visual=0.05):
     
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition) 
 
@@ -214,6 +214,9 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_
     responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par'])
     if create_new:
         responsivity_opts.extend(['--new'])
+
+    reponsivity_opts.extend(['--pvis=%.2f' % pval_visual, '--psel=%.2f' % pval_selective])
+
     print responsivity_opts
         
     roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
@@ -422,6 +425,9 @@ class SessionSummary():
         self.data_type = optsE.data_type
         self.create_new = optsE.create_new
         self.nproc = int(optsE.nprocesses)
+        self.stats = {'pval_visual': float(optsE.pval_visual),
+                      'pval_selective': float(optsE.pval_selective)}
+
         self.traceid_dirs = get_data_sources(optsE)
         self.zproj = {'source': None, 'type': 'dff' if optsE.use_dff else 'mean', 'data': None, 'retinorun_name': None}
         if optsE.retino_run is None:
@@ -668,7 +674,7 @@ class SessionSummary():
             
             # Get sorted ROIs:
             gratings_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                                  gratings_run, gratings_traceid, create_new=self.create_new, nproc=self.nproc)
+                                                  gratings_run, gratings_traceid, create_new=self.create_new, nproc=self.nproc, pval_visual=self.stats['pval_visual'], pval_selective=self.stats['pval_selective'])
                                                   #gratings_traceid.split('_')[0], create_new=optsE.create_new)
             
             # Group data by ROIs:
@@ -724,7 +730,7 @@ class SessionSummary():
             
             # Get sorted ROIs:
             blobs_roistats = get_roi_stats(self.rootdir, self.animalid, self.session, self.acquisition, 
-                                           blobs_run, blobs_traceid, create_new=self.create_new, nproc=self.nproc) #blobs_traceid.split('_')[0])
+                                           blobs_run, blobs_traceid, create_new=self.create_new, nproc=self.nproc, pval_visual=self.stats['pval_visual'], pval_selective=self.stats['pval_selective']) #blobs_traceid.split('_')[0])
             
             # Group data by ROIs:
             blobs_roidata, blobs_labels_df, blobs_sconfigs = get_data_and_labels(blobs_dataset, data_type=self.data_type)
@@ -971,6 +977,10 @@ def extract_options(options):
     parser.add_option('-o', '--objects-traceid', dest='objects_traceid_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object traceids [default: []')
     parser.add_option('-O', '--objects-run', dest='objects_run_list', default=[], type='string', action='callback', callback=comma_sep_list, help='list of RW object run IDs [default: []')
     parser.add_option('-R', '--retino-run', dest='retino_run', default=None, action='store', help='Specific retino_run to use')
+
+    parser.add_option('--pvis', dest='pval_visual', default=0.05, action='store', help='P-value for visual test (SP anova, default=0.05)')
+    parser.add_option('--psel', dest='pval_selective', default=0.05, action='store', help='P-value for selective test (KW, default=0.05)')
+
   
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      

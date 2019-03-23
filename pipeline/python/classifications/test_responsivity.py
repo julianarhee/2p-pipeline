@@ -85,6 +85,9 @@ def extract_options(options):
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
 
+    parser.add_option('--pvis', action='store', dest='pval_visual', default=0.05, help="P-value for visual responsivity test (SP anova) (default=0.05)")
+    parser.add_option('--psel', action='store', dest='pval_selective', default=0.05, help="P-value for selectivity test (KW) (default=0.05)")
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -376,7 +379,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
             f.write('----------------------------------------------------------\n')
             f.write('%s results:\n' % test_type_str)
             f.write('----------------------------------------------------------\n')
-            f.write('%i out of %i pass visual responsivity test (p < 0.05).\n' % (len(responsive_rois), len(responsive_anova.keys())))
+            f.write('%i out of %i pass visual responsivity test (p < %.2f).\n' % (len(responsive_rois), len(responsive_anova.keys()), pvalue))
             f.write('Top 10 (sorted by F val):\n    %s' % str(top10))
             
         boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, sort_dir=sort_dir)
@@ -524,7 +527,13 @@ def pyvt_splitplot_anova2(roi, pdf, output_dir='/tmp', asdict=True):
     aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.txt' % roi)
     with open(aov_results_fpath,'wb') as f:
         f.write(str(aov))
-    f.close()
+    
+    aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.pkl' % roi)
+    with open(aov_results_fpath, 'wb') as f:
+        pkl.dump(aov, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    
+
     results_epoch = extract_apa_anova(('epoch',), aov)
     if asdict is True:
         return results_epoch
@@ -653,8 +662,9 @@ def calculate_roi_responsivity(options):
     optsE = extract_options(options)
     create_new = optsE.create_new
     nprocs = int(optsE.nprocesses)
-    pvalue = 0.05
-    
+    pval_visual = float(optsE.pval_visual) #0.05
+    pval_selective = float(optsE.pval_selective)
+ 
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     if len(optsE.traceid.split('_')) <= 2:
         traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
@@ -669,7 +679,7 @@ def calculate_roi_responsivity(options):
     # Create output dir for ROI selection:
     # =========================================================================
     print "Creating OUTPUT DIRS for ROI analyses..."
-    sort_dir = os.path.join(traceid_dir, 'sorted_rois')
+    sort_dir = os.path.join(traceid_dir, 'response_stats') #'sorted_rois')
     if not os.path.exists(sort_dir):
         os.makedirs(sort_dir)
     print "Saving sorted ROI results to:\n    %s" % sort_dir
@@ -716,7 +726,7 @@ def calculate_roi_responsivity(options):
                                                         nprocs=nprocs, 
                                                         create_new=create_new, 
                                                         data_identifier=data_identifier,
-                                                        pvalue=pvalue)
+                                                        pvalue=pval_visual)
     print("%i out of %i cells pass %s test for visual responses." % (len(sorted_visual), len(responsive_anova), resp_test_type))
 
 
@@ -742,7 +752,7 @@ def calculate_roi_responsivity(options):
                                                                    data_identifier=data_identifier,
                                                                    nprocs=nprocs, 
                                                                    create_new=create_new,
-                                                                   pvalue=pvalue)
+                                                                   pvalue=pval_selective)
     
     # Update roi stats summary file:
     # ---------------------------------------------------------
@@ -772,8 +782,8 @@ def calculate_roi_responsivity(options):
              selectivity_test = 'kruskal_wallis',
              selectivity_posthoc=post_hoc,
              metric=metric,
-             visual_pval = pvalue,
-             selective_pval = pvalue
+             visual_pval = pval_visual,
+             selective_pval = pval_selective
              )
     print "Saved ROI stat results to: %s" % roistats_fpath
     
