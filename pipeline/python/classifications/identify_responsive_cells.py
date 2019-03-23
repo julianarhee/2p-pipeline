@@ -9,6 +9,8 @@ Created on Fri Mar 22 17:28:03 2019
 import os
 import glob
 import json
+import copy
+import pylab as pl
 
 import numpy as np
 import scipy as sp
@@ -37,7 +39,7 @@ print data_identifier
 #%%
 
 # Set dirs:
-sorted_dir = os.path.join(traceid_dir, 'sorted_rois')
+sorted_dir = os.path.join(traceid_dir, 'response_stats')
 
 # Set output dir:
 output_dir = os.path.join(sorted_dir, 'visualization')
@@ -100,11 +102,15 @@ avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) for cfg in
 
 
 # Sort mean (or max) zscore across trials for each config, and find "best config"
-max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in selective_rois])
-sort_by_max_zscore = np.argsort(max_avg_zscore)[::-1]
+visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
+visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
+sorted_visual = visual_rois[visual_sort_by_max_zscore]
 
-sorted_visual = visual_rois[sort_by_max_zscore]
-sorted_selective = selective_rois[sort_by_max_zscore]
+selective_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in selective_rois])
+selective_sort_by_max_zscore = np.argsort(selective_max_avg_zscore)[::-1]
+sorted_selective = selective_rois[selective_sort_by_max_zscore]
+
+[r for r in sorted_selective if r not in sorted_visual]
 
 print sorted_selective[0:10]
 
@@ -140,7 +146,7 @@ for rid in sorted_selective:
     traces_by_config = dict((config, []) for config in labels['config'].unique())
     for k, g in labels.groupby(['config', 'trial']):
         traces_by_config[k[0]].append(roi_trace[g.index])
-    for config in traces.keys():
+    for config in traces_by_config.keys():
         traces_by_config[config] = np.vstack(traces_by_config[config])
     
     
@@ -192,7 +198,8 @@ for rid in sorted_selective:
 #%%
 #
 ## Do any stats correlate nicely with mag of response?
-vstats_fpath = glob.glob(os.path.join(sorted_dir,  'visual_rois*.json' ))[0]
+responsive_test = 'RManova1'
+vstats_fpath = glob.glob(os.path.join(sorted_dir,  'responsivity_%s*' % responsive_test, '*%s_results.json' % responsive_test ))[0]
 with open(vstats_fpath, 'r') as f:
     vstats = json.load(f)
 #
@@ -227,7 +234,6 @@ with open(vstats_fpath, 'r') as f:
 
 
 #%%
-import copy
 
 use_selective = False
 if use_selective:
@@ -252,9 +258,9 @@ grid = AxesGrid(fig, 111,
                 cbar_pad=0.1)
 
 aix = 0
-nplots = max([nr*nc, len(roi_list)])
+nplots = min([nr*nc, len(roi_list)])
 
-for rid in roi_list[0:nplots]: #[0:nr*nc]:
+for rid in roi_list[0:nplots]: #0:nplots]: #[0:nr*nc]:
     
     roi_zscores = zscores[:, rid]
     roi_trace = ztraces[rid] #[:, rid]
@@ -288,7 +294,7 @@ for a in np.arange(aix, nr*nc):
     
 
 label_figure(fig, data_identifier)
-figname = 'sorted_%s_best_cfg_zscored_trials' % sorter
+figname = 'sorted_%s_best_cfg_zscored_trials_top%i' % (sorter, nplots)
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
 print figname
 
@@ -298,3 +304,18 @@ print figname
 #
 #pl.figure();
 #pl.plot([vstats[str(rid)]['p'] for rid in sorted_selective])
+
+
+#%%
+pl.figure()
+
+pl.scatter(sorted_visual, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_visual]), label='visual') #, markersize=20, alpha=20)
+pl.scatter(sorted_selective, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_selective]), label='selective') #, markersize=20, alpha=20)
+pl.ylabel('zscore')
+pl.xlabel('roi')
+    
+pl.legend()
+
+
+
+
