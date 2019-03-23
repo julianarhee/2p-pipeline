@@ -12,7 +12,9 @@ import glob
 import cv2
 import re
 import math
+import json
 import optparse
+import copy
 import numpy as np
 import pylab as pl
 import tifffile as tf
@@ -23,6 +25,12 @@ from scipy.ndimage import zoom
 def get_downsampled_std_images(run_dir, downsample_factor=(0.1, 1, 1), interpolation='bilinear',
                                pid='processed001', channel='Channel01'):
     print "RUN:", run_dir 
+    
+    # Load run info:
+    runinfo_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
+    with open(runinfo_fpath, 'r') as f: runinfo = json.load(f)
+    nchannels = runinfo['nchannels']
+
     tif_paths = glob.glob(os.path.join(run_dir, 'processed', '%s*' % pid, 'mcorrected_*', '*.tif'))
     # create output dir:
     zproj_dir = '%s_std_deinterleaved/%s' % (os.path.split(tif_paths[0])[0], channel)
@@ -38,11 +46,25 @@ def get_downsampled_std_images(run_dir, downsample_factor=(0.1, 1, 1), interpola
  
     for ti, tf_path in enumerate(tif_paths):
         print "Processing %i of %i files." % (int(ti+1), len(tif_paths))
+        print "... %s" % tf_path
         write_dir = os.path.join(zproj_dir, str(re.search('File(\d{3})', tf_path).group(0)))
-        fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', tf_path).group(0))
+        curr_file = str(re.search('File(\d{3})', tf_path).group(0))
+        if 'Channel' not in tf_path or 'Slice' not in tf_path: # interleaved
+            deint_fpath = glob.glob(os.path.join('%s_deinterleaved' % os.path.split(tf_path)[0], channel, curr_file, '*.tif'))[0]
+            fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', deint_fpath).group(0)) 
+        else:
+            fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', tf_path).group(0))
         if not os.path.exists(write_dir): os.makedirs(write_dir)
-        tif = tf.imread(tf_path)
-        print fn_append, tif.shape
+        tif_tmp = tf.imread(tf_path)
+        print "orig tif shape: %s" % str(tif_tmp.shape)
+        if nchannels==2:
+            if channel=='Channel02':
+                tif = tif_tmp[1::nchannels, :, :]
+            else:
+                tif = tif_tmp[0::nchannels, :, :]
+        else:
+            tif = copy.copy(tif_tmp)
+        print fn_append, tif.shape, tif.dtype
         if interpolation == 'bilinear':
             order = 1
         elif interpolation == 'cubic':
@@ -50,7 +72,11 @@ def get_downsampled_std_images(run_dir, downsample_factor=(0.1, 1, 1), interpola
         elif interpolation == 'nearest':
             order = 0
         tif_r = zoom(tif, downsample_factor, order=order)
-        tf.imsave(os.path.join(write_dir, 'std_%s.tif' % fn_append), tif_r)
+        std_img = np.empty((tif_r.shape[1], tif_r.shape[2]), dtype=tif_r.dtype)
+        std_img[:] = np.std(tif_r, axis=0)
+        tf.imsave(os.path.join(write_dir, 'std_%s.tif' % fn_append), std_img)
+
+       # tf.imsave(os.path.join(write_dir, 'std_%s.tif' % fn_append), tif_r)
     
     return zproj_dir
 
@@ -63,7 +89,12 @@ def get_downsampled_std_images_mp(run_dir, downsample_factor=(0.1, 1, 1), interp
         order = 3
     elif interpolation == 'nearest':
         order = 0
-                
+ 
+    # Load run info:
+    runinfo_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
+    with open(runinfo_fpath, 'r') as f: runinfo = json.load(f)
+    nchannels = runinfo['nchannels']
+   
     tif_paths = glob.glob(os.path.join(run_dir, 'processed', '%s*' % pid, 'mcorrected_*', '*.tif'))
     # create output dir:
     zproj_dir = '%s_std_deinterleaved/%s' % (os.path.split(tif_paths[0])[0], channel)
@@ -84,9 +115,27 @@ def get_downsampled_std_images_mp(run_dir, downsample_factor=(0.1, 1, 1), interp
         for ti, tf_path in enumerate(tif_list):
             print "... Processing %i of %i tifs in chunk." % (int(ti+1), len(tif_list))
             write_dir = os.path.join(zproj_dir, str(re.search('File(\d{3})', tf_path).group(0)))
-            fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', tf_path).group(0))
+            curr_file = str(re.search('File(\d{3})', tf_path).group(0))
+            if 'Channel' not in tf_path or 'Slice' not in tf_path: # interleaved
+                deint_fpath = glob.glob(os.path.join('%s_deinterleaved' % os.path.split(tf_path)[0], channel, curr_file, '*.tif'))[0]
+                fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', deint_fpath).group(0)) 
+            else:
+                fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', tf_path).group(0))
             if not os.path.exists(write_dir): os.makedirs(write_dir)
-            tif = tf.imread(tf_path)
+            tif_tmp = tf.imread(tf_path)
+            print "orig shape: %s" % str(tif_tmp.shape)
+            if nchannels==2:
+                if channel=='Channel02':
+                    tif = tif_tmp[1::nchannels, :, :]
+                else:
+                    tif = tif_tmp[0::nchannels, :, :]
+            else:
+                tif = copy.copy(tif_tmp)
+            print "... new tif: %s" % str(tif.shape)
+#
+#            fn_append = str(re.search('Slice(\d{2})_Channel(\d{2})_File(\d{3})', tf_path).group(0))
+#            if not os.path.exists(write_dir): os.makedirs(write_dir)
+#            tif = tf.imread(tf_path)
             #print fn_append, tif.shape
             tif_r = zoom(tif, downsample_factor, order=order)
             std_img = np.empty((tif_r.shape[1], tif_r.shape[2]), dtype=tif_r.dtype)
@@ -161,8 +210,10 @@ def deinterleaved_to_stack(zproj_dir):
     img_paths = glob.glob(os.path.join(zproj_dir, 'File*', '*.tif'))
     print "Found %i deinterleaved images." % len(img_paths)
     stack = []
-    for i,imgp in enumerate(img_paths):
+    for i, imgp in enumerate(img_paths):
         img = tf.imread(imgp)
+        print i, imgp
+        print "... D img: %s" % str(img.shape), img.dtype
         if len(img.shape) == 3:
             std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
             std_img[:] = np.std(img, axis=0)
@@ -171,9 +222,10 @@ def deinterleaved_to_stack(zproj_dir):
         else:
             stack.append(img)
     stack_r = np.dstack(stack).T
+    
     stack_r = np.swapaxes(stack_r, 1, 2) # swap x,y to match natural
 
-    print stack_r.shape
+    print stack_r.shape, stack_r.dtype, stack[0].dtype
     all_imgs = np.empty(stack_r.shape, dtype=stack[0].dtype)
     all_imgs[:] = stack_r #np.dstack(stack)
     std_base_dir = os.path.split(zproj_dir)[0]

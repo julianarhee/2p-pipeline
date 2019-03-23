@@ -61,7 +61,7 @@ for tiff_idx = 1:length(tiffs)
     nvolumes = simeta.(currfile).SI.hFastZ.numVolumes;
     nchannels = numel(simeta.(currfile).SI.hChannels.channelSave);
     nslices = simeta.(currfile).SI.hFastZ.numFramesPerVolume;
-    fprintf('N frames per volume: %i\n', nslices);
+    fprintf('N slices per volume: %i\n', nslices);
     if nslices == length(A.slices) + ndiscard
         nslices = nslices - ndiscard
     end
@@ -90,7 +90,7 @@ for tiff_idx = 1:length(tiffs)
 
     tpath = fullfile(source, tiffs{tiff_idx});
     fprintf('Processing tiff %i of %i...\n', tiff_idx, length(tiffs));
-    [parent, filename, ext] = fileparts(tpath);
+    [parent, filename_base, ext] = fileparts(tpath);
 
     %tic; Yt = read_file(tpath); toc; % is this faster
     currtiffpath = tpath;
@@ -107,75 +107,79 @@ for tiff_idx = 1:length(tiffs)
         %nvolumes = d3;
     end
     fprintf('Size loaded tiff: %s\n', mat2str(size(Yt)))
-    sz = size(Yt);
-%    if length(sz) == 3 && (sz(end) > (nvolumes * nchannels))
-%        fprintf('Accidental saving of 2 channels... splittin...\n');
-%        Yt = Yt(:, :, 1:2:end);
-%        fprintf('Taking every other slice, final size: %s\n', mat2str(size(Yt)))
-%    end
+    [sx, sy, sz] = size(Yt);
+
     % Check filename for formatting:
-    fi = strfind(filename, 'File');
+    fi = strfind(filename_base, 'File');
     if isempty(fi)
         fidname = sprintf('File%03d', tiff_idx);
-        fparts = strsplit(filename, '_');
-        filename = strjoin([fparts(1:end-1), fidname], '_'); % ext];
-	fid = tiff_idx;
+        fparts = strsplit(filename_base, '_');
+        filename_base = strjoin([fparts(1:end-1), fidname], '_'); % ext];
+        fid = tiff_idx;
     else
-        fid = str2num(filename(fi+4:end));
+        fid = str2num(filename_base(fi+4:end));
     end
 
     % Either read every other channel from each tiff, or read each tiff
     % that is a single channel:       
     if params.PARAMS.preprocessing.split_channels
-        fprintf('Correcting TIFF: %s\n', filename);
-        fprintf('Single channel, mov size is: %s\n', mat2str(size(Yt)));
-        %nslices = size(Yt, 3)/nchannels/nvolumes
-        Y = reshape(Yt, [size(Yt,1), size(Yt,2), nslices+ndiscard, nvolumes]); 
+        fprintf('Channels are SPLIT.\n');
+        fprintf('... Correcting TIFF: %s\n', filename_base);
+        for channel_ix=1:nchannels
+            fprintf('... %i of %i channels.', channel_ix, nchannels)'
+            Yt_ch = Yt(:, :, channel_ix:nchannels:end);
+            fprintf('... Single channel, mov size is: %s\n', mat2str(size(Yt_ch)));
+            %nslices = size(Yt, 3)/nchannels/nvolumes
+            Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices+ndiscard, nvolumes]); 
 
-        if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
-        %Y = Y -  min(Y(:));                         % make data non-negative
-        fprintf('Correcting bidirectional scanning offset.\n');
-        Ydata = correct_bidirectional_phasing(Y(:,:,1:nslices,:)); % only correct data frames
-	Y(:,:,1:nslices,:) = Ydata;
-        tiffWrite(Y, strcat(filename, ext), write_dir_interleaved, 'int16')
-
-        if do_deinterleave % Also save deinterleaved:
-            deinterleave_tiffs(Y, filename, fid, write_dir_deinterleaved, A);                 end
+            if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
+            %Y = Y -  min(Y(:));                         % make data non-negative
+            fprintf('... Correcting bidirectional scanning offset.\n');
+            Ydata = correct_bidirectional_phasing(Y(:,:,1:nslices,:)); % only data frames
+            Y(:,:,1:nslices,:) = Ydata;
+            filename = sprintf('%s_Channel%02d', filename_base, channel_ix);
+            fprintf('... Single channel filename: %s\n', filename);
+            tiffWrite(Y, strcat(filename, ext), write_dir_interleaved, 'int16')
+            fprintf('... Writing bidi-corrected tif to file: %s\n', filename)'
+            if do_deinterleave % Also save deinterleaved:
+                deinterleave_tiffs(Y, filename, fid, write_dir_deinterleaved, A);
+            end
+        end
     else
+        fprintf('Channels are not split.\n');
         newtiff = zeros(d1,d2,(nslices+ndiscard)*nchannels*nvolumes);
-	fprintf('Size of interleaved tiff: %s\n', mat2str(size(newtiff)));
-        fprintf('Correcting TIFF: %s\n', filename); 
+	fprintf('... Size of interleaved tiff: %s\n', mat2str(size(newtiff)));
+        fprintf('... Correcting TIFF: %s\n', filename_base); 
         if nchannels>1
-            fprintf('Grabbing every other channel.\n')
+            fprintf('... Grabbing every other channel.\n')
         else
-            fprintf('Not splitting channels.\n');
+            fprintf('... Only 1 channel.\n');
         end
         for cidx=1:nchannels
-	    fprintf('Processing channel %i...\n', cidx);
+	    fprintf('... Processing channel %i of %i...\n', cidx, nchannels);
             Yt_ch = Yt(:,:,cidx:nchannels:end);
-            fprintf('Channel %i, mov size is: %s\n', cidx, mat2str(size(Yt_ch)));
+            fprintf('... Channel %i, mov size is: %s\n', cidx, mat2str(size(Yt_ch)));
             %nslices = size(Yt_ch, 3)/nvolumes
             Y = reshape(Yt_ch, [size(Yt_ch,1), size(Yt_ch,2), nslices+ndiscard, nvolumes]); 
 
             if ~isa(Y, 'double'); Y = double(Y); end    % convert to double
             %Y = Y -  min(Y(:));                         % make data non-negative
-            fprintf('Reinterleaved TIFF (single ch) size: %s\n', mat2str(size(Y)))
-            fprintf('Correcting bidirectional scanning offset.\n');
+            fprintf('... Reinterleaved TIFF (single ch) size: %s\n', mat2str(size(Y)))
+            fprintf('... Correcting bidirectional scanning offset.\n');
             Ydata = correct_bidirectional_phasing(Y(:,:,1:nslices,:));
-            fprintf('Finished bidi correction\n');
 	    Y(:,:,1:nslices,:) = Ydata;
             Y = reshape(Y, [size(Yt_ch,1), size(Yt,2), (nslices+ndiscard)*nvolumes]); 
             newtiff(:,:,cidx:nchannels:end) = Y;
             clear Y; clear Yt_ch;
         end
-        tiffWrite(newtiff, strcat(filename, ext), write_dir_interleaved, 'int16')
-        
+        tiffWrite(newtiff, strcat(filename_base, ext), write_dir_interleaved, 'int16')
+        fprintf('... Interleaved tif saved to: %s\n', strcat(filename_base, ext)); 
         if do_deinterleave % Also save deinterleaved:
-            deinterleave_tiffs(newtiff, filename, fid, write_dir_deinterleaved, A);
+            deinterleave_tiffs(newtiff, filename_base, fid, write_dir_deinterleaved, A);
         end
  
     end
-    fprintf('Finished bidi-correction.\n');
+    fprintf('***** Finished bidi-correction. *****\n');
 end
   
 

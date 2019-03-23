@@ -22,6 +22,7 @@ import glob
 import pandas as pd
 import numpy as np
 import pylab as pl
+import cPickle as pkl
 import matplotlib as mpl
 import seaborn as sns
 import pyvttbl as pt
@@ -31,7 +32,7 @@ from collections import namedtuple
 from scipy import stats
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
-import scikit_posthocs as sp
+import scikit_posthocs as skp
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -47,9 +48,10 @@ from skimage import exposure
 from collections import Counter
 #%%
 
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180817', '-A', 'FOV2_zoom1x',
+options = ['-i', 'JC059', '-S', '20190227', '-A', 'FOV4_zoom4p0x',
            '-d', 'corrected',
-           '-R', 'gratings_drifting', '-t', 'traces001',
+           '-R', 'combined_blobs_static', '-t', 'traces001',
+           '--par', '--nproc=2', '--new', '--pvis=0.1', '--psel=0.05', '--metric=zscore'
            ]
 
 
@@ -58,8 +60,9 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
@@ -85,6 +88,11 @@ def extract_options(options):
     parser.add_option('--nproc', action='store', dest='nprocesses', default=4, help="N processes if running in par (default=4)")
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run anew")
 
+    parser.add_option('--pvis', action='store', dest='pval_visual', default=0.05, help="P-value for visual responsivity test (SP anova) (default=0.05)")
+    parser.add_option('--psel', action='store', dest='pval_selective', default=0.05, help="P-value for selectivity test (KW) (default=0.05)")
+    parser.add_option('--metric', action='store', dest='response_metric', default='meanstim', help="Response value to use for calculating stats (default=meanstim (alt: zscore))")
+    parser.add_option('-v', '--visual', action='store', dest='visual_test_type', default='SPanova2', help="Test to use for visual responsivity (default=SPanova2 (alt: RManova1))")
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -96,8 +104,13 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
                          nprocs=4, post_hoc='dunn', create_new=False, pvalue=0.05):
     
     #pvalue = 0.05
-    
-    posthoc_fpath = os.path.join(sort_dir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
+        
+    selectivity_basedir = os.path.join(sort_dir, 'selective_KW_%s' % post_hoc)
+    if not os.path.exists(selectivity_basedir):
+        os.makedirs(selectivity_basedir)
+    posthoc_fpath = os.path.join(selectivity_basedir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
+        
+        
     if create_new is False:
         try:
             print "Loading previously calculated SELECTIVITY test results (KW, post-hoc: %s)" % post_hoc
@@ -109,8 +122,8 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
             print "Unable to find previous results... Creating new."
             create_new = True
 
-    if metric == 'meanstim':
-        df_by_rois = group_roidata_stimresponse(roidata, labels_df)
+    #if metric == 'meanstim':
+    df_by_rois = group_roidata_stimresponse(roidata, labels_df)
     
     if create_new:
         selectivityKW_results = selectivity_KW(df_by_rois, roi_list=roi_list, 
@@ -118,7 +131,7 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
                                                metric=metric)
 
         # Save results to file:
-        posthoc_fpath = os.path.join(sort_dir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
+        posthoc_fpath = os.path.join(selectivity_basedir, 'selectivity_KW_posthoc_%s.npz' % post_hoc)
         np.savez(posthoc_fpath, selectivityKW_results)
         print "Saved SELECTIVITY test results (KW, post-hoc: %s) to: %s" % (post_hoc, posthoc_fpath)
         # Note, to reload as dict:  ph_results = {key:ph_results[key].item() for key in ph_results}
@@ -142,7 +155,7 @@ def find_selective_cells(roidata, labels_df, roi_list=[], sort_dir='/tmp',
             
         # Plot p-values and median-ranked box plots for top N rois:
         # ---------------------------------------------------------
-        boxplots_selectivity(df_by_rois, sorted_selective, metric=metric, stimlabels=stimlabels, topn=10, sort_dir=sort_dir, data_identifier=data_identifier)
+        boxplots_selectivity(df_by_rois, sorted_selective, metric=metric, stimlabels=stimlabels, topn=10, selectivity_basedir=selectivity_basedir, data_identifier=data_identifier)
         
             #heatmap_roi_stimulus_pval(selectivityKW_results[roi], roi, sort_dir)
         
@@ -213,9 +226,9 @@ def do_KW_test(rdata, post_hoc='dunn', metric='meanstim', asdict=True):
 
     # Do post-hoc test:
     if post_hoc == 'dunn':
-        pc = sp.posthoc_dunn(rdata, val_col=metric, group_col='config')
+        pc = skp.posthoc_dunn(rdata, val_col=metric, group_col='config')
     elif post_hoc == 'conover':
-        pc = sp.posthoc_conover(rdata, val_col=metric, group_col='config')
+        pc = skp.posthoc_conover(rdata, val_col=metric, group_col='config')
 
     # Save ROI info:
     posthoc_results = {'H': H,
@@ -270,14 +283,14 @@ def group_roidata_stimresponse(roidata, labels_df):
 
 
 
-def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={}, topn=10, sort_dir='/tmp', data_identifier=''):
+def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={}, topn=10, selectivity_basedir='/tmp', data_identifier=''):
 
-    selective_dir = os.path.join(sort_dir, 'selectivity', 'figures')
-    if not os.path.exists(selective_dir):
-        os.makedirs(selective_dir)
+    selective_figdir = os.path.join(selectivity_basedir, 'figures')
+    if not os.path.exists(selective_figdir):
+        os.makedirs(selective_figdir)
     
     if data_identifier == '':
-        data_identifier = os.path.split(sort_dir)[0]
+        data_identifier = os.path.split(selective_figdir)[0]
     
     print "Plotting box plots for top %i selective cells out of %i total (selective) cells." % (topn, len(roi_list))
         
@@ -296,7 +309,7 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         fig = pl.figure(figsize=(10,5))
         ax = sns.boxplot(data=df2)
         pl.title('roi%05d' % int(roi+1))
-        pl.ylabel('df/f')
+        pl.ylabel('%s' % metric)
     #    ax.set_xticklabels(['%i deg\n%.2f cpd\n%s' % (stimconfigs[t.get_text()]['rotation'],
     #                                                  stimconfigs[t.get_text()]['frequency'],
     #                                                  t.get_text()) for t in ax.get_xticklabels()])
@@ -313,46 +326,47 @@ def boxplots_selectivity(df_by_rois, roi_list, metric='meanstim', stimlabels={},
         
         figname = 'selectivity_%s_roi%05d.png' % (metric, int(roi+1))
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(selective_dir, figname))
+        pl.savefig(os.path.join(selective_figdir, figname))
         pl.close()
 
 
 
 #%%
-def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, 
+def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, visual_test_type='SPanova2',
                           create_new=False, data_identifier='', pvalue=0.05):
     
     
-    responsivity_basedir = os.path.join(sort_dir, 'responsivity')
+    responsivity_basedir = os.path.join(sort_dir, 'responsivity_%s')
 
     # TODO:  pyvttbl split-plot anova 2-way does not handle bfactors > 100, just use 1-way RM:
     nconfigs = len(labels_df['config'].unique())
-    if nconfigs > 100:
+    if nconfigs > 100 or visual_test_type!='SPanova2':
         print "Using R-M ANOVA 1-way for visual responsiveness."
         test_type_str = 'Repeated Measures ANOVA1'
-        resp_test_type = 'RManova1'
+        visual_test_type = 'RManova1'
         split_plot = False
     else:
         print "Using Split-Plot ANOVA 2-way for visual responsiveness."
         test_type_str = 'Split-plot ANOVA2'
-        resp_test_type = 'SPanova2'
+        visual_test_type = 'SPanova2'
         split_plot = True
 
+    responsivity_basedir = os.path.join(sort_dir, 'responsivity_%s' % visual_test_type)
 
     # Create output dir for ANOVA2 results:
-    responsive_resultsdir = os.path.join(responsivity_basedir, '%s_results' % resp_test_type)
+    responsive_resultsdir = os.path.join(responsivity_basedir, '%s_by_roi' % visual_test_type)
     if not os.path.exists(responsive_resultsdir):
         os.makedirs(responsive_resultsdir)
         
-    responsive_anova_fpath = os.path.join(sort_dir, 'visual_rois_%s_results.json' % resp_test_type)        
+    responsive_anova_fpath = os.path.join(responsive_resultsdir, 'visual_rois_%s_results.json' % visual_test_type)        
 
     if create_new is False:
         try:
-            print "Loading existing split ANOVA results:\n", responsive_anova_fpath
+            print "Loading existing ANOVA results:\    n", responsive_anova_fpath
             with open(responsive_anova_fpath, 'r') as f:
                 responsive_anova = json.load(f)
         except Exception as e:
-            print "[E]: No previous results found for SP Anova2 test for visual responsivity. Creating new."
+            print "[E]: No previous results found for %s test for visual responsivity. Creating new." % visual_test_type
             create_new = True
     
     df_by_rois = group_roidata_trialepoch(roidata, labels_df)
@@ -361,7 +375,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
         responsive_anova = visually_responsive_ANOVA(df_by_rois, split_plot=split_plot, output_dir=responsive_resultsdir, nprocs=nprocs)
 
         # Save responsive roi list to disk:
-        print "Saving %s results to:\n" % resp_test_type, responsive_anova_fpath
+        print "Saving %s results to:\n" % visual_test_type, responsive_anova_fpath
         with open(responsive_anova_fpath, 'w') as f:
             json.dump(responsive_anova, f, indent=4, sort_keys=True)
 
@@ -376,12 +390,12 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4,
             f.write('----------------------------------------------------------\n')
             f.write('%s results:\n' % test_type_str)
             f.write('----------------------------------------------------------\n')
-            f.write('%i out of %i pass visual responsivity test (p < 0.05).\n' % (len(responsive_rois), len(responsive_anova.keys())))
+            f.write('%i out of %i pass visual responsivity test (p < %.2f).\n' % (len(responsive_rois), len(responsive_anova.keys()), pvalue))
             f.write('Top 10 (sorted by F val):\n    %s' % str(top10))
             
-        boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, sort_dir=sort_dir)
+        boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, responsivity_basedir=responsivity_basedir)
                 
-    return responsive_anova, sorted_visual, resp_test_type
+    return responsive_anova, sorted_visual, visual_test_type
 
 
 
@@ -394,7 +408,12 @@ def visually_responsive_ANOVA(df_by_rois, split_plot=True, nprocs=4, output_dir=
     '''
 
     roi_list = df_by_rois.groups.keys()
-    print("Calculating split-plot ANOVA (factors=epoch, config) for %i rois." % len(roi_list))
+    
+    if split_plot is False:
+        test_str = 'RM 1-way'
+    else:
+        test_str = 'SP 2-way'
+    print("Calculating %s ANOVA (factors=epoch, config) for %i rois." % (test_str, len(roi_list)))
 
     t_eval_mp = time.time()
 
@@ -524,7 +543,13 @@ def pyvt_splitplot_anova2(roi, pdf, output_dir='/tmp', asdict=True):
     aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.txt' % roi)
     with open(aov_results_fpath,'wb') as f:
         f.write(str(aov))
-    f.close()
+    
+    aov_results_fpath = os.path.join(output_dir, 'visual_anova_results_%s.pkl' % roi)
+    with open(aov_results_fpath, 'wb') as f:
+        pkl.dump(aov, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    
+
     results_epoch = extract_apa_anova(('epoch',), aov)
     if asdict is True:
         return results_epoch
@@ -579,15 +604,15 @@ def extract_apa_anova(factor, aov, values = ['F', 'mse', 'eta', 'p', 'df']):
     return results
 
 #%
-def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, sort_dir='/tmp', data_identifier=''):
+def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, responsivity_basedir='/tmp', data_identifier=''):
     
     # Box plots for top N rois (sortedb y ANOVA F-value):
     print("Plotting box plots for factors EPOCH x CONFIG for top %i rois." % topn)
-    vis_responsive_dir = os.path.join(sort_dir, 'responsivity', 'figures')
-    if not os.path.exists(vis_responsive_dir):
-        os.makedirs(vis_responsive_dir)
+    vis_responsive_figdir = os.path.join(responsivity_basedir, 'figures')
+    if not os.path.exists(vis_responsive_figdir):
+        os.makedirs(vis_responsive_figdir)
     
-    pyvt_boxplot_epochXconfig(df_by_rois, sorted_visual[0:topn], output_dir=vis_responsive_dir)
+    pyvt_boxplot_epochXconfig(df_by_rois, sorted_visual[0:topn], output_dir=vis_responsive_figdir)
 
     # View histogram of partial eta-squared values:
     eta2p_vals = [responsive_anova[r]['eta2_p'] for r in responsive_anova.keys() if responsive_anova[r] is not None]
@@ -607,12 +632,13 @@ def boxplots_responsivity(df_by_rois, responsive_anova, sorted_visual, topn=10, 
         p.patches[ind].set_color('m')
     
     pl.xlabel('eta-squared')
-    pl.title("Partial eta-squared (split-plot ANOVA2, p<0.05)")
+    pl.title("Partial eta-squared (ANOVA, p<0.05)")
     datestring = datetime.datetime.now().strftime("%Y%m%d_%H_%M_%S")
     figname = 'responsivity_eta2_partial_%s.png' % datestring
-    pl.savefig(os.path.join(os.path.split(vis_responsive_dir)[0], figname))
+    pl.savefig(os.path.join(os.path.split(vis_responsive_figdir)[0], figname))
     if data_identifier == '':
-        data_identifier = os.path.split(sort_dir)[0]
+        data_identifier = os.path.split(os.path.split(responsivity_basedir)[0])[0]
+    #print data_identifier
     label_figure(fig, data_identifier)
     pl.close()
     
@@ -649,30 +675,53 @@ def find_barval_index(bar_value_to_label, p):
 
 #%%
 
+options = ['-i', 'JC059', '-S', '20190227', '-A', 'FOV4_zoom4p0x',
+           '-d', 'corrected',
+           '-R', 'combined_blobs_static', '-t', 'traces001',
+           '--par', '--nproc=2', '--new', '--pvis=0.1', '--psel=0.05', '--metric=zscore'
+           ]
+
+#%%
 def calculate_roi_responsivity(options):
     optsE = extract_options(options)
     create_new = optsE.create_new
     nprocs = int(optsE.nprocesses)
-    pvalue = 0.05
-    
+    pval_visual = float(optsE.pval_visual) #0.05
+    pval_selective = float(optsE.pval_selective)
+ 
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
-    if len(optsE.traceid.split('_')) <= 2:
-        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
-        traceid = os.path.split(traceid_dir)[-1]
-    else:
-        traceid = optsE.traceid
-        traceid_dir = os.path.join(acquisition_dir, optsE.run, 'traces', optsE.traceid)
-        
+    traceid_dirs = glob.glob(os.path.join(acquisition_dir, optsE.run, 'traces', '%s*' % optsE.traceid))
+    assert len(traceid_dirs) > 0, "No trace id dir found for %s: %s" % (optsE.traceid, acquisition_dir)
+    assert len(traceid_dirs) == 1, "More than 1 traceid dir found!\n%s" % str(traceid_dirs)
+    traceid_dir = traceid_dirs[0]
+    traceid = os.path.split(traceid_dir)[-1]
+#    
+#    if len(traceid_dir) > 1:
+#        print "More than 1 traceid dir found..."
+#    
+#    if len(optsE.traceid.split('_')) <= 2:
+#        traceid_dir = util.get_traceid_from_acquisition(acquisition_dir, optsE.run, optsE.traceid)
+#        traceid = os.path.split(traceid_dir)[-1]
+#    else:
+#        traceid = optsE.traceid
+#        traceid_dir = os.path.join(acquisition_dir, optsE.run, 'traces', optsE.traceid)
+#        
     trace_type = optsE.trace_type
     data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, traceid, trace_type))
+    print "*** Calculating ROI responsivity ***"
+    print "--- %s" % data_identifier
+    
     
     # Create output dir for ROI selection:
     # =========================================================================
     print "Creating OUTPUT DIRS for ROI analyses..."
-    sort_dir = os.path.join(traceid_dir, 'sorted_rois')
+    datestring = datetime.datetime.now().strftime("%Y%m%d")
+    sort_dir = os.path.join(traceid_dir, 'response_stats_%s' % datestring) #'sorted_rois')
     if not os.path.exists(sort_dir):
         os.makedirs(sort_dir)
     print "Saving sorted ROI results to:\n    %s" % sort_dir
+    
+    
     # Load data array:
     # -------------------------------------------------------------------------
     data_fpaths = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets*.npz'))
@@ -711,20 +760,28 @@ def calculate_roi_responsivity(options):
     # =========================================================================
     # RESPONSIVITY:
     # =========================================================================
+    visual_test_type = optsE.visual_test_type
     responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df,
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
+                                                        visual_test_type=visual_test_type,
                                                         create_new=create_new, 
                                                         data_identifier=data_identifier,
-                                                        pvalue=pvalue)
+                                                        pvalue=pval_visual)
     print("%i out of %i cells pass %s test for visual responses." % (len(sorted_visual), len(responsive_anova), resp_test_type))
+    
+    
+#%%
 
+    #df_by_rois = group_roidata_trialepoch(roidata, labels_df)
 
     # =========================================================================
     # SELECTIVTY:
     # =========================================================================
     post_hoc = 'dunn'
-    metric = 'meanstim'
+    selectivity_test = 'kruskal_wallis'
+    metric = optsE.response_metric #'zscore'
+    
     # Rename stim labels so that "config" is replaced w/ sth informative...
     if sconfigs[sconfigs.keys()[0]]['stimtype']=='gratings':
         stimlabels = dict((c, sconfigs[c]['ori']) for c in sconfigs.keys())
@@ -732,18 +789,25 @@ def calculate_roi_responsivity(options):
         stimlabels = dict((c, sconfigs[c]['object']) for c in sconfigs.keys())
     elif sconfigs[sconfigs.keys()[0]]['stimtype']=='movie':
         stimlabels = dict((c, sconfigs[c]['object']) for c in sconfigs.keys())
-        
-    selectivityKW_results, sorted_selective = find_selective_cells(roidata, labels_df, 
-                                                                   roi_list=sorted_visual, 
-                                                                   post_hoc='dunn', 
-                                                                   sort_dir=sort_dir, 
-                                                                   metric=metric, 
-                                                                   stimlabels=stimlabels, 
-                                                                   data_identifier=data_identifier,
-                                                                   nprocs=nprocs, 
-                                                                   create_new=create_new,
-                                                                   pvalue=pvalue)
     
+    selective_and_visual = True
+    if selective_and_visual is True:
+        roi_list = sorted_visual
+    else:
+        roi_list = []
+        
+    if selectivity_test == 'kruskal_wallis':
+        selectivityKW_results, sorted_selective = find_selective_cells(roidata, labels_df, 
+                                                                       roi_list=roi_list, 
+                                                                       post_hoc=post_hoc, 
+                                                                       sort_dir=sort_dir, 
+                                                                       metric=metric, 
+                                                                       stimlabels=stimlabels, 
+                                                                       data_identifier=data_identifier,
+                                                                       nprocs=nprocs, 
+                                                                       create_new=create_new,
+                                                                       pvalue=pval_selective)
+        
     # Update roi stats summary file:
     # ---------------------------------------------------------
     H_mean = np.mean([selectivityKW_results[r]['H'] for r in selectivityKW_results.keys()])
@@ -766,14 +830,14 @@ def calculate_roi_responsivity(options):
              acquisition=optsE.acquisition,
              traceid=traceid,
              nrois_total=nrois_total,
-             responsivity_test='pyvt_%s' % resp_test_type, #'pyvt_splitplot_anova2',
+             responsivity_test = resp_test_type, #'pyvt_splitplot_anova2',
              sorted_visual=sorted_visual,
              sorted_selective=sorted_selective,
-             selectivity_test = 'kruskal_wallis',
+             selectivity_test = selectivity_test,
              selectivity_posthoc=post_hoc,
              metric=metric,
-             visual_pval = pvalue,
-             selective_pval = pvalue
+             visual_pval = pval_visual,
+             selective_pval = pval_selective
              )
     print "Saved ROI stat results to: %s" % roistats_fpath
     

@@ -25,9 +25,21 @@ from pipeline.python.utils import zproj_tseries
 import get_scanimage_data as sim
 import correct_flyback as fb
 import correct_motion as mc
-
+import shutil
 import time
 from functools import wraps
+
+def reload_pid(PID):
+    
+    processid_dir = os.path.split(PID['DST'])[0]
+    curr_processid = PID['process_id']
+
+    pids_fpath = glob.glob(os.path.join(processid_dir, '*.json'))[0]
+    with open(pids_fpath, 'r') as f: pids = json.load(f)
+    
+    PID = pids[curr_processid]    
+
+    return PID
  
 #def fn_timer(function):
 #    @wraps(function)
@@ -216,13 +228,16 @@ def process_pid(options):
         bidir_otions.extend(['--default'])
     if slurm is True:
         bidir_options.extend(['--slurm', '-C', cvx_path])
-    
+   
+    # Reload PID:
+    PID = reload_pid(PID)
+ 
     # Check if bidi already done:
     bidi_output_dir = PID['PARAMS']['preprocessing']['destdir']
     if os.path.exists(bidi_output_dir):
         bidi_tiffs = [t for t in os.listdir(bidi_output_dir) if t.endswith('tif')]
         if len(bidi_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
-            print "*** Found existing BIDI corrected files. Skipping..."
+            print "[BIDI]:  *** Found existing BIDI corrected files. Skipping..."
             execute_bidi = False
     # -------------------------
 
@@ -240,25 +255,35 @@ def process_pid(options):
 #    else:
 #        bidir_hash = os.path.split(PID['PARAMS']['preprocessing']['destdir'])[-1].split('_')[-1]
     #pid_hash = PID['pid_hash']
-    print "Bidir hash: %s" % bidir_hash
-    print "PID %s: BIDIR finished." % pid_hash
+    #print "Bidir hash: %s" % bidir_hash
+    #print "PID %s: BIDIR finished." % pid_hash
 
+    # Reload PID:
+    PID = reload_pid(PID)
+    
     # Create average slices for viewing:
+    print "[BIDI]:  Checking for Z-projection step."
     deint_dir = os.path.join('%s_mean_deinterleaved' % PID['PARAMS']['preprocessing']['destdir'], 'visible')
-    #print deint_dir
-    #print os.listdir(deint_dir)
+    if not os.path.exists(deint_dir): os.makedirs(deint_dir)
     if get_zproj is True and len(glob.glob(os.path.join(deint_dir, '*.tif')))==0: #execute_bidi is True:
-        print "PID %s -- Done with BIDI. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
-
-        with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
-            currpid = json.load(f)
-        curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
-        source_dir = currpid[curr_process_id]['PARAMS']['preprocessing']['destdir']
+        print "[BIDI]: -- Getting z-projection (%s) slice images." % (zproj_type)
+        source_dir = PID['PARAMS']['preprocessing']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
-        #if os.path.isdir(source_dir):
         zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
-        print "PID %s -- Finished creating ZPROJ slice images from bidi-corrected tiffs." % pid_hash
+        print "[BIDI]: Finished creating ZPROJ slice images." 
      
+    # Tmp fix for when we accidentally save 2 channels:
+#    if run != 'anatomical':
+#        all_bidi_files = glob.glob(os.path.join(PID['PARAMS']['preprocessing']['destdir'], '*.tif'))
+#        for fi in all_bidi_files:
+#            print all_bidi_files
+#        reloc_ch2 = [fi for fi in all_bidi_files if 'Channel02' in fi]
+#        if len(reloc_ch2) > 0:
+#            ch2_dir = os.path.join(PID['PARAMS']['preprocessing']['destdir'], 'Channel02')
+#            if not os.path.exists(ch2_dir): os.makedirs(ch2_dir)
+#            for rfi in reloc_ch2:
+#                fname = os.path.split(rfi)[-1]
+#                shutil.move(rfi, os.path.join(ch2_dir, fname))
 
 
     # ===========================================================================
@@ -270,12 +295,15 @@ def process_pid(options):
     if slurm is True:
         bidir_options.extend(['--slurm', '-C', cvx_path]) #, '-P', repo_path])
 
+    # Reload PID:
+    PID = reload_pid(PID)
+    
     # Check if motion already done:
     mc_output_dir = PID['PARAMS']['motion']['destdir']
     if os.path.exists(mc_output_dir):
         mc_tiffs = [t for t in os.listdir(mc_output_dir) if t.endswith('tif')]
         if len(mc_tiffs) == len([k for k in simeta.keys() if 'File' in k]) and create_new is False:
-            print "*** Found existing MC files. Skipping..."
+            print "[MOTION]:  *** Found existing MC files. Skipping..."
             execute_motion = False
     # -------------------------
 
@@ -290,18 +318,22 @@ def process_pid(options):
     print "MC hash: %s" % mcdir_hash
     print "PID %s: MC finished." % pid_hash
  
+    # Reload PID:
+    PID = reload_pid(PID)
+    
+    print "[MOTION]:  Checking for Z-projection step."
     # Create average slices for viewing:
     if get_zproj is True and len(glob.glob(os.path.join('%s_mean_deinterleaved' % PID['PARAMS']['motion']['destdir'], 'visible', '*.tif')))==0:
-        print "PID %s -- Done with MC. Getting z-projection (%s) slice images." % (pid_hash, zproj_type)
+        print "[MOTION]: -- Getting z-projection (%s) slice images." % (zproj_type)
         with open(os.path.join(acquisition_dir, run, 'processed', 'pids_%s.json' % run), 'r') as f:
             currpid = json.load(f)
         curr_process_id = [p for p in currpid.keys() if currpid[p]['pid_hash'] == pid_hash][0]
         source_dir = currpid[curr_process_id]['PARAMS']['motion']['destdir']
         runmeta_fn = os.path.join(acquisition_dir, run, '%s.json' % run)
-        print "SOURCE dir is:", source_dir
+        print "... SOURCE dir is:", source_dir
         #if os.path.isdir(source_dir):
         zproj_tseries(source_dir, runmeta_fn, zproj_type=zproj_type)
-        print "PID %s -- Finished creating ZPROJ slice images from motion-corrected tiffs." % pid_hash
+        print "[MOTION]: Finished creating ZPROJ slice images from motion-corrected tiffs."
 
  
     # ===========================================================================

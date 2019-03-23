@@ -11,16 +11,26 @@ import os
 import optparse
 import sys
 import json
+import re
+import datetime
 import matplotlib as mpl
 mpl.use('agg')
+import scipy as sp
 import numpy as np
 import pylab as pl
 import seaborn as sns
 import pandas as pd
 import h5py
+import traceback
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+
+import glob
+from pipeline.python.utils import natural_keys
+
 
 #%%
-def convert_values(oldval, newmin, newmax, oldmax=None, oldmin=None):
+def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
     newrange = (newmax - newmin)
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
@@ -51,20 +61,30 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
 
     return lin_coord_x, lin_coord_y
 
-def get_retino_info(width=81.28, height=45.77, resolution=[1600, 900],
+def get_retino_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data',
                     azimuth='right', elevation='top',
                     leftedge=None, rightedge=None, bottomedge=None, topedge=None):
 
-    lin_coord_x, lin_coord_y = get_linear_coords(width, height, resolution, leftedge=leftedge, rightedge=rightedge, bottomedge=bottomedge, topedge=topedge)
+    screen_info = get_screen_info(animalid, session, fov=fov, interactive=interactive,
+                                  rootdir=rootdir)
+
+    lin_coord_x, lin_coord_y = get_linear_coords(screen_info['azimuth'], 
+                                                 screen_info['elevation'], 
+                                                 screen_info['resolution'], 
+                                                 leftedge=leftedge, rightedge=rightedge, 
+                                                 bottomedge=bottomedge, topedge=topedge)
+    
     linminW = lin_coord_x.min(); linmaxW = lin_coord_x.max()
     linminH = lin_coord_y.min(); linmaxH = lin_coord_y.max()
 
+        
+        
     retino_info = {}
-    retino_info['width'] = width
-    retino_info['height'] = height
-    retino_info['resolution'] = resolution
-    aspect_ratio = float(height)/float(width)
-    retino_info['aspect'] = aspect_ratio
+    retino_info['width'] = screen_info['azimuth']
+    retino_info['height'] = screen_info['elevation']
+    retino_info['resolution'] = screen_info['resolution']
+    #aspect_ratio = float(height)/float(width)
+    retino_info['aspect'] = retino_info['height'] / retino_info['width']#aspect_ratio
     retino_info['azimuth'] = azimuth
     retino_info['elevation'] = elevation
     retino_info['linminW'] = linminW
@@ -79,48 +99,68 @@ def get_retino_info(width=81.28, height=45.77, resolution=[1600, 900],
 
 def convert_lincoords_lincolors(rundf, rinfo, stat_type='mean'):
 
-    angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
+    #angX = rundf.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].values
+    angX = rundf.xs(rinfo['azimuth'], axis=0)['phase_%s' % stat_type].values 
     angY = rundf.xs(rinfo['elevation'], axis=0)['phase_%s' % stat_type].values
+    #print rundf.xs(rinfo['azimuth'], axis=0).head()
+    #print rundf.head() #.loc[slice(rinfo['azimuth']), 'phase_%s' % stat_type].head()
 
     # Convert phase range to linear-coord range:
-    linX = convert_values(angX, rinfo['linminW'], rinfo['linmaxW'], oldmax=0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
-    linY = convert_values(angY, rinfo['linminH'], rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
+    if rinfo['azimuth'] == 'right':
+        linX = convert_values(angX, newmax=rinfo['linminW'], newmin=rinfo['linmaxW'], oldmax=2*np.pi, oldmin=0) #0, oldmin=2*np.pi)  # If cond is 'right':  positive values = 0, negative values = 2pi
+    if rinfo['elevation'] == 'top': 
+        linY = convert_values(angY, newmax=rinfo['linminH'], newmin=rinfo['linmaxH'], oldmax=2*np.pi, oldmin=0)  # If cond is 'top':  positive values = 0, negative values = 2pi
     linC = np.arctan2(linY,linX)
-
+    #linC = linX.copy()
+    
     return linX, linY, linC
 
 
 def plot_roi_retinotopy(linX, linY, rgbas, retino_info, curr_metric='magratio_mean',
-                        alpha_min=0, alpha_max=1, color_position=False,
+                        alpha_min=0, alpha_max=1, color_position=False, pos_cmap='hsv', 
                         output_dir='', figname='roi_retinotopy.png', save_and_close=True):
+    
+    screen_left = -1*retino_info['width']/2.
+    screen_right = retino_info['width']/2.
+    screen_bottom = -1*retino_info['height']/2.
+    screen_top = retino_info['height']/2.
     sns.set()
     fig = pl.figure(figsize=(10,8))
     ax = fig.add_subplot(111) #, aspect=retino_info['aspect'])
     if color_position is True:
-        pl.scatter(linX, linY, s=150, c=rgbas, cmap='hsv', vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
+        print("... plotting hue as POSITION")
+        #poscmap = 'nipy_spectral_r' # hsv
+        pl.scatter(linX, linY, s=150, c=rgbas, cmap=pos_cmap, vmin=screen_left, vmax=screen_right) # vmin=-np.pi, vmax=np.pi) #, vmin=0, vmax=2*np.pi)
         magcmap = mpl.cm.Greys
     else:
+        print("... plotting hue as MAG RATIO")
         pl.scatter(linX, linY, s=150, c=rgbas, cmap='inferno', alpha=0.75, edgecolors='w') #, vmin=0, vmax=2*np.pi)
         magcmap=mpl.cm.inferno
 
-    pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
+    #pl.gca().invert_xaxis()  # Invert x-axis so that negative values are on left side
 #    pl.xlim([retino_info['linminW'], retino_info['linmaxW']])
 #    pl.ylim([retino_info['linminH'], retino_info['linmaxH']])
-    pl.xlim([-1*retino_info['width']/2., retino_info['width']/2.])
-    pl.ylim([-1*retino_info['height']/2., retino_info['height']/2.])
+    pl.xlim([screen_left, screen_right])
+    pl.ylim([screen_bottom, screen_top])
+    print("Screen limits (AZ): %s" % str([screen_left, screen_right]))
 
     pl.xlabel('x position')
     pl.ylabel('y position')
     pl.title('ROI position selectivity (%s)' % curr_metric)
     pos = ax.get_position()
     ax2 = fig.add_axes([pos.x0+.8, pos.y0, 0.01, pos.height])
-    #magcmap = mpl.cm.Greys
-#    if alpha_max < 0.05:
-#        alpha_max = 0.05
     magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
     cb = mpl.colorbar.ColorbarBase(ax2, cmap=magcmap, norm=magnorm, orientation='vertical')
 
+    if color_position is True:
+        ax3 = fig.add_axes([pos.x0+.84, pos.y0, 0.01, pos.height])
+        poscols = mpl.colors.Normalize(vmin=screen_left, vmax=screen_right)
+        cb = mpl.colorbar.ColorbarBase(ax3, cmap=pos_cmap, norm=poscols, orientation='vertical')
+
+
     if save_and_close is True:
+        datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        figname = '%s_%s.png' % (os.path.splitext(figname)[0], datestr)
         pl.savefig(os.path.join(output_dir, figname))
         pl.close()
 
@@ -132,7 +172,7 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
@@ -150,6 +190,7 @@ def extract_options(options):
     parser.add_option('--default', action='store_true', dest='auto', default=False, help="set if want to use all defaults")
 
     parser.add_option('--positions', action='store_true', dest='color_position', default=False, help="set if want to view position responses as color map (retinotopy)")
+    parser.add_option('--hue', action='store', dest='hue_pos', default=None, help="Set to color-code by position ('az', 'el', or None with --position flagged to plot arctan)")
 
     parser.add_option('-B', '--bbox', dest='boundingbox_runs', default=[], nargs=1, action='append', help="RUN that is a bounding box run (only for retino)")
     parser.add_option('-l', '--left', dest='leftedge', default=None, action='store', help="left edge of bounding box")
@@ -199,13 +240,10 @@ def assign_mag_ratios(dataframes, run, stat_type='mean', metric_type='magratio')
 
 
 def visualize_position_data(dataframes, zdf, retino_info,
-                            set_response_alpha=True, stat_type='mean', color_position=False,
+                            set_response_alpha=True, stat_type='mean', color_position=False, hue_pos=None,
                             acquisition_str='', output_dir='/tmp', save_and_close=True):
 
-    # Get RGBA mapping normalized to mag-ratio values:
-    norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
-    cmap = mpl.cm.get_cmap('hsv')
-    mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+
 
     retino_runs = [k for k in retino_info.keys() if 'retino' in k]
     if color_position is False and len(retino_runs)>1:
@@ -231,7 +269,28 @@ def visualize_position_data(dataframes, zdf, retino_info,
         visinfo[run]['linC'] = linC
         visinfo[run]['metric'] = curr_metric
 
-        rgbas = np.array([mapper.to_rgba(v) for v in linC])
+        # Get RGBA mapping normalized to mag-ratio values:
+        if color_position is True and hue_pos is not None:
+            if hue_pos == 'az':
+                norm = mpl.colors.Normalize(vmin=retino_info[run]['linminW'], vmax=retino_info[run]['linmaxW'])
+            else:
+                norm = mpl.colors.Normalize(vmin=retino_info[run]['linminH'], vmax=retino_info[run]['linmaxH'])
+            cmap_name = 'nipy_spectral_r' # Assumes we are using RIGHT (or Top?)
+        
+        else:
+            norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
+            cmap_name = 'hsv'
+        
+        cmap = mpl.cm.get_cmap(cmap_name)
+        mapper = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        
+        if hue_pos == 'az':
+            rgbas = np.array([mapper.to_rgba(v) for v in linX])
+        elif hue_pos == 'el':
+            rgbas = np.array([mapper.to_rgba(v) for v in linY])
+        else:
+            rgbas = np.array([mapper.to_rgba(v) for v in linC])
+
         magratios = zdf[curr_metric]
         if alpha_min is None:
             alpha_min = magratios.min()
@@ -251,15 +310,21 @@ def visualize_position_data(dataframes, zdf, retino_info,
             # Plot each ROI's "position" color-coded with angle map:
             if color_position is True:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cpos.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, rgbas, retino_info[run], curr_metric=curr_metric,
-                                    alpha_min=zdf[curr_metric].min(), alpha_max=zdf[curr_metric].max(),
-                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                hue_vals = rgbas.copy()
+                alpha_min = zdf[curr_metric].min()
+                alpha_max = zdf[curr_metric].max()
+                
             else:
                 figname = '%s_R%i-%s_position_selectivity_%s_Cmagr.png' % (acquisition_str, int(runnum+1), run, curr_metric)
-                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
-                                    alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
-                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                hue_vals = magratios.copy()
+#                plot_roi_retinotopy(linX, linY, magratios, retino_info[run], curr_metric=curr_metric,
+#                                    alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
+#                                    output_dir=output_dir, figname=figname, save_and_close=save_and_close)
 
+            plot_roi_retinotopy(linX, linY, hue_vals, retino_info[run], curr_metric=curr_metric, pos_cmap=cmap_name, 
+                                alpha_min=alpha_min, alpha_max=alpha_max, color_position=color_position,
+                                output_dir=output_dir, figname=figname, save_and_close=save_and_close)
+                
     return visinfo
 
 
@@ -289,13 +354,16 @@ def get_metricdf(dfpaths):
                 rundf = h5py.File(df, 'r')
                 if len(rundf) == 0:
                     continue
-                currconfig = paradigm_info[str(di+1)]['stimuli']['stimulus']
-                currtrial = 'trial%05d' % int(di+1)
+                curr_file = str(re.search('File(\d{3})', df).group(0))
+                file_index_str = str(int(curr_file[4:]))
+
+                currconfig = paradigm_info[file_index_str]['stimuli']['stimulus']
+                currtrial = 'trial%05d' % int(file_index_str)
                 run_name = os.path.split(df.split('/retino_analysis')[0])[-1]
                 if len(run_name.split('_')) > 3:
                     run_name = run_name.split('_')[0]
 
-                print "Getting mag-ratios for each ROI in run: %s, trial %i" % (run_name, di+1)
+                print "Getting mag-ratios for each ROI in run: %s, trial %s" % (run_name, file_index_str) # di+1)
                 roi_list = ['roi%05d' % int(r+1) for r in range(rundf['mag_ratio_array'].shape[0])]
                 phase_convert = -1 * rundf['phase_array'][:]
                 phase_convert = phase_convert % (2*np.pi)
@@ -307,9 +375,13 @@ def get_metricdf(dfpaths):
                                        'run': run_name
                                        }))
             data = pd.concat(currdf, axis=0)
+#            metricdf1 = data.groupby(['config', 'roi']).agg({'magratio': {'magratio_mean': 'mean', 'magratio_max': 'max'},
+#                                                            'phase': {'phase_mean': 'mean'}
+#                                                            })
             metricdf = data.groupby(['config', 'roi']).agg({'magratio': {'magratio_mean': 'mean', 'magratio_max': 'max'},
-                                                            'phase': {'phase_mean': 'mean'}
+                                                            'phase': {'phase_mean': sp.stats.circmean}
                                                             })
+    
             # Get phases at max mag-ratio:
             phases_at_max = [data[(data['roi']==ind[1]) & (data['config']==ind[0]) & (data['magratio']==val)]['phase'].values[0]
                                 for ind, val in zip(metricdf['magratio']['magratio_max'].index.tolist(), metricdf['magratio']['magratio_max'].values)]
@@ -351,6 +423,84 @@ def get_metricdf(dfpaths):
 
     return dataframes #, gridinfo
 
+#%%
+def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
+        
+    screen = {}
+    
+    try:
+        # Get bounding box values from epi:
+        epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
+        epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
+        print("Found epi sessions: %s" % str(epi_sessions))
+        if len(epi_sessions) > 0:
+            epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
+            print("Most recent: %s" % str(epi_sesh))
+
+            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
+            if len(epi_fpaths) == 0:
+                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
+
+        else:
+            print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
+            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
+        
+        assert len(epi_fpaths) > 0, "No epi screen info found!"
+        
+        # Each epi run should have only 2 .json files (1 for each condition):
+        if len(epi_fpaths) > 2:
+            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
+            repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
+            for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
+                print(ei, repeat_epi)
+            if interactive:
+                selected_epi = input("Select IDX of epi run to use: ")
+            else:
+                assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
+                
+                selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
+                print("Found FOVs: %s" % str(selected_fovs))
+
+                if len(selected_fovs) == 0:
+                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
+                else:
+                    selected_epi = selected_fovs[0]
+                
+            epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
+        
+        print("-- getting screen info from:", epi_fpaths)
+        
+        for epath in epi_fpaths:
+            with open(epath, 'r') as f:
+                epi = json.load(f)
+            
+            screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
+            screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
+            screen['resolution'] = [epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
+
+            if 'screen_boundaries' in epi.keys():
+                if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
+                    screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
+                    screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
+                elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
+                    screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
+                    screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
+            
+            else:
+                screen['bb_lower'] = -1*screen['elevation']/2.0
+                screen['bb_upper'] = screen['elevation']/2.0
+                screen['bb_left']  = -1*screen['azimuth']/2.0
+                screen['bb_right'] = screen['azimuth']/2.0
+
+
+        print("*********************************")
+        pp.pprint(screen)
+        print("*********************************")
+      
+    except Exception as e:
+        traceback.print_exc()
+        
+    return screen
 
 #%%
 #    options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x',
@@ -381,11 +531,13 @@ def roi_retinotopy(options):
         topedge = float(options.topedge)
         bottomedge = float(options.bottomedge)
     color_position = options.color_position
+    hue_pos = options.hue_pos
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
 
     # Get dataframe paths for runs to be compared:
     dfpaths = get_retino_datafile_paths(acquisition_dir, run, traceid)
+    print dfpaths
 
     # Get base dir for retinotopy output:
     analysis_fpaths = dfpaths[run]
@@ -395,6 +547,41 @@ def roi_retinotopy(options):
         os.makedirs(output_dir)
     print "Saving output figures to:", output_dir
 
+    # load screen coord info:
+#    try:
+#        screen_info_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*', 'screen_*.json'))
+#        if len(screen_info_fpaths) == 0:
+#            screen_info_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_*.json'))
+#        assert len(screen_info_fpaths) > 0, "*** No SCREEN INFO file found in epi_maps."
+#        screen_info_fpath = screen_info_fpaths[0]
+#        with open(screen_info_fpath, 'r') as f:
+#            screen = json.load(f)
+#        screen_width = screen['screen_params']['screen_size_x_degrees']
+#        screen_height = screen['screen_params']['screen_size_t_degrees']
+#        screen_resolution = [screen['screen_params']['screen_size_x_pixels'], screen['screen_params']['screen_size_y_pixels']]
+#    except Exception as e:
+#        print("--- using default screen params ---")
+#        screen_width = 81.28
+#        screen_height = 45.77
+#        screen_resolution = [1920, 1024]
+    if slurm:
+        interactive = False
+    else:
+        interactive = True
+    print("INTERACTIVE:", interactive)
+#    screen_info = get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=interactive, rootdir=rootdir)
+#    if len(screen_info.keys()) == 0:
+#        screen_width = 81.28
+#        screen_height = 45.77
+#        screen_resolution = [1920, 1024]
+#    else:
+#        screen_width = screen_info['azimuth']
+#        screen_height = screen_info['elevation']
+#        screen_resolution = screen_info['resolution']
+#
+#    print("*********************************")
+#    pp.pprint(screen_info)
+#    print("*********************************")
 
 
     # Create DF for easy plotting:
@@ -411,11 +598,17 @@ def roi_retinotopy(options):
     retino_info = {}
     for run in run_list:
         if run in boundingbox_runs:
-            retino_info[run] = get_retino_info(azimuth='right', elevation='top',
-                                          leftedge=leftedge, rightedge=rightedge,
-                                          bottomedge=bottomedge, topedge=topedge)
+            retino_info[run] = get_retino_info(animalid, session, fov=acquisition.split('_')[0], 
+                                               interactive=interactive, rootdir=rootdir,
+                                               azimuth='right', elevation='top',
+                                               leftedge=leftedge, rightedge=rightedge,
+                                               bottomedge=bottomedge, topedge=topedge)
         else:
-            retino_info[run] = get_retino_info(azimuth='right', elevation='top')
+            retino_info[run] = get_retino_info(animalid, session, fov=acquisition.split('_')[0], 
+                                               interactive=interactive, rootdir=rootdir,
+                                               azimuth='right', elevation='top')
+    pp.pprint(retino_info)
+
 
     # Get conversions for retinotopy & grid protocols:
     acquisition_str = '%s_%s_%s' % (animalid, session, acquisition)
@@ -423,14 +616,17 @@ def roi_retinotopy(options):
                                       set_response_alpha=set_response_alpha,
                                       stat_type=stat_type,
                                       color_position=color_position,
+                                      hue_pos=hue_pos,
                                       save_and_close=False)
 
     if color_position:
-        cmap_str = 'Cmagr'
+        cmap_str = 'Cpos' #magr'
     else:
-        cmap_str = 'Cpos'
+        cmap_str = 'Cmagr' #pos'
+       
+    datestr = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
-    figname = '%s_%s_magratio_mean_%s.png' % (acquisition_str, run, cmap_str)
+    figname = '%s_%s_magratio_mean_%s_%s.png' % (acquisition_str, run, cmap_str, datestr)
     pl.savefig(os.path.join(output_dir, figname))
 
 

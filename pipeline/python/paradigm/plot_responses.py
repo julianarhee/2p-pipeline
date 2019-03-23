@@ -49,10 +49,10 @@ from pipeline.python.utils import label_figure
 #           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
 #           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
-options = ['-D', '/n/coxfs01/2p-data','-i', 'CE077', '-S', '20180521', '-A', 'FOV2_zoom1x',
-           '-R', 'combined_blobs_static', '-t', 'traces002_496213_traces002_e56f62', 
-           '-d', 'corrected',
-           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
+options = ['-D', '/n/coxfs01/2p-data','-i', 'JC031', '-S', '20181119', '-A', 'FOV1_zoom2p0x',
+           '-R', 'blobs_run1', '-t', 'traces001', 
+           '-d', 'dff',
+           '-r', 'ypos', '-c', 'xpos', '-H', 'morphlevel']
 
 def extract_options(options):
 
@@ -230,7 +230,8 @@ def make_clean_psths(options):
     subplot_hue = optsE.subplot_hue
     rows = optsE.rows
     columns = optsE.columns
-    
+    plot_params = [subplot_hue, rows, columns]
+ 
     data_identifier = '_'.join((optsE.animalid, optsE.session, optsE.acquisition, optsE.traceid))
 
     
@@ -291,9 +292,8 @@ def make_clean_psths(options):
     if 'duration' in transform_dict.keys():
         transform_dict['stim_dur'] = transform_dict['duration']
         transform_dict.pop('duration')
-    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])        
-    print "Trans:", trans_types
-    print object_transformations #transform_dict
+    #print "Trans:", trans_types
+    #print object_transformations #transform_dict
 #
 #    if alt_axis is not None:
 #        trans_types.extend([alt_axis])
@@ -307,11 +307,23 @@ def make_clean_psths(options):
             sconfigs.pop(c)
             
     sconfigs_df = pd.DataFrame(sconfigs).T
+
+    if 'position' in plot_params and 'position' not in sconfigs_df.columns.tolist():
+        posvals = list(set(zip(sconfigs_df['xpos'].values, sconfigs_df['ypos'].values)))
+        print "Found %i unique positions." % len(posvals)
+        transform_dict['position'] = posvals
+        sconfigs_df['position'] = list(zip(sconfigs_df['xpos'], sconfigs_df['ypos']))
+
+
+    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])         
+    print "Trans:", trans_types
+    #print transform_dict
     print sconfigs_df.head()    
-        
-    # Get trial and timing info:
-    #    trials = np.hstack([np.tile(i, (nframes_per_trial, )) for i in range(ntrials_total)])
-    #multi_plot = None
+
+    # -------------------------------------------------------------------------
+    # Create PSTH plot grid:
+    # -------------------------------------------------------------------------
+    # 1.  No rows or columns, i.e., SINGLE transform (e.g., orientation):
     if len(trans_types) == 1 and rows is None and columns is None:
         stim_grid = (transform_dict[trans_types[0]],)
         sgroups = sconfigs_df.groupby(sorted(trans_types))
@@ -319,25 +331,36 @@ def make_clean_psths(options):
         columns = trans_types[0]
         col_order = sorted(stim_grid[0])
         nrows = 1; rows = None; row_order=None
+        unspecified_trans_types = []
     else:
+        # 2.  If more than 1 transform, default is to make ROWS object/morphlevel:
         if rows is None:
             if 'morphlevel' in trans_types and subplot_hue != 'morphlevel':
                 rows = 'morphlevel'
+            elif 'ori' in trans_types:
+                rows = [t for t in trans_types if t != 'ori'][0]
             else:
                 rows = 'object'
+        # And make the COLS whatever other transform there is:
         if rows == 'object':
             transform_dict['object'] = [i.value for i in sconfigs_df['object'].unique()]
-        other_trans_types = [t for t in trans_types if t != rows and t != subplot_hue]
+        nonrow_trans_types = [t for t in trans_types if t not in t != rows and t != subplot_hue]
 
         if columns is None:
-            columns = other_trans_types[0]
+            columns = nonrow_trans_types[0]
         if columns == 'object':
             transform_dict['object'] = [i for i in sconfigs_df['object'].unique()]
-            
-        if subplot_hue is None and len(other_trans_types) > 1:
-            subplot_hue = [t for t in other_trans_types if t != columns][0]
+        noncol_trans_types =  [t for t in trans_types if t not in [rows, columns, subplot_hue]]
 
-#        if nrows in 
+        if subplot_hue is None and len(noncol_trans_types) > 1:
+            subplot_hue = [t for t in noncol_trans_types if t != columns and t != rows][0]
+
+        unspecified_trans_types = [t for t in trans_types if t not in [rows, columns, subplot_hue]]
+        
+        if 'position' in plot_params:
+            unspecified_trans_types = [t for t in unspecified_trans_types if t not in ['xpos', 'ypos']]
+
+        
         nrows = len(transform_dict[rows])
         ncols = len(transform_dict[columns])        
         stim_grid = (transform_dict[rows], transform_dict[columns])
@@ -367,24 +390,46 @@ def make_clean_psths(options):
         os.makedirs(psth_dir)
     print "Saving PSTHs to: %s" % psth_dir
     
-#    
-#    dfmax = xdata.max()
-#    #scale_y = False
-    
-    
     if dfmax is None:
         dfmax = xdata.max()
     else:
         dfmax = float(dfmax)
-        
+    
+    
+    # Set COLORS for subplots:
     if len(trans_types)<=2 and subplot_hue is None:
         trace_colors = ['k']
         trace_labels = ['']
+        
+    elif len(trans_types) > 2 and len(unspecified_trans_types) > 0:
+        # Use different color gradients for each object to plot the unspecified transform, too:
+        # X and Y already specified, so color-gradient will be the unspecified.
+        if len(unspecified_trans_types) > 1:
+            print "--- WARNING --- More than 1 unspecified trans: %s" % str(unspecified_trans_types)
+        colorbank = ['Purples', 'Greens', 'Blues', 'Reds']
+        if subplot_hue in transform_dict.keys():
+            hue_labels = transform_dict[subplot_hue]
+        else:
+            hue_labels = object_transformations[rows]
+        
+        unspec_trans_type = unspecified_trans_types[0]
+        unspec_trans_values = sorted(transform_dict[unspec_trans_type])
+        n_unspec_trans_levels = len(unspec_trans_values)
+        
+        trace_colors = dict((hue_base, dict((gvalue, sns.color_palette(colorbank[hi], n_unspec_trans_levels)[glevel]) \
+                                            for glevel, gvalue in enumerate(unspec_trans_values)) ) \
+                                            for hi, hue_base in enumerate(hue_labels))
+        trace_labels = dict((hue_base, dict((translevel, '_'.join([str(hue_base), str(translevel)])) for translevel in unspec_trans_values) ) \
+                                             for hue_base in hue_labels)
+#        trace_colors = dict((hue_base, sns.color_palette(colorbank[hi], n_unspec_trans_levels)) for hi, hue_base in enumerate(hue_labels))
+#        trace_labels = dict((hue_base, ['_'.join([str(hue_base), str(translevel)]) for translevel in unspec_trans_values]) for hue_base in hue_labels)
+    
+        
     else:
         print "Subplot hue: %s" % subplot_hue
         if subplot_hue in transform_dict.keys():
             hues = transform_dict[subplot_hue]
-            trace_labels = ['%s %i' % (subplot_hue, v) for v in sorted(transform_dict[subplot_hue])]
+            trace_labels = ['%s %s' % (subplot_hue, str(v)) for v in sorted(transform_dict[subplot_hue])]
         else:
             print "Hue is OBJECT"
             hues = object_transformations[rows]
@@ -394,7 +439,9 @@ def make_clean_psths(options):
             trace_colors = ['g', 'b']
         else:
             trace_colors = sns.color_palette('hls', len(hues))
-            #trace_colors = ['r', 'orange', 'g', 'b', 'm', 'k']
+
+        
+
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     for ridx in range(xdata.shape[-1]):
@@ -415,7 +462,7 @@ def make_clean_psths(options):
         #tracemat = np.reshape(xdata[:, ridx], (ntrials_total, nframes_per_trial))
         
         sns.set_style('ticks')
-        fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(20,3*nrows+5))
+        fig, axes = pl.subplots(nrows, ncols, sharex=False, sharey=True, figsize=(5*ncols,3*nrows+5))
         axesf = axes.flat    
         traces_list = []
         skipped_axes = []
@@ -439,7 +486,6 @@ def make_clean_psths(options):
                 sub_df = rdata[rdata['config']==str(curr_config)]
                 tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
                 tpoints = np.mean(sub_df.groupby('trial')['tsec'].apply(np.array), axis=0)
-                #np.array(sub_df.groupby('trial')['tsec'].apply(np.array)[0])
                 assert len(list(set(sub_df['nframes_on']))) == 1, "More than 1 stimdur parsed for current config..."
                 
                 nframes_on = list(set(sub_df['nframes_on']))[0]
@@ -447,31 +493,40 @@ def make_clean_psths(options):
                     subdata = tracemat - bas_grand_mean
                 else:
                     subdata = tracemat
-#                config_ixs = [ci for ci,cv in enumerate(labeled_trials) if cv == curr_config]
-#                if correct_offset:
-#                    subdata = tracemat[config_ixs, :] - bas_grand_mean[ridx]
-#                else:
-#                    subdata = tracemat[config_ixs, :]
+
                 if plot_median:
                     trace_mean = np.median(subdata, axis=0)
                 else:    
                     trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
                 trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
                 
-                axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, 
-                             label=trace_labels[cf_idx], alpha=0.8)
-                #axesf[pi].plot(tpoints, trace_mean, color=trace_colors[cf_idx], linewidth=1, label=g.loc[curr_config, subplot_hue], alpha=0.8)
+                
+                if isinstance(trace_colors, list):
+                    curr_color = trace_colors[cf_idx]
+                    curr_label = trace_labels[cf_idx]
+                else:
+                    # There is an additional axis (plotted as GRADIENT) -- unspecified_tra
+                    # Identify which is the corresponding object for subplot_hue:
+                    hue_key = sconfigs_df.loc[curr_config][subplot_hue]
+                    unspec_key = sconfigs_df.loc[curr_config][unspec_trans_type]
+                    curr_color = trace_colors[hue_key][unspec_key]
+                    curr_label = trace_labels[hue_key][unspec_key]
+                    
+                    
+                axesf[pi].plot(tpoints, trace_mean, color=curr_color, linewidth=2, 
+                             label=curr_label, alpha=1.0)
+                
                 if plot_trials:
                     for ti in range(subdata.shape[0]):
                         if len(np.where(np.isnan(subdata[ti, :]))[0]) > 0:
                             print "-- NaN: Trial %i, %i" % (ti+1, len(np.where(np.isnan(subdata[ti, :]))[0]))
                             continue
-                        axesf[pi].plot(tpoints, subdata[ti,:], color=trace_colors[cf_idx], linewidth=0.5, alpha=0.2)
+                        axesf[pi].plot(tpoints, subdata[ti,:], color=curr_color, linewidth=0.2, alpha=0.5)
                 else:
                     # fill between with sem:
-#                    mean_nans = np.where(np.isnan(trace_mean))
-#                    sem_nans = np.where(np.isnan(trace_sem))
-                    axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=trace_colors[cf_idx], alpha=0.2)
+                    axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=curr_color, alpha=0.5)
+                
+                
                 
                 # Set x-axis to only show stimulus ON bar:
                 start_val = tpoints[stim_on]
@@ -506,7 +561,7 @@ def make_clean_psths(options):
             sns.despine(offset=4, trim=True, ax=axesf[pi])
           
             # Add annotation for n trials in stim config:    
-            axesf[pi].text(-0.8, axesf[pi].get_ylim()[-1]*0.8, 'n=%i' % subdata.shape[0])   
+            axesf[pi].text(-0.999, axesf[pi].get_ylim()[-1]*0.9, 'n=%i' % subdata.shape[0])   
 
             
             #pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))

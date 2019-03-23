@@ -143,7 +143,7 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     return df, bounds
 
 
-def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=False):
+def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=False, auto=False):
     # deal with inconsistent trigger-naming:
     codec_list = df.get_codec()
     if len(triggername)==0:
@@ -307,6 +307,10 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
 
     if len(trigger_times)==1:
         user_run_selection = [0] #trigger_times[0]
+    elif auto is True:
+        user_run_selection = np.arange(0, len(trigger_times))
+        print "Selected ALL runs.\n"
+
     else:
         runs_selected = 0
         while not runs_selected:
@@ -385,7 +389,9 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
         info['ncycles'] = ncycles
-        info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        #info['target_freq'] = df.get_events('cyc_per_sec')[-1].value
+        cycle_dur = np.mean([d.value for d in df.get_events('cycle_dur') if d.value!=0])
+        info['target_freq'] = round(1./cycle_dur, 2)
         info['barwidth'] = df.get_events('bar_size_deg')[-1].value
         info['stimulus'] = stimulus_type
     else:
@@ -430,7 +436,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
 
         else:
             #itis = df.get_events('ITI_time')
-            info['ITI'] = iti_standard_dur[0]
+            info['ITI'] = iti_standard_dur #[0]
 
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
@@ -442,7 +448,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     return info
 
 #%%
-def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False):
+def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False, auto=False):
 
     # Load run info:
     rundir = curr_dfn.split('/raw_')[0]
@@ -469,12 +475,12 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername, auto=auto)
         # CHeck if should add ITI:
-        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
-        if len(check_durs) > 0:
-            iti_to_add = int(check_durs)
-            trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
+#        check_durs = raw_input('Are these the correct tif durations? Or are we missing an ITI?\nPress <ENTER> to skip, or ITI dur to add: ')
+#        if len(check_durs) > 0:
+#            iti_to_add = int(check_durs)
+#            trigg_times = [[t[0], t[-1]+(iti_to_add*1E6)] for t in trigg_times]
         #print "trigger times:", trigg_times
         
         
@@ -528,7 +534,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         ### Get Image events:
         if stimtype=='image':
             if dynamic:
-                print "User specified DYNAIMC image stimulus (this is not a movie)."
+                print "User specified DYNAMIC image stimulus (this is not a movie)."
                 image_evs = []
                 # Identify blank-screen pixel-clock events. A non-dynamic image should not change more than once 
                 # between blank-screen events. There are 2 blank screen events after the first stimulus: 
@@ -686,7 +692,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
 
 #%%
 
-def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, boundidx=0):
+def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, boundidx=0, auto=False):
     """
     Open MW file and get time-stamped boundaries for acquisition.
 
@@ -724,7 +730,7 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
         print "SECTION %i" % bidx
         print "................................................................"
 
-        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername)
+        trigg_times, user_run_selection = get_trigger_times(df, boundary, triggername=triggername, auto=auto)
         print "selected runs:", user_run_selection
         pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times)
 
@@ -735,7 +741,7 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
 
         # Get condition/run info:
         condition_evs = df.get_events('condition')
-        print len(condition_evs)
+        #print len(condition_evs)
         condition_names = ['left', 'right', 'bottom', 'top']  # 0=left start, 1=right start, 2=bottom start, 3=top start
         run_start_idxs = [i+1 for i,v in enumerate(condition_evs[0:len(condition_evs)-1]) if v.value==-1 and condition_evs[i+1].value>=0]  # non-run values for "condition" is -1
         run_start_idxs = [run_start_idxs[selected_run] for selected_run in user_run_selection]
@@ -746,7 +752,9 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
 
         # Get all cycle info for each run (should be ncycles per run):
         ncycles = df.get_events('ncycles')[-1].value          # Use last value, since default value may be different
-        target_freq = df.get_events('cyc_per_sec')[-1].value
+        cyc_per_sec = df.get_events('cyc_per_sec')[-1].value
+        cycle_dur = np.mean([d.value for d in df.get_events('cycle_dur') if bounds[0][0] <= d.time <= bounds[0][1] and d.value!=0])
+        target_freq = round(1./cycle_dur, 2)
         print "Target frequency: {0:.2f} Hz, {ncycles} cycles.".format(target_freq, ncycles=ncycles)
 
         # Use frame trigger times for each run to get bar-update events for each run:
@@ -840,7 +848,7 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0):
+def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0, auto=False):
     
     '''
     Extract relevant stimulus info for each trial across blocks.
@@ -849,9 +857,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     
     print "Current file: ", curr_dfn
     if retinobar is True:
-        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx)
+        pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx, auto=auto)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -898,6 +906,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         # GET TRIAL INFO FOR DB:
         trial_list = [(stimevents[k].ordernum, k) for k in stimevents.keys()]
         trial_list.sort(key=lambda x: x[0])
+        print trial_list
         trial = dict((i+1, dict()) for i in range(len(stimevents)))
 
         for trialidx,mvtrial in enumerate(trial_list):
@@ -910,6 +919,17 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialnum]['stimuli'] = {'stimulus': stimname, 'position': stimevents[mvname].states[0][1], 'scale': stimsize}
             trial[trialnum]['stim_on_times'] = round(stimevents[mvname].states[0][0]/1E3)
             trial[trialnum]['stim_off_times'] = round(stimevents[mvname].states[-1][0]/1E3)
+            trial[trialnum]['stiminfo'] ={
+                          'tstamps': [i[0] for i in stimevents[mvname].states],
+                          'values': stimevents[mvname].vals,
+                          'start_indices': stimevents[mvname].idxs,
+                          'order': stimevents[mvname].ordernum,
+                          'offset': stimevents[mvname].states[0][0] - stimevents[mvname].triggers[0],
+                          'trigger_times': stimevents[mvname].triggers}
+            #print "run %i: %s ms" % (ridx+1, str(trial['stiminfo'][run]['offset']/1E3))
+
+
+
     else:
 
         # If variable ITI, the number of ITI values that pass the duration test (see get_session_info())
@@ -919,7 +939,6 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             iti_durs = session_info['ITI']
         else:
             iti_durs = [session_info['ITI'] for i in range(len(stimevents))]
-
 
         ntrials = len(stimevents)
         post_itis = sorted(trialevents[2::2], key=get_timekey) # 0=pre-blank period, 1=first-static-stim-ON, 2=first-post-stim-ITI
@@ -1078,23 +1097,23 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     # Create "pydict" to store all MW stimulus/trial info in matlab-accessible format for GUI:
 
     if retinobar is True:
-        pydict = dict()
+        #trial = dict()
         print "Offset between first MW stimulus-display-update event and first SI frame-trigger:"
-        for ridx,run in enumerate(stimevents.keys()):
-            pydict[run] ={'time': [i[0] for i in stimevents[run].states],
-                          'pos': stimevents[run].vals,
-                          'idxs': stimevents[run].idxs,
-                          'ordernum': stimevents[run].ordernum,
-                          'MWdur': (stimevents[run].states[-1][0] - stimevents[run].states[0][0]) / 1E6,
-                          'offset': stimevents[run].states[0][0] - stimevents[run].triggers[0],
-                          'MWtriggertimes': stimevents[run].triggers}
-            print "run %i: %s ms" % (ridx+1, str(pydict[run]['offset']/1E3))
-
+#        for ridx,run in enumerate(stimevents.keys()):
+#            trial['stiminfo'][run] ={'time': [i[0] for i in stimevents[run].states],
+#                          'pos': stimevents[run].vals,
+#                          'idxs': stimevents[run].idxs,
+#                          'ordernum': stimevents[run].ordernum,
+#                          'MWdur': (stimevents[run].states[-1][0] - stimevents[run].states[0][0]) / 1E6,
+#                          'offset': stimevents[run].states[0][0] - stimevents[run].triggers[0],
+#                          'MWtriggertimes': stimevents[run].triggers}
+#            print "run %i: %s ms" % (ridx+1, str(trial['stiminfo'][run]['offset']/1E3))
+#
     else:
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
         unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 1) for t in trial.keys()])))
-        print "STIM DURS:", unique_stim_durs 
+        #print "STIM DURS:", unique_stim_durs 
         if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
             if len(unique_stim_durs) == 2:
@@ -1160,6 +1179,11 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                         trial[trialname]['stimuli']['rotation'] = 0
                     elif trial[trialname]['stimuli']['direction']  == -1 and trial[trialname]['stimuli']['rotation'] == -90:
                         trial[trialname]['stimuli']['rotation'] = 90
+
+    print "********************************"
+    print "Finished extracting %i trials." % len(trial.keys())
+    print "********************************"
+
     return trial
 
 #%%
@@ -1177,6 +1201,8 @@ def save_trials(trial, paradigm_outdir, curr_dfn_base):
     trialinfo_json = 'parsed_trials_%s.json' % curr_dfn_base
     with open(os.path.join(paradigm_outdir, trialinfo_json), 'w') as f:
         json.dump(trial, f, sort_keys=True, indent=4)
+
+    return os.path.join(paradigm_outdir, trialinfo_json)
 
 
 def create_stimorder_files(sourcepath):
@@ -1198,9 +1224,7 @@ def create_stimorder_files(sourcepath):
             f.write('\n'.join([str(n) for n in stimorder])+'\n')
 
 # In[5]:
-
-def parse_mw_trials(options):
-
+def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
@@ -1230,7 +1254,18 @@ def parse_mw_trials(options):
     parser.add_option('--dynamic', action="store_true",
                       dest="dynamic", default=False, help="Set flag if using image stimuli that are moving (*NOT* movies).")
 
+    parser.add_option('--auto', action="store_true",
+                      dest="auto", default=False, help="Set flag if NOT interactive.")
+
+
     (options, args) = parser.parse_args(options)
+
+    return options
+
+
+def parse_mw_trials(options):
+
+    options = extract_options(options)
 
     trigger_varname = options.frametrigger_varname
     rootdir = options.rootdir
@@ -1238,6 +1273,7 @@ def parse_mw_trials(options):
     session = options.session
     acquisition = options.acquisition
     run = options.run
+    auto = options.auto
     
     dynamic = options.dynamic
     retinobar = options.retinobar #'grating'
@@ -1275,7 +1311,7 @@ def parse_mw_trials(options):
         curr_dfn = mw_dfns[didx]
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
-        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
         #print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 

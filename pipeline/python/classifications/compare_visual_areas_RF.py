@@ -67,8 +67,11 @@ for animalid, sessioninfo in V1_fovs.items():
             continue
         
         V1.update({fovkey: rdict})
-    
 
+#fig, ax = pl.subplots()
+#
+#visual_area = 'V1'
+#color = 'b'
 vis.hist_rf_widths(V1, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 
@@ -110,7 +113,7 @@ for animalid, sessioninfo in LM_fovs.items():
         
         LM.update({fovkey: rdict})
         
-        
+
 vis.hist_rf_widths(LM, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 #%%
@@ -160,6 +163,7 @@ for animalid, sessioninfo in LI_fovs.items():
 #    
 #A = vis.get_animal(animalid, excluded_sessions=excluded_sessions, rootdir=rootdir)
 #LI_rfs = vis.get_good_RFs(A, fit_thr=fit_thr, rootdir=rootdir)
+    
 vis.hist_rf_widths(LI, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 #%%
@@ -199,8 +203,34 @@ for animalid, sessioninfo in POR_fovs.items():
 vis.hist_rf_widths(POR, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 #%%
+    
+
+fig, ax = pl.subplots()
+kde = True
+if kde:
+    normed_str = 'normed'
+else:
+    normed_str = 'counts'
+    
+visual_area = 'V1'
+color = 'b'
+vis.hist_rf_widths(V1, visual_area=visual_area, ax=ax, color=color, kde=kde)
+
+visual_area = 'LM'
+color = 'g'
+vis.hist_rf_widths(LM, visual_area=visual_area, ax=ax, color=color, kde=kde)
+
+visual_area = 'LI/LL'
+color = 'magenta'
+vis.hist_rf_widths(LI, visual_area=visual_area, ax=ax, color=color, kde=kde)
 
 ax.legend()
 
+ax.set_ylim([0,0.09])
 
-pl.savefig(os.path.join(rootdir, 'VISUAL_AREAS', 'all_fovs_RFs_noPOR.png'))
+sns.despine(offset=4, trim=True)
+
+
+pl.savefig(os.path.join(rootdir, 'VISUAL_AREAS', 'all_fovs_RFs_%s.png' % normed_str))
+pl.savefig(os.path.join(rootdir, 'VISUAL_AREAS', 'all_fovs_RFs_%s.pdf' % normed_str))
+
