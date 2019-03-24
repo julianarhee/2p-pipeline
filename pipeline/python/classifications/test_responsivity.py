@@ -358,7 +358,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, visual_test
     if not os.path.exists(responsive_resultsdir):
         os.makedirs(responsive_resultsdir)
         
-    responsive_anova_fpath = os.path.join(responsive_resultsdir, 'visual_rois_%s_results.json' % visual_test_type)        
+    responsive_anova_fpath = os.path.join(responsivity_basedir, 'visual_rois_%s_results.json' % visual_test_type)        
 
     if create_new is False:
         try:
