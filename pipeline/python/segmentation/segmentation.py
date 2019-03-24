@@ -53,14 +53,14 @@ class struct():
     pass 
 
 class Segmentations():
-    def __init__(self, animalid, session, acquisition, rootdir='/n/coxfs01/2p-data',
+    def __init__(self, animalid, session, acquisition, run='retino_run1', rootdir='/n/coxfs01/2p-data',
                         use_azimuth=True, use_single_ref=False, retino_file_ix=1):
         self.source =  struct()
         self.source.rootdir = rootdir
         self.source.animalid = animalid
         self.source.session = session
         self.source.acquisition = acquisition
-        self.source.retino_run = None 
+        self.source.retino_run = run #None 
         self.source.retinoID_pixels = None
         self.source.retinoID_rois = None
         self.source.conditions = None
@@ -69,7 +69,9 @@ class Segmentations():
         fov_dir = os.path.join(self.source.rootdir, self.source.animalid, \
                                 self.source.session, self.source.acquisition)
         print "FOV DIR: %s" % fov_dir
-        runinfo_fpath = glob.glob(os.path.join(fov_dir, 'retino*', 'retino*.json'))[0]
+        runinfo_fpath = glob.glob(os.path.join(fov_dir, '%s' % run, 'retino*.json'))[0]
+        print "Loading run info:", runinfo_fpath
+
         with open(runinfo_fpath, 'r') as f: runinfo = json.load(f)
         d1 = runinfo['lines_per_frame']
         d2 = runinfo['pixels_per_line']
@@ -113,7 +115,7 @@ class Segmentations():
         fov_dir = os.path.join(self.source.rootdir, self.source.animalid, \
                                         self.source.session, self.source.acquisition)
         
-        retinodict_fpath = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysisids_*.json'))[0]
+        retinodict_fpath = glob.glob(os.path.join(fov_dir, '%s' % self.source.retino_run, 'retino_analysis', 'analysisids_*.json'))[0]
         retino_run = os.path.split(retinodict_fpath.split('/retino_analysis')[0])[-1]
         
         with open(retinodict_fpath, 'r') as f:
@@ -189,6 +191,9 @@ class Segmentations():
         # Load data:
         # -----------------------------------------------------------------------------
         if use_single_ref:
+            print "---> single ref, file:", retino_file_ix
+            self.retino_file_ix = retino_file_ix
+
             curr_fpath = [f for f in self.source.analysis_files if 'File%03d' % retino_file_ix in f][0]
             #curr_fpath = self.source.analysis_files[retino_file_ix]
             ret = h5py.File(curr_fpath, 'r')
@@ -225,6 +230,7 @@ class Segmentations():
             # Need to reconstruct "map" using masks + phase values:
             roi_masks = self.get_roi_masks(retino_params)
             roi_values = np.copy(phasemap)
+            
             phasemap = self.apply_roi_values_to_map(roi_values, roi_masks)
         
         return phasemap
@@ -259,7 +265,9 @@ class Segmentations():
         scale_factor = int(retino_params['PARAMS']['downsample_factor'])
         scaled_masks = [scipy.ndimage.zoom(roi_masks[r, :, :], scale_factor, order=0) for r in range(roi_masks.shape[0])]
         roi_masks = np.dstack(scaled_masks) # roi ix is now -1
-        
+         
+        print "*** ROIS:", roi_masks.shape
+ 
         return roi_masks
     
     def apply_roi_values_to_map(self, roi_values, roi_masks):

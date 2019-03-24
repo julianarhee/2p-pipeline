@@ -84,6 +84,9 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run',
+                          default='retino_run1', help="retino run to use [default: retino_run1]")
+
 
     # Processing info:
     kernel_choices = ('original', 'gaussian', 'median', 'uniform')
@@ -110,11 +113,13 @@ def extract_options(options):
     return options
 
 
-def create_segmentation_object(animalid, session, acquisition, rootdir='/n/coxfs01/2p-data',
+def create_segmentation_object(animalid, session, acquisition, run='retino_run1', rootdir='/n/coxfs01/2p-data',
                                 visual_area=None, cmap=cm.Spectral_r,
                                 use_azimuth=None, use_single_ref=None, retino_file_ix=None):
     # Initialize segmentation class instance:
-    fov = seg.Segmentations(animalid, session, acquisition, rootdir=rootdir,
+    print "--- --- run:", run
+
+    fov = seg.Segmentations(animalid, session, acquisition, run=run, rootdir=rootdir,
                             use_azimuth=use_azimuth, use_single_ref=use_single_ref, retino_file_ix=retino_file_ix)
     fov.get_analyzed_source_data()
 
@@ -205,6 +210,8 @@ def process_phasemap(fov, kernel_type=None, kernel_size=21, morph_kernel=5, morp
     return mask_template
 #%%
 def save_visual_area(fov, cmap='Spectral_r', visual_area=None, retino_file_ix=1):
+
+    print "RETINO FILE IX:", retino_file_ix
 
     mask_template = fov.preprocessing['mask_template']
 
@@ -297,29 +304,33 @@ def load_segmentation_object(animalid, session, acquisition, rootdir='/n/coxfs01
         fov = pkl.load(f)
     return fov
  
-def do_fov_segmentation(animalid, session, acquisition, rootdir='/n/coxfs01/2p-data', append=False,
+def do_fov_segmentation(animalid, session, acquisition, run='retino_run1', rootdir='/n/coxfs01/2p-data', append=False,
                         visual_area=None, cmap='Spectral_r',
                         use_azimuth=True, use_single_ref=False, retino_file_ix=1,
                         kernel_type=None, kernel_size=None, morph_kernel=None, morph_iterations=None):
 
     if kernel_size is not None:
-        kernel_size = int(optsE.kernel_size)
+        kernel_size = int(kernel_size)
     if morph_kernel is not None:
-        morph_kernel = int(optsE.morph_kernel)
+        morph_kernel = int(morph_kernel)
     if morph_iterations is not None:
-        morph_iterations = int(optsE.morph_iterations)
+        morph_iterations = int(morph_iterations)
 
+    print "--run:", run, retino_file_ix
     if append:
-        fov = load_segmentation_object(animalid, session, acquisition, rootdir=rootdir)
+        fov = load_segmentation_object(animalid, session, acquisition, run=run, rootdir=rootdir)
 
     else:
-        fov = create_segmentation_object(animalid, session, acquisition, rootdir=rootdir,
+        fov = create_segmentation_object(animalid, session, acquisition, run=run, rootdir=rootdir,
                                 visual_area=visual_area, cmap=cmap,
                                 use_azimuth=use_azimuth, use_single_ref=use_single_ref, 
                                 retino_file_ix=retino_file_ix)
 
         mask_template = process_phasemap(fov, kernel_type=kernel_type, kernel_size=kernel_size, 
                                 morph_kernel=morph_kernel, morph_iterations=morph_iterations, cmap=cmap)
+    
+    retino_file_ix = fov.retino_file_ix
+    print "Saving retino file ix:", retino_file_ix
 
     segmentation_fpath = save_visual_area(fov, visual_area=visual_area, cmap=cmap, retino_file_ix=retino_file_ix)
 
@@ -350,7 +361,9 @@ def main(options):
     kernel_size = optsE.kernel_size
     morph_kernel = optsE.morph_kernel
     morph_iterations = optsE.morph_iterations
-    do_fov_segmentation(optsE.animalid, optsE.session, optsE.acquisition, rootdir=optsE.rootdir, append=append,
+
+    print "RUN:", optsE.run
+    do_fov_segmentation(optsE.animalid, optsE.session, optsE.acquisition, run=optsE.run, rootdir=optsE.rootdir, append=append,
                         visual_area=optsE.visual_area, cmap=cmap, use_azimuth=use_azimuth,
                         use_single_ref=use_single_ref, retino_file_ix=retino_file_ix,
                         kernel_type=kernel_type, kernel_size=kernel_size,
