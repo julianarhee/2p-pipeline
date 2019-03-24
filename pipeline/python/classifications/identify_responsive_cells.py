@@ -19,19 +19,26 @@ from mpl_toolkits.axes_grid1 import AxesGrid
 from pipeline.python.utils import natural_keys, label_figure
 
 #%%
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC067' #'JC059'
-#session = '20190319' #'20190227'
-#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-#run = 'combined_blobs_static'
-#traceid = 'traces002' #'traces001'
-
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC059' #'JC059'
-session = '20190228' #'20190227'
-fov = 'FOV1_zoom4p0x' #'FOV4_zoom4p0x'
+animalid = 'JC073' #'JC059'
+session = '20190322' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_blobs_static'
 traceid = 'traces001' #'traces001'
+
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC067' 
+#session = '20190320' #'20190319'
+#fov = 'FOV1_zoom2p0x' 
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces002'
+
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC059' #'JC059'
+#session = '20190228' #'20190227'
+#fov = 'FOV1_zoom4p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces001'
 
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
