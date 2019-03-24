@@ -19,12 +19,20 @@ from mpl_toolkits.axes_grid1 import AxesGrid
 from pipeline.python.utils import natural_keys, label_figure
 
 #%%
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC067' #'JC059'
+#session = '20190319' #'20190227'
+#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces002' #'traces001'
+
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC059'
-session = '20190227'
-fov = 'FOV4_zoom4p0x'
+animalid = 'JC059' #'JC059'
+session = '20190228' #'20190227'
+fov = 'FOV1_zoom4p0x' #'FOV4_zoom4p0x'
 run = 'combined_blobs_static'
-traceid = 'traces001'
+traceid = 'traces001' #'traces001'
+
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
 traceid_dir = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))[0]
@@ -39,7 +47,8 @@ print data_identifier
 #%%
 
 # Set dirs:
-sorted_dir = os.path.join(traceid_dir, 'response_stats')
+sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, 'response_stats*')))[-1]
+print "Selected stats results: %s" % os.path.split(sorted_dir)[-1]
 
 # Set output dir:
 output_dir = os.path.join(sorted_dir, 'visualization')
@@ -73,7 +82,7 @@ print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selectiv
 # zscore the traces:
 zscored_traces_list = []
 for trial, tmat in labels.groupby(['trial']):
-    print trial    
+    #print trial    
     stim_on_frame = tmat['stim_on_frame'].unique()[0]
     nframes_on = tmat['nframes_on'].unique()[0]
     curr_traces = traces[tmat.index, :]
@@ -110,7 +119,7 @@ selective_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in s
 selective_sort_by_max_zscore = np.argsort(selective_max_avg_zscore)[::-1]
 sorted_selective = selective_rois[selective_sort_by_max_zscore]
 
-[r for r in sorted_selective if r not in sorted_visual]
+print [r for r in sorted_selective if r not in sorted_visual]
 
 print sorted_selective[0:10]
 
@@ -236,6 +245,9 @@ with open(vstats_fpath, 'r') as f:
 #%%
 
 use_selective = False
+plot_topN = False
+
+
 if use_selective:
     roi_list = copy.copy(sorted_selective)
     sorter = 'selective'
@@ -243,6 +255,14 @@ else:
     roi_list = copy.copy(sorted_visual)
     sorter = 'visual'
     
+if plot_topN:
+    sort_order = 'top'
+else:
+    sort_order = 'bottom'
+    
+    
+
+
 nr = 10
 nc = 6
 
@@ -260,7 +280,13 @@ grid = AxesGrid(fig, 111,
 aix = 0
 nplots = min([nr*nc, len(roi_list)])
 
-for rid in roi_list[0:nplots]: #0:nplots]: #[0:nr*nc]:
+if not plot_topN:
+    plot_order = roi_list[-nplots:]
+else:
+    plot_order = roi_list[0:nplots]
+    
+    
+for rid in plot_order: #0:nplots]: #[0:nr*nc]:
     
     roi_zscores = zscores[:, rid]
     roi_trace = ztraces[rid] #[:, rid]
@@ -294,7 +320,7 @@ for a in np.arange(aix, nr*nc):
     
 
 label_figure(fig, data_identifier)
-figname = 'sorted_%s_best_cfg_zscored_trials_top%i' % (sorter, nplots)
+figname = 'sorted_%s_best_cfg_zscored_trials_%s%i' % (sorter, sort_order, nplots)
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
 print figname
 
@@ -307,17 +333,24 @@ print figname
 
 
 #%%
-pl.figure()
+fig, ax = pl.subplots(figsize=(10,5)) #pl.figure(figsize=(10,5))
 
-pl.scatter(sorted_visual, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_visual]), label='visual') #, markersize=20, alpha=20)
-pl.scatter(sorted_selective, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_selective]), label='selective') #, markersize=20, alpha=20)
-pl.ylabel('zscore')
-pl.xlabel('roi')
+ax.plot(sorted_visual, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_visual]), 'k.', markersize=10, label='visual', alpha=0.5) #, markersize=20, alpha=20)
+ax.plot(sorted_selective, np.array([avg_zscores_by_cond[rid].max() for rid in sorted_selective]), 'r.', markersize=10, label='selective', alpha=0.5) #, markersize=20, alpha=20)
+ax.set_ylabel('zscore')
+ax.set_xlabel('roi')
 
-pl.axhline(y=)
+ax.axhline(y=2, linestyle='--', color='k')
+
+for rid in sorted_selective[0:10]:
+    print rid
+    ax.annotate('%i' % rid, (rid, float(avg_zscores_by_cond[rid].max())))
+
     
 pl.legend()
+label_figure(fig, data_identifier)
 
+pl.savefig(os.path.join(output_dir, 'visual_selective_rois.png'))
 
 
 
