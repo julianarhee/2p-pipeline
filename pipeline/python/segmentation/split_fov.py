@@ -291,7 +291,7 @@ def save_visual_area(fov, cmap='Spectral_r', visual_area=None, retino_file_ix=1)
     return segmentation_fpath
 
 
-def load_segmentation_object(animalid, session, acquisition, rootdir='/n/coxfs01/2p-data'):
+def load_segmentation_object(animalid, session, acquisition, run='retino_run1', rootdir='/n/coxfs01/2p-data'):
     existing_seg_fpaths = sorted(glob.glob(os.path.join(rootdir, animalid, session, \
                                    acquisition, 'visual_areas', 'segmentation_*.pkl')), key=natural_keys)[::-1]
     print "Found %i existing seg objects, listing by most recent:"
