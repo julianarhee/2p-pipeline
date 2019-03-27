@@ -14,17 +14,26 @@ import pylab as pl
 
 import numpy as np
 import scipy as sp
+from scipy import stats
 import pandas as pd
 from mpl_toolkits.axes_grid1 import AxesGrid
 from pipeline.python.utils import natural_keys, label_figure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 #%%
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC073' #'JC059'
-session = '20190322' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_blobs_static'
-traceid = 'traces001' #'traces001'
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC070' #'JC059'
+#session = '20190316' #'20190227'
+#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces001'
+
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC073' #'JC059'
+#session = '20190322' #'20190227'
+#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces001'
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC067' 
@@ -33,12 +42,12 @@ traceid = 'traces001' #'traces001'
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces002'
 
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC059' #'JC059'
-#session = '20190228' #'20190227'
-#fov = 'FOV1_zoom4p0x' #'FOV4_zoom4p0x'
-#run = 'combined_blobs_static'
-#traceid = 'traces001' #'traces001'
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC059' #'JC059'
+session = '20190227' #'20190227'
+fov = 'FOV4_zoom4p0x' #'FOV4_zoom4p0x'
+run = 'combined_blobs_static'
+traceid = 'traces001' #'traces001'
 
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
@@ -68,9 +77,12 @@ if not os.path.exists(output_dir):
 # Load parsed data:
 trace_type = 'corrected'
 traces = dset[trace_type]
+zscores = dset['zscore']
 
 # Format condition info:
+aspect_ratio = 1.747
 sdf = pd.DataFrame(dset['sconfigs'][()]).T
+sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
 labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
 
 # Load roi stats:    
@@ -87,6 +99,7 @@ print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selectiv
 #%%
 
 # zscore the traces:
+# -----------------------------------------------------------------------------
 zscored_traces_list = []
 for trial, tmat in labels.groupby(['trial']):
     #print trial    
@@ -98,25 +111,30 @@ for trial, tmat in labels.groupby(['trial']):
     
     zscored_traces_list.append(curr_zscored_traces)
 
-ztraces = pd.concat(zscored_traces_list, axis=0)
-ztraces.head()
-#
+zscored_traces = pd.concat(zscored_traces_list, axis=0)
+zscored_traces.head()
+
+raw_traces = pd.DataFrame(traces, index=zscored_traces.index)
+raw_traces.head()
     
-#%%
+#%
+
+# Sort ROIs by zscore by cond
+# -----------------------------------------------------------------------------
 
 # Get single value for each trial and sort by config:
 trials_by_cond = dict()
 for k, g in labels.groupby(['config']):
     trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
 
-zscores = dset['zscore']
 zscores_by_cond = dict()
 for cfg, trial_ixs in trials_by_cond.items():
-    zscores_by_cond[cfg] = zscores[trial_ixs, :]
+    zscores_by_cond[cfg] = zscores[trial_ixs, :]  # For each config, array of size ntrials x nrois
     
-avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)])
+avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
+                                    for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
 
-
+    
 # Sort mean (or max) zscore across trials for each config, and find "best config"
 visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
 visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
@@ -131,6 +149,21 @@ print [r for r in sorted_selective if r not in sorted_visual]
 print sorted_selective[0:10]
 
 #%%
+
+# Get SNR
+# -----------------------------------------------------------------------------
+bas_means = np.vstack([raw_traces.iloc[trial_indices.index][0:stim_on_frame].mean(axis=0) \
+                       for trial, trial_indices in labels.groupby(['trial'])])
+stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim_on_frame+nframes_on)].mean(axis=0) \
+                       for trial, trial_indices in labels.groupby(['trial'])])
+snrs = stim_means/bas_means
+  
+
+
+#%%
+
+# Plot zscored-traces of each "selective" ROI
+# -----------------------------------------------------------------------------
 rows = 'size'
 cols = 'morphlevel'
 
@@ -148,17 +181,30 @@ for si, size in enumerate(sorted(sizes)):
         config_trial_ixs[cix]['trial_ixs'] = trial_ixs
         cix += 1
 
+plot_zscored = False
 
-if not os.path.exists(os.path.join(output_dir, 'roi_trials_by_cond')):
-    os.makedirs(os.path.join(output_dir, 'roi_trials_by_cond'))
-print "Saving figures to:", os.path.join(output_dir, 'roi_trials_by_cond')
+trace_type = 'zscored' if plot_zscored else 'raw'
+curr_figdir = os.path.join(output_dir, 'roi_trials_by_cond_%s' % trace_type)
+if not os.path.exists(curr_figdir):
+    os.makedirs(curr_figdir)
+print "Saving figures to:", curr_figdir
 
 #rid = 137 #14
 
 for rid in sorted_selective:
     print rid
     roi_zscores = zscores[:, rid]
-    roi_trace = ztraces[rid] #traces[:, rid]
+    if plot_zscored:
+        roi_trace = zscored_traces[rid] #traces[:, rid]
+        roi_metric = zscores[:, rid]
+        metric_name = 'zscore'
+        value_name = 'zscore'
+    else:
+        roi_trace = raw_traces[rid]
+        roi_metrics = snrs[:, rid]
+        metric_name = 'snr'
+        value_name = 'intensity'
+        
     traces_by_config = dict((config, []) for config in labels['config'].unique())
     for k, g in labels.groupby(['config', 'trial']):
         traces_by_config[k[0]].append(roi_trace[g.index])
@@ -188,10 +234,9 @@ for rid in sorted_selective:
         ax.set_axis_off()
         
         # get zscore values:
-        curr_cond_zscores = roi_zscores[trial_ixs]
-        ax.set_title('%.2f (std %.2f)' % (curr_cond_zscores.mean(), sp.stats.sem(curr_cond_zscores)), fontsize=6)
-        #aix += 1
-        #zscores_by_cond_list.append(pd.Series(curr_cond_zscores, name=cfg))
+        curr_cond_metrics = roi_metrics[trial_ixs]
+        ax.set_title('%s %.2f (std %.2f)' % (metric_name, curr_cond_metrics.mean(), stats.sem(curr_cond_metrics)), fontsize=6)
+        ax.set_ylabel('trial')
         
         ax.axvline(x=stim_on_frame, color='w', lw=0.5, alpha=0.5)
         ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5, alpha=0.5)
@@ -200,10 +245,11 @@ for rid in sorted_selective:
     
     cbar = ax.cax.colorbar(im)
     cbar = grid.cbar_axes[0].colorbar(im)
+    cbar.ax.set_ylabel(value_name)
     
     figname = 'zscored_trials_roi%05d' % int(rid+1)
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'roi_trials_by_cond', '%s.png' % figname))
+    pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
     
     #roi_zscores_by_cond = pd.DataFrame(zscores_by_cond_list).T
     #print roi_zscores_by_cond.head()
@@ -251,9 +297,14 @@ with open(vstats_fpath, 'r') as f:
 
 #%%
 
-use_selective = False
-plot_topN = False
 
+# Plot "best" stimulus condition's traces for Top or Bottom N rois:
+# -----------------------------------------------------------------------------
+use_selective = True
+plot_topN = True
+    
+nr = 10
+nc = 6
 
 if use_selective:
     roi_list = copy.copy(sorted_selective)
@@ -267,15 +318,6 @@ if plot_topN:
 else:
     sort_order = 'bottom'
     
-    
-
-
-nr = 10
-nc = 6
-
-#roi_list = [r for r in sorted_selective if r not in sorted_visual]
-#sorter = 'selXvis'
-
 fig = pl.figure(figsize=(10,8))
 grid = AxesGrid(fig, 111,
                 nrows_ncols=(nr, nc),
@@ -292,20 +334,19 @@ if not plot_topN:
 else:
     plot_order = roi_list[0:nplots]
     
-    
 for rid in plot_order: #0:nplots]: #[0:nr*nc]:
     
     roi_zscores = zscores[:, rid]
-    roi_trace = ztraces[rid] #[:, rid]
+    roi_trace = zscored_traces[rid] #[:, rid]
 
-    traces = dict((config, []) for config in labels['config'].unique())
+    traces_by_cond = dict((config, []) for config in labels['config'].unique())
     for k, g in labels.groupby(['config', 'trial']):
-        traces[k[0]].append(roi_trace[g.index])
-    for config in traces.keys():
-        traces[config] = np.vstack(traces[config])
+        traces_by_cond[k[0]].append(roi_trace[g.index])
+    for config in traces_by_cond.keys():
+        traces_by_cond[config] = np.vstack(traces_by_cond[config])
 
     best_cfg = 'config%03d' % int(avg_zscores_by_cond[rid].argmax()+1)
-    curr_cond_traces = traces[best_cfg]
+    curr_cond_traces = traces_by_cond[best_cfg]
     
     ax = grid.axes_all[aix]
     im = ax.imshow(curr_cond_traces, cmap='inferno')
@@ -325,18 +366,10 @@ cbar = grid.cbar_axes[0].colorbar(im)
 for a in np.arange(aix, nr*nc):
     grid.axes_all[a].set_axis_off()
     
-
 label_figure(fig, data_identifier)
 figname = 'sorted_%s_best_cfg_zscored_trials_%s%i' % (sorter, sort_order, nplots)
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
 print figname
-
-#    
-#for rid in sorted_selective:
-#    print vstats[str(rid)]['p']
-#
-#pl.figure();
-#pl.plot([vstats[str(rid)]['p'] for rid in sorted_selective])
 
 
 #%%
@@ -347,7 +380,7 @@ ax.plot(sorted_selective, np.array([avg_zscores_by_cond[rid].max() for rid in so
 ax.set_ylabel('zscore')
 ax.set_xlabel('roi')
 
-ax.axhline(y=2, linestyle='--', color='k')
+ax.axhline(y=1, linestyle='--', color='k')
 
 for rid in sorted_selective[0:10]:
     print rid
@@ -358,6 +391,239 @@ pl.legend()
 label_figure(fig, data_identifier)
 
 pl.savefig(os.path.join(output_dir, 'visual_selective_rois.png'))
+
+
+#%%
+
+
+
+# 1.  Plot raw traces and relationship between bas/stim periods w.r.t SNR
+# -----------------------------------------------------------------------
+rid = sorted_selective[0]
+
+roi_zscores = zscores[:, rid]
+roi_trace = raw_traces[rid] #[:, rid]
+
+# Get current ROI traces by config:
+traces_by_cond = dict((cfg, []) for cfg in labels['config'].unique())
+for k, g in labels.groupby(['config', 'trial']):
+    traces_by_cond[k[0]].append(roi_trace[g.index])
+for cfg in traces_by_cond.keys():
+    traces_by_cond[cfg] = np.vstack(traces_by_cond[cfg])
+
+# Pick condition with max/best zscore:
+cfg = 'config%03d' % int(avg_zscores_by_cond[rid].argmax()+1)
+
+ntrials = traces_by_cond[cfg].shape[0]
+bas = traces_by_cond[cfg][:, 0:stim_on_frame].mean(axis=1)
+stim = traces_by_cond[cfg][:, stim_on_frame:(stim_on_frame+nframes_on)].mean(axis=1)
+snr = stim/bas
+
+fig, axes = pl.subplots(1,3, figsize=(25, 5)) #pl.figure()
+
+ax = axes[0]
+im = ax.imshow(traces_by_cond[cfg], cmap='inferno', aspect='auto')
+# Add color bar:
+divider = make_axes_locatable(ax)
+cax = divider.append_axes('right', size='1%', pad=0.1) 
+pl.colorbar(im, cax=cax, cmap='inferno')
+cax.yaxis.set_ticks_position('right')
+    
+ax.set_title('raw traces')
+ax.set_ylabel('trial')
+ax.set_xticks([]); ax.set_xticklabels([]);
+ax.axvline(x=stim_on_frame, color='w', lw=0.5)
+ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5)
+# Add color bar:
+divider = make_axes_locatable(ax)
+cax = divider.append_axes('right', size='5%', pad=0.05) 
+pl.colorbar(im, cax=cax, cmap='inferno')
+cax.yaxis.set_ticks_position('right')
+    
+
+ax = axes[1]
+ax.plot(bas, stim, '.')
+for tid in np.arange(0, bas.shape[0]):
+    ax.annotate('%i' % tid, (bas[tid], stim[tid]))
+ax.set_ylabel('stim')
+ax.set_xlabel('bas')
+ax.set_title('mean intensity by trial')
+
+ax = axes[2]
+ax.plot(np.arange(0, ntrials), snr, 'b.')
+ax.set_ylabel('snr')
+ax.set_xlabel('trial')
+
+fig.suptitle('best condN, roi%05d' % int(rid+1))
+
+figname = 'roi%05d_%s_rawtraces_snr' % (rid, cfg)
+label_figure(fig, data_identifier)
+pl.savefig(os.path.join(output_dir, '%s.png' % figname))
+
+
+#%%
+
+
+# Is SNR a better measure?
+
+nr = 5
+nc = 8
+fig, axes = pl.subplots(nr, nc, figsize=(18,9), sharex=True, sharey=True)
+ai = 0
+n_subplots = min([nr*nc, len(sorted_selective)])
+for rid in sorted_selective[0:n_subplots]:
+    ax  = axes.flat[ai]
+    ax.scatter(zscores[:, rid], snrs[:, rid], alpha=0.5, s=5)
+    ax.set_title(rid)
+    ai += 1
+    
+pl.subplots_adjust(hspace=0.5, wspace=0.5)
+
+avg_snrs = []
+#avg_snrs_by_cond = [snrs.iloc[trial_ixs].mean(axis=0) for cfg, trial_ixs in trials_by_cond.items()]
+for cfg, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0]):
+    avg_snrs.append(pd.Series(snrs[trial_ixs, :].mean(axis=0)))
+avg_snrs_by_cond = pd.concat(avg_snrs, axis=1).T
+    
+
+max_zscores_by_roi = [avg_zscores_by_cond[rid].max() for rid in sorted_selective]
+max_snrs_by_roi = [avg_snrs_by_cond[rid].max() for rid in sorted_selective]
+pl.figure()
+pl.scatter(max_zscores_by_roi, max_snrs_by_roi)
+
+#%%
+
+
+ # make conditions = columns (for corr()) #avg_zscores_by_cond[sorted_selective]
+
+def plot_corrs_by_cond(conds_by_rois, grid_axis='size', grid_values=[], \
+                       plot_axis='morphlevel', plot_values=[], title=None,\
+                       corr_method='pearson', rdm=False, cmap='coolwarm'):
+    
+    if rdm: # == 'rdm':
+        vmin=0; vmax=2; 
+    else:
+        vmin=-1; vmax=1; 
+    
+    fig, axes = pl.subplots(1, len(grid_values), figsize=(len(grid_values)*2,2)) #pl.figure()
+    for ci, cv in enumerate(sorted(grid_values)):
+        curr_cixs = [int(cfg[6:])-1 for cfg in sdf[sdf[grid_axis]==cv].index.tolist()]
+        corr_cdim = conds_by_rois[curr_cixs].corr(method=corr_method)
+        if rdm:
+            corr_cdim = 1 - corr_cdim
+        ax = axes[ci]
+        if ci == 0:
+            ax.set_ylabel(plot_axis)
+            ax.set_yticks(np.arange(0, len(plot_values)))
+            ytick_labels = sorted(plot_values)
+            ax.set_yticklabels(ytick_labels, rotation=0, fontsize=6)
+            ax.set_xticks([])
+            ax.set_ylabel(plot_axis)
+        else:
+            ax.set_xticks([])
+            ax.set_yticks([])
+        im = ax.imshow(corr_cdim, cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        ax.set_title('%i' % cv, fontsize=6)
+    
+    if title is None:
+        title = '%s corrs by %s' % (plot_axis, grid_axis)
+    fig.suptitle(title, fontsize=12)
+    fig.subplots_adjust(right=0.78, top=0.77, wspace=0.2)
+    cbar_ax = fig.add_axes([0.8, 0.2, 0.01, 0.5]) # put colorbar at desire position
+    fig.colorbar(im, cax=cbar_ax)
+    
+    return fig
+
+#%%
+curr_figdir = os.path.join(traceid_dir, 'figures', 'population')
+if not os.path.exists(curr_figdir):
+    os.makedirs(curr_figdir)
+print "Saving plots to: %s" % curr_figdir
+
+subsets = ['visual', 'selective', 'all']
+
+corr_method = 'pearson'
+rdm = False
+cmap = 'PiYG_r' #'PRGn'
+
+if rdm:
+    rdm_str = 'rdm'
+else:
+    rdm_str = 'corr'
+
+for subset in subsets:
+    #%%
+    if subset == 'visual':
+        conds_by_rois = avg_zscores_by_cond[sorted_visual].T #.T.corr()
+    elif subset == 'selective':
+        conds_by_rois = avg_zscores_by_cond[sorted_selective].T #.T.corr()
+    else:
+        conds_by_rois = avg_zscores_by_cond.T
+    
+    print conds_by_rois.shape
+    
+    # Plot ALL correlations:
+    # ----------------------
+    fig, ax = pl.subplots() #pl.figure()
+    if rdm:
+        vmin=0; vmax=2; 
+    else:
+        vmin=-1; vmax=1;
+        
+    im = ax.imshow(conds_by_rois.corr(method=corr_method), cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+    ax.set_title('corrs - all condNs (%s)' % subset)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='3%', pad=0.1) 
+    pl.colorbar(im, cax=cax, cmap=cmap)
+    cax.yaxis.set_ticks_position('right')
+    label_figure(fig, data_identifier)
+    figname = 'allcond_%s_%s_%s' % (corr_method, rdm_str, subset)
+    pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+    print figname
+    
+    
+    morphlevels = sorted(sdf['morphlevel'].unique())
+    sizes = sorted(sdf['size'].unique())
+    
+    # Plot morph correlations for each size:
+    # --------------------------------------
+    grid_axis = 'size'; grid_values = copy.copy(sizes);
+    plot_axis = 'morphlevel'; plot_values = copy.copy(morphlevels);
+    fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=sizes,\
+                             plot_axis=plot_axis, plot_values=plot_values,\
+                             corr_method=corr_method, rdm=rdm, cmap=cmap,\
+                             title='%s corrs by %s (%s)' % (plot_axis, grid_axis, subset))
+    
+    label_figure(fig, data_identifier)
+    figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
+    pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+    print figname
+    
+    # Plot size correlations for each morph:
+    # --------------------------------------
+    grid_axis = 'morphlevel'; grid_values = copy.copy(morphlevels);
+    plot_axis = 'size'; plot_values = copy.copy(sizes);
+    fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
+                             plot_axis=plot_axis, plot_values=plot_values,\
+                             corr_method=corr_method, rdm=rdm, cmap=cmap,\
+                             title='%s corrs by %s (%s)' % (plot_axis, grid_axis, subset))
+    label_figure(fig, data_identifier)
+    figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
+    pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+    print figname
+
+#%%
+import seaborn as sns
+
+
+fig, ax = pl.subplots()
+for cv in sizes:
+    curr_cixs = np.array([int(cfg[6:])-1 for cfg in sdf[sdf['size']==cv].index.tolist()])
+    curr_sz_vals = avg_zscores_by_cond[sorted_visual].iloc[curr_cixs, :]
+    sns.distplot(curr_sz_vals.values.ravel(), ax=ax, label=cv, hist=False)
+    
+
+
 
 
 
