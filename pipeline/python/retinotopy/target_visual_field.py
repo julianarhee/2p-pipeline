@@ -485,6 +485,103 @@ def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, dr
 #%%
 
 
+def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolute=True, \
+                         mag_thr=0.02, delay_thr=np.pi/2, equal_travel_lengths=True):
+    
+    # Convert phase to linear coords:
+    # screen_left = -1*screen['azimuth']/2.
+    # screen_right = screen['azimuth']/2. #screen['azimuth']/2.
+    # if equal_travel_lengths:
+    #     screen_lower = screen_left
+    #     screen_upper = screen_right
+    # else:
+    #     screen_lower = -1*screen['elevation']/2.
+    #     screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    screen_left = stim_positions['left'].iloc[0,:].mean()
+    screen_right = stim_positions['right'].iloc[0,:].mean()
+    screen_upper = stim_positions['top'].iloc[0,:].mean()
+    screen_lower = stim_positions['bottom'].iloc[0,:].mean()
+
+    # Find strongly responding cells to calcualte delay
+    mean_mags = magratio.mean(axis=1)
+    strong_cells = mean_mags[mean_mags >= mag_thr].index.tolist()
+    print("ROIs with best mag-ratio (n=%i, thr=%.2f):" % (len(strong_cells), mag_thr), strong_cells)
+        
+#        mean_fits = fit.mean(axis=1)
+#        best_fits = mean_fits[mean_fits >= fit_thr].index.tolist()
+#        print("ROIs with best fit (n=%i, thr=%.2f):" % (len(best_fits), fit_thr), best_fits)
+
+    if absolute:
+        use_relative = False
+        mean_phase_left = sp.stats.circmean(phase[trials_by_cond['left']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_right = sp.stats.circmean(phase[trials_by_cond['right']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_bottom = sp.stats.circmean(phase[trials_by_cond['bottom']], axis=1, low=-np.pi, high=np.pi)
+        mean_phase_top = sp.stats.circmean(phase[trials_by_cond['top']], axis=1, low=-np.pi, high=np.pi)
+
+        # Calculate delay map from non-corrected 
+        delay_az = (mean_phase_left[strong_cells] + mean_phase_right[strong_cells]) / 2.
+        avg_delay_az = delay_az.mean()
+        std_delay_az = delay_az.std()
+        print "[AZ] Average delay (std): %.2f (%.2f)" % (avg_delay_az, std_delay_az)
+        
+        delay_el = (mean_phase_bottom[strong_cells] + mean_phase_top[strong_cells]) / 2.
+        avg_delay_el = delay_el.mean()
+        std_delay_el = delay_el.std()
+        print "[EL] Average delay (std): %.2f (%.2f)" % (avg_delay_el, std_delay_el)
+    
+        #delay_thr = np.pi/2 #1.0
+        if std_delay_az > delay_thr or std_delay_el > delay_thr:
+            print "*** WARNING:  Bad delay in AZ (%.2f) or EL (%.2f) condition" % (avg_delay_az, avg_delay_el)
+            use_relative = True
+    else:
+        use_relative = True
+    
+    if not use_relative:
+        # Calculate absoluate maps if delay is reasonable:
+        mean_phase_az = (mean_phase_left - mean_phase_right) / 2.0
+        mean_phase_el = (mean_phase_bottom - mean_phase_top) / 2.0
+        
+        # Convert to linear coords:
+        # When converted to absolute (left-right), neg screen values = neg pi, pos screen values = pos pi
+        linX = convert_values(mean_phase_az, 
+                              newmin=screen_left, newmax=screen_right,
+                              oldmin=-np.pi, oldmax=np.pi) 
+        linY = convert_values(mean_phase_el, 
+                              newmin=screen_lower, newmax=screen_upper, 
+                              oldmin=-np.pi, oldmax=np.pi)  
+        
+    else:
+        corrected_phase_right = correct_phase_wrap(phase[trials_by_cond['right']])
+        corrected_phase_top = correct_phase_wrap(phase[trials_by_cond['top']])
+                                             
+        mean_phase_az = sp.stats.circmean(corrected_phase_right, axis=1, low=0, high=2*np.pi)
+        mean_phase_el = sp.stats.circmean(corrected_phase_top, axis=1, low=0, high=2*np.pi)
+
+        # Convert to linear coords:
+        # If cond is 'right':  positive screen values = 0, negative screen values = 2pi
+        # If cond is 'top':  positive values = 0, negative values = 2pi
+        linX = convert_values(mean_phase_az, 
+                              newmin=screen_right, newmax=screen_left,
+                              oldmin=0, oldmax=2*np.pi)  
+        linY = convert_values(mean_phase_el, 
+                              newmin=screen_upper, newmax=screen_lower, #screen_upper,
+                              oldmin=0, oldmax=2*np.pi)  
+        
+    absolute_coords = {'mean_phase_az': mean_phase_az,
+                       'mean_phase_el': mean_phase_el,
+                       'linX': linX,
+                       'linY': linY,
+                       'delay_az': delay_az,
+                       'delay_el': delay_el,
+                       'delay_thr': delay_thr,
+                       'strong_cells': strong_cells,
+                       'mag_thr': mag_thr,
+                       'used_relative': use_relative,
+                       'screen_bb': [screen_lower, screen_left, screen_upper, screen_right]}
+                       
+    return absolute_coords
+    
+    
 def correct_phase_wrap(phase):
         
     corrected_phase = phase.copy()
@@ -493,6 +590,92 @@ def correct_phase_wrap(phase):
     corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
     
     return corrected_phase
+
+
+#%%
+def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
+    mw_fps = 1./np.diff(np.array(mwinfo[str(trials_by_cond[condname][0])]['stiminfo']['tstamps'])/1E6).mean()
+    si_fps = stiminfo[condname]['frame_rate']
+    print "[%s]: Downsampling MW positions (sampled at %.2fHz) to SI frame rate (%.2fHz)" % (condname, mw_fps, si_fps)
+
+    si_cyc_ixs = stiminfo[condname]['cycle_start_ixs']
+    si_tstamps = runinfo['frame_tstamps_sec']
+
+
+    #fig, axes = pl.subplots(1, len(trials_by_cond[condname]))
+
+    stim_pos_list = []
+    stim_tstamp_list = []
+
+    for ti, trial in enumerate(trials_by_cond[condname]):
+        #ax = axes[ti]
+
+        pos_list = []
+        tstamp_list = []
+        mw_cyc_ixs = mwinfo[str(trial)]['stiminfo']['start_indices']
+        for cix in np.arange(0, len(mw_cyc_ixs)):
+            if cix==len(mw_cyc_ixs)-1:
+                mw_ts = [t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:]]
+                xs = mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:]
+                si_ts = si_tstamps[si_cyc_ixs[cix]:]
+            else:
+                mw_ts = np.array([t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]]])
+                xs = np.array(mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]])
+                si_ts = si_tstamps[si_cyc_ixs[cix]:si_cyc_ixs[cix+1]]
+
+            recentered_mw_ts = [t-mw_ts[0] for t in mw_ts]
+            recentered_si_ts = [t-si_ts[0] for t in si_ts]
+
+            # Since MW tstamps are linear, SI tstamps linear, interpolate position values down to SI's lower framerate:
+            interpos = sp.interpolate.interp1d(recentered_mw_ts, xs, fill_value='extrapolate')
+            resampled_xs = interpos(recentered_si_ts)
+
+            pos_list.append(pd.Series(resampled_xs, name=trial))
+            tstamp_list.append(pd.Series(recentered_si_ts, name=trial))
+
+            #ax.plot(recentered_mw_ts, xs, 'ro', alpha=0.5, markersize=2)
+            #ax.plot(recentered_si_ts, resampled_xs, 'bx', alpha=0.5, markersize=2)
+
+        pos_vals = pd.concat(pos_list, axis=0).reset_index(drop=True) 
+        tstamp_vals = pd.concat(tstamp_list, axis=0).reset_index(drop=True)
+
+        stim_pos_list.append(pos_vals)
+        stim_tstamp_list.append(tstamp_vals)
+
+    stim_positions = pd.concat(stim_pos_list, axis=1)
+    stim_tstamps = pd.concat(stim_tstamp_list, axis=1)
+
+
+    return stim_positions, stim_tstamps
+
+def get_retino_stimulus_info(mwinfo, runinfo):
+    
+    stiminfo = dict((cond, dict()) for cond in conditions)
+    for curr_cond in conditions:
+        # get some info from paradigm and run file
+        stimfreq = np.unique([v['stimuli']['scale'] for k,v in mwinfo.items() if v['stimuli']['stimulus']==curr_cond])[0]
+        stimperiod = 1./stimfreq # sec per cycle
+        
+        n_frames = runinfo['nvolumes']
+        fr = runinfo['frame_rate']
+        
+        n_cycles = int(round((n_frames/fr) / stimperiod))
+        print n_cycles
+
+        n_frames_per_cycle = int(np.floor(stimperiod * fr))
+        cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
+
+        stiminfo[curr_cond] = {'stimfreq': stimfreq,
+                               'frame_rate': fr,
+                               'n_reps': len(trials_by_cond[curr_cond]),
+                               'nframes': n_frames,
+                               'n_cycles': n_cycles,
+                               'n_frames_per_cycle': n_frames_per_cycle,
+                               'cycle_start_ixs': cycle_starts
+                              }
+
+    return stiminfo
+
 
 #%%
 
@@ -593,7 +776,13 @@ def main(options):
     
     # Get condition info for trials:
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+    with open(conditions_fpath, 'r') as f:
+        mwinfo = json.load(f)
 
+
+    # Get stimulus info:
+    stiminfo = get_retino_stimulus_info(mwinfo, runinfo)
+    stiminfo['trials_by_cond'] = trials_by_cond
 
     #%%
     
@@ -644,68 +833,29 @@ def main(options):
     # Get AVERAGE of phase values across condition reps.
     # Convert to linear coords.
     # -------------------------------------------------------------------------
-
     
+    # Get MW info:
+    stim_positions = dict()
+    stim_tstamps = dict()
+    for cond in trials_by_cond.keys():
+        stim_positions[cond], stim_tstamps[cond] = get_interp_positions(cond, mwinfo, stiminfo, trials_by_cond)
+
+    #----
     mag_thr = magratio.max(axis=1).max() * 0.25 #0.02
     #mag_thr = magratio.max(axis=1).max() * 0.25 #5 #0.02
     #fit_thr = 0.20
-        
-    if absolute:
-        use_relative = False
-        mean_phase_left = sp.stats.circmean(phase[trials_by_cond['left']], axis=1, low=-np.pi, high=np.pi)
-        mean_phase_right = sp.stats.circmean(phase[trials_by_cond['right']], axis=1, low=-np.pi, high=np.pi)
-        mean_phase_bottom = sp.stats.circmean(phase[trials_by_cond['bottom']], axis=1, low=-np.pi, high=np.pi)
-        mean_phase_top = sp.stats.circmean(phase[trials_by_cond['top']], axis=1, low=-np.pi, high=np.pi)
-        
-        # Find strongly responding cells to calcualte delay
-        mean_mags = magratio.mean(axis=1)
-        strong_cells = mean_mags[mean_mags >= mag_thr].index.tolist()
-        print("ROIs with best mag-ratio (n=%i, thr=%.2f):" % (len(strong_cells), mag_thr), strong_cells)
-        
-#        mean_fits = fit.mean(axis=1)
-#        best_fits = mean_fits[mean_fits >= fit_thr].index.tolist()
-#        print("ROIs with best fit (n=%i, thr=%.2f):" % (len(best_fits), fit_thr), best_fits)
+    absolute = True
+    absolute_coords = get_absolute_centers(phase, trials_by_cond, stim_positions, \
+                                                                    absolute=absolute, mag_thr=mag_thr)
 
-        # Calculate delay map from non-corrected 
-        delay_az = (mean_phase_left[strong_cells] + mean_phase_right[strong_cells]) / 2.
-        avg_delay = delay_az.mean()
-        std_delay = delay_az.std()
-        print "Average delay (std): %.2f (%.2f)" % (avg_delay, std_delay)
-    
-        delay_thr = np.pi/2 #1.0
-        if std_delay > delay_thr:
-            print "*** WARNING:  Bad delay in AZ condition (%.2f)" % avg_delay
-            use_relative = True
-    else:
-        use_relative = True
-    
-    if not use_relative:
-        # Calculate absoluate maps if delay is reasonable:
-        mean_phase_az = (mean_phase_left - mean_phase_right) / 2.0
-        mean_phase_el = (mean_phase_bottom - mean_phase_top) / 2.0
-        
-        # Convert to linear coords:
-        # When converted to absolute (left-right), neg screen values = neg pi, pos screen values = pos pi
-        linX = convert_values(mean_phase_az, 
-                              newmin=screen_left, newmax=screen_right,
-                              oldmin=-np.pi, oldmax=np.pi) 
-        linY = convert_values(mean_phase_el, 
-                              newmin=screen_lower, newmax=screen_upper, 
-                              oldmin=-np.pi, oldmax=np.pi)  
-        
-    else:
-        mean_phase_az = sp.stats.circmean(corrected_phase[trials_by_cond['right']], axis=1, low=0, high=2*np.pi)
-        mean_phase_el = sp.stats.circmean(corrected_phase[trials_by_cond['top']], axis=1, low=0, high=2*np.pi)
+    # Screen dims are not necessarily left/right and bottom/top starting pos for cycle (off-scren start)
+    [bottom_pos, left_pos, top_pos, right_pos] = absolute_coords['screen_bb']
 
-        # Convert to linear coords:
-        # If cond is 'right':  positive screen values = 0, negative screen values = 2pi
-        # If cond is 'top':  positive values = 0, negative values = 2pi
-        linX = convert_values(mean_phase_az, 
-                              newmin=screen_right, newmax=screen_left,
-                              oldmin=0, oldmax=2*np.pi)  
-        linY = convert_values(mean_phase_el, 
-                              newmin=screen_upper, newmax=screen_lower, #screen_upper,
-                              oldmin=0, oldmax=2*np.pi)  
+    mean_phase_az = absolute_coords['mean_phase_az']
+    mean_phase_el = absolute_coords['mean_phase_el']
+    linX = absolute_coords['linX']
+    linY = absolute_coords['linY']
+    use_relative = absolute_coords['used_relative']
     
     # Plot ROI centers using phase values as sanity check against conversion to linear coords:
     fig, ax = pl.subplots(figsize=(10,5)) # pl.figure()
@@ -760,11 +910,11 @@ def main(options):
     # -----------------------------------------------------------------------------
     #use_linear = True
     
-    fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
-                                                 labeled_rois=[], use_linear=use_linear, #use_circ=use_circ,
-                                                 fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
-                                                 data_identifier=data_identifier, fov=fov, retinoid=retinoid,
-                                                 output_dir=output_dir)
+    # fig, good_fits = visualize_fits_by_condition(fit, magratio, corrected_phase, trials_by_cond, screen, 
+    #                                              labeled_rois=[], use_linear=use_linear, #use_circ=use_circ,
+    #                                              fit_thresh_az=fit_thresh_az, fit_thresh_el=fit_thresh_el,
+    #                                              data_identifier=data_identifier, fov=fov, retinoid=retinoid,
+    #                                              output_dir=output_dir)
     
     #%%
 
@@ -772,13 +922,17 @@ def main(options):
     # -------------------------------------------------------------------------
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
-    screen_divs_az = int(round(screen['azimuth']))
-    screen_divs_el = int(round(screen['elevation']))
+    #screen_divs_az = int(round(screen['azimuth']))
+    #screen_divs_el = int(round(screen['elevation']))
+
+    screen_divs_az = int(round(right_pos - left_pos))
+    screen_divs_el = int(round(top_pos - bottom_pos))
     #heatmap, xedges, yedges = np.histogram2d(linX.values, linY.values, bins=(screen_divs_az, screen_divs_el))
     heatmap, xedges, yedges = np.histogram2d(linX, linY, bins=(screen_divs_az, screen_divs_el))
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     ax.imshow(heatmap.T, extent=extent, origin='lower')
-
+    ax.set_ylim([screen_lower, screen_upper])
+    ax.set_xlim([screen_left, screen_right])
 
     # Apply gaussian filter
     sigma_val = 5
@@ -825,12 +979,15 @@ def main(options):
     elev_x, elev_y = j.ax_marg_y.lines[0].get_data()
     azim_x, azim_y = j.ax_marg_x.lines[0].get_data()
 
-    #smstats_kde_az = sp.stats.gaussian_kde(linX.values) #, weights=mean_fits)
     smstats_kde_az = sp.stats.gaussian_kde(linX) #, weights=mean_fits)
-    az_vals = np.linspace(screen_left, screen_right, len(mean_mags))
-    #smstats_kde_el = sp.stats.gaussian_kde(linY.values)
+    #az_vals = np.linspace(screen_left, screen_right, len(mean_mags))
+    az_vals = np.linspace(left_pos, right_pos, len(mean_mags))
+    
     smstats_kde_el = sp.stats.gaussian_kde(linY)
-    el_vals = np.linspace(screen_lower, screen_upper, len(mean_mags))
+    #el_vals = np.linspace(screen_lower, screen_upper, len(mean_mags))
+    el_vals = np.linspace(bottom_pos, top_pos, len(mean_mags))
+    
+
     smstats_az = smstats_kde_az(az_vals)
     smstats_el = smstats_kde_el(el_vals)
     #wa = kdea(vals)
