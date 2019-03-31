@@ -21,12 +21,12 @@ from pipeline.python.utils import natural_keys, label_figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 #%%
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC070' #'JC059'
-#session = '20190316' #'20190227'
-#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-#run = 'combined_blobs_static'
-#traceid = 'traces001' #'traces001'
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC070' #'JC059'
+session = '20190316' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_blobs_static'
+traceid = 'traces001' #'traces001'
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC073' #'JC059'
@@ -42,12 +42,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces002'
 
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC059' #'JC059'
-session = '20190227' #'20190227'
-fov = 'FOV4_zoom4p0x' #'FOV4_zoom4p0x'
-run = 'combined_blobs_static'
-traceid = 'traces001' #'traces001'
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC059' #'JC059'
+#session = '20190227' #'20190227'
+#fov = 'FOV4_zoom4p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces001'
 
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
@@ -535,24 +535,106 @@ def plot_corrs_by_cond(conds_by_rois, grid_axis='size', grid_values=[], \
     return fig
 
 #%%
-curr_figdir = os.path.join(traceid_dir, 'figures', 'population')
+
+import matplotlib as mpl
+import numpy as np
+import sys
+def make_cmap(colors, position=None, bit=False):
+    '''
+    make_cmap takes a list of tuples which contain RGB values. The RGB
+    values may either be in 8-bit [0 to 255] (in which bit must be set to
+    True when called) or arithmetic [0 to 1] (default). make_cmap returns
+    a cmap with equally spaced colors.
+    Arrange your tuples so that the first color is the lowest value for the
+    colorbar and the last is the highest.
+    position contains values from 0 to 1 to dictate the location of each color.
+    '''
+
+    bit_rgb = np.linspace(0,1,256)
+    if position == None:
+        position = np.linspace(0,1,len(colors))
+    else:
+        if len(position) != len(colors):
+            sys.exit("position length must be the same as colors")
+        elif position[0] != 0 or position[-1] != 1:
+            sys.exit("position must start with 0 and end with 1")
+    if bit:
+        for i in range(len(colors)):
+            colors[i] = (bit_rgb[colors[i][0]],
+                         bit_rgb[colors[i][1]],
+                         bit_rgb[colors[i][2]])
+    cdict = {'red':[], 'green':[], 'blue':[]}
+    for pos, color in zip(position, colors):
+        cdict['red'].append((pos, color[0], color[0]))
+        cdict['green'].append((pos, color[1], color[1]))
+        cdict['blue'].append((pos, color[2], color[2]))
+
+    cmap = mpl.colors.LinearSegmentedColormap('my_colormap',cdict,256)
+    return cmap
+
+dubrovnik_colors = [(0, 0, 1),
+                   (0, 1, 1),
+                   (.197, .408, .408),
+                   (.402, .402, .204),
+                   (1, 1, 0),
+                   (1, 0, 0)
+                   ]
+
+dubrovnik = make_cmap(dubrovnik_colors, bit=False)
+dubrovnik_positions = [p/255. for p in [0, 83, 127, 128, 172, 255]]
+
+#%%
+
+skalafell_colors = [(1, 0, 1),
+                   (1, 0.9921, 1),
+                   (0.9921, 1, 0.9921),
+                   (0, 1, 0)
+                   ]
+skalafell_positions = [p/255. for p in [0, 127, 128, 255]]
+skalafell = make_cmap(skalafell_colors, bit=False, position=skalafell_positions)
+
+#%%
+nanticoke_colors = [(0, 1, 1),
+                   (0, 0.2, 1),
+                   (0, 0, 0),
+                   (1, 0.1, 0),
+                   (1, 0.9, 0)
+                   ]
+nanticoke_positions = [p/255. for p in [0, 51, 102, 163, 255]]
+nanticoke = make_cmap(nanticoke_colors, bit=False, position=nanticoke_positions)
+
+
+
+
+### Use your colormap
+pl.pcolor(np.random.rand(25,50), cmap=nanticoke)
+pl.colorbar()
+         
+#%%
+
+
+subsets = ['visual', 'selective', 'all']
+
+subtract_GM = True
+corr_method = 'pearson' #'spearman' #'pearson'
+rdm = True
+cmap = 'PRGn' #dubrovnik #nanticoke #skalafell #dubrovnik #PRGn'
+
+fig_subdir = 'population_cmap_GM' if subtract_GM else 'population_cmap'
+
+curr_figdir = os.path.join(traceid_dir, 'figures', fig_subdir)
 if not os.path.exists(curr_figdir):
     os.makedirs(curr_figdir)
 print "Saving plots to: %s" % curr_figdir
 
-subsets = ['visual', 'selective', 'all']
-
-corr_method = 'pearson'
-rdm = False
-cmap = 'PiYG_r' #'PRGn'
-
+#%%
 if rdm:
     rdm_str = 'rdm'
 else:
     rdm_str = 'corr'
 
 for subset in subsets:
-    #%%
+    #%
     if subset == 'visual':
         conds_by_rois = avg_zscores_by_cond[sorted_visual].T #.T.corr()
     elif subset == 'selective':
@@ -560,8 +642,13 @@ for subset in subsets:
     else:
         conds_by_rois = avg_zscores_by_cond.T
     
-    print conds_by_rois.shape
+    GM = conds_by_rois.mean().mean()
     
+    if subtract_GM:
+        conds_by_rois = conds_by_rois - GM
+        
+    print conds_by_rois.shape
+    #%
     # Plot ALL correlations:
     # ----------------------
     fig, ax = pl.subplots() #pl.figure()
@@ -571,7 +658,7 @@ for subset in subsets:
         vmin=-1; vmax=1;
         
     im = ax.imshow(conds_by_rois.corr(method=corr_method), cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
-    ax.set_title('corrs - all condNs (%s)' % subset)
+    ax.set_title('%s corrs - all condNs (%s)' % (corr_method, subset))
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='3%', pad=0.1) 
     pl.colorbar(im, cax=cax, cmap=cmap)
@@ -592,7 +679,7 @@ for subset in subsets:
     fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=sizes,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
-                             title='%s corrs by %s (%s)' % (plot_axis, grid_axis, subset))
+                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
     
     label_figure(fig, data_identifier)
     figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
@@ -606,7 +693,7 @@ for subset in subsets:
     fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
-                             title='%s corrs by %s (%s)' % (plot_axis, grid_axis, subset))
+                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
     label_figure(fig, data_identifier)
     figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
     pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
