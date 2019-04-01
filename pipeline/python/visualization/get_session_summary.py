@@ -195,7 +195,9 @@ def colorcode_histogram(bins, ppatches, color='m'):
         ppatches.patches[ind].set_alpha(0.5)
     
 #%%
-def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_new=False, nproc=4, pval_selective=0.05, pval_visual=0.05):
+def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, \
+                    create_new=True, nproc=4, metric='zscore',\
+                    pval_selective=0.05, pval_visual=0.05, visual_test_type='RManova1'):
     
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition) 
 
@@ -211,11 +213,13 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, create_
                                              session=session, 
                                              acquisition=acquisition, 
                                              run=run, traceid=traceid)
-    responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc, '--par'])
+    responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc])
+    if nproc > 1:
+        responsivity_opts.extend(['--par'])
     if create_new:
         responsivity_opts.extend(['--new'])
 
-    reponsivity_opts.extend(['--pvis=%.2f' % pval_visual, '--psel=%.2f' % pval_selective])
+    responsivity_opts.extend(['--pvis=%.2f' % pval_visual, '--psel=%.2f' % pval_selective, '-v', visual_test_type, '--metric=%s' % metric])
 
     print responsivity_opts
         
@@ -980,7 +984,9 @@ def extract_options(options):
 
     parser.add_option('--pvis', dest='pval_visual', default=0.05, action='store', help='P-value for visual test (SP anova, default=0.05)')
     parser.add_option('--psel', dest='pval_selective', default=0.05, action='store', help='P-value for selective test (KW, default=0.05)')
+    parser.add_option('--metric', dest='response_metric', default='zscore', action='store', help='Response value to use for calculatnig stats (default=meanstim (alt:zscore))')
 
+    parser.add_option('-v', '--v', dest='visual_test_type', default='SPanova2', action='store', help='Test to use for visual responsivity (default=SPanova2 (alt: RManova1)')
   
     #parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
      
