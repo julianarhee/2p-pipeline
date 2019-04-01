@@ -91,7 +91,7 @@ def extract_options(options):
     parser.add_option('--pvis', action='store', dest='pval_visual', default=0.05, help="P-value for visual responsivity test (SP anova) (default=0.05)")
     parser.add_option('--psel', action='store', dest='pval_selective', default=0.05, help="P-value for selectivity test (KW) (default=0.05)")
     parser.add_option('--metric', action='store', dest='response_metric', default='meanstim', help="Response value to use for calculating stats (default=meanstim (alt: zscore))")
-    parser.add_option('-v', '--visual', action='store', dest='visual_test_type', default='SPanova2', help="Test to use for visual responsivity (default=SPanova2 (alt: RManova1))")
+    parser.add_option('-v', '--visual-test', action='store', dest='visual_test_type', default='SPanova2', help="Test to use for visual responsivity (default=SPanova2 (alt: RManova1))")
 
     (options, args) = parser.parse_args(options)
 
@@ -358,7 +358,7 @@ def find_visual_cells(roidata, labels_df, sort_dir='/tmp', nprocs=4, visual_test
     if not os.path.exists(responsive_resultsdir):
         os.makedirs(responsive_resultsdir)
         
-    responsive_anova_fpath = os.path.join(responsive_resultsdir, 'visual_rois_%s_results.json' % visual_test_type)        
+    responsive_anova_fpath = os.path.join(responsivity_basedir, 'visual_rois_%s_results.json' % visual_test_type)        
 
     if create_new is False:
         try:
@@ -688,7 +688,8 @@ def calculate_roi_responsivity(options):
     nprocs = int(optsE.nprocesses)
     pval_visual = float(optsE.pval_visual) #0.05
     pval_selective = float(optsE.pval_selective)
- 
+    visual_test_type = optsE.visual_test_type
+
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     traceid_dirs = glob.glob(os.path.join(acquisition_dir, optsE.run, 'traces', '%s*' % optsE.traceid))
     assert len(traceid_dirs) > 0, "No trace id dir found for %s: %s" % (optsE.traceid, acquisition_dir)
@@ -760,7 +761,6 @@ def calculate_roi_responsivity(options):
     # =========================================================================
     # RESPONSIVITY:
     # =========================================================================
-    visual_test_type = optsE.visual_test_type
     responsive_anova, sorted_visual, resp_test_type = find_visual_cells(roidata, labels_df,
                                                         sort_dir=sort_dir, 
                                                         nprocs=nprocs, 
