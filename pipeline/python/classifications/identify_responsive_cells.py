@@ -11,7 +11,8 @@ import glob
 import json
 import copy
 import pylab as pl
-
+import seaborn as sns
+import cPickle as pkl
 import numpy as np
 import scipy as sp
 from scipy import stats
@@ -21,26 +22,32 @@ from pipeline.python.utils import natural_keys, label_figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 #%%
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC070' #'JC059'
-session = '20190316' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_blobs_static'
-traceid = 'traces001' #'traces001'
+visual_area = ''
+segment = False
+
 
 #rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC073' #'JC059'
-#session = '20190322' #'20190227'
+#animalid = 'JC070' #'JC059'
+#session = '20190315' #'20190227'
 #fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces001'
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC067' 
-#session = '20190320' #'20190319'
+#session = '20190319' #'20190319'
 #fov = 'FOV1_zoom2p0x' 
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces002'
+
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC073' #'JC059'
+session = '20190327' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_blobs_static'
+traceid = 'traces001' #'traces001'
+segment = False
+visual_area = ''
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC059' #'JC059'
@@ -56,9 +63,28 @@ data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
 dset = np.load(data_fpath)
 dset.keys()
 
-data_identifier = '|'.join([animalid, session, fov, run, traceid])
+data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area])
 print data_identifier
 
+
+#%%
+
+included_rois = []
+if segment:
+    segmentations = glob.glob(os.path.join(fov_dir, 'visual_areas', '*.pkl'))
+    assert len(segmentations) > 0, "Specified to segment, but no segmentation file found in acq. dir!"
+    if len(segmentations) == 1:
+        segmentation_fpath = segmentations[0]
+    else:
+        for si, spath in enumerate(sorted(segmentations, key=natural_keys)):
+            print si, spath
+        sel = input("Select IDX of seg file to use: ")
+        segmentation_fpath = sorted(segmentations, key=natural_keys)[sel]
+    with open(segmentation_fpath, 'rb') as f:
+        seg = pkl.load(f)
+            
+    included_rois = seg.regions[visual_area]['included_rois']
+    print "Found %i rois in visual area %s" % (len(included_rois), visual_area)
 
 #%%
 
@@ -68,9 +94,11 @@ print "Selected stats results: %s" % os.path.split(sorted_dir)[-1]
 
 # Set output dir:
 output_dir = os.path.join(sorted_dir, 'visualization')
+if segment:
+    output_dir = os.path.join(sorted_dir, 'visualization', visual_area)
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-    
+print "Saving output to:", output_dir
 
 #%%
 
@@ -90,8 +118,14 @@ stats_fpath = glob.glob(os.path.join(sorted_dir, 'roistats_results.npz'))[0]
 rstats = np.load(stats_fpath)
 rstats.keys()
 
-visual_rois = rstats['sorted_visual']
-selective_rois = rstats['sorted_selective']
+#%%
+if segment and len(included_rois) > 0:
+    all_rois = np.array(copy.copy(included_rois))
+else:
+    all_rois = np.arange(0, rstats['nrois_total'])
+
+visual_rois = np.array([r for r in rstats['sorted_visual'] if r in all_rois])
+selective_rois = np.array([r for r in rstats['sorted_selective'] if r in all_rois])
 
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(visual_rois), rstats['responsivity_test'], rstats['visual_pval'])
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selective_rois), rstats['selectivity_test'], rstats['selective_pval'])
@@ -148,7 +182,7 @@ print [r for r in sorted_selective if r not in sorted_visual]
 
 print sorted_selective[0:10]
 
-#%%
+#%
 
 # Get SNR
 # -----------------------------------------------------------------------------
@@ -159,6 +193,10 @@ stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim
 snrs = stim_means/bas_means
   
 
+sizes = sorted(sdf['size'].unique())
+morphlevels = sorted(sdf['morphlevel'].unique())
+
+
 
 #%%
 
@@ -166,9 +204,6 @@ snrs = stim_means/bas_means
 # -----------------------------------------------------------------------------
 rows = 'size'
 cols = 'morphlevel'
-
-sizes = sorted(sdf['size'].unique())
-morphlevels = sorted(sdf['morphlevel'].unique())
 
 config_trial_ixs = dict()
 cix = 0
@@ -396,100 +431,143 @@ pl.savefig(os.path.join(output_dir, 'visual_selective_rois.png'))
 #%%
 
 
+curr_figdir = os.path.join(output_dir, 'selective_rois')
+if not os.path.exists(curr_figdir):
+    os.makedirs(curr_figdir)
+print "Saving curr figures to: %s" % curr_figdir
+
+
+min_snr =  2
 
 # 1.  Plot raw traces and relationship between bas/stim periods w.r.t SNR
 # -----------------------------------------------------------------------
-rid = sorted_selective[0]
+#rid = sorted_selective[0]
 
-roi_zscores = zscores[:, rid]
-roi_trace = raw_traces[rid] #[:, rid]
-
-# Get current ROI traces by config:
-traces_by_cond = dict((cfg, []) for cfg in labels['config'].unique())
-for k, g in labels.groupby(['config', 'trial']):
-    traces_by_cond[k[0]].append(roi_trace[g.index])
-for cfg in traces_by_cond.keys():
-    traces_by_cond[cfg] = np.vstack(traces_by_cond[cfg])
-
-# Pick condition with max/best zscore:
-cfg = 'config%03d' % int(avg_zscores_by_cond[rid].argmax()+1)
-
-ntrials = traces_by_cond[cfg].shape[0]
-bas = traces_by_cond[cfg][:, 0:stim_on_frame].mean(axis=1)
-stim = traces_by_cond[cfg][:, stim_on_frame:(stim_on_frame+nframes_on)].mean(axis=1)
-snr = stim/bas
-
-fig, axes = pl.subplots(1,3, figsize=(25, 5)) #pl.figure()
-
-ax = axes[0]
-im = ax.imshow(traces_by_cond[cfg], cmap='inferno', aspect='auto')
-# Add color bar:
-divider = make_axes_locatable(ax)
-cax = divider.append_axes('right', size='1%', pad=0.1) 
-pl.colorbar(im, cax=cax, cmap='inferno')
-cax.yaxis.set_ticks_position('right')
+for rid in sorted_selective:
+    roi_zscores = zscores[:, rid]
+    roi_trace = raw_traces[rid] #[:, rid]
     
-ax.set_title('raw traces')
-ax.set_ylabel('trial')
-ax.set_xticks([]); ax.set_xticklabels([]);
-ax.axvline(x=stim_on_frame, color='w', lw=0.5)
-ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5)
-# Add color bar:
-divider = make_axes_locatable(ax)
-cax = divider.append_axes('right', size='5%', pad=0.05) 
-pl.colorbar(im, cax=cax, cmap='inferno')
-cax.yaxis.set_ticks_position('right')
+    # Get current ROI traces by config:
+    traces_by_cond = dict((cfg, []) for cfg in labels['config'].unique())
+    for k, g in labels.groupby(['config', 'trial']):
+        traces_by_cond[k[0]].append(roi_trace[g.index])
+    for cfg in traces_by_cond.keys():
+        traces_by_cond[cfg] = np.vstack(traces_by_cond[cfg])
     
-
-ax = axes[1]
-ax.plot(bas, stim, '.')
-for tid in np.arange(0, bas.shape[0]):
-    ax.annotate('%i' % tid, (bas[tid], stim[tid]))
-ax.set_ylabel('stim')
-ax.set_xlabel('bas')
-ax.set_title('mean intensity by trial')
-
-ax = axes[2]
-ax.plot(np.arange(0, ntrials), snr, 'b.')
-ax.set_ylabel('snr')
-ax.set_xlabel('trial')
-
-fig.suptitle('best condN, roi%05d' % int(rid+1))
-
-figname = 'roi%05d_%s_rawtraces_snr' % (rid, cfg)
-label_figure(fig, data_identifier)
-pl.savefig(os.path.join(output_dir, '%s.png' % figname))
-
+    
+    # Pick condition with max/best zscore:
+    sorted_configs_by_zscore = avg_zscores_by_cond[rid].argsort()[::-1].values
+    
+    best_cfg = 'config%03d' % int(sorted_configs_by_zscore[0]+1)
+    
+    # Get all trial indices of this config:
+    ntrials = traces_by_cond[best_cfg].shape[0]
+    best_cfg_trial_ixs = sorted(trials_by_cond[best_cfg])
+    curr_snrs = snrs[best_cfg_trial_ixs, rid]
+    curr_zscores = zscores[best_cfg_trial_ixs, rid]
+    
+    #%
+    fig, axes = pl.subplots(1,3, figsize=(25, 5)) #pl.figure()
+    
+    ax = axes[0]
+    im = ax.imshow(traces_by_cond[best_cfg], cmap='inferno', aspect='auto')
+    # Add color bar:
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='1%', pad=0.1) 
+    pl.colorbar(im, cax=cax, cmap='inferno')
+    cax.yaxis.set_ticks_position('right')
+    ax.set_title('raw traces (%s: mp %i, sz %i)' % (best_cfg, sdf['morphlevel'][best_cfg], sdf['size'][best_cfg]), fontsize=10)
+    ax.set_ylabel('trial')
+    ax.set_xlabel('frame')
+    ax.set_xticks([]); ax.set_xticklabels([]);
+    ax.axvline(x=stim_on_frame, color='w', lw=0.5)
+    ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5)
+    # Add color bar:
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05) 
+    pl.colorbar(im, cax=cax, cmap='inferno')
+    cax.yaxis.set_ticks_position('right')
+        
+    ax = axes[1]
+    ax.plot(curr_zscores, curr_snrs, 'b.', markersize=20, alpha=0.5, label='best')
+    ax.set_ylabel('snr')
+    ax.set_xlabel('zscore')
+    ax.set_title('zscores vs snr (best cfg)')
+    for tid in np.arange(0, curr_snrs.shape[0]):
+        ax.annotate('%i' % tid, (curr_zscores[tid], curr_snrs[tid]), fontsize=6)
+    ax.set_ylim([min([0, curr_snrs.min()-1]), curr_snrs.max()+1])
+    ax.set_xlim([min([0, curr_zscores.min()]), curr_zscores.max()+1])
+    # Also plot "worst"?
+    worst_cfg = 'config%03d' % int(sorted_configs_by_zscore[-1]+1)
+    ax.plot(zscores[trials_by_cond[worst_cfg], rid], snrs[trials_by_cond[worst_cfg], rid],\
+            'r.', markersize=20, alpha=0.5, label='worst')
+    ax.legend()
+    ax.axhline(y=min_snr, linestyle='--', color='k')
+    
+    
+    
+    # Plot distN of all sizes @ best morph, all morphs @ best size:
+    snr_df = pd.concat([pd.Series(snrs[trial_ixs, rid], name=k) for k, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0])], axis=1)
+    snr_df2 = snr_df.melt(var_name='configs', value_name='snr')
+    snr_df2['morphlevel'] = pd.Series(sdf['morphlevel'][cfg] for cfg in snr_df2['configs'])
+    snr_df2['size'] = pd.Series(sdf['size'][cfg] for cfg in snr_df2['configs'])
+    ax = axes[2]
+    ax.clear()
+    g = sns.stripplot(x='morphlevel', y='snr', hue='size', data=snr_df2, ax=ax,
+                      jitter=True, dodge=True, alpha=0.5, size=5, palette=sns.cubehelix_palette(len(sizes))) #'GnBu_d')
+    sns.despine(trim=True,offset=4, ax=ax)
+    
+    fig.suptitle('roi #%i' % int(rid+1))
+    
+    pl.subplots_adjust(top=0.8)
+    
+    figname = 'roi%05d_%s_rawtraces_snr' % (rid, cfg)
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+    
+    pl.close()
 
 #%%
 
 
-# Is SNR a better measure?
-
-nr = 5
-nc = 8
-fig, axes = pl.subplots(nr, nc, figsize=(18,9), sharex=True, sharey=True)
-ai = 0
-n_subplots = min([nr*nc, len(sorted_selective)])
-for rid in sorted_selective[0:n_subplots]:
-    ax  = axes.flat[ai]
-    ax.scatter(zscores[:, rid], snrs[:, rid], alpha=0.5, s=5)
-    ax.set_title(rid)
-    ai += 1
-    
-pl.subplots_adjust(hspace=0.5, wspace=0.5)
-
-avg_snrs = []
-#avg_snrs_by_cond = [snrs.iloc[trial_ixs].mean(axis=0) for cfg, trial_ixs in trials_by_cond.items()]
-for cfg, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0]):
-    avg_snrs.append(pd.Series(snrs[trial_ixs, :].mean(axis=0)))
-avg_snrs_by_cond = pd.concat(avg_snrs, axis=1).T
-    
-
-max_zscores_by_roi = [avg_zscores_by_cond[rid].max() for rid in sorted_selective]
-max_snrs_by_roi = [avg_snrs_by_cond[rid].max() for rid in sorted_selective]
-pl.figure()
-pl.scatter(max_zscores_by_roi, max_snrs_by_roi)
+#g = sns.FacetGrid(snr_df2, col='morphlevel')
+#g.map(sns.stripplot, "size", "snr", alpha=0.5, color='k', jitter=True, size=5)
+#sns.despine(trim=True,offset=4)
+#   
+#g = sns.FacetGrid(snr_df2, col='size')
+#g.map(sns.stripplot, "morphlevel", "snr", alpha=0.5, color='k', jitter=True, size=5)
+#sns.despine(trim=True,offset=4) 
+#
+#
+##%%
+#
+#
+## Is SNR a better measure?
+#
+#nr = 5
+#nc = 8
+#fig, axes = pl.subplots(nr, nc, figsize=(18,9), sharex=True, sharey=True)
+#ai = 0
+#n_subplots = min([nr*nc, len(sorted_selective)])
+#for rid in sorted_selective[0:n_subplots]:
+#    ax  = axes.flat[ai]
+#    ax.scatter(zscores[:, rid], snrs[:, rid], alpha=0.5, s=5)
+#    ax.set_title(rid)
+#    ai += 1
+#    
+#pl.subplots_adjust(hspace=0.5, wspace=0.5)
+#
+#avg_snrs = []
+##avg_snrs_by_cond = [snrs.iloc[trial_ixs].mean(axis=0) for cfg, trial_ixs in trials_by_cond.items()]
+#for cfg, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0]):
+#    avg_snrs.append(pd.Series(snrs[trial_ixs, :].mean(axis=0)))
+#avg_snrs_by_cond = pd.concat(avg_snrs, axis=1).T
+#    
+#
+#max_zscores_by_roi = [avg_zscores_by_cond[rid].max() for rid in sorted_selective]
+#max_snrs_by_roi = [avg_snrs_by_cond[rid].max() for rid in sorted_selective]
+#pl.figure()
+#pl.scatter(max_zscores_by_roi, max_snrs_by_roi)
 
 #%%
 
@@ -572,6 +650,7 @@ def make_cmap(colors, position=None, bit=False):
     cmap = mpl.colors.LinearSegmentedColormap('my_colormap',cdict,256)
     return cmap
 
+#%%
 dubrovnik_colors = [(0, 0, 1),
                    (0, 1, 1),
                    (.197, .408, .408),
@@ -583,7 +662,7 @@ dubrovnik_colors = [(0, 0, 1),
 dubrovnik = make_cmap(dubrovnik_colors, bit=False)
 dubrovnik_positions = [p/255. for p in [0, 83, 127, 128, 172, 255]]
 
-#%%
+#%
 
 skalafell_colors = [(1, 0, 1),
                    (1, 0.9921, 1),
@@ -593,7 +672,7 @@ skalafell_colors = [(1, 0, 1),
 skalafell_positions = [p/255. for p in [0, 127, 128, 255]]
 skalafell = make_cmap(skalafell_colors, bit=False, position=skalafell_positions)
 
-#%%
+#%
 nanticoke_colors = [(0, 1, 1),
                    (0, 0.2, 1),
                    (0, 0, 0),
@@ -611,23 +690,35 @@ pl.pcolor(np.random.rand(25,50), cmap=nanticoke)
 pl.colorbar()
          
 #%%
+#from matplotlib.colors import ListedColormap
+#cmap = ListedColormap( sns.diverging_palette(10, 220, sep=80).as_hex())
 
 
-subsets = ['visual', 'selective', 'all']
+subsets = ['visual', 'selective']
 
 subtract_GM = True
 corr_method = 'pearson' #'spearman' #'pearson'
 rdm = True
-cmap = 'PRGn' #dubrovnik #nanticoke #skalafell #dubrovnik #PRGn'
 
-fig_subdir = 'population_cmap_GM' if subtract_GM else 'population_cmap'
+cmap = 'PRGn'
+#if rdm:
+#    cmap = sns.diverging_palette(280, 145, s=85, l=25, as_cmap=True) #, reverse=True)
+#else:
+#    cmap = sns.diverging_palette(145, 280, s=85, l=25, as_cmap=True)
 
-curr_figdir = os.path.join(traceid_dir, 'figures', fig_subdir)
+#cmap = sns.diverging_palette(10, 220, sep=80) # 'PRGn' #dubrovnik #nanticoke #skalafell #dubrovnik #PRGn'
+
+fig_subdir = 'morph_size_corrs_GM' if subtract_GM else 'morph_size_corrs'
+
+if segment:
+    curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir, visual_area)
+else:
+    curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir)
 if not os.path.exists(curr_figdir):
     os.makedirs(curr_figdir)
 print "Saving plots to: %s" % curr_figdir
 
-#%%
+#%
 if rdm:
     rdm_str = 'rdm'
 else:
@@ -640,7 +731,7 @@ for subset in subsets:
     elif subset == 'selective':
         conds_by_rois = avg_zscores_by_cond[sorted_selective].T #.T.corr()
     else:
-        conds_by_rois = avg_zscores_by_cond.T
+        conds_by_rois = avg_zscores_by_cond[all_rois].T
     
     GM = conds_by_rois.mean().mean()
     
@@ -682,7 +773,7 @@ for subset in subsets:
                              title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
     
     label_figure(fig, data_identifier)
-    figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
+    figname = '%s_%s_%s_by_%s_%s' % (plot_axis, corr_method, rdm_str, grid_axis, subset)
     pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
     print figname
     
@@ -695,7 +786,7 @@ for subset in subsets:
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
                              title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
     label_figure(fig, data_identifier)
-    figname = '%s_%s_%s_by_%s_%s' % (grid_axis, corr_method, rdm_str, plot_axis, subset)
+    figname = '%s_%s_%s_by_%s_%s' % (plot_axis, corr_method, rdm_str, grid_axis, subset)
     pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
     print figname
 
@@ -707,7 +798,7 @@ fig, ax = pl.subplots()
 for cv in sizes:
     curr_cixs = np.array([int(cfg[6:])-1 for cfg in sdf[sdf['size']==cv].index.tolist()])
     curr_sz_vals = avg_zscores_by_cond[sorted_visual].iloc[curr_cixs, :]
-    sns.distplot(curr_sz_vals.values.ravel(), ax=ax, label=cv, hist=False)
+    sns.distplot(curr_sz_vals.values.ravel(), ax=ax, label=cv, hist=False, rug=False)
     
 
 
