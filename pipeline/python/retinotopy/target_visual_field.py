@@ -497,10 +497,14 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
     # else:
     #     screen_lower = -1*screen['elevation']/2.
     #     screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    
     screen_left = stim_positions['left'].iloc[0,:].mean()
-    screen_right = stim_positions['right'].iloc[0,:].mean()
-    screen_upper = stim_positions['top'].iloc[0,:].mean()
+    #screen_right = stim_positions['right'].iloc[0,:].mean()
+    screen_right = stim_positions['left'].iloc[-1,:].mean()
+    #screen_upper = stim_positions['top'].iloc[0,:].mean()
+    screen_upper = stim_positions['bottom'].iloc[-1,:].mean()
     screen_lower = stim_positions['bottom'].iloc[0,:].mean()
+
 
     # Find strongly responding cells to calcualte delay
     mean_mags = magratio.mean(axis=1)
