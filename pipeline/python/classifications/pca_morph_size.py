@@ -94,7 +94,7 @@ def plot_pca_label_points_3D(X_r, y, label_names=[], cmap=None, \
                       X_r[y == label, 1].mean() + 1.5,
                       X_r[y == label, 2].mean(), name,
                       horizontalalignment='center',
-                      bbox=dict(alpha=.5, edgecolor='w', facecolor='w'))
+                      bbox=dict(alpha=.7, edgecolor='w', facecolor='w'))
         
     # Reorder the labels to have colors matching the cluster results
     ax.scatter(X_r[:, 0], X_r[:, 1], X_r[:, 2], c=y, cmap=cmap, s=np.ones(y.shape)*markersize,
@@ -119,13 +119,13 @@ segment = False
 #fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces001'
-
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC067' 
-#session = '20190319' #'20190319'
-#fov = 'FOV1_zoom2p0x' 
-#run = 'combined_blobs_static'
-#traceid = 'traces001' #'traces002'
+#
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC067' 
+session = '20190319' #'20190319'
+fov = 'FOV1_zoom2p0x' 
+run = 'combined_blobs_static'
+traceid = 'traces001' #'traces002'
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC073' #'JC059'
@@ -295,7 +295,7 @@ morphlevels = sorted(sdf['morphlevel'].unique())
 #%%
 
 
-fig_subdir = 'pca' 
+fig_subdir = 'pca2' 
 
 if segment:
     curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir, visual_area)
@@ -415,17 +415,18 @@ figname = 'pca_3d_size_averaged_condns_ncomps%i_view2.png' % (n_components)
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 print figname
 
-pl.close()
+#pl.close()
 
 #%%
 
 # Label MORPH:
 
 fig = pl.figure(1, figsize=(8, 6))
-ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
+#ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
+ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=30, azim=100)
 
 ax = plot_pca_label_points_3D(X_r, y_morph, label_names=morphlevels, cmap=morph_cmap, \
-                             ax=ax, annotate=True, markersize=100)
+                             ax=ax, annotate=True, markersize=200)
 
 fig.text(0.05, 0.1, 'expl. var %.2f' % np.sum(pca.explained_variance_ratio_))
 fig.suptitle('pca morph (avg per cond)', y=0.95)
