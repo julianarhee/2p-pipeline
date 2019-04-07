@@ -415,7 +415,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
             tmp_iti_vals = [i.value for i in tmp_itis]
             if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==1:
                 # jitter var exists, but not actually used.
-                info['ITI'] = iti_standard_dur[0]
+                info['ITI'] = iti_standard_dur if isinstance(iti_standard_dur, int) else iti_standard_dur[0]
             else:
                 
                 # Only take ITI durs that are within the max allowed, since I don't know what the others are:
