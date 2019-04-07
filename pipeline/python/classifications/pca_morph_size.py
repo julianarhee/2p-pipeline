@@ -35,29 +35,127 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d import Axes3D
 import sklearn as sk
 
+
+import matplotlib.collections as mcoll
+import matplotlib.path as mpath
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
+
+def colorline(x, y, z=None, spacing=None, cmap=pl.get_cmap('rainbow'), 
+              #norm=pl.Normalize(0.0, 1.0),
+              linewidth=3, alpha=1.0, ax = None):
+    """
+    http://nbviewer.ipython.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
+    http://matplotlib.org/examples/pylab_examples/multicolored_line.html
+    Plot a colored line with coordinates x and y
+    Optionally specify colors in the array z
+    Optionally specify a colormap, a norm function and a line width
+    """
+
+    # Default colors equally spaced on [0,1]:
+    if spacing is None:
+        spacing = np.linspace(0.0, 1.0, len(x))
+
+    # Special case if a single number:
+    if not hasattr(spacing, "__iter__"):  # to check for numerical input -- this is a hack
+        spacing = np.array([spacing])
+
+    spacing = np.asarray(spacing)
+
+    
+    segments = make_segments(x, y, z=z)
+    if z is not None:
+        lc = Line3DCollection(segments, cmap=cmap, #norm=norm, 
+                              linewidth=linewidth, alpha=alpha)
+    else:
+        lc = mcoll.LineCollection(segments, array=spacing, cmap=cmap, #norm=norm,
+                              linewidth=linewidth, alpha=alpha)
+
+    lc.set_array(spacing)
+    
+    if ax is None:
+        ax = pl.gca()
+        
+    if z is not None:
+        ax.add_collection3d(lc)
+    else:
+        ax.add_collection(lc)
+
+    ax.set_xlim(x.min(), x.max())
+    ax.set_ylim(y.min(), y.max())
+    if z is not None:
+        ax.set_zlim(z.min(), z.max())
+    
+    return lc
+
+
+def make_segments(x, y, z=None):
+    """
+    Create list of line segments from x and y coordinates, in the correct format
+    for LineCollection: an array of the form numlines x (points per line) x 2 (x
+    and y) array
+    """
+    if z is not None:
+        points = np.array([x, y, z]).T.reshape(-1, 1, 3)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    else:
+        points = np.array([x, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    return segments
+
+
 #%%
 
-
-def plot_pca_label_points(X_r, y, label_names=[], label_colors=[], ax=None):
+def plot_pca_label_points(X_r, y_labels, label_names=[], label_colors=[], ax=None,\
+                          cmap = 'jet', plot_markers=True, color_connections=False, 
+                          connect_all=False, connect_within=False, markersize=100, lw=lw):
     
     if ax is None:
         print "Creating new axis"
         fig, ax = pl.subplots()
 
     # Get target names
-    target_names = sorted(np.unique(y))
+    target_names = sorted(np.unique(y_labels))
     
     if label_names is None:
         label_names = copy.copy(target_names)
         
     # Create default cmap if none provided:
     if label_colors is None:
-        label_colors = sns.cubehelix_palette(len(label_names))
+        label_colors = ['k' for _ in range(len(target_names))]
     
     # Plot:
+    if connect_all:
+        if color_connections:
+            x = X_r[:, 0] #np.random.rand(N)
+            y = X_r[:, 1] #np.random.rand(N)    
+            path = mpath.Path(np.column_stack([x, y]))
+            verts = path.interpolated(steps=3).vertices
+            x, y = verts[:, 0], verts[:, 1]
+            colorline(x, y, spacing=y_labels, cmap=cmap, linewidth=lw, ax=ax)
+        else:
+            pc1s = []; pc2s = [];
+            for color, i, targname in zip(label_colors, label_names, target_names):
+                pc1s.extend(X_r[y_labels == i, 0])
+                pc2s.extend(X_r[y_labels == i, 1])
+            ax.plot(pc1s, pc2s, zorder=1, color='k', lw=lw) 
+    
+
     for color, i, target_name in zip(label_colors, label_names, target_names):
-        ax.scatter(X_r[y == i, 0], X_r[y == i, 1], color=color, label=target_name,
-                   alpha=.8, lw=lw, edgecolor='k') #abel=target_name)        
+        if connect_within:
+            ax.plot(X_r[y_labels == i, 0], X_r[y_labels == i, 1], zorder=2, 
+                        color=color, label=target_name,
+                        alpha=.8, lw=lw, marker='o', markersize=markersize) #abel=target_name)        
+        if plot_markers:
+            ax.scatter(X_r[y_labels == i, 0], X_r[y_labels == i, 1], zorder=2,
+                       s=markersize,
+                       color=color, label=target_name,
+                       alpha=.8, lw=lw, edgecolor='k') #abel=target_name)        
+    
+    
+#    # Plot:
+#    for color, i, target_name in zip(label_colors, label_names, target_names):
+#        ax.scatter(X_r[y == i, 0], X_r[y == i, 1], color=color, label=target_name,
+#                   alpha=.8, lw=lw, edgecolor='k') #abel=target_name)        
     
     # Clean up axes:
     xlim = max([abs(xl) for xl in ax.get_xlim()])
@@ -70,8 +168,11 @@ def plot_pca_label_points(X_r, y, label_names=[], label_colors=[], ax=None):
     return ax
 
 #%%
-def plot_pca_label_points_3D(X_r, y, label_names=[], cmap=None, \
-                             ax=None, annotate=False, markersize=100):
+def plot_pca_label_points_3D(X_r, y_labels, label_names=[], label_colors=[], 
+                             cmap='jet',
+                             plot_markers=True, color_connections=False,
+                             connect_all=False, connect_within=False,
+                             ax=None, annotate=False, markersize=100, lw=1):
     
     if ax is None:
         print "Creating new axis"
@@ -79,26 +180,58 @@ def plot_pca_label_points_3D(X_r, y, label_names=[], cmap=None, \
         ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
 
     # Get target names
-    target_names = sorted(np.unique(y))
+    target_names = sorted(np.unique(y_labels))
     
     if label_names is None:
         label_names = copy.copy(target_names)
     
     # Create default cmap if none provided:
-    if cmap is None:
-        cmap = sns.cubehelix_palette(as_cmap=True)
-    
+    if len(label_colors) == 0:
+        label_colors = ['k' for _ in range(len(target_names))]
+        
     if annotate:
         for name, label in zip(label_names, target_names):
-            ax.text3D(X_r[y == label, 0].mean(),
-                      X_r[y == label, 1].mean() + 1.5,
-                      X_r[y == label, 2].mean(), name,
+            ax.text3D(X_r[y_labels == label, 0].mean(),
+                      X_r[y_labels == label, 1].mean() + 1.5,
+                      X_r[y_labels == label, 2].mean(), name,
                       horizontalalignment='center',
                       bbox=dict(alpha=.7, edgecolor='w', facecolor='w'))
-        
+
+    # Plot:
+    if connect_all:
+        if color_connections:
+            x = X_r[:, 0] #np.random.rand(N)
+            y = X_r[:, 1] #np.random.rand(N)
+            z = X_r[:, 2] #np.random.rand(N)
+            
+            verts = np.array([list(i) for i in zip(x,y,z)])
+            x, y, z = verts[:, 0], verts[:, 1], verts[:, 2]
+            colorline(x, y, z, spacing=y_labels, cmap=cmap, linewidth=lw, ax=ax)
+        else:
+            pc1s = []; pc2s = []; pc3s = [];
+            for i in label_names:
+                pc1s.extend(X_r[y_labels == i, 0])
+                pc2s.extend(X_r[y_labels == i, 1])
+                pc3s.extend(X_r[y_labels == i, 2])
+            ax.plot(pc1s, pc2s, pc3s, zorder=1, color='k', lw=lw) 
+
+    for color, i, target_name in zip(label_colors, label_names, target_names):
+        if connect_within:
+            ax.plot(X_r[y_labels == i, 0], X_r[y_labels == i, 1], X_r[y_labels == i, 2],
+                        zorder=2, 
+                        color=color, label=target_name,
+                        alpha=.8, lw=lw, marker='o', markersize=markersize)       
+        if plot_markers:
+            ax.scatter(X_r[y_labels == i, 0], X_r[y_labels == i, 1], X_r[y_labels == i, 2], 
+                       zorder=2,
+                       s=markersize,
+                       color=color, label=target_name,
+                       alpha=.8, lw=lw, edgecolor=color) #abel=target_name)        
+
+
     # Reorder the labels to have colors matching the cluster results
-    ax.scatter(X_r[:, 0], X_r[:, 1], X_r[:, 2], c=y, cmap=cmap, s=np.ones(y.shape)*markersize,
-               edgecolor='w')
+#    ax.scatter(X_r[:, 0], X_r[:, 1], X_r[:, 2], c=y, cmap=cmap, s=np.ones(y.shape)*markersize,
+#               edgecolor='w')
     
     #ax.w_xaxis.set_ticklabels([])
     #ax.w_yaxis.set_ticklabels([])
@@ -295,7 +428,7 @@ morphlevels = sorted(sdf['morphlevel'].unique())
 #%%
 
 
-fig_subdir = 'pca2' 
+fig_subdir = 'pca_connect' 
 
 if segment:
     curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir, visual_area)
@@ -309,10 +442,23 @@ print "Saving plots to: %s" % curr_figdir
 
 #%%
 
-subtract_GM = True
+# -----------------------------------------------------------------------------
+# 2D
+# -----------------------------------------------------------------------------
 
-lw = 0.5
+
+subtract_GM = True
 n_components=2
+
+connect_all = True
+color_connections = False
+plot_markers = True
+connect_within=False
+markersize = 50
+lw = 0.5
+annotate = True
+
+
 size_colors = sns.cubehelix_palette(len(sizes))
 size_cmap = sns.cubehelix_palette(as_cmap=True, rot=0.4, hue=1)
 morph_colors = sns.diverging_palette(220, 20, n=len(morphlevels))
@@ -326,13 +472,21 @@ else:
 pca = sk.decomposition.PCA(n_components=n_components)
 X_r = pca.fit(X).transform(X)
 
-    
+
+
+
+y = np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
+label_names =  copy.copy(sizes)
+label_colors = copy.copy(size_colors)
+
 fig, axes = pl.subplots(1,2, figsize=(8,5))
 fig.subplots_adjust(top=0.8, bottom=0.3, wspace=0.2, hspace=0.2, left=0.1)
 
 y_size = np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
 ax = axes[0]
-ax = plot_pca_label_points(X_r, y_size, label_names=sizes, label_colors=size_colors, ax=ax)
+ax = plot_pca_label_points(X_r, y_size, label_names=sizes, label_colors=size_colors, ax=ax,
+                           connect_all=connect_all, connect_within=connect_within, color_connections=color_connections,
+                           markersize=markersize, lw=lw, cmap=size_cmap)
 
 ax.text(ax.get_xlim()[0], ax.get_ylim()[-1]*1.02, \
         'expl. var. %.2f' % np.sum(pca.explained_variance_ratio_), fontsize=6)
@@ -348,7 +502,10 @@ y_morph = np.array([sdf['morphlevel'][cfg] for cfg in sdf.index.tolist()])
 
 # Plot
 ax = axes[1]
-ax = plot_pca_label_points(X_r, y_morph, label_names=morphlevels, label_colors=morph_colors, ax=ax)
+ax = plot_pca_label_points(X_r, y_morph, label_names=morphlevels, label_colors=morph_colors, ax=ax, 
+                           connect_all=connect_all, connect_within=connect_within, color_connections=color_connections,
+                           markersize=markersize, cmap=morph_cmap)
+
 #ax.text(ax.get_xlim()[0], ax.get_ylim()[-1]*1.02, \
 #        'expl. var. %.2f' % np.sum(pca.explained_variance_ratio_), fontsize=6)
 
@@ -371,6 +528,7 @@ pl.suptitle('PCA (n=%i)' % n_components, y=0.9)
 
 label_figure(fig, data_identifier)
 
+#%
 if subtract_GM:
     figname = 'pca_%icomps_averaged_condns_GM_morph_size' % n_components
 else:
@@ -381,10 +539,23 @@ print figname
 
 #%%
 
+# -----------------------------------------------------------------------------
+# 3D
+# -----------------------------------------------------------------------------
+
+connect_all = True
+color_connections = True
+plot_markers = True
+connect_within=False
+markersize = 30
+lw = 2
+annotate = True
+
+
+azim_view1 = -90 #30
+elev_view1 = 30
 # Label SIZE:
-fig = pl.figure(1, figsize=(8, 6))
-ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=30, azim=100)
-#ax = Axes3D(fig, rect=[0, .02, .9, 0.9], elev=50, azim=50)
+
 
 #X = avg_zscores_by_cond_GM[selective_rois]
 #y = np.array([int(sdf['size'][cfg]) for cfg in sdf.index.tolist()])
@@ -393,55 +564,87 @@ n_components=3
 pca = sk.decomposition.PCA(n_components=n_components)
 pca.fit(X)
 X_r = pca.transform(X)
-ax = plot_pca_label_points_3D(X_r, y_size, label_names=sizes, cmap=size_cmap, \
-                             ax=ax, annotate=True, markersize=100)
 
-fig.text(0.05, 0.1, 'expl. var %.2f' % np.sum(pca.explained_variance_ratio_))
+
+
+fig = pl.figure(figsize=(12,8))
+#ax = Axes3D(fig, rect=[0, 0, .6, 1], elev=elev_view3, azim=azim_view3)
+ax1 = fig.add_subplot(1, 2, 1, projection='3d', azim=azim_view1, elev=elev_view1)
+
+ax1 = plot_pca_label_points_3D(X_r, y_size, ax=ax1,
+                               label_names=sizes, label_colors=size_colors, cmap=size_cmap, 
+                              connect_all=connect_all, color_connections=color_connections,
+                              plot_markers=plot_markers, annotate=annotate, markersize=markersize, lw=lw)
+fig.text(0.2, 0.1, 'expl. var %.2f' % np.sum(pca.explained_variance_ratio_))
+ax1.set_title('size labels')               
+
+
+ax2 = fig.add_subplot(1, 2, 2, projection='3d', azim=azim_view1, elev=elev_view1)
+ax2 = plot_pca_label_points_3D(X_r, y_morph, ax=ax2,
+                              label_names=morphlevels, label_colors=morph_colors, cmap=morph_cmap,
+                              connect_all=connect_all, color_connections=color_connections,
+                              plot_markers=plot_markers, annotate=annotate, markersize=markersize, lw=lw)
+ax2.set_title('morph labels')               
+fig.text(0.7, 0.1, 'expl. var %.2f' % np.sum(pca.explained_variance_ratio_))
+pl.subplots_adjust(wspace=0.00, left=0., top=0.8, right=0.95)
+
+
 fig.suptitle('pca size (avg per cond)', y=0.95)
-
 label_figure(fig, data_identifier)
 
 #%
-figname = 'pca_3d_size_averaged_condns_ncomps%i_view.png' % (n_components) 
+figname = 'pca_3d_averaged_condns_ncomps%i_view1.png' % (n_components) 
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 
 print figname
 #pl.close()
 
 #%%
-ax.azim = 130
-ax.elev = 50
-figname = 'pca_3d_size_averaged_condns_ncomps%i_view2.png' % (n_components) 
-pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
-print figname
+azim_view2 = 130
+elev_view2 = 50
 
-#pl.close()
+ax1.azim = azim_view2
+ax1.elev = elev_view2
+
+ax2.azim = azim_view2
+ax2.elev = elev_view2
+
+figname = 'pca_3d_averaged_condns_ncomps%i_view2.png' % (n_components) 
+pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+
 
 #%%
 
-# Label MORPH:
+azim_view3 = -100
+elev_view3 = 35
 
-fig = pl.figure(1, figsize=(8, 6))
-#ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
-ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=30, azim=100)
+ax1.azim = azim_view3
+ax1.elev = elev_view3
 
-ax = plot_pca_label_points_3D(X_r, y_morph, label_names=morphlevels, cmap=morph_cmap, \
-                             ax=ax, annotate=True, markersize=200)
+ax2.azim = azim_view3
+ax2.elev = elev_view3
 
-fig.text(0.05, 0.1, 'expl. var %.2f' % np.sum(pca.explained_variance_ratio_))
-fig.suptitle('pca morph (avg per cond)', y=0.95)
 
-label_figure(fig, data_identifier)
-
-figname = 'pca_3d_morph_averaged_condns_ncomps%i_view.png' % (n_components) 
+figname = 'pca_3d_averaged_condns_ncomps%i_view3.png' % (n_components) 
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 print figname
+
 
 #%%
+azim_view4 = -100
+elev_view4 = 5
 
-figname = 'pca_3d_morph_averaged_condns_ncomps%i_view2.png' % (n_components) 
+ax1.azim = azim_view4
+ax1.elev = elev_view4
+
+ax2.azim = azim_view4
+ax2.elev = elev_view4
+
+
+figname = 'pca_3d_averaged_condns_ncomps%i_view4.png' % (n_components) 
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 print figname
+
 
 #%%
 
