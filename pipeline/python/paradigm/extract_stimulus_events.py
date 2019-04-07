@@ -416,7 +416,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     currframe = int(tuple(pframe)[0].split('_')[0])
                     prevframe = int(first_found_frame[bi-1][0].split('_')[0])
                     # Make sure that the time difference (s) between consecutive frames is below some min.
-                    assert (currframe - prevframe)/framerate <= (20./framerate), "Break found in %s. Skipping!" % trial
+                    assert (currframe - prevframe)/framerate <= (25./framerate), "Break found in %s (missed %.2f). Skipping!" % (trial, (currframe - prevframe)/framerate)
                                     
                 #--first_found_frame.append(first_frame[1])
                 #--curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
