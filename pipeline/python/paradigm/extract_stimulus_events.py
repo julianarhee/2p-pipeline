@@ -72,6 +72,8 @@ import pandas as pd
 import cPickle as pkl
 from collections import Counter
 from pipeline.python.paradigm import process_mw_files as mw
+from pipeline.python.paradigm import utils as util
+
 from pipeline.python.utils import hash_file
 
 def atoi(text):
@@ -694,6 +696,10 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
     parsed_run_outfile = os.path.join(outdir, 'trials_%s.json' % run_trial_hash)
     with open(parsed_run_outfile, 'w') as f:
         json.dump(RUN, f, sort_keys=True, indent=4)
+        
+        
+    configs, stimtype = util.save_stimulus_configs(RUN, outdir)
+
 
     return parsed_run_outfile
 
@@ -702,7 +708,9 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x','-R', 'gratings_rotating_static']
-options = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'JC008', '-S', '20180814', '-A', 'FOV1_zoom1x',
+#options = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'JC008', '-S', '20180814', '-A', 'FOV1_zoom1x',
+#           '-R', 'gratings_run1']
+options = ['--slurm', '-i', 'JC076', '-S', '20190405', '-A', 'FOV2_zoom2p0x',
            '-R', 'gratings_run1']
 
 

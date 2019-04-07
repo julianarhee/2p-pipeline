@@ -41,10 +41,10 @@ from skimage import exposure
 from collections import Counter
 
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
-import pipeline.python.traces.combine_runs as cb
-import pipeline.python.paradigm.align_acquisition_events as acq
-import pipeline.python.visualization.plot_psths_from_dataframe as vis
-from pipeline.python.traces.utils import load_TID
+#import pipeline.python.traces.combine_runs as cb
+#import pipeline.python.paradigm.align_acquisition_events as acq
+#import pipeline.python.visualization.plot_psths_from_dataframe as vis
+#from pipeline.python.traces.utils import load_TID
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
@@ -1969,8 +1969,8 @@ def format_stimconfigs(configs):
  
     # Split position into x,y:
     for config in stimconfigs.keys():
-        stimconfigs[config]['xpos'] = configs[config]['position'][0]
-        stimconfigs[config]['ypos'] = configs[config]['position'][1]
+        stimconfigs[config]['xpos'] = round(configs[config]['position'][0], 2)
+        stimconfigs[config]['ypos'] = round(configs[config]['position'][1], 2)
         stimconfigs[config]['size'] = configs[config]['scale'][0]
         #stimconfigs[config].pop('position', None)
         stimconfigs[config].pop('scale', None)
@@ -2062,6 +2062,116 @@ def format_stimconfigs(configs):
     return stimconfigs
 
 #%%
+def save_stimulus_configs(trialdict, paradigm_dir):
+#    paradigm_dir = os.path.split(trial_info['parsed_trials_source'])[0]
+#    print paradigm_dir
+#    trialdict = load_parsed_trials(trial_info['parsed_trials_source'])
+
+    # Get presentation info (should be constant across trials and files):
+    tmp_trial_list = sorted(trialdict.keys(), key=natural_keys)
+    
+    # 201810116 BUG -- ignore trials (and stimconfigs) that are "blanks"
+    ignore_trials = [t for t in tmp_trial_list if trialdict[t]['stimuli']['type'] == 'blank']
+    trial_list = sorted([t for t in tmp_trial_list if t not in ignore_trials], key=natural_keys)
+    
+    # Get all varying stimulus parameters:
+    stimtype = trialdict[trial_list[0]]['stimuli']['type']
+    if 'grating' in stimtype:
+        exclude_params = ['stimulus', 'type', 'rotation_range', 'phase']
+        stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if k not in exclude_params]
+    else:
+        stimparams = [k for k in trialdict[trial_list[0]]['stimuli'].keys() if not (k=='stimulus' or k=='type' or k=='filehash')]
+
+    # Determine whether there are varying stimulus durations to be included as cond:
+#    unique_stim_durs = list(set([round(trialdict[t]['stim_dur_ms']/1E3) for t in trial_list]))
+#    if len(unique_stim_durs) > 1:
+#        stimparams.append('stim_dur')
+    stimparams = sorted(stimparams, key=natural_keys)
+    
+    # Get all unique stimulus configurations (ID, filehash, position, size, rotation):
+    allparams = []
+    for param in stimparams:
+#        if param == 'stim_dur':
+#            # Stim DUR:
+#            currvals = [round(trialdict[trial]['stim_dur_ms']/1E3) for trial in trial_list]
+        if isinstance(trialdict[trial_list[0]]['stimuli'][param], list):
+            currvals = [tuple(trialdict[trial]['stimuli'][param]) for trial in trial_list]
+        else:
+            currvals = [trialdict[trial]['stimuli'][param] for trial in trial_list]
+        allparams.append([i for i in list(set(currvals))])
+
+    # Get all combinations of stimulus params:
+    transform_combos = list(itertools.product(*allparams))
+    ncombinations = len(transform_combos)
+
+    configs = dict()
+    for configidx in range(ncombinations):
+        configname = 'config%03d' % int(configidx+1)
+        configs[configname] = dict()
+        for pidx, param in enumerate(sorted(stimparams, key=natural_keys)):
+            if isinstance(transform_combos[configidx][pidx], tuple):
+                configs[configname][param] = [transform_combos[configidx][pidx][0], transform_combos[configidx][pidx][1]]
+            else:
+                configs[configname][param] = transform_combos[configidx][pidx]
+
+    # Cycle thru gratings (variable stim dur) to ignore configs that don't exist:
+    if 'grating' in stimtype and 'stim_dur' in stimparams:
+        subparams_dicts = [dict((k,v) for k,v in trialdict[t]['stimuli'].items() if k not in exclude_params) for t in trialdict.keys()]
+        keep_configs=[]; remove_configs=[];
+        for config in configs.keys():
+            if configs[config] not in subparams_dicts:
+                remove_configs.append(config)
+            else:
+                keep_configs.append(config)
+        tmp_configs = {}; 
+        for configidx, config in enumerate(keep_configs):
+            configname = 'config%03d' % int(configidx+1)
+            tmp_configs[configname] = configs[config]
+        configs = tmp_configs
+            
+                
+        
+    if stimtype=='image':
+        stimids = sorted(list(set([os.path.split(trialdict[t]['stimuli']['filepath'])[1] for t in trial_list])), key=natural_keys)
+    elif 'movie' in stimtype:
+        stimids = sorted(list(set([os.path.split(os.path.split(trialdict[t]['stimuli']['filepath'])[0])[1] for t in trial_list])), key=natural_keys)
+    
+    if stimtype == 'image' or 'movie' in stimtype:
+        filepaths = list(set([trialdict[trial]['stimuli']['filepath'] for trial in trial_list]))
+        filehashes = list(set([trialdict[trial]['stimuli']['filehash'] for trial in trial_list]))
+
+        assert len(filepaths) == len(stimids), "More than 1 file path per stim ID found!"
+        assert len(filehashes) == len(stimids), "More than 1 file hash per stim ID found!"
+
+        stimhash_combos = list(set([(trialdict[trial]['stimuli']['stimulus'], trialdict[trial]['stimuli']['filehash']) for trial in trial_list]))
+        assert len(stimhash_combos) == len(stimids), "Bad stim ID - stim file hash combo..."
+        stimhash = dict((stimid, hashval) for stimid, hashval in zip([v[0] for v in stimhash_combos], [v[1] for v in stimhash_combos]))
+
+    print "---> Found %i unique stimulus configs." % len(configs.keys())
+
+    if stimtype == 'image':
+        for config in configs.keys():
+            configs[config]['filename'] = os.path.split(configs[config]['filepath'])[1]
+    elif 'movie' in stimtype:
+        for config in configs.keys():
+            configs[config]['filename'] = os.path.split(os.path.split(configs[config]['filepath'])[0])[1]
+            
+    # Sort config dict by value:
+#    sorted_configs = dict(sorted(configs.items(), key=operator.itemgetter(1)))
+#    sorted_confignames = sorted_configs.keys()
+#    for cidx, configname in sorted(configs.keys(), key=natural_keys):
+#        configs[configname] = sorted_configs[sorted_configs.keys()[cidx]
+
+    # SAVE CONFIG info:
+    config_fpath = os.path.join(paradigm_dir, 'stimulus_configs.json')
+    with open(config_fpath, 'w') as f:
+        json.dump(configs, f, sort_keys=True, indent=4)
+    print "===== saved formated stimulus_configs to json ====="
+    print config_fpath
+    print "---------------------------------------------------"
+    
+    return configs, stimtype
+
 
 
 #%%

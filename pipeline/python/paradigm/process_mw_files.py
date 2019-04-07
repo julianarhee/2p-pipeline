@@ -386,6 +386,23 @@ def get_pixelclock_events(df, boundary, trigger_times=[], verbose=False):
 #%%
 def get_session_info(df, stimulus_type=None, boundary=[]):
     info = dict()
+    
+    # Include experiment name, even tho sometimes it's not meaningful
+    # It IS meaningful if we set it to be sth specific: 
+    exp_name_long = df.get_events('ExpName_long')[-1].value
+    exp_name_short = df.get_events('ExpName_short')[-1].value
+    print "EXPERIMENT: %s" % exp_name_short
+    info['exp_name_short'] = exp_name_short
+    info['exp_name_long'] = exp_name_long
+    
+    # Check if aspect ratio saved:
+    aspect_var = [v for v in df.get_codec().values() if 'aspect' in v or 'Aspect' in v]
+    if len(aspect_var) == 0:
+        aspect_ratio = 1
+    else:
+        assert len(aspect_var) == 1, "More than 1 aspect ratio var found! -- %s" % str(aspect_var)
+        aspect_ratio = df.get_events(aspect_var[0])[-1].value
+    
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
         info['ncycles'] = ncycles
@@ -405,10 +422,7 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
             iti_standard_dur = iti_standard_dur[-1]
         else: 
             iti_standard_dur = iti_standard_dur[0]
-            #print "***More than 1 unique ITI standard found."
-            #selected_iti = raw_input("Select ITI dur to use: ")
-            #iti_standard_dur = [float(selected_iti)]
-           
+
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
@@ -432,17 +446,15 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
                 else:
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0]
-    
-
         else:
-            #itis = df.get_events('ITI_time')
             info['ITI'] = iti_standard_dur #[0]
 
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
         #info['ITI'] = itis[-1].value
         info['stimulus'] = stimulus_type
-
+        info['aspect'] = aspect_ratio
+        
         # stimulus types?
         # ntrials?
     return info
@@ -946,21 +958,21 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         # Get dynamic-grating bicode events:
         dynamic_stim_bitcodes = []
         bitcodes_by_trial = dict((i+1, dict()) for i in range(len(stimevents)))
-        #for stim,iti in zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey)):
+        # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
+        # display-update events related to that trial:
         for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
             trialnum = trialidx + 1
             assert stim.time < iti.time
-            # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
-            # display-update events related to that trial:
             current_bitcode_evs = [p for p in sorted(pixelevents, key=get_timekey) if p.time>=stim.time and p.time<=iti.time] # p.time<=iti.time to get bit-code for post-stimulus ITI
             current_bitcode_values = [p.value[-1]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
             dynamic_stim_bitcodes.append(current_bitcode_evs)
             bitcodes_by_trial[trialnum] = current_bitcode_values #current_bitcode_evs
 
-        # Roughly calculate how many pixel-clock events there should be. For static images, there should be 1 bitcode-event per trial.
+        # Roughly calculate how many pixel-clock events there should be. 
+        # For static images, there should be 1 bitcode-event per trial.
         # For drifting gratings, on a 60Hz monitor, there should be 60-61 bitcode-events per trial.
         if 'grating' in session_info['stimulus'] or dynamic:
-            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
+            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1 # ntrials + 1 = 1 update for each ITI blank, plus pre-ITI blank at start
         else:
             nexpected_pixelevents = ntrials*2 + 1 #(ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
         nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
@@ -992,7 +1004,12 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                 stimtype = stim.value[1]['type']
                 stimname = stim.value[1]['name']
             if 'grating' in stimtype:
-                stimrotation = stim.value[1]['rotation']
+                # If this is a MOVIE where rotation varies randomly, we should ignore the starting rot ('drifting square grating movie')
+                if 'tiled_retinotopy' in session_info['exp_name_long'] or 'tiled_retinotopy' in session_info['exp_name_short']:
+                    # ignore rotation starting value bec it's randomized (can recover later w/ direction_selector)
+                    stimrotation = 0
+                else:
+                    stimrotation = stim.value[1]['rotation']
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
                 stimsize = (stim.value[1]['width'], stim.value[1]['height'])
                 phase = stim.value[1]['current_phase']
@@ -1050,7 +1067,8 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                                               'rotation': stimrotation
                                               }
 
-
+            trial[trialname]['stimuli'].update({'aspect': session_info['aspect']})
+            
             trial[trialname]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialname]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
             trial[trialname]['all_bitcodes'] = bitcodes_by_trial[trialnum]

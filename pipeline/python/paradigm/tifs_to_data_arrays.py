@@ -385,7 +385,10 @@ def create_rdata_array(opts):
     with open(os.path.join(data_basedir, 'trial_info.json'), 'w') as f:
         json.dump(trial_info, f, indent=4) #f
    
-    configs, stimtype = acq.get_stimulus_configs(trial_info)
+    configs_fpath = glob.glob(os.path.join(paradigm_dir, 'stimulus_configs*.json'))[0]
+    with open(configs_fpath, 'r') as f:
+        configs = json.load(f)
+    #configs, stimtype = acq.get_stimulus_configs(trial_info)
     pp.pprint(configs)
 
     print "-------------------------------------------------------------------"
