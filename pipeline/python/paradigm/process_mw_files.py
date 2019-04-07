@@ -389,8 +389,15 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
     
     # Include experiment name, even tho sometimes it's not meaningful
     # It IS meaningful if we set it to be sth specific: 
-    exp_name_long = df.get_events('ExpName_long')[-1].value
-    exp_name_short = df.get_events('ExpName_short')[-1].value
+    codec = df.get_codec().values()
+    if 'ExpName_long' in codec:
+        exp_name_long = df.get_events('ExpName_long')[-1].value
+    else:
+        exp_name_long = 'unspecified'
+    if 'ExpName_short' in codec:
+        exp_name_short = df.get_events('ExpName_short')[-1].value
+    else:
+        exp_name_short = 'unspecified'
     print "EXPERIMENT: %s" % exp_name_short
     info['exp_name_short'] = exp_name_short
     info['exp_name_long'] = exp_name_long
