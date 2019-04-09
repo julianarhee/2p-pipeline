@@ -58,11 +58,11 @@ segment = False
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC007' #'JC059'
-session = '20180810' #'20190227'
-fov = 'FOV1_zoom1x' #'FOV4_zoom4p0x'
-run = 'blobs_run2'
-traceid = 'traces002' #'traces001'
+animalid = 'JC076' #'JC059'
+session = '20190406' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_gratings_static'
+traceid = 'traces001' #'traces001'
 segment = False
 visual_area = ''
 
@@ -99,8 +99,12 @@ if segment:
 #%%
 
 # Set dirs:
-sorting_subdir = 'sorted_rois' # 'response_stats'
-sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, '%s*' % sorting_subdir)))[-1]
+try:
+    sorting_subdir = 'response_stats'
+    sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, '%s*' % sorting_subdir)))[-1]
+except Exception as e:
+    sorting_subdir = 'sorted_rois'
+    sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, '%s*' % sorting_subdir)))[-1]
 print "Selected stats results: %s" % os.path.split(sorted_dir)[-1]
 
 # Set output dir:
@@ -204,8 +208,8 @@ stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim
 snrs = stim_means/bas_means
   
 
-rows = 'yrot'
-cols = 'morphlevel'
+rows = 'ypos'
+cols = 'xpos'
 
 row_vals = sorted(sdf[rows].unique())
 col_vals = sorted(sdf[cols].unique())
@@ -242,8 +246,9 @@ if not os.path.exists(curr_figdir):
 print "Saving figures to:", curr_figdir
 
 #rid = 137 #14
-
-for rid in sorted_selective:
+axes_pad = 0.001
+annotate = False
+for rid in sorted_selective[0:10]:
     print rid
     roi_zscores = zscores[:, rid]
     if plot_zscored:
@@ -264,10 +269,10 @@ for rid in sorted_selective:
         traces_by_config[config] = np.vstack(traces_by_config[config])
     
     
-    fig = pl.figure(figsize=(18,4))
+    fig = pl.figure(figsize=()) # (18,4))
     grid = AxesGrid(fig, 111,
                     nrows_ncols=(len(row_vals), len(col_vals)),
-                    axes_pad=0.2,
+                    axes_pad=axes_pad,
                     cbar_mode='single',
                     cbar_location='right',
                     cbar_pad=0.1)
@@ -287,8 +292,9 @@ for rid in sorted_selective:
         
         # get zscore values:
         curr_cond_metrics = roi_metrics[trial_ixs]
-        ax.set_title('%s %.2f (std %.2f)' % (metric_name, curr_cond_metrics.mean(), stats.sem(curr_cond_metrics)), fontsize=6)
-        ax.set_ylabel('trial')
+        if annotate:
+            ax.set_title('%s %.2f (std %.2f)' % (metric_name, curr_cond_metrics.mean(), stats.sem(curr_cond_metrics)), fontsize=6)
+            ax.set_ylabel('trial')
         
         ax.axvline(x=stim_on_frame, color='w', lw=0.5, alpha=0.5)
         ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5, alpha=0.5)
