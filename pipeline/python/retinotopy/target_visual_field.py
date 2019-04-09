@@ -417,7 +417,8 @@ def plot_kde_min_max(xvals, yvals, maxval=0, minval1=0, minval2=0, title='', ax=
 
 
 
-def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, draw_bb=True, marker_scale=200):
+def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, \
+                    draw_bb=True, marker_scale=200, exclude_bad=False, min_thr=0.01):
     
     mean_magratios = magratio.mean(axis=1)
     
@@ -429,6 +430,13 @@ def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, dr
 
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
+    
+    if exclude_bad:
+        bad_cells = mean_magratios[mean_magratios < min_thr].index.tolist()
+        kept_cells = [i for i in mean_magratios.index.tolist() if i not in bad_cells]
+        linX = linX[kept_cells]
+        linY = linY[kept_cells]
+        mean_magratios = mean_magratios.iloc[kept_cells]
     
     # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
     im = ax.scatter(linX, linY, s=mean_magratios*marker_scale, c=mean_magratios, cmap='inferno', alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
@@ -497,10 +505,14 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
     # else:
     #     screen_lower = -1*screen['elevation']/2.
     #     screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    
     screen_left = stim_positions['left'].iloc[0,:].mean()
-    screen_right = stim_positions['right'].iloc[0,:].mean()
-    screen_upper = stim_positions['top'].iloc[0,:].mean()
+    #screen_right = stim_positions['right'].iloc[0,:].mean()
+    screen_right = stim_positions['left'].iloc[-1,:].mean()
+    #screen_upper = stim_positions['top'].iloc[0,:].mean()
+    screen_upper = stim_positions['bottom'].iloc[-1,:].mean()
     screen_lower = stim_positions['bottom'].iloc[0,:].mean()
+
 
     # Find strongly responding cells to calcualte delay
     mean_mags = magratio.mean(axis=1)
@@ -723,12 +735,13 @@ def extract_options(options):
 #%%
 
 #options = ['-i', 'JC047', '-S', '20190215', '-A', 'FOV1']
-options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis003']
 #options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-t', 'analysis002']
 #options = ['-i', 'JC070', '-S', '20190314', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis003']
 
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV1', '-R', 'retino_run2', '-t', 'analysis002']
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
+
+options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 #%%
@@ -779,6 +792,13 @@ def main(options):
     with open(conditions_fpath, 'r') as f:
         mwinfo = json.load(f)
 
+    
+    # Get run info:
+    runinfo_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
+    with open(runinfo_fpath, 'r') as f:
+        runinfo = json.load(f)
+    print "---------------------------------"
+    print "Trials by condN:", trials_by_cond
 
     # Get stimulus info:
     stiminfo = get_retino_stimulus_info(mwinfo, runinfo)
@@ -843,9 +863,10 @@ def main(options):
     #----
     mag_thr = magratio.max(axis=1).max() * 0.25 #0.02
     #mag_thr = magratio.max(axis=1).max() * 0.25 #5 #0.02
+
     #fit_thr = 0.20
     absolute = True
-    absolute_coords = get_absolute_centers(phase, trials_by_cond, stim_positions, \
+    absolute_coords = get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, \
                                                                     absolute=absolute, mag_thr=mag_thr)
 
     # Screen dims are not necessarily left/right and bottom/top starting pos for cycle (off-scren start)
@@ -938,8 +959,8 @@ def main(options):
     sigma_val = 5
     sigma = [sigma_val, sigma_val]
     smoothed = sp.ndimage.filters.gaussian_filter(heatmap, sigma, mode='constant')
-    ax.imshow(smoothed.T)
-    ax.invert_yaxis()
+    ax.imshow(smoothed.T, extent=extent, origin='lower')
+    #ax.invert_yaxis()
 
     label_figure(fig, data_identifier)
     fig.savefig(os.path.join(output_dir, 'smoothed_heatmap_rois_on_screen_%s.png' % loctype))
@@ -973,6 +994,8 @@ def main(options):
 #    ax.legend(loc='upper left')
     # ^ bleh looks funky
     
+    mean_mags = magratio.mean(axis=1)
+
     
     # Plot KDE:
     j = sns.jointplot(linX, linY, kind='kde', xlim=(screen_left, screen_right), ylim=(screen_lower, screen_upper))
@@ -1077,8 +1100,13 @@ def main(options):
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
     
+    
+    
+    min_thr = 0.01
+    
     marker_scale = 100./round(magratio.mean().mean(), 3)
-    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, marker_scale=marker_scale)
+    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, \
+                          use_peak=True, marker_scale=marker_scale, exclude_bad=True, min_thr=min_thr)
     print("LINX:", linX.shape)
     for ri in strong_cells:
         fig.axes[0].text(linX[ri], linY[ri], '%s' % (ri+1))
