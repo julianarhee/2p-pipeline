@@ -118,11 +118,11 @@ def get_retino_stimulus_info(mwinfo, runinfo):
                                'n_cycles': n_cycles,
                                'n_frames_per_cycle': n_frames_per_cycle,
                                'cycle_start_ixs': cycle_starts,
-                               'trials_by_,cond': trials_by_cond,
+                               #'trials_by_cond': trials_by_cond,
                                'frame_tstamps': runinfo['frame_tstamps_sec']
                               }
 
-    return stiminfo
+    return stiminfo, trials_by_cond
 
 # Interpolate bar position for found SI frame using upsampled MW tstamps and positions:
 def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
