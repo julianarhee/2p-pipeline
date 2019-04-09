@@ -39,8 +39,7 @@ from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import target_visual_field as vf
 from pipeline.python.retinotopy import visualize_rois as visroi
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
-
-
+from pipeline.python.retinotopy import estimate_RF_size as est
 # In[3]:
 
 
@@ -85,7 +84,8 @@ def extract_options(options):
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
 #options = ['-i', 'JC070', '-S', '20190316', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis002']
 
-options = ['-i', 'JC067', '-S', '20190320', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
+#options = ['-i', 'JC067', '-S', '20190320', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
+options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 opts = extract_options(options)
@@ -193,7 +193,18 @@ pl.axis('off')
 
 # This file gets created with visualization/get_session_summary() when estimate_RF_size.py is used
 
-avg_traces_fpath = glob.glob(os.path.join(processed_dir, 'traces', '*.pkl'))[0]
+avg_traces_fpath = glob.glob(os.path.join(processed_dir, 'traces', '*.pkl'))
+if len(avg_traces_fpath) == 0:
+    print "Getting averaged ROI traces by cond and estimating RFs..."
+    # Need to run estimate_RF_size.py:
+    est.estimate_RFs_and_plot(['-i', animalid,'-S', session, '-A', fov, '-R', run, '-r', retinoid])
+    avg_traces_fpath = glob.glob(os.path.join(processed_dir, 'traces', '*.pkl'))[0]
+else:
+    avg_traces_fpath = avg_traces_fpath[0]
+    
+print("Loading pre-averaged traces from: %s" % avg_traces_fpath)
+
+
 print("Loading pre-averaged traces from: %s" % avg_traces_fpath)
 
 with open(avg_traces_fpath, 'rb') as f:
@@ -325,7 +336,7 @@ for ri,rid in enumerate(strong_cells):
     fig.subplots_adjust(right=0.8, top=0.7, bottom=0.3, left=0.05, wspace=0.2)
 
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'roi_traces', 'azim_elev_roi%05d.png' % int(rid+1)))
+    pl.savefig(os.path.join(output_dir, 'roi_traces', 'average_traces_by_cond_roi%05d.png' % int(rid+1)))
     pl.close()
     
 
