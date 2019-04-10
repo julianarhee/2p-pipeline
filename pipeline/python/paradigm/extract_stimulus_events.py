@@ -100,7 +100,7 @@ def dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_
         
 #%%
 
-def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False):
+def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False, remove_skipped_trials=False):
     '''
     For every bitcode of every trial, find corresponding SI frame.
     
@@ -505,14 +505,22 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         print " *** WARNING -- funky stim durs found:", rounded_durs
         print " --- found MW stim durs:", unique_mw_stim_durs
     
-    # REmove skipped:
+    if len(skipped.keys() > 0):
+        # Rename original parsed:
+        orig_fpath = '%s_orig.json' % os.path.splitext(mwtrial_path)[0]
+        with open(orig_fpath, 'w') as f:
+            json.dump(mwtrials, f, indent=True, sort_keys=True)
+    
+    # Remove skipped, then resave:
     for hkey,nkey in skipped.items():
         del trialevents[hkey]
         del mwtrials[nkey]
+        print "Updated MWtrials and trial events."
+        
         with open(mwtrial_path, 'w') as f:
             json.dump(mwtrials, f)
-        print "Updated MWtrials and trial events."
-        print "TOTAL N trials:", len(mwtrials.keys())
+                    
+    print "TOTAL N trials:", len(mwtrials.keys())
 #%%
     return trialevents
 
