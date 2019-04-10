@@ -29,7 +29,8 @@ from scipy import stats
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
 from pipeline.python.visualization import plot_psths_from_dataframe as psth
 from pipeline.python.traces.utils import load_TID, get_metric_set
-from pipeline.python.paradigm.align_acquisition_events import get_stimulus_configs, set_pupil_params
+from pipeline.python.paradigm.align_acquisition_events import set_pupil_params
+from pipeline.python.paradigm.utils import save_stimulus_configs
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
@@ -75,7 +76,7 @@ def get_info_for_runs(run_list, traceid_list, trace_type, acquisition_dir):
             trial_info = json.load(f)
         if rootdir not in trial_info['parsed_trials_source']:
             trial_info['parsed_trials_source'] = replace_root(trial_info['parsed_trials_source'], rootdir, animalid, session)
-        configs, stimtype = get_stimulus_configs(trial_info)
+        configs, stimtype = save_stimulus_configs(trial_info)
         stimconfigs[run] = configs
 
         alignment_info[run] = {k: v for k, v in trial_info.items() if k not in ['parsed_trials_source']}
