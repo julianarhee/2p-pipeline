@@ -394,7 +394,7 @@ def create_rdata_array(opts):
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
     parsed_frames_filepath = acq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=align_frames)
-    print "Finished aligning frames to trial structure (iti pre = %i)" % iti_pre
+    print "Finished aligning frames to trial structure (iti pre = %.2f)" % iti_pre
     print "Saved parsed frames to: %s" % parsed_frames_filepath
     
     #dataset = create_data_arrays(options, test_drift=test_drift, test_smoothing=test_smoothing, test_roi=test_roi, smooth=smooth)
