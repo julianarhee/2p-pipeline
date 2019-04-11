@@ -500,7 +500,7 @@ class Segmentations():
 
 def get_retino_conditions(acquisition_dir, retino_run='retino_run1'):
     print 'Getting paradigm file info'
-    paradigm_fpath = glob.glob(os.path.join(acquisition_dir, '%s*' % retino_run, 'paradigm', 'files', '*.json'))[0]
+    paradigm_fpath = glob.glob(os.path.join(acquisition_dir, '%s*' % retino_run, 'paradigm', 'files', 'parsed_trials*.json'))[0]
     with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
     # pp.pprint(mwinfo)
     

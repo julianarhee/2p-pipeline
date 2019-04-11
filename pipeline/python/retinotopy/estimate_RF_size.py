@@ -398,7 +398,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
     # =============================================================================
     print('... loading paradigm info')
     print os.listdir(os.path.join(run_dir, 'paradigm', 'files'))
-    paradigm_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+    paradigm_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
     print paradigm_fpath
     with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
     # pp.pprint(mwinfo)

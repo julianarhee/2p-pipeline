@@ -130,7 +130,7 @@ processed_fpaths = glob.glob(os.path.join(processed_dir, 'files', '*.h5'))
 print("Found %i processed retino runs." % len(processed_fpaths))
 
 # Get condition info for trials:
-conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
 
 
 # # Set output dir

@@ -137,7 +137,7 @@ def main(options):
     processed_fpaths = glob.glob(os.path.join(processed_dir, 'files', '*.h5'))
     print("Found %i processed retino runs." % len(processed_fpaths))
     
-    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
 
 
     #%%

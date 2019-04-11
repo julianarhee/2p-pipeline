@@ -788,7 +788,7 @@ def main(options):
     print("Found %i processed retino runs." % len(processed_fpaths))
     
     # Get condition info for trials:
-    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
+    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
     with open(conditions_fpath, 'r') as f:
         mwinfo = json.load(f)
 
