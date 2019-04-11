@@ -343,7 +343,7 @@ def get_metricdf(dfpaths):
             is_retino = True
             rundir = (dfpaths[run][0]).split('/retino_analysis')[0]
             paradigmdir = os.path.join(rundir, 'paradigm', 'files')
-            paradigm_info_fn = [f for f in os.listdir(paradigmdir) if 'parsed_' in f][0]
+            paradigm_info_fn = glob.glob(os.path.join(paradigmdir, 'parsed_trials*.json'))[0]
             with open(os.path.join(paradigmdir, paradigm_info_fn), 'r') as f:
                 paradigm_info = json.load(f)
             #stimconfigs = sorted(list(set([paradigm_info[f]['stimuli']['stimulus'] for f in paradigm_info.keys()])), key=natural_keys)
