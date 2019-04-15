@@ -302,13 +302,12 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
         trial_list = sorted(trialdict.keys(), key=natural_keys)
 
     #%
-    # 1. Get stimulus preseentation order for each TIFF found:
+    # 1. Get stimulus presentation order for each TIFF found:
     try:
         trial_counter = 0
         for tiffnum in range(si_info['ntiffs']): #ntiffs):
-            trial_in_file = 0
+            #trial_in_file = 0
             currfile= "File%03d" % int(tiffnum+1)
-            print currfile, trial_in_file
 
             if trial_info['custom_mw'] is True:
                 stimorder_fns = trial_info['simorder_source']
@@ -316,67 +315,49 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                     stimorder_data = f.readlines()
                 stimorder = [l.strip() for l in stimorder_data]
             else:
-                stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
-                                 if trialdict[t]['block_idx'] == tiffnum]
-                trials_in_run = sorted([t for t in trial_list if trialdict[t]['block_idx'] == tiffnum], key=natural_keys)
-            for trialidx,trialstim in enumerate(sorted(stimorder, key=natural_keys)):
+                #stimorder = [trialdict[t]['stimuli']['stimulus'] for t in trial_list\
+#                                 if trialdict[t]['block_idx'] == tiffnum]
+
+                # Get current trials in block:
+                trials_in_file = sorted([t for t in trial_list if trialdict[t]['block_idx'] == tiffnum], key=natural_keys)
+                # Get stimulus order:
+                stimorder = [trialdict[t]['stimuli'] for t in trials_in_file]
+
+            print currfile, len(trials_in_file) #trial_in_file
+
+            for trialidx,currtrial_in_file in enumerate(sorted(trials_in_file, key=natural_keys)):
                 trial_counter += 1
-                trial_in_file += 1
-                currtrial_in_file = 'trial%03d' % int(trial_in_file)
+                #trial_in_file += 1
+                #currtrial_in_file = 'trial%03d' % int(trial_in_file)
+
+                # Trial in run might not be ntrials-per-file * nfiles
+                # Trials with missing pix are ignored.
+                currtrial_in_run = 'trial%05d' % int(trial_counter)
 
                 if trial_info['custom_mw'] is True:
                     if trialidx==0:
                         first_frame_on = si_info['first_stimulus_volume_num'] #first_stimulus_volume_num
                     else:
-                        first_frame_on += si_info['vols_per_trial'] #vols_per_trial
-                    currtrial_in_run = 'trial%05d' % int(trial_counter)
+                        first_frame_on += si_info['vols_per_trial'] #vols_per_trial 
                 else:
-                    currtrial_in_run = trials_in_run[trialidx]
+                    #currtrial_in_run = trials_in_file[trialidx]
                     #first_frame_on = int(round(trialdict[currfile][currtrial]['stim_on_idx']/nslices))
                     no_frame_match = False
                     first_frame_on = int(trialdict[currtrial_in_run]['frame_stim_on'])
-        #            try:
-        #                first_frame_on = frame_idxs.index(first_frame_on)
-        #            except Exception as e:
-        #                print "------------------------------------------------------------------"
-        #                print "Found first frame on from serialdata file NOT found in frame_idxs."
-        #                print "Trying 1 frame before / after..."
-        #                try:
-        #                    if first_frame_on+1 in frame_idxs:
-        #                        first_frame_on = frame_idxs.index(first_frame_on+1)
-        #                    else:
-        #                        # Try first_frame_on-1 in frame_idxs:
-        #                        first_frame_on = frame_idxs.index(first_frame_on-1)
-        #                except Exception as e:
-        #                    print "------------------------------------------------------------------"
-        #                    print "NO match found for FIRST frame ON:", first_frame_on
-        #                    print "File: %s, Trial %s, Stim: %s." % (currfile, currtrial_in_run, trialstim)
-        #                    print e
-        #                    print "------------------------------------------------------------------"
-        #                    no_frame_match = True
-        #                if no_frame_match is True:
-        #                    print "Aborting."
-        #                    print "------------------------------------------------------------------"
-
+                # Get baseline, stim, and post frame indices:
                 preframes = list(np.arange(int(first_frame_on - trial_info['nframes_iti_pre']), first_frame_on, 1))
                 if isinstance(trial_info['nframes_post_onset'], dict):
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset'][currtrial_in_run]))))
                 else:
                     postframes = list(np.arange(int(first_frame_on + 1), int(round(first_frame_on + trial_info['nframes_post_onset']))))
-#                print postframes
-#                # Check to make sure that rounding errors do not cause frame idxs to go beyond the number of frames in a file:
-#                if postframes[-1] > len(si_info['vol_idxs']):
-#                    
-#                    extraframes = [p for p in postframes if p > len(si_info['vol_idxs'])-1]
-#                    postframes = [p for p in postframes if p <= len(si_info['vol_idxs'])-1]
-#                    print "%s:  %i extra frames calculated. Cropping extra post-stim-onset indices." % (currtrial_in_run, len(extraframes))
-#                    
+
+                    
                 framenums = [preframes, [first_frame_on], postframes]
                 framenums = reduce(operator.add, framenums)
                 #print "POST FRAMES:", len(framenums)
                 diffs = np.diff(framenums)
                 consec = [i for i in np.diff(diffs) if not i==0]
-                assert len(consec)==0, "Bad frame parsing in %s, %s, frames: %s " % (currtrial_in_run, trialstim, str(framenums))
+                assert len(consec)==0, "Bad frame parsing in %s, %s, frames: %s " % (currtrial_in_run, currfile, str(framenums))
 
                 # Create dataset for current trial with frame indices:
                 fridxs_in_file = parsed_frames.create_dataset('/'.join((currtrial_in_run, 'frames_in_file')), np.array(framenums).shape, np.array(framenums).dtype)
@@ -404,6 +385,7 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                 fridxs.attrs['iti_dur_sec'] = trial_info['iti_post']
                 fridxs.attrs['baseline_dur_sec'] = trial_info['iti_pre']
     except Exception as e:
+        print e
         print "Error parsing frames into trials: current file - %s" % currfile
         print "%s in tiff file %s (%i trial out of total in run)." % (currtrial_in_file, currfile, trial_counter)
         traceback.print_exc()

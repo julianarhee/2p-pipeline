@@ -529,7 +529,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     if skipped != {}:
         # Rename original parsed:
-        orig_fpath = '%s_orig.json' % os.path.splitext(mwtrial_path)[0]
+        mw_fname = os.path.splitext(os.path.split(mwtrial_path)[-1])[0]
+        orig_fpath = os.path.join(os.path.split(mwtrial_path)[0], '_orig_%s.json' % mw_fname)
         with open(orig_fpath, 'w') as f:
             json.dump(mwtrials, f, indent=True, sort_keys=True)
     
@@ -542,7 +543,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             del mwtrials[nkey]
 
     with open(mwtrial_path, 'w') as f:
-        json.dump(mwtrials, f)
+        json.dump(mwtrials, f, indent=True, sort_keys=True)
     print "Updated MWtrials and trial events."
     print "TOTAL N trials:", len(mwtrials.keys())
 #%%
@@ -641,7 +642,7 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 
     # Load MW info:
     paradigm_outdir = os.path.join(run_dir, 'paradigm', 'files')
-    mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
+    mwtrial_fns = sorted(glob.glob(os.path.join(paradigm_outdir, 'parsed_trials*.json')), key=natural_keys)
     print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
