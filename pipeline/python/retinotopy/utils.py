@@ -35,9 +35,9 @@ import pandas as pd
 
 
 from pipeline.python.utils import natural_keys, label_figure, replace_root
-from pipeline.python.retinotopy import visualize_rois as visroi
+#from pipeline.python.retinotopy import visualize_rois as visroi
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
-from pipeline.python.retinotopy import target_visual_field as targ
+#from pipeline.python.retinotopy import target_visual_field as targ
 from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -71,6 +71,18 @@ def extract_options(options):
     (options, args) = parser.parse_args(options)
 
     return options
+
+
+
+def correct_phase_wrap(phase):
+        
+    corrected_phase = phase.copy()
+    
+    corrected_phase[phase<0] =- phase[phase<0]
+    corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
+    
+    return corrected_phase
+
 
 def load_retino_analysis_info(animalid, session, fov, run, retinoid, use_pixels=False, rootdir='/n/coxfs01/2p-data'):
     
@@ -118,11 +130,11 @@ def get_retino_stimulus_info(mwinfo, runinfo):
                                'n_cycles': n_cycles,
                                'n_frames_per_cycle': n_frames_per_cycle,
                                'cycle_start_ixs': cycle_starts,
-                               'trials_by_,cond': trials_by_cond,
+                               #'trials_by_cond': trials_by_cond,
                                'frame_tstamps': runinfo['frame_tstamps_sec']
                               }
 
-    return stiminfo
+    return stiminfo, trials_by_cond
 
 # Interpolate bar position for found SI frame using upsampled MW tstamps and positions:
 def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
@@ -218,3 +230,42 @@ def plot_roi_traces_by_cond(roi_traces, stiminfo):
     return fig
 
 
+
+def trials_to_dataframes(processed_fpaths, conditions_fpath):
+    
+    # Get condition / trial info:
+    with open(conditions_fpath, 'r') as f:
+        conds = json.load(f)
+    cond_list = list(set([cond_dict['stimuli']['stimulus'] for trial_num, cond_dict in conds.items()]))
+    trials_by_cond = dict((cond, [int(k) for k, v in conds.items() if v['stimuli']['stimulus']==cond]) for cond in cond_list)
+
+    excluded_tifs = [] 
+    for cond, tif_list in trials_by_cond.items():
+        for tifnum in tif_list:
+            processed_tif = [f for f in processed_fpaths if 'File%03d' % tifnum in f]
+            if len(processed_tif) == 0:
+                print "No analysis found for file: %s" % tifnum
+                excluded_tifs.append(tifnum)
+        trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
+    print "TRIALS BY COND:"
+    print trials_by_cond 
+    trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
+    print "Trials:", trial_list
+
+    fits = []
+    phases = []
+    mags = []
+    for trial_num, trial_fpath in zip(sorted(trial_list), sorted(processed_fpaths, key=natural_keys)):
+        
+        print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
+        df = h5py.File(trial_fpath, 'r')
+        fits.append(pd.Series(data=df['var_exp_array'][:], name=trial_num))
+        phases.append(pd.Series(data=df['phase_array'][:], name=trial_num))
+        mags.append(pd.Series(data=df['mag_ratio_array'][:], name=trial_num))
+        df.close()
+        
+    fit = pd.concat(fits, axis=1)
+    magratio = pd.concat(mags, axis=1)
+    phase = pd.concat(phases, axis=1)
+    
+    return fit, magratio, phase, trials_by_cond

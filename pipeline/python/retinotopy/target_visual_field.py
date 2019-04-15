@@ -27,6 +27,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import visualize_rois as visroi
+from pipeline.python.retinotopy import utils as rutils
 from scipy.signal import argrelextrema
 
 
@@ -591,103 +592,103 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
                        'used_relative': use_relative,
                        'screen_bb': [screen_lower, screen_left, screen_upper, screen_right]}
                        
-    return absolute_coords
+    return absolute_coords, strong_cells
     
     
-def correct_phase_wrap(phase):
-        
-    corrected_phase = phase.copy()
-    
-    corrected_phase[phase<0] =- phase[phase<0]
-    corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
-    
-    return corrected_phase
+#def correct_phase_wrap(phase):
+#        
+#    corrected_phase = phase.copy()
+#    
+#    corrected_phase[phase<0] =- phase[phase<0]
+#    corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
+#    
+#    return corrected_phase
 
 
 #%%
-def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
-    mw_fps = 1./np.diff(np.array(mwinfo[str(trials_by_cond[condname][0])]['stiminfo']['tstamps'])/1E6).mean()
-    si_fps = stiminfo[condname]['frame_rate']
-    print "[%s]: Downsampling MW positions (sampled at %.2fHz) to SI frame rate (%.2fHz)" % (condname, mw_fps, si_fps)
-
-    si_cyc_ixs = stiminfo[condname]['cycle_start_ixs']
-    si_tstamps = runinfo['frame_tstamps_sec']
-
-
-    #fig, axes = pl.subplots(1, len(trials_by_cond[condname]))
-
-    stim_pos_list = []
-    stim_tstamp_list = []
-
-    for ti, trial in enumerate(trials_by_cond[condname]):
-        #ax = axes[ti]
-
-        pos_list = []
-        tstamp_list = []
-        mw_cyc_ixs = mwinfo[str(trial)]['stiminfo']['start_indices']
-        for cix in np.arange(0, len(mw_cyc_ixs)):
-            if cix==len(mw_cyc_ixs)-1:
-                mw_ts = [t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:]]
-                xs = mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:]
-                si_ts = si_tstamps[si_cyc_ixs[cix]:]
-            else:
-                mw_ts = np.array([t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]]])
-                xs = np.array(mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]])
-                si_ts = si_tstamps[si_cyc_ixs[cix]:si_cyc_ixs[cix+1]]
-
-            recentered_mw_ts = [t-mw_ts[0] for t in mw_ts]
-            recentered_si_ts = [t-si_ts[0] for t in si_ts]
-
-            # Since MW tstamps are linear, SI tstamps linear, interpolate position values down to SI's lower framerate:
-            interpos = sp.interpolate.interp1d(recentered_mw_ts, xs, fill_value='extrapolate')
-            resampled_xs = interpos(recentered_si_ts)
-
-            pos_list.append(pd.Series(resampled_xs, name=trial))
-            tstamp_list.append(pd.Series(recentered_si_ts, name=trial))
-
-            #ax.plot(recentered_mw_ts, xs, 'ro', alpha=0.5, markersize=2)
-            #ax.plot(recentered_si_ts, resampled_xs, 'bx', alpha=0.5, markersize=2)
-
-        pos_vals = pd.concat(pos_list, axis=0).reset_index(drop=True) 
-        tstamp_vals = pd.concat(tstamp_list, axis=0).reset_index(drop=True)
-
-        stim_pos_list.append(pos_vals)
-        stim_tstamp_list.append(tstamp_vals)
-
-    stim_positions = pd.concat(stim_pos_list, axis=1)
-    stim_tstamps = pd.concat(stim_tstamp_list, axis=1)
-
-
-    return stim_positions, stim_tstamps
-
-def get_retino_stimulus_info(mwinfo, runinfo):
-    
-    stiminfo = dict((cond, dict()) for cond in conditions)
-    for curr_cond in conditions:
-        # get some info from paradigm and run file
-        stimfreq = np.unique([v['stimuli']['scale'] for k,v in mwinfo.items() if v['stimuli']['stimulus']==curr_cond])[0]
-        stimperiod = 1./stimfreq # sec per cycle
-        
-        n_frames = runinfo['nvolumes']
-        fr = runinfo['frame_rate']
-        
-        n_cycles = int(round((n_frames/fr) / stimperiod))
-        print n_cycles
-
-        n_frames_per_cycle = int(np.floor(stimperiod * fr))
-        cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
-
-        stiminfo[curr_cond] = {'stimfreq': stimfreq,
-                               'frame_rate': fr,
-                               'n_reps': len(trials_by_cond[curr_cond]),
-                               'nframes': n_frames,
-                               'n_cycles': n_cycles,
-                               'n_frames_per_cycle': n_frames_per_cycle,
-                               'cycle_start_ixs': cycle_starts
-                              }
-
-    return stiminfo
-
+#def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
+#    mw_fps = 1./np.diff(np.array(mwinfo[str(trials_by_cond[condname][0])]['stiminfo']['tstamps'])/1E6).mean()
+#    si_fps = stiminfo[condname]['frame_rate']
+#    print "[%s]: Downsampling MW positions (sampled at %.2fHz) to SI frame rate (%.2fHz)" % (condname, mw_fps, si_fps)
+#
+#    si_cyc_ixs = stiminfo[condname]['cycle_start_ixs']
+#    si_tstamps = runinfo['frame_tstamps_sec']
+#
+#
+#    #fig, axes = pl.subplots(1, len(trials_by_cond[condname]))
+#
+#    stim_pos_list = []
+#    stim_tstamp_list = []
+#
+#    for ti, trial in enumerate(trials_by_cond[condname]):
+#        #ax = axes[ti]
+#
+#        pos_list = []
+#        tstamp_list = []
+#        mw_cyc_ixs = mwinfo[str(trial)]['stiminfo']['start_indices']
+#        for cix in np.arange(0, len(mw_cyc_ixs)):
+#            if cix==len(mw_cyc_ixs)-1:
+#                mw_ts = [t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:]]
+#                xs = mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:]
+#                si_ts = si_tstamps[si_cyc_ixs[cix]:]
+#            else:
+#                mw_ts = np.array([t/1E6 for t in mwinfo[str(trial)]['stiminfo']['tstamps'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]]])
+#                xs = np.array(mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]])
+#                si_ts = si_tstamps[si_cyc_ixs[cix]:si_cyc_ixs[cix+1]]
+#
+#            recentered_mw_ts = [t-mw_ts[0] for t in mw_ts]
+#            recentered_si_ts = [t-si_ts[0] for t in si_ts]
+#
+#            # Since MW tstamps are linear, SI tstamps linear, interpolate position values down to SI's lower framerate:
+#            interpos = sp.interpolate.interp1d(recentered_mw_ts, xs, fill_value='extrapolate')
+#            resampled_xs = interpos(recentered_si_ts)
+#
+#            pos_list.append(pd.Series(resampled_xs, name=trial))
+#            tstamp_list.append(pd.Series(recentered_si_ts, name=trial))
+#
+#            #ax.plot(recentered_mw_ts, xs, 'ro', alpha=0.5, markersize=2)
+#            #ax.plot(recentered_si_ts, resampled_xs, 'bx', alpha=0.5, markersize=2)
+#
+#        pos_vals = pd.concat(pos_list, axis=0).reset_index(drop=True) 
+#        tstamp_vals = pd.concat(tstamp_list, axis=0).reset_index(drop=True)
+#
+#        stim_pos_list.append(pos_vals)
+#        stim_tstamp_list.append(tstamp_vals)
+#
+#    stim_positions = pd.concat(stim_pos_list, axis=1)
+#    stim_tstamps = pd.concat(stim_tstamp_list, axis=1)
+#
+#
+#    return stim_positions, stim_tstamps
+#
+#def get_retino_stimulus_info(mwinfo, runinfo):
+#    
+#    stiminfo = dict((cond, dict()) for cond in conditions)
+#    for curr_cond in conditions:
+#        # get some info from paradigm and run file
+#        stimfreq = np.unique([v['stimuli']['scale'] for k,v in mwinfo.items() if v['stimuli']['stimulus']==curr_cond])[0]
+#        stimperiod = 1./stimfreq # sec per cycle
+#        
+#        n_frames = runinfo['nvolumes']
+#        fr = runinfo['frame_rate']
+#        
+#        n_cycles = int(round((n_frames/fr) / stimperiod))
+#        print n_cycles
+#
+#        n_frames_per_cycle = int(np.floor(stimperiod * fr))
+#        cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
+#
+#        stiminfo[curr_cond] = {'stimfreq': stimfreq,
+#                               'frame_rate': fr,
+#                               'n_reps': len(trials_by_cond[curr_cond]),
+#                               'nframes': n_frames,
+#                               'n_cycles': n_cycles,
+#                               'n_frames_per_cycle': n_frames_per_cycle,
+#                               'cycle_start_ixs': cycle_starts
+#                              }
+#
+#    return stiminfo
+#
 
 #%%
 
@@ -741,7 +742,7 @@ def extract_options(options):
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV1', '-R', 'retino_run2', '-t', 'analysis002']
 #options = ['-i', 'JC070', '-S', '20190315', '-A', 'FOV2', '-R', 'retino_run1', '-t', 'analysis002']
 
-options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+options = ['-i', 'JC076', '-S', '20190408', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 #%%
@@ -788,7 +789,7 @@ def main(options):
     print("Found %i processed retino runs." % len(processed_fpaths))
     
     # Get condition info for trials:
-    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
+    conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', '*.json'))[0]
     with open(conditions_fpath, 'r') as f:
         mwinfo = json.load(f)
 
@@ -797,13 +798,13 @@ def main(options):
     runinfo_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
     with open(runinfo_fpath, 'r') as f:
         runinfo = json.load(f)
-    print "---------------------------------"
-    print "Trials by condN:", trials_by_cond
 
     # Get stimulus info:
-    stiminfo = get_retino_stimulus_info(mwinfo, runinfo)
-    stiminfo['trials_by_cond'] = trials_by_cond
-
+    stiminfo, trials_by_cond = rutils.get_retino_stimulus_info(mwinfo, runinfo)
+   # stiminfo['trials_by_cond'] = trials_by_cond
+    print "---------------------------------"
+    print "Trials by condN:",trials_by_cond
+    
     #%%
     
     # Comine all trial data into data frames:
@@ -858,7 +859,7 @@ def main(options):
     stim_positions = dict()
     stim_tstamps = dict()
     for cond in trials_by_cond.keys():
-        stim_positions[cond], stim_tstamps[cond] = get_interp_positions(cond, mwinfo, stiminfo, trials_by_cond)
+        stim_positions[cond], stim_tstamps[cond] = rutils.get_interp_positions(cond, mwinfo, stiminfo, trials_by_cond)
 
     #----
     mag_thr = magratio.max(axis=1).max() * 0.25 #0.02
@@ -866,7 +867,7 @@ def main(options):
 
     #fit_thr = 0.20
     absolute = True
-    absolute_coords = get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, \
+    absolute_coords, strong_cells = get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, \
                                                                     absolute=absolute, mag_thr=mag_thr)
 
     # Screen dims are not necessarily left/right and bottom/top starting pos for cycle (off-scren start)
