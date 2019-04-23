@@ -121,7 +121,7 @@ opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1
 #%%
 
     
-def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=False,
+def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=True,
                            quantile=0.2, window_size_sec=None, test_drift=False, 
                            smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001', nonnegative=False):
     
@@ -135,7 +135,9 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
     if not os.path.exists(data_basedir):
         os.makedirs(data_basedir)
     data_fpath = os.path.join(data_basedir, 'datasets.npz')
-    
+    if create_new and os.path.exists(data_fpath):
+        os.remove(data_fpath)
+   
     # Also create output dir for population-level figures:
     population_figdir = os.path.join(run_info['traceid_dir'], 'figures', 'population')
     if not os.path.exists(population_figdir):
@@ -385,13 +387,16 @@ def create_rdata_array(opts):
     with open(os.path.join(data_basedir, 'trial_info.json'), 'w') as f:
         json.dump(trial_info, f, indent=4) #f
    
-    configs, stimtype = acq.get_stimulus_configs(trial_info)
+    configs_fpath = glob.glob(os.path.join(paradigm_dir, 'stimulus_configs*.json'))[0]
+    with open(configs_fpath, 'r') as f:
+        configs = json.load(f)
+    #configs, stimtype = acq.get_stimulus_configs(trial_info)
     pp.pprint(configs)
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
     parsed_frames_filepath = acq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=align_frames)
-    print "Finished aligning frames to trial structure (iti pre = %i)" % iti_pre
+    print "Finished aligning frames to trial structure (iti pre = %.2f)" % iti_pre
     print "Saved parsed frames to: %s" % parsed_frames_filepath
     
     #dataset = create_data_arrays(options, test_drift=test_drift, test_smoothing=test_smoothing, test_roi=test_roi, smooth=smooth)

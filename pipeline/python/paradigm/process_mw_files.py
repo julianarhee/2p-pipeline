@@ -357,7 +357,7 @@ def get_trigger_times(df, boundary, triggername='', arduino_sync=True, verbose=F
     return trigger_times, user_run_selection
 
 #%%
-def get_pixelclock_events(df, boundary, trigger_times=[], verbose=False):
+def get_pixelclock_events(df, boundary, backlight_sensor=True, trigger_times=[], verbose=False):
 
     # Get all stimulus-display-update events:
     tmp_display_evs = df.get_events('#stimDisplayUpdate')
@@ -366,11 +366,13 @@ def get_pixelclock_events(df, boundary, trigger_times=[], verbose=False):
     # Only include display-update events within time boundary of the session:
     display_evs = [d for d in display_evs if d.time <= boundary[1] and d.time >= boundary[0]]
     # Filter out any display-update events without a pixel-clock event:
-    tmp_pixelclock_evs = [i for i in display_evs if 'bit_code' in i.value[-1].keys()]
+    #tmp_pixelclock_evs = [i for i in display_evs if 'bit_code' in i.value[-1].keys()]
+    tmp_pixelclock_evs = [i for i in display_evs if any(['bit_code' in ki.keys() for ki in i.value])]
 
+    pixcode_ix = -2 if backlight_sensor else -1
 
     if verbose is True:
-        print [p for p in tmp_pixelclock_evs if not 'bit_code' in p.value[-1].keys()]
+        print [p for p in tmp_pixelclock_evs if not 'bit_code' in p.value[pixcode_ix].keys()]
         print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
 
     if len(trigger_times)==0:
@@ -384,8 +386,37 @@ def get_pixelclock_events(df, boundary, trigger_times=[], verbose=False):
     return pixelclock_evs
 
 #%%
-def get_session_info(df, stimulus_type=None, boundary=[]):
+def get_session_info(df, experiment_type=None, stimulus_type=None, boundary=[]):
     info = dict()
+    
+    # Include experiment name, even tho sometimes it's not meaningful
+    # It IS meaningful if we set it to be sth specific: 
+    codec = df.get_codec().values()
+    if experiment_type is None:
+        if 'ExpName_long' in codec:
+            exp_name_long = df.get_events('ExpName_long')[-1].value
+        else:
+            exp_name_long = 'unspecified'
+        if 'ExpName_short' in codec:
+            exp_name_short = df.get_events('ExpName_short')[-1].value
+        else:
+            exp_name_short = 'unspecified'
+    else:
+        exp_name_long = experiment_type
+        exp_name_short = experiment_type
+
+    print "EXPERIMENT: %s" % exp_name_short
+    info['exp_name_short'] = exp_name_short
+    info['exp_name_long'] = exp_name_long
+    
+    # Check if aspect ratio saved:
+    aspect_var = [v for v in df.get_codec().values() if 'aspect' in v or 'Aspect' in v or 'size_ratio' in v]
+    if len(aspect_var) == 0:
+        aspect_ratio = 1
+    else:
+        assert len(aspect_var) == 1, "More than 1 aspect ratio var found! -- %s" % str(aspect_var)
+        aspect_ratio = df.get_events(aspect_var[0])[-1].value
+    
     if stimulus_type=='retinobar':
         ncycles = df.get_events('ncycles')[-1].value
         info['ncycles'] = ncycles
@@ -405,17 +436,14 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
             iti_standard_dur = iti_standard_dur[-1]
         else: 
             iti_standard_dur = iti_standard_dur[0]
-            #print "***More than 1 unique ITI standard found."
-            #selected_iti = raw_input("Select ITI dur to use: ")
-            #iti_standard_dur = [float(selected_iti)]
-           
+
         codec = df.get_codec() # Get codec to see which ITI var to use:
         if 'this_ITI_time' in codec.values():
             tmp_itis = [i for i in df.get_events('this_ITI_time') if i.value != 0]
             tmp_iti_vals = [i.value for i in tmp_itis]
             if len(tmp_iti_vals) == 0 or len(list(set(tmp_iti_vals)))==1:
                 # jitter var exists, but not actually used.
-                info['ITI'] = iti_standard_dur[0]
+                info['ITI'] = iti_standard_dur if isinstance(iti_standard_dur, int) else iti_standard_dur[0]
             else:
                 
                 # Only take ITI durs that are within the max allowed, since I don't know what the others are:
@@ -432,23 +460,21 @@ def get_session_info(df, stimulus_type=None, boundary=[]):
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0 and boundary[0] <= iev.time <= boundary[1]]
                 else:
                     info['ITI'] = [iev.value for iev in itis if iev.value != 0]
-    
-
         else:
-            #itis = df.get_events('ITI_time')
             info['ITI'] = iti_standard_dur #[0]
 
         sizes = df.get_events('stim_size')
         info['stimsize'] = sizes[-1].value
         #info['ITI'] = itis[-1].value
         info['stimulus'] = stimulus_type
-
+        info['aspect'] = aspect_ratio
+        
         # stimulus types?
         # ntrials?
     return info
 
 #%%
-def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False, auto=False):
+def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, phasemod=False, triggername='frame_trigger', pixelclock=True, verbose=False, auto=False, backlight_sensor=True, experiment_type=None):
 
     # Load run info:
     rundir = curr_dfn.split('/raw_')[0]
@@ -525,6 +551,8 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times) #, trigger_times=trigg_times)
         else:
             num_non_stimuli = 2 # background + image
+        if backlight_sensor:
+            num_non_stimuli += 1
 
         pixelevents.append(pixelclock_evs)
 
@@ -552,7 +580,9 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     # The number of stim events found shoudl equal the stim-dur (sec) after dividing by 60Hz
                     image_evs.append(curr_stim_evs[0])
             else:
-                image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+                #image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
+                image_evs = [d for d in pixelclock_evs for i in d.value if 'name' in i.keys() and i['name']!='background']
+
                 # 20181016 data -- "blank" image events:
                 tmp_imevs = []
                 stimulus_duration = np.unique([s.value for s in df.get_events('distractor_presentation_time')])[0] / 1E3
@@ -684,7 +714,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         trialevents.append(trial_evs)
         triggertimes.append(trigg_times)
 
-        session_info = get_session_info(df, stimulus_type=stimtype, boundary=[trigg_times[0][0], trigg_times[-1][-1]])
+        session_info = get_session_info(df, stimulus_type=stimtype, boundary=[trigg_times[0][0], trigg_times[-1][-1]], experiment_type=experiment_type)
         session_info['tboundary'] = boundary
         info.append(session_info)
 
@@ -848,7 +878,7 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0, auto=False):
+def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0, auto=False, backlight_sensor=True, experiment_type=None):
     
     '''
     Extract relevant stimulus info for each trial across blocks.
@@ -859,7 +889,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     if retinobar is True:
         pixelevents, stimevents, trigger_times, session_info = get_bar_events(curr_dfn, triggername=trigger_varname, single_run=single_run, boundidx=boundidx, auto=auto)
     else:
-        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
+        pixelevents, stimevents, trialevents, trigger_times, session_info = get_stimulus_events(curr_dfn, dynamic=dynamic, phasemod=phasemod, triggername=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto, backlight_sensor=backlight_sensor, experiment_type=experiment_type)
 
     # -------------------------------------------------------------------------
     # For EACH boundary found for a given datafile (dfn), make sure all the events are concatenated together:
@@ -867,8 +897,12 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     pixelevents = check_nested(pixelevents)
     # Check that all possible pixel vals are used (otherwise, pix-clock may be missing input):
     # print [p for p in pixelevents if 'bit_code' not in p.value[-1].keys()]
-    n_codes = set([i.value[-1]['bit_code'] for i in pixelevents])
-    if len(n_codes)<16:
+    pixcode_ix = -2 if backlight_sensor else -1
+
+    n_codes = set([i.value[pixcode_ix]['bit_code'] for i in pixelevents])
+    bitcode_len = 8 if backlight_sensor else 16
+
+    if len(n_codes)<bitcode_len:
         print "Check pixel clock -- missing bit values..."
     stimevents = check_nested(stimevents)
     if retinobar is False:
@@ -946,21 +980,21 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         # Get dynamic-grating bicode events:
         dynamic_stim_bitcodes = []
         bitcodes_by_trial = dict((i+1, dict()) for i in range(len(stimevents)))
-        #for stim,iti in zip(sorted(stimevents, key=get_timekey), sorted(itis, key=get_timekey)):
+        # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
+        # display-update events related to that trial:
         for trialidx,(stim,iti) in enumerate(zip(sorted(stimevents, key=get_timekey), sorted(post_itis, key=get_timekey))):
             trialnum = trialidx + 1
             assert stim.time < iti.time
-            # For each trial, store all associated stimulus-bitcode events (including the 1st stim-onset) as a list of
-            # display-update events related to that trial:
             current_bitcode_evs = [p for p in sorted(pixelevents, key=get_timekey) if p.time>=stim.time and p.time<=iti.time] # p.time<=iti.time to get bit-code for post-stimulus ITI
-            current_bitcode_values = [p.value[-1]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
+            current_bitcode_values = [p.value[pixcode_ix]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
             dynamic_stim_bitcodes.append(current_bitcode_evs)
             bitcodes_by_trial[trialnum] = current_bitcode_values #current_bitcode_evs
 
-        # Roughly calculate how many pixel-clock events there should be. For static images, there should be 1 bitcode-event per trial.
+        # Roughly calculate how many pixel-clock events there should be. 
+        # For static images, there should be 1 bitcode-event per trial.
         # For drifting gratings, on a 60Hz monitor, there should be 60-61 bitcode-events per trial.
         if 'grating' in session_info['stimulus'] or dynamic:
-            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1
+            nexpected_pixelevents = (ntrials * (session_info['stimduration']/1E3) * refresh_rate) + ntrials + 1 # ntrials + 1 = 1 update for each ITI blank, plus pre-ITI blank at start
         else:
             nexpected_pixelevents = ntrials*2 + 1 #(ntrials * (session_info['stimduration']/1E3)) + ntrials + 1
         nbitcode_events = sum([len(tr) for tr in dynamic_stim_bitcodes]) + 1 #len(itis) + 1 # Add an extra ITI for blank before first stimulus
@@ -988,11 +1022,18 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname] = dict()
             trial[trialname]['start_time_ms'] = round(stim.time/1E3)
             trial[trialname]['end_time_ms'] = round((iti.time/1E3 + iti_dur)) # session_info['ITI']))
+            stimtype = None
+            stimname = None
             if len(stim.value) > 2: # BUG presenting blank stimulus on 20181016
                 stimtype = stim.value[1]['type']
                 stimname = stim.value[1]['name']
             if 'grating' in stimtype:
-                stimrotation = stim.value[1]['rotation']
+                # If this is a MOVIE where rotation varies randomly, we should ignore the starting rot ('drifting square grating movie')
+                if 'tiled_retinotopy' in session_info['exp_name_long'] or 'tiled_retinotopy' in session_info['exp_name_short']:
+                    # ignore rotation starting value bec it's randomized (can recover later w/ direction_selector)
+                    stimrotation = 0
+                else:
+                    stimrotation = stim.value[1]['rotation']
                 stimpos = [stim.value[1]['xoffset'], stim.value[1]['yoffset']]
                 stimsize = (stim.value[1]['width'], stim.value[1]['height'])
                 phase = stim.value[1]['current_phase']
@@ -1025,39 +1066,53 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
                                               }
 
             else:
+                #print [d['name'] for d in stim.value]
                 # TODO:  fill this out with the appropriate variable tags for RSVP images
                 #stimname = stim.value[1]['name'] #''
                 if len(stim.value) == 2: # BLANK screen (but 20181016)
-                    stimname = 'blank'
-                    stimpos = (0, 0)
-                    stimsize = (0, 0)
-                    stimtype = 'blank'
+                    stimname = 'background'
+                    stimpos = (None, None)
+                    stimsize = (None, None)
+                    stimtype = 'background'
                     stimfile = ''
                     stimhash = ''
                     stimrotation = 0
+                    stimcolor = stim.value[1]['color_b']
+                elif 'control_gray_screen' in [d['name'] for d in stim.value]: 
+                    #print "control"
+                    stimname = 'control'
+                    stimrotation = 0 #stim.value[1]['rotation']
+                    stimpos = (None, None) #''
+                    stimsize = (None, None)
+                    stimfile = '' #stim.value[1]['filename']
+                    stimhash = '' #stim.value[1]['file_hash']
+                    stimcolor = stim.value[1]['color_b'] 
                 else:
                     stimrotation = stim.value[1]['rotation']
                     stimpos = (stim.value[1]['pos_x'], stim.value[1]['pos_y']) #''
                     stimsize = (stim.value[1]['size_x'], stim.value[1]['size_y'])
                     stimfile = stim.value[1]['filename']
                     stimhash = stim.value[1]['file_hash']
+                    stimcolor = '' #None
                 trial[trialname]['stimuli'] = {'stimulus': stimname,
                                               'position': stimpos,
                                               'scale': stimsize,
                                               'type': stimtype,
                                               'filepath': stimfile,
                                               'filehash': stimhash,
-                                              'rotation': stimrotation
+                                              'rotation': stimrotation,
+                                              'color': stimcolor
                                               }
 
-
+            trial[trialname]['stimuli'].update({'aspect': session_info['aspect']})
+            
             trial[trialname]['stim_on_times'] = round((stim.time - run_start_time)/1E3)
             trial[trialname]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
             trial[trialname]['all_bitcodes'] = bitcodes_by_trial[trialnum]
             #if stim.value[-1]['name']=='pixel clock':
-            trial[trialname]['stim_bitcode'] = stim.value[-1]['bit_code']
+            trial[trialname]['stim_bitcode'] = stim.value[pixcode_ix]['bit_code']
             trial[trialname]['stim_duration'] = round((iti.time - stim.time)/1E3)
-            trial[trialname]['iti_bitcode'] = iti.value[-1]['bit_code']
+            trial[trialname]['iti_bitcode'] = iti.value[pixcode_ix]['bit_code']
             trial[trialname]['iti_duration'] = iti_dur #session_info['ITI']
             trial[trialname]['run_start_time'] = run_start_time
             trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
@@ -1257,6 +1312,11 @@ def extract_options(options):
     parser.add_option('--auto', action="store_true",
                       dest="auto", default=False, help="Set flag if NOT interactive.")
 
+    parser.add_option('--backlight', action="store_true",
+                      dest="backlight_sensor", default=False, help="Set flag if using backlight sensor.")
+    parser.add_option('-E', action="store",
+                      dest="experiment_type", default=None, help="Set to tiled_retinotopy if doing tiled gratings")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -1282,6 +1342,9 @@ def parse_mw_trials(options):
     verbose = options.verbose
     single_run = options.single_run
     boundidx = int(options.boundidx)
+
+    backlight_sensor = options.backlight_sensor
+    experiment_type = options.experiment_type
 
     slurm = options.slurm
     if slurm is True and 'coxfs01' not in rootdir:
@@ -1311,7 +1374,7 @@ def parse_mw_trials(options):
         curr_dfn = mw_dfns[didx]
         curr_dfn_base = os.path.split(curr_dfn)[1][:-4]
         print "Current file: ", curr_dfn
-        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto)
+        trials = extract_trials(curr_dfn, dynamic=dynamic, retinobar=retinobar, phasemod=phasemod, trigger_varname=trigger_varname, verbose=verbose, single_run=single_run, boundidx=boundidx, auto=auto, experiment_type=experiment_type, backlight_sensor=backlight_sensor)
         #print trials['trial00001']
         save_trials(trials, paradigm_outdir, curr_dfn_base)
 

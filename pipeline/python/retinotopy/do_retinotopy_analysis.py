@@ -39,7 +39,7 @@ def extract_options(options):
                         help="ANALYSIS ID for retinoid param set to use (created with set_analysis_parameters.py, e.g., analysis001,  etc.)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
 
-    parser.add_option('-a', '--np-niter', action='store', dest='np_niter', default=10, help="n iterations for creating neuropil annulus (default: 10. standard is 20 for zoom2p0x, 10 for zoom4p0x")
+    parser.add_option('-a', '--np-niter', action='store', dest='np_niter', default=20, help="n iterations for creating neuropil annulus (default: 20. standard is 20 for zoom2p0x, 10 for zoom4p0x")
 
 
     (options, args) = parser.parse_args(options)

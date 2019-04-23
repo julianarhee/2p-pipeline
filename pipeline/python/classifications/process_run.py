@@ -48,6 +48,8 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
 
     # Load combined dataset, and make trial nums equal for stats, etc.: 
+    print "---> Loading dataset: %s" % traceid_dir
+
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
     dataset = np.load(data_fpath)
     
@@ -186,9 +188,20 @@ def main(options):
 
         optsE.run_list = [r for ri, r in enumerate(sorted(run_list, key=natural_keys)) if ri not in exclude_runs]
         optsE.traceid_list = [t for ti, t in enumerate(traceid_list) if ti not in exclude_runs]
+    else:
+
+        if (len(optsE.run_list) > len(optsE.traceid_list)):
+            if len(optsE.traceid_list)==1:
+                common_traceid = optsE.traceid_list[0]
+            elif optsE.traceid is not None:
+                common_traceid = optsE.traceid
+        optsE.traceid_list = [common_traceid for _ in range(len(optsE.run_list))]
 
     print "******************************************"
     print "Processing runs [traceids]:"
+    print optsE.run_list 
+    print optsE.traceid_list
+
     for run, traceid in zip(optsE.run_list, optsE.traceid_list):
         print run, traceid
     print "******************************************"

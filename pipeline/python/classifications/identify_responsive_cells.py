@@ -40,14 +40,14 @@ segment = False
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces002'
 
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC073' #'JC059'
-session = '20190327' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_blobs_static'
-traceid = 'traces001' #'traces001'
-segment = False
-visual_area = ''
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC073' #'JC059'
+#session = '20190327' #'20190227'
+#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+#run = 'combined_blobs_static'
+#traceid = 'traces001' #'traces001'
+#segment = False
+#visual_area = ''
 
 #rootdir = '/n/coxfs01/2p-data'
 #animalid = 'JC059' #'JC059'
@@ -55,6 +55,16 @@ visual_area = ''
 #fov = 'FOV4_zoom4p0x' #'FOV4_zoom4p0x'
 #run = 'combined_blobs_static'
 #traceid = 'traces001' #'traces001'
+
+
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC076' #'JC059'
+session = '20190410' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_gratings_static'
+traceid = 'traces001' #'traces001'
+segment = False
+visual_area = ''
 
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
@@ -89,7 +99,12 @@ if segment:
 #%%
 
 # Set dirs:
-sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, 'response_stats*')))[-1]
+try:
+    sorting_subdir = 'response_stats'
+    sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, '%s*' % sorting_subdir)))[-1]
+except Exception as e:
+    sorting_subdir = 'sorted_rois'
+    sorted_dir = sorted(glob.glob(os.path.join(traceid_dir, '%s*' % sorting_subdir)))[-1]
 print "Selected stats results: %s" % os.path.split(sorted_dir)[-1]
 
 # Set output dir:
@@ -130,7 +145,18 @@ selective_rois = np.array([r for r in rstats['sorted_selective'] if r in all_roi
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(visual_rois), rstats['responsivity_test'], rstats['visual_pval'])
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selective_rois), rstats['selectivity_test'], rstats['selective_pval'])
 
+del rstats
+
+
 #%%
+
+raw_traces = pd.DataFrame(traces) #, index=zscored_traces.index)
+
+# Get single value for each trial and sort by config:
+trials_by_cond = dict()
+for k, g in labels.groupby(['config']):
+    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+del traces
 
 # zscore the traces:
 # -----------------------------------------------------------------------------
@@ -139,32 +165,27 @@ for trial, tmat in labels.groupby(['trial']):
     #print trial    
     stim_on_frame = tmat['stim_on_frame'].unique()[0]
     nframes_on = tmat['nframes_on'].unique()[0]
-    curr_traces = traces[tmat.index, :]
-    bas_std = curr_traces[0:stim_on_frame, :].std(axis=0)
-    curr_zscored_traces = pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
-    
+    curr_traces = raw_traces.iloc[tmat.index] ##traces[tmat.index, :]
+    bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
+    #curr_zscored_traces = pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
+    curr_zscored_traces = pd.DataFrame(curr_traces).divide(bas_std, axis='columns')
     zscored_traces_list.append(curr_zscored_traces)
-
 zscored_traces = pd.concat(zscored_traces_list, axis=0)
+
+zscores_by_cond = dict()
+for cfg, trial_ixs in trials_by_cond.items():
+    zscores_by_cond[cfg] = zscored_traces.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
+
+
 zscored_traces.head()
 
-raw_traces = pd.DataFrame(traces, index=zscored_traces.index)
-raw_traces.head()
     
 #%
 
 # Sort ROIs by zscore by cond
 # -----------------------------------------------------------------------------
 
-# Get single value for each trial and sort by config:
-trials_by_cond = dict()
-for k, g in labels.groupby(['config']):
-    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
 
-zscores_by_cond = dict()
-for cfg, trial_ixs in trials_by_cond.items():
-    zscores_by_cond[cfg] = zscores[trial_ixs, :]  # For each config, array of size ntrials x nrois
-    
 avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
                                     for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
 
@@ -193,45 +214,118 @@ stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim
 snrs = stim_means/bas_means
   
 
-sizes = sorted(sdf['size'].unique())
-morphlevels = sorted(sdf['morphlevel'].unique())
+#sizes = sorted(sdf['size'].unique())
+#morphlevels = sorted(sdf['morphlevel'].unique())
 
+#%%
+
+
+rows = 'ypos'
+cols = 'xpos'
+
+row_vals = sorted(sdf[rows].unique())
+col_vals = sorted(sdf[cols].unique())
 
 
 #%%
 
+# Compare against RETINO:
+# -============================================================================
+
+# sort cells:
+retino_rois_fpath = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysis*', 'visualization', 'rf_estimates', '2019*', '*.json'))[0]
+
+with open(retino_rois_fpath, 'r') as f:
+    retino_rois = json.load(f)
+retino_top_rois = retino_rois['sorted_rois']
+
+pl.figure()
+all_rois = list(copy.copy(sorted_selective))
+all_rois.extend(retino_top_rois)
+all_rois = list(set(all_rois))
+
+roi_matches = []
+for r in all_rois:
+    if r in sorted_selective and r in retino_top_rois:
+        roi_matches.append([r, r])
+    elif r in sorted_selective:
+        roi_matches.append([0, r])
+    elif r in retino_top_rois:
+        roi_matches.append([r, 0])
+
+roi_matches = np.array(roi_matches)
+        
+fig, ax = pl.subplots()
+ax.scatter(roi_matches[:, 0], roi_matches[:, 1])
+ax.set_xlabel('retino')
+ax.set_ylabel('tiling')
+
+roi_both = [r for r in all_rois if r in sorted_selective and r in retino_top_rois]
+for ri, ridx in enumerate(roi_both):
+    ax.text(roi_matches[ri, 0], roi_matches[ri, 1],'%i' % ridx, fontsize=12)
+
+for r in all_rois:
+    if r in sorted_selective and r in retino_top_rois:
+        ax.scatter(r, r, 'p*')
+    elif r in sorted_selective:
+        ax.scatter(r, 0, 'r*')
+    elif r in retino_top_rois:
+        ax.scatter(0, r, 'b*')
+        
+
+#%%
+
 # Plot zscored-traces of each "selective" ROI
+# -============================================================================
+
+#rows = 'size'
+#cols = 'morphlevel'
+
+plot_zscored = True
+annotate = False
+plot_average = True
+plot_heatmap = False
+
+
+figsize = (10,4)
+axes_pad = 0.1
+lw = 1
+
+plot_type = 'heatmap' if plot_heatmap else 'traces'
+average_str = 'average' if plot_average else 'trials'
+
+subplot_aspect = 4 # (float(len(col_vals))/float(len(row_vals))) * 4.
+
+
 # -----------------------------------------------------------------------------
-rows = 'size'
-cols = 'morphlevel'
 
 config_trial_ixs = dict()
 cix = 0
-for si, size in enumerate(sorted(sizes)):
-    for mi, morph in enumerate(morphlevels):
+for si, row_val in enumerate(sorted(row_vals)):
+    for mi, col_val in enumerate(col_vals):
         config_trial_ixs[cix] = {}
-        cfg = sdf[(sdf['size']==size) & (sdf['morphlevel']==morph)].index.tolist()[0]
+        cfg = sdf[(sdf[rows]==row_val) & (sdf[cols]==col_val)].index.tolist()[0]
         trial_ixs = sorted( list(set( [int(tr[5:])-1 for tr in labels[labels['config']==cfg]['trial']] )) )
         config_trial_ixs[cix]['config'] = cfg
         config_trial_ixs[cix]['trial_ixs'] = trial_ixs
         cix += 1
 
-plot_zscored = False
 
 trace_type = 'zscored' if plot_zscored else 'raw'
-curr_figdir = os.path.join(output_dir, 'roi_trials_by_cond_%s' % trace_type)
+curr_figdir = os.path.join(output_dir, 'roi_trials_by_cond_%s_%s_%s' % (trace_type, plot_type, average_str))
 if not os.path.exists(curr_figdir):
     os.makedirs(curr_figdir)
 print "Saving figures to:", curr_figdir
 
-#rid = 137 #14
 
-for rid in sorted_selective:
+#%%
+#rid = 137 #14
+for rid in sorted_selective[0:10]:
     print rid
     roi_zscores = zscores[:, rid]
     if plot_zscored:
         roi_trace = zscored_traces[rid] #traces[:, rid]
-        roi_metric = zscores[:, rid]
+        roi_metrics = zscores[:, rid]
         metric_name = 'zscore'
         value_name = 'zscore'
     else:
@@ -240,6 +334,9 @@ for rid in sorted_selective:
         metric_name = 'snr'
         value_name = 'intensity'
         
+    #ymin = roi_trace.min()
+    #ymax = roi_trace.max()
+        
     traces_by_config = dict((config, []) for config in labels['config'].unique())
     for k, g in labels.groupby(['config', 'trial']):
         traces_by_config[k[0]].append(roi_trace[g.index])
@@ -247,10 +344,10 @@ for rid in sorted_selective:
         traces_by_config[config] = np.vstack(traces_by_config[config])
     
     
-    fig = pl.figure(figsize=(18,4))
-    grid = AxesGrid(fig, 111,
-                    nrows_ncols=(len(sizes), len(morphlevels)),
-                    axes_pad=0.2,
+    fig = pl.figure(figsize=figsize) # (18,4))
+    grid = AxesGrid(fig, 111, 
+                    nrows_ncols=(len(row_vals), len(col_vals)),
+                    axes_pad=axes_pad,
                     cbar_mode='single',
                     cbar_location='right',
                     cbar_pad=0.1)
@@ -259,28 +356,49 @@ for rid in sorted_selective:
     #zscores_by_cond_list = []
     for aix in sorted(config_trial_ixs.keys()): # Ordered by stim conditions
         #print aix
+        
         ax = grid.axes_all[aix]
         cfg = config_trial_ixs[aix]['config']
         trial_ixs = config_trial_ixs[aix]['trial_ixs']
         
         curr_cond_traces = traces_by_config[cfg]
-        im = ax.imshow(curr_cond_traces, cmap='inferno')
-        ax.set_aspect(2.5)
-        ax.set_axis_off()
+
+        if plot_heatmap:
+            im = ax.imshow(curr_cond_traces, cmap='inferno')
+        else:
+            if plot_average:
+                curr_cond_traces = curr_cond_traces.mean(axis=0)[stim_on_frame:stim_on_frame+nframes_on*2]
+            ax.plot(curr_cond_traces, 'k', lw=lw)
+        
+        ax.set_aspect(subplot_aspect)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
         
         # get zscore values:
         curr_cond_metrics = roi_metrics[trial_ixs]
-        ax.set_title('%s %.2f (std %.2f)' % (metric_name, curr_cond_metrics.mean(), stats.sem(curr_cond_metrics)), fontsize=6)
-        ax.set_ylabel('trial')
+        if annotate:
+            ax.set_title('%s %.2f (std %.2f)' % (metric_name, curr_cond_metrics.mean(), stats.sem(curr_cond_metrics)), fontsize=6)
+            ax.set_ylabel('trial')
         
         ax.axvline(x=stim_on_frame, color='w', lw=0.5, alpha=0.5)
         ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5, alpha=0.5)
+        
+        if aix % len(col_vals) == 0:
+            print aix
+            ax.set_ylabel(int(sdf[rows][cfg]), rotation='horizontal', labelpad=20)
             
+        sns.despine(left=True, bottom=True, ax=ax)
+        #ax.set_ylim([ymin, ymax])
+        
     fig.suptitle('roi %i' % int(rid+1))
     
-    cbar = ax.cax.colorbar(im)
-    cbar = grid.cbar_axes[0].colorbar(im)
-    cbar.ax.set_ylabel(value_name)
+    if plot_heatmap:
+        cbar = ax.cax.colorbar(im)
+        cbar = grid.cbar_axes[0].colorbar(im)
+        cbar.ax.set_ylabel(value_name)
     
     figname = 'zscored_trials_roi%05d' % int(rid+1)
     label_figure(fig, data_identifier)
@@ -290,6 +408,7 @@ for rid in sorted_selective:
     #print roi_zscores_by_cond.head()
 
     pl.close()
+    print figname
 
 
 #%%
@@ -430,6 +549,8 @@ pl.savefig(os.path.join(output_dir, 'visual_selective_rois.png'))
 
 #%%
 
+#rows = 'yrot'
+#cols = 'morphlevel'
 
 curr_figdir = os.path.join(output_dir, 'selective_rois')
 if not os.path.exists(curr_figdir):
@@ -443,7 +564,7 @@ min_snr =  2
 # -----------------------------------------------------------------------
 #rid = sorted_selective[0]
 
-for rid in sorted_selective:
+for rid in sorted_selective[0:5]:
     roi_zscores = zscores[:, rid]
     roi_trace = raw_traces[rid] #[:, rid]
     
@@ -463,8 +584,14 @@ for rid in sorted_selective:
     # Get all trial indices of this config:
     ntrials = traces_by_cond[best_cfg].shape[0]
     best_cfg_trial_ixs = sorted(trials_by_cond[best_cfg])
-    curr_snrs = snrs[best_cfg_trial_ixs, rid]
-    curr_zscores = zscores[best_cfg_trial_ixs, rid]
+    
+    tmp_snrs = snrs[best_cfg_trial_ixs, rid]
+    tmp_zscores = zscores[best_cfg_trial_ixs, rid]
+    
+    funky_vals = [i for i,v in enumerate(tmp_snrs) if abs(v) > 1000]
+    normal_vals = np.array([i for i in np.arange(0, len(tmp_snrs)) if i not in funky_vals])
+    curr_snrs = tmp_snrs[normal_vals]
+    curr_zscores = tmp_zscores[normal_vals]
     
     #%
     fig, axes = pl.subplots(1,3, figsize=(25, 5)) #pl.figure()
@@ -476,7 +603,7 @@ for rid in sorted_selective:
     cax = divider.append_axes('right', size='1%', pad=0.1) 
     pl.colorbar(im, cax=cax, cmap='inferno')
     cax.yaxis.set_ticks_position('right')
-    ax.set_title('raw traces (%s: mp %i, sz %i)' % (best_cfg, sdf['morphlevel'][best_cfg], sdf['size'][best_cfg]), fontsize=10)
+    ax.set_title('raw traces (%s: %s %i, %s %i)' % (best_cfg, cols, sdf[cols][best_cfg], rows, sdf[rows][best_cfg]), fontsize=10)
     ax.set_ylabel('trial')
     ax.set_xlabel('frame')
     ax.set_xticks([]); ax.set_xticklabels([]);
@@ -495,8 +622,8 @@ for rid in sorted_selective:
     ax.set_title('zscores vs snr (best cfg)')
     for tid in np.arange(0, curr_snrs.shape[0]):
         ax.annotate('%i' % tid, (curr_zscores[tid], curr_snrs[tid]), fontsize=6)
-    ax.set_ylim([min([0, curr_snrs.min()-1]), curr_snrs.max()+1])
-    ax.set_xlim([min([0, curr_zscores.min()]), curr_zscores.max()+1])
+    ax.set_ylim([min([-2, abs(curr_snrs.min()-1)]), curr_snrs.max()+1])
+    ax.set_xlim([min([-2, abs(curr_zscores.min()-1)]), curr_zscores.max()+1])
     # Also plot "worst"?
     worst_cfg = 'config%03d' % int(sorted_configs_by_zscore[-1]+1)
     ax.plot(zscores[trials_by_cond[worst_cfg], rid], snrs[trials_by_cond[worst_cfg], rid],\
@@ -509,19 +636,20 @@ for rid in sorted_selective:
     # Plot distN of all sizes @ best morph, all morphs @ best size:
     snr_df = pd.concat([pd.Series(snrs[trial_ixs, rid], name=k) for k, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0])], axis=1)
     snr_df2 = snr_df.melt(var_name='configs', value_name='snr')
-    snr_df2['morphlevel'] = pd.Series(sdf['morphlevel'][cfg] for cfg in snr_df2['configs'])
-    snr_df2['size'] = pd.Series(sdf['size'][cfg] for cfg in snr_df2['configs'])
+    snr_df2[cols] = pd.Series(sdf[cols][cfg] for cfg in snr_df2['configs'])
+    snr_df2[rows] = pd.Series(sdf[rows][cfg] for cfg in snr_df2['configs'])
     ax = axes[2]
     ax.clear()
-    g = sns.stripplot(x='morphlevel', y='snr', hue='size', data=snr_df2, ax=ax,
-                      jitter=True, dodge=True, alpha=0.5, size=5, palette=sns.cubehelix_palette(len(sizes))) #'GnBu_d')
+    g = sns.stripplot(x=cols, y='snr', hue=rows, data=snr_df2, ax=ax,
+                      jitter=True, dodge=True, alpha=0.5, size=5, palette=sns.cubehelix_palette(len(row_vals))) #'GnBu_d')
+    ax.set_ylim([-10, min([snr_df.max().max(), 100])])
     sns.despine(trim=True,offset=4, ax=ax)
     
     fig.suptitle('roi #%i' % int(rid+1))
     
     pl.subplots_adjust(top=0.8)
     
-    figname = 'roi%05d_%s_rawtraces_snr' % (rid, cfg)
+    figname = 'roi%05d_%s_rawtraces_snr' % (int(rid+1), cfg)
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
     
@@ -708,7 +836,7 @@ cmap = 'PRGn'
 
 #cmap = sns.diverging_palette(10, 220, sep=80) # 'PRGn' #dubrovnik #nanticoke #skalafell #dubrovnik #PRGn'
 
-fig_subdir = 'morph_size_corrs_GM' if subtract_GM else 'morph_size_corrs'
+fig_subdir = '%s_%s_corrs_GM' % (cols, rows) if subtract_GM else '%s_%s_corrs' % (cols, rows)
 
 if segment:
     curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir, visual_area)
@@ -760,14 +888,14 @@ for subset in subsets:
     print figname
     
     
-    morphlevels = sorted(sdf['morphlevel'].unique())
-    sizes = sorted(sdf['size'].unique())
+    col_vals = sorted(sdf[cols].unique())
+    row_vals = sorted(sdf[rows].unique())
     
     # Plot morph correlations for each size:
     # --------------------------------------
-    grid_axis = 'size'; grid_values = copy.copy(sizes);
-    plot_axis = 'morphlevel'; plot_values = copy.copy(morphlevels);
-    fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=sizes,\
+    grid_axis = rows; grid_values = copy.copy(row_vals);
+    plot_axis = cols; plot_values = copy.copy(col_vals);
+    fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
                              title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
@@ -779,8 +907,8 @@ for subset in subsets:
     
     # Plot size correlations for each morph:
     # --------------------------------------
-    grid_axis = 'morphlevel'; grid_values = copy.copy(morphlevels);
-    plot_axis = 'size'; plot_values = copy.copy(sizes);
+    grid_axis = cols; grid_values = copy.copy(col_vals);
+    plot_axis = rows; plot_values = copy.copy(row_vals);
     fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\

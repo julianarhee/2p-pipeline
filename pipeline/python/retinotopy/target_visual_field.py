@@ -72,8 +72,8 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
         df.close()
         
     fit = pd.concat(fits, axis=1)
-    magratio = pd.concat(mags, axis=1)
-    phase = pd.concat(phases, axis=1)
+        magratio = pd.concat(mags, axis=1)
+        phase = pd.concat(phases, axis=1)
     
     return fit, magratio, phase, trials_by_cond
 
@@ -493,7 +493,32 @@ def plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=True, \
 
 #%%
 
+#
+#    screen_left = stim_positions['left'].iloc[0,:].mean()
+#    #screen_right = stim_positions['right'].iloc[0,:].mean()
+#    screen_right = stim_positions['left'].iloc[-1,:].mean()
+#    #screen_upper = stim_positions['top'].iloc[0,:].mean()
+#    screen_upper = stim_positions['bottom'].iloc[-1,:].mean()
+#    screen_lower = stim_positions['bottom'].iloc[0,:].mean()
+#
+#
+#    # Find strongly responding cells to calcualte delay
+#    mean_mags = magratio.mean(axis=1)
+#    strong_cells = mean_mags[mean_mags >= mag_thr].index.tolist()
+#    print("ROIs with best mag-ratio (n=%i, thr=%.2f):" % (len(strong_cells), mag_thr), strong_cells)
+#        
+##        mean_fits = fit.mean(axis=1)
+##        best_fits = mean_fits[mean_fits >= fit_thr].index.tolist()
+##        print("ROIs with best fit (n=%i, thr=%.2f):" % (len(best_fits), fit_thr), best_fits)
+#
+#    if absolute:
+#        use_relative = False
+#        mean_phase_left = sp.stats.circmean(phase[trials_by_cond['left']], axis=1, low=-np.pi, high=np.pi)
+#        mean_phase_right = sp.stats.circmean(phase[trials_by_cond['right']], axis=1, low=-np.pi, high=np.pi)
+#        mean_phase_bottom = sp.stats.circmean(phase[trials_by_cond['bottom']], axis=1, low=-np.pi, high=np.pi)
+#        mean_phase_top = sp.stats.circmean(phase[trials_by_cond['top']], axis=1, low=-np.pi, high=np.pi)
 
+#%%
 def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolute=True, \
                          mag_thr=0.02, delay_thr=np.pi/2, equal_travel_lengths=True):
     
@@ -533,8 +558,8 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
 
         # Calculate delay map from non-corrected 
         delay_az = (mean_phase_left[strong_cells] + mean_phase_right[strong_cells]) / 2.
-        avg_delay_az = delay_az.mean()
-        std_delay_az = delay_az.std()
+        avg_delay_az = np.nanmean(delay_az)
+        std_delay_az = np.nanstd(delay_az)
         print "[AZ] Average delay (std): %.2f (%.2f)" % (avg_delay_az, std_delay_az)
         
         delay_el = (mean_phase_bottom[strong_cells] + mean_phase_top[strong_cells]) / 2.
@@ -564,8 +589,8 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
                               oldmin=-np.pi, oldmax=np.pi)  
         
     else:
-        corrected_phase_right = correct_phase_wrap(phase[trials_by_cond['right']])
-        corrected_phase_top = correct_phase_wrap(phase[trials_by_cond['top']])
+        corrected_phase_right = rutils.correct_phase_wrap(phase[trials_by_cond['right']])
+        corrected_phase_top = rutils.correct_phase_wrap(phase[trials_by_cond['top']])
                                              
         mean_phase_az = sp.stats.circmean(corrected_phase_right, axis=1, low=0, high=2*np.pi)
         mean_phase_el = sp.stats.circmean(corrected_phase_top, axis=1, low=0, high=2*np.pi)
@@ -593,16 +618,16 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
                        'screen_bb': [screen_lower, screen_left, screen_upper, screen_right]}
                        
     return absolute_coords, strong_cells
+   
     
-    
-def correct_phase_wrap(phase):
-        
-    corrected_phase = phase.copy()
-    
-    corrected_phase[phase<0] =- phase[phase<0]
-    corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
-    
-    return corrected_phase
+#def correct_phase_wrap(phase):
+#        
+#    corrected_phase = phase.copy()
+#    
+#    corrected_phase[phase<0] =- phase[phase<0]
+#    corrected_phase[phase>0] = (2*np.pi) - phase[phase>0]
+#    
+#    return corrected_phase
 
 
 #%%
@@ -813,10 +838,10 @@ def main(options):
     print trials_by_cond
 
     # Correct phase to wrap around:
-    corrected_phase = correct_phase_wrap(phase)
+    corrected_phase = rutils.correct_phase_wrap(phase)
     
     # Get screen info:
-    screen = visroi.get_screen_info(animalid, session, rootdir=rootdir)
+    screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
     
     # Convert phase to linear coords:
     screen_left = -1*screen['azimuth']/2.
@@ -843,8 +868,8 @@ def main(options):
     
     # Identify "good" cells by mag-ratio or FIT from regression (do_retinotopy_analysis)
     # -------------------------------------------------------------------------
-    threshold = opts.threshold
-    fig = plot_signal_fits_by_roi(fit, magratio, threshold=threshold, data_identifier=data_identifier,
+    mag_thr = opts.threshold
+    fig = plot_signal_fits_by_roi(fit, magratio, threshold=mag_thr, data_identifier=data_identifier,
                                   fov=fov, retinoid=retinoid, output_dir=output_dir)
 
     

@@ -346,6 +346,12 @@ def get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype
     print "Runs:", run_list
     print "TraceIDs:", traceid_list
     if len(run_list) > 0:
+        for run, traceid in zip(run_list, traceid_list):
+            print run
+            print glob.glob(os.path.join(acquisition_dir, '*%s*' % run, 'traces'))
+
+            print glob.glob(os.path.join(acquisition_dir, '*%s*' % run, 'traces', '%s*' % traceid))
+
         check_run_dir = sorted([glob.glob(os.path.join(acquisition_dir, '*%s*' % run, 'traces', '%s*' % traceid))[0] for run, traceid in zip(run_list, traceid_list)], key=natural_keys)
     else:
         check_run_dir = sorted(list(set([item for sublist in [glob.glob(os.path.join(acquisition_dir, '*%s_run*' % stimtype, 'traces', '%s*' % traceid)) for traceid in traceid_list] for item in sublist if 'combined' not in item])), key=natural_keys)

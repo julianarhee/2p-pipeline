@@ -72,6 +72,8 @@ import pandas as pd
 import cPickle as pkl
 from collections import Counter
 from pipeline.python.paradigm import process_mw_files as mw
+from pipeline.python.paradigm import utils as util
+
 from pipeline.python.utils import hash_file
 
 def atoi(text):
@@ -98,7 +100,7 @@ def dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_
         
 #%%
 
-def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False):
+def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=True, verbose=False, remove_skipped_trials=False):
     '''
     For every bitcode of every trial, find corresponding SI frame.
     
@@ -121,9 +123,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 
     #abstime = serialdata[' abosolute_arduino_time']
     ### Extract events from serialdata:
-    frame_triggers = serialdata[' frame_trigger']
-    all_bitcodes = serialdata[' pixel_clock']
-
+    frame_triggers = serialdata['frame_trigger']
+    all_bitcodes = serialdata['pixel_clock']
+    
     ### Find frame ON triggers (from NIDAQ-SI):
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
     frame_on_idxs.append(0)
@@ -281,7 +283,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     for tidx, trial in enumerate(sorted(mwtrials.keys(), key=natural_keys)): #[0:254]: #[0:46]):
     #for tidx, trial in zip(np.arange(tidx, len(mwtrials.keys())), sorted(mwtrials.keys(), key=natural_keys)[tidx:]):
-    
+        most_recent_skipped_list = [v for k, v in skipped.items()]
+        if trial in most_recent_skipped_list:
+            continue
+  
         print "Parsing %s" % trial
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
@@ -319,18 +324,19 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         if skip_trial: # Skip the PREVIOUS trials, so jump full trial's worth of frame indices:
             print "... Skipping previous trials' frames (%s)..." % prev_trial
-            iti_frames = round(round(mwtrials[prev_trial]['iti_duration']/1E3, 1) * framerate, 1) 
-            stim_frames = round(round(mwtrials[prev_trial]['stim_duration']/1E3, 1) * framerate, 1) 
-            # NOTE:  Trials skipped if massive frame-shift error in bitcodes
-            # This is likely an indication of funky behavior during acquisition - we should skip these trials
-            # Based on 20180814 - JC008 gratings data, we don't want to skip full trial's worth of frames.
-            nframes_to_skip = int((stim_frames + iti_frames)) / 2
-            # Add nframes to actual frame index:
-            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
-            # Get the subdivided frame key that this new frame corresponds to:
-            relative_frame_ix = [int(fr.split('_')[0]) for fr in curr_frames].index(new_start_ix)
-            curr_frames = sorted(curr_frames[relative_frame_ix:], key=natural_keys)
-
+            nframes_to_skip = 0
+#            iti_frames = round(round(mwtrials[prev_trial]['iti_duration']/1E3, 1) * framerate, 1) 
+#            stim_frames = round(round(mwtrials[prev_trial]['stim_duration']/1E3, 1) * framerate, 1) 
+#            # NOTE:  Trials skipped if massive frame-shift error in bitcodes
+#            # This is likely an indication of funky behavior during acquisition - we should skip these trials
+#            # Based on 20180814 - JC008 gratings data, we don't want to skip full trial's worth of frames.
+#            nframes_to_skip = int((stim_frames + iti_frames)) / 2
+#            # Add nframes to actual frame index:
+#            new_start_ix = int(curr_frames[0].split('_')[0]) + nframes_to_skip
+#            # Get the subdivided frame key that this new frame corresponds to:
+#            relative_frame_ix = [int(fr.split('_')[0]) for fr in curr_frames].index(new_start_ix)
+#            curr_frames = sorted(curr_frames[relative_frame_ix:], key=natural_keys)
+#
        
         elif (blank_start is True):
             if tidx == 0:
@@ -414,7 +420,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     currframe = int(tuple(pframe)[0].split('_')[0])
                     prevframe = int(first_found_frame[bi-1][0].split('_')[0])
                     # Make sure that the time difference (s) between consecutive frames is below some min.
-                    assert (currframe - prevframe)/framerate <= (20./framerate), "Break found in %s. Skipping!" % trial
+                    assert (currframe - prevframe)/framerate <= (20./framerate), "Break found in %s (missed %.2f). Skipping!" % (trial, (currframe - prevframe)/framerate)
                                     
                 #--first_found_frame.append(first_frame[1])
                 #--curr_frames = curr_frames[first_frame[0]:] #curr_frames[found_frame[0]:]
@@ -438,19 +444,21 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                 last_bitcode = np.copy(bitcode)
                 while (last_frame[1] == bitcode and nskips==0) or nskips < 2:
                     last_frame = next(iter_curr_frame_vals)
-                    currframes_counter += 1
+                    
                     if last_bitcode != last_frame[1]:
                         if verbose:
                             print '...', last_frame, last_bitcode, '(', bitcode, ')' 
                         nskips += 1
                         last_bitcode = last_frame[1]
+                    currframes_counter += 1
+
                 #last_frame = [(fi, fr) for fi, fr in enumerate(curr_frame_vals) if fr[1]!=bitcode]
                 #print "...", last_frame[0], last_frame[1], bitcode
                 if verbose:
                     print '... last bitcode: %i, first bitcode of next trial %i' % (bitcode, last_bitcode) 
                     print "... Skipping %i indices." % currframes_counter
-                curr_frames = curr_frames[currframes_counter-1:]
-                curr_frame_vals = curr_frame_vals[currframes_counter-1:] 
+                curr_frames = curr_frames[currframes_counter-2:]
+                curr_frame_vals = curr_frame_vals[currframes_counter-2:] 
             
         except Exception as e:
             print e
@@ -459,18 +467,34 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             print "bitcodes:", bitcodes
             # Flag skip_trial TRUE so that on the next trial's parsing, we know to skip a portion of the frames...
             skip_trial = True 
+
+            # Reset iterative loop effects:
             curr_frames = starting_frame_set.copy() # Revert incrementally-shortened frame-bank
+            curr_frame_vals = list((k, modes_by_frame[k]) for k in curr_frames)
+
             dump_last_state(mwtrial_path, trialevents, trial, starting_frame_set, first_found_frame,
                                 bitcodes, modes_by_frame, frame_bitcodes, serialfn_path)        
-            break
-    
+            # Identify which trials skipped:
+            starting_frames = sorted(starting_frame_set, key=natural_keys)
+            starting_bitcodes = [modes_by_frame[init_fr_ix] for init_fr_ix in starting_frames[0:10]]
+            # Get rid of repeats across frames
+            repeat_ixs = [rm_fr_ix+1 for rm_fr_ix, fr_val in enumerate(np.diff(starting_bitcodes)) if fr_val == 0]
+            next_found_trial_bitcodes = [next_bval for next_bix, next_bval in enumerate(starting_bitcodes) if next_bix not in repeat_ixs]
+            matching_trials = [mwt for mwt in mwtrials.keys() if ', '.join([str(bitcode_int) for bitcode_int in next_found_trial_bitcodes]) in str(mwtrials[mwt]['all_bitcodes'])]
+            next_found_trial = sorted([found_trial for found_trial in matching_trials if int(found_trial[5:]) > int(trial[5:])], key=natural_keys)[0]
+            
+            curr_skipped_trials = ['trial%05d' % int(skip_ix) for skip_ix in np.arange(int(trial[5:]), int(next_found_trial[5:]))]
+            #break
         prev_trial = trial
         
         if skip_trial:
             # Store skip info to remove from MW dicts and trialevents dict.
             # Continue to skip bitcode/trial-duration checks for skipped trial.
-            skipped.update({mwtrial_hash: trial})
-            print "** SKIPPED: %s" % trial            
+            for skipped_trial in curr_skipped_trials:
+                curr_mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[skipped_trial], sort_keys=True)).hexdigest()
+
+                skipped.update({curr_mwtrial_hash: skipped_trial})
+                print "** SKIPPED: %s" % skipped_trial            
             continue
         
         # Do checks for stimulus duration:        
@@ -503,14 +527,25 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         print " *** WARNING -- funky stim durs found:", rounded_durs
         print " --- found MW stim durs:", unique_mw_stim_durs
     
-    # REmove skipped:
+    if skipped != {}:
+        # Rename original parsed:
+        mw_fname = os.path.splitext(os.path.split(mwtrial_path)[-1])[0]
+        orig_fpath = os.path.join(os.path.split(mwtrial_path)[0], '_orig_%s.json' % mw_fname)
+        with open(orig_fpath, 'w') as f:
+            json.dump(mwtrials, f, indent=True, sort_keys=True)
+    
+    # Remove skipped, then resave:
     for hkey,nkey in skipped.items():
-        del trialevents[hkey]
-        del mwtrials[nkey]
-        with open(mwtrial_path, 'w') as f:
-            json.dump(mwtrials, f)
-        print "Updated MWtrials and trial events."
-        print "TOTAL N trials:", len(mwtrials.keys())
+        print "Removing skipped trial: %s (%s)" % (nkey, hkey)
+        if hkey in trialevents.keys():
+            del trialevents[hkey]
+        if nkey in mwtrials.keys():
+            del mwtrials[nkey]
+
+    with open(mwtrial_path, 'w') as f:
+        json.dump(mwtrials, f, indent=True, sort_keys=True)
+    print "Updated MWtrials and trial events."
+    print "TOTAL N trials:", len(mwtrials.keys())
 #%%
     return trialevents
 
@@ -558,6 +593,12 @@ def extract_options(options):
 
     parser.add_option('--auto', action="store_true",
                       dest="auto", default=False, help="Set flag if NOT interactive.")
+
+    parser.add_option('--backlight', action="store_true",
+                      dest="backlight_sensor", default=False, help="Set flag if using backlight sensor.")
+    parser.add_option('-E', action="store",
+                      dest="experiment_type", default=None, help="Set to tiled_retinotopy if doing tiled gratings")
+
 
 
     (options, args) = parser.parse_args(options)
@@ -607,7 +648,7 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 
     # Load MW info:
     paradigm_outdir = os.path.join(run_dir, 'paradigm', 'files')
-    mwtrial_fns = sorted([j for j in os.listdir(paradigm_outdir) if j.endswith('json') and 'parsed_' in j], key=natural_keys)
+    mwtrial_fns = sorted(glob.glob(os.path.join(paradigm_outdir, 'parsed_trials*.json')), key=natural_keys)
     print "Found %02d MW files, and %02d ARD files." % (len(mwtrial_fns), len(serialdata_fns))
 
 
@@ -653,8 +694,9 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
         #     - paths to MW and serial data info that are the source of this dict's contents
         trialnum = 0
         for trialhash in sorted_trials_in_run:
-            trialnum += 1
-            trialname = 'trial%05d' % int(trialnum)
+            #trialnum += 1
+            trialname = trialevents[trialhash]['trial'] #'trial%05d' % int(trialnum)
+            trialnum = int(trialname[5:])
 
             RUN[trialname] = dict()
             RUN[trialname]['trial_hash'] = trialhash
@@ -694,6 +736,10 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
     parsed_run_outfile = os.path.join(outdir, 'trials_%s.json' % run_trial_hash)
     with open(parsed_run_outfile, 'w') as f:
         json.dump(RUN, f, sort_keys=True, indent=4)
+        
+        
+    configs, stimtype = util.save_stimulus_configs(RUN, outdir)
+
 
     return parsed_run_outfile
 
@@ -702,7 +748,9 @@ def parse_acquisition_events(run_dir, blank_start=True, verbose=False):
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180609', '-A', 'FOV1_zoom1x','-R', 'blobs_run1']
 #options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180627', '-A', 'FOV1_zoom1x','-R', 'gratings_rotating_static']
-options = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'JC008', '-S', '20180814', '-A', 'FOV1_zoom1x',
+#options = ['-D', '/Volumes/coxfs01/2p-data', '-i', 'JC008', '-S', '20180814', '-A', 'FOV1_zoom1x',
+#           '-R', 'gratings_run1']
+options = ['--slurm', '-i', 'JC076', '-S', '20190405', '-A', 'FOV2_zoom2p0x',
            '-R', 'gratings_run1']
 
 
@@ -737,8 +785,10 @@ def main(options):
     boundidx = int(options.boundidx)
 
     stimorder_files = False #True
+    backlight_sensor = options.backlight_sensor
+    experiment_type = options.experiment_type
 
-    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx]
+    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx, '-E', experiment_type]
     if slurm is True:
         mwopts.extend(['--slurm'])
     if dynamic is True:
@@ -753,7 +803,9 @@ def main(options):
         mwopts.extend(['--verbose'])
     if auto is True:
         mwopts.extend(['--auto'])
-
+    if backlight_sensor:
+        mwopts.extend(['--backlight'])
+    
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)
     print "----------------------------------------"
