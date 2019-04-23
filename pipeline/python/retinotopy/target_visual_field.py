@@ -72,8 +72,8 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
         df.close()
         
     fit = pd.concat(fits, axis=1)
-    magratio = pd.concat(mags, axis=1)
-    phase = pd.concat(phases, axis=1)
+        magratio = pd.concat(mags, axis=1)
+        phase = pd.concat(phases, axis=1)
     
     return fit, magratio, phase, trials_by_cond
 
@@ -618,7 +618,7 @@ def get_absolute_centers(phase, magratio, trials_by_cond, stim_positions, absolu
                        'screen_bb': [screen_lower, screen_left, screen_upper, screen_right]}
                        
     return absolute_coords, strong_cells
-    
+   
     
 #def correct_phase_wrap(phase):
 #        
