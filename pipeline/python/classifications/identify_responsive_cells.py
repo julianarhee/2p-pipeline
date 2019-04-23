@@ -59,7 +59,7 @@ segment = False
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC076' #'JC059'
-session = '20190406' #'20190227'
+session = '20190410' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
@@ -145,7 +145,18 @@ selective_rois = np.array([r for r in rstats['sorted_selective'] if r in all_roi
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(visual_rois), rstats['responsivity_test'], rstats['visual_pval'])
 print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selective_rois), rstats['selectivity_test'], rstats['selective_pval'])
 
+del rstats
+
+
 #%%
+
+raw_traces = pd.DataFrame(traces) #, index=zscored_traces.index)
+
+# Get single value for each trial and sort by config:
+trials_by_cond = dict()
+for k, g in labels.groupby(['config']):
+    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+del traces
 
 # zscore the traces:
 # -----------------------------------------------------------------------------
@@ -154,32 +165,27 @@ for trial, tmat in labels.groupby(['trial']):
     #print trial    
     stim_on_frame = tmat['stim_on_frame'].unique()[0]
     nframes_on = tmat['nframes_on'].unique()[0]
-    curr_traces = traces[tmat.index, :]
-    bas_std = curr_traces[0:stim_on_frame, :].std(axis=0)
-    curr_zscored_traces = pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
-    
+    curr_traces = raw_traces.iloc[tmat.index] ##traces[tmat.index, :]
+    bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
+    #curr_zscored_traces = pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
+    curr_zscored_traces = pd.DataFrame(curr_traces).divide(bas_std, axis='columns')
     zscored_traces_list.append(curr_zscored_traces)
-
 zscored_traces = pd.concat(zscored_traces_list, axis=0)
+
+zscores_by_cond = dict()
+for cfg, trial_ixs in trials_by_cond.items():
+    zscores_by_cond[cfg] = zscored_traces.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
+
+
 zscored_traces.head()
 
-raw_traces = pd.DataFrame(traces, index=zscored_traces.index)
-raw_traces.head()
     
 #%
 
 # Sort ROIs by zscore by cond
 # -----------------------------------------------------------------------------
 
-# Get single value for each trial and sort by config:
-trials_by_cond = dict()
-for k, g in labels.groupby(['config']):
-    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
 
-zscores_by_cond = dict()
-for cfg, trial_ixs in trials_by_cond.items():
-    zscores_by_cond[cfg] = zscores[trial_ixs, :]  # For each config, array of size ntrials x nrois
-    
 avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
                                     for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
 
@@ -208,23 +214,90 @@ stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim
 snrs = stim_means/bas_means
   
 
+#sizes = sorted(sdf['size'].unique())
+#morphlevels = sorted(sdf['morphlevel'].unique())
+
+#%%
+
+
 rows = 'ypos'
 cols = 'xpos'
 
 row_vals = sorted(sdf[rows].unique())
 col_vals = sorted(sdf[cols].unique())
 
-#sizes = sorted(sdf['size'].unique())
-#morphlevels = sorted(sdf['morphlevel'].unique())
 
+#%%
 
+# Compare against RETINO:
+# -============================================================================
+
+# sort cells:
+retino_rois_fpath = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysis*', 'visualization', 'rf_estimates', '2019*', '*.json'))[0]
+
+with open(retino_rois_fpath, 'r') as f:
+    retino_rois = json.load(f)
+retino_top_rois = retino_rois['sorted_rois']
+
+pl.figure()
+all_rois = list(copy.copy(sorted_selective))
+all_rois.extend(retino_top_rois)
+all_rois = list(set(all_rois))
+
+roi_matches = []
+for r in all_rois:
+    if r in sorted_selective and r in retino_top_rois:
+        roi_matches.append([r, r])
+    elif r in sorted_selective:
+        roi_matches.append([0, r])
+    elif r in retino_top_rois:
+        roi_matches.append([r, 0])
+
+roi_matches = np.array(roi_matches)
+        
+fig, ax = pl.subplots()
+ax.scatter(roi_matches[:, 0], roi_matches[:, 1])
+ax.set_xlabel('retino')
+ax.set_ylabel('tiling')
+
+roi_both = [r for r in all_rois if r in sorted_selective and r in retino_top_rois]
+for ri, ridx in enumerate(roi_both):
+    ax.text(roi_matches[ri, 0], roi_matches[ri, 1],'%i' % ridx, fontsize=12)
+
+for r in all_rois:
+    if r in sorted_selective and r in retino_top_rois:
+        ax.scatter(r, r, 'p*')
+    elif r in sorted_selective:
+        ax.scatter(r, 0, 'r*')
+    elif r in retino_top_rois:
+        ax.scatter(0, r, 'b*')
+        
 
 #%%
 
 # Plot zscored-traces of each "selective" ROI
-# -----------------------------------------------------------------------------
+# -============================================================================
+
 #rows = 'size'
 #cols = 'morphlevel'
+
+plot_zscored = True
+annotate = False
+plot_average = True
+plot_heatmap = False
+
+
+figsize = (10,4)
+axes_pad = 0.1
+lw = 1
+
+plot_type = 'heatmap' if plot_heatmap else 'traces'
+average_str = 'average' if plot_average else 'trials'
+
+subplot_aspect = 4 # (float(len(col_vals))/float(len(row_vals))) * 4.
+
+
+# -----------------------------------------------------------------------------
 
 config_trial_ixs = dict()
 cix = 0
@@ -237,23 +310,22 @@ for si, row_val in enumerate(sorted(row_vals)):
         config_trial_ixs[cix]['trial_ixs'] = trial_ixs
         cix += 1
 
-plot_zscored = False
 
 trace_type = 'zscored' if plot_zscored else 'raw'
-curr_figdir = os.path.join(output_dir, 'roi_trials_by_cond_%s' % trace_type)
+curr_figdir = os.path.join(output_dir, 'roi_trials_by_cond_%s_%s_%s' % (trace_type, plot_type, average_str))
 if not os.path.exists(curr_figdir):
     os.makedirs(curr_figdir)
 print "Saving figures to:", curr_figdir
 
+
+#%%
 #rid = 137 #14
-axes_pad = 0.001
-annotate = False
 for rid in sorted_selective[0:10]:
     print rid
     roi_zscores = zscores[:, rid]
     if plot_zscored:
         roi_trace = zscored_traces[rid] #traces[:, rid]
-        roi_metric = zscores[:, rid]
+        roi_metrics = zscores[:, rid]
         metric_name = 'zscore'
         value_name = 'zscore'
     else:
@@ -262,6 +334,9 @@ for rid in sorted_selective[0:10]:
         metric_name = 'snr'
         value_name = 'intensity'
         
+    #ymin = roi_trace.min()
+    #ymax = roi_trace.max()
+        
     traces_by_config = dict((config, []) for config in labels['config'].unique())
     for k, g in labels.groupby(['config', 'trial']):
         traces_by_config[k[0]].append(roi_trace[g.index])
@@ -269,8 +344,8 @@ for rid in sorted_selective[0:10]:
         traces_by_config[config] = np.vstack(traces_by_config[config])
     
     
-    fig = pl.figure(figsize=()) # (18,4))
-    grid = AxesGrid(fig, 111,
+    fig = pl.figure(figsize=figsize) # (18,4))
+    grid = AxesGrid(fig, 111, 
                     nrows_ncols=(len(row_vals), len(col_vals)),
                     axes_pad=axes_pad,
                     cbar_mode='single',
@@ -281,14 +356,26 @@ for rid in sorted_selective[0:10]:
     #zscores_by_cond_list = []
     for aix in sorted(config_trial_ixs.keys()): # Ordered by stim conditions
         #print aix
+        
         ax = grid.axes_all[aix]
         cfg = config_trial_ixs[aix]['config']
         trial_ixs = config_trial_ixs[aix]['trial_ixs']
         
         curr_cond_traces = traces_by_config[cfg]
-        im = ax.imshow(curr_cond_traces, cmap='inferno')
-        ax.set_aspect(2.5)
-        ax.set_axis_off()
+
+        if plot_heatmap:
+            im = ax.imshow(curr_cond_traces, cmap='inferno')
+        else:
+            if plot_average:
+                curr_cond_traces = curr_cond_traces.mean(axis=0)[stim_on_frame:stim_on_frame+nframes_on*2]
+            ax.plot(curr_cond_traces, 'k', lw=lw)
+        
+        ax.set_aspect(subplot_aspect)
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
         
         # get zscore values:
         curr_cond_metrics = roi_metrics[trial_ixs]
@@ -298,12 +385,20 @@ for rid in sorted_selective[0:10]:
         
         ax.axvline(x=stim_on_frame, color='w', lw=0.5, alpha=0.5)
         ax.axvline(x=stim_on_frame+nframes_on, color='w', lw=0.5, alpha=0.5)
+        
+        if aix % len(col_vals) == 0:
+            print aix
+            ax.set_ylabel(int(sdf[rows][cfg]), rotation='horizontal', labelpad=20)
             
+        sns.despine(left=True, bottom=True, ax=ax)
+        #ax.set_ylim([ymin, ymax])
+        
     fig.suptitle('roi %i' % int(rid+1))
     
-    cbar = ax.cax.colorbar(im)
-    cbar = grid.cbar_axes[0].colorbar(im)
-    cbar.ax.set_ylabel(value_name)
+    if plot_heatmap:
+        cbar = ax.cax.colorbar(im)
+        cbar = grid.cbar_axes[0].colorbar(im)
+        cbar.ax.set_ylabel(value_name)
     
     figname = 'zscored_trials_roi%05d' % int(rid+1)
     label_figure(fig, data_identifier)
@@ -313,6 +408,7 @@ for rid in sorted_selective[0:10]:
     #print roi_zscores_by_cond.head()
 
     pl.close()
+    print figname
 
 
 #%%
