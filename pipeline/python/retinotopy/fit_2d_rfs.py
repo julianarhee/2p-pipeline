@@ -21,6 +21,9 @@ import pandas as pd
 from mpl_toolkits.axes_grid1 import AxesGrid
 from pipeline.python.utils import natural_keys, label_figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from pipeline.python.retinotopy import utils as rutils
+
 #%%
 
 
@@ -85,7 +88,7 @@ def get_responsive_rois(traceid_dir, included_rois=[]):
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC076' #'JC059'
-session = '20190410' #'20190227'
+session = '20190420' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
@@ -222,7 +225,7 @@ for si, row_val in enumerate(sorted(row_vals)):
 
 
 import scipy.optimize as opt
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Rectangle
 
 
 def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
@@ -249,64 +252,64 @@ def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
 
 #%%
 
-import scipy as sp
-
-def gaussian(height, center_x, center_y, width_x, width_y, rotation):
-    """Returns a gaussian function with the given parameters"""
-    width_x = float(width_x)
-    width_y = float(width_y)
-
-    rotation = np.deg2rad(rotation)
-    center_x = center_x * np.cos(rotation) - center_y * np.sin(rotation)
-    center_y = center_x * np.sin(rotation) + center_y * np.cos(rotation)
-
-    def rotgauss(x,y):
-        xp = x * np.cos(rotation) - y * np.sin(rotation)
-        yp = x * np.sin(rotation) + y * np.cos(rotation)
-        g = height*np.exp(
-            -(((center_x-xp)/width_x)**2+
-              ((center_y-yp)/width_y)**2)/2.)
-        return g
-    return rotgauss
-
-def moments(data):
-    """Returns (height, x, y, width_x, width_y)
-    the gaussian parameters of a 2D distribution by calculating its
-    moments """
-    total = data.sum()
-    X, Y = np.indices(data.shape)
-    
-    x = (X*data).sum()/total
-    y = (Y*data).sum()/total
-    col = data[:, int(y)]
-    width_x = np.sqrt(abs((np.arange(col.size)-y)**2*col).sum()/col.sum())
-    row = data[int(x), :]
-    width_y = np.sqrt(abs((np.arange(row.size)-x)**2*row).sum()/row.sum())
-        
-        
-#    y = (X*data).sum()/total
-#    x = (Y*data).sum()/total
+#import scipy as sp
+#
+#def gaussian(height, center_x, center_y, width_x, width_y, rotation):
+#    """Returns a gaussian function with the given parameters"""
+#    width_x = float(width_x)
+#    width_y = float(width_y)
+#
+#    rotation = np.deg2rad(rotation)
+#    center_x = center_x * np.cos(rotation) - center_y * np.sin(rotation)
+#    center_y = center_x * np.sin(rotation) + center_y * np.cos(rotation)
+#
+#    def rotgauss(x,y):
+#        xp = x * np.cos(rotation) - y * np.sin(rotation)
+#        yp = x * np.sin(rotation) + y * np.cos(rotation)
+#        g = height*np.exp(
+#            -(((center_x-xp)/width_x)**2+
+#              ((center_y-yp)/width_y)**2)/2.)
+#        return g
+#    return rotgauss
+#
+#def moments(data):
+#    """Returns (height, x, y, width_x, width_y)
+#    the gaussian parameters of a 2D distribution by calculating its
+#    moments """
+#    total = data.sum()
+#    X, Y = np.indices(data.shape)
 #    
-#    row = data[int(y), :] # Get all 'x' values where y==center  #col = data[:, int(y)]
-#    width_x = np.sqrt(abs((np.arange(row.size)-y)**2*row).sum()/row.sum())
+#    x = (X*data).sum()/total
+#    y = (Y*data).sum()/total
+#    col = data[:, int(y)]
+#    width_x = np.sqrt(abs((np.arange(col.size)-y)**2*col).sum()/col.sum())
+#    row = data[int(x), :]
+#    width_y = np.sqrt(abs((np.arange(row.size)-x)**2*row).sum()/row.sum())
+#        
+#        
+##    y = (X*data).sum()/total
+##    x = (Y*data).sum()/total
+##    
+##    row = data[int(y), :] # Get all 'x' values where y==center  #col = data[:, int(y)]
+##    width_x = np.sqrt(abs((np.arange(row.size)-y)**2*row).sum()/row.sum())
+##    
+##    col = data[:, int(x)]
+##    width_y = np.sqrt(abs((np.arange(col.size)-x)**2*col).sum()/col.sum())
+##    
 #    
-#    col = data[:, int(x)]
-#    width_y = np.sqrt(abs((np.arange(col.size)-x)**2*col).sum()/col.sum())
 #    
-    
-    
-    height = data.max()
-    #return height, x, y, width_x, width_y, 0.0
-    return height, y, x, width_y, width_x, 0.0
-
-
-def fitgaussian(data):
-    """Returns (height, x, y, width_x, width_y)
-    the gaussian parameters of a 2D distribution found by a fit"""
-    params = moments(data)
-    errorfunction = lambda p: np.ravel(gaussian(*p)(*np.indices(data.shape)) - data)
-    p, pcov, infod, msg, success = sp.optimize.leastsq(errorfunction, params, full_output=True)
-    return p, pcov
+#    height = data.max()
+#    #return height, x, y, width_x, width_y, 0.0
+#    return height, y, x, width_y, width_x, 0.0
+#
+#
+#def fitgaussian(data):
+#    """Returns (height, x, y, width_x, width_y)
+#    the gaussian parameters of a 2D distribution found by a fit"""
+#    params = moments(data)
+#    errorfunction = lambda p: np.ravel(gaussian(*p)(*np.indices(data.shape)) - data)
+#    p, pcov, infod, msg, success = sp.optimize.leastsq(errorfunction, params, full_output=True)
+#    return p, pcov
         
 
 
@@ -368,7 +371,7 @@ set_to_min = True
 
 use_moments = False
 
-sig_scale = 2.35
+sigma_scale = 2.35
 
 
 # Create subdir for saving figs/results based on fit params:
@@ -486,6 +489,7 @@ if do_fits:
         
         fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
         ax = axes[0]
+        ax2 = axes[1]
         im = ax.imshow(rfmap, cmap='inferno')
         divider = make_axes_locatable(ax)
         cax = divider.append_axes('right', size='5%', pad=0.05)
@@ -501,13 +505,12 @@ if do_fits:
 #                offset_f = None
 #            else:
             amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = popt
-            ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
+            ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, angle=np.rad2deg(theta_f)) #theta_f)
             ell.set_alpha(.5)
             ell.set_edgecolor('w')
             ax.add_patch(ell)
             ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (r2, theta_f), color='k')
             
-            ax2 = axes[1]
             #asp = np.abs( np.diff(ax.get_ylim())[0] / np.diff(ax.get_xlim())[0] )
             #ax2.set_aspect(asp)
             im2 = ax2.imshow(pcov)
@@ -520,17 +523,19 @@ if do_fits:
             fig.colorbar(im2, cax=cax2, orientation='vertical')
             
 
+            bbox1 = ax.get_position()
+            subplot_ht = bbox1.height
+            bbox2 = ax2.get_position()
+            ax2.set_position([bbox2.x0, bbox1.y0, subplot_ht, subplot_ht])
+            
+        
         else:
             ax.text(0, -1, 'no fit')
+            ax2.axis('off')
 
             
         fig.suptitle('roi %i' % int(rid+1))
 
-        bbox1 = ax.get_position()
-        subplot_ht = bbox1.height
-        bbox2 = ax2.get_position()
-        ax2.set_position([bbox2.x0, bbox1.y0, subplot_ht, subplot_ht])
-        
         pl.subplots_adjust(wspace=0.3, left=0.1, right=0.9)
         
         label_figure(fig, data_identifier)
@@ -613,7 +618,7 @@ for aix, rid in enumerate(fitted_rois[0:nr*nc]):
     if plot_ellipse:
         # = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
 
-        ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), abs(fitdf['sigma_x'][rid])*sig_scale, abs(fitdf['sigma_y'][rid])*sig_scale, angle=np.rad2deg(fitdf['theta'][rid]))
+        ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, angle=np.rad2deg(fitdf['theta'][rid]))
         ell.set_alpha(0.5)
         ell.set_edgecolor('w')
         ell.set_facecolor('cornflowerblue')
@@ -646,6 +651,8 @@ if not single_colorbar and len(fitted_rois) < (nr*nc):
 pl.subplots_adjust(left=0.05, right=0.95, wspace=0.3, hspace=0.3)
 
 label_figure(fig, data_identifier)
+
+#%
 figname = 'RF_fits_%s_FIT%s_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (trace_type, fit_method,  cutoff_type, map_thr, minval, len(fitted_rois), fit_thr)
 if plot_ellipse:
     figname = '%s_ellipse' % figname
@@ -656,51 +663,330 @@ print figname
 
 #%%
 
+screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+screen_left = -1*screen['azimuth']/2.
+screen_right = screen['azimuth']/2.
+screen_top = screen['elevation']/2.
+screen_bottom = -1*screen['elevation']/2.
+
+
+#%%
+
 from matplotlib.pyplot import cm
 
+def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+    oldrange = (oldmax - oldmin)
+    newrange = (newmax - newmin)
+    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+    return newval
 
+def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
+    
+    if rid is not None:
+        xx = convert_values(fitdf['x0'][rid], 
+                            newmin=min(col_vals), newmax=max(col_vals), 
+                            oldmax=len(col_vals)-1, oldmin=0)
+        
+        sigma_x = convert_values(abs(fitdf['sigma_x'][rid]), 
+                            newmin=0, newmax=max(col_vals)-min(col_vals), 
+                            oldmax=len(col_vals)-1, oldmin=0)
+        
+        yy = convert_values(fitdf['y0'][rid], 
+                            newmin=min(row_vals), newmax=max(row_vals), 
+                            oldmax=len(row_vals)-1, oldmin=0)
+        
+        sigma_y = convert_values(abs(fitdf['sigma_y'][rid]), 
+                            newmin=0, newmax=max(row_vals)-min(row_vals), 
+                            oldmax=len(row_vals)-1, oldmin=0)
+    else:
+        xx = convert_values(fitdf['x0'], 
+                            newmin=min(col_vals), newmax=max(col_vals), 
+                            oldmax=len(col_vals)-1, oldmin=0)
+        
+        sigma_x = convert_values(abs(fitdf['sigma_x']), 
+                            newmin=0, newmax=max(col_vals)-min(col_vals), 
+                            oldmax=len(col_vals)-1, oldmin=0)
+        
+        yy = convert_values(fitdf['y0'], 
+                            newmin=min(row_vals), newmax=max(row_vals), 
+                            oldmax=len(row_vals)-1, oldmin=0)
+        
+        sigma_y = convert_values(abs(fitdf['sigma_y']), 
+                            newmin=0, newmax=max(row_vals)-min(row_vals), 
+                            oldmax=len(row_vals)-1, oldmin=0)
+    
+    return xx, yy, sigma_x, sigma_y
 
-
+#%%
 fig, ax = pl.subplots(figsize=(12, 6))
+
+screen_rect = Rectangle(( min(col_vals), min(row_vals)), max(col_vals)-min(col_vals), 
+                        max(row_vals)-min(row_vals), facecolor='none', edgecolor='k')
+ax.add_patch(screen_rect)
+
 rcolors=iter(cm.rainbow(np.linspace(0,1,len(fitted_rois))))
-
-ax.set_yticks(np.arange(0, len(row_vals)))
-ax.set_yticklabels([int(r) for r in row_vals])
-
-ax.set_xticks(np.arange(0, len(col_vals)))
-ax.set_xticklabels([int(r) for r in col_vals])
-
 for rid in fitted_rois:
     rcolor = next(rcolors)
     #ax.plot(fitdf['x0'][rid], fitdf['y0'][rid], marker='*', color=rcolor)
     
-    ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), abs(fitdf['sigma_x'][rid])*sig_scale, abs(fitdf['sigma_y'][rid])*sig_scale, angle=np.rad2deg(fitdf['theta'][rid]))
+    xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals, rid=rid)
+        
+    ell = Ellipse((xx, yy), abs(sigma_x)*sigma_scale, abs(sigma_y)*sigma_scale, angle=np.rad2deg(fitdf['theta'][rid]))
     ell.set_alpha(0.5)
     ell.set_edgecolor(rcolor)
     ell.set_facecolor('none')
     ax.add_patch(ell)
 #ax.invert_yaxis()
 
-#ax.set_ylim([0, len(row_vals)])
-#ax.set_xlim([0, len(col_vals)])
+ax.set_ylim([screen_bottom, screen_top])
+ax.set_xlim([screen_left, screen_right])
 
+#%
 figname = 'overlaid_RFs_%s_FIT%s_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (trace_type, fit_method,  cutoff_type, map_thr, minval, len(fitted_rois), fit_thr)
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
 print figname
 
+#%%
+
+fig, ax = pl.subplots(figsize=(12, 6))
+ax.set_ylim([screen_bottom, screen_top])
+ax.set_xlim([screen_left, screen_right])
+
+#%
+screen_rect = Rectangle(( min(col_vals), min(row_vals)), max(col_vals)-min(col_vals), 
+                        max(row_vals)-min(row_vals), facecolor='none', edgecolor='k')
+ax.add_patch(screen_rect)
+
+max_zscores = avg_zscores_by_cond.max(axis=0)
+
+xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
+    
+xvals = np.array([xx[rid] for rid in fitted_rois])
+yvals = np.array([yy[rid] for rid in fitted_rois])
+zs = np.array([max_zscores[rid] for rid in fitted_rois])
+
+ax.scatter(xvals, yvals, c=zs, marker='o', alpha=0.5, s=zs*100, cmap='inferno', vmin=0, vmax=6)
+
+
+
+
+#%%
+import statsmodels as sm
+import matplotlib as mpl
+
+
+# Plot KDE:
+j = sns.jointplot(xvals, yvals, kind='kde', xlim=(screen_left, screen_right), ylim=(screen_bottom, screen_top))
+elev_x, elev_y = j.ax_marg_y.lines[0].get_data()
+azim_x, azim_y = j.ax_marg_x.lines[0].get_data()
+
+smstats_kde_az = sp.stats.gaussian_kde(xvals) #, weights=mean_fits)
+#az_vals = np.linspace(screen_left, screen_right, len(mean_mags))
+az_vals = np.linspace(screen_left, screen_right, len(xvals))
+
+smstats_kde_el = sp.stats.gaussian_kde(yvals)
+#el_vals = np.linspace(screen_lower, screen_upper, len(mean_mags))
+el_vals = np.linspace(screen_bottom, screen_top, len(yvals))
+
+
+smstats_az = smstats_kde_az(az_vals)
+smstats_el = smstats_kde_el(el_vals)
+    #wa = kdea(vals)
+#    fig, ax = pl.subplots() #pl.figure()
+#    ax.plot(vals, wa)
+#    ax.plot(azim_x, azim_y)
+
+
+# 2. Use weights with KDEUnivariate (no FFT):
+#weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(linX.values)
+weighted_kde_az = sm.nonparametric.kde.KDEUnivariate(xvals)
+weighted_kde_az.fit(weights=zs, fft=False)
+#weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(linY.values)
+weighted_kde_el = sm.nonparametric.kde.KDEUnivariate(yvals)
+weighted_kde_el.fit(weights=zs, fft=False)
+
+fig, axes = pl.subplots(1,2, figsize=(10,5))
+
+axes[0].set_title('azimuth')    
+axes[0].plot(weighted_kde_az.support, weighted_kde_az.density, label='KDEuniv')
+axes[0].plot(azim_x, azim_y, label='sns-marginal (unweighted)')
+axes[0].plot(az_vals, smstats_az, label='gauss-kde (unweighted)')
+
+axes[1].set_title('elevation')    
+axes[1].plot(weighted_kde_el.support, weighted_kde_el.density, label='KDEuniv')
+axes[1].plot(elev_y, elev_x, label='sns-marginal (unweighted)')
+axes[1].plot(el_vals, smstats_el, label='gauss-kde (unweighted)')
+axes[1].legend(fontsize=8)
+
+pl.savefig(os.path.join(output_dir, 'compare_kde_weighted.png' ))
+        
+
+# Plot weighted KDE to marginals on joint plot:
+j.ax_marg_y.plot(weighted_kde_el.density, weighted_kde_el.support, color='orange', label='weighted')
+j.ax_marg_x.plot(weighted_kde_az.support, weighted_kde_az.density, color='orange', label='weighted')
+j.ax_marg_x.set_ylim([0, max([j.ax_marg_x.get_ylim()[-1], weighted_kde_az.density.max()]) + 0.005])
+j.ax_marg_y.set_xlim([0, max([j.ax_marg_y.get_xlim()[-1], weighted_kde_el.density.max()]) + 0.005])
+j.ax_marg_x.legend(fontsize=8)
+
+j.savefig(os.path.join(output_dir, 'weighted_marginals.png' ))
+
+
+
+from pipeline.python.retinotopy import target_visual_field as targ
+
+#%%
+kde_az =  weighted_kde_az.density.copy()
+vals_az = weighted_kde_az.support.copy()
+
+kde_el = weighted_kde_el.density.copy()
+vals_el = weighted_kde_el.support.copy()
+
+az_max, az_min1, az_min2, az_maxima, az_minima = targ.find_local_min_max(vals_az, kde_az)
+el_max, el_min1, el_min2, el_maxima, el_minima = targ.find_local_min_max(vals_el, kde_el)
+
+
+
+fig, axes = pl.subplots(1,2, figsize=(10,5)) #pl.figure();
+targ.plot_kde_min_max(vals_az, kde_az, maxval=az_max, minval1=az_min1, minval2=az_min2, title='azimuth', ax=axes[0])
+targ.plot_kde_min_max(vals_el, kde_el, maxval=el_max, minval1=el_min1, minval2=el_min2, title='elevation', ax=axes[1])
+
+label_figure(fig, data_identifier)
+fig.savefig(os.path.join(output_dir, 'weighted_kde_min_max.png'))
+    
+az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
+el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
+# Make sure bounds are within screen:
+if az_bounds[0] < screen_left:
+    az_bounds[0] = screen_left
+if az_bounds[1] > screen_right:
+    az_bounds[1] = screen_right
+if el_bounds[0] < screen_bottom:
+    el_bounds[0] = screen_bottom
+if el_bounds[1] > screen_top:
+    el_bounds[1] = screen_top
+    
+kde_results = {'az_max': vals_az[az_max],
+               'el_max': vals_el[el_max],
+               'az_maxima': [vals_az[azm] for azm in az_maxima],
+               'el_maxima': [vals_el[elm] for elm in el_maxima],
+               'az_bounds': az_bounds,
+               'el_bounds': el_bounds,
+               'center_x': az_bounds[1] - (az_bounds[1]-az_bounds[0]) / 2.,
+               'center_y': el_bounds[1] - (el_bounds[1]-el_bounds[0]) / 2. }
+
+
+print("AZIMUTH bounds: %s" % str(kde_results['az_bounds']))
+print("ELEV bounds: %s" % str(kde_results['el_bounds']))
+print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
 
 #%%
 
-fig, ax = pl.subplots()    
-coordmap = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
-im = ax.imshow(coordmap, cmap=cmap) #, vmin=vmin, vmax=vmax)
-ax.contour(xx, yy, fitdf['fit'][rid].reshape(rfmap.shape), 2, colors='w')
 
-ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), abs(fitdf['sigma_x'][rid])*3, abs(fitdf['sigma_y'][rid])*3, angle=fitdf['theta'][rid])
-ell.set_alpha(0.5)
-ell.set_edgecolor('w')
-ell.set_facecolor('cornflowerblue')
-ax.add_patch(ell)
+def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
+                    draw_bb=True, marker_scale=200, exclude_bad=False, min_thr=0.01):
+        
+    # Convert phase to linear coords:
+    screen_left = -1*screen['azimuth']/2.
+    screen_right = screen['azimuth']/2. #screen['azimuth']/2.
+    screen_lower = -1*screen['elevation']/2.
+    screen_upper = screen['elevation']/2. #screen['elevation']/2.
+
+    fig = pl.figure(figsize=(10,6))
+    ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
+    
+    if exclude_bad:
+        bad_cells = np.array([i for i, w in enumerate(weights) if w < min_thr]) #weights[weights < min_thr].index.tolist()
+        kept_cells = np.array([i for i in np.arange(len(weights)) if i not in bad_cells])
+        linX = linX[kept_cells]
+        linY = linY[kept_cells]
+        mean_magratios = weights[kept_cells]
+    else:
+        kept_cells = np.arange(len(weights))
+        mean_magratios = weights.copy()
+    
+    # Draw azimuth value as a function of mean fit (color code by standard cmap, too)
+    im = ax.scatter(linX, linY, s=mean_magratios*marker_scale, c=mean_magratios, cmap='inferno', alpha=0.5) # cmap='nipy_spectral', vmin=screen_left, vmax=screen_right)
+    ax.set_xlim([screen_left, screen_right])
+    ax.set_ylim([screen_lower, screen_upper])
+    ax.set_xlabel('xpos (deg)')
+    ax.set_ylabel('ypos (deg)')     
+
+    # Add color bar:
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05) 
+    alpha_min = mean_magratios.min()
+    alpha_max = mean_magratios.max() 
+    magnorm = mpl.colors.Normalize(vmin=alpha_min, vmax=alpha_max)
+    magcmap=mpl.cm.inferno
+    pl.colorbar(im, cax=cax, cmap=magcmap, norm=magnorm)
+    cax.yaxis.set_ticks_position('right')
+
 
     
+    if draw_bb:
+        ax.axvline(x=kde_results['az_bounds'][0], color='k', linestyle='--', linewidth=0.5)
+        ax.axvline(x=kde_results['az_bounds'][1], color='k', linestyle='--', linewidth=0.5)
+        ax.axhline(y=kde_results['el_bounds'][0], color='k', linestyle='--', linewidth=0.5)
+        ax.axhline(y=kde_results['el_bounds'][1], color='k', linestyle='--', linewidth=0.5)
+
+    if use_peak:
+        cgx = kde_results['az_max']
+        cgy = kde_results['el_max']
+        centroid_type = 'peak'
+    else:
+        cgx = kde_results['center_x'] #np.sum(linX * mean_fits) / np.sum(mean_fits)
+        cgy = kde_results['center_y'] #np.sum(linY * mean_fits) / np.sum(mean_fits)
+        centroid_type = 'center'
+        
+    print('%s x: %f' % (centroid_type, cgx))
+    print('%s y: %f' % (centroid_type, cgy))
+    ax.scatter(cgx, cgy, color='k', marker='+', s=1e4);
+    ax.text(cgx+3, cgy+3, '%s x, y:\n(%.2f, %.2f)' % (centroid_type, cgx, cgy), color='k', fontweight='bold')
+
+    # Also plot alternative maxima if they exist:
+    for az in kde_results['az_maxima']:
+        for el in kde_results['el_maxima']:
+            if az == kde_results['az_max'] and el == kde_results['el_max']:
+                continue
+            ax.scatter(az, el, color='b', marker='+', s=1e3);
+            ax.text(az+3, el+3, 'pk x, y:\n(%.2f, %.2f)' % (az, el), color='b', fontweight='bold')
+
+
+    return fig, kept_cells
+
+
+
+#%%
+
+
+zs = np.array([max_zscores[rid] for rid in fitted_rois])
+
+
+min_thr = 0.01
+#marker_scale = 100./round(magratio.mean().mean(), 3)
+fig, strong_cells = plot_kde_maxima(kde_results, zs, xvals, yvals, screen, \
+                      use_peak=True, exclude_bad=False, min_thr=min_thr, marker_scale=100)
+
+
+print("LINX:", xvals.shape)
+
+
+for ri in strong_cells:
+    fig.axes[0].text(xvals[ri], yvals[ri], '%s' % (ri+1))
+label_figure(fig, data_identifier)
+pl.savefig(os.path.join(output_dir, 'centroid_peak_rois_by_pos.png'))
+
+
+#    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=False, marker_scale=marker_scale)
+#    print("LINX:", linX.shape)
+#    for ri in strong_cells:
+#        fig.axes[0].text(linX[ri], linY[ri], '%s' % (ri+1))
+#    label_figure(fig, data_identifier)
+#    pl.savefig(os.path.join(output_dir, 'centroid_kdecenter_rois_by_pos_%s.png' % (loctype)))
+    
+with open(os.path.join(output_dir, 'fit_centroid_results.json'), 'w') as f:
+    json.dump(kde_results, f, sort_keys=True, indent=4)
+
+
+
     
