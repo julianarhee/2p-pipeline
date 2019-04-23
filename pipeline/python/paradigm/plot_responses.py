@@ -286,6 +286,23 @@ def make_clean_psths(options):
     
     # Get stimulus info:
     sconfigs = dataset['sconfigs'][()]
+
+    # adjust "sconfigs" to deal with funky controls:
+    # 20190422:  this is assigning fake morph value to -1, which is really a control stimulus
+    sdf = pd.DataFrame(sconfigs).T
+    if 'morphlevel' in plot_params:
+        if 'control' in sdf['object'].unique():
+            sizes = sorted([s for s in sdf['size'].unique() if s is not None])
+            lums = sorted([s for s in sdf['color'].unique() if s not in [None, '']])
+            print "---> Assigning luminance as psuedoe-size for CONTROL stim"
+            lum_lut = dict((lm, sz) for lm, sz in zip(lums, sizes))
+            for ci, cfg in sconfigs.items():
+                if cfg['object'] == 'control':
+                    cfg['size'] = lum_lut[cfg['color']]
+                sconfigs[ci] = cfg 
+ 
+
+
     transform_dict, object_transformations = util.get_transforms(sconfigs)
    
     # replace duration:
@@ -307,7 +324,6 @@ def make_clean_psths(options):
             sconfigs.pop(c)
             
     sconfigs_df = pd.DataFrame(sconfigs).T
-
     if 'position' in plot_params and 'position' not in sconfigs_df.columns.tolist():
         posvals = list(set(zip(sconfigs_df['xpos'].values, sconfigs_df['ypos'].values)))
         print "Found %i unique positions." % len(posvals)
@@ -319,7 +335,8 @@ def make_clean_psths(options):
     print "Trans:", trans_types
     #print transform_dict
     print sconfigs_df.head()    
-
+   
+   
     # -------------------------------------------------------------------------
     # Create PSTH plot grid:
     # -------------------------------------------------------------------------
@@ -397,7 +414,9 @@ def make_clean_psths(options):
     
     
     # Set COLORS for subplots:
+    print "Trans Types:", trans_types
     if len(trans_types)<=2 and subplot_hue is None:
+        print "PLOTTING 1 color"
         trace_colors = ['k']
         trace_labels = ['']
         

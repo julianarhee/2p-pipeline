@@ -182,7 +182,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
     ### Get PARADIGM INFO if using standard MW:
     # -------------------------------------------------------------------------
     try:
-        trial_fn = [t for t in os.listdir(paradigm_dir) if 'trials_' in t and t.endswith('json')]
+        trial_fn = glob.glob(os.path.join(paradigm_dir, 'trials_*.json'))
         assert len(trial_fn)==1, "Unable to find unique trials .json in %s" % paradigm_dir
         trial_fn = trial_fn[0]
         #print paradigm_dir
@@ -234,17 +234,22 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         print "---------------------------------------------------------------"
 
     try:
-        nframes_iti_pre = iti_pre * si_info['framerate'] #framerate
-        nframes_iti_post = iti_post*si_info['framerate'] #framerate # int(round(iti_post * volumerate))
-        nframes_iti_full = iti_full * si_info['framerate'] #framerate #int(round(iti_full * volumerate))
+        nframes_iti_pre = int(round(iti_pre * si_info['volumerate'])) #framerate
+        nframes_iti_post = int(round(iti_post*si_info['volumerate'])) #framerate # int(round(iti_post * volumerate))
+        nframes_iti_full = int(round(iti_full * si_info['volumerate'])) #framerate #int(round(iti_full * volumerate))
         if isinstance(stim_on_sec, dict):
-            nframes_on = dict((t, stim_on_sec[t] * si_info['framerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys)) #framerate #int(round(stim_on_sec * volumerate))
-            nframes_post_onset = dict((t, (stim_on_sec[t] + iti_post) * si_info['framerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
-            vols_per_trial = dict((t, (iti_pre + stim_on_sec[t] + iti_post) * si_info['volumerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+            nframes_on = dict((t, int(round(stim_on_sec[t] * si_info['volumerate']))) for t in sorted(stim_on_sec.keys(), key=natural_keys)) #framerate #int(round(stim_on_sec * volumerate))
+            nframes_post_onset = dict((t, nframes_on+nframes_iti_post) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+            vols_per_trial = dict((t, nframes_iti_pre + nframes_on + nframes_iti_post) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+
+            # nframes_post_onset = dict((t, (stim_on_sec[t] + iti_post) * si_info['framerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
+            # vols_per_trial = dict((t, (iti_pre + stim_on_sec[t] + iti_post) * si_info['volumerate']) for t in sorted(stim_on_sec.keys(), key=natural_keys))
         else:
-            nframes_on = stim_on_sec * si_info['framerate'] #framerate #int(round(stim_on_sec * volumerate))
-            nframes_post_onset = (stim_on_sec + iti_post) * si_info['framerate'] #framerat
-            vols_per_trial = (iti_pre + stim_on_sec + iti_post) * si_info['volumerate']
+            nframes_on = int(round(stim_on_sec * si_info['framerate'])) #framerate #int(round(stim_on_sec * volumerate))
+            nframes_post_onset = nframes_on + nframes_iti_post
+            vols_per_trial = nframes_iti_pre + nframes_on + nframes_iti_post
+            #nframes_post_onset = (stim_on_sec + iti_post) * si_info['framerate'] #framerat
+            #vols_per_trial = (iti_pre + stim_on_sec + iti_post) * si_info['volumerate']
     except Exception as e:
         print "Problem calcuating nframes for trial epochs..."
         traceback.print_exc()
@@ -323,16 +328,16 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                 # Get stimulus order:
                 stimorder = [trialdict[t]['stimuli'] for t in trials_in_file]
 
-            print currfile, len(trials_in_file) #trial_in_file
-
-            for trialidx,currtrial_in_file in enumerate(sorted(trials_in_file, key=natural_keys)):
-                trial_counter += 1
+            print "... %s, %i" % (currfile, len(trials_in_file))
+ 
+            for trialidx,currtrial_in_run in enumerate(sorted(trials_in_file, key=natural_keys)):
+                #trial_counter += 1
                 #trial_in_file += 1
-                #currtrial_in_file = 'trial%03d' % int(trial_in_file)
+                currtrial_in_file = 'trial%03d' % int(trialidx+1)
 
                 # Trial in run might not be ntrials-per-file * nfiles
                 # Trials with missing pix are ignored.
-                currtrial_in_run = 'trial%05d' % int(trial_counter)
+                # currtrial_in_run = 'trial%05d' % int(trial_counter)
 
                 if trial_info['custom_mw'] is True:
                     if trialidx==0:
@@ -362,7 +367,8 @@ def assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=False)
                 # Create dataset for current trial with frame indices:
                 fridxs_in_file = parsed_frames.create_dataset('/'.join((currtrial_in_run, 'frames_in_file')), np.array(framenums).shape, np.array(framenums).dtype)
                 fridxs_in_file[...] = np.array(framenums)
-                fridxs_in_file.attrs['trial'] = currtrial_in_file
+                fridxs_in_file.attrs['trial'] = currtrial_in_run
+                fridxs_in_file.attrs['trial_idx_in_file'] = trialidx
                 fridxs_in_file.attrs['aux_file_idx'] = tiffnum
                 fridxs_in_file.attrs['stim_on_idx'] = first_frame_on
 

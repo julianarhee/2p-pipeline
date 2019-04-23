@@ -121,7 +121,7 @@ opts = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180626', '-A', 'FOV1_zoom1
 #%%
 
     
-def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=False,
+def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='hdf5', create_new=True,
                            quantile=0.2, window_size_sec=None, test_drift=False, 
                            smooth=False, frac=0.01, test_smoothing=False, test_roi='roi00001', nonnegative=False):
     
@@ -135,7 +135,9 @@ def create_data_arrays(traceid_dir, trace_type='np_subtracted', dff=False, fmt='
     if not os.path.exists(data_basedir):
         os.makedirs(data_basedir)
     data_fpath = os.path.join(data_basedir, 'datasets.npz')
-    
+    if create_new and os.path.exists(data_fpath):
+        os.remove(data_fpath)
+   
     # Also create output dir for population-level figures:
     population_figdir = os.path.join(run_info['traceid_dir'], 'figures', 'population')
     if not os.path.exists(population_figdir):

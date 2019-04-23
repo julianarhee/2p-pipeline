@@ -123,9 +123,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 
     #abstime = serialdata[' abosolute_arduino_time']
     ### Extract events from serialdata:
-    frame_triggers = serialdata[' frame_trigger']
-    all_bitcodes = serialdata[' pixel_clock']
-
+    frame_triggers = serialdata['frame_trigger']
+    all_bitcodes = serialdata['pixel_clock']
+    
     ### Find frame ON triggers (from NIDAQ-SI):
     frame_on_idxs = [idx+1 for idx,diff in enumerate(np.diff(frame_triggers)) if diff==1]
     frame_on_idxs.append(0)
@@ -594,6 +594,12 @@ def extract_options(options):
     parser.add_option('--auto', action="store_true",
                       dest="auto", default=False, help="Set flag if NOT interactive.")
 
+    parser.add_option('--backlight', action="store_true",
+                      dest="backlight_sensor", default=False, help="Set flag if using backlight sensor.")
+    parser.add_option('-E', action="store",
+                      dest="experiment_type", default=None, help="Set to tiled_retinotopy if doing tiled gratings")
+
+
 
     (options, args) = parser.parse_args(options)
 
@@ -779,8 +785,10 @@ def main(options):
     boundidx = int(options.boundidx)
 
     stimorder_files = False #True
+    backlight_sensor = options.backlight_sensor
+    experiment_type = options.experiment_type
 
-    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx]
+    mwopts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition, '-R', run, '-t', trigger_varname, '-b', boundidx, '-E', experiment_type]
     if slurm is True:
         mwopts.extend(['--slurm'])
     if dynamic is True:
@@ -795,7 +803,9 @@ def main(options):
         mwopts.extend(['--verbose'])
     if auto is True:
         mwopts.extend(['--auto'])
-
+    if backlight_sensor:
+        mwopts.extend(['--backlight'])
+    
     #%
     paradigm_outdir = mw.parse_mw_trials(mwopts)
     print "----------------------------------------"
