@@ -2131,13 +2131,13 @@ def save_stimulus_configs(trialdict, paradigm_dir):
     #prin stimtype
     
     if any(['grating' in s for s in stimtype]):
-        exclude_params = ['stimulus', 'type', 'rotation_range', 'phase']
+        excluded_params = ['stimulus', 'type', 'rotation_range', 'phase']
     else: 
-        excluded_vars = ['filehash']
+        excluded_params = ['filehash']
     config_list = [] 
     for trial in trial_list:
         curr_cfg = trialdict[trial]['stimuli'].copy()
-        for vexcl in excluded_vars:
+        for vexcl in excluded_params:
             if vexcl in curr_cfg.keys():
                 curr_cfg.pop(vexcl) 
         if 'filepath' in curr_cfg.keys():
