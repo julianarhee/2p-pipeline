@@ -11,6 +11,8 @@ import os
 import glob
 import json
 import copy
+import optparse
+
 import pylab as pl
 import seaborn as sns
 import cPickle as pkl
@@ -18,13 +20,103 @@ import numpy as np
 import scipy as sp
 from scipy import stats
 import pandas as pd
+
+import scipy.optimize as opt
+from matplotlib.patches import Ellipse, Rectangle
+
 from mpl_toolkits.axes_grid1 import AxesGrid
 from pipeline.python.utils import natural_keys, label_figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.signal import argrelextrema
+from scipy.interpolate import splrep, sproot, splev, interp1d
 
 from pipeline.python.retinotopy import utils as rutils
 
 #%%
+
+# -----------------------------------------------------------------------------
+# Data formatting functions:
+# -----------------------------------------------------------------------------
+
+
+def get_trials_by_cond(labels):
+    # Get single value for each trial and sort by config:
+    trials_by_cond = dict()
+    for k, g in labels.groupby(['config']):
+        trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+    return trials_by_cond
+
+
+def zscore_traces(raw_traces, labels, nframes_post_onset=None):
+    
+    # Get stim onset frame: 
+    stim_on_frame = labels['stim_on_frame'].unique()
+    assert len(stim_on_frame) == 1, "---[stim_on_frame]: More than 1 stim onset found: %s" % str(stim_on_frame)
+    stim_on_frame = stim_on_frame[0]
+    
+    # Get n frames stimulus on:
+    nframes_on = labels['nframes_on'].unique()
+    assert len(nframes_on) == 1, "---[nframes_on]: More than 1 stim dur found: %s" % str(nframes_on)
+    nframes_on = nframes_on[0]
+        
+    if nframes_post_onset is None:
+        nframes_post_onset = nframes_on*2
+        
+    zscored_traces_list = []
+    zscores_list = []
+    for trial, tmat in labels.groupby(['trial']):
+
+        # Get traces using current trial's indices: divide by std of baseline
+        curr_traces = raw_traces.iloc[tmat.index] 
+        bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
+        curr_zscored_traces = pd.DataFrame(curr_traces).divide(bas_std, axis='columns')
+        zscored_traces_list.append(curr_zscored_traces)
+        
+        # Also get zscore (single value) for each trial:
+        zscores_list.append(curr_zscored_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)) # Get average zscore value for current trial
+        
+    zscored_traces = pd.concat(zscored_traces_list, axis=0)
+    zscores =  pd.concat(zscores_list, axis=1).T # cols=rois, rows = trials
+
+    return zscored_traces, zscores
+
+def group_zscores_by_cond(zscores, trials_by_cond):
+    zscores_by_cond = dict()
+    for cfg, trial_ixs in trials_by_cond.items():
+        zscores_by_cond[cfg] = zscores.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
+    return zscores_by_cond
+
+#%
+
+
+def order_configs_by_grid(sdf, labels, rows='ypos', cols='xpos'):
+    
+    assert rows in sdf.columns, "Specified ROWS <%s> not found." % rows
+    assert cols in sdf.columns, "Specified COLS <%s> not found." % cols
+    
+    row_vals = sorted(sdf[rows].unique())
+    col_vals = sorted(sdf[cols].unique())
+    
+    config_trial_ixs = dict()
+    cix = 0
+    for si, row_val in enumerate(sorted(row_vals)):
+        for mi, col_val in enumerate(col_vals):
+            config_trial_ixs[cix] = {}
+            cfg = sdf[(sdf[rows]==row_val) & (sdf[cols]==col_val)].index.tolist()[0]
+            trial_ixs = sorted( list(set( [int(tr[5:])-1 for tr in labels[labels['config']==cfg]['trial']] )) )
+            config_trial_ixs[cix]['config'] = cfg
+            config_trial_ixs[cix]['trial_ixs'] = trial_ixs
+            cix += 1
+
+    return row_vals, col_vals, config_trial_ixs
+
+
+
+#%%
+
+# -----------------------------------------------------------------------------
+# ROI filtering functions:
+# -----------------------------------------------------------------------------
 
 
 def get_rois_by_visual_area(fov_dir):
@@ -83,150 +175,24 @@ def get_responsive_rois(traceid_dir, included_rois=[]):
 
 
 
-#%%
 
-
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC076' #'JC059'
-session = '20190420' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_gratings_static'
-traceid = 'traces001' #'traces001'
-segment = False
-visual_area = ''
-
-
-fov_dir = os.path.join(rootdir, animalid, session, fov)
-traceid_dir = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))[0]
-data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
-dset = np.load(data_fpath)
-dset.keys()
-
-data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area])
-print data_identifier
-
-
-#%%
-if segment:
-    included_rois = get_rois_by_visual_area(fov_dir, segment=segment)
-else:
-    included_rois = []
+def sort_rois_by_max_response(avg_zscores_by_cond, visual_rois):
+    '''
+    Expects a dataframe with shape (nconds, nrois), i.e., a single value
+    assigned to each ROI for each condition for sorting.
+    '''
+    visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
+    visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
+    sorted_visual = visual_rois[visual_sort_by_max_zscore]
     
-visual_rois, selective_rois, rstats_fpath = get_responsive_rois(traceid_dir, included_rois=included_rois)
-
-# Set output dir:
-output_dir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
-if segment:
-    output_dir = os.path.join(output_dir, visual_area)
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-print "Saving output to:", output_dir
+    return sorted_visual
 
 
+#%%
 
-#%%#%%
-
-
-#%
-
-# Load parsed data:
-trace_type = 'corrected'
-traces = dset[trace_type]
-
-raw_traces = pd.DataFrame(traces) #, index=zscored_traces.index)
-
-
-# Format condition info:
-aspect_ratio = 1.747
-sdf = pd.DataFrame(dset['sconfigs'][()]).T
-sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
-labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-
-#%
-
-
-# Get single value for each trial and sort by config:
-trials_by_cond = dict()
-for k, g in labels.groupby(['config']):
-    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
-del traces
-
-# zscore the traces:
 # -----------------------------------------------------------------------------
-#zscores = dset['zscore']
-
-zscored_traces_list = []
-zscores_list = []
-for trial, tmat in labels.groupby(['trial']):
-    #print trial    
-    stim_on_frame = tmat['stim_on_frame'].unique()[0]
-    nframes_on = tmat['nframes_on'].unique()[0]
-    curr_traces = raw_traces.iloc[tmat.index] ##traces[tmat.index, :]
-    bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
-    #curr_zscored_traces = pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
-    curr_zscored_traces = pd.DataFrame(curr_traces).divide(bas_std, axis='columns')
-    zscored_traces_list.append(curr_zscored_traces)
-    zscores_list.append(curr_zscored_traces.iloc[stim_on_frame:stim_on_frame+(nframes_on*2)].mean(axis=0)) # Get average zscore value for current trial
-    
-zscored_traces = pd.concat(zscored_traces_list, axis=0)
-zscores =  pd.concat(zscores_list, axis=1).T # cols=rois, rows = trials
-
-
-zscores_by_cond = dict()
-for cfg, trial_ixs in trials_by_cond.items():
-    zscores_by_cond[cfg] = zscores.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
-
-
-#%
-
-# Sort ROIs by zscore by cond
+# Fitting functions
 # -----------------------------------------------------------------------------
-avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
-                                    for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
-
-    
-# Sort mean (or max) zscore across trials for each config, and find "best config"
-visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
-visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
-sorted_visual = visual_rois[visual_sort_by_max_zscore]
-
-selective_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in selective_rois])
-selective_sort_by_max_zscore = np.argsort(selective_max_avg_zscore)[::-1]
-sorted_selective = selective_rois[selective_sort_by_max_zscore]
-
-print [r for r in sorted_selective if r not in sorted_visual]
-
-print sorted_selective[0:10]
-
-
-
-#%%%
-rows = 'ypos'
-cols = 'xpos'
-
-row_vals = sorted(sdf[rows].unique())
-col_vals = sorted(sdf[cols].unique())
-
-
-#%%
-config_trial_ixs = dict()
-cix = 0
-for si, row_val in enumerate(sorted(row_vals)):
-    for mi, col_val in enumerate(col_vals):
-        config_trial_ixs[cix] = {}
-        cfg = sdf[(sdf[rows]==row_val) & (sdf[cols]==col_val)].index.tolist()[0]
-        trial_ixs = sorted( list(set( [int(tr[5:])-1 for tr in labels[labels['config']==cfg]['trial']] )) )
-        config_trial_ixs[cix]['config'] = cfg
-        config_trial_ixs[cix]['trial_ixs'] = trial_ixs
-        cix += 1
-
-
-#%%
-
-
-import scipy.optimize as opt
-from matplotlib.patches import Ellipse, Rectangle
-
 
 def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     xo = float(xo)
@@ -240,7 +206,6 @@ def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     g = offset + amplitude*np.exp( -a*((x-xo)**2) - b*(x-xo)*(y-yo) - c*((y-y0)**2) )
     return g.ravel()
 
-#p1, success = opt.leastsq(twoD_gauss, coordmap_r, args=(xx, yy, initial_guess[:]))  #[0]
 
 def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
 
@@ -248,9 +213,7 @@ def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
     
     return RF.ravel()
 
-
-
-#%%
+#%
 
 #import scipy as sp
 #
@@ -311,13 +274,8 @@ def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
 #    p, pcov, infod, msg, success = sp.optimize.leastsq(errorfunction, params, full_output=True)
 #    return p, pcov
         
-
-
-    
 #
-#%%
-from scipy.signal import argrelextrema
-from scipy.interpolate import splrep, sproot, splev, interp1d
+#%
 
 class MultiplePeaks(Exception): pass
 class NoPeaksFound(Exception): pass
@@ -361,23 +319,285 @@ def raw_fwhm(arr):
         r2 = pk + np.abs(ynew[pk:] - hm).argmin()
         
         return abs(xnew[r2]-xnew[r1])
+    
+#%%
+
+def extract_options(options):
+    
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data',\
+                      help='data root dir (root project dir containing all animalids) [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', \
+                      help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', \
+                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='retino_run1', \
+                      help="name of run dir containing tiffs to be processed (ex: gratings_phasemod_run1)")
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
+                      help="name of traces ID [default: traces001]")
+    parser.add_option('-d', '--data-type', action='store', dest='trace_type', default='corrected', \
+                      help="Trace type to use for analysis [default: corrected]")
+    parser.add_option('--segment', action='store_true', dest='segment', default=False, \
+                      help="Set flag to use segmentation of FOV for select visual area")
+    parser.add_option('-V', '--area', action='store', dest='visual_area', default='', \
+                      help="Name of visual area, if --segment is flagged")
+    (options, args) = parser.parse_args(options)
+
+    return options
+
 
 #%%
 
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC078' #'JC059'
+session = '20190426' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_gratings_static'
+traceid = 'traces001' #'traces001'
+segment = False
+visual_area = ''
+trace_type = 'corrected'
+
+
+options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid]
+if segment:
+    options.extend(['--segment', '-V', visual_area])
+    
+
+
+
+fov_dir = os.path.join(rootdir, animalid, session, fov)
+traceid_dir = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))[0]
+data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
+dset = np.load(data_fpath)
+dset.keys()
+
+data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area])
+print data_identifier
+
+
+#%%
+
+# Select ROIs:
+if segment:
+    included_rois = get_rois_by_visual_area(fov_dir, segment=segment)
+else:
+    included_rois = []
+    
+# Set output dir:
+output_dir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
+if segment:
+    output_dir = os.path.join(output_dir, visual_area)
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+print "Saving output to:", output_dir
+
+
+#%%#%%
+
+# Load parsed data:
+raw_traces = pd.DataFrame(dset[trace_type]) #, index=zscored_traces.index)
+
+labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+trials_by_cond = get_trials_by_cond(labels)
+
+#%
+select_rois = False
+
+if select_rois:
+    visual_rois, selective_rois, rstats_fpath = get_responsive_rois(traceid_dir, included_rois=included_rois)
+else:
+    visual_rois = np.arange(raw_traces.shape[-1])
+    selective_rois = np.arange(raw_traces.shape[-1])
+
+sdf = pd.DataFrame(dset['sconfigs'][()]).T
+
+# Format condition info:
+if 'image' in sdf['stimtype']:
+    aspect_ratio = sdf['aspect'].unique()[0]
+    sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
+
+
+#%%
+# zscore the traces:
+# -----------------------------------------------------------------------------
+zscored_traces, zscores = zscore_traces(raw_traces, labels)
+zscores_by_cond = group_zscores_by_cond(zscores, trials_by_cond)
+
+# Sort ROIs by zscore by cond
+# -----------------------------------------------------------------------------
+avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
+                                    for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+
+    
+#%%
+# Sort mean (or max) zscore across trials for each config, and find "best config"
+
+sorted_visual = sort_rois_by_max_response(avg_zscores_by_cond, visual_rois)
+sorted_selective = sort_rois_by_max_response(avg_zscores_by_cond, selective_rois)
+
+#%%%
+rows = 'ypos'
+cols = 'xpos'
+
+row_vals, col_vals, config_trial_ixs = order_configs_by_grid(sdf, labels, rows=rows, cols=cols)
+
+
+#%%
+
+
+
+def plot_roi_RF(response_vector, ncols, nrows, ax=None, hard_cutoff=True,
+                set_to_min=True, map_thr=1.5):
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+        
+    coordmap_r = np.reshape(response_vector, (len(col_vals), len(row_vals))).T
+     
+    rfmap = coordmap_r.copy()
+    if hard_cutoff:
+        rfmap[coordmap_r < map_thr] = coordmap_r.min()*0.1 if set_to_min else 0
+    else:
+        rfmap[coordmap_r < coordmap_r.max()*map_thr] =  coordmap_r.min()*0.3 if set_to_min else 0
+    im = ax.imshow(rfmap, cmap='inferno')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    ax.figure.colorbar(im, cax=cax, orientation='vertical')
+    
+    return ax, rfmap
+
+
+    
+def do_2d_fit(rfmap, nx=None, ny=None):
+
+    # Set params for fit:
+    xi = np.arange(0, nx)
+    yi = np.arange(0, ny)
+    
+    popt=None; pcov=None; fitr=None; r2=None; success=None;
+    try:
+        xx, yy = np.meshgrid(xi, yi)      
+        #plot_xx = xx.copy()
+        #plot_yy = yy.copy()
+        amplitude = rfmap.max()
+        y0, x0 = np.where(rfmap == rfmap.max())
+        print "x0, y0: (%i, %i)" % (int(x0), int(y0))
+    
+        try:
+            sigma_x = fwhm(xi, rfmap.sum(axis=0))
+        except Exception as e:
+            print e
+            sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
+        try:
+            sigma_y = fwhm(yi, rfmap.sum(axis=1))
+        except Exception as e:
+            print e
+            sigma_y = raw_fwhm(rfmap.sum(axis=1))
+        print "sig-X, sig-Y:", sigma_x, sigma_y
+        theta = 0
+        offset=0
+        initial_guess = (amplitude, int(x0), int(y0), sigma_x, sigma_y, theta, offset)
+        popt, pcov = opt.curve_fit(twoD_gauss, (xx, yy), rfmap.ravel(), p0=initial_guess, maxfev=2000)
+        fitr = twoD_gauss((xx, yy), *popt)
+            
+        # Get residual sum of squares 
+        residuals = rfmap.ravel() - fitr
+        ss_res = np.sum(residuals**2)
+        ss_tot = np.sum((rfmap.ravel() - np.mean(rfmap.ravel()))**2)
+        r2 = 1 - (ss_res / ss_tot)
+        if round(r2, 3) < 0.15 or len(np.where(fitr > fitr.min())[0]) < 4:
+            success = False
+        else:
+            success = True
+    except Exception as e:
+        print e
+    
+    return {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr, xx, yy
+
+#%%
+def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, 
+                        hard_cutoff=True, map_thr=1.0, set_to_min=True):
+    
+    results = {}
+    fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
+    ax = axes[0]
+    #ax, rfmap = plot_roi_RF(avg_zscores_by_cond[rid], ncols=len(col_vals), nrows=len(row_vals), ax=ax)
+    ax, rfmap = plot_roi_RF(response_vector, ax=ax,
+                            ncols=len(col_vals), nrows=len(row_vals),
+                            hard_cutoff=hard_cutoff, map_thr=map_thr, set_to_min=set_to_min)
+
+    ax2 = axes[1]
+
+    # Do fit 
+    # ---------------------------------------------------------------------
+    fitr, fit_y, xx, yy = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+
+    
+    if fitr['success']:    
+        # Draw ellipse: #ax.contour(plot_xx, plot_yy, fitr.reshape(rfmap.shape), 3, colors='b')
+        amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+        ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, 
+                      angle=np.rad2deg(theta_f), alpha=0.5, edgecolor='w') #theta_f)
+        ax.add_patch(ell)
+        ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (fitr['r2'], theta_f), color='k')
+        
+        # Visualize fit results:
+        im2 = ax2.imshow(fitr['pcov'])
+        ax2.set_yticks(np.arange(0, 7))
+        ax2.set_yticklabels(['amp', 'x0', 'y0', 'sigx', 'sigy', 'theta', 'offset'], rotation=0)
+        
+        divider = make_axes_locatable(ax2)
+        cax2 = divider.append_axes('right', size='5%', pad=0.05)
+        fig.colorbar(im2, cax=cax2, orientation='vertical')
+        
+        # Adjust subplot:
+        bbox1 = ax.get_position()
+        subplot_ht = bbox1.height
+        bbox2 = ax2.get_position()
+        ax2.set_position([bbox2.x0, bbox1.y0, subplot_ht, subplot_ht])
+
+    else:
+        ax.text(0, -1, 'no fit')
+        ax2.axis('off')
+        
+    pl.subplots_adjust(wspace=0.3, left=0.1, right=0.9)
+
+        
+    if fitr['success']:
+        results = {'amplitude': amp_f,
+                   'x0': x0_f,
+                   'y0': y0_f,
+                   'sigma_x': sigx_f,
+                   'sigma_y': sigy_f,
+                   'theta': theta_f,
+                   'offset': offset_f,
+                   'r2': fitr['r2'],
+                   'fit_y': fit_y,
+                   'fit_r': fitr,
+                   'data': rfmap,
+                   'xx': xx,
+                   'yy': yy}
+        
+    
+    return results, fig
+    
+    #%%
+
 #map_thr = 0.6
-hard_cutoff = True
-plot_zscored = True
-set_to_min = True
-
-use_moments = False
-
-sigma_scale = 2.35
-
+hard_cutoff = True   # Use hard cut-off for zscores (set to False to use some % of max value)
+plot_zscored = True  # Use zscore as metric (alt: snr, df/f?)
+set_to_min = True    # Threshold x,y condition grid and set non-passing conditions to min value or 0.
+#use_moments = False
+sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
 
 # Create subdir for saving figs/results based on fit params:
 # -----------------------------------------------------------------------------
-fit_method = 'moments' if use_moments else '2dgaus'
-minval = 'min' if set_to_min else 'zeros'
+set_to_min_str = 'min' if set_to_min else 'zeros'
 
 if hard_cutoff:
     map_thr = 1.5
@@ -388,8 +608,12 @@ else:
     
 trace_type = 'zscored_RF' if plot_zscored else 'raw_RF'
 
+#metric_name = 'zscore' if plot_zscored else 'snr'
+#value_name = 'zscore' if plot_zscored else 'intensity'
+
+        
 # Create output dir to save ROI plots in:
-roi_rf_dir = os.path.join(output_dir, 'rfs_by_roi_%s_%s_%.2f_set_%s' % (fit_method, cutoff_type, map_thr, minval))
+roi_rf_dir = os.path.join(output_dir, 'rfs_by_roi_2dgaus_%s_%.2f_set_%s' % (cutoff_type, map_thr, set_to_min_str))
 if not os.path.exists(roi_rf_dir):
     os.makedirs(roi_rf_dir)
 print "Saving figures to:", roi_rf_dir
@@ -398,7 +622,7 @@ print "Saving figures to:", roi_rf_dir
 #%%
 
 
-results_outfile = 'roi_fit_results_%s_%s_%.2f_set_%s.pkl' % (fit_method, cutoff_type, map_thr, minval)
+results_outfile = 'roi_fit_results_2dgaus_%s_%.2f_set_%s.pkl' % (cutoff_type, map_thr, set_to_min_str)
 print results_outfile
 
 do_fits = False
@@ -411,177 +635,96 @@ else:
     do_fits = True
     
 #%%
-
+    
 #rid = 106 ##89 #106 #36 # 89
 if do_fits:
-    results ={}
+    #%
     RF = {}
     for rid in selective_rois:
         #%
         print rid
-        metric_name = 'zscore' if plot_zscored else 'snr'
-        value_name = 'zscore' if plot_zscored else 'intensity'
-    
-        # coordmap_r = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
-        coordmap_r = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
-         
-        rfmap = coordmap_r.copy()
-        if hard_cutoff:
-            rfmap[coordmap_r < map_thr] = coordmap_r.min()*0.3 if set_to_min else 0
-        else:
-            rfmap[coordmap_r < coordmap_r.max()*map_thr] =  coordmap_r.min()*0.3 if set_to_min else 0
 
-        # Do fit 
-        # ---------------------------------------------------------------------
-        # Set params for fit:
-        xi = np.arange(0, len(col_vals))
-        yi = np.arange(0, len(row_vals))
-
-
-        try:
-#            if use_moments:
-#                xx, yy = np.meshgrid(xi, yi)      
-#                popt, pcov = fitgaussian(rfmap)
-#                gfunc = gaussian(*popt)
-#                fitr = gfunc(yy, xx).T.ravel()   #.ravel() # x and y are flipped because treataed as array, not image
-#                plot_xx = xx #yy.T
-#                plot_yy = yy #xx.T
-#                
-#            else:
-            xx, yy = np.meshgrid(xi, yi)      
-            plot_xx = xx.copy()
-            plot_yy = yy.copy()
-            amplitude = rfmap.max()
-            y0, x0 = np.where(rfmap == rfmap.max())
-            print "x0, y0: (%i, %i)" % (int(x0), int(y0))
-        
-            try:
-                sigma_x = fwhm(xi, rfmap.sum(axis=0))
-            except Exception as e:
-                print e
-                sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
-            try:
-                sigma_y = fwhm(yi, rfmap.sum(axis=1))
-            except Exception as e:
-                print e
-                sigma_y = raw_fwhm(rfmap.sum(axis=1))
-            print "sig-X, sig-Y:", sigma_x, sigma_y
-            theta = 0
-            offset=0
-            initial_guess = (amplitude, int(x0), int(y0), sigma_x, sigma_y, theta, offset)
-            popt, pcov = opt.curve_fit(twoD_gauss, (xx, yy), rfmap.ravel(), p0=initial_guess, maxfev=2000)
-            fitr = twoD_gauss((xx, yy), *popt)
-                
-            # Get residual sum of squares 
-            residuals = rfmap.ravel() - fitr
-            ss_res = np.sum(residuals**2)
-            ss_tot = np.sum((rfmap.ravel() - np.mean(rfmap.ravel()))**2)
-            r2 = 1 - (ss_res / ss_tot)
-            if round(r2, 3) < 0.15 or len(np.where(fitr > fitr.min())[0]) < 4:
-                cando_fit = False
-            else:
-                cando_fit = True
-        except Exception as e:
-            print e
-            r2 = None
-            cando_fit = False
-        
-        
-        fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
-        ax = axes[0]
-        ax2 = axes[1]
-        im = ax.imshow(rfmap, cmap='inferno')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(im, cax=cax, orientation='vertical')
-        
-        if cando_fit:    
-            # Draw ellipse contour:
-            ax.contour(plot_xx, plot_yy, fitr.reshape(rfmap.shape), 3, colors='b')
-            
-            # Draw ellipse:
-#            if use_moments:
-#                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f = popt # x and y are flipped because array, not image
-#                offset_f = None
-#            else:
-            amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = popt
-            ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, angle=np.rad2deg(theta_f)) #theta_f)
-            ell.set_alpha(.5)
-            ell.set_edgecolor('w')
-            ax.add_patch(ell)
-            ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (r2, theta_f), color='k')
-            
-            #asp = np.abs( np.diff(ax.get_ylim())[0] / np.diff(ax.get_xlim())[0] )
-            #ax2.set_aspect(asp)
-            im2 = ax2.imshow(pcov)
-            ax2.set_yticks(np.arange(0, 7))
-            ax2.set_yticklabels(['amp', 'x0', 'y0', 'sigx', 'sigy', 'theta', 'offset'], rotation=0)
-            
-            
-            divider = make_axes_locatable(ax2)
-            cax2 = divider.append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(im2, cax=cax2, orientation='vertical')
-            
-
-            bbox1 = ax.get_position()
-            subplot_ht = bbox1.height
-            bbox2 = ax2.get_position()
-            ax2.set_position([bbox2.x0, bbox1.y0, subplot_ht, subplot_ht])
-            
-        
-        else:
-            ax.text(0, -1, 'no fit')
-            ax2.axis('off')
-
-            
+        roi_fit_results, fig = plot_and_fit_roi_RF(avg_zscores_by_cond[rid], row_vals, col_vals)
         fig.suptitle('roi %i' % int(rid+1))
-
-        pl.subplots_adjust(wspace=0.3, left=0.1, right=0.9)
         
-        label_figure(fig, data_identifier)
+        label_figure(fig, data_identifier)            
         figname = '%s_roi%05d' % (trace_type, int(rid+1))
         pl.savefig(os.path.join(roi_rf_dir, '%s.png' % figname))
-        
         pl.close()
         
-        #%
-        if cando_fit:
-            RF[rid] = {'amplitude': amp_f,
-                       'x0': x0_f,
-                       'y0': y0_f,
-                       'sigma_x': sigx_f,
-                       'sigma_y': sigy_f,
-                       'theta': theta_f,
-                       'offset': offset_f,
-                       'r2': r2,
-                       'fit': fitr,
-                       'data': rfmap}
+        if roi_fit_results != {}:
+            RF[rid] = roi_fit_results
         
-    results['fits'] = RF
-    results['map_thr'] = map_thr
-    results['cut_off'] = cutoff_type
-    results['set_min_val'] = minval
-    results['zcored'] = plot_zscored
-    results['row_vals'] = row_vals
-    results['col_vals'] = col_vals
-    results['use_moments'] = use_moments
-    results['xx'] = plot_xx
-    results['yy'] = plot_yy
-    
+        #%
+    results = {'fits': RF,
+               'fit_params': {'rfmap_thr': map_thr,
+                              'cut_off': cutoff_type,
+                              'set_to_min': set_to_min_str,
+                              'xx': RF[RF.keys()[0]]['xx'],
+                              'yy': RF[RF.keys()[0]]['yy'],
+                              'zscored': plot_zscored},
+               'row_vals': row_vals,
+               'col_vals': col_vals}
+                   
     with open(os.path.join(output_dir, results_outfile), 'wb') as f:
         pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
         
 
 
-
-    
 #%%
 
-fit_thr = 0.51
+if select_rois:
+    # See if there are any cells missed by visual/selectivity tests:
+    missed_rois = [r for r in np.arange(0, avg_zscores_by_cond.shape[-1]) if r not in selective_rois]
+    print "%i missed rois." % len(missed_rois)
+    
+    missed_roi_dir = os.path.join(roi_rf_dir, 'missed_rois')
+    if not os.path.exists(missed_roi_dir): os.makedirs(missed_roi_dir)
+    
+    missed_RFs = {}
+    
+    for rid in missed_rois:
+    
+        roi_fit_results, fig = plot_and_fit_roi_RF(avg_zscores_by_cond[rid], row_vals, col_vals)
+        
+        if roi_fit_results!={} and roi_fit_results['fit_r']['success']:
+            missed_RFs[rid] = roi_fit_results
+            print rid
+            fig.suptitle('roi %i' % int(rid+1))        
+            label_figure(fig, data_identifier)
+            figname = '%s_roi%05d' % (trace_type, int(rid+1))
+            pl.savefig(os.path.join(missed_roi_dir, '%s.png' % figname))
+        pl.close()
+    
+        #%
+    missed_results = {'fits': missed_RFs,
+                   'fit_params': {'rfmap_thr': map_thr,
+                                  'cut_off': cutoff_type,
+                                  'set_to_min': set_to_min_str,
+                                  'xx': missed_RFs[missed_RFs.keys()[0]]['xx'],
+                                  'yy': missed_RFs[missed_RFs.keys()[0]]['yy'],
+                                  'zscored': plot_zscored},
+                   'row_vals': row_vals,
+                   'col_vals': col_vals}
+    
+    
+    missed_results_outfile = 'missed_%s' % results_outfile
+    with open(os.path.join(missed_roi_dir, missed_results_outfile), 'wb') as f:
+        pkl.dump(missed_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+
+#%%
+
+fit_thr = 0.4
 fitdf = pd.DataFrame(results['fits']).T
 fitted_rois = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-
 print "%i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), fitdf.shape[0], fit_thr)
+
+if select_rois:
+    fitdf2 = pd.DataFrame(missed_results['fits']).T
+    fitted_rois2 = fitdf2[fitdf2['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+    print "%i out of %i non-selective rois with r2 > %.2f" % (len(fitted_rois2), len(missed_rois), fit_thr)
+
 
 #%%
 plot_ellipse = True
@@ -604,21 +747,32 @@ grid = AxesGrid(fig, 111,
             cbar_location='right',
             cbar_pad=0.05, cbar_size="3%")
 
-    
-for aix, rid in enumerate(fitted_rois[0:nr*nc]):
+
+plot_missed = False
+
+if plot_missed:
+    rfdf = fitdf2.copy()
+    plot_str = 'missed_RFs'
+    fit_roi_list = copy.copy(fitted_rois2)
+else:
+    rfdf = fitdf.copy()
+    plot_str = 'selective_RFs'
+    fit_roi_list = copy.copy(fitted_rois)
+
+for aix, rid in enumerate(fit_roi_list[0:nr*nc]):
     ax = grid.axes_all[aix]
     ax.clear()
     coordmap = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
     
     #rfmap = fitdf['data'][rid]
     im = ax.imshow(coordmap, cmap=cmap) #, vmin=vmin, vmax=vmax)
-    ax.contour(results['xx'], results['yy'], fitdf['fit'][rid].reshape(coordmap.shape), 1, colors='w')
-    ax.set_title('roi %i (r2=%.2f)' % (int(rid+1), fitdf['r2'][rid]), fontsize=8)
+    #ax.contour(results['fit_params']['xx'], results['fit_params']['yy'], fitdf['fit'][rid].reshape(coordmap.shape), 1, colors='w')
+    ax.set_title('roi %i (r2=%.2f)' % (int(rid+1), rfdf['r2'][rid]), fontsize=8)
     
     if plot_ellipse:
         # = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
 
-        ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, angle=np.rad2deg(fitdf['theta'][rid]))
+        ell = Ellipse((rfdf['x0'][rid], rfdf['y0'][rid]), abs(rfdf['sigma_x'][rid])*sigma_scale, abs(rfdf['sigma_y'][rid])*sigma_scale, angle=np.rad2deg(rfdf['theta'][rid]))
         ell.set_alpha(0.5)
         ell.set_edgecolor('w')
         ell.set_facecolor('cornflowerblue')
@@ -644,8 +798,8 @@ if single_colorbar:
 for a in np.arange(0, nr*nc):
     grid.axes_all[a].set_axis_off() 
 
-if not single_colorbar and len(fitted_rois) < (nr*nc):
-    for nix in np.arange(len(fitted_rois), nr*nc):
+if not single_colorbar and len(fit_roi_list) < (nr*nc):
+    for nix in np.arange(len(fit_roi_list), nr*nc):
         grid.cbar_axes[nix].remove()
 
 pl.subplots_adjust(left=0.05, right=0.95, wspace=0.3, hspace=0.3)
@@ -653,7 +807,7 @@ pl.subplots_adjust(left=0.05, right=0.95, wspace=0.3, hspace=0.3)
 label_figure(fig, data_identifier)
 
 #%
-figname = 'RF_fits_%s_FIT%s_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (trace_type, fit_method,  cutoff_type, map_thr, minval, len(fitted_rois), fit_thr)
+figname = '%s_fits_2dgaus_FIT%s_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (plot_str, trace_type,  cutoff_type, map_thr, set_to_min_str, len(fit_roi_list), fit_thr)
 if plot_ellipse:
     figname = '%s_ellipse' % figname
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
@@ -718,20 +872,34 @@ def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
     return xx, yy, sigma_x, sigma_y
 
 #%%
+
+
+plot_missed = False
+
+if plot_missed:
+    rfdf = fitdf2.copy()
+    plot_str = 'missed_RFs'
+    fit_roi_list = copy.copy(fitted_rois2)
+else:
+    rfdf = fitdf.copy()
+    plot_str = 'selective_RFs'
+    fit_roi_list = copy.copy(fitted_rois)
+    
+    
 fig, ax = pl.subplots(figsize=(12, 6))
 
 screen_rect = Rectangle(( min(col_vals), min(row_vals)), max(col_vals)-min(col_vals), 
                         max(row_vals)-min(row_vals), facecolor='none', edgecolor='k')
 ax.add_patch(screen_rect)
 
-rcolors=iter(cm.rainbow(np.linspace(0,1,len(fitted_rois))))
-for rid in fitted_rois:
+rcolors=iter(cm.rainbow(np.linspace(0,1,len(fit_roi_list))))
+for rid in fit_roi_list:
     rcolor = next(rcolors)
     #ax.plot(fitdf['x0'][rid], fitdf['y0'][rid], marker='*', color=rcolor)
     
-    xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals, rid=rid)
+    xx, yy, sigma_x, sigma_y = convert_fit_to_coords(rfdf, row_vals, col_vals, rid=rid)
         
-    ell = Ellipse((xx, yy), abs(sigma_x)*sigma_scale, abs(sigma_y)*sigma_scale, angle=np.rad2deg(fitdf['theta'][rid]))
+    ell = Ellipse((xx, yy), abs(sigma_x)*sigma_scale, abs(sigma_y)*sigma_scale, angle=np.rad2deg(rfdf['theta'][rid]))
     ell.set_alpha(0.5)
     ell.set_edgecolor(rcolor)
     ell.set_facecolor('none')
@@ -742,7 +910,7 @@ ax.set_ylim([screen_bottom, screen_top])
 ax.set_xlim([screen_left, screen_right])
 
 #%
-figname = 'overlaid_RFs_%s_FIT%s_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (trace_type, fit_method,  cutoff_type, map_thr, minval, len(fitted_rois), fit_thr)
+figname = '%s_overlaid_RFs_%s_FIT2dgaus_%s_%.2f_set_%s_top%i_fit_thr_%.2f' % (plot_str, trace_type,  cutoff_type, map_thr, set_to_min_str, len(fitted_rois), fit_thr)
 pl.savefig(os.path.join(output_dir, '%s.png' % figname))
 print figname
 
@@ -759,11 +927,11 @@ ax.add_patch(screen_rect)
 
 max_zscores = avg_zscores_by_cond.max(axis=0)
 
-xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
+xx, yy, sigma_x, sigma_y = convert_fit_to_coords(rfdf, row_vals, col_vals)
     
-xvals = np.array([xx[rid] for rid in fitted_rois])
-yvals = np.array([yy[rid] for rid in fitted_rois])
-zs = np.array([max_zscores[rid] for rid in fitted_rois])
+xvals = np.array([xx[rid] for rid in fit_roi_list])
+yvals = np.array([yy[rid] for rid in fit_roi_list])
+zs = np.array([max_zscores[rid] for rid in fit_roi_list])
 
 ax.scatter(xvals, yvals, c=zs, marker='o', alpha=0.5, s=zs*100, cmap='inferno', vmin=0, vmax=6)
 
@@ -828,7 +996,7 @@ j.ax_marg_x.set_ylim([0, max([j.ax_marg_x.get_ylim()[-1], weighted_kde_az.densit
 j.ax_marg_y.set_xlim([0, max([j.ax_marg_y.get_xlim()[-1], weighted_kde_el.density.max()]) + 0.005])
 j.ax_marg_x.legend(fontsize=8)
 
-j.savefig(os.path.join(output_dir, 'weighted_marginals.png' ))
+j.savefig(os.path.join(output_dir, '%s_weighted_marginals.png' % plot_str ))
 
 
 
@@ -851,7 +1019,7 @@ targ.plot_kde_min_max(vals_az, kde_az, maxval=az_max, minval1=az_min1, minval2=a
 targ.plot_kde_min_max(vals_el, kde_el, maxval=el_max, minval1=el_min1, minval2=el_min2, title='elevation', ax=axes[1])
 
 label_figure(fig, data_identifier)
-fig.savefig(os.path.join(output_dir, 'weighted_kde_min_max.png'))
+fig.savefig(os.path.join(output_dir, '%s_weighted_kde_min_max.png' % plot_str))
     
 az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
 el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
@@ -959,7 +1127,7 @@ def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
 #%%
 
 
-zs = np.array([max_zscores[rid] for rid in fitted_rois])
+zs = np.array([max_zscores[rid] for rid in fit_roi_list])
 
 
 min_thr = 0.01
@@ -974,7 +1142,7 @@ print("LINX:", xvals.shape)
 for ri in strong_cells:
     fig.axes[0].text(xvals[ri], yvals[ri], '%s' % (ri+1))
 label_figure(fig, data_identifier)
-pl.savefig(os.path.join(output_dir, 'centroid_peak_rois_by_pos.png'))
+pl.savefig(os.path.join(output_dir, '%s_centroid_peak_rois_by_pos.png' % plot_str))
 
 
 #    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=False, marker_scale=marker_scale)
@@ -984,7 +1152,7 @@ pl.savefig(os.path.join(output_dir, 'centroid_peak_rois_by_pos.png'))
 #    label_figure(fig, data_identifier)
 #    pl.savefig(os.path.join(output_dir, 'centroid_kdecenter_rois_by_pos_%s.png' % (loctype)))
     
-with open(os.path.join(output_dir, 'fit_centroid_results.json'), 'w') as f:
+with open(os.path.join(output_dir, '%s_fit_centroid_results.json' % plot_str), 'w') as f:
     json.dump(kde_results, f, sort_keys=True, indent=4)
 
 

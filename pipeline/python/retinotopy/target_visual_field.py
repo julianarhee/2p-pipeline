@@ -32,50 +32,50 @@ from scipy.signal import argrelextrema
 
 
 #%%
-def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
-    oldrange = (oldmax - oldmin)
-    newrange = (newmax - newmin)
-    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
-    return newval
-
-def trials_to_dataframes(processed_fpaths, conditions_fpath):
-    
-    # Get condition / trial info:
-    with open(conditions_fpath, 'r') as f:
-        conds = json.load(f)
-    cond_list = list(set([cond_dict['stimuli']['stimulus'] for trial_num, cond_dict in conds.items()]))
-    trials_by_cond = dict((cond, [int(k) for k, v in conds.items() if v['stimuli']['stimulus']==cond]) for cond in cond_list)
-
-    excluded_tifs = [] 
-    for cond, tif_list in trials_by_cond.items():
-        for tifnum in tif_list:
-            processed_tif = [f for f in processed_fpaths if 'File%03d' % tifnum in f]
-            if len(processed_tif) == 0:
-                print "No analysis found for file: %s" % tifnum
-                excluded_tifs.append(tifnum)
-        trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
-    print "TRIALS BY COND:"
-    print trials_by_cond 
-    trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
-    print "Trials:", trial_list
-
-    fits = []
-    phases = []
-    mags = []
-    for trial_num, trial_fpath in zip(sorted(trial_list), sorted(processed_fpaths, key=natural_keys)):
-        
-        print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
-        df = h5py.File(trial_fpath, 'r')
-        fits.append(pd.Series(data=df['var_exp_array'][:], name=trial_num))
-        phases.append(pd.Series(data=df['phase_array'][:], name=trial_num))
-        mags.append(pd.Series(data=df['mag_ratio_array'][:], name=trial_num))
-        df.close()
-        
-    fit = pd.concat(fits, axis=1)
-        magratio = pd.concat(mags, axis=1)
-        phase = pd.concat(phases, axis=1)
-    
-    return fit, magratio, phase, trials_by_cond
+#def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+#    oldrange = (oldmax - oldmin)
+#    newrange = (newmax - newmin)
+#    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+#    return newval
+#
+#def trials_to_dataframes(processed_fpaths, conditions_fpath):
+#    
+#    # Get condition / trial info:
+#    with open(conditions_fpath, 'r') as f:
+#        conds = json.load(f)
+#    cond_list = list(set([cond_dict['stimuli']['stimulus'] for trial_num, cond_dict in conds.items()]))
+#    trials_by_cond = dict((cond, [int(k) for k, v in conds.items() if v['stimuli']['stimulus']==cond]) for cond in cond_list)
+#
+#    excluded_tifs = [] 
+#    for cond, tif_list in trials_by_cond.items():
+#        for tifnum in tif_list:
+#            processed_tif = [f for f in processed_fpaths if 'File%03d' % tifnum in f]
+#            if len(processed_tif) == 0:
+#                print "No analysis found for file: %s" % tifnum
+#                excluded_tifs.append(tifnum)
+#        trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
+#    print "TRIALS BY COND:"
+#    print trials_by_cond 
+#    trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
+#    print "Trials:", trial_list
+#
+#    fits = []
+#    phases = []
+#    mags = []
+#    for trial_num, trial_fpath in zip(sorted(trial_list), sorted(processed_fpaths, key=natural_keys)):
+#        
+#        print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
+#        df = h5py.File(trial_fpath, 'r')
+#        fits.append(pd.Series(data=df['var_exp_array'][:], name=trial_num))
+#        phases.append(pd.Series(data=df['phase_array'][:], name=trial_num))
+#        mags.append(pd.Series(data=df['mag_ratio_array'][:], name=trial_num))
+#        df.close()
+#        
+#    fit = pd.concat(fits, axis=1)
+#        magratio = pd.concat(mags, axis=1)
+#        phase = pd.concat(phases, axis=1)
+#    
+#    return fit, magratio, phase, trials_by_cond
 
 
 def plot_signal_fits_by_roi(fit, magratio, threshold=0.2, 
