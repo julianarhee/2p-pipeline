@@ -354,7 +354,7 @@ def extract_options(options):
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC078' #'JC059'
-session = '20190426' #'20190227'
+session = '20190427' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
@@ -371,7 +371,16 @@ if segment:
 
 
 fov_dir = os.path.join(rootdir, animalid, session, fov)
-traceid_dir = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))[0]
+traceid_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
+if len(traceid_dirs) > 1:
+    print "More than 1 trace ID found:"
+    for ti, traceid_dir in enumerate(traceid_dirs):
+        print ti, traceid_dir
+    sel = input("Select IDX of traceid to use: ")
+    traceid_dir = traceid_dirs[int(sel)]
+    traceid = os.path.split(traceid_dir)[-1]
+    
+    
 data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
 dset = np.load(data_fpath)
 dset.keys()
@@ -600,7 +609,7 @@ sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
 set_to_min_str = 'min' if set_to_min else 'zeros'
 
 if hard_cutoff:
-    map_thr = 1.5
+    map_thr = 2.0
     cutoff_type = 'hard_thr'
 else:
     map_thr = 0.6
@@ -715,7 +724,7 @@ if select_rois:
 
 #%%
 
-fit_thr = 0.4
+fit_thr = 0.51
 fitdf = pd.DataFrame(results['fits']).T
 fitted_rois = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
 print "%i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), fitdf.shape[0], fit_thr)
@@ -876,15 +885,19 @@ def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
 
 plot_missed = False
 
-if plot_missed:
-    rfdf = fitdf2.copy()
-    plot_str = 'missed_RFs'
-    fit_roi_list = copy.copy(fitted_rois2)
+if select_rois:
+    if plot_missed:
+        rfdf = fitdf2.copy()
+        plot_str = 'missed_RFs'
+        fit_roi_list = copy.copy(fitted_rois2)
+    else:
+        rfdf = fitdf.copy()
+        plot_str = 'selective_RFs'
+        fit_roi_list = copy.copy(fitted_rois)
 else:
     rfdf = fitdf.copy()
-    plot_str = 'selective_RFs'
+    plot_str = 'allfitRFs'
     fit_roi_list = copy.copy(fitted_rois)
-    
     
 fig, ax = pl.subplots(figsize=(12, 6))
 
