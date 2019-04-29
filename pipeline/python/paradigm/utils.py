@@ -1365,6 +1365,18 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         else:
             frame_shift = mwinfo[trials_in_block[0]]['block_frame_offset']
         if block_indexed is False:
+
+            all_frames_in_trials = all_frames_in_trials - len(all_frames_tsecs)*fidx - frame_shift  
+            if all_frames_in_trials[-1] > len(all_frames_tsecs):
+                print 'File: %i' % fidx, len(all_frames_tsecs)
+                print "*** %i extra frames removed." % (all_frames_in_trials[-1] - len(all_frames_tsecs))
+                print all_frames_in_trials[-10:]
+                last_ix = np.where(all_frames_in_trials==len(all_frames_tsecs)-1)[0][0]
+                all_frames_in_trials = all_frames_in_trials[0:last_ix] 
+            stim_onset_idxs = stim_onset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
+            #stim_offset_idxs = stim_offset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
+        
+        # Need to deal with skipped trials WITHIN tifs:
             # Frame shift by "first" frame idx of current tif:
             nframes_pre = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['baseline_dur_sec'] * volumerate))
             iti_remainder = nframes_iti_full - nframes_pre
@@ -1372,6 +1384,15 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             all_frames_in_trials = all_frames_in_trials - alignment_start_offset + iti_remainder 
             stim_onset_idxs = stim_onset_idxs - alignment_start_offset + iti_remainder           
  
+#            if all_frames_in_trials[-1] >= len(all_frames_tsecs):
+#                print 'File: %i' % fidx, len(all_frames_tsecs)
+#                print "*** %i extra frames removed." % (all_frames_in_trials[-1] - len(all_frames_tsecs))
+#                print all_frames_in_trials[-10:]
+#                last_ix = np.where(all_frames_in_trials==len(all_frames_tsecs)-1)[0][0]
+#                all_frames_in_trials = all_frames_in_trials[0:last_ix] 
+
+            stim_onset_idxs = stim_onset_idxs - alignment_start_offset + iti_remainder           
+
 #            all_frames_in_trials = all_frames_in_trials - len(all_frames_tsecs)*fidx - frame_shift  
 #
 #            if all_frames_in_trials[-1] >= len(all_frames_tsecs):
@@ -1381,8 +1402,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
 #                last_ix = np.where(all_frames_in_trials==len(all_frames_tsecs)-1)[0][0]
 #                all_frames_in_trials = all_frames_in_trials[0:last_ix] 
 #            stim_onset_idxs = stim_onset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
-#            #stim_offset_idxs = stim_offset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
-#        
+            #stim_offset_idxs = stim_offset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
+        
         # Need to deal with skipped trials WITHIN tifs?:
         # print "File ix: %i - all_frames_in_trials:" % fidx, all_frames_in_trials[0:10]   
         
@@ -1397,7 +1418,9 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         #frames_in_trials = sorted(list(set(vol_ixs_tif[all_frames_in_trials])))
 
         # Don't take unique values, since stim period of trial N can be ITI of trial N-1
-        frames_in_trials = vol_ixs_tif[all_frames_in_trials]
+        frames_in_trials = np.empty(all_frames_in_trials.shape)
+        actual_frames = [i for i in all_frames_in_trials if i < len(vol_ixs_tif)]
+        frames_in_trials[0:len(actual_frames)] = vol_ixs_tif[actual_frames] #vol_ixs_tif[all_frames_in_trials]
 
         stim_onset_idxs_adjusted = vol_ixs_tif[stim_onset_idxs]
         stim_onset_idxs = copy.copy(stim_onset_idxs_adjusted)
@@ -1427,7 +1450,10 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
        
         # Turn frame_tsecs into RELATIVE tstamps (to stim onset):
         first_plane_tstamps = all_frames_tsecs[first_plane_frames]
-        trial_tstamps = first_plane_tstamps[frames_in_trials] #all_frames_tsecs[frames_in_trials] #indices]  
+        print "--> N tstamps:", first_plane_tstamps
+        trial_tstamps = first_plane_tstamps[frames_in_trials[0:len(actual_frames)]] #all_frames_tsecs[frames_in_trials] #indices]  
+        if len(trial_tstamps) < len(frames_in_trials):
+            trial_tstamps = np.pad(trial_tstamps, (0, len(frames_in_trials)-len(trial_tstamps)), mode='constant', constant_values=np.nan)
 
 
         min_frame_interval = 1 #list(set(np.diff(frames_to_select['Slice01'].values)))  # 1 if not slices
@@ -1469,8 +1495,11 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                 tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
                 # Subtract stim_on tstamp from each frame of each trial to get relative tstamp:
                 tsec_mat -= np.tile(all_frames_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+               #print tsec_mat
                 
-            except ValueError:
+            except Exception as e: #ValueError:
+                print e
+                print tsec_mat
                 reformat_tstamps = True
            
             if reformat_tstamps:
