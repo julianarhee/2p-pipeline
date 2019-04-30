@@ -378,7 +378,9 @@ if len(traceid_dirs) > 1:
         print ti, traceid_dir
     sel = input("Select IDX of traceid to use: ")
     traceid_dir = traceid_dirs[int(sel)]
-    traceid = os.path.split(traceid_dir)[-1]
+else:
+    traceid_dir = traceid_dirs[0]
+traceid = os.path.split(traceid_dir)[-1]
     
     
 data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
@@ -724,7 +726,7 @@ if select_rois:
 
 #%%
 
-fit_thr = 0.51
+fit_thr = 0.7
 fitdf = pd.DataFrame(results['fits']).T
 fitted_rois = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
 print "%i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), fitdf.shape[0], fit_thr)
@@ -758,15 +760,20 @@ grid = AxesGrid(fig, 111,
 
 
 plot_missed = False
-
-if plot_missed:
-    rfdf = fitdf2.copy()
-    plot_str = 'missed_RFs'
-    fit_roi_list = copy.copy(fitted_rois2)
+if select_rois:
+    if plot_missed:
+        rfdf = fitdf2.copy()
+        plot_str = 'missed_RFs'
+        fit_roi_list = copy.copy(fitted_rois2)
+    else:
+        rfdf = fitdf.copy()
+        plot_str = 'selective_RFs'
+        fit_roi_list = copy.copy(fitted_rois)
 else:
     rfdf = fitdf.copy()
-    plot_str = 'selective_RFs'
+    plot_str = 'allfitRFs'
     fit_roi_list = copy.copy(fitted_rois)
+    
 
 for aix, rid in enumerate(fit_roi_list[0:nr*nc]):
     ax = grid.axes_all[aix]
