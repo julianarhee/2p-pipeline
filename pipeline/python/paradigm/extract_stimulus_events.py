@@ -167,7 +167,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     new_start_ix = 0
     prev_trial = 'trial00001'
     for trial in sorted(mwtrials.keys(), key=natural_keys):
-
+        padded_end_of_tif = False
+        
         curr_tif_ix = mwtrials[trial]['block_idx']
         
         # Get frame triggers belonging to current tif:
@@ -181,8 +182,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         
         print "Parsing %s" % trial
-        #if trial == 'trial00165':
-        #    break
+        if trial == 'trial00043':
+            break
     
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
@@ -211,75 +212,91 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         cval = next(curr_codes)  
         
-        for bi, bitcode in enumerate(bitcodes):
-            nskips = 0; finding_frames = True;
-            #print bi, bitcode
-#            if bi == 31:
-#                break
-            # If first bitcode of trial N matches last bitcode of trial N-1, cycle through until the next one is found:
-            if bi==0 and bitcode == mwtrials[prev_trial]['all_bitcodes'][-1]:
-                while cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]: 
-                    cval = next(curr_codes)
+        try:
+            for bi, bitcode in enumerate(bitcodes):
+                nskips = 0; finding_frames = True;
+                #print bi, bitcode
+    #            if bi == 31:
+    #                break
+                # If first bitcode of trial N matches last bitcode of trial N-1, cycle through until the next one is found:
+                if bi==0 and bitcode == mwtrials[prev_trial]['all_bitcodes'][-1]:
+                    while cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]: 
+                        cval = next(curr_codes)
+                        
+                # Only accept bitcode assignment to SI frame if we have multiple repeats (even w dynamic stim, should have at least 4 reps)
+                nreps_curr = 0; no_first_match = None;
+                while ((no_first_match is None) or (nreps_curr < min_nreps)) and finding_frames:
+                    #print cval, nskips
+                    cval = next(curr_codes)  
+                    nskips += 1
                     
-            # Only accept bitcode assignment to SI frame if we have multiple repeats (even w dynamic stim, should have at least 4 reps)
-            nreps_curr = 0; no_first_match = None;
-            while ((no_first_match is None) or (nreps_curr < min_nreps)) and finding_frames:
+                    if no_first_match is None and cval[1] == bitcode:
+                        no_first_match = True
+    
+                    if cval[1] == bitcode and prev_val == bitcode: # First time, already have had 1 occurrence
+                        nreps_curr += 1
+                    prev_val = cval[1]
+    
+                    if (len(bitcodes) > 2) and bi > 0 and (nreps_curr < min_nreps):
+                        if (nskips > nreads_per_frame):
+                            finding_frames = False
+                    else:
+                        finding_frames = (nreps_curr < min_nreps)
                 #print cval, nskips
-                cval = next(curr_codes)  
-                nskips += 1
                 
-                if no_first_match is None and cval[1] == bitcode:
-                    no_first_match = True
-                    #print "... found a first match"
-                
-                if cval[1] == bitcode and prev_val == bitcode: # First time, already have had 1 occurrence
-                    nreps_curr += 1
-                prev_val = cval[1]
-
-                if (len(bitcodes) > 2) and bi > 0 and (nreps_curr < min_nreps):
-                    if (nskips > nreads_per_frame):
-                        finding_frames = False
+                if (len(bitcodes) > 2) and bi > 0 and nskips > nreads_per_frame:
+                    #curr_valid_bitframes = sorted([f for f in found_bitcodes if f != 'missed'], key=lambda x: x[0])
+                    # Skip through curr bitcodes until next new value found:
+                    stuck_val = cval
+                    while cval[1] == stuck_val[1]:
+                        cval = next(curr_codes)
+                    found_bitcodes.append('missed')
                 else:
-                    finding_frames = (nreps_curr < min_nreps)
-                   
-            #print cval, nskips
+                    # Subtract 2 indices from nreps_curr since 1st rep is counted after 1st occurrence, and last rep is counted after last found:
+                    last_found_idx = curr_frames_and_codes.index(cval)
+                    if bi == len(bitcodes)-1:
+                        last_found_match = curr_frames_and_codes[last_found_idx]
+                        found_bitcodes.append(last_found_match)
+                    else:
+                        assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
+                        first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
+                        found_bitcodes.append(first_found_match)
+        except StopIteration:
+            print "--> No more frames!"
+            print "--> Found %i out of %i bitcodes [%s]" % (bi, len(bitcodes), trial)
+            # Check if this is the last trial in block, might be shortened SI tifs:
+            # Identify frame number of first and last found stimulus updates in current trial: 
+            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
+            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
             
-            if (len(bitcodes) > 2) and bi > 0 and nskips > nreads_per_frame:
-                #curr_valid_bitframes = sorted([f for f in found_bitcodes if f != 'missed'], key=lambda x: x[0])
-                # Skip through curr bitcodes until next new value found:
-                stuck_val = cval
-                while cval[1] == stuck_val[1]:
-                    cval = next(curr_codes)
-                found_bitcodes.append('missed')
-            else:
-                # Subtract 2 indices from nreps_curr since 1st rep is counted after 1st occurrence, and last rep is counted after last found:
-                last_found_idx = curr_frames_and_codes.index(cval)
-                if bi == len(bitcodes)-1:
-                    last_found_match = curr_frames_and_codes[last_found_idx]
-                    found_bitcodes.append(last_found_match)
-                else:
-                    assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
-                    first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
-                    found_bitcodes.append(first_found_match)
-        
+            # Calculate stimulus duration and check that it matches what's expected:
+            stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
+            print "--> Bitcodes found thus far, stimdur = %.1f" % (round(stim_dur, 2))
+            next_trial = 'trial%05d' % (int(trial[6:])+1)
+            if round(stim_dur, 1) < (mwtrials[trial]['stim_duration']/1E3) and mwtrials[trial]['block_idx'] != mwtrials[next_trial]['block_idx']:
+                print "--> Too few SI volumes acquired per tif. Allowing nan-padding"
+                triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
+                adjusted_frame_count.append(trial)
+                padded_end_of_tif = True    
+                
         # Update starting point of next trial's search iteration:
         new_start_ix = curr_frames_and_codes.index(cval)
         
-        # Identify frame number of first and last found stimulus updates in current trial: 
-        triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
-        triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
-        
-        # Calculate stimulus duration and check that it matches what's expected:
-        stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-        print "%s: %.1f" % (trial, round(stim_dur, 2))
-        
-        # If there are missed frame triggers, calculate expected frame stim-off:
-        if missing_frame_triggers and np.abs(round(stim_dur, 1) - (mwtrials[trial]['stim_duration']/1E3)) > 0.1:
-            triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
-            stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-            adjusted_frame_count.append(trial)
+        if not padded_end_of_tif:
+            # Identify frame number of first and last found stimulus updates in current trial: 
+            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
+            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
             
-        
+            # Calculate stimulus duration and check that it matches what's expected:
+            stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
+            print "%s: %.1f" % (trial, round(stim_dur, 2))
+            
+            # If there are missed frame triggers, calculate expected frame stim-off:
+            if missing_frame_triggers and np.abs(round(stim_dur, 1) - (mwtrials[trial]['stim_duration']/1E3)) > 0.1:
+                triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
+                stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
+                adjusted_frame_count.append(trial)
+
         if round(stim_dur) != round(mwtrials[trial]['stim_duration']/1E3):
             break
         prev_trial = trial
