@@ -142,6 +142,69 @@ def load_retino_analysis_info(animalid, session, fov, run, retinoid, use_pixels=
         
     return retinoid, rids[retinoid]
 
+#%%
+# Convert degs to centimeters:
+def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, bottomedge=None, topedge=None):
+    #width = 103 # in cm
+    #height = 58 # in cm
+    #resolution = [1920, 1080]
+
+    if leftedge is None:
+        leftedge = -1*width/2.
+    if rightedge is None:
+        rightedge = width/2.
+    if bottomedge is None:
+        bottomedge = -1*height/2.
+    if topedge is None:
+        topedge = height/2.
+
+    print "center 2 Top/Anterior:", topedge, rightedge
+
+
+    mapx = np.linspace(leftedge, rightedge, resolution[0] * ((rightedge-leftedge)/float(width)))
+    mapy = np.linspace(bottomedge, topedge, resolution[1] * ((topedge-bottomedge)/float(height)))
+
+    lin_coord_x, lin_coord_y = np.meshgrid(mapx, mapy, sparse=False)
+
+    return lin_coord_x, lin_coord_y
+
+
+def get_retino_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data',
+                    azimuth='right', elevation='top',
+                    leftedge=None, rightedge=None, bottomedge=None, topedge=None):
+
+    screen_info = get_screen_info(animalid, session, fov=fov, interactive=interactive,
+                                  rootdir=rootdir)
+
+    lin_coord_x, lin_coord_y = get_linear_coords(screen_info['azimuth'], 
+                                                 screen_info['elevation'], 
+                                                 screen_info['resolution'], 
+                                                 leftedge=leftedge, rightedge=rightedge, 
+                                                 bottomedge=bottomedge, topedge=topedge)
+    
+    linminW = lin_coord_x.min(); linmaxW = lin_coord_x.max()
+    linminH = lin_coord_y.min(); linmaxH = lin_coord_y.max()
+
+        
+        
+    retino_info = {}
+    retino_info['width'] = screen_info['azimuth']
+    retino_info['height'] = screen_info['elevation']
+    retino_info['resolution'] = screen_info['resolution']
+    #aspect_ratio = float(height)/float(width)
+    retino_info['aspect'] = retino_info['height'] / retino_info['width']#aspect_ratio
+    retino_info['azimuth'] = azimuth
+    retino_info['elevation'] = elevation
+    retino_info['linminW'] = linminW
+    retino_info['linmaxW'] = linmaxW
+    retino_info['linminH'] = linminH
+    retino_info['linmaxH'] = linmaxH
+    retino_info['bounding_box'] = [leftedge, bottomedge, rightedge, topedge]
+
+    return retino_info
+
+
+
 
 def get_retino_stimulus_info(mwinfo, runinfo):
     conditions = list(set([cdict['stimuli']['stimulus'] for trial_num, cdict in mwinfo.items()]))
