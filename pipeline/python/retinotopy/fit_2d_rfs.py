@@ -353,8 +353,8 @@ def extract_options(options):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC078' #'JC059'
-session = '20190427' #'20190227'
+animalid = 'JC080' #'JC059'
+session = '20190430' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
@@ -726,7 +726,7 @@ if select_rois:
 
 #%%
 
-fit_thr = 0.7
+fit_thr = 0.51
 fitdf = pd.DataFrame(results['fits']).T
 fitted_rois = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
 print "%i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), fitdf.shape[0], fit_thr)
@@ -1006,7 +1006,7 @@ axes[1].plot(elev_y, elev_x, label='sns-marginal (unweighted)')
 axes[1].plot(el_vals, smstats_el, label='gauss-kde (unweighted)')
 axes[1].legend(fontsize=8)
 
-pl.savefig(os.path.join(output_dir, 'compare_kde_weighted.png' ))
+pl.savefig(os.path.join(output_dir, '%s_compare_kde_weighted_fit_thr_%.2f.png' % (plot_str, fit_thr) ))
         
 
 # Plot weighted KDE to marginals on joint plot:
@@ -1016,7 +1016,7 @@ j.ax_marg_x.set_ylim([0, max([j.ax_marg_x.get_ylim()[-1], weighted_kde_az.densit
 j.ax_marg_y.set_xlim([0, max([j.ax_marg_y.get_xlim()[-1], weighted_kde_el.density.max()]) + 0.005])
 j.ax_marg_x.legend(fontsize=8)
 
-j.savefig(os.path.join(output_dir, '%s_weighted_marginals.png' % plot_str ))
+j.savefig(os.path.join(output_dir, '%s_weighted_marginals_fit_thr_%.2f.png' % (plot_str, fit_thr) ))
 
 
 
@@ -1039,7 +1039,7 @@ targ.plot_kde_min_max(vals_az, kde_az, maxval=az_max, minval1=az_min1, minval2=a
 targ.plot_kde_min_max(vals_el, kde_el, maxval=el_max, minval1=el_min1, minval2=el_min2, title='elevation', ax=axes[1])
 
 label_figure(fig, data_identifier)
-fig.savefig(os.path.join(output_dir, '%s_weighted_kde_min_max.png' % plot_str))
+fig.savefig(os.path.join(output_dir, '%s_weighted_kde_min_max_fit_thr_%.2f.png' % (plot_str, fit_thr)))
     
 az_bounds = sorted([float(vals_az[az_min1]), float(vals_az[az_min2])])
 el_bounds = sorted([float(vals_el[el_min1]), float(vals_el[el_min2])])
@@ -1160,9 +1160,9 @@ print("LINX:", xvals.shape)
 
 
 for ri in strong_cells:
-    fig.axes[0].text(xvals[ri], yvals[ri], '%s' % (ri+1))
+    fig.axes[0].text(xvals[ri], yvals[ri], '%s' % (fit_roi_list[ri]+1))
 label_figure(fig, data_identifier)
-pl.savefig(os.path.join(output_dir, '%s_centroid_peak_rois_by_pos.png' % plot_str))
+pl.savefig(os.path.join(output_dir, '%s_centroid_peak_rois_by_pos_fit_thr_%.2f.png' % (plot_str, fit_thr)))
 
 
 #    fig = plot_kde_maxima(kde_results, magratio, linX, linY, screen, use_peak=False, marker_scale=marker_scale)
@@ -1172,7 +1172,7 @@ pl.savefig(os.path.join(output_dir, '%s_centroid_peak_rois_by_pos.png' % plot_st
 #    label_figure(fig, data_identifier)
 #    pl.savefig(os.path.join(output_dir, 'centroid_kdecenter_rois_by_pos_%s.png' % (loctype)))
     
-with open(os.path.join(output_dir, '%s_fit_centroid_results.json' % plot_str), 'w') as f:
+with open(os.path.join(output_dir, '%s_fit_centroid_results_fit_thr_%.2f.json' % (plot_str, fit_thr)), 'w') as f:
     json.dump(kde_results, f, sort_keys=True, indent=4)
 
 
