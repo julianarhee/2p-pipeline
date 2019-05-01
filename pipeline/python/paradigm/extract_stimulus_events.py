@@ -167,7 +167,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     new_start_ix = 0
     prev_trial = 'trial00001'
     for trial in sorted(mwtrials.keys(), key=natural_keys):
-        padded_end_of_tif = False
+        #padded_end_of_tif = False
         
         curr_tif_ix = mwtrials[trial]['block_idx']
         
@@ -182,8 +182,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         
         print "Parsing %s" % trial
-        if trial == 'trial00043':
-            break
+        #if trial == 'trial00043':
+        #    break
     
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
@@ -266,36 +266,37 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             print "--> Found %i out of %i bitcodes [%s]" % (bi, len(bitcodes), trial)
             # Check if this is the last trial in block, might be shortened SI tifs:
             # Identify frame number of first and last found stimulus updates in current trial: 
-            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
-            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
-            
-            # Calculate stimulus duration and check that it matches what's expected:
-            stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-            print "--> Bitcodes found thus far, stimdur = %.1f" % (round(stim_dur, 2))
-            next_trial = 'trial%05d' % (int(trial[6:])+1)
-            if round(stim_dur, 1) < (mwtrials[trial]['stim_duration']/1E3) and mwtrials[trial]['block_idx'] != mwtrials[next_trial]['block_idx']:
-                print "--> Too few SI volumes acquired per tif. Allowing nan-padding"
-                triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
-                adjusted_frame_count.append(trial)
-                padded_end_of_tif = True    
+            continue
+#            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
+#            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
+#            
+#            # Calculate stimulus duration and check that it matches what's expected:
+#            stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
+#            print "--> Bitcodes found thus far, stimdur = %.1f" % (round(stim_dur, 2))
+#            next_trial = 'trial%05d' % (int(trial[6:])+1)
+#            if round(stim_dur, 1) < (mwtrials[trial]['stim_duration']/1E3) and mwtrials[trial]['block_idx'] != mwtrials[next_trial]['block_idx']:
+#                print "--> Too few SI volumes acquired per tif. Allowing nan-padding"
+#                triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
+#                adjusted_frame_count.append(trial)
+#                padded_end_of_tif = True    
                 
         # Update starting point of next trial's search iteration:
         new_start_ix = curr_frames_and_codes.index(cval)
         
-        if not padded_end_of_tif:
-            # Identify frame number of first and last found stimulus updates in current trial: 
-            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
-            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
-            
-            # Calculate stimulus duration and check that it matches what's expected:
+        #if not padded_end_of_tif:
+        # Identify frame number of first and last found stimulus updates in current trial: 
+        triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
+        triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
+        
+        # Calculate stimulus duration and check that it matches what's expected:
+        stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
+        print "%s: %.1f" % (trial, round(stim_dur, 2))
+        
+        # If there are missed frame triggers, calculate expected frame stim-off:
+        if missing_frame_triggers and np.abs(round(stim_dur, 1) - (mwtrials[trial]['stim_duration']/1E3)) > 0.1:
+            triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
             stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-            print "%s: %.1f" % (trial, round(stim_dur, 2))
-            
-            # If there are missed frame triggers, calculate expected frame stim-off:
-            if missing_frame_triggers and np.abs(round(stim_dur, 1) - (mwtrials[trial]['stim_duration']/1E3)) > 0.1:
-                triggered_frame_off = triggered_frame_on + int(round(((mwtrials[trial]['stim_duration']/1E3) * framerate)))
-                stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-                adjusted_frame_count.append(trial)
+            adjusted_frame_count.append(trial)
 
         if round(stim_dur) != round(mwtrials[trial]['stim_duration']/1E3):
             break
