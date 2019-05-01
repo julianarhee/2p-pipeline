@@ -122,9 +122,13 @@ def extract_options(options):
 #           '--compare','-p', 'color',
 #           '-r', 'size', '-c', 'morphlevel']
 
-options = ['-D', '/n/coxfs01/2p-data','-i', 'JC078', '-S', '20190427', '-A', 'FOV1_zoom2p0x',
-           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
-           '-r', 'ypos', '-c', 'xpos']
+#options = ['-D', '/n/coxfs01/2p-data','-i', 'JC078', '-S', '20190427', '-A', 'FOV1_zoom2p0x',
+#           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
+#           '-r', 'ypos', '-c', 'xpos']
+
+options = ['-D', '/n/coxfs01/2p-data','-i', 'JC078', '-S', '20190430', '-A', 'FOV1_zoom2p0x',
+           '-R', 'blobs_run4', '-t', 'traces001', '--shade',
+           '-r', 'size', '-c', 'morphlevel']
 
 #%%
 def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
@@ -469,19 +473,21 @@ def make_clean_psths(options):
     #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
             p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=1)
             if plot_params['hue'] is None:
-                p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
-                p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1, color='k')
+                p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
+                p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1, color='k')
             else:
-                p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
-                p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1)
-            
+                p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
+                p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1)
+            p = p.set_titles(col_template="{col_name}", size=6)
 #        for xi in range(p.axes.shape[0]):
 #            for yi in range(p.axes.shape[1]):
 #                p.axes[xi, yi].text(-0.999, ylim*0.9, 'n=%i' % nreps)
            
             if 'xpos' in plot_params.values() and 'ypos' in plot_params.values(): 
-                pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.9, bottom=0.1, left=0.05)
-
+                pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05)
+            else:
+                pl.subplots_adjust(wspace=0.8, hspace=0.8, top=0.85, bottom=0.1, left=0.1)
+            
         ymin = meandfs[ylabel].min()
         ymax = meandfs[ylabel].max()
         start_val = 0.0
@@ -490,7 +496,7 @@ def make_clean_psths(options):
             for ci in range(p.axes.shape[1]):
                 #print ri, ci
                 p.axes[ri, ci].add_patch(patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2))
-                    
+                p.axes[ri, ci].text(-0.999, ymax+(ymax*0.2), 'n=%i' % nreps, fontsize=6)
                 if len(col_vals) > 10:
                     p.axes[ri, ci].set_title('')
                     
