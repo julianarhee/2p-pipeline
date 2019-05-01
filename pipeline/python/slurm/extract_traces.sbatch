@@ -29,5 +29,6 @@ echo ${7}
 
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/get_traces.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -t ${5} -c 0.7 -a ${6} --neuropil --warp --align --raw --nonnegative --post=${7} --psth -d dff -r ${8} -C ${9} -H ${10}
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/get_traces.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -t ${5} -c 0.7 -a ${6} --neuropil --warp --align --raw --nonnegative --post=${8} --pre=${7}
+#--psth -d dff -r ${8} -C ${9} -H ${10}
 

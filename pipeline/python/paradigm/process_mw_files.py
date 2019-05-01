@@ -546,14 +546,15 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         ### Get all pixel-clock events in current run:
        # print "selected runs:", user_run_selection
         if pixelclock:
-            num_non_stimuli = 3 # N stimuli on screen: pixel clock, background, image
-            # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
-            pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times) #, trigger_times=trigg_times)
+            num_stimuli = 3 # N stimuli on screen: pixel clock, background, image
         else:
-            num_non_stimuli = 2 # background + image
+            num_stimuli = 2 # background + image
+            
         if backlight_sensor:
-            num_non_stimuli += 1
-
+            num_stimuli += 1
+            
+        # Don't use trigger-times, since unclear how high/low values assigned from SI-DAQ:
+        pixelclock_evs = get_pixelclock_events(df, boundary, trigger_times=trigg_times) #, trigger_times=trigg_times)
         pixelevents.append(pixelclock_evs)
 
         # Get stimulus type:
@@ -567,7 +568,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                 # Identify blank-screen pixel-clock events. A non-dynamic image should not change more than once 
                 # between blank-screen events. There are 2 blank screen events after the first stimulus: 
                 # The first "blank" is stimulus-removal. The second is the beginning of the ITI.
-                blank_pev_idxs = np.array([i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_non_stimuli])
+                blank_pev_idxs = np.array([i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_stimuli])
                 find_itis = np.where(np.diff(blank_pev_idxs) > 1)[0]
                 # Find the first stimulus event after the true "iti":
                 for pi, pre_iti_idx in enumerate(find_itis):
@@ -576,7 +577,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                         next_iti = -1
                     else:
                         next_iti = blank_pev_idxs[find_itis[pi+1]]
-                    curr_stim_evs = [pev for pev in pixelclock_evs[pre_iti+1:next_iti-1] if len(pev.value)==num_non_stimuli]
+                    curr_stim_evs = [pev for pev in pixelclock_evs[pre_iti+1:next_iti-1] if len(pev.value)==num_stimuli]
                     # The number of stim events found shoudl equal the stim-dur (sec) after dividing by 60Hz
                     image_evs.append(curr_stim_evs[0])
             else:
@@ -602,7 +603,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
 
             # Find ITI indices:
-            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value)==2]
+            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_stimuli]
             if len(list(set(np.diff(iti_idxs)))) > 1:
                 seconds = np.diff(iti_idxs)[0::2]
                 firsts = np.diff(iti_idxs)[1::2]
@@ -617,7 +618,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                         skip_first_repeat_iti = True
                     
 
-	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
+        	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
             find_static = np.where(np.diff(start_times) > 0)[0] + 1
             find_static = np.append(find_static, 0)
@@ -659,7 +660,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         iti_evs = []
         for im in im_idx:
             try:
-                next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_non_stimuli-1))
+                next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_stimuli-1))
 #                if skip_first_repeat_iti:
 #                    first_found = pixelclock_evs.index(next_iti)
 #                    if first_found == len(pixelclock_evs)-1:
@@ -671,11 +672,23 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             except StopIteration:
                 # First, see if theer is an extra p-clock event missed because of missed triggers:
                 tmp_pixelclock_evs = get_pixelclock_events(df, boundary)
-                if len(tmp_pixelclock_evs[-1].value)==(num_non_stimuli-1) and\
-                        len(tmp_pixelclock_evs[-2].value)==num_non_stimuli and\
-                        tmp_pixelclock_evs[-2].value[1]['start_time']==image_evs[-1].value[1]['start_time']:
-                    iti_evs.append(tmp_pixelclock_evs[-1])
-                else:
+                
+                # Find last image event:
+                last_img_ev = tmp_pixelclock_evs.index(image_evs[-1])
+                try:
+                    last_pix_ev = next(i for i in tmp_pixelclock_evs[last_img_ev+1:] if len(i.value)==(num_stimuli-1))
+                    iti_evs.append(last_pix_ev)
+                    # Replace last "trigger time" with missed trigger time of ITI:
+                    missing_diff = last_pix_ev.time - trigg_times[-1][1]
+                    #for ti, triggs in enumerate(trigg_times):
+                    #    trigg_times[ti][1] += missing_diff
+                    
+#                if len(tmp_pixelclock_evs[-1].value)==(num_stimuli-1) and\
+#                        len(tmp_pixelclock_evs[-2].value)==num_stimuli and\
+#                        tmp_pixelclock_evs[-2].value[1]['start_time']==image_evs[-1].value[1]['start_time']:
+#                    iti_evs.append(tmp_pixelclock_evs[-1])
+#                else:
+                except StopIteration:
                     print "No ITI found after last image onset event.\n"
 
         print "Found %i iti events after a stimulus onset." % len(iti_evs)
@@ -878,7 +891,8 @@ def check_nested(evs):
     return evs
 
 #%%
-def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', verbose=False, single_run=True, boundidx=0, auto=False, backlight_sensor=True, experiment_type=None):
+def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, trigger_varname='frame_trigger', 
+                   verbose=False, single_run=True, boundidx=0, auto=False, backlight_sensor=True, experiment_type=None):
     
     '''
     Extract relevant stimulus info for each trial across blocks.
@@ -1001,7 +1015,8 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
 
         if not nexpected_pixelevents == nbitcode_events:
             print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-nbitcode_events)
-
+            
+        
         # Create trial struct:
         trial = dict() # dict((i+1, dict()) for i in range(len(stimevents)))
         stimevents = sorted(stimevents, key=get_timekey)
@@ -1011,12 +1026,23 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trialnum = trialidx + 1
             trialname = 'trial%05d' % int(trialnum)
             #print trialname
-            
-            corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]]
-            corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) if iti.time > tval[0] and iti.time <= tval[1]]
-            if len(corresponding_tif_stim) == 0 or len(corresponding_tif_iti) == 0:
-                print "*** %s -- time does not fall within SI triggers, skipping." % trialname
-                continue
+            missing_si_trigger = False
+            try:
+                corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) \
+                                          if tval[0] <= stim.time <= tval[1]]
+                corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) \
+                                          if tval[0] <= iti.time <= tval[1]]
+                assert len(corresponding_tif_stim) > 0 and len(corresponding_tif_iti) > 0, "[%s]:  found missed SI trigger" % trialname
+                missing_si_trigger = False
+            except AssertionError:
+                corresponding_tif_stim = [tidx for tidx, tval in enumerate(trigger_times) \
+                                          if round(tval[0]/1E8) <= round(stim.time/1E8) <= round(tval[1]/1E8)]
+                corresponding_tif_iti = [tidx for tidx, tval in enumerate(trigger_times) \
+                                         if round(tval[0]/1E8) <= round(iti.time/1E8) <= round(tval[1]/1E8)]
+                if len(corresponding_tif_stim) == 0 or len(corresponding_tif_iti) == 0:
+                    print "*** %s -- time does not fall within SI triggers, skipping." % trialname
+                    continue
+                missing_si_trigger = True
             
             # blankidx = trialidx*2 + 1
             trial[trialname] = dict()
@@ -1120,6 +1146,8 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname]['block_end'] = [tval[1] for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
             trial[trialname]['stim_on_time_block'] = round((stim.time - trial[trialname]['block_start'])/1E3)
             trial[trialname]['stim_off_time_block'] = round((iti.time - trial[trialname]['block_start'])/1E3)
+            trial[trialname]['missing_si_trigger'] = missing_si_trigger
+
 
         # Check stimulus durations:
         #print len(stimevents)

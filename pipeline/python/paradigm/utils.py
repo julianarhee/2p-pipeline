@@ -57,6 +57,8 @@ def combine_run_info(D, identical_fields=[], combined_fields=[]):
         if info_key in identical_fields:
             if isinstance(run_vals[0], list):
                 for curr_run in D.keys():
+                    if info_key in ['roi_list', 'condition_list']:
+                        continue
                     print curr_run, info_key, D[curr_run]['run_info'][info_key]
                 if info_key in ['frame_rate', 'nframes_on']:
                     assert all([int(round(run_vals[0][0])) == int(round(D[curr_run]['run_info'][info_key][0])) for curr_run in D.keys()]), "%s: All vals not equal!" % info_key
@@ -465,7 +467,7 @@ def load_raw_run(traceid_dir, trace_type='np_subtracted', combined=False, create
     trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
     ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
     #assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
-    nframes_per_trial = list(set(labels_df.groupby(['trial'])['tsec'].count())) #[0]
+    nframes_per_trial = list(set(labels_df.groupby(['trial'])['stim_on_frame'].count())) #[0]
     nframes_on = list(set(labels_df['stim_dur']))
     #assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
     #nframes_on = nframes_on[0] * si_info['framerate']
@@ -1212,6 +1214,10 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     nvolumes = scan_info['nvolumes']
     nfiles = scan_info['ntiffs']
 
+
+    # Get alignment specs:
+
+
     # Get volume indices to assign frame numbers to volumes:
     vol_ixs_tif = np.empty((nvolumes*nslices_full,))
     vcounter = 0
@@ -1229,7 +1235,9 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     mw_fpath = [os.path.join(paradigm_dir, m) for m in os.listdir(paradigm_dir) if 'trials_' in m and m.endswith('json')][0]
     with open(mw_fpath,'r') as m:
         mwinfo = json.load(m)
-    
+    pre_iti_sec = round(mwinfo[mwinfo.keys()[0]]['iti_dur_ms']/1E3) 
+    nframes_iti_full = int(round(pre_iti_sec * volumerate))
+
     with open(os.path.join(paradigm_dir, 'stimulus_configs.json'), 'r') as s:
         stimconfigs = json.load(s)
     if 'frequency' in stimconfigs[stimconfigs.keys()[0]].keys():
@@ -1248,7 +1256,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
     skip_last_trial = False
     acqdir = os.path.split(run_dir)[0]
     session = os.path.split(os.path.split(acqdir)[0])[-1]
-    if stimtype == 'movie' and int(session) < 20180525:
+    if (stimtype == 'movie' and int(session) < 20180525): #or int(session)==20190424:
+        print "Skipping last trial..."
         skip_last_trial = True
 
     for conf, params in stimconfigs.items():
@@ -1340,7 +1349,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         #print "--> first trials:", trials_in_block[0:5]        
         all_frames_in_trials = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
                                    for t in trials_in_block])
-
+        print "N frames in curr trials:", len(all_frames_in_trials)
+        print "Last frame idx:", all_frames_in_trials[-1]
 
         stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
                                     for t in trials_in_block])
@@ -1357,18 +1367,26 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
         else:
             frame_shift = mwinfo[trials_in_block[0]]['block_frame_offset']
         if block_indexed is False:
-            
+#            # Frame shift by "first" frame idx of current tif:
+#            nframes_pre = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['baseline_dur_sec'] * volumerate))
+#            iti_remainder = nframes_iti_full - nframes_pre
+#            alignment_start_offset = all_frames_in_trials.min()
+#            all_frames_in_trials = all_frames_in_trials - alignment_start_offset + iti_remainder 
+#            stim_onset_idxs = stim_onset_idxs - alignment_start_offset + iti_remainder            
+#            print "-- shifted all_frames_in_trials, last fr index:", all_frames_in_trials[-1]
+
             all_frames_in_trials = all_frames_in_trials - len(all_frames_tsecs)*fidx - frame_shift  
-            if all_frames_in_trials[-1] > len(all_frames_tsecs):
+
+            if all_frames_in_trials[-1] >= len(all_frames_tsecs):
                 print 'File: %i' % fidx, len(all_frames_tsecs)
-                print "*** %i extra frames removed." % (all_frames_in_trials[-1] - len(all_frames_tsecs))
-                print all_frames_in_trials[-10:]
-                last_ix = np.where(all_frames_in_trials==len(all_frames_tsecs)-1)[0][0]
-                all_frames_in_trials = all_frames_in_trials[0:last_ix] 
+                print "*** %i extra frames..." % (all_frames_in_trials[-1] - len(all_frames_tsecs))
+                #print all_frames_in_trials[-10:]
+                #last_ix = np.where(all_frames_in_trials==len(all_frames_tsecs)-1)[0][0]
+                #all_frames_in_trials = all_frames_in_trials[0:last_ix] 
             stim_onset_idxs = stim_onset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
             #stim_offset_idxs = stim_offset_idxs - len(all_frames_tsecs)*fidx - frame_shift 
         
-        # Need to deal with skipped trials WITHIN tifs:
+        # Need to deal with skipped trials WITHIN tifs?:
         # print "File ix: %i - all_frames_in_trials:" % fidx, all_frames_in_trials[0:10]   
         
 
@@ -1379,7 +1397,13 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
          
         #kept_frames_in_trials = [frame_ix for frame_ix in all_frames_in_trials if frame_ix in first_plane_frames]
         #frames_in_trials = [first_plane_frames.index(fr) for fr in kept_frames_in_trials]   
-        frames_in_trials = sorted(list(set(vol_ixs_tif[all_frames_in_trials])))
+        #frames_in_trials = sorted(list(set(vol_ixs_tif[all_frames_in_trials])))
+
+        # Don't take unique values, since stim period of trial N can be ITI of trial N-1
+        frames_in_trials = np.empty(all_frames_in_trials.shape, dtype=int)
+        actual_frames = [i for i in all_frames_in_trials if i < len(vol_ixs_tif)]
+        frames_in_trials[0:len(actual_frames)] = vol_ixs_tif[actual_frames] #vol_ixs_tif[all_frames_in_trials]
+
         stim_onset_idxs_adjusted = vol_ixs_tif[stim_onset_idxs]
         stim_onset_idxs = copy.copy(stim_onset_idxs_adjusted)
 
@@ -1408,10 +1432,12 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
        
         # Turn frame_tsecs into RELATIVE tstamps (to stim onset):
         first_plane_tstamps = all_frames_tsecs[first_plane_frames]
-        trial_tstamps = first_plane_tstamps[frames_in_trials] #all_frames_tsecs[frames_in_trials] #indices]  
-        if fidx == 17:
-            print "trial tstamps:", trial_tstamps 
-
+        print "--> N tstamps:", len(first_plane_tstamps)
+        trial_tstamps = first_plane_tstamps[frames_in_trials[0:len(actual_frames)]] #all_frames_tsecs[frames_in_trials] #indices]  
+        if len(trial_tstamps) < len(frames_in_trials):
+            print "padding trial tstamps array..."
+            trial_tstamps = np.pad(trial_tstamps, (0, len(frames_in_trials)-len(trial_tstamps)), mode='constant', constant_values=np.nan)
+        print "trial tstamps: size", len(trial_tstamps)
 
         min_frame_interval = 1 #list(set(np.diff(frames_to_select['Slice01'].values)))  # 1 if not slices
         #assert len(min_frame_interval) == 1, "More than 1 min frame interval found... %s" % str(min_frame_interval)
@@ -1438,19 +1464,25 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
             relative_tsecs = np.hstack(relative_tsecs)
 
         else:
+            nframes_pre = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['baseline_dur_sec'] * volumerate))
+            nframes_post = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['iti_dur_sec'] * volumerate))
+            nframes_on = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate))
+            nframes_per_trial = nframes_pre + nframes_on + nframes_post 
             # All trials have the same structure:
             reformat_tstamps = False
-            nframes_per_trial = len(frames_in_trials) / len(trials_in_block)
+            #nframes_per_trial = len(frames_in_trials) / len(trials_in_block)
             print "nframes per trial:", nframes_per_trial
+            print "N tstamps:", len(trial_tstamps)
+            print "N trials in block:", len(trials_in_block)
             try: 
                 tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
-                if fidx == 17:
-                    print "TSEC MAT"
-                    print tsec_mat
-                # Subtract frame_onset timestamp from each frame for each trial to get time relative to stim ON:
+                # Subtract stim_on tstamp from each frame of each trial to get relative tstamp:
                 tsec_mat -= np.tile(all_frames_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
-
-            except ValueError:
+               #print tsec_mat
+                
+            except Exception as e: #ValueError:
+                print e
+                #print tsec_mat
                 reformat_tstamps = True
            
             if reformat_tstamps:
@@ -1461,8 +1493,8 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                 nframes_post = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['iti_dur_sec'] * volumerate))
                 nframes_on = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * volumerate))
                 for si, stimon in enumerate(stim_onset_idxs):
-                    tsec_mat[si, :] = first_plane_tstamps[stimon-nframes_pre:stimon+(nframes_on+nframes_post+1)] - first_plane_tstamps[stimon]
-                    adjusted_frames_in_trials.extend(np.arange(stimon-nframes_pre, stimon + (nframes_on+nframes_post+1)).tolist())
+                    tsec_mat[si, :] = first_plane_tstamps[stimon-nframes_pre:stimon+(nframes_on+nframes_post)] - first_plane_tstamps[stimon]
+                    adjusted_frames_in_trials.extend(np.arange(stimon-nframes_pre, stimon + (nframes_on+nframes_post)).tolist())
 
                 frames_in_trials = copy.copy(adjusted_frames_in_trials)
                 print "*warning* - adjusted trial frame indices (%i frs total)" % len(frames_in_trials)
@@ -1477,11 +1509,19 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                         for k,v in stimconfigs.iteritems() if v==trial_configs]
         # Convert frames_in_file to volume idxs:
         trial_frames_to_vols = dict((t, []) for t in trials_in_block)
-        for t in trials_in_block:
-            
+        for t in trials_in_block: 
             frames_to_vols = parsed_frames[t]['frames_in_file'][:] 
             frames_to_vols = frames_to_vols - len(all_frames_tsecs)*fidx - frame_shift  
-            trial_vol_ixs = sorted(list(set(vol_ixs_tif[frames_to_vols])))
+            #trial_vol_ixs = sorted(list(set(vol_ixs_tif[frames_to_vols])))
+            
+            actual_frames_in_trial = [i for i in frames_to_vols if i < len(vol_ixs_tif)]
+            trial_vol_ixs = np.empty(frames_to_vols.shape, dtype=int)
+            trial_vol_ixs[0:len(actual_frames_in_trial)] = vol_ixs_tif[actual_frames_in_trial]
+
+#            frames_to_vols = parsed_frames[t]['frames_in_file'][:] - alignment_start_offset + iti_remainder
+#            trial_vol_ixs = np.empty(frames_to_vols.shape, dtype=int)
+#            actual_frames_in_trial = [i for i in frames_to_vols if i < len(vol_ixs_tif)]
+#            trial_vol_ixs[0:len(actual_frames)] = vol_ixs_tif[actual_frames_in_trial]  
             if varying_stim_dur is False:
                 trial_vol_ixs = trial_vol_ixs[0:nframes_per_trial]
             trial_frames_to_vols[t] = np.array(trial_vol_ixs)
@@ -2111,13 +2151,13 @@ def save_stimulus_configs(trialdict, paradigm_dir):
     #prin stimtype
     
     if any(['grating' in s for s in stimtype]):
-        exclude_params = ['stimulus', 'type', 'rotation_range', 'phase']
+        excluded_params = ['stimulus', 'type', 'rotation_range', 'phase']
     else: 
-        excluded_vars = ['filehash']
+        excluded_params = ['filehash']
     config_list = [] 
     for trial in trial_list:
         curr_cfg = trialdict[trial]['stimuli'].copy()
-        for vexcl in excluded_vars:
+        for vexcl in excluded_params:
             if vexcl in curr_cfg.keys():
                 curr_cfg.pop(vexcl) 
         if 'filepath' in curr_cfg.keys():
