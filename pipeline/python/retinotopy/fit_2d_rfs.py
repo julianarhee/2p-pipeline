@@ -353,8 +353,8 @@ def extract_options(options):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC080' #'JC059'
-session = '20190430' #'20190227'
+animalid = 'JC083' #'JC059'
+session = '20190505' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
@@ -383,7 +383,11 @@ else:
 traceid = os.path.split(traceid_dir)[-1]
     
     
-data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
+data_fpaths = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))
+#if any(['_eq' in d for d in data_fpaths]):
+#    data_fpath =  glob.glob(os.path.join(traceid_dir, 'data_arrays', '*_eq.npz'))[0]
+#else:
+data_fpath = data_fpaths[0]
 dset = np.load(data_fpath)
 dset.keys()
 
