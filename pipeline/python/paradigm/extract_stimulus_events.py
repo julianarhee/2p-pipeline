@@ -142,7 +142,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     # Check that no frame triggers were skipped/missed:
     diffs = np.diff(frame_ons)
-    nreads_per_frame = max(set(diffs), key=list(diffs).count)
+    nreads_per_frame = max(set(diffs), key=list(diffs).count) + 15
     print "Nreads per frame:", nreads_per_frame
     long_breaks = np.where(diffs>nreads_per_frame*2)[0]
     for lix, lval in enumerate(long_breaks):
@@ -162,8 +162,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     adjusted_frame_count = []
     
     trialevents = dict()
+    iti_dur = min([round(mwtrials[t]['iti_duration']/1E3) for t in mwtrials.keys()])
     
-    #frames_and_codes = [(ix, iv) for ix, iv, in zip(ser['pixel_clock'].index.tolist(), ser['pixel_clock'].values)]
     new_start_ix = 0
     prev_trial = 'trial00001'
     for trial in sorted(mwtrials.keys(), key=natural_keys):
@@ -182,47 +182,68 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         
         print "Parsing %s" % trial
-        #if trial == 'trial00043':
+        #if trial == 'trial00067':
         #    break
     
         # Create hash of current MWTRIAL dict:
         mwtrial_hash = hashlib.sha1(json.dumps(mwtrials[trial], sort_keys=True)).hexdigest()
-    
-        #print trial
         trialevents[mwtrial_hash] = dict()
         trialevents[mwtrial_hash]['trial'] = trial
         trialevents[mwtrial_hash]['stim_dur_ms'] = mwtrials[trial]['stim_off_times'] - mwtrials[trial]['stim_on_times']
-    
         bitcodes = mwtrials[trial]['all_bitcodes']
+        missed_last_trigger = mwtrials[trial]['missing_si_trigger']
+
+        #52286
+        # ---------------------------------------------------------------------
+        # Find all bitcodes for stimulus ON period:
+        # ---------------------------------------------------------------------
+           
+        # Reset start index if starting new tif for thsi trial:
+        if mwtrials[prev_trial]['block_idx'] != curr_tif_ix:
+            new_start_ix = 0
+        elif mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
+            #additional_skips = int(np.floor(nreads_per_frame * (iti_dur * framerate)))
+            #new_start_ix = new_start_ix + additional_skips
+            tmp_curr_codes = iter(curr_frames_and_codes[new_start_ix:])
+            curr_start_cval = curr_frames_and_codes[new_start_ix]
+            while curr_start_cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+                curr_start_cval = next(tmp_curr_codes)
+            new_start_ix = curr_frames_and_codes.index(curr_start_cval) + 3
         
-        if mwtrials[trial]['missing_si_trigger']:
-            missed_last_trigger = True
-        else:
-            missed_last_trigger = False
-            
-        #361154
+        #%
+        
+        #new_start_ix=131580
         prev_val = -1
         min_nreps = 5
         found_bitcodes = []
         
-        # Reset start index if starting new tif for thsi trial:
-        if mwtrials[prev_trial]['block_idx'] != curr_tif_ix:
-            new_start_ix = 0
         curr_codes = iter(curr_frames_and_codes[new_start_ix:]) # iter(frames_and_codes[new_start_ix:])
         
         cval = next(curr_codes)  
+        reverted_search = False; nextra_reads = 0; 
         
         try:
             for bi, bitcode in enumerate(bitcodes):
-                nskips = 0; finding_frames = True;
+                
+                nskips = 0; finding_frames = True; check_zero_string = False
+                last_found_val = copy.copy(cval)
+                    
                 #print bi, bitcode
-    #            if bi == 31:
-    #                break
+                
+                #if bi == 20:
+                #    break
+                
                 # If first bitcode of trial N matches last bitcode of trial N-1, cycle through until the next one is found:
                 if bi==0 and bitcode == mwtrials[prev_trial]['all_bitcodes'][-1]:
                     while cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]: 
                         cval = next(curr_codes)
-                        
+                
+                if not reverted_search:
+                    nextra_reads = 0
+                else:
+                    # reset reverted search flag:
+                    reverted_search = False
+                    
                 # Only accept bitcode assignment to SI frame if we have multiple repeats (even w dynamic stim, should have at least 4 reps)
                 nreps_curr = 0; no_first_match = None;
                 while ((no_first_match is None) or (nreps_curr < min_nreps)) and finding_frames:
@@ -238,35 +259,133 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     prev_val = cval[1]
     
                     if (len(bitcodes) > 2) and bi > 0 and (nreps_curr < min_nreps):
-                        if (nskips > nreads_per_frame):
+                        if (nskips > (nreads_per_frame + nextra_reads)):
                             finding_frames = False
                     else:
                         finding_frames = (nreps_curr < min_nreps)
                 #print cval, nskips
                 
-                if (len(bitcodes) > 2) and bi > 0 and nskips > nreads_per_frame:
-                    #curr_valid_bitframes = sorted([f for f in found_bitcodes if f != 'missed'], key=lambda x: x[0])
-                    # Skip through curr bitcodes until next new value found:
-                    stuck_val = cval
-                    while cval[1] == stuck_val[1]:
-                        cval = next(curr_codes)
-                    found_bitcodes.append('missed')
-                else:
+                # Check for unusual behavior:
+                found_codes = nreps_curr >= min_nreps
+                if (len(bitcodes) > 2) and bi > 0 and nskips > nreads_per_frame+1 and not found_codes:
+                    print "... skipped!"
+                    if (bi<len(bitcodes)-1) and bitcodes[bi-1] == bitcodes[bi+1]: 
+                        # We missed a bitcode flanked by 2 of the same value...
+                        # Revert back to last valid bitcode and skip min required nreps:
+                        if (bitcodes[bi+1] == 0 and bitcodes[bi-1] == 0) or cval[1]==0:
+                            # Special case of flnaking by 2 zeros, need to account for zero-string case:
+                            stuck_val = copy.copy(cval)
+                            reverted_ix = curr_frames_and_codes.index(cval)
+                            tmp_curr_codes = iter(curr_frames_and_codes[reverted_ix:])
+                            reverted_search = False
+                            check_zero_string = True
+                        else:
+                            # Revert back to last valid bitcode and skip min required nreps:
+                            reverted_ix = curr_frames_and_codes.index(last_found_val)
+                            reset_ix = reverted_ix + (min_nreps)
+                            tmp_curr_codes = iter(curr_frames_and_codes[reset_ix:])
+                            #nextra_reads = reset_ix - reverted_ix
+                            stuck_val = curr_frames_and_codes[reset_ix+1]
+                            cval = curr_frames_and_codes[reset_ix+1]
+                            reverted_search = True
+                            check_zero_string = True
+                    else:
+                        check_zero_string = True
+                        if (cval[1] == bitcodes[bi-1] or cval[1]==0): 
+                            # Stuck on the same value as last found bitcode, pass these values until the next is found
+                            stuck_val = copy.copy(cval)
+                            reverted_ix = curr_frames_and_codes.index(cval)
+                            tmp_curr_codes = iter(curr_frames_and_codes[reverted_ix:])
+                            reverted_search = False
+                        else:
+                            # Revert back to last valid bitcode and start search for next bitcode (which is not the same value as last found bitcode):
+                            stuck_val = copy.copy(last_found_val)
+                            cval = copy.copy(last_found_val)
+                            reverted_ix = curr_frames_and_codes.index(stuck_val)
+                            tmp_curr_codes = iter(curr_frames_and_codes[reverted_ix:])
+                            # Flag reverted search:
+                            reverted_search = True
+                    
+                    if check_zero_string:
+                        # Cycle through til next different bitcode found:
+                        tmp_nreps = 0
+                        while (cval[1] == stuck_val[1] and tmp_nreps < 3):
+                            cval = next(tmp_curr_codes)
+                            if cval[1] != stuck_val[1]:
+                                tmp_nreps += 1
+# 
+#                        if cval[1] == 0 and bitcode != 0:
+#                            while cval[1] == 0:
+#                                cval = next(tmp_curr_codes)
+                                
+                                
+                        
+                        # Check if just a string of 0s:
+                        check_ix = curr_frames_and_codes.index(cval) + 3
+                        compare_flanks = [bitcodes[bi-1], bitcodes[bi+1]] if bi<len(bitcodes)-1 else [bitcodes[bi-1]]
+                        if curr_frames_and_codes[check_ix][1] == bitcode and (bitcode not in compare_flanks):
+                            tmp_curr_codes = iter(curr_frames_and_codes[check_ix:])
+                            tmp_cval = curr_frames_and_codes[check_ix]
+                            tmp_nreps = 0
+                            while tmp_cval[1] == bitcode and tmp_nreps < min_nreps:
+                                tmp_cval = next(tmp_curr_codes)
+                                tmp_nreps += 1
+                            if curr_frames_and_codes.index(tmp_cval) - reverted_ix <= nreads_per_frame:
+                                # make sure not too many frames skipped...
+                                print "... Found a missing code!"
+                                found_codes = True
+                                cval = copy.copy(tmp_cval)
+                                reverted_search = False                            
+                            else:
+                                # Make sure we didnt skip past 0 if the next bitcode was actually 0:
+                                 assert bitcodes[bi+1] != 0, "Check this skip!  next bitcode is 0, too..."
+
+                        elif curr_frames_and_codes[check_ix][1]==bitcodes[bi+2] and (bi<len(bitcodes)-1) and bitcodes[bi-1] == bitcodes[bi+1]:
+                            # We truly missed a bitcode flanked by two same vals:
+                            # Revert back to last valid bitcode and skip min required nreps:
+                            reverted_ix = curr_frames_and_codes.index(last_found_val)
+                            reset_ix = reverted_ix + (min_nreps)
+                            #nextra_reads = reset_ix - reverted_ix
+                            cval = curr_frames_and_codes[reset_ix+1]
+                            reverted_search = True
+
+                                     
+                        
+                        reset_ix = curr_frames_and_codes.index(cval)                        
+                        if reverted_search:
+                            # Found out how many more skips we have (relative to standard reads_per_frame):
+                            nextra_reads = reset_ix - reverted_ix
+                            
+                if found_codes: 
                     # Subtract 2 indices from nreps_curr since 1st rep is counted after 1st occurrence, and last rep is counted after last found:
                     last_found_idx = curr_frames_and_codes.index(cval)
+                    reset_ix = last_found_idx
                     if bi == len(bitcodes)-1:
                         last_found_match = curr_frames_and_codes[last_found_idx]
                         found_bitcodes.append(last_found_match)
                     else:
-                        assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
+                        try:
+                            assert curr_frames_and_codes[last_found_idx - min_nreps + 1][1] == bitcode
+                        except AssertionError:
+                            assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
                         first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
                         found_bitcodes.append(first_found_match)
+                        reset_ix = last_found_idx
+                else:
+                    # reset curr_codes iterator:
+                    found_bitcodes.append('missed')
+                
+                curr_codes = iter(curr_frames_and_codes[reset_ix:])
+
+                        
         except StopIteration:
             print "--> No more frames!"
             print "--> Found %i out of %i bitcodes [%s]" % (bi, len(bitcodes), trial)
+            
             # Check if this is the last trial in block, might be shortened SI tifs:
             # Identify frame number of first and last found stimulus updates in current trial: 
             continue
+        
 #            triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
 #            triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
 #            
@@ -285,8 +404,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         #if not padded_end_of_tif:
         # Identify frame number of first and last found stimulus updates in current trial: 
-        triggered_frame_on = np.argmin(np.abs(found_bitcodes[0][0] - sdata_frame_ixs))
-        triggered_frame_off = np.argmin(np.abs(found_bitcodes[-1][0] - sdata_frame_ixs))
+        valid_bitcodes = [b for b in found_bitcodes if b != 'missed']
+        triggered_frame_on = np.argmin(np.abs(valid_bitcodes[0][0] - sdata_frame_ixs))
+        triggered_frame_off = np.argmin(np.abs(valid_bitcodes[-1][0] - sdata_frame_ixs))
         
         # Calculate stimulus duration and check that it matches what's expected:
         stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
@@ -298,7 +418,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
             adjusted_frame_count.append(trial)
 
-        if round(stim_dur) != round(mwtrials[trial]['stim_duration']/1E3):
+        if round(stim_dur, 1) != round(mwtrials[trial]['stim_duration']/1E3, 1):
             break
         prev_trial = trial
     

@@ -4,42 +4,12 @@
 import numpy as np
 import os
 import optparse
-import shutil
-# from bokeh.io import gridplot, output_notebook, output_file, show
-# from bokeh.plotting import figure
-# output_notebook()
-
-import cPickle as pkl
-import pandas as pd
 import re
-
-from json_tricks.np import dump, dumps, load, loads
-import cPickle as pkl
 import scipy.signal
-import numpy.fft as fft
 import sys
-import optparse
-from PIL import Image
-import re
-import itertools
-from scipy import ndimage
-
-import time
-import datetime
-
-import pandas as pd
-
-#from bokeh.io import gridplot, output_file, show
-#from bokeh.plotting import figure
-import csv
-
 import pymworks
-import pandas as pd
 import operator
-import codecs
 import json
-
-import scipy.io
 import copy
 
 #%%
@@ -369,10 +339,10 @@ def get_pixelclock_events(df, boundary, backlight_sensor=True, trigger_times=[],
     #tmp_pixelclock_evs = [i for i in display_evs if 'bit_code' in i.value[-1].keys()]
     tmp_pixelclock_evs = [i for i in display_evs if any(['bit_code' in ki.keys() for ki in i.value])]
 
-    pixcode_ix = -2 if backlight_sensor else -1
+    #pixcode_ix = -2 if backlight_sensor else -1
 
     if verbose is True:
-        print [p for p in tmp_pixelclock_evs if not 'bit_code' in p.value[pixcode_ix].keys()]
+        #print [p for p in tmp_pixelclock_evs if not 'bit_code' in p.value[pixcode_ix].keys()]
         print "N pix-evs found in boundary: %i" % len(tmp_pixelclock_evs)
 
     if len(trigger_times)==0:
@@ -558,8 +528,9 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
         pixelevents.append(pixelclock_evs)
 
         # Get stimulus type:
-        stimtype = [d for d in pixelclock_evs if len(d.value) > 1 and 'type' in d.value[1].keys()][0].value[1]['type']
-
+        stimtype = [d for d in pixelclock_evs if len(d.value) > 1 and 'type' in d.value[1].keys() and d.value[1]['type']!='blankscreen'][0].value[1]['type']
+        print "STIM TYPE:", stimtype
+        
         ### Get Image events:
         if stimtype=='image':
             if dynamic:
@@ -603,7 +574,8 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             tmp_image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='drifting_grating']
 
             # Find ITI indices:
-            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_stimuli]
+            #iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if len(pev.value) < num_stimuli]
+            iti_idxs = [i for i,pev in enumerate(pixelclock_evs) if not any(stimtype in p.values() for p in pev.value)]
             if len(list(set(np.diff(iti_idxs)))) > 1:
                 seconds = np.diff(iti_idxs)[0::2]
                 firsts = np.diff(iti_idxs)[1::2]
@@ -616,8 +588,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     elif np.diff(iti_idxs)[1] == 1:
                         iti_idxs = iti_idxs[0::2]
                         skip_first_repeat_iti = True
-                    
-
+                        
         	    # Use start_time to ignore dynamic pixel-code of drifting grating since stim as actually static
             start_times = [i.value[1]['start_time'] for i in tmp_image_evs]
             find_static = np.where(np.diff(start_times) > 0)[0] + 1
@@ -657,19 +628,28 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
             print "Getting subsequent ITI for each image event..."
 
         im_idx = [[t.time for t in pixelclock_evs].index(i.time) for i in image_evs]
+        
         iti_evs = []
-        for im in im_idx:
+        for ix, im in enumerate(im_idx):
+            #print im
             try:
-                next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_stimuli-1))
-#                if skip_first_repeat_iti:
-#                    first_found = pixelclock_evs.index(next_iti)
-#                    if first_found == len(pixelclock_evs)-1:
-#                        next_iti = pixelclock_evs[first_found]
-#                    else:
-#                        next_iti = pixelclock_evs[first_found+1]
-
+                #next_iti = next(i for i in pixelclock_evs[im+1:] if len(i.value)==(num_stimuli-1))
+                #next_iti = next(pev for pev in pixelclock_evs[im+1:] if not any(stimtype in p.values() for p in pev.value))
+                if 'grating' in stimtype:
+                    curr_im_start = [p['start_time'] for p in pixelclock_evs[im+1].value if 'start_time' in p.keys()][0]
+                    if im == im_idx[-1]:
+                        curr_im_times = sorted([pev.time for pev in pixelclock_evs[im:] \
+                                            for p in pev.value if 'start_time' in p.keys() and p['start_time']==curr_im_start])
+                    else:
+                        curr_im_times = sorted([pev.time for pev in pixelclock_evs[im:im_idx[ix+1]] \
+                                            for p in pev.value if 'start_time' in p.keys() and p['start_time']==curr_im_start])
+    
+                    next_iti = next(pev for pev in pixelclock_evs[im+1:] if pev.time > curr_im_times[-1] and not any(stimtype in p.values() for p in pev.value) )
+                else:
+                    next_iti = next(pev for pev in pixelclock_evs[im+1:] if not any(stimtype in p.values() for p in pev.value))
                 iti_evs.append(next_iti)
             except StopIteration:
+                print "missing an iti..."
                 # First, see if theer is an extra p-clock event missed because of missed triggers:
                 tmp_pixelclock_evs = get_pixelclock_events(df, boundary)
                 
@@ -680,14 +660,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     iti_evs.append(last_pix_ev)
                     # Replace last "trigger time" with missed trigger time of ITI:
                     missing_diff = last_pix_ev.time - trigg_times[-1][1]
-                    #for ti, triggs in enumerate(trigg_times):
-                    #    trigg_times[ti][1] += missing_diff
-                    
-#                if len(tmp_pixelclock_evs[-1].value)==(num_stimuli-1) and\
-#                        len(tmp_pixelclock_evs[-2].value)==num_stimuli and\
-#                        tmp_pixelclock_evs[-2].value[1]['start_time']==image_evs[-1].value[1]['start_time']:
-#                    iti_evs.append(tmp_pixelclock_evs[-1])
-#                else:
+
                 except StopIteration:
                     print "No ITI found after last image onset event.\n"
 
@@ -911,9 +884,10 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     pixelevents = check_nested(pixelevents)
     # Check that all possible pixel vals are used (otherwise, pix-clock may be missing input):
     # print [p for p in pixelevents if 'bit_code' not in p.value[-1].keys()]
-    pixcode_ix = -2 if backlight_sensor else -1
+    #pixcode_ix = -2 if backlight_sensor else -1
 
-    n_codes = set([i.value[pixcode_ix]['bit_code'] for i in pixelevents])
+    #n_codes = set([i.value[pixcode_ix]['bit_code'] for i in pixelevents])
+    n_codes = set([p['bit_code'] for pev in pixelevents for p in pev.value if 'bit_code' in p.keys()])
     bitcode_len = 8 if backlight_sensor else 16
 
     if len(n_codes)<bitcode_len:
@@ -1000,7 +974,8 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trialnum = trialidx + 1
             assert stim.time < iti.time
             current_bitcode_evs = [p for p in sorted(pixelevents, key=get_timekey) if p.time>=stim.time and p.time<=iti.time] # p.time<=iti.time to get bit-code for post-stimulus ITI
-            current_bitcode_values = [p.value[pixcode_ix]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
+            #current_bitcode_values = [p.value[pixcode_ix]['bit_code'] for p in sorted(current_bitcode_evs, key=get_timekey)]
+            current_bitcode_values = [p['bit_code'] for pev in sorted(current_bitcode_evs, key=get_timekey) for p in pev.value if 'bit_code' in p.keys()]
             dynamic_stim_bitcodes.append(current_bitcode_evs)
             bitcodes_by_trial[trialnum] = current_bitcode_values #current_bitcode_evs
 
@@ -1136,9 +1111,11 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
             trial[trialname]['stim_off_times'] = round((iti.time - run_start_time)/1E3)
             trial[trialname]['all_bitcodes'] = bitcodes_by_trial[trialnum]
             #if stim.value[-1]['name']=='pixel clock':
-            trial[trialname]['stim_bitcode'] = stim.value[pixcode_ix]['bit_code']
+            #trial[trialname]['stim_bitcode'] = stim.value[pixcode_ix]['bit_code']
+            trial[trialname]['stim_bitcode'] = [p['bit_code'] for p in stim.value if 'bit_code' in p.keys()][0]
             trial[trialname]['stim_duration'] = round((iti.time - stim.time)/1E3)
-            trial[trialname]['iti_bitcode'] = iti.value[pixcode_ix]['bit_code']
+            #trial[trialname]['iti_bitcode'] = iti.value[pixcode_ix]['bit_code']
+            trial[trialname]['iti_bitcode'] = [p['bit_code'] for p in iti.value if 'bit_code' in p.keys()][0]
             trial[trialname]['iti_duration'] = iti_dur #session_info['ITI']
             trial[trialname]['run_start_time'] = run_start_time
             trial[trialname]['block_idx'] = [tidx for tidx, tval in enumerate(trigger_times) if stim.time > tval[0] and stim.time <= tval[1]][0]
@@ -1199,6 +1176,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         #print "STIM DURS:", unique_stim_durs 
         if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
+            print "Found multiple stim durs:", unique_stim_durs
             if len(unique_stim_durs) == 2:
                 full_dur = max(unique_stim_durs)
                 half_dur = min(unique_stim_durs)
@@ -1419,129 +1397,3 @@ def main(options):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
-
-	# In[16]:
-
-
-#    if parse_trials is True:
-#        mw_codes_by_file = []
-#        mw_times_by_file = []
-#        mw_trials_by_file = []
-#        offsets_by_file = []
-#        runs = dict()
-#        for idx,triggers in enumerate(trigger_times):
-#            curr_trialevents = [i for i in trialevents if i.time<=triggers[1] and i.time>=triggers[0]]
-#
-#            # Get TIME for each stimulus trial start:
-#            mw_times = np.array([i.time for i in curr_trialevents])
-#            print "first 10 mw t-intervals:", (mw_times[0:11]-mw_times[0])/1E6
-#            # Get ID of each stimulus:
-#            mw_codes = []
-#            for i in curr_trialevents:
-#                if len(i.value)>2: # contains image stim
-#                    if stimtype=='grating':
-#                        stim_config = (i.value[1]['rotation'], round(i.value[1]['frequency'],1))
-#                        stim_idx = [gidx for gidx,grating in enumerate(sorted(image_ids)) if grating==stim_config][0]+1
-#                    else: # static image
-#                        #TODO:
-#                        # get appropriate stim_idx that is the equivalent of unique stim identity for images
-#                        stim_idx = [idx for idx,im in enumerate(sorted(image_ids)) if im==i.value[1]['name']][0]+1
-#                        #pass
-#                else:
-#                    stim_idx = 0
-#                mw_codes.append(stim_idx)
-#            mw_codes = np.array(mw_codes)
-#            print "First 10 mw_codes:", mw_codes[0:11]
-#
-#            # Append list of stimulus times and IDs for each SI file:
-#            mw_times_by_file.append(mw_times)
-#            mw_codes_by_file.append(mw_codes)
-#            mw_trials_by_file.append(curr_trialevents)
-#
-#            # Calculate offset between first stimulus-update event and first SI-frame trigger:
-#            curr_offset = mw_times[0] - triggers[0] # time diff b/w detected frame trigger and stim display
-#            offsets_by_file.append(curr_offset)
-#
-#            # Make silly dict() to keep organization consistent between event-based experiments,
-#            # where each SI file contains multple discrete trials, versus movie-stimuli experiments,
-#            # where each SI file contains one "trial" for that movie condition:
-#            if stimtype != 'bar':
-#                rkey = 'run'+str(idx)
-#                runs[rkey] = idx #dict() #i
-#
-#        print "Average offset between stim update event and frame triggger is: ~%0.2f ms" % float(np.mean(offsets_by_file)/1000.)
-#
-#    mw_file_durs = [i[1]-i[0] for i in trigger_times]
-#
-#
-#    # In[17]:
-#
-#
-#    # Rearrange dicts to match retino structures:
-#    pydict = dict()
-#
-#    # Create "pydict" to store all MW stimulus/trial info in matlab-accessible format for GUI:
-#    if stimtype=='bar':
-#        print "Offset between first MW stimulus-display-update event and first SI frame-trigger:"
-#        for ridx,run in enumerate(stimevents.keys()):
-#            pydict[run] ={'time': [i[0] for i in stimevents[run].states],                    'pos': stimevents[run].vals,                    'idxs': stimevents[run].idxs,                    'ordernum': stimevents[run].ordernum,                    'MWdur': (stimevents[run].states[-1][0] - stimevents[run].states[0][0]) / 1E6,                    'offset': stimevents[run].states[0][0] - stimevents[run].triggers[0],                    'MWtriggertimes': stimevents[run].triggers}
-#            print "run %i: %s ms" % (ridx+1, str(pydict[run]['offset']/1E3))
-#
-#    else:
-#        for ridx,run in enumerate(runs.keys()):
-#            pydict[run] = {'time': mw_times_by_file[ridx],                        'ordernum': runs[run],
-#                            'offset': offsets_by_file[ridx],
-#                            'stimIDs': mw_codes_by_file[ridx],
-#                            'MWdur': mw_file_durs[ridx],\
-#                            'MWtriggertimes': trigger_times[ridx]}
-#
-#            if stimtype=='grating':
-#                pydict[run]['idxs'] = [i for i,tmptev in enumerate(mw_trials_by_file[ridx]) if any(['gabor' in v['name'] for v in tmptev.value])],
-#            else:
-#                pydict[run]['idxs'] = [i for i,tmptev in enumerate(mw_trials_by_file[ridx]) if any([v['name'] in image_ids for v in tmptev.value])],
-#
-#
-#    # In[18]:
-#
-#    # pydict.keys()
-#
-#
-#    # In[19]:
-#
-#
-#    # Ignoring ARDUINO stuff for now:
-#    pydict['stimtype'] = stimtype
-#
-#    #pydict['mw_times_by_file'] = mw_times_by_file
-#    #pydict['mw_file_durs'] = mw_file_durs
-#    #pydict['mw_frame_trigger_times'] = frame_trigger_times
-#    #pydict['offsets_by_file'] = offsets_by_file
-#    #pydict['mw_codes_by_file'] = mw_codes_by_file
-#    pydict['mw_dfn'] = mw_dfn
-#    pydict['source_dir'] = paradigm_dir #source_dir
-#    pydict['fn_base'] = curr_dfn_base #fn_base
-#    pydict['stimtype'] = stimtype
-#    if stimtype=='bar':
-#        pydict['condtypes'] = ['left', 'right', 'top', 'bottom']
-#        pydict['runs'] = stimevents.keys()
-#        pydict['info'] = session_info
-#    elif stimtype=='image':
-#        pydict['condtypes'] = sorted(image_ids)
-#        pydict['runs'] = runs.keys()
-#    elif stimtype=='grating':
-#        pydict['condtypes'] = sorted(image_ids)
-#        pydict['runs'] = runs.keys()
-#
-#    tif_fn = curr_dfn_base+'.mat' #fn_base+'.mat'
-#    print tif_fn
-#    # scipy.io.savemat(os.path.join(source_dir, condition, tif_fn), mdict=pydict)
-#    #scipy.io.savemat(os.path.join(data_dir, 'mw_data', tif_fn), mdict=pydict)
-#    #print os.path.join(data_dir, 'mw_data', tif_fn)
-#    scipy.io.savemat(os.path.join(paradigm_dir, tif_fn), mdict=pydict)
-#    print os.path.join(paradigm_dir, tif_fn)
-#
-#    # Save json:
-#    pydict_json = curr_dfn_base+'.json'
-#    with open(os.path.join(paradigm_dir, pydict_json), 'w') as f:
-#        dump(pydict, f, indent=4)
