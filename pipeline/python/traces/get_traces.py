@@ -656,7 +656,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
 
     curr_file=None; curr_slice=None
 
-    MASKS = h5py.File(mask_write_path, 'w')
+    MASKS = h5py.File(mask_write_path, 'a')
     MASKS.attrs['source_file'] = maskinfo['filepath']
     MASKS.attrs['roi_id'] = str(RID['roi_id'])
     MASKS.attrs['rid_hash'] = str(RID['rid_hash'])
@@ -1872,7 +1872,7 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition', default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
@@ -2077,9 +2077,7 @@ class RoiMasks():
             self.ref_file = maskfile.keys()[0]
             self.single_reference = True
 
-        # Get signal channel for ROI source:
-        self.signal_channel = os.path.split(os.path.split(maskfile[maskfile.keys()[0]]['masks'].attrs['source'])[0])[-1]
-        
+
         # Get slices for which there are ROIs in this set:
         self.roi_slices = sorted([str(s) for s in maskfile[maskfile.keys()[0]]['masks'].keys()], key=natural_keys)
 
@@ -2087,20 +2085,26 @@ class RoiMasks():
         rootdir = mask_fpath.split('/%s' % maskfile.attrs['animal'])[0]
         roidict_path = glob.glob(os.path.join(rootdir, maskfile.attrs['animal'], maskfile.attrs['session'], 'ROIs', 'rids_*.json'))[0]
         with open(roidict_path, 'r') as f: roidict = json.load(f);
-        self.roi_tiff_src = roidict[self.roi_id]['SRC']
+        #self.roi_tiff_src = roidict[self.roi_id]['SRC']
+        self.roi_tiff_src = roidict[self.roi_id]['PARAMS']['tiff_sourcedir']
 
+        # Get signal channel for ROI source:
+        self.signal_channel = roidict[self.roi_id]['PARAMS']['options']['ref_channel']
+        
+        
         # Get masks from ROI SOURCE: -- assuming is_slice_format = True (i.e., ROIs are savd by SLICE, not grouped altogether)
 #        self.masks = dict((curr_slice, maskfile[self.ref_file]['masks'][curr_slice][:].T.copy()) \
 #                                               for curr_slice in maskfile[self.ref_file]['masks'].keys())
         self.source_mask = maskfile[self.ref_file]['masks']['Slice01'][:].T
-        self.get_reference_image()
+        #self.get_reference_image()
         
     
     def get_reference_image(self, zproj_type='mean'):
         
-        self.ref_img_path = glob.glob('%s_%s_deinterleaved/%s/%s/*.tif' % (self.roi_tiff_src, zproj_type, self.signal_channel, self.ref_file))[0]
+        self.ref_img_path = glob.glob('%s_%s_deinterleaved/Channel%02d/%s/*.tif' % (self.roi_tiff_src, zproj_type, self.signal_channel, self.ref_file))[0]
         self.reference_img = tf.imread(self.ref_img_path)
         self.masks = None
+        print "Got reference image (shape: %s)" % str(self.reference_img.shape)
 
 
     def get_masks(self, target_paths, nprocs=4, save_warp_images=True, output_dir='/tmp'):
@@ -2121,17 +2125,18 @@ class RoiMasks():
             for target_fpath in target_paths_list:
                 fname = os.path.splitext(os.path.split(target_fpath)[-1])[0]
                 curr_file = str(re.search('File(\d{3})', target_fpath).group(0))
+                warps[curr_file] = {}
                 if target_fpath == self.ref_img_path:
                     # Don't need to do anything but normalize array:
                     warps[curr_file]['maskarray'] = masks_to_normed_array(self.masks)
                 else:
-                    print "... Warping %s to ref." % target_fpath
+                    print "... Warping %s to ref." % fname
                     target_img = tf.imread(target_fpath)
                     masks_aligned = self.warp_mask(target_img)
                     warps[curr_file]['maskarray'] = masks_to_normed_array(masks_aligned)
                     if save_warp_images:
                         warp_img_path = os.path.join(output_dir, 'warped_rois_r%s_to_%s.png' % (self.ref_file, fname))
-                        plot_warped_rois(self.reference_img, target_img, self.masks, masks_aligned, out_fpath=warp_img_path)
+                        plot_warped_rois(self.reference_img, target_img, self.source_mask, masks_aligned, out_fpath=warp_img_path)
             out_q.put(warps)
     
         # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -2159,6 +2164,8 @@ class RoiMasks():
         print_elapsed_time(t_eval_mp)
     
         self.masks = resultdict
+        
+        print "GOT MASKS!"
 
     def warp_mask(self, target_img, warp_mode=cv2.MOTION_HOMOGRAPHY):
 
@@ -2235,12 +2242,15 @@ class Traces():
         excluded_tiffs = self.TID['PARAMS']['excluded_tiffs']
         ntiffs = len(glob.glob(os.path.join(self.TID['SRC'], '*.tif')))
         self.filenames = sorted(['File%03d' % int(i+1) for i in range(ntiffs) if 'File%03d' % int(i+1) not in excluded_tiffs], key=natural_keys)
+        print "Got tifs to extract:"
+        print self.filenames
 
 
     def get_mask_source(self):
         # Create mask object:
         mask_fpath = os.path.join(self.meta['RID']['DST'], 'masks.hdf5')
         self.masks = RoiMasks(mask_fpath)
+        self.masks.get_reference_image()
 
         # Determine whether the ROI source is the same as the TIFF source:
         if self.rootdir not in self.masks.roi_tiff_src: 
@@ -2252,7 +2262,7 @@ class Traces():
         if self.masks.roi_tiff_src == self.TID['SRC']:
             print "Extracting traces from ROI source"
             self.masks.matched_sources = True
-            self.masks.zproj_source_dir = '%s_mean_deinterleaved/%s' % (self.masks.roi_tiff_src, self.masks.signal_channel)
+            self.masks.zproj_source_dir = '%s_mean_deinterleaved/Channel%02d' % (self.masks.roi_tiff_src, self.masks.signal_channel)
             self.masks.zproj_ref = self.masks.ref_file
         else:
             print "Extracting traces from ALT run roi src"
@@ -2266,12 +2276,15 @@ class Traces():
                 with open(pid_fpath, 'r') as f: pdict = json.load(f)
                 self.masks.zproj_ref = 'File%03d' % int(pdict[process_id.split('_')[0]]['PARAMS']['motion']['ref_file'])
             # Get corresponding zproj source dir:
-            self.masks.zproj_source_dir = '%s_mean_deinterleaved/%s' % (self.TID['SRC'], self.masks.signal_channel)
+            self.masks.zproj_source_dir = '%s_mean_deinterleaved/Channel%02d' % (self.TID['SRC'], self.masks.signal_channel)
 
 
     def get_masks(self, nprocs=4, save_warp_images=False):
-        target_paths = glob.glob(os.path.join('%s_mean_deinterleaved/%s' % (self.TID['SRC'], self.masks.signal_channel), 'File*', '*.tif'))
-        
+        target_paths = glob.glob(os.path.join('%s_mean_deinterleaved/Channel%02d' % (self.TID['SRC'], self.masks.signal_channel), 'File*', '*.tif'))
+        print "--- getting masks, target_paths:"
+        for t in target_paths:
+            print t
+            
         # Check if alrady have plotted masks, if not, create new:
         mask_figdir = os.path.join(self.TID['DST'], 'figures', 'masks')
         if not os.path.exists(mask_figdir): os.makedirs(mask_figdir);
@@ -2285,11 +2298,33 @@ class Traces():
             self.masks.extract_neuropil_masks(niter=self.n_iterations)
 
 
+#%%
+
+options = ['--slurm', '-i', 'JC080', '-S', '20190506', '-A', 'FOV1_zoom2p0x',
+           '-R', 'gratings_run1', '-t', 'traces001', '-a', 20, '-c', 0.7,
+           '--neuropil', '--warp', '--align', '--raw', '--nonnegative', 
+           '--pre=0.5', '--post=1.0']
+
+#%%
+
+optsE = extract_options(options)
+T = Traces(optsE)
+T.get_tiff_source()
+T.get_mask_source()
+T.get_masks(nprocs=1, save_warp_images=True)
+
+
+
+T.get_sources()
+
+T.get_masks(nprocs=1)
+
 
 #%%
 
 
 def extract_traces(options):
+    #%%
     # Set USER INPUT options:
     options = extract_options(options)
 
@@ -2336,20 +2371,10 @@ def extract_traces(options):
         print "... Correction factor = %.2f" % np_correction_factor
     save_warp_images = options.save_warp_images
 
-    # Trace alignment params:
-    #create_dataframe = options.create_dataframe
-    #trace_type = options.trace_type
-#    filter_pupil = options.filter_pupil
-#    pupil_radius_max = float(options.pupil_radius_max)
-#    pupil_radius_min = float(options.pupil_radius_min)
-#    pupil_dist_thr = float(options.pupil_dist_thr)
-#    iti_pre = float(options.iti_pre)
-
 
     print "======================================================================="
     print "Trace Set: %s -- Starting trace extraction..." % trace_id
-    #t_start = time.time()
-
+#%%
     #% Get meta info for run:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
