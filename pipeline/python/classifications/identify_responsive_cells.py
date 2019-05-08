@@ -59,9 +59,9 @@ segment = False
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC076' #'JC059'
-session = '20190410' #'20190227'
+session = '20190420' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_gratings_static'
+run = 'combined_blobs_static'
 traceid = 'traces001' #'traces001'
 segment = False
 visual_area = ''
@@ -123,10 +123,22 @@ traces = dset[trace_type]
 zscores = dset['zscore']
 
 # Format condition info:
-aspect_ratio = 1.747
+# Format condition info:
+aspect_ratio = 1 #1.747
 sdf = pd.DataFrame(dset['sconfigs'][()]).T
+
+if 'color' in sdf.columns:
+    sdf = sdf[sdf['color']=='']
 sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
+sdf.head()
+
+# Only take subset of trials where image shown (not controls):
 labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+labels = labels[labels['config'].isin(sdf.index.tolist())]
+#traces = traces[labels.index.tolist(), :]
+trial_ixs = np.array([int(t[5:])-1 for t in sorted(labels['trial'].unique(), key=natural_keys)])
+#zscores = zscores[trial_ixs, :]
+
 
 # Load roi stats:    
 stats_fpath = glob.glob(os.path.join(sorted_dir, 'roistats_results.npz'))[0]
@@ -220,8 +232,8 @@ snrs = stim_means/bas_means
 #%%
 
 
-rows = 'ypos'
-cols = 'xpos'
+rows = 'size' #'ypos'
+cols = 'morphlevel' #'xpos'
 
 row_vals = sorted(sdf[rows].unique())
 col_vals = sorted(sdf[cols].unique())
@@ -488,6 +500,8 @@ if not plot_topN:
 else:
     plot_order = roi_list[0:nplots]
     
+cfg_start_ix = int(sdf.index.tolist()[0][6:]) - 1
+
 for rid in plot_order: #0:nplots]: #[0:nr*nc]:
     
     roi_zscores = zscores[:, rid]
@@ -499,7 +513,7 @@ for rid in plot_order: #0:nplots]: #[0:nr*nc]:
     for config in traces_by_cond.keys():
         traces_by_cond[config] = np.vstack(traces_by_cond[config])
 
-    best_cfg = 'config%03d' % int(avg_zscores_by_cond[rid].argmax()+1)
+    best_cfg = 'config%03d' % int(avg_zscores_by_cond[rid].argmax()+1 + cfg_start_ix)
     curr_cond_traces = traces_by_cond[best_cfg]
     
     ax = grid.axes_all[aix]
@@ -563,6 +577,11 @@ min_snr =  2
 # 1.  Plot raw traces and relationship between bas/stim periods w.r.t SNR
 # -----------------------------------------------------------------------
 #rid = sorted_selective[0]
+trial_nums = sorted([int(t[5:])-1 for t in labels['trial'].unique()])
+
+adj_trials_by_cond = {}
+for c, tlist in trials_by_cond.items():
+    adj_trials_by_cond[c] = [trial_nums.index(i) for i in tlist]
 
 for rid in sorted_selective[0:5]:
     roi_zscores = zscores[:, rid]
@@ -579,11 +598,12 @@ for rid in sorted_selective[0:5]:
     # Pick condition with max/best zscore:
     sorted_configs_by_zscore = avg_zscores_by_cond[rid].argsort()[::-1].values
     
-    best_cfg = 'config%03d' % int(sorted_configs_by_zscore[0]+1)
+    best_cfg = 'config%03d' % int(sorted_configs_by_zscore[0]+1 + cfg_start_ix)
     
     # Get all trial indices of this config:
     ntrials = traces_by_cond[best_cfg].shape[0]
-    best_cfg_trial_ixs = sorted(trials_by_cond[best_cfg])
+    best_cfg_trial_ixs_all = sorted(trials_by_cond[best_cfg])
+    best_cfg_trial_ixs = [trial_nums.index(i) for i in best_cfg_trial_ixs_all]
     
     tmp_snrs = snrs[best_cfg_trial_ixs, rid]
     tmp_zscores = zscores[best_cfg_trial_ixs, rid]
@@ -625,8 +645,10 @@ for rid in sorted_selective[0:5]:
     ax.set_ylim([min([-2, abs(curr_snrs.min()-1)]), curr_snrs.max()+1])
     ax.set_xlim([min([-2, abs(curr_zscores.min()-1)]), curr_zscores.max()+1])
     # Also plot "worst"?
-    worst_cfg = 'config%03d' % int(sorted_configs_by_zscore[-1]+1)
-    ax.plot(zscores[trials_by_cond[worst_cfg], rid], snrs[trials_by_cond[worst_cfg], rid],\
+    worst_cfg = 'config%03d' % int(sorted_configs_by_zscore[-1]+1 + cfg_start_ix)
+    worst_cfg_trial_ixs = [trial_nums.index(i) for i in trials_by_cond[worst_cfg]]
+    
+    ax.plot(zscores[worst_cfg_trial_ixs, rid], snrs[worst_cfg_trial_ixs, rid],\
             'r.', markersize=20, alpha=0.5, label='worst')
     ax.legend()
     ax.axhline(y=min_snr, linestyle='--', color='k')
@@ -634,7 +656,8 @@ for rid in sorted_selective[0:5]:
     
     
     # Plot distN of all sizes @ best morph, all morphs @ best size:
-    snr_df = pd.concat([pd.Series(snrs[trial_ixs, rid], name=k) for k, trial_ixs in sorted(trials_by_cond.items(), key=lambda x: x[0])], axis=1)
+        
+    snr_df = pd.concat([pd.Series(snrs[trial_ixs, rid], name=k) for k, trial_ixs in sorted(adj_trials_by_cond.items(), key=lambda x: x[0])], axis=1)
     snr_df2 = snr_df.melt(var_name='configs', value_name='snr')
     snr_df2[cols] = pd.Series(sdf[cols][cfg] for cfg in snr_df2['configs'])
     snr_df2[rows] = pd.Series(sdf[rows][cfg] for cfg in snr_df2['configs'])
@@ -704,16 +727,18 @@ for rid in sorted_selective[0:5]:
 
 def plot_corrs_by_cond(conds_by_rois, grid_axis='size', grid_values=[], \
                        plot_axis='morphlevel', plot_values=[], title=None,\
-                       corr_method='pearson', rdm=False, cmap='coolwarm'):
+                       corr_method='pearson', rdm=False, cmap='coolwarm', 
+                       cfg_start_ix=0, set_scale=True):
     
-    if rdm: # == 'rdm':
-        vmin=0; vmax=2; 
-    else:
-        vmin=-1; vmax=1; 
+    if set_scale:
+        if rdm: # == 'rdm':
+            vmin=0; vmax=2; 
+        else:
+            vmin=-1; vmax=1; 
     
     fig, axes = pl.subplots(1, len(grid_values), figsize=(len(grid_values)*2,2)) #pl.figure()
     for ci, cv in enumerate(sorted(grid_values)):
-        curr_cixs = [int(cfg[6:])-1 for cfg in sdf[sdf[grid_axis]==cv].index.tolist()]
+        curr_cixs = [int(cfg[6:])-1 - cfg_start_ix for cfg in sdf[sdf[grid_axis]==cv].index.tolist()]
         corr_cdim = conds_by_rois[curr_cixs].corr(method=corr_method)
         if rdm:
             corr_cdim = 1 - corr_cdim
@@ -728,7 +753,10 @@ def plot_corrs_by_cond(conds_by_rois, grid_axis='size', grid_values=[], \
         else:
             ax.set_xticks([])
             ax.set_yticks([])
-        im = ax.imshow(corr_cdim, cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        if set_scale:
+            im = ax.imshow(corr_cdim, cmap=cmap, vmin=vmin, vmax=vmax, aspect='equal')
+        else:
+            im = ax.imshow(corr_cdim, cmap=cmap, aspect='equal')
         ax.set_title('%i' % cv, fontsize=6)
     
     if title is None:
@@ -826,7 +854,7 @@ subsets = ['visual', 'selective']
 
 subtract_GM = True
 corr_method = 'pearson' #'spearman' #'pearson'
-rdm = True
+rdm = False
 
 cmap = 'PRGn'
 #if rdm:
@@ -898,7 +926,8 @@ for subset in subsets:
     fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
-                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
+                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset),
+                             cfg_start_ix=cfg_start_ix, set_scale=False)
     
     label_figure(fig, data_identifier)
     figname = '%s_%s_%s_by_%s_%s' % (plot_axis, corr_method, rdm_str, grid_axis, subset)
@@ -912,7 +941,8 @@ for subset in subsets:
     fig = plot_corrs_by_cond(conds_by_rois, grid_axis=grid_axis, grid_values=grid_values,\
                              plot_axis=plot_axis, plot_values=plot_values,\
                              corr_method=corr_method, rdm=rdm, cmap=cmap,\
-                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset))
+                             title='%s corrs (%s) by %s (%s)' % (plot_axis, corr_method, grid_axis, subset),
+                             cfg_start_ix=cfg_start_ix)
     label_figure(fig, data_identifier)
     figname = '%s_%s_%s_by_%s_%s' % (plot_axis, corr_method, rdm_str, grid_axis, subset)
     pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
@@ -924,7 +954,7 @@ import seaborn as sns
 
 fig, ax = pl.subplots()
 for cv in sizes:
-    curr_cixs = np.array([int(cfg[6:])-1 for cfg in sdf[sdf['size']==cv].index.tolist()])
+    curr_cixs = np.array([int(cfg[6:])-1 - cfg_start_ix for cfg in sdf[sdf['size']==cv].index.tolist()])
     curr_sz_vals = avg_zscores_by_cond[sorted_visual].iloc[curr_cixs, :]
     sns.distplot(curr_sz_vals.values.ravel(), ax=ax, label=cv, hist=False, rug=False)
     
