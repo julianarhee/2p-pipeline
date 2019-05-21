@@ -126,9 +126,9 @@ def extract_options(options):
 #           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
 #           '-r', 'ypos', '-c', 'xpos']
 
-options = ['-D', '/n/coxfs01/2p-data','-i', 'JC078', '-S', '20190430', '-A', 'FOV1_zoom2p0x',
-           '-R', 'blobs_run4', '-t', 'traces001', '--shade',
-           '-r', 'size', '-c', 'morphlevel']
+options = ['-D', '/n/coxfs01/2p-data','-i', 'JC086', '-S', '20190515', '-A', 'FOV1_zoom2p0x',
+           '-R', 'gratings_run2', '-t', 'traces001', '--shade',
+           '-r', 'size', '-c', 'ori', '-H', 'sf']
 
 #%%
 def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
@@ -178,7 +178,9 @@ def make_clean_psths(options):
     rows = optsE.rows
     columns = optsE.columns
     compare_param = optsE.compare_param
-    plot_params = {'hue': compare_param,
+    if compare_runs:
+        subplot_hue = compare_param
+    plot_params = {'hue': subplot_hue,
                    'rows': rows,
                    'cols': columns}
     
@@ -317,7 +319,7 @@ def make_clean_psths(options):
 
     
     # Update plot_params:    
-    plot_params = {'hue': compare_param_name,
+    plot_params = {'hue': subplot_hue,
                    'rows': rows,
                    'cols': columns}
         
@@ -472,6 +474,9 @@ def make_clean_psths(options):
     #        meandfs['annot_y'] = [ylim*0.9 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
             p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=1)
+            if len(meandfs[plot_params['rows']].unique()) == 1:
+                p.fig.set_figheight(3)
+                p.fig.set_figwidth(20)
             if plot_params['hue'] is None:
                 p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
                 p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1, color='k')
@@ -519,7 +524,7 @@ def make_clean_psths(options):
                     p.axes[ri, ci].set_xlabel('')
                     p.axes[ri, ci].set_ylabel('')
 
-        pl.legend(bbox_to_anchor=(0, -0.3), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
+        pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
 
         label_figure(p.fig, data_identifier)
         
