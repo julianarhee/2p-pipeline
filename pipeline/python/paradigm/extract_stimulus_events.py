@@ -142,7 +142,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     # Check that no frame triggers were skipped/missed:
     diffs = np.diff(frame_ons)
-    nreads_per_frame = max(set(diffs), key=list(diffs).count) + 15
+    leeway = 15
+    nreads_per_frame = max(set(diffs), key=list(diffs).count) + leeway
     print "Nreads per frame:", nreads_per_frame
     long_breaks = np.where(diffs>nreads_per_frame*2)[0]
     for lix, lval in enumerate(long_breaks):
@@ -182,7 +183,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         
         print "Parsing %s" % trial
-        #if trial == 'trial00067':
+        #if trial == 'trial00001':
         #    break
     
         # Create hash of current MWTRIAL dict:
@@ -201,7 +202,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         # Reset start index if starting new tif for thsi trial:
         if mwtrials[prev_trial]['block_idx'] != curr_tif_ix:
             new_start_ix = 0
-        elif mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
+        if mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
             #additional_skips = int(np.floor(nreads_per_frame * (iti_dur * framerate)))
             #new_start_ix = new_start_ix + additional_skips
             tmp_curr_codes = iter(curr_frames_and_codes[new_start_ix:])
@@ -209,10 +210,11 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             while curr_start_cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]:
                 curr_start_cval = next(tmp_curr_codes)
             new_start_ix = curr_frames_and_codes.index(curr_start_cval) + 3
-        
+        elif trial == 'trial00001' and blank_start is True:
+            new_start_ix = int(np.floor(iti_dur*framerate*(nreads_per_frame-leeway))) - 20 #5
         #%
         
-        #new_start_ix=131580
+        #new_start_ix=1959
         prev_val = -1
         min_nreps = 5
         found_bitcodes = []
