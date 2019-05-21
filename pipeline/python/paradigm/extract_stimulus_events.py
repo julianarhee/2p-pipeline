@@ -211,7 +211,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                 curr_start_cval = next(tmp_curr_codes)
             new_start_ix = curr_frames_and_codes.index(curr_start_cval) + 3
         elif trial == 'trial00001' and blank_start is True:
-            new_start_ix = int(np.floor(iti_dur*framerate*(nreads_per_frame-leeway))) - 20 #5
+            new_start_ix = int(np.floor(iti_dur*0.5*framerate*(nreads_per_frame-leeway))) #- 30 #5
         #%
         
         #new_start_ix=1959
