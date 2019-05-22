@@ -126,9 +126,9 @@ def extract_options(options):
 #           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
 #           '-r', 'ypos', '-c', 'xpos']
 
-options = ['-D', '/n/coxfs01/2p-data','-i', 'JC086', '-S', '20190515', '-A', 'FOV1_zoom2p0x',
-           '-R', 'gratings_run2', '-t', 'traces001', '--shade',
-           '-r', 'size', '-c', 'ori', '-H', 'sf']
+options = ['-D', '/n/coxfs01/2p-data','-i', 'JC083', '-S', '20190511', '-A', 'FOV1_zoom2p0x',
+           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
+           '-r', 'size,speed', '-c', 'ori', '-H', 'sf']
 
 #%%
 def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
@@ -174,15 +174,15 @@ def make_clean_psths(options):
 
 
     #%%   
-    subplot_hue = optsE.subplot_hue
-    rows = optsE.rows
-    columns = optsE.columns
+    subplot_hue = optsE.subplot_hue.split(',')
+    rows = optsE.rows.split(',')
+    columns = optsE.columns.split(',')
     compare_param = optsE.compare_param
     if compare_runs:
         subplot_hue = compare_param
-    plot_params = {'hue': subplot_hue,
-                   'rows': rows,
-                   'cols': columns}
+    plot_params = {'hue': subplot_hue if len(subplot_hue) > 1 else subplot_hue[0],
+                   'rows': rows if len(rows) > 1 else rows[0],
+                   'cols': columns if len(columns) > 1 else columns[0]}
     
     if compare_param == 'color':
         compare_param_name = 'backlight'
@@ -243,9 +243,15 @@ def make_clean_psths(options):
     nframes_on = labels_c['nframes_on'].unique()[0]
     
     for pparam in plot_params.values():
-        if pparam not in labels_c.columns and pparam is not None:
-            #print pparam
-            labels_c[pparam] = [sdf_c[pparam][cfg] for cfg in labels_c['config']]
+        if isinstance(pparam, list):
+            for pp in pparam:
+                if pp not in labels_c.columns and pp is not None:
+                    #print pparam
+                    labels_c[pp] = [sdf_c[pp][cfg] for cfg in labels_c['config']]
+        else:
+            if pparam not in labels_c.columns and pparam is not None:
+                #print pparam
+                labels_c[pparam] = [sdf_c[pparam][cfg] for cfg in labels_c['config']]
     if 'size' in labels_c.columns:
         labels_c = labels_c.round({'size': 0}).astype({'size': int})
         sdf_c = sdf_c.round({'size': 0})
@@ -267,8 +273,15 @@ def make_clean_psths(options):
     dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     
-    transform_dict, object_transformations = util.get_transforms(sdf_c.T.to_dict())
-   
+    
+    # Get varying transforms:
+    ignore_params = ['position', 'aspect', 'stimtype']
+    transform_params = [p for p in sdf_c.columns if p not in ignore_params]
+    transform_dict = dict((param, sdf_c[param].unique()) for param in transform_params)
+    for k, v in transform_dict.items():
+        if len(v) == 1:
+            transform_dict.pop(k)
+
     # replace duration:
     if 'duration' in transform_dict.keys():
         transform_dict['stim_dur'] = transform_dict['duration']
@@ -282,6 +295,23 @@ def make_clean_psths(options):
         sdf['position'] = list(zip(sdf_c['xpos'], sdf_c['ypos']))
 
 
+
+    if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
+        combo_param_name = '_'.join(plot_params['rows'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['rows']].values))]
+        plot_params['rows'] = combo_param_name
+        
+    if isinstance(plot_params['cols'], list) and len(plot_params['cols']) > 1:
+        combo_param_name = '_'.join(plot_params['cols'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['cols']].values))]
+        plot_params['cols'] = combo_param_name
+
+    if isinstance(plot_params['hue'], list) and len(plot_params['hue']) > 1:
+        combo_param_name = '_'.join(plot_params['hue'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['hue']].values))]
+        plot_params['hue'] = combo_param_name
+        
+        
     trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])         
     print "Trans:", trans_types
     #print transform_dict
@@ -292,53 +322,92 @@ def make_clean_psths(options):
     # Create PSTH plot grid:
     # -------------------------------------------------------------------------
     # 1.  No rows or columns, i.e., SINGLE transform (e.g., orientation):
-    if len(trans_types) == 1 and rows is None and columns is None:
-        stim_grid = (transform_dict[trans_types[0]],)
-        sgroups = sdf.groupby(sorted(trans_types))
-        ncols = len(stim_grid[0])
-        columns = trans_types[0]
-        col_order = sorted(stim_grid[0])
-        nrows = 1; rows = None; row_order=None
-        unspecified_trans_types = []
-    elif rows is None or columns is None:
-        assert len(trans_types) > 1, "No transforms found!  what to plot??"
-        if rows is None and cols is None:
-            rows = trans_types[0] 
-            cols = trans_types[1]
-        elif rows is None:
-            rows = [t for t in trans_types if t != cols]
-        elif cols is None:
-            cols = [t for t in trans_types if t != rows]
-        if subplot_hue is None:
-            subplot_hue = None if len(trans_types)==2 else trans_types[2]
-    else:
-        nrows = len(transform_dict[rows])
-        ncols = len(transform_dict[columns])        
-        stim_grid = (transform_dict[rows], transform_dict[columns])
-        sgroups = sdf.groupby([rows, columns])
+#    if len(trans_types) == 1 and rows is None and columns is None:
+#        stim_grid = (transform_dict[trans_types[0]],)
+#        #sgroups = sdf.groupby(sorted(trans_types))
+#        ncols = len(stim_grid[0])
+#        columns = trans_types[0]
+#        col_order = sorted(stim_grid[0])
+#        nrows = 1; rows = None; row_order=None
+#        unspecified_trans_types = []
+#    elif rows is None or columns is None:
+#        assert len(trans_types) > 1, "No transforms found!  what to plot??"
+#        if rows is None and cols is None:
+#            rows = trans_types[0] 
+#            cols = trans_types[1]
+#        elif rows is None:
+#            rows = [t for t in trans_types if t != cols]
+#        elif cols is None:
+#            cols = [t for t in trans_types if t != rows]
+#        if subplot_hue is None:
+#            subplot_hue = None if len(trans_types)==2 else trans_types[2]
+#    else:
+    
+#    row_vals=None; col_vals=None; hue_vals=None;
+#    if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
+#        
+#        value_pairs = [sdf_c[p].unique().tolist() for p in sorted(plot_params['rows'])]
+#
+#        row_vals = list(itertools.product(value_pairs[0], value_pairs[1]))
+#        sdf
+#        
+#        
+#        nrows = len(np.array([transform_dict[r] for r in plot_params['rows']]).flatten())
+#        row_vals = dict((p, sdf_c[p].unique()) for p in plot_params['rows'])
+#    else:
+#        nrows = len(transform_dict[plot_params['rows']])
+#        row_vals = sorted(sdf_c[plot_params['rows']].unique())
+#        
+#    if isinstance(plot_params['cols'], list) and len(plot_params['cols']) > 1:
+#        ncols = len(np.array([transform_dict[c] for c in plot_params['cols']]).flatten())
+#        col_vals = dict((p, sdf_c[p].unique()) for p in plot_params['cols'])
+#
+#    else:
+#        ncols = len(transform_dict[plot_params['cols']])        
+#        col_vals = sorted(sdf_c[plot_params['cols']].unique())
+#            
+#
+#    if isinstance(plot_params['hue'], list) and len(plot_params['hue']) > 1:
+#        ncolors = len(np.array([transform_dict[c] for c in plot_params['hue']]).flatten())
+#        hue_vals = dict((p, sdf_c[p].unique()) for p in plot_params['hue'])
+#
+#    else:
+#        ncolors = len(transform_dict[plot_params['hue']])        
+#        hue_vals = sorted(sdf_c[plot_params['hue']].unique())
+            
+        #stim_grid = (transform_dict[rows], transform_dict[columns])
+        #sgroups = sdf.groupby([rows, columns])
+
+#    
+#    # Update plot_params:    
+#    plot_params = {'hue': subplot_hue,
+#                   'rows': rows,
+#                   'cols': columns}
+
+    all_plot_params = []
+    for k, v in plot_params.items():
+        if isinstance(v, list):
+            all_plot_params.extend(v)
+        else:
+            all_plot_params.append(v)
+                
+    unspecified_trans_types = [t for t in trans_types if t not in all_plot_params]
+    
+    
+#    if len(sgroups.groups) == 3:
+#        nrows = 1; ncols=3;
+#
+#    print "N stimulus combinations:", len(stim_grid)
+#    if len(stim_grid)==1:
+#        grid_pairs = sorted([x for x in stim_grid[0]])
+#    else:
+#        grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
+#    #print grid_pairs
 
     
-    # Update plot_params:    
-    plot_params = {'hue': subplot_hue,
-                   'rows': rows,
-                   'cols': columns}
-        
-    unspecified_trans_types = [t for t in trans_types if t not in plot_params.values()]
-    
-    if len(sgroups.groups) == 3:
-        nrows = 1; ncols=3;
-
-    print "N stimulus combinations:", len(stim_grid)
-    if len(stim_grid)==1:
-        grid_pairs = sorted([x for x in stim_grid[0]])
-    else:
-        grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
-    #print grid_pairs
-
-    
-    row_vals = None if plot_params['rows'] is None else sorted(sdf_c[plot_params['rows']].unique())
-    col_vals = None if plot_params['cols'] is None else sorted(sdf_c[plot_params['cols']].unique())
-    hue_vals = None if plot_params['hue'] is None else sorted(sdf_c[plot_params['hue']].unique())
+    #row_vals = None if plot_params['rows'] is None else sorted(sdf_c[plot_params['rows']].unique())
+    #col_vals = None if plot_params['cols'] is None else sorted(sdf_c[plot_params['cols']].unique())
+    #hue_vals = None if plot_params['hue'] is None else sorted(sdf_c[plot_params['hue']].unique())
 
 
     #%%
@@ -386,40 +455,41 @@ def make_clean_psths(options):
         trace_colors = ['k']
         trace_labels = ['']
         
-    elif len(trans_types) > 2 and len(unspecified_trans_types) > 0:
-        # Use different color gradients for each object to plot the unspecified transform, too:
-        # X and Y already specified, so color-gradient will be the unspecified.
-        if len(unspecified_trans_types) > 1:
-            print "--- WARNING --- More than 1 unspecified trans: %s" % str(unspecified_trans_types)
-        colorbank = ['Purples', 'Greens', 'Blues', 'Reds']
-        if plot_params['hue'] in sdf_c.columns:
-            hue_labels = sorted(sdf_c[plot_params['hue']].unique())
-        else:
-            hue_labels = object_transformations[rows]
-        
-        unspec_trans_type = unspecified_trans_types[0]
-        unspec_trans_values = sorted(sdf_c[unspec_trans_type].unique())
-        n_unspec_trans_levels = len(unspec_trans_values)
-        
-        trace_colors = dict((hue_base, dict((gvalue, sns.color_palette(colorbank[hi], n_unspec_trans_levels)[glevel]) \
-                                            for glevel, gvalue in enumerate(unspec_trans_values)) ) \
-                                            for hi, hue_base in enumerate(hue_labels))
-        trace_labels = dict((hue_base, dict((translevel, '_'.join([str(hue_base), str(translevel)])) for translevel in unspec_trans_values) ) \
-                                             for hue_base in hue_labels)
+#    elif len(trans_types) > 2 and len(unspecified_trans_types) > 0:
+#        # Use different color gradients for each object to plot the unspecified transform, too:
+#        # X and Y already specified, so color-gradient will be the unspecified.
+#        if len(unspecified_trans_types) > 1:
+#            print "--- WARNING --- More than 1 unspecified trans: %s" % str(unspecified_trans_types)
+#        colorbank = ['Purples', 'Greens', 'Blues', 'Reds']
+#        if plot_params['hue'] in sdf_c.columns:
+#            hue_labels = sorted(sdf_c[plot_params['hue']].unique())
+#        else:
+#            hue_labels = object_transformations[rows]
+#        
+#        unspec_trans_type = unspecified_trans_types[0]
+#        unspec_trans_values = sorted(sdf_c[unspec_trans_type].unique())
+#        n_unspec_trans_levels = len(unspec_trans_values)
+#        
+#        trace_colors = dict((hue_base, dict((gvalue, sns.color_palette(colorbank[hi], n_unspec_trans_levels)[glevel]) \
+#                                            for glevel, gvalue in enumerate(unspec_trans_values)) ) \
+#                                            for hi, hue_base in enumerate(hue_labels))
+#        trace_labels = dict((hue_base, dict((translevel, '_'.join([str(hue_base), str(translevel)])) for translevel in unspec_trans_values) ) \
+#                                             for hue_base in hue_labels)
         
     else:
+#        
         print "Subplot hue: %s" % plot_params['hue']
         if plot_params['hue'] in sdf_c.columns:
             hues = sorted(sdf_c[plot_params['hue']].unique())
             trace_labels = ['%s %s' % (plot_params['hue'], str(v)) for v in sorted(sdf_c[plot_params['hue']].unique())]
-        else:
-            hues = object_transformations[rows]
-            trace_labels = hues
+#        else:
+#            hues = object_transformations[rows]
+#            trace_labels = hues
             
-        if len(hues) <= 2:
+        if len(plot_params['hue']) <= 2:
             trace_colors = ['g', 'b']
         else:
-            trace_colors = sns.color_palette('hls', len(hues))
+            trace_colors = sns.color_palette('hls', len(plot_params['hue']))
 
         
 #%%
@@ -462,10 +532,12 @@ def make_clean_psths(options):
                                       'config': [k for _ in range(len(mean_trace))],
                                       'nreps': [nreps for _ in range(len(mean_trace))]
                                       })
-                for p in plot_params.values():
+                for p in all_plot_params: #plot_params.values():
                     if p not in sdf_c.columns:
                         continue
-                    mdf[p] = [round(sdf_c[p][cfg]) for cfg in mdf['config']]
+                    
+                    mdf[p] = [round(sdf_c[p][cfg], 1) if isinstance(sdf_c[p][cfg], (float)) else sdf_c[p][cfg] for cfg in mdf['config']]
+                    
                 meandfs.append(mdf)
             meandfs = pd.concat(meandfs, axis=0)
         
@@ -473,25 +545,31 @@ def make_clean_psths(options):
     #        meandfs['annot_x'] = [-0.999 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_y'] = [ylim*0.9 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
-            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=1)
+            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True)
+
             if len(meandfs[plot_params['rows']].unique()) == 1:
                 p.fig.set_figheight(3)
                 p.fig.set_figwidth(20)
+
             if plot_params['hue'] is None:
                 p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
                 p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1, color='k')
             else:
                 p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
-                p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1)
-            p = p.set_titles(col_template="{col_name}", size=6)
+                p = (p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1).add_legend())
+            p = p.set_titles(col_template="{col_name}", size=5)
+            #pl.legend() #bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1) #, labels=trace_labels, fontsize=8)
+            
+            #pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
+
 #        for xi in range(p.axes.shape[0]):
 #            for yi in range(p.axes.shape[1]):
 #                p.axes[xi, yi].text(-0.999, ylim*0.9, 'n=%i' % nreps)
            
             if 'xpos' in plot_params.values() and 'ypos' in plot_params.values(): 
-                pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05)
+                pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05) #right=0.95)
             else:
-                pl.subplots_adjust(wspace=0.8, hspace=0.8, top=0.85, bottom=0.1, left=0.1)
+                pl.subplots_adjust(wspace=0.8, hspace=0.8, top=0.8, bottom=0.1, left=0.1, right=0.9)
             
         ymin = meandfs[ylabel].min()
         ymax = meandfs[ylabel].max()
@@ -501,8 +579,8 @@ def make_clean_psths(options):
             for ci in range(p.axes.shape[1]):
                 #print ri, ci
                 p.axes[ri, ci].add_patch(patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2))
-                p.axes[ri, ci].text(-0.999, ymax+(ymax*0.2), 'n=%i' % nreps, fontsize=6)
-                if len(col_vals) > 10:
+                p.axes[ri, ci].text(-1.3, ymax+(ymax*0.1), 'n=%i' % nreps, fontsize=4)
+                if len(meandfs[plot_params['cols']].unique()) > 10:
                     p.axes[ri, ci].set_title('')
                     
                 if ri == 0 and ci == 0:
@@ -524,12 +602,12 @@ def make_clean_psths(options):
                     p.axes[ri, ci].set_xlabel('')
                     p.axes[ri, ci].set_ylabel('')
 
-        pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
+        #pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
 
         label_figure(p.fig, data_identifier)
         
         p.fig.suptitle('roi %i' % (int(ridx+1)))
-        
+        #%%
         figname = '%s_psth_%s.%s' % (roi_id, optsE.datatype, filetype)
         p.savefig(os.path.join(psth_dir, figname))
         pl.close()
