@@ -174,9 +174,9 @@ def make_clean_psths(options):
 
 
     #%%   
-    subplot_hue = optsE.subplot_hue.split(',')
-    rows = optsE.rows.split(',')
-    columns = optsE.columns.split(',')
+    subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue is not None else [None]
+    rows = optsE.rows.split(',') if optsE.rows is not None else [None]
+    columns = optsE.columns.split(',') if optsE.columns is not None else [None]
     compare_param = optsE.compare_param
     if compare_runs:
         subplot_hue = compare_param
