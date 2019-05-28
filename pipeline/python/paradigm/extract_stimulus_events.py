@@ -142,7 +142,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     # Check that no frame triggers were skipped/missed:
     diffs = np.diff(frame_ons)
-    nreads_per_frame = max(set(diffs), key=list(diffs).count) + 15
+    leeway = 15
+    nreads_per_frame = max(set(diffs), key=list(diffs).count) + leeway
     print "Nreads per frame:", nreads_per_frame
     long_breaks = np.where(diffs>nreads_per_frame*2)[0]
     for lix, lval in enumerate(long_breaks):
@@ -182,7 +183,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         
         print "Parsing %s" % trial
-        #if trial == 'trial00067':
+        #if trial == 'trial00200':
         #    break
     
         # Create hash of current MWTRIAL dict:
@@ -193,29 +194,63 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         bitcodes = mwtrials[trial]['all_bitcodes']
         missed_last_trigger = mwtrials[trial]['missing_si_trigger']
 
-        #52286
+        #79679
         # ---------------------------------------------------------------------
         # Find all bitcodes for stimulus ON period:
         # ---------------------------------------------------------------------
-           
+        min_nreps = 5
+        
         # Reset start index if starting new tif for thsi trial:
         if mwtrials[prev_trial]['block_idx'] != curr_tif_ix:
             new_start_ix = 0
-        elif mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
+            #new_start_ix = int(np.floor(iti_dur*1.5*framerate*(nreads_per_frame-leeway))) #- 30 #5
+        if mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
             #additional_skips = int(np.floor(nreads_per_frame * (iti_dur * framerate)))
             #new_start_ix = new_start_ix + additional_skips
+            nreads_to_skip = int(np.floor(iti_dur*0.5*framerate*(nreads_per_frame-leeway)))
+            new_start_ix += nreads_to_skip
             tmp_curr_codes = iter(curr_frames_and_codes[new_start_ix:])
             curr_start_cval = curr_frames_and_codes[new_start_ix]
-            while curr_start_cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+            prev_val = curr_start_cval[1]
+            num_consec_new=0
+            # curr_start_cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]:
+                
+            while num_consec_new<min_nreps or (curr_start_cval[1] == mwtrials[prev_trial]['all_bitcodes'][-1]):
+                prev_trial_bitcode = mwtrials[prev_trial]['all_bitcodes'][-1]
                 curr_start_cval = next(tmp_curr_codes)
+                if curr_start_cval[1] != prev_trial_bitcode:
+                    diff_bitcode = curr_start_cval[1]
+                if curr_start_cval[1] != prev_trial_bitcode and prev_val == diff_bitcode: # First time, already have had 1 occurrence
+                    num_consec_new += 1
+                else:
+                    num_consec_new = 0
+                prev_val = curr_start_cval[1]
+                
             new_start_ix = curr_frames_and_codes.index(curr_start_cval) + 3
-        
+        elif trial == 'trial00001' and blank_start is True:
+            new_start_ix = int(np.floor(iti_dur*0.5*framerate*(nreads_per_frame-leeway))) #- 30 #5
         #%
         
-        #new_start_ix=131580
+        #new_start_ix=982
         prev_val = -1
-        min_nreps = 5
         found_bitcodes = []
+        
+        if curr_frames_and_codes[new_start_ix][1] == bitcodes[0]:
+            curr_codes = iter(curr_frames_and_codes[new_start_ix:])
+            cval = curr_frames_and_codes[new_start_ix]
+            prev_val = curr_frames_and_codes[new_start_ix][1]
+            num_consec_new = 0
+            while cval[0] == bitcodes[0] or num_consec_new < min_nreps:
+                cval = next(curr_codes)
+                if cval[1] != prev_val:
+                    diff_bitcode = cval[1]
+                if cval[1] == prev_val and prev_val == diff_bitcode:
+                    num_consec_new += 1
+                else:
+                    num_consec_new = 0
+                prev_val = cval[1]
+            new_start_ix = curr_frames_and_codes.index(cval)
+        
         
         curr_codes = iter(curr_frames_and_codes[new_start_ix:]) # iter(frames_and_codes[new_start_ix:])
         
@@ -366,9 +401,10 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     else:
                         try:
                             assert curr_frames_and_codes[last_found_idx - min_nreps + 1][1] == bitcode
+                            first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 1]
                         except AssertionError:
                             assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
-                        first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
+                            first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
                         found_bitcodes.append(first_found_match)
                         reset_ix = last_found_idx
                 else:
@@ -409,8 +445,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         triggered_frame_off = np.argmin(np.abs(valid_bitcodes[-1][0] - sdata_frame_ixs))
         
         # Calculate stimulus duration and check that it matches what's expected:
-        stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
-        print "%s: %.1f" % (trial, round(stim_dur, 2))
+        stim_dur = round( (triggered_frame_off - triggered_frame_on) / framerate, 2)
+        print "%s: %.1f" % (trial, stim_dur)
         
         # If there are missed frame triggers, calculate expected frame stim-off:
         if missing_frame_triggers and np.abs(round(stim_dur, 1) - (mwtrials[trial]['stim_duration']/1E3)) > 0.1:
@@ -418,7 +454,8 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
             stim_dur = (triggered_frame_off - triggered_frame_on) / framerate
             adjusted_frame_count.append(trial)
 
-        if round(stim_dur, 1) != round(mwtrials[trial]['stim_duration']/1E3, 1):
+        if round(stim_dur, 1) != round(mwtrials[trial]['stim_duration']/1E3, 1) and abs(stim_dur- round(mwtrials[trial]['stim_duration']/1E3, 1) ) > 0.1:
+            print "Bad stim dur! --", stim_dur
             break
         prev_trial = trial
     
