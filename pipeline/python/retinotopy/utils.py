@@ -19,27 +19,27 @@ import traceback
 import pprint
 import copy
 
-import cPickle as pkl
-import tifffile as tf
+#import cPickle as pkl
+#import tifffile as tf
 import pylab as pl
 import numpy as np
-from scipy import ndimage
+#from scipy import ndimage
 #import cv2
 import glob
-from scipy.optimize import curve_fit
-import seaborn as sns
+#from scipy.optimize import curve_fit
+#import seaborn as sns
 #from pipeline.python.retinotopy import visualize_rois as vis
-from matplotlib.patches import Ellipse
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+#from matplotlib.patches import Ellipse
+#from mpl_toolkits.axes_grid1 import make_axes_locatable
 import scipy as sp
 import pandas as pd
 
 
-from pipeline.python.utils import natural_keys, label_figure, replace_root
+#from pipeline.python.utils import natural_keys, label_figure, replace_root
 #from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
-from scipy.signal import argrelextrema
+#from scipy.signal import argrelextrema
 
 
 #%%
