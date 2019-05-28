@@ -25,5 +25,5 @@ echo ${3}
 echo ${4}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/rois/get_warped_ref.py --slurm -i ${1} -S ${2} -A ${3} -r ${4} -n 8 -e 1.0 --new -n 8 -z max 
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/rois/get_warped_ref.py --slurm -i ${1} -S ${2} -A ${3} -r ${4} -n 8 -e 1.0 --new -n 8 -z max
 
