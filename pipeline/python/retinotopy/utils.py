@@ -97,13 +97,13 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
         for tifnum in tif_list:
             processed_tif = [f for f in processed_fpaths if 'File%03d' % tifnum in f]
             if len(processed_tif) == 0:
-                print "No analysis found for file: %s" % tifnum
+                print("No analysis found for file: %s" % tifnum)
                 excluded_tifs.append(tifnum)
         trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
-    print "TRIALS BY COND:"
-    print trials_by_cond 
+    print("TRIALS BY COND:")
+    print(trials_by_cond) 
     trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
-    print "Trials:", trial_list
+    print("Trials:", trial_list)
 
     fits = []
     phases = []
@@ -158,7 +158,7 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
     if topedge is None:
         topedge = height/2.
 
-    print "center 2 Top/Anterior:", topedge, rightedge
+    print("center 2 Top/Anterior:", topedge, rightedge)
 
 
     mapx = np.linspace(leftedge, rightedge, resolution[0] * ((rightedge-leftedge)/float(width)))
@@ -244,7 +244,7 @@ def get_retino_stimulus_info(mwinfo, runinfo):
 def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
     mw_fps = 1./np.diff(np.array(mwinfo[str(trials_by_cond[condname][0])]['stiminfo']['tstamps'])/1E6).mean()
     si_fps = stiminfo[condname]['frame_rate']
-    print "[%s]: Downsampling MW positions (sampled at %.2fHz) to SI frame rate (%.2fHz)" % (condname, mw_fps, si_fps)
+    print("[%s]: Downsampling MW positions (sampled at %.2fHz) to SI frame rate (%.2fHz)" % (condname, mw_fps, si_fps))
 
     si_cyc_ixs = stiminfo[condname]['cycle_start_ixs']
     assert len(np.unique(np.diff(si_cyc_ixs))) == 1, "Uneven cycle durs found!\n--> %s" % str(np.diff(si_cyc_ixs))
