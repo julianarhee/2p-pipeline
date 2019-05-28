@@ -51,7 +51,7 @@ def main(options):
         experiment_types = list(set([r.split('_')[0] for r in all_runs]))
         print("Found %i experiment types:" % len(experiment_types))
         for exp in experiment_types:
-            print "- organizing runs: %s" % exp
+            print "- [FOV%i] organizing runs: %s" % (fov_num, exp)
             curr_runs = glob.glob(os.path.join(fov, '%s_run*' % exp))
             for run_dir in curr_runs:
                 run_num = int(re.search("_run\d{1}", run_dir).group()[-1])
