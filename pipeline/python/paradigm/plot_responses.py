@@ -174,9 +174,9 @@ def make_clean_psths(options):
 
 
     #%%   
-    subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue is not None else [None]
-    rows = optsE.rows.split(',') if optsE.rows is not None else [None]
-    columns = optsE.columns.split(',') if optsE.columns is not None else [None]
+    subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue not in [None, 'None'] else [None]
+    rows = optsE.rows.split(',') if optsE.rows is optsE.rows not in [None, 'None'] else [None]
+    columns = optsE.columns.split(',') if optsE.columns not in [None, 'None'] else [None]
     compare_param = optsE.compare_param
     if compare_runs:
         subplot_hue = compare_param
@@ -482,14 +482,16 @@ def make_clean_psths(options):
         if plot_params['hue'] in sdf_c.columns:
             hues = sorted(sdf_c[plot_params['hue']].unique())
             trace_labels = ['%s %s' % (plot_params['hue'], str(v)) for v in sorted(sdf_c[plot_params['hue']].unique())]
+        else:
+            trace_labels = []
 #        else:
 #            hues = object_transformations[rows]
 #            trace_labels = hues
             
-        if len(plot_params['hue']) <= 2:
-            trace_colors = ['g', 'b']
-        else:
-            trace_colors = sns.color_palette('hls', len(plot_params['hue']))
+#        if plot_params['hue'] is not None and len(plot_params['hue']) <= 2:
+#            trace_colors = ['g', 'b']
+#        else:
+#            trace_colors = sns.color_palette('hls', len(plot_params['hue']))
 
         
 #%%
