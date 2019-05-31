@@ -35,7 +35,7 @@ import scipy as sp
 import pandas as pd
 
 
-#from pipeline.python.utils import natural_keys, label_figure, replace_root
+from pipeline.python.utils import natural_keys, label_figure, replace_root
 #from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
