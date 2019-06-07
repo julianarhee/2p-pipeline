@@ -106,6 +106,7 @@ def make_segments(x, y, z=None):
 #%%
 
 def plot_pca_label_points(X_r, y_labels, label_names=[], label_colors=[], ax=None,\
+                          pc1=0, pc2=1,
                           cmap = 'jet', plot_markers=True, color_connections=False, 
                           connect_all=False, connect_within=False, markersize=100, lw=1):
     
@@ -126,8 +127,8 @@ def plot_pca_label_points(X_r, y_labels, label_names=[], label_colors=[], ax=Non
     # Plot:
     if connect_all:
         if color_connections:
-            x = X_r[:, 0] #np.random.rand(N)
-            y = X_r[:, 1] #np.random.rand(N)    
+            x = X_r[:, pc1] #np.random.rand(N)
+            y = X_r[:, pc2] #np.random.rand(N)    
             path = mpath.Path(np.column_stack([x, y]))
             verts = path.interpolated(steps=3).vertices
             x, y = verts[:, 0], verts[:, 1]
@@ -135,18 +136,18 @@ def plot_pca_label_points(X_r, y_labels, label_names=[], label_colors=[], ax=Non
         else:
             pc1s = []; pc2s = [];
             for color, i, targname in zip(label_colors, label_names, target_names):
-                pc1s.extend(X_r[y_labels == i, 0])
-                pc2s.extend(X_r[y_labels == i, 1])
+                pc1s.extend(X_r[y_labels == i, pc1])
+                pc2s.extend(X_r[y_labels == i, pc2])
             ax.plot(pc1s, pc2s, zorder=1, color='k', lw=lw) 
     
 
     for color, i, target_name in zip(label_colors, label_names, target_names):
         if connect_within:
-            ax.plot(X_r[y_labels == i, 0], X_r[y_labels == i, 1], zorder=2, 
+            ax.plot(X_r[y_labels == i, pc1], X_r[y_labels == i, pc2], zorder=2, 
                         color=color, label=target_name,
                         alpha=.8, lw=lw, marker='o', markersize=markersize) #abel=target_name)        
         if plot_markers:
-            ax.scatter(X_r[y_labels == i, 0], X_r[y_labels == i, 1], zorder=2,
+            ax.scatter(X_r[y_labels == i, pc1], X_r[y_labels == i, pc2], zorder=2,
                        s=markersize,
                        color=color, label=target_name,
                        alpha=.8, lw=lw, edgecolor='k') #abel=target_name)        
@@ -165,6 +166,9 @@ def plot_pca_label_points(X_r, y_labels, label_names=[], label_colors=[], ax=Non
     ax.xaxis.set_major_locator(MaxNLocator(3, integer=True))
     ax.yaxis.set_major_locator(MaxNLocator(3, integer=True))
     
+    ax.set_xlabel('pc %i' % int(pc1+1))
+    ax.set_ylabel('pc %i' % int(pc2+1))
+    
     return ax
 
 #%%
@@ -172,7 +176,7 @@ def plot_pca_label_points_3D(X_r, y_labels, label_names=[], label_colors=[],
                              cmap='jet',
                              plot_markers=True, color_connections=False,
                              connect_all=False, connect_within=False,
-                             ax=None, annotate=False, markersize=100, lw=1, alpha=1):
+                             ax=None, annotate=False, markersize=100, lw=1, alpha=1, edgecolor='k'):
     
     if ax is None:
         print "Creating new axis"
@@ -235,7 +239,7 @@ def plot_pca_label_points_3D(X_r, y_labels, label_names=[], label_colors=[],
                        zorder=2,
                        s=markersize,
                        color=color, label=target_name,
-                       alpha=alpha, lw=lw, edgecolor=color) #abel=target_name)        
+                       alpha=alpha, lw=lw, edgecolor=edgecolor) #abel=target_name)        
 
 
     # Reorder the labels to have colors matching the cluster results
@@ -287,8 +291,8 @@ segment = False
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC076' 
-session = '20190502' #'20190319'
+animalid = 'JC091' 
+session = '20190606' #'20190319'
 fov = 'FOV1_zoom2p0x' 
 run = 'combined_blobs_static'
 traceid = 'traces001' #'traces002'
@@ -355,7 +359,7 @@ sdf.head()
 
 # Only take subset of trials where image shown (not controls):
 labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-labels = labels[labels['config'].isin(sdf.index.tolist())]
+labels = labels[labels['config'].isin(sdf.index.tolist())] # Ignore "control" trials for now
 #traces = traces[labels.index.tolist(), :]
 trial_ixs = np.array([int(t[5:])-1 for t in sorted(labels['trial'].unique(), key=natural_keys)])
 #zscores = zscores[trial_ixs, :]
@@ -382,14 +386,21 @@ print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selectiv
 # zscore the traces:
 # -----------------------------------------------------------------------------
 zscored_traces_list = []
+baselines = []
+zscores_list = []
 for trial, tmat in labels.groupby(['trial']):
     #print trial    
     stim_on_frame = tmat['stim_on_frame'].unique()[0]
     nframes_on = tmat['nframes_on'].unique()[0]
     curr_traces = traces[tmat.index, :]
     bas_std = curr_traces[0:stim_on_frame, :].std(axis=0)
-    curr_zscored_traces = pd.DataFrame(curr_traces).divide(bas_std, axis='columns')# pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
+    bas_mean = curr_traces[0:stim_on_frame, :].mean(axis=0)
+    stim_mean = curr_traces[stim_on_frame:stim_on_frame+nframes_on, :].mean(axis=0)
+    curr_zscored_traces = pd.DataFrame(curr_traces).subtract(bas_mean, axis='columns').divide(bas_std, axis='columns')# pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
+    curr_zs = (stim_mean - bas_mean) / bas_std
     zscored_traces_list.append(curr_zscored_traces)
+    zscores_list.append(curr_zs)
+    baselines.append(bas_mean)
 
 zscored_traces = pd.concat(zscored_traces_list, axis=0).reset_index()
 zscored_traces.head()
@@ -500,11 +511,13 @@ print "Saving plots to: %s" % curr_figdir
 #    X = avg_zscores_by_cond_GM[selective_rois]
 #else:
 #    X = avg_zscores_by_cond[selective_rois]
+from sklearn import preprocessing
 
 X = avg_zscores_by_cond[roi_list[0:30]]
 print X.shape
+X_std = preprocessing.StandardScaler().fit_transform(X)
 
-X_std = X - X.mean()
+#X_std = X - X.mean()
 
 
 # 
@@ -530,6 +543,9 @@ pl.savefig(os.path.join(curr_figdir, 'skree_nobs_%i_nvars_%i.png' % (num_obs, nu
 
 
 n_components= 2
+pc1=0
+pc2=1
+
 
 connect_all = True
 color_connections = False
@@ -552,15 +568,16 @@ fig.subplots_adjust(top=0.8, bottom=0.3, wspace=0.2, hspace=0.2, left=0.1)
 y_size = np.array([sdf['size']['config%03d' % int(cix+1)] for cix in avg_zscores_by_cond_GM.index.tolist()]) #np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
 ax = axes[0]
 ax = plot_pca_label_points(X_r, y_size, label_names=sizes, label_colors=size_colors, ax=ax,
+                           pc1=pc1, pc2=pc2,
                            connect_all=connect_all, connect_within=connect_within, color_connections=color_connections,
                            markersize=markersize, lw=lw, cmap=size_cmap)
 
 ax.text(ax.get_xlim()[0], ax.get_ylim()[-1]*1.02, \
-        'expl. var. %.2f' % np.sum(pca.explained_variance_ratio_), fontsize=6)
+        'expl. var. %.2f' % np.sum( [pca.explained_variance_ratio_[pc1], pca.explained_variance_ratio_[pc2]] ), fontsize=6)
 # Add legend:
-ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.2),
+ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.3),
           ncol=len(sizes), fancybox=False, shadow=False, fontsize=6)
-fig.text(0.25, 0.15 , 'size')
+fig.text(0.25, 0.12 , 'size')
 
 
 
@@ -570,6 +587,7 @@ y_morph = np.array([sdf['morphlevel']['config%03d' % int(cix+1)] for cix in avg_
 # Plot
 ax = axes[1]
 ax = plot_pca_label_points(X_r, y_morph, label_names=morphlevels, label_colors=morph_colors, ax=ax, 
+                           pc1=pc1, pc2=pc2,
                            connect_all=connect_all, connect_within=connect_within, color_connections=color_connections,
                            markersize=markersize, lw=lw, cmap=morph_cmap)
 
@@ -581,7 +599,7 @@ norm = BoundaryNorm(bounds, morph_cmap.N)
 mappable = cm.ScalarMappable(cmap=morph_cmap)
 mappable.set_array(bounds)
 
-cbar_ax = fig.add_axes([0.58, 0.22, 0.3, 0.02])
+cbar_ax = fig.add_axes([0.58, 0.17, 0.3, 0.02])
 cbar = fig.colorbar(mappable, cax=cbar_ax, boundaries=np.arange(-0.5,len(morphlevels),1), \
                     ticks=bounds, norm=norm, orientation='horizontal')
 
@@ -593,8 +611,8 @@ pl.suptitle('PCA (n=%i)' % n_components, y=0.9)
 label_figure(fig, data_identifier)
 
 #%
-
-figname = 'pca_%icomps_averaged_condns_morph_size_%iobs_%ivars' % (n_components, num_obs, num_vars)
+pl.subplots_adjust(wspace=0.3)
+figname = 'pca_%icomps_averaged_condns_morph_size_%iobs_%ivars_comp%iv%i' % (n_components, num_obs, num_vars, int(pc1+1), int(pc2+1))
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 
 print figname
@@ -607,11 +625,11 @@ pca = sk.decomposition.PCA(n_components=n_components)
 pca.fit(X_std)
 X_r = pca.transform(X_std)
 
-splitter = 'size'
+splitter = 'morphlevel'
 
 if splitter == 'size':
-    elev = -166 #62 #25 #13 #10 # 40 #2# 83.4
-    azim = -65 #-126 #35 #-60 #-63 #-130 #135
+    elev = 65 #10 #47#30#62 #25 #13 #10 # 40 #2# 83.4
+    azim = -130 #-140 #148#151#-126 #35 #-60 #-63 #-130 #135
     split_values = copy.copy(sizes)
     labeler = 'morphlevel'
     curr_cmap = morph_cmap
@@ -619,8 +637,8 @@ if splitter == 'size':
     figheight = 4
     
 elif splitter == 'morphlevel':
-    elev = 63 #62 #71 #43 #35 # 77 #35
-    azim = 22 #-126 #46 #73 #35 #121
+    elev = -112 # 72#49 #62 #71 #43 #35 # 77 #35
+    azim =  47 #134#68 #-126 #46 #73 #35 #121
     split_values = copy.copy(morphlevels)
     labeler = 'size'
     curr_cmap = size_cmap
@@ -653,7 +671,7 @@ fig.suptitle(splitter)
 
 pl.subplots_adjust(top=0.8)
 label_figure(fig, data_identifier)             
-figname = 'pca_%icomps_split_by_%s_label_%s_%iobs_%ivars_view2' % (n_components, splitter, labeler, num_obs, num_vars)
+figname = 'pca_%icomps_split_by_%s_label_%s_%iobs_%ivars_view1' % (n_components, splitter, labeler, num_obs, num_vars)
 print figname
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 
@@ -669,7 +687,7 @@ connect_all = True
 color_connections = False
 plot_markers = True
 connect_within=False
-markersize = 30
+markersize = 40
 lw = 1
 annotate = True
 
@@ -759,9 +777,9 @@ print figname
 #%%
 azim_view4 = -100
 elev_view4 = 5
-
-azim_view4 = -112 #-20
-elev_view4 = 64 #5
+#
+#azim_view4 = -112 #-20
+#elev_view4 = 64 #5
 
 ax1.azim = azim_view4
 ax1.elev = elev_view4
@@ -770,7 +788,7 @@ ax2.azim = azim_view4
 ax2.elev = elev_view4
 
 
-figname = 'pca_%icomps_averaged_condns_morph_size_%iobs_%ivars_view5' % (n_components, num_obs, num_vars)
+figname = 'pca_%icomps_averaged_condns_morph_size_%iobs_%ivars_view4' % (n_components, num_obs, num_vars)
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 print figname
 
@@ -779,10 +797,10 @@ print figname
 
 #%%
 
-azim_view4 = -108 #150
-elev_view4 = 7
+azim_view4 = 41 # 74 #76#-67 #-108 #150
+elev_view4 = 71 #6 #60#26 #7
 
-fig = pl.figure(figsize=(12, 6))
+fig = pl.figure(figsize=(14, 8))
 ax1 = fig.add_subplot(1, 2, 1, projection='3d', azim=azim_view4, elev=elev_view4)
 ax1 = plot_pca_3d_primary_secondary(X_r, y_size, y_morph, ax=ax1, label_colors=size_colors, cmap=size_cmap,
                                    annotate=False, markersize=markersize, lw=.5, alpha=0.8)
@@ -804,10 +822,10 @@ pl.subplots_adjust(wspace=0.1, left=0.05, top=0.8)
 fig.suptitle('grouped labels (nc=%i, exp.var=%.2f)' % (n_components, np.sum(pca.explained_variance_ratio_)))
 label_figure(fig, data_identifier)
 
-figname = 'grouped_pca_%icomps_averaged_condns_%iobs_%ivars_view2' % (n_components, num_obs, num_vars)
+figname = 'grouped_pca_%icomps_averaged_condns_%iobs_%ivars_view4' % (n_components, num_obs, num_vars)
 pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 print figname
-
+#%%
 
 
 def create_mappable_cbar(colormap, colorlabels, cbar_title='', orientation='horizontal',
