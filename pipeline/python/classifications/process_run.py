@@ -42,7 +42,7 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
         stimtype = run_list[0].split('_')[0:-1]
       
     print "STIM: %s" % stimtype
-    is_gratings = 'grating' in stimtype
+    is_gratings = any(r in stimtype for r in ['grating', 'rfs'])
  
     # Combine runs: 
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
