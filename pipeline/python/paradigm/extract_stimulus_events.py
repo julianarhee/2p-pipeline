@@ -154,9 +154,13 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     tif_start_frames = [int(b+1) for b in long_breaks]
     tif_start_frames.append(0)
     tif_start_frames = sorted(tif_start_frames)
-    
+    print "Found %i tiff starts: first is %i" % (len(tif_start_frames), tif_start_frames[0])
+ 
     tif_ixs = sorted(np.unique([tdict['block_idx'] for tr,tdict in mwtrials.items()]))
-    
+    print tif_ixs 
+
+    no_triggers = len(tif_start_frames) != len(tif_ixs)
+
 
     #%%
     durs = []
@@ -164,6 +168,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
     trialevents = dict()
     iti_dur = min([round(mwtrials[t]['iti_duration']/1E3) for t in mwtrials.keys()])
+    if no_triggers:
+        curr_fr_triggers = sdata_frame_ixs[tif_start_frames[0]:]
+
     
     new_start_ix = 0
     prev_trial = 'trial00001'
@@ -173,17 +180,21 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         curr_tif_ix = mwtrials[trial]['block_idx']
         
         # Get frame triggers belonging to current tif:
-        if curr_tif_ix == tif_ixs[-1]:
-            curr_fr_triggers = sdata_frame_ixs[tif_start_frames[curr_tif_ix]:]
-        else:
-            curr_fr_triggers = sdata_frame_ixs[tif_start_frames[curr_tif_ix]:tif_start_frames[curr_tif_ix+1]]
-        
+        #print "curr tif: %i" % curr_tif_ix
+        if not no_triggers:
+            if curr_tif_ix == tif_ixs[-1]:
+                curr_fr_triggers = sdata_frame_ixs[tif_start_frames[curr_tif_ix]:]
+
+            else:
+                curr_fr_triggers = sdata_frame_ixs[tif_start_frames[curr_tif_ix]:tif_start_frames[curr_tif_ix+1]]
+
         curr_reads = sdata.loc[(sdata.index >= curr_fr_triggers[0]) & (sdata.index <= curr_fr_triggers[-1])]
         curr_frames_and_codes = [(ix, iv) for ix, iv in zip(curr_reads['pixel_clock'].index.tolist(), curr_reads['pixel_clock'].values)]
-        
+ 
+      
         
         print "Parsing %s" % trial
-        #if trial == 'trial00200':
+        #if trial == 'trial00421':
         #    break
     
         # Create hash of current MWTRIAL dict:
@@ -194,14 +205,14 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         bitcodes = mwtrials[trial]['all_bitcodes']
         missed_last_trigger = mwtrials[trial]['missing_si_trigger']
 
-        #79679
+        #821534
         # ---------------------------------------------------------------------
         # Find all bitcodes for stimulus ON period:
         # ---------------------------------------------------------------------
         min_nreps = 5
         
         # Reset start index if starting new tif for thsi trial:
-        if mwtrials[prev_trial]['block_idx'] != curr_tif_ix:
+        if mwtrials[prev_trial]['block_idx'] != curr_tif_ix and no_triggers is False:
             new_start_ix = 0
             #new_start_ix = int(np.floor(iti_dur*1.5*framerate*(nreads_per_frame-leeway))) #- 30 #5
         if mwtrials[prev_trial]['all_bitcodes'][-1] == bitcodes[0]:
@@ -254,7 +265,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         
         curr_codes = iter(curr_frames_and_codes[new_start_ix:]) # iter(frames_and_codes[new_start_ix:])
         
-        cval = next(curr_codes)  
+        cval = next(curr_codes)   #(855670, 1)
         reverted_search = False; nextra_reads = 0; 
         
         try:
@@ -265,7 +276,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                     
                 #print bi, bitcode
                 
-                #if bi == 20:
+                #if bi == 22:
                 #    break
                 
                 # If first bitcode of trial N matches last bitcode of trial N-1, cycle through until the next one is found:
@@ -394,19 +405,19 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
                 if found_codes: 
                     # Subtract 2 indices from nreps_curr since 1st rep is counted after 1st occurrence, and last rep is counted after last found:
                     last_found_idx = curr_frames_and_codes.index(cval)
+                    #reset_ix = last_found_idx
+#                    if bi == len(bitcodes)-1:
+#                        last_found_match = curr_frames_and_codes[last_found_idx]
+#                        found_bitcodes.append(last_found_match)
+#                    else:
+                    try:
+                        assert curr_frames_and_codes[last_found_idx - min_nreps + 1][1] == bitcode
+                        first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 1]
+                    except AssertionError:
+                        assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
+                        first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
+                    found_bitcodes.append(first_found_match)
                     reset_ix = last_found_idx
-                    if bi == len(bitcodes)-1:
-                        last_found_match = curr_frames_and_codes[last_found_idx]
-                        found_bitcodes.append(last_found_match)
-                    else:
-                        try:
-                            assert curr_frames_and_codes[last_found_idx - min_nreps + 1][1] == bitcode
-                            first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 1]
-                        except AssertionError:
-                            assert curr_frames_and_codes[last_found_idx - min_nreps + 2][1] == bitcode
-                            first_found_match = curr_frames_and_codes[last_found_idx - min_nreps + 2]
-                        found_bitcodes.append(first_found_match)
-                        reset_ix = last_found_idx
                 else:
                     # reset curr_codes iterator:
                     found_bitcodes.append('missed')
@@ -443,7 +454,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
         valid_bitcodes = [b for b in found_bitcodes if b != 'missed']
         triggered_frame_on = np.argmin(np.abs(valid_bitcodes[0][0] - sdata_frame_ixs))
         triggered_frame_off = np.argmin(np.abs(valid_bitcodes[-1][0] - sdata_frame_ixs))
-        
+
         # Calculate stimulus duration and check that it matches what's expected:
         stim_dur = round( (triggered_frame_off - triggered_frame_on) / framerate, 2)
         print "%s: %.1f" % (trial, stim_dur)
