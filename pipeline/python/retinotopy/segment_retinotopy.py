@@ -10,11 +10,16 @@ Created on Sat Apr 13 12:06:11 2019
 import os
 import glob
 import json
+import cv2
 
 import cPickle as pkl
 import numpy as np
-import scipy as sp
 import pylab as pl
+import tifffile as tf
+
+from scipy import stats
+from skimage.measure import block_reduce
+
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -36,7 +41,7 @@ def filter_map_by_magratio(magratio, phase, cond='right', mag_thr=None, mag_perc
     
 
     currphase = phase[trials_by_cond[cond]]
-    currphase_mean = sp.stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
+    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
     currphase_mean_c = rutils.correct_phase_wrap(currphase_mean)
     
     currphase_mean_c[np.isnan(currmags_mean)] = np.nan
@@ -66,10 +71,10 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC076' #'JC059'
-session = '20190410' #'20190227'
+animalid = 'JC084' #'JC059'
+session = '20190522' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'retino_run1'
+run = 'retino_run2'
 traceid = 'analysis001' #'traces001'
 visual_area = ''
 
@@ -123,7 +128,7 @@ fit, magratio, phase, trials_by_cond = rutils.trials_to_dataframes(processed_fpa
 
 #%%
 
-mag_thr = 0.002
+mag_thr = 0.005
 
 magmaps = {}
 phasemaps = {}
@@ -139,6 +144,20 @@ delay_az = (phasemaps['left'] + phasemaps['right']) / 2.
 
 absolute_el = (phasemaps['bottom'] - phasemaps['top']) / 2.
 delay_el = (phasemaps['bottom'] + phasemaps['top']) / 2.
+#%%
+
+
+# adjust elevation limit to show only monitor extent
+screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+screen_left = -1*screen['azimuth']/2.
+screen_right = screen['azimuth']/2.
+screen_top = screen['elevation']/2.
+screen_bottom = -1*screen['elevation']/2.
+    
+top_cutoff = screen_top / screen_right
+bottom_cutoff = screen_bottom / screen_left
+
+
 
 
 #%%
@@ -155,19 +174,80 @@ cbar2_axes = [0.75, 0.9, 0.1, 0.05]
 
 cbaxes = fig.add_axes(cbar1_axes) 
 cb = pl.colorbar(im1, cax = cbaxes, orientation=cbar1_orientation)  
+cb.ax.axis('off')
+cb.outline.set_visible(False)
+
 cbaxes = fig.add_axes(cbar2_axes) 
-cb = pl.colorbar(im2, cax = cbaxes, orientation=cbar2_orientation)  
+cb = pl.colorbar(im2, cax = cbaxes, orientation=cbar2_orientation)
+cb.ax.set_ylim([cb.norm(-np.pi*top_cutoff), cb.norm(np.pi*top_cutoff)])
+cb.ax.axis('off')
+cb.outline.set_visible(False)
+
+pl.subplots_adjust(top=0.8)
+
+for ax in axes.flat:
+    ax.axis('off')
+
+#%%
+# Load surface image to plot overlay:
+#surface_fpath = glob.glob(os.path.join(rootdir, animalid, 'macro_maps', '*', '*urf*'))[0]
+#surface_img = cv2.imread(surface_fpath, -1)
+#print(surface_img.shape)
+ch_idx = 1
+anats = glob.glob(os.path.join(rootdir, animalid, session, fov, 'anatomical', 'processed',\
+                               'processed*', 'mcorrected_*mean_deinterleaved', 'Channel%02d' % ch_idx, 'File*', '*.tif'))
+
+imlist = []
+for anat in anats:
+    im = tf.imread(anat)
+    imlist.append(im)
+surface_img = np.array(imlist).mean(axis=0)
 
 
+pl.figure()
+pl.imshow(surface_img, cmap='gray')
+
+if surface_img.shape[0] != absolute_az.shape[0]:
+    reduce_factor = surface_img.shape[0] / absolute_az.shape[0]
+    surface_img = block_reduce(surface_img, (2,2), func=np.mean)
+    
+#%%
+fig, axes = pl.subplots(1,2)
+ax = axes[0]
+ax.imshow(surface_img, cmap='gray', origin='upper')
 
 
+ax = axes[0]
+im1 = ax.imshow(absolute_az, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, alpha=0.7, origin='upper')
 
+ax = axes[1]
+ax.imshow(surface_img, cmap='gray')
+im2 = ax.imshow(absolute_el, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, alpha=0.7, origin='upper')
 
+cbar1_orientation='horizontal'
+cbar1_axes = [0.37, 0.7, 0.1, 0.07]
+cbar2_orientation='vertical'
+cbar2_axes = [0.8, 0.7, 0.1, 0.07]
 
+cbaxes = fig.add_axes(cbar1_axes) 
+cb = pl.colorbar(im1, cax = cbaxes, orientation=cbar1_orientation)  
+cb.ax.axis('off')
+cb.outline.set_visible(False)
 
+cbaxes = fig.add_axes(cbar2_axes) 
+cb = pl.colorbar(im2, cax = cbaxes, orientation=cbar2_orientation)
+cb.ax.set_ylim([cb.norm(-np.pi*top_cutoff), cb.norm(np.pi*top_cutoff)])
+cb.ax.axis('off')
+cb.outline.set_visible(False)
 
+pl.subplots_adjust(top=0.8)
 
+for ax in axes.flat:
+    ax.axis('off')
 
+label_figure(fig, data_identifier)
+figname = 'absolute_maps_magthr_%.3f' % mag_thr
+pl.savefig(os.path.join(processed_dir, 'figures', '%s.png' % figname))
 
 
 
