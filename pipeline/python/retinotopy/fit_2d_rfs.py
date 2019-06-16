@@ -99,7 +99,7 @@ def get_trials_by_cond(labels):
 
 
 def zscore_traces(raw_traces, labels, nframes_post_onset=None):
-    
+        
     # Get stim onset frame: 
     stim_on_frame = labels['stim_on_frame'].unique()
     assert len(stim_on_frame) == 1, "---[stim_on_frame]: More than 1 stim onset found: %s" % str(stim_on_frame)
@@ -177,7 +177,7 @@ def order_configs_by_grid(sdf, labels, rows='ypos', cols='xpos'):
 # -----------------------------------------------------------------------------
 
 
-def get_rois_by_visual_area(fov_dir):
+def get_rois_by_visual_area(fov_dir, visual_area=''):
     
     included_rois = []
     segmentations = glob.glob(os.path.join(fov_dir, 'visual_areas', '*.pkl'))
@@ -261,7 +261,7 @@ def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
     c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
 #    g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) 
 #                            + c*((y-yo)**2)))
-    g = offset + amplitude*np.exp( -a*((x-xo)**2) - b*(x-xo)*(y-yo) - c*((y-y0)**2) )
+    g = offset + amplitude*np.exp( -a*((x-xo)**2) - b*(x-xo)*(y-yo) - c*((y-yo)**2) )
     return g.ravel()
 
 
