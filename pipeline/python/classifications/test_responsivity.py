@@ -243,7 +243,19 @@ def do_KW_test(rdata, post_hoc='dunn', metric='meanstim', asdict=True):
 
 
 def group_roidata_stimresponse(roidata, labels_df):
+    '''
+    roidata: array of shape nframes_total x nrois
+    labels:  dataframe of corresponding nframes_total with trial/config info
     
+    Returns:
+        grouped dataframe, where each group is a cell's dataframe of shape ntrials x (various trial metrics and trial/config info)
+    '''
+    
+#    print('...min')
+#    if np.nanmin(roidata) < 0:
+#        roidata = roidata - np.nanmin(roidata)
+#        print(roidata.min())
+#    
     try:
         stimdur_vary = False
         assert len(labels_df['nframes_on'].unique())==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
@@ -266,15 +278,23 @@ def group_roidata_stimresponse(roidata, labels_df):
             stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
              
         trial_frames = roidata[trial_ixs.index.tolist(), :]
+    
         nrois = trial_frames.shape[-1]
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
-        base_std = trial_frames[0:stim_on_frame].std()
+        base_mean = trial_frames[0:stim_on_frame, :].mean(axis=0)
+        base_std = trial_frames[0:stim_on_frame, :].std(axis=0)
         stim_mean = trial_frames[stim_on_frame:stim_on_frame+nframes_on, :].mean(axis=0)
-        zscore = stim_mean / base_std
+        zscore = (stim_mean - base_mean) / base_std
+        dff = (stim_mean - base_mean) / base_mean
+        df = stim_mean - base_mean
+        snr = stim_mean / base_mean
         df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
                                      'trial': np.tile(trial, (nrois,)), 
                                      'meanstim': stim_mean,
-                                     'zscore': zscore}))
+                                     'zscore': zscore,
+                                     'dff': dff,
+                                     'df': df, 
+                                     'snr': snr}))
 
     df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois
     df_by_rois = df.groupby(df.index)
