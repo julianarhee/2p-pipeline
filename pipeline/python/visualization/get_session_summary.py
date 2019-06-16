@@ -202,40 +202,51 @@ def get_roi_stats(rootdir, animalid, session, acquisition, run, traceid, \
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition) 
 
     if create_new is False:
+        print("Checking for existing stats...")
         try:
-            roistats_fpath = sorted(glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid, 'sorted_rois', 'roistats_results*.npz')))[-1]
+            stat_paths = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid, 'response_stats*'))
+            if len(stat_paths) == 0:
+                stat_paths = glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid, 'sorted_rois'))
+                stat_dir = 'sorted_rois'
+            else:
+                stat_dir = 'response_stats*'
+            print("FOUND:", stat_paths)
+            roistats_fpath = sorted(glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid, '%s' % stat_dir, 'roistats_results*.npz')))[-1]
             roistats = np.load(roistats_fpath)
+            print("... loaded.")
         except Exception as e:
             print "** No roi stats found... Testing responsivity now."
-            #create_new = True
-            
-    responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
-                                             session=session, 
-                                             acquisition=acquisition, 
-                                             run=run, traceid=traceid)
-    responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc])
-    if nproc > 1:
-        responsivity_opts.extend(['--par'])
-    if create_new:
-        responsivity_opts.extend(['--new'])
-
-    responsivity_opts.extend(['--pvis=%.2f' % pval_visual, '--psel=%.2f' % pval_selective, '-v', visual_test_type, '--metric=%s' % metric])
-
-    print responsivity_opts
-        
-    roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
-    roistats = np.load(roistats_fpath)
-        
-    visual_test = str(roistats['responsivity_test'])
-    selective_test = str(roistats['selectivity_test'])
-    rois_visual = [int(r) for r in roistats['sorted_visual']]
-    rois_selective = [int(r) for r in roistats['sorted_selective']]   
+            create_new = True
     
-    roistats = {'visual_test': visual_test,
-                'selective_test': selective_test,
-                'rois_visual': rois_visual,
-                'rois_selective': rois_selective
-                }
+    if create_new:
+        
+        responsivity_opts = create_function_opts(rootdir=rootdir, animalid=animalid, 
+                                                 session=session, 
+                                                 acquisition=acquisition, 
+                                                 run=run, traceid=traceid)
+        responsivity_opts.extend(['-d', 'corrected', '--nproc=%i' % nproc])
+        if nproc > 1:
+            responsivity_opts.extend(['--par'])
+        if create_new:
+            responsivity_opts.extend(['--new'])
+    
+        responsivity_opts.extend(['--pvis=%.2f' % pval_visual, '--psel=%.2f' % pval_selective, '-v', visual_test_type, '--metric=%s' % metric])
+    
+        print responsivity_opts
+            
+        roistats_fpath = resp.calculate_roi_responsivity(responsivity_opts)
+        roistats = np.load(roistats_fpath)
+            
+        visual_test = str(roistats['responsivity_test'])
+        selective_test = str(roistats['selectivity_test'])
+        rois_visual = [int(r) for r in roistats['sorted_visual']]
+        rois_selective = [int(r) for r in roistats['sorted_selective']]   
+        
+        roistats = {'visual_test': visual_test,
+                    'selective_test': selective_test,
+                    'rois_visual': rois_visual,
+                    'rois_selective': rois_selective
+                    }
     
     return roistats
 
