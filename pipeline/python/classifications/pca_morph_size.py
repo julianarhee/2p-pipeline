@@ -252,6 +252,70 @@ def plot_pca_label_points_3D(X_r, y_labels, label_names=[], label_colors=[],
 
     return ax
 
+#%%
+
+def create_mappable_cbar(colormap, colorlabels, cbar_title='', orientation='horizontal',
+                         cbar_axes = [0.58, 0.22, 0.3, 0.02]):
+    ncolors = len(colorlabels)
+    bounds = np.arange(0, ncolors)
+    norm = BoundaryNorm(bounds, colormap.N)
+    mappable = cm.ScalarMappable(cmap=colormap)
+    mappable.set_array(bounds)
+    
+    cbar_ax = fig.add_axes(cbar_axes)
+    cbar = fig.colorbar(mappable, cax=cbar_ax, boundaries=np.arange(-0.5, ncolors, 1), \
+                        ticks=bounds, norm=norm, orientation=orientation)
+    
+    cbar.ax.tick_params(axis='both', which='both',length=0)
+    if orientation == 'horizontal':
+        cbar.ax.set_xticklabels(colorlabels, fontsize=6) #(['%i' % i for i in morphlevels])  # horizontal colorbar
+    else:
+        cbar.ax.set_yticklabels(colorlabels, fontsize=6) #(['%i' % i for i in morphlevels])  # horizontal colorbar
+    cbar.ax.set_xlabel('%s' % cbar_title, fontsize=10)
+    
+    return cbar
+
+
+
+def plot_pca_3d_primary_secondary(X_r, y_labels, y_labels2, label_colors=[], cmap='jet',
+                                  ax=None, annotate=False, markersize=100, lw=1, alpha=1, edgecolor='k'):
+    
+    if ax is None:
+        print "Creating new axis"
+        fig = pl.figure(1, figsize=(8, 6))
+        ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
+    
+    label_names = sorted(np.unique(y_labels))
+    target_names = copy.copy(label_names)
+        
+    if annotate:
+        for name, label in zip(label_names, target_names):
+            ax.text3D(X_r[y_labels == label, 0].mean(),
+                      X_r[y_labels == label, 1].mean(),
+                      X_r[y_labels == label, 2].mean(),
+                      str(name),
+                      horizontalalignment='center',
+                      bbox=dict(alpha=.7, edgecolor='w', facecolor='w'))
+
+    
+    # Connect points based on secondary label:
+    label_names2 = sorted(np.unique(y_labels2))
+    pc1s = []; pc2s = []; pc3s = [];
+    for i in label_names2:
+        pc1s = X_r[y_labels2 == i, 0]
+        pc2s = X_r[y_labels2 == i, 1]
+        pc3s = X_r[y_labels2 == i, 2]
+        ax.plot(pc1s, pc2s, pc3s, zorder=1, color='k', lw=lw) 
+                
+    # PLot points and color by primary label:
+    for color, i, target_name in zip(label_colors, label_names, target_names):
+        ax.scatter(X_r[y_labels == i, 0], X_r[y_labels == i, 1], X_r[y_labels == i, 2], 
+                   zorder=2,
+                   s=markersize,
+                   color=color, label=target_name,
+                   alpha=alpha, lw=lw, edgecolor=edgecolor) #abel=target_name)        
+
+    return ax
 
 
 #%%
@@ -291,8 +355,8 @@ segment = False
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC091' 
-session = '20190606' #'20190319'
+animalid = 'JC097' 
+session = '20190616' #'20190319'
 fov = 'FOV1_zoom2p0x' 
 run = 'combined_blobs_static'
 traceid = 'traces001' #'traces002'
@@ -345,7 +409,7 @@ print "Selected stats results: %s" % os.path.split(sorted_dir)[-1]
 # Load parsed data:
 trace_type = 'corrected'
 traces = dset[trace_type]
-zscores = dset['zscore']
+#zscores = dset['zscore']
 
 # Format condition info:
 aspect_ratio = 1 #1.747
@@ -365,102 +429,142 @@ trial_ixs = np.array([int(t[5:])-1 for t in sorted(labels['trial'].unique(), key
 #zscores = zscores[trial_ixs, :]
 
 # Load roi stats:    
-stats_fpath = glob.glob(os.path.join(sorted_dir, 'roistats_results.npz'))[0]
-rstats = np.load(stats_fpath)
-rstats.keys()
+#stats_fpath = glob.glob(os.path.join(sorted_dir, 'roistats_results.npz'))[0]
+#rstats = np.load(stats_fpath)
+#rstats.keys()
 
 #%%
-if segment and len(included_rois) > 0:
-    all_rois = np.array(copy.copy(included_rois))
-else:
-    all_rois = np.arange(0, rstats['nrois_total'])
-
-visual_rois = np.array([r for r in rstats['sorted_visual'] if r in all_rois])
-selective_rois = np.array([r for r in rstats['sorted_selective'] if r in all_rois])
-
-print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(visual_rois), rstats['responsivity_test'], rstats['visual_pval'])
-print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selective_rois), rstats['selectivity_test'], rstats['selective_pval'])
+#if segment and len(included_rois) > 0:
+#    all_rois = np.array(copy.copy(included_rois))
+#else:
+#    all_rois = np.arange(0, rstats['nrois_total'])
+#
+#visual_rois = np.array([r for r in rstats['sorted_visual'] if r in all_rois])
+#selective_rois = np.array([r for r in rstats['sorted_selective'] if r in all_rois])
+#
+#print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(visual_rois), rstats['responsivity_test'], rstats['visual_pval'])
+#print "Found %i cells that pass responsivity test (%s, p<%.2f)." % (len(selective_rois), rstats['selectivity_test'], rstats['selective_pval'])
 
 #%%
-
-# zscore the traces:
-# -----------------------------------------------------------------------------
-zscored_traces_list = []
-baselines = []
-zscores_list = []
-for trial, tmat in labels.groupby(['trial']):
-    #print trial    
-    stim_on_frame = tmat['stim_on_frame'].unique()[0]
-    nframes_on = tmat['nframes_on'].unique()[0]
-    curr_traces = traces[tmat.index, :]
-    bas_std = curr_traces[0:stim_on_frame, :].std(axis=0)
-    bas_mean = curr_traces[0:stim_on_frame, :].mean(axis=0)
-    stim_mean = curr_traces[stim_on_frame:stim_on_frame+nframes_on, :].mean(axis=0)
-    curr_zscored_traces = pd.DataFrame(curr_traces).subtract(bas_mean, axis='columns').divide(bas_std, axis='columns')# pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
-    curr_zs = (stim_mean - bas_mean) / bas_std
-    zscored_traces_list.append(curr_zscored_traces)
-    zscores_list.append(curr_zs)
-    baselines.append(bas_mean)
-
-zscored_traces = pd.concat(zscored_traces_list, axis=0).reset_index()
-zscored_traces.head()
-
-traces = traces[labels.index.tolist(), :]
-raw_traces = pd.DataFrame(traces, index=zscored_traces.index)
-raw_traces.head()
-    
-#%%
-
-# Sort ROIs by zscore by cond
-# -----------------------------------------------------------------------------
-
-# Get single value for each trial and sort by config:
-trials_by_cond = dict()
-for k, g in labels.groupby(['config']):
-    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
-
-GM = zscores.mean()
-zscores_gm = zscores - GM
-zscores_by_cond = dict()
-zscores_by_cond_GM = dict()
-for cfg, trial_ixs in trials_by_cond.items():
-    zscores_by_cond[cfg] = zscores[trial_ixs, :]  # For each config, array of size ntrials x nrois
-    zscores_by_cond_GM[cfg] = zscores_gm[trial_ixs, :]
-    
-avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
-                                    for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)],\
-                                    index=[int(cf[6:])-1 for cf in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
-    
-avg_zscores_by_cond_GM = pd.DataFrame([zscores_by_cond_GM[cfg].mean(axis=0) \
-                                    for cfg in sorted(zscores_by_cond_GM.keys(), key=natural_keys)],\
-                                    index=[int(cf[6:])-1 for cf in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
-
-# nconfigs x nrois
-
-    
-# Sort mean (or max) zscore across trials for each config, and find "best config"
-visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
-visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
-sorted_visual = visual_rois[visual_sort_by_max_zscore]
-
-selective_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in selective_rois])
-selective_sort_by_max_zscore = np.argsort(selective_max_avg_zscore)[::-1]
-sorted_selective = selective_rois[selective_sort_by_max_zscore]
-
-print [r for r in sorted_selective if r not in sorted_visual]
-
-print sorted_selective[0:10]
-
+from pipeline.python.classifications import test_responsivity as resp 
 #%
+rdf = resp.group_roidata_stimresponse(traces, labels) # Each group is roi's trials x metrics
 
-## Get SNR
+roi_metric = 'snr'
+response_thr = 2.0
+nrois_total = len(rdf.groups)
+metric_type = 'zscore'
+
+roi_list = [k for k, g in rdf if g.groupby(['config']).mean()[roi_metric].max() >= response_thr]
+print("%i out of %i cells meet min req. of %.2f" % (len(roi_list), nrois_total, response_thr))
+
+#% group each roi's trial data by config and average across trials:
+rrdf_list=[]
+for roi in roi_list:
+    curr_rdf = pd.Series(data=rdf.get_group(roi).groupby(['config']).mean()[metric_type], name=roi)
+    rrdf_list.append(curr_rdf)
+
+
+avg_resp_by_cond = pd.concat(rrdf_list, axis=1)
+
+#%%
+
+roi_list = [k for k, g in rdf if g.groupby(['config']).mean()[roi_metric].max() >= response_thr]
+
+sorted_ = np.argsort([g.groupby(['config']).mean()['zscore'].max() for k, g in rdf])[::-1]
+rois_ = np.array([k for k, g in rdf])
+rois_sorted = rois_[sorted_]
+roi_list = [r for r in rois_sorted if rdf.get_group(r).groupby(['config']).mean()[roi_metric].max() >= response_thr\
+            and rdf.get_group(r).groupby(['config']).mean()[metric_type].max() >= 0.5]
+
+for roi in roi_list:
+    print(roi, rdf.get_group(roi).groupby(['config']).mean()['zscore'].max())
+    
+
+#%%
+##%%
+## zscore the traces:
 ## -----------------------------------------------------------------------------
-#bas_means = np.vstack([raw_traces.iloc[trial_indices.index][0:stim_on_frame].mean(axis=0) \
-#                       for trial, trial_indices in labels.groupby(['trial'])])
-#stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim_on_frame+nframes_on)].mean(axis=0) \
-#                       for trial, trial_indices in labels.groupby(['trial'])])
-#snrs = stim_means/bas_means
-  
+#zscored_traces_list = []
+#baselines = []
+#zscores_list = []
+#for trial, tmat in labels.groupby(['trial']):
+#    #print trial    
+#    stim_on_frame = tmat['stim_on_frame'].unique()[0]
+#    nframes_on = tmat['nframes_on'].unique()[0]
+#    curr_traces = traces[tmat.index, :]
+#    bas_std = curr_traces[0:stim_on_frame, :].std(axis=0)
+#    bas_mean = curr_traces[0:stim_on_frame, :].mean(axis=0)
+#    stim_mean = curr_traces[stim_on_frame:stim_on_frame+nframes_on, :].mean(axis=0)
+#    curr_zscored_traces = pd.DataFrame(curr_traces).subtract(bas_mean, axis='columns').divide(bas_std, axis='columns')# pd.DataFrame(curr_traces, index=tmat.index).divide(bas_std, axis='columns')
+#    curr_zs = (stim_mean - bas_mean) / bas_std
+#    zscored_traces_list.append(curr_zscored_traces)
+#    zscores_list.append(curr_zs)
+#    baselines.append(bas_mean)
+#
+#zscored_traces = pd.concat(zscored_traces_list, axis=0).reset_index()
+#zscored_traces.head()
+#
+#traces = traces[labels.index.tolist(), :]
+#raw_traces = pd.DataFrame(traces, index=zscored_traces.index)
+#raw_traces.head()
+#
+#del traces
+#
+##%%
+#
+## Sort ROIs by zscore by cond
+## -----------------------------------------------------------------------------
+#
+## Get single value for each trial and sort by config:
+#trials_by_cond = dict()
+#for k, g in labels.groupby(['config']):
+#    trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+#
+#GM = zscores.mean()
+#zscores_gm = zscores - GM
+#zscores_by_cond = dict()
+#zscores_by_cond_GM = dict()
+#for cfg, trial_ixs in trials_by_cond.items():
+#    zscores_by_cond[cfg] = zscores[trial_ixs, :]  # For each config, array of size ntrials x nrois
+#    zscores_by_cond_GM[cfg] = zscores_gm[trial_ixs, :]
+#    
+#avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
+#                                    for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)],\
+#                                    index=[int(cf[6:])-1 for cf in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+#    
+#avg_zscores_by_cond_GM = pd.DataFrame([zscores_by_cond_GM[cfg].mean(axis=0) \
+#                                    for cfg in sorted(zscores_by_cond_GM.keys(), key=natural_keys)],\
+#                                    index=[int(cf[6:])-1 for cf in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+#
+## nconfigs x nrois
+#
+#    
+## Sort mean (or max) zscore across trials for each config, and find "best config"
+#visual_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in visual_rois])
+#visual_sort_by_max_zscore = np.argsort(visual_max_avg_zscore)[::-1]
+#sorted_visual = visual_rois[visual_sort_by_max_zscore]
+#
+#selective_max_avg_zscore = np.array([avg_zscores_by_cond[rid].max() for rid in selective_rois])
+#selective_sort_by_max_zscore = np.argsort(selective_max_avg_zscore)[::-1]
+#sorted_selective = selective_rois[selective_sort_by_max_zscore]
+#
+#print [r for r in sorted_selective if r not in sorted_visual]
+#
+#print sorted_selective[0:10]
+#
+##%
+#
+### Get SNR
+### -----------------------------------------------------------------------------
+##bas_means = np.vstack([raw_traces.iloc[trial_indices.index][0:stim_on_frame].mean(axis=0) \
+##                       for trial, trial_indices in labels.groupby(['trial'])])
+##stim_means = np.vstack([raw_traces.iloc[trial_indices.index][stim_on_frame:(stim_on_frame+nframes_on)].mean(axis=0) \
+##                       for trial, trial_indices in labels.groupby(['trial'])])
+##snrs = stim_means/bas_means
+#  
+
+#%%
 
 sizes = sorted([int(round(s)) for s in sdf['size'].unique()])
 morphlevels = sorted(sdf['morphlevel'].unique())
@@ -476,15 +580,15 @@ morph_cmap = sns.diverging_palette(220, 20, as_cmap=True)
 
 #%%
 
-roi_selector = 'visual'
+roi_selector = '%s_thr_%.2f' % (roi_metric, response_thr)
 
-if roi_selector == 'visual':
-    roi_list = copy.copy(sorted_visual)
-elif roi_selector == 'selective':
-    roi_list = copy.copy(sorted_selective)  
+#if roi_selector == 'visual':
+#    roi_list = copy.copy(sorted_visual)
+#elif roi_selector == 'selective':
+#    roi_list = copy.copy(sorted_selective)  
+#    
     
-    
-fig_subdir = 'pca_%s' % roi_selector 
+fig_subdir = 'pca_%s_select_%s_min_zscore0.5' % (metric_type, roi_selector)
 
 if segment:
     curr_figdir = os.path.join(traceid_dir, 'figures', 'population', fig_subdir, visual_area)
@@ -511,9 +615,11 @@ print "Saving plots to: %s" % curr_figdir
 #    X = avg_zscores_by_cond_GM[selective_rois]
 #else:
 #    X = avg_zscores_by_cond[selective_rois]
+
 from sklearn import preprocessing
 
-X = avg_zscores_by_cond[roi_list[0:30]]
+nobs = avg_resp_by_cond.shape[0]
+X = avg_resp_by_cond[roi_list[0:nobs]]
 print X.shape
 X_std = preprocessing.StandardScaler().fit_transform(X)
 
@@ -541,6 +647,9 @@ pl.savefig(os.path.join(curr_figdir, 'skree_nobs_%i_nvars_%i.png' % (num_obs, nu
                 
 #%%
 
+X = avg_resp_by_cond[roi_list]
+print X.shape
+X_std = preprocessing.StandardScaler().fit_transform(X)
 
 n_components= 2
 pc1=0
@@ -565,7 +674,9 @@ label_colors = copy.copy(size_colors)
 fig, axes = pl.subplots(1,2, figsize=(8,5))
 fig.subplots_adjust(top=0.8, bottom=0.3, wspace=0.2, hspace=0.2, left=0.1)
 
-y_size = np.array([sdf['size']['config%03d' % int(cix+1)] for cix in avg_zscores_by_cond_GM.index.tolist()]) #np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
+#y_size = np.array([sdf['size']['config%03d' % int(cix+1)] for cix in avg_resp_by_cond.index.tolist()]) #np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
+y_size = np.array([sdf['size'][cfg] for cfg in avg_resp_by_cond.index.tolist()]) #np.array([sdf['size'][cfg] for cfg in sdf.index.tolist()])
+
 ax = axes[0]
 ax = plot_pca_label_points(X_r, y_size, label_names=sizes, label_colors=size_colors, ax=ax,
                            pc1=pc1, pc2=pc2,
@@ -582,7 +693,8 @@ fig.text(0.25, 0.12 , 'size')
 
 
 # Label MORPH LEVEL:
-y_morph = np.array([sdf['morphlevel']['config%03d' % int(cix+1)] for cix in avg_zscores_by_cond_GM.index.tolist()]) #np.array([sdf['morphlevel'][cfg] for cfg in sdf.index.tolist()])
+#y_morph = np.array([sdf['morphlevel']['config%03d' % int(cix+1)] for cix in avg_resp_by_cond.index.tolist()]) #np.array([sdf['morphlevel'][cfg] for cfg in sdf.index.tolist()])
+y_morph = np.array([sdf['morphlevel'][cfg] for cfg in avg_resp_by_cond.index.tolist()]) #np.array([sdf['morphlevel'][cfg] for cfg in sdf.index.tolist()])
 
 # Plot
 ax = axes[1]
@@ -628,8 +740,8 @@ X_r = pca.transform(X_std)
 splitter = 'morphlevel'
 
 if splitter == 'size':
-    elev = 65 #10 #47#30#62 #25 #13 #10 # 40 #2# 83.4
-    azim = -130 #-140 #148#151#-126 #35 #-60 #-63 #-130 #135
+    elev = 26 #10 #47#30#62 #25 #13 #10 # 40 #2# 83.4
+    azim = 60 #-140 #148#151#-126 #35 #-60 #-63 #-130 #135
     split_values = copy.copy(sizes)
     labeler = 'morphlevel'
     curr_cmap = morph_cmap
@@ -637,8 +749,8 @@ if splitter == 'size':
     figheight = 4
     
 elif splitter == 'morphlevel':
-    elev = -112 # 72#49 #62 #71 #43 #35 # 77 #35
-    azim =  47 #134#68 #-126 #46 #73 #35 #121
+    elev = -97 # 72#49 #62 #71 #43 #35 # 77 #35
+    azim =  48 #134#68 #-126 #46 #73 #35 #121
     split_values = copy.copy(morphlevels)
     labeler = 'size'
     curr_cmap = size_cmap
@@ -682,6 +794,60 @@ pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
 # -----------------------------------------------------------------------------
 # 3D
 # -----------------------------------------------------------------------------
+
+n_components=3
+pca = sk.decomposition.PCA(n_components=n_components)
+pca.fit(X_std)
+X_r = pca.transform(X_std)
+
+#%%
+azim_view4 = -94 # 74 #76#-67 #-108 #150
+elev_view4 = 11  #60#26 #7
+
+fig = pl.figure(figsize=(14, 8))
+ax1 = fig.add_subplot(1, 2, 1, projection='3d', azim=azim_view4, elev=elev_view4)
+ax1 = plot_pca_3d_primary_secondary(X_r, y_size, y_morph, ax=ax1, label_colors=size_colors, cmap=size_cmap,
+                                   annotate=False, markersize=markersize, lw=.5, alpha=0.8)
+
+ax2 = fig.add_subplot(1, 2, 2, projection='3d', azim=azim_view4, elev=elev_view4)
+ax2 = plot_pca_3d_primary_secondary(X_r, y_morph, y_size, ax=ax2, label_colors=morph_colors, cmap=morph_cmap,
+                                   annotate=False, markersize=markersize, lw=.5, alpha=0.8)
+
+
+# Create colorbar for morphlevels:
+cbar_axes = [0.45, 0.25, 0.01, 0.2]
+cbar = create_mappable_cbar(size_cmap, sizes, cbar_title='size', orientation='vertical', cbar_axes=cbar_axes)
+
+# Create colorbar for morphlevels:
+cbar_axes = [0.9, 0.25, 0.01, 0.2]
+cbar = create_mappable_cbar(morph_cmap, morphlevels, cbar_title='morph', orientation='vertical', cbar_axes=cbar_axes)
+
+pl.subplots_adjust(wspace=0.1, left=0.05, top=0.8)
+fig.suptitle('grouped labels (nc=%i, exp.var=%.2f)' % (n_components, np.sum(pca.explained_variance_ratio_)))
+label_figure(fig, data_identifier)
+
+figname = 'grouped_pca_%icomps_averaged_condns_%iobs_%ivars_view3' % (n_components, num_obs, num_vars)
+pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
+print figname
+
+
+
+
+#%%
+
+
+
+
+
+
+#%%
+
+
+
+# -----------------------------------------------------------------------------
+# 3D
+# -----------------------------------------------------------------------------
+
 
 connect_all = True
 color_connections = False
@@ -795,101 +961,10 @@ print figname
 
 
 
-#%%
 
-azim_view4 = 41 # 74 #76#-67 #-108 #150
-elev_view4 = 71 #6 #60#26 #7
-
-fig = pl.figure(figsize=(14, 8))
-ax1 = fig.add_subplot(1, 2, 1, projection='3d', azim=azim_view4, elev=elev_view4)
-ax1 = plot_pca_3d_primary_secondary(X_r, y_size, y_morph, ax=ax1, label_colors=size_colors, cmap=size_cmap,
-                                   annotate=False, markersize=markersize, lw=.5, alpha=0.8)
-
-ax2 = fig.add_subplot(1, 2, 2, projection='3d', azim=azim_view4, elev=elev_view4)
-ax2 = plot_pca_3d_primary_secondary(X_r, y_morph, y_size, ax=ax2, label_colors=morph_colors, cmap=morph_cmap,
-                                   annotate=False, markersize=markersize, lw=.5, alpha=0.8)
-
-
-# Create colorbar for morphlevels:
-cbar_axes = [0.45, 0.25, 0.01, 0.2]
-cbar = create_mappable_cbar(size_cmap, sizes, cbar_title='size', orientation='vertical', cbar_axes=cbar_axes)
-
-# Create colorbar for morphlevels:
-cbar_axes = [0.9, 0.25, 0.01, 0.2]
-cbar = create_mappable_cbar(morph_cmap, morphlevels, cbar_title='morph', orientation='vertical', cbar_axes=cbar_axes)
-
-pl.subplots_adjust(wspace=0.1, left=0.05, top=0.8)
-fig.suptitle('grouped labels (nc=%i, exp.var=%.2f)' % (n_components, np.sum(pca.explained_variance_ratio_)))
-label_figure(fig, data_identifier)
-
-figname = 'grouped_pca_%icomps_averaged_condns_%iobs_%ivars_view4' % (n_components, num_obs, num_vars)
-pl.savefig(os.path.join(curr_figdir, '%s.png' % figname))
-print figname
 #%%
 
 
-def create_mappable_cbar(colormap, colorlabels, cbar_title='', orientation='horizontal',
-                         cbar_axes = [0.58, 0.22, 0.3, 0.02]):
-    ncolors = len(colorlabels)
-    bounds = np.arange(0, ncolors)
-    norm = BoundaryNorm(bounds, colormap.N)
-    mappable = cm.ScalarMappable(cmap=colormap)
-    mappable.set_array(bounds)
-    
-    cbar_ax = fig.add_axes(cbar_axes)
-    cbar = fig.colorbar(mappable, cax=cbar_ax, boundaries=np.arange(-0.5, ncolors, 1), \
-                        ticks=bounds, norm=norm, orientation=orientation)
-    
-    cbar.ax.tick_params(axis='both', which='both',length=0)
-    if orientation == 'horizontal':
-        cbar.ax.set_xticklabels(colorlabels, fontsize=6) #(['%i' % i for i in morphlevels])  # horizontal colorbar
-    else:
-        cbar.ax.set_yticklabels(colorlabels, fontsize=6) #(['%i' % i for i in morphlevels])  # horizontal colorbar
-    cbar.ax.set_xlabel('%s' % cbar_title, fontsize=10)
-    
-    return cbar
-
-
-
-def plot_pca_3d_primary_secondary(X_r, y_labels, y_labels2, label_colors=[], cmap='jet',
-                                  ax=None, annotate=False, markersize=100, lw=1, alpha=1, edgecolor='k'):
-    
-    if ax is None:
-        print "Creating new axis"
-        fig = pl.figure(1, figsize=(8, 6))
-        ax = Axes3D(fig, rect=[0, 0, .95, 1], elev=50, azim=50)
-    
-    label_names = sorted(np.unique(y_labels))
-    target_names = copy.copy(label_names)
-        
-    if annotate:
-        for name, label in zip(label_names, target_names):
-            ax.text3D(X_r[y_labels == label, 0].mean(),
-                      X_r[y_labels == label, 1].mean(),
-                      X_r[y_labels == label, 2].mean(),
-                      str(name),
-                      horizontalalignment='center',
-                      bbox=dict(alpha=.7, edgecolor='w', facecolor='w'))
-
-    
-    # Connect points based on secondary label:
-    label_names2 = sorted(np.unique(y_labels2))
-    pc1s = []; pc2s = []; pc3s = [];
-    for i in label_names2:
-        pc1s = X_r[y_labels2 == i, 0]
-        pc2s = X_r[y_labels2 == i, 1]
-        pc3s = X_r[y_labels2 == i, 2]
-        ax.plot(pc1s, pc2s, pc3s, zorder=1, color='k', lw=lw) 
-                
-    # PLot points and color by primary label:
-    for color, i, target_name in zip(label_colors, label_names, target_names):
-        ax.scatter(X_r[y_labels == i, 0], X_r[y_labels == i, 1], X_r[y_labels == i, 2], 
-                   zorder=2,
-                   s=markersize,
-                   color=color, label=target_name,
-                   alpha=alpha, lw=lw, edgecolor=edgecolor) #abel=target_name)        
-
-    return ax
 
 
 
