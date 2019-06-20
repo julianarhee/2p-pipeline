@@ -31,9 +31,9 @@ from scipy.interpolate import splrep, sproot, splev, interp1d
 
 from pipeline.python.retinotopy import utils as rutils
 from pipeline.python.retinotopy import fit_2d_rfs as rf
+from pipeline.python.classifications import osi_dsi as osi
 
 
-#%%
 
 #%%
 
@@ -88,33 +88,80 @@ rootdir = '/n/coxfs01/2p-data'
 #               }
 
 # Awake:
+#V1_datasets = {'JC076': ['20190420_FOV1', '20190501_FOV1'],
+#               'JC083': ['20190507_FOV1', '20190510_FOV1', '20190511_FOV1'],
+#               'JC084': ['20190522_FOV1'] #, '20190510_FOV1']
+#               }
+#
+#LM_datasets = {'JC078': ['20190426_FOV1', '20190430_FOV1', '20190504_FOV1',\
+#                         '20190509_FOV1', '20190513_FOV1'],
+#               'JC080': ['20190506_FOV1', '20190602_FOV2', '20190603_FOV1'],
+#               'JC083': ['20190508_FOV1', '20190512_FOV1', '20190517_FOV1'],
+#               'JC084': ['20190525_FOV1']
+#               }
+#
+#LI_datasets = {#'JC076': ['20190502_FOV1'],
+#               'JC090': ['20190605_FOV1'],
+#               'JC091': ['20190602_FOV1', '20190606_FOV1', '20190607_FOV1'],
+#               'JC099': ['20190609_FOV1']
+#               }
+
+
+# Awake2:
+stimtype = 'rfs'
+
 V1_datasets = {'JC076': ['20190420_FOV1', '20190501_FOV1'],
                'JC083': ['20190507_FOV1', '20190510_FOV1', '20190511_FOV1'],
-               'JC084': ['20190522_FOV1'] #, '20190510_FOV1']
+               'JC084': ['20190522_FOV1'], #, '20190510_FOV1']
+               'JC097': ['20190613_FOV1', '20190616_FOV1', '20190617_FOV1']
                }
 
 LM_datasets = {'JC078': ['20190426_FOV1', '20190430_FOV1', '20190504_FOV1',\
                          '20190509_FOV1', '20190513_FOV1'],
                'JC080': ['20190506_FOV1', '20190602_FOV2', '20190603_FOV1'],
                'JC083': ['20190508_FOV1', '20190512_FOV1', '20190517_FOV1'],
-               'JC084': ['20190525_FOV1']
+               'JC084': ['20190525_FOV1'],
+               'JC097': ['20190618_FOV1']
                }
 
-LI_datasets = {'JC076': ['20190502_FOV1'],
+LI_datasets = {#'JC076': ['20190502_FOV1'],
                'JC090': ['20190605_FOV1'],
-               'JC091': ['20190602_FOV1', '20190606_FOV1']
+               'JC091': ['20190602_FOV1', '20190606_FOV1', '20190607_FOV1', '20190614_FOV1'],
+               'JC099': ['20190609_FOV1', '20190612_FOV1'] #, '20190617_FOV1']
                }
 
+
+# Awake - gratings:
+stimtype = 'gratings'
+
+V1_datasets = {
+               'JC083': ['20190511_FOV1'],
+               'JC084': ['20190522_FOV1'], #, '20190510_FOV1'],
+               'JC097': ['20190613_FOV1', '20190616_FOV1', '20190617_FOV1']
+               }
+
+LM_datasets = {'JC078': ['20190513_FOV1'],
+               'JC080': ['20190603_FOV1'],
+               'JC083': ['20190512_FOV1', '20190517_FOV1'],
+               'JC084': ['20190525_FOV1'],
+               'JC097': ['20190618_FOV1']
+               }
+
+LI_datasets = {#'JC076': ['20190502_FOV1'],
+               'JC090': ['20190605_FOV1'],
+               'JC091': ['20190602_FOV1', '20190606_FOV1', '20190607_FOV1', '20190614_FOV1'],
+               'JC099': ['20190609_FOV1', '20190612_FOV1'] #, '20190617_FOV1']
+               }
 #%%
 
 
-def get_traceid(animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+def get_traceid(animalid, session, fov, stimtype='rfs', traceid='traces001', rootdir='/n/coxfs01/2p-data'):
         
     fov_dir = glob.glob(os.path.join(rootdir, animalid, session, '%s*' % fov))[0]
-    if int(session) < 20190511:
+    if stimtype=='rfs' and int(session) < 20190511:
         traceid_dirs = glob.glob(os.path.join(fov_dir, 'combined_gratings*', 'traces', '%s*' % traceid))
     else:
-        traceid_dirs = glob.glob(os.path.join(fov_dir, 'combined_rfs*', 'traces', '%s*' % traceid))
+        traceid_dirs = glob.glob(os.path.join(fov_dir, 'combined_%s*' % stimtype, 'traces', '%s*' % traceid))
     if len(traceid_dirs) > 1:
         print "More than 1 trace ID found:"
         for ti, traceid_dir in enumerate(traceid_dirs):
@@ -127,34 +174,45 @@ def get_traceid(animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01
         
     return traceid_dir
 
-def get_rf_results(traceid_dir, rf_param_str='', trace_type='corrected',
-                   visual_area='', select_rois=False):
+
+def split_traceid_dir_path(traceid_dir):
+    traceid = os.path.split(traceid_dir)[-1].split('_')[0]
+    run_dir = traceid_dir.split('/traces/')[0]
+    run = os.path.split(run_dir)[-1]
+    fov_dir = os.path.split(run_dir)[0]
+    fov = os.path.split(fov_dir)[-1]
+    session_dir = os.path.split(fov_dir)[0]
+    session = os.path.split(session_dir)[-1]
+    animalid = os.path.split(os.path.split(session_dir)[0])[-1]
     
+    return animalid, session, fov, run, traceid
+
+        
+def get_rf_results(traceid_dir, trace_type='corrected', visual_area='', select_rois=False,
+                   metric_type='snr', metric_thr=1.5, cutoff_type='no_trim', set_to_min_str=''):
+    
+    rf_param_str = 'rfs_2dgaus_responsemin_%s%.2f_%s_%s' % (metric_type, metric_thr, cutoff_type, set_to_min_str)
+
     rf_dir = os.path.join(traceid_dir, 'figures', 'receptive_fields', rf_param_str)
     #results_outfile = 'roi_fit_results_2dgaus_%s_%.2f_set_%s.pkl' % (cutoff_type, map_thr, set_to_min_str)
     results_outfile = 'RESULTS_%s.pkl' % rf_param_str
     print("Loading... %s" % traceid_dir.split('/traces/')[0])
     if not os.path.exists(os.path.join(rf_dir, results_outfile)):
-        rf_params = rf_param_str.split('responsemin')[-1]
-        thr_info = rf_params.split('_')[1]
-        if 'snr' in thr_info: 
-            metric_type = 'snr'
-            response_thr = float(thr_info.split('snr')[1])
-        else:
-            metric_type = 'zscore'
-            response_thr = float(thr_info.split('zscore')[1])
+#        rf_params = rf_param_str.split('responsemin')[-1]
+#        thr_info = rf_params.split('_')[1]
+#        if 'snr' in thr_info: 
+#            metric_type = 'snr'
+#            response_thr = float(thr_info.split('snr')[1])
+#        else:
+#            metric_type = 'zscore'
+#            response_thr = float(thr_info.split('zscore')[1])
+#        
+
+        animalid, session, fov, run, traceid = split_traceid_dir_path(traceid_dir)
         
-        traceid = os.path.split(traceid_dir)[-1].split('_')[0]
-        run_dir = traceid_dir.split('/traces/')[0]
-        run = os.path.split(run_dir)[-1]
-        fov_dir = os.path.split(run_dir)[0]
-        fov = os.path.split(fov_dir)[-1]
-        session_dir = os.path.split(fov_dir)[0]
-        session = os.path.split(session_dir)[-1]
-        animalid = os.path.split(os.path.split(session_dir)[0])[-1]
         results = rf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                              trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
-                                             metric_type=metric_type, response_thr=response_thr)
+                                             metric_type=metric_type, response_thr=metric_thr)
 
 
     #assert os.path.exists(os.path.join(rf_dir, results_outfile)), "No RF fits with specified params found! -- %s" % results_outfile
@@ -162,26 +220,78 @@ def get_rf_results(traceid_dir, rf_param_str='', trace_type='corrected',
     with open(os.path.join(rf_dir, results_outfile), 'rb') as f:
         results = pkl.load(f)
     
-    return results
+    statsdf = pd.DataFrame(results['fits']).T
+    
+    return statsdf
+
+def get_gratings_results(traceid_dir, metric_type='snr', metric_thr=1.5, goodness_str='',
+                         response_type='dff', n_processes=1, create_new=False, rootdir='/n/coxfs01/2p0data'):
+    
+    animalid, session, fov, run, traceid = split_traceid_dir_path(traceid_dir)
+    
+    #osi_dsi_str = 'osi_dsi_responsemin_%s%.2f_osimetric_%s' % (metric_type, response_thr, metric_osi)
+    #osi_dir = os.path.join(traceid_dir, 'figures', 'population', osi_dsi_str)
+    #results_outfile = 'RESULTS_%s.pkl' % osi_dsi_str
+    #goodness_str = ''
+    
+    fit_str = 'responsemin_%s%.2f_%s' % (metric_type, metric_thr, goodness_str)
+    osi_dir = os.path.join(traceid_dir, 'figures', 'tuning', 'fit_%s_%s' % (response_type, fit_str))
+    results_outfile = os.path.join(osi_dir, 'roistats.pkl') #% osi_dsi_str
 
 
-def get_rfs_by_visual_area(V1_datasets, rf_param_str='', fit_thr=0.7):
+    if not os.path.exists(results_outfile) or create_new is True:
+        
+        statsdf = osi.calculate_gratings_stats(animalid, session, fov, run, traceid, 
+                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     response_type=response_type,
+                                     rootdir=rootdir, create_new=create_new, 
+                                     n_processes=n_processes)
+        
+    print "Loading OSI/DSI results..."
+    with open(results_outfile, 'rb') as f:
+        statsdf = pkl.load(f)
+              
+    return statsdf
+
+def get_stats_by_visual_area(V1_datasets, stimtype='rfs', 
+                             metric_type='snr', metric_thr=1.5,
+                             cutoff_type='no_trim', set_to_min_str='',
+                             trace_type='corrected', visual_area='', select_rois=False,
+                             response_type='dff', n_processes=1, create_new=False,
+                             goodness_str='',
+                             rootdir='/n/coxfs01/2p-data'):
+    '''
+    V1_datasets:  dict for datasets to include {animalid, [session_fov, session_fov, ...]}
+    rf_param_str:  string for determining which RF fits to use
+    '''
     V1 = {}
     for animalid, dataids in V1_datasets.items():
-        print "Loading %i datasets for: %s" % (len(dataids), animalid)
-        traceid_dirs = [get_traceid(animalid, dataid.split('_')[0], dataid.split('_')[1]) for dataid in dataids]
+        print("[%s]: Loading %i datasets. -----" % (animalid, len(dataids)))
+        traceid_dirs = [get_traceid(animalid, dataid.split('_')[0], dataid.split('_')[1], stimtype=stimtype) for dataid in dataids]
         
-        tmp_fits = []
+        tmp_stats = []
         for traceid_dir in traceid_dirs:
-            rf_results = get_rf_results(traceid_dirs[0], rf_param_str=rf_param_str) 
-            fitdf = pd.DataFrame(rf_results['fits']).T
+            if stimtype == 'rfs':
+                statsdf = get_rf_results(traceid_dir, trace_type=trace_type, 
+                                         visual_area=visual_area, select_rois=select_rois,
+                                         metric_type=metric_type, metric_thr=metric_thr, 
+                                         cutoff_type=cutoff_type, set_to_min_str=set_to_min_str)
+    
+            elif stimtype == 'gratings':
+                statsdf = get_gratings_results(traceid_dir, metric_type=metric_type, metric_thr=metric_thr, 
+                                               response_type=response_type, goodness_str=goodness_str,
+                                               n_processes=n_processes, create_new=create_new,
+                                               rootdir=rootdir)
+    
+                
+                
+            print("----- curr df:", statsdf.shape)
+            tmp_stats.append(statsdf)
             
-            tmp_fits.append(fitdf)
-            
-        V1[animalid] = pd.concat(tmp_fits, axis=0).reset_index()
+        V1[animalid] = pd.concat(tmp_stats, axis=0).reset_index()
         
-        fitted_rois = V1[animalid][V1[animalid]['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-        print "%i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), V1[animalid].shape[0], fit_thr)
+        #fitted_rois = V1[animalid][V1[animalid]['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+        #print("----- %i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), V1[animalid].shape[0], fit_thr))
 
     # TODO:  fix this so that RF values are scaled to each stimulus set (RFs can be 10deg or 5deg resolution)
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
@@ -189,6 +299,35 @@ def get_rfs_by_visual_area(V1_datasets, rf_param_str='', fit_thr=0.7):
     sdf = pd.DataFrame(dset['sconfigs'][()]).T
 
     return V1, sdf
+#
+#def get_stats_by_visual_area(V1_datasets, stimtype='gratings', fit_thr=0.7):
+#    '''
+#    V1_datasets:  dict for datasets to include {animalid, [session_fov, session_fov, ...]}
+#    rf_param_str:  string for determining which RF fits to use
+#    '''
+#    V1 = {}
+#    for animalid, dataids in V1_datasets.items():
+#        print("[%s]: Loading %i datasets. -----" % (animalid, len(dataids)))
+#        traceid_dirs = [get_traceid(animalid, dataid.split('_')[0], dataid.split('_')[1]) for dataid in dataids]
+#        
+#        tmp_stats = []
+#        for traceid_dir in traceid_dirs:
+#            rf_results = get_rf_results(traceid_dir, rf_param_str=rf_param_str) 
+#            fitdf = pd.DataFrame(rf_results['fits']).T
+#            print("----- curr df:", fitdf.shape)
+#            tmp_stats.append(fitdf)
+#            
+#        V1[animalid] = pd.concat(tmp_stats, axis=0).reset_index()
+#        
+#        #fitted_rois = V1[animalid][V1[animalid]['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+#        #print("----- %i out of %i fit rois with r2 > %.2f" % (len(fitted_rois), V1[animalid].shape[0], fit_thr))
+#
+#    # TODO:  fix this so that RF values are scaled to each stimulus set (RFs can be 10deg or 5deg resolution)
+#    data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
+#    dset = np.load(data_fpath)
+#    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+#
+#    return V1, sdf
 
 #%%
 
@@ -258,136 +397,306 @@ def get_rf_stats(rfdf, row_vals, col_vals, max_size=80, fit_thr=0.7, sigma_scale
     return rstats
 
 #%%
-metric_type = 'snr'
-response_thr = 1.5
-trim = False
 
-perc_min = 0.5
-hard_cutoff = True   # Use hard cut-off for zscores (set to False to use some % of max value)
-set_to_min = True    # Threshold x,y condition grid and set non-passing conditions to min value or 0.
-set_to_min_str = 'set_min' if set_to_min else 'set_zeros'
+#stimtype = 'gratings'
 
-if not trim:
-    set_to_min = False
-    hard_cutoff = False
-    set_to_min_str = ''    
-    cutoff_type = 'no_trim'
+trace_type = 'corrected'
+visual_area = ''
+select_rois = False
+create_new = False
+
+if stimtype == 'rfs':
+    metric_type = 'snr'
+    metric_thr = 1.5
+    
+    visual_area = ''
+    select_rois = False
+    trim = False
+    perc_min = 0.5
+    hard_cutoff = True   # Use hard cut-off for zscores (set to False to use some % of max value)
+    set_to_min = True    # Threshold x,y condition grid and set non-passing conditions to min value or 0.
+    set_to_min_str = 'set_min' if set_to_min else 'set_zeros'
+    
+    if not trim:
+        set_to_min = False
+        hard_cutoff = False
+        set_to_min_str = ''    
+        cutoff_type = 'no_trim'
+        map_thr=''
+    else:
+        cutoff_type = 'hard_thr' if hard_cutoff else 'perc_min'
+        map_thr = 1.5 if (trim and hard_cutoff) else perc_min
+    #print rf_param_str
+    fit_thr = 0.5
+    goodness_str=''
+    
+elif stimtype == 'gratings':
+    response_type = 'zscore'
+    metric_type = 'dff'
+    metric_thr = 0.5
+
+    n_processes = 1
+    cutoff_type = ''
     map_thr=''
-else:
-    cutoff_type = 'hard_thr' if hard_cutoff else 'perc_min'
-    map_thr = 1.5 if (trim and hard_cutoff) else perc_min
+    set_to_min_str=''
+    
+    goodness_type = ['zscore', 'snr']
+    goodness_thr = [0.5, 1.5]
+    goodness_params= '_'.join(['%s%.2f' % (gt, gthr) for gt, gthr in zip(goodness_type, goodness_thr)])
+    goodness_str = 'goodness_%s' % goodness_params
+
+#%%
+V1, sdf = get_stats_by_visual_area(V1_datasets, stimtype=stimtype, 
+                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
+                                     trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
+                                     response_type=response_type, goodness_str=goodness_str,
+                                     n_processes=n_processes, create_new=create_new)
+
+LM, _ = get_stats_by_visual_area(LM_datasets, stimtype=stimtype, 
+                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
+                                     trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
+                                     response_type=response_type, goodness_str=goodness_str,
+                                     n_processes=n_processes, create_new=create_new)
+
+LI, _ = get_stats_by_visual_area(LI_datasets, stimtype=stimtype, 
+                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
+                                     trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
+                                     response_type=response_type, goodness_str=goodness_str,
+                                     n_processes=n_processes, create_new=create_new)
 
 
-# Create subdir for saving figs/results based on fit params:
-# -----------------------------------------------------------------------------
-#rf_param_str = 'rfs_2dgaus_responsemin_%s%.2f_%s_%s' % (metric_type, response_thr, cutoff_type, set_to_min_str)
-rf_param_str = 'rfs_2dgaus_responsemin_%s%.2f_%s_%s' % (metric_type, response_thr, cutoff_type, set_to_min_str)
+#V1, sdf = get_rfs_by_visual_area(V1_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
+#LM, _ = get_rfs_by_visual_area(LM_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
+#LI, _ = get_rfs_by_visual_area(LI_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
 
-print rf_param_str
 
-fit_thr = 0.5
-V1, sdf = get_rfs_by_visual_area(V1_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
-LM, _ = get_rfs_by_visual_area(LM_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
-LI, _ = get_rfs_by_visual_area(LI_datasets, fit_thr=fit_thr, rf_param_str=rf_param_str)
+
+
+
 
 #%%
 
-fit_thr = 0.5
-sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
-rows = 'ypos'
-cols = 'xpos'
-max_size = 100
-plot_kde = False
-plot_rug = False
-norm_hist = True
-if plot_kde:
-    hist_alpha = 0.5
-else:
-    hist_alpha = 1.0
-
-#row_vals = sorted(sdf[rows].unique())
-#col_vals = sorted(sdf[cols].unique())
+# #############################################################################
+# PLOT DISTN OF RECEPTIVE FIELD SIZES BY AREA
+# #############################################################################
+if stimtype == 'rfs':
     
-#x_res = np.unique(np.diff(col_vals))[0]
-#y_res = np.unique(np.diff(row_vals))[0]
-
-rfs_list = []
-fig = pl.figure()
-area_colors = ['cornflowerblue', 'green', 'magenta']
-area_names = ['V1', 'LM', 'LI']
-area_nrats = [len(V1_datasets.keys()), len(LM_datasets.keys()), len(LI_datasets.keys())]
-
-for vi, (curr_color, visual_area_name, nrats, Vx) in enumerate(zip(area_colors, area_names, area_nrats, [V1, LM, LI])):
-    curr_rfs = {}
-    for animalid, rfdf in Vx.items():
-        nr, nc = rfdf['xx'][0].shape
-        if nc == 21:
-            row_vals = np.arange(-25, 30, step=5)
-            col_vals = np.arange(-50, 55, step=5)
-        else:
-            row_vals = np.arange(-25, 35, step=10)
-            col_vals = np.arange(-50, 60, step=10)
+        
+    fit_thr = 0.5
+    sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
+    rows = 'ypos'
+    cols = 'xpos'
+    max_size = 100
+    plot_kde = True
+    plot_rug = False
+    norm_hist = True
+    if plot_kde:
+        hist_alpha = 0.5
+    else:
+        hist_alpha = 1.0
+    
+    #row_vals = sorted(sdf[rows].unique())
+    #col_vals = sorted(sdf[cols].unique())
+        
+    #x_res = np.unique(np.diff(col_vals))[0]
+    #y_res = np.unique(np.diff(row_vals))[0]
+    
+    rfs_list = []
+    fig = pl.figure()
+    area_colors = ['cornflowerblue', 'green', 'magenta']
+    area_names = ['V1', 'LM', 'LI']
+    area_nrats = [len(V1_datasets.keys()), len(LM_datasets.keys()), len(LI_datasets.keys())]
+    
+    for vi, (curr_color, visual_area_name, nrats, Vx) in enumerate(zip(area_colors, area_names, area_nrats, [V1, LM, LI])):
+        curr_rfs = {}
+        animalid_labels = []
+        for animalid, rfdf in Vx.items():
+            nr, nc = rfdf['xx'][0].shape
+            if nc == 21:
+                row_vals = np.arange(-25, 30, step=5)
+                col_vals = np.arange(-50, 55, step=5)
+            else:
+                row_vals = np.arange(-25, 35, step=10)
+                col_vals = np.arange(-50, 60, step=10)
+                
+            rstats = get_rf_stats(rfdf, row_vals, col_vals, fit_thr=fit_thr, max_size=max_size)
+            curr_rfs[animalid] = rstats
+    
+            curr_avg_rfs = rstats[['width', 'height']].mean(axis=1)*sigma_scale
+            vis_area = [visual_area_name for _ in range(len(curr_avg_rfs))]
+            vis_ix = [vi for _ in range(len(curr_avg_rfs))]
+            animal_name = [animalid for _ in range(len(curr_avg_rfs))]
+            animalid_labels.extend([animalid for _ in range(len(curr_avg_rfs))])
             
-        rstats = get_rf_stats(rfdf, row_vals, col_vals, fit_thr=fit_thr, max_size=max_size)
-        curr_rfs[animalid] = rstats
-
-        curr_avg_rfs = rstats[['width', 'height']].mean(axis=1)*sigma_scale
-        vis_area = [visual_area_name for _ in range(len(curr_avg_rfs))]
-        vis_ix = [vi for _ in range(len(curr_avg_rfs))]
-        animal_name = [animalid for _ in range(len(curr_avg_rfs))]
-        rfs_list.append(pd.DataFrame({'rf': curr_avg_rfs,
-                                      'animalid': animalid,
-                                      'visual_area': vis_area,
-                                      'visual_area_ix': vis_ix
-                                      }))
+            rfs_list.append(pd.DataFrame({'rf': curr_avg_rfs,
+                                          'animalid': animalid,
+                                          'visual_area': vis_area,
+                                          'visual_area_ix': vis_ix
+                                          }))
+            
+            #sns.distplot(rstats[['width', 'height']].mean(axis=1)*sigma_scale, color=curr_color, label=visual_area_name)
+        vstats = pd.concat([v for k, v in curr_rfs.items()], axis=0)
+        vstats['visual_area'] = [visual_area_name for _ in range(vstats.shape[0])]
+        vstats['visual_area_ix'] = [vi for _ in range(vstats.shape[0])]
+        vstats['animalid'] = animalid_labels
         
-        #sns.distplot(rstats[['width', 'height']].mean(axis=1)*sigma_scale, color=curr_color, label=visual_area_name)
-    vstats = pd.concat([v for k, v in curr_rfs.items()], axis=0)
-    sns.distplot(vstats[['width', 'height']].mean(axis=1)*sigma_scale, norm_hist=norm_hist,
-                 color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
-                 kde=plot_kde, rug=plot_rug, hist=True,
-                 rug_kws={"color": curr_color},
-                 #norm_hist=True)
-                 hist_kws={"histtype": "step", "linewidth": 2, "color": curr_color, "alpha": hist_alpha})
+        rfs_list.append(vstats)
+        
+        sns.distplot(vstats[['width', 'height']].mean(axis=1)*sigma_scale, norm_hist=norm_hist,
+                     color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
+                     kde=plot_kde, rug=plot_rug, hist=True,
+                     rug_kws={"color": curr_color},
+                     #norm_hist=True)
+                     hist_kws={"histtype": "step", "linewidth": 2, "color": curr_color, "alpha": hist_alpha})
+        
+        
     
-    
-
-pl.legend()
-pl.xlabel('RF size (deg)')
-if plot_kde:
-    pl.ylabel('kde')
-else:
-    if norm_hist:
-        pl.ylabel('fraction')
+    pl.legend()
+    pl.xlabel('RF size (deg)')
+    if plot_kde:
+        pl.ylabel('kde')
     else:
-        pl.ylabel('counts')
-sns.despine(offset=4, trim=True)
+        if norm_hist:
+            pl.ylabel('fraction')
+        else:
+            pl.ylabel('counts')
+    sns.despine(offset=4, trim=True)
+    
+    #%%
+    
+    RFs = pd.concat(rfs_list)
+    
+    pl.figure()
+    sns.violinplot(x='visual_area', y='rf', data=RFs) 
+                   #scale='count', inner="stick", palette='muted')
+    sns.despine(offset=4)
+
+
 
 #%%
 
-RFs = pd.concat(rfs_list)
+# #############################################################################
+# PLOT DISTN OF OSI / DSI BY AREA
+# #############################################################################
 
-sns.violinplot(x='visual_area', y='rf', data=RFs,
-               scale='count', inner="stick", palette='muted')
-
-#%%
-
-import itertools
-palette = itertools.cycle(sns.color_palette())
-
-fig, ax = pl.subplots()
-RFdf_list = []
-for animalid, rfdf in V1.items():
-    nr, nc = rfdf['xx'][0].shape
-    if nc == 21:
-        row_vals = np.arange(-25, 30, step=5)
-        col_vals = np.arange(-50, 55, step=5)
-    else:
-        row_vals = np.arange(-25, 35, step=10)
-        col_vals = np.arange(-50, 60, step=10)
-        
-    rstats = get_rf_stats(rfdf, row_vals, col_vals, fit_thr=fit_thr, max_size=max_size)
-    avg_rf_sizes = rstats[['width', 'height']].mean(axis=1)*sigma_scale
-    sns.swarmplot(avg_rf_sizes, ax=ax, color=next(palette))
+if stimtype == 'gratings':
     
+    plot_kde = False
+    plot_rug = False
+    norm_hist = True
+    if plot_kde:
+        hist_alpha = 0.5
+    else:
+        hist_alpha = 1.0
+    
+    #roi_stat = 'OSI'
+    roi_stat_plots = ['OSI', 'DSI', 'OSI_cv']
+    
+    rfs_list = []
+    fig, axes = pl.subplots(1,3, figsize=(15,5)) #pl.figure()
+    area_colors = ['cornflowerblue', 'green', 'magenta']
+    area_names = ['V1', 'LM', 'LI']
+    area_nrats = [len(V1_datasets.keys()), len(LM_datasets.keys()), len(LI_datasets.keys())]
+    
+    for ai, (roi_stat, ax) in enumerate(zip(roi_stat_plots, axes)):
+        
+        for vi, (curr_color, visual_area_name, nrats, Vx) in enumerate(zip(area_colors, area_names, area_nrats, [V1, LM, LI])):
+            animalid_labels = []
+            curr_rfs = {}
+            for animalid, rfdf in Vx.items():
+        
+                curr_rfs[animalid] = rfdf
+        
+                #curr_avg_rfs = rfdf[roi_stat] #[i for i in rfdf[roi_stat] if 0 <= i <=1]
+                vis_area = [visual_area_name for _ in range(rfdf.shape[0])]
+                vis_ix = [vi for _ in range(rfdf.shape[0])]
+                animal_name = [animalid for _ in range(rfdf.shape[0])]
+                rfdf['animalid'] = animal_name
+                rfdf['visual_area'] = vis_area
+                rfdf['visual_area_ix'] = vis_ix
+                rfs_list.append(rfdf)
+                
+    #            rfs_list.append(pd.DataFrame({'%s' % roi_stat: curr_avg_rfs,
+    #                                          'animalid': animalid,
+    #                                          'visual_area': vis_area,
+    #                                          'visual_area_ix': vis_ix
+    #                                          }))
+                #animalid_labels.extend([animalid for _ in range(len(curr_avg_rfs))])
+    
+            vstats = pd.concat([v for k, v in curr_rfs.items()], axis=0)
+            #vstats['visual_area'] = [visual_area_name for _ in range(vstats.shape[0])]
+            #vstats['visual_area_ix'] = [vi for _ in range(vstats.shape[0])]
+            #vstats['animalid'] = animalid_labels
+            
+    #        values = list(vstats[roi_stat].values)
+    #        ax.hist(values, histtype='step', color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
+    #                normed=True)
+    ##        
+    #        sns.distplot(values, norm_hist=norm_hist, ax=ax,
+    #                     color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
+    #                     kde=plot_kde, rug=plot_rug, hist=True,
+    #                     rug_kws={"color": curr_color},
+    #                     #norm_hist=True)
+    #                     hist_kws={"histtype": "step", "linewidth": 2, "color": curr_color, "alpha": hist_alpha})
+    #                
+        ax.set_title(roi_stat)
+        #ax.set_xlabel('%s' % roi_stat)
+        
+        if ai == 0:
+            if plot_kde:
+                ax.set_ylabel('kde')
+            else:
+                if norm_hist:
+                    ax.set_ylabel('fraction')
+                else:
+                    ax.set_ylabel('counts')
+                
+    
+    pl.legend()
+    sns.despine(offset=4, trim=True)
+    
+    pl.subplots_adjust(top=0.8)
+    
+    #%%
+    
+    RFs = pd.concat(rfs_list, axis=0).reset_index(drop=True)
+    
+    #%%
+    fit_thr = 0.8
+    odf = RFs[RFs['r2']>=fit_thr]
+
+    #%
+    visual_area_names = ['V1', 'Lm', 'Li']
+    osi_metric_types = ['OSI', 'DSI', 'OSI_cv', 'DSI_cv']
+    
+    fig, axes = pl.subplots(2,2, figsize=(8,6), sharex=True)
+    values = list(vstats[roi_stat].values)
+    for osi_metric, ax in zip(osi_metric_types, axes.flat):
+        for vi, (curr_color, curr_area, curr_nrats) in enumerate(zip(area_colors, area_names, area_nrats)):
+            values = list(odf[odf['visual_area']==curr_area][osi_metric].values)
+            weights = np.ones_like(values)/float(len(values))
+            
+            ax.hist(values, weights=weights, histtype='step', color=curr_color, 
+                    label='%s (n=%i (%i))' % (curr_area, curr_nrats, len(values)),
+                    normed=0)
+        
+        ax.set_title(osi_metric)
+    
+    pl.legend(loc='upper right', bbox_to_anchor=(1.7, 2.5),
+              ncol=1, fancybox=False, shadow=False, fontsize=8)
+    
+    sns.despine(trim=True)
+    pl.subplots_adjust(hspace=0.5, wspace=0.5, right=0.8, bottom=0.1)
+
+#%%%
+rdf = RFs[((RFs[roi_stat]>=0) & (RFs[roi_stat]<=1))][['OSI', 'DSI', 'OSI_cv', 'pref_ori', 'visual_area']].reset_index()
+
+sns.distplot(rdf['OSI'].values)
+
+pl.figure()
+sns.violinplot(x='visual_area', y='OSI', data=rdf,  palette='muted')
+sns.despine(offset=4)
 
