@@ -283,7 +283,7 @@ def group_roidata_stimresponse(roidata, labels_df):
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
         base_mean = trial_frames[0:stim_on_frame, :].mean(axis=0)
         base_std = trial_frames[0:stim_on_frame, :].std(axis=0)
-        stim_mean = trial_frames[stim_on_frame:stim_on_frame+nframes_on, :].mean(axis=0)
+        stim_mean = trial_frames[stim_on_frame:stim_on_frame+(nframes_on*2), :].mean(axis=0)
         zscore = (stim_mean - base_mean) / base_std
         dff = (stim_mean - base_mean) / base_mean
         df = stim_mean - base_mean
