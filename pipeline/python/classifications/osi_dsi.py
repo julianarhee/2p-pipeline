@@ -35,6 +35,9 @@ from pipeline.python.retinotopy import fit_2d_rfs as rf
 from pipeline.python.utils import uint16_to_RGB
 from skimage import exposure
 from matplotlib import patches
+
+from scipy import stats
+
     #%%
 from scipy.interpolate import interp1d
 import scipy.optimize as spopt
@@ -686,7 +689,7 @@ def get_roi_resp_by_condition(raw_traces, labels, metric_type='snr', nframes_pos
 #%%
 
     
-def get_mean_and_std_traces(raw_traces, labels, curr_cfgs):
+def get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, stimdf):
     cfg_groups = labels[labels['config'].isin(curr_cfgs)].groupby(['config'])
     mean_traces = np.array([np.nanmean(np.array([raw_traces[roi][trial_df.index]\
                                                  for cfg_rep, trial_df in config_df.groupby(['trial'])]), axis=0) \
@@ -698,6 +701,127 @@ def get_mean_and_std_traces(raw_traces, labels, curr_cfgs):
                             for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])]).mean(axis=0).astype(float)
     return mean_traces, std_traces, tpoints
 
+
+def get_vector_response(thetas, responses):
+    a = np.sum( [tr*np.cos(2*tv) for tv, tr in zip(thetas, responses)] )
+    b = np.sum( [tr*np.sin(2*tv) for tv, tr in zip(thetas, responses)] )
+    ptheta = 0.5*np.arctan(b/a) if a>0 else 180 + 0.5*np.arctan(b/a) 
+    pmag = (1. / len(thetas)) * np.sqrt(a**2 + b**2)
+    
+    return ptheta, pmag
+    
+
+#
+
+#%%
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC084' 
+session = '20190522' #'20190319'
+fov = 'FOV1_zoom2p0x' 
+run = 'combined_gratings_static'
+traceid = 'traces001' #'traces002'
+
+data_identifier = '|'.join([animalid, session, fov, run, traceid])
+
+create_new=True
+n_processes=1
+
+
+    
+#%%
+def get_dft_response(thetas, responses, n=2):
+    real = np.sum( [tr * np.cos( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
+    imag = np.sum( [tr * np.sin( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
+    return real + imag
+
+def get_vector_length(thetas, responses):
+    #mag = np.abs( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
+    #theta = np.angle( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
+    return pt# theta, mag
+
+
+#%
+
+def get_vector_response(thetas, responses):
+    print thetas
+    a = np.sum( [tr*np.cos(2*tv) for tv, tr in zip(thetas, responses)] )
+    b = np.sum( [tr*np.sin(2*tv) for tv, tr in zip(thetas, responses)] )
+    if a > 0:
+        ptheta = 0.5*np.arctan(b/a)
+    elif a < 0:
+        ptheta = np.deg2rad(180.) + 0.5*np.arctan(b/a)
+        
+    #ptheta = (0.5*np.arctan(b/a) if a>0 else (180 + 0.5*np.arctan(b/a))
+    
+    #pmag = (1. / len(thetas)) * np.sqrt(a**2 + b**2)
+    pmag = np.sqrt(a**2 + b**2) / np.sum( responses )
+    
+    return ptheta, pmag
+
+
+
+
+roi = 30
+
+roi = 93
+#%
+for roi in [30, 91, 93, 151]:
+    
+    roi_df = gdf.get_group(roi)
+    
+    mean_responses = roi_df.groupby(['config']).mean()[response_type]
+    sem_responses = roi_df.groupby(['config']).sem()[response_type]
+    sorted_config_ixs = mean_responses.values.argsort()[::-1]
+    sorted_configs = [mean_responses.index[s] for s in sorted_config_ixs]
+    
+    constant_params = ['aspect', 'luminance', 'position', 'stimtype']
+    params = [c for c in sdf.columns if c not in constant_params]
+    stimdf = sdf[params]
+    
+    best_cfg = sorted_configs[0]
+    best_cfg_params = stimdf.loc[best_cfg][[p for p in params if p!='ori']]
+    curr_cfgs = sorted([c for c in stimdf.index.tolist() \
+                        if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
+                        key = lambda x: stimdf['ori'][x])
+    
+    # create "trials" of tuning curve (20 total) - randomly sample? go in order?
+    trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
+    #trialdict = dict((stimdf['ori'][cfg], tdf[response_type].values) for cfg, tdf in sorted(trialdf.groupby(['config']), key=lambda x: stimdf['ori'][x[0]])            
+        
+    trial_arr = np.array([tdf[response_type].values for cfg, tdf in sorted(trialdf.groupby(['config']), \
+                                    key=lambda x: stimdf['ori'][x[0]])]).T # nreps x noris
+    
+    ntrials, nthetas = trial_arr.shape
+            
+            
+    fig = pl.figure(figsize=(8,4))
+    ax1 = pl.subplot2grid((1,2), (0, 0), colspan=1) #pl.subplots(1, 3) #pl.figure()
+    for rep in range(ntrials):
+        ax1.plot(trial_arr[rep, :], 'k')     
+    ax1.plot(trial_arr.mean(axis=0), 'r')
+    ax1.set_xticks(np.arange(0, len(oris)))
+    ax1.set_xticklabels(oris)
+    
+    oris = sorted(sdf['ori'].unique())
+    print(oris)
+    thetas_rad = [np.deg2rad(o) for o in oris]
+    print(thetas_rad)
+    
+    theta_vals=[]
+    mag_vals=[]
+    for rep in range(ntrials):
+        pt = np.sum( tr*np.exp( (2*np.pi*1j*tv) / 360.)  for tv, tr in zip(oris, trial_arr[rep, :]))
+        theta_vals.append( np.deg2rad(np.rad2deg(np.angle(pt)) % 360.) )
+        mag_vals.append(np.abs(pt))
+    ax2 = pl.subplot2grid((1,2), (0, 1), colspan=1, polar=True) #pl.subplots(1, 3) #pl.figure()
+    ax2.plot(theta_vals, mag_vals, 'o')
+    ax2.set_theta_zero_location("N")
+                
+    mean_theta = stats.circmean(theta_vals)
+    mean_mag = np.mean(mag_vals)
+    ax2.annotate("", xy=(0, 0), xytext=(mean_theta, mean_mag), arrowprops=dict(arrowstyle="<-"))
+    ax2.set_title('theta=%.2f' % np.rad2deg(mean_theta)) #(0, 0, 'theta=%.2f' % np.rad2deg(mean_theta))
+    fig.suptitle('roi %i' % int(roi+1))
 
 #%%
 def calculate_gratings_stats(animalid, session, fov, run, traceid, 
@@ -714,6 +838,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
 
     
     raw_traces = pd.DataFrame(dset['corrected'])
+    #dff_traces = pd.DataFrame(dset['dff'])
     labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
 
     
@@ -730,33 +855,27 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
     sdf = pd.DataFrame(dset['sconfigs'][()]).T
 
     
-    #%%
-
-#    avg_resp_by_condition = get_roi_resp_by_condition(raw_traces, labels, 
-#                                                      metric_type=metric_type, 
-#                                                      nframes_post_onset=nframes_post_onset)
-#
-#    roi_list = [r for r in avg_resp_by_condition.columns.tolist() if avg_resp_by_condition[r].max() >= response_thr]
-#    print("%i out of %i cells meet min req. of %.2f" % (len(roi_list), avg_resp_by_condition.shape[1], response_thr))
-    
-    
         
     #%%
     
-    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels) # Each group is roi's trials x metrics
+    #gdf = resp.group_roidata_stimresponse(raw_traces.values, labels) # Each group is roi's trials x metrics
+    gdf = resp.get_roi_response_by_trial(raw_traces.values, labels)
     #gratings_df_by_rois.get_group(roi_list[0])
     nrois_total = len(gdf.groups)
+    
+    
+
     
     #%%
     metric_type = 'dff'
     metric_thr = 0.5
-    goodness_type = ['zscore', 'snr']
-    goodness_thr = [0.5, 1.5]
+    goodness_type = ['zscore'] #['zscore', 'snr']
+    goodness_thr = [2.0] # [1.5, 1.5]
 
     
     roi_list = [k for k, g in gdf if g.groupby(['config']).mean()[metric_type].max() >= metric_thr\
-                and g.groupby(['config']).mean()[goodness_type[0]].max() >= goodness_thr[0]\
-                and g.groupby(['config']).mean()[goodness_type[1]].max() >= goodness_thr[1]]
+                and g.groupby(['config']).mean()[goodness_type[0]].max() >= goodness_thr[0] ] #\
+#                and g.groupby(['config']).mean()[goodness_type[1]].max() >= goodness_thr[1]]
     print("%i out of %i cells meet min %s req. of %.2f" % (len(roi_list), nrois_total, metric_type, metric_thr))
 
     goodness_str = '_'.join(['%s%.2f' % (gt, gthr) for gt, gthr in zip(goodness_type, goodness_thr)])
@@ -790,6 +909,31 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
     
     
     #%%
+    roi = 54
+    roi_df = gdf.get_group(roi)
+    roi_df.groupby(['config'])['trial'].count()
+    
+#    pl.figure()
+#    sns.pairplot(roi_df)
+#    
+#    b_mean = roi_df['base_mean'].mean()
+#    b_std = roi_df['base_std'].std()
+#    dff = (roi_df['meanstim'] - b_mean) / b_mean
+#    df = roi_df['meanstim'] - b_mean
+#    snr = roi_df['meanstim'] / b_mean
+#    zs = (roi_df['meanstim'] - b_mean) / b_std
+#    
+#    rdf2 = pd.DataFrame({'dff': dff,
+#                         'snr': snr,
+#                         'zscore': zs,
+#                         'meanstim': roi_df['meanstim'],
+#                         'df': df})
+#            
+#    sns.pairplot(rdf2)
+#            
+#    rdf1 = roi_df[['dff', 'snr', 'zscore', 'meanstim', 'df']]
+#    
+#    sns.pairplot(rdf1)
     
 #    roi = 17
 #    g = gdf.get_group(roi)
@@ -850,15 +994,11 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         #roi = 4 #5
         
         for roi in roi_list:
-                #%%
-            g = gdf.get_group(roi)
+                #%
+            roi_df = gdf.get_group(roi)
             
-    #        if g[response_type].min() < 0:
-    #            g_offset = g[response_type] - g[response_type].min()
-    #            g[response_type] = g_offset
-                
-            mean_responses = g.groupby(['config']).mean()[response_type]
-            sem_responses = g.groupby(['config']).sem()[response_type]
+            mean_responses = roi_df.groupby(['config']).mean()[response_type]
+            sem_responses = roi_df.groupby(['config']).sem()[response_type]
             sorted_config_ixs = mean_responses.values.argsort()[::-1]
             sorted_configs = [mean_responses.index[s] for s in sorted_config_ixs]
             
@@ -872,12 +1012,17 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                                 if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
                                 key = lambda x: stimdf['ori'][x])
             
+            # create "trials" of tuning curve (20 total) - randomly sample? go in order?
+            trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
+            #trialdict = dict((stimdf['ori'][cfg], tdf[response_type].values) for cfg, tdf in sorted(trialdf.groupby(['config']), key=lambda x: stimdf['ori'][x[0]])            
+                
+            #%
                 
             fig = pl.figure(figsize=(12,8))
     
             # ---------------------------------------------------------------------
             #% plot raw traces:
-            mean_traces, std_traces, tpoints = get_mean_and_std_traces(raw_traces, labels, curr_cfgs)
+            mean_traces, std_traces, tpoints = get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, stimdf)
             
             ymin = (mean_traces - std_traces ).min()
             ymax = (mean_traces + std_traces ).max()
@@ -965,7 +1110,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                     x_plot = np.array(oris_interp).copy() if plot_interpolate else x.copy()
                     tuning_fit = double_gaussian( x_plot, *roi_fit_dir['popt']) if plot_interpolate else roi_fit_dir['fit_y'].copy()
                     ax1.plot(x_plot, tuning_fit, c=dir_fit_color, label='dir (r2=%.2f)' % roi_fit_dir['r2'])
-                    ax1.text(0, ax.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
+                    ax1.text(0, ax1.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
                     # Plot polar fit:
                     x_plot_polar = np.append(x_plot, x_plot[0])
                     thetas = np.array([np.deg2rad(c) for c in x_plot_polar])
@@ -985,7 +1130,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
             if roi_fit_dir is not None:
                 fit_results[roi] = roi_fit_dir
         
-            roi_all_metrics = g.groupby(['config']).mean().loc[curr_cfgs]
+            roi_all_metrics = roi_df.groupby(['config']).mean().loc[curr_cfgs]
             roi_all_metrics['roi'] = [roi for _ in range(len(curr_oris))]
             all_metrics_list.append(roi_all_metrics)
         
@@ -1273,18 +1418,18 @@ def extract_options(options):
 
     return options
 
-#%%
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084' 
-session = '20190522' #'20190319'
-fov = 'FOV1_zoom2p0x' 
-run = 'combined_gratings_static'
-traceid = 'traces001' #'traces002'
-
-data_identifier = '|'.join([animalid, session, fov, run, traceid])
-
-create_new=True
-n_processes=1
+##%%
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC084' 
+#session = '20190522' #'20190319'
+#fov = 'FOV1_zoom2p0x' 
+#run = 'combined_gratings_static'
+#traceid = 'traces001' #'traces002'
+#
+#data_identifier = '|'.join([animalid, session, fov, run, traceid])
+#
+#create_new=True
+#n_processes=1
 
 
 #%%
