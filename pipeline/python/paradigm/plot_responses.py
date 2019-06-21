@@ -270,7 +270,7 @@ def make_clean_psths(options):
 
     # Plotting options:
     filetype = optsE.filetype
-    dfmax = optsE.dfmax
+    #dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     
     
@@ -442,11 +442,11 @@ def make_clean_psths(options):
         os.makedirs(psth_dir)
     print "Saving PSTHs to: %s" % psth_dir
     
-    if optsE.dfmax is None:
-        dfmax = xdata.max()
-    else:
-        dfmax = float(dfmax)
-    
+#    if optsE.dfmax is None:
+#        dfmax = xdata.max()
+#    else:
+#        dfmax = float(dfmax)
+#    
     #%%
     # Set COLORS for subplots:
     print "Trans Types:", trans_types
@@ -547,7 +547,7 @@ def make_clean_psths(options):
     #        meandfs['annot_x'] = [-0.999 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_y'] = [ylim*0.9 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
-            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True)
+            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True, sharex=True, sharey=True)
 
             if len(meandfs[plot_params['rows']].unique()) == 1:
                 p.fig.set_figheight(3)
