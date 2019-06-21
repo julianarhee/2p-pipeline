@@ -3,6 +3,7 @@
 
 import numpy as np
 import os
+import copy
 import optparse
 import re
 import scipy.signal
@@ -69,7 +70,7 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
     try:
         end_ev = next(i for i in modes[run_idxs[0]:] if i['value']==0 or i['value']==1)  # Find the first "stop" event after the first "run" event
     except StopIteration:
-        end_ev = df.get_events('#pixelClockCode')[-1] 
+        end_ev = sorted(df.get_events('#pixelClockCode'), key=get_timekey)[-1] 
 
     # Create a list of runs using start/stop-event times (so long as "Stop" button was not pressed during acquisition, only 1 chunk of time)
     bounds = []
@@ -83,9 +84,10 @@ def get_session_bounds(dfn, single_run=False, boundidx=0, verbose=False):
             try:
                 stop_ev = next(i for i in modes[r:] if i['value']==0 or i['value']==1)
             except StopIteration:
+                last_ev = sorted(df.get_events('#pixelClockCode'), key=get_timekey)[-1] 
                 end_event_name = 'trial_end'
                 print "NO STOP DETECTED IN STATE MODES. Using alternative timestamp: %s." % end_event_name
-                stop_ev = df.get_events(end_event_name)[-1]
+                stop_ev = copy.copy(last_ev) #df.get_events(end_event_name)[-1]
                 print stop_ev
             bounds.append([modes[r]['time'], stop_ev['time']])
 
