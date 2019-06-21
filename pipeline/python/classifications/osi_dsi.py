@@ -682,6 +682,23 @@ def get_roi_resp_by_condition(raw_traces, labels, metric_type='snr', nframes_pos
     
     return avg_resp_by_cond
 
+
+#%%
+
+    
+def get_mean_and_std_traces(raw_traces, labels, curr_cfgs):
+    cfg_groups = labels[labels['config'].isin(curr_cfgs)].groupby(['config'])
+    mean_traces = np.array([np.nanmean(np.array([raw_traces[roi][trial_df.index]\
+                                                 for cfg_rep, trial_df in config_df.groupby(['trial'])]), axis=0) \
+                            for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])])
+    std_traces = np.array([stats.sem(np.array([raw_traces[roi][trial_df.index]\
+                                               for cfg_rep, trial_df in config_df.groupby(['trial'])]), axis=0, nan_policy='omit') \
+                            for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])])
+    tpoints = np.array([np.array([trial_df['tsec'] for cfg_rep, trial_df in config_df.groupby(['trial'])]).mean(axis=0) \
+                            for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])]).mean(axis=0).astype(float)
+    return mean_traces, std_traces, tpoints
+
+
 #%%
 def calculate_gratings_stats(animalid, session, fov, run, traceid, 
                              metric_type='snr', metric_thr=1.2,
@@ -833,7 +850,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         #roi = 4 #5
         
         for roi in roi_list:
-                #%
+                #%%
             g = gdf.get_group(roi)
             
     #        if g[response_type].min() < 0:
@@ -860,19 +877,10 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
     
             # ---------------------------------------------------------------------
             #% plot raw traces:
-            cfg_groups = labels[labels['config'].isin(curr_cfgs)].groupby(['config'])
-            mean_traces = np.array([np.nanmean(np.array([raw_traces[roi][trial_df.index]\
-                                                         for cfg_rep, trial_df in config_df.groupby(['trial'])]), axis=0) \
-                                    for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])])
-            std_traces = np.array([stats.sem(np.array([raw_traces[roi][trial_df.index]\
-                                                       for cfg_rep, trial_df in config_df.groupby(['trial'])]), axis=0, nan_policy='omit') \
-                                    for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])])
-            tpoints = np.array([np.array([trial_df['tsec'] for cfg_rep, trial_df in config_df.groupby(['trial'])]).mean(axis=0) \
-                                    for cfg, config_df in sorted(cfg_groups, key=lambda x: stimdf['ori'][x[0]])]).mean(axis=0).astype(float)
-                
+            mean_traces, std_traces, tpoints = get_mean_and_std_traces(raw_traces, labels, curr_cfgs)
+            
             ymin = (mean_traces - std_traces ).min()
             ymax = (mean_traces + std_traces ).max()
-            
             for icfg in range(len(curr_cfgs)):
                 ax = pl.subplot2grid((2, 8), (0, icfg), colspan=1) #pl.subplots(1, 3) #pl.figure()
                 ax.plot(tpoints, mean_traces[icfg, :], color='k')
@@ -880,21 +888,17 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                 ax.set_xticklabels(['', round(tpoints[stim_on_frame+nframes_on], 1)])
                 ax.set_ylim([ymin, ymax])
                 if icfg > 0:
-                    ax.set_yticks([])
-                    ax.set_yticklabels([])
-                    ax.set_xticks([])
-                    ax.set_xticklabels([])
+                    ax.set_yticks([]); ax.set_yticklabels([]);
+                    ax.set_xticks([]); ax.set_xticklabels([]);
                     sns.despine(ax=ax, offset=4, trim=True, left=True, bottom=True)
                 else:
-                    ax.set_ylabel('intensity')
-                    ax.set_xlabel('time (s)')
+                    ax.set_ylabel('intensity'); ax.set_xlabel('time (s)');
                     sns.despine(ax=ax, offset=4, trim=True)
                 sem_plus = np.array(mean_traces[icfg,:]) + np.array(std_traces[icfg,:])
                 sem_minus = np.array(mean_traces[icfg,:]) - np.array(std_traces[icfg,:])
                 ax.fill_between(tpoints, sem_plus, y2=sem_minus, alpha=0.5, color='k')
             # ---------------------------------------------------------------------
-                
-            
+
             theta_pref = stimdf['ori'][best_cfg]
             theta_null = (stimdf['ori'][best_cfg] + 180) % 360    
             null_cfg = [c for c in curr_cfgs if stimdf['ori'][c]==theta_null]
@@ -921,7 +925,6 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
             x = curr_oris.copy()        
             y = curr_resps.copy()
             try:
-                
                 # Fit for direction:
                 init_params_dsi = [r_pref, r_null, theta_pref, sigma, C_offset]
                 init_bounds = ([0, 0, -np.inf, sigma/2., -r_max], [3*r_max, 3*r_max, np.inf, np.inf, r_max])
@@ -931,63 +934,47 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                 roi_fit_dir['mean_responses'] = curr_resps
                 roi_fit_dir['offset'] = offset
                 roi_fit_dir['oris'] = curr_oris
-                
             except Exception as e:
                 print("-- roi %i: no fit." % roi)
                 roi_fit_dir = None
                 
             if make_plots:
-                # Plot data:
-                #fig = pl.figure(figsize=(9,4)) 
-                #ax = pl.subplot2grid((1,3), (0, 0), colspan=2) #pl.subplots(1, 3) #pl.figure()
-                ax = pl.subplot2grid((2, 8), (1, 0), colspan=5)
-                ax.plot(curr_oris, curr_resps, 'ko', markersize=5, lw=0)
-                ax.errorbar(curr_oris, curr_resps, yerr=curr_sems, fmt='none', ecolor='k')
-                ax.set_xticks(curr_oris)
-                ax.set_xticklabels(curr_oris)
-                ax.set_ylabel(response_type)
-                ax.set_title('(sz %i, sf %.2f)' % (best_cfg_params['size'], best_cfg_params['sf']), fontsize=8)
-                sns.despine(trim=True, offset=4, ax=ax)
-                
-                # Plot fit:
-                if roi_fit_dir is not None and roi_fit_dir['success']:
-                    if plot_interpolate:
-                        # Interpolate the data using a cubic spline to "new_length" samples      
-                        x_plot = np.array(oris_interp).copy()   
-                        y_plot = double_gaussian( x_plot, *roi_fit_dir['popt'])
-                    else:
-                        x_plot = x.copy()
-                        y_plot = roi_fit_dir['fit_y'].copy()
-                    ax.plot(x_plot, y_plot, c=dir_fit_color, label='dir (r2=%.2f)' % roi_fit_dir['r2'])
-                    ax.text(0, ax.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
-                else:            
-                    ax.text(0, ax.get_ylim()[-1]*0.75, 'no fit', fontsize=6)
-                
-            
+                # Plot tuning curve:
+                ax1 = pl.subplot2grid((2, 8), (1, 0), colspan=5)
+                ax1.plot(curr_oris, curr_resps, 'ko', markersize=5, lw=0)
+                ax1.errorbar(curr_oris, curr_resps, yerr=curr_sems, fmt='none', ecolor='k')
+                ax1.set_xticks(curr_oris)
+                ax1.set_xticklabels(curr_oris)
+                ax1.set_ylabel(response_type)
+                ax1.set_title('(sz %i, sf %.2f)' % (best_cfg_params['size'], best_cfg_params['sf']), fontsize=8)
+                sns.despine(trim=True, offset=4, ax=ax1)
                 # Plot polar graph:
-                #ax = pl.subplot2grid((1,3), (0,2), colspan=1, polar=True)
-                ax = pl.subplot2grid((2,8), (1,6), colspan=2, polar=True)
+                ax2 = pl.subplot2grid((2,8), (1,6), colspan=2, polar=True)
                 thetas = np.array([np.deg2rad(c) for c in curr_oris])
                 radii = curr_resps.copy()
                 thetas = np.append(thetas, np.deg2rad(curr_oris[0]))  # append first value so plot line connects back to start
                 radii = np.append(radii, curr_resps[0]) # append first value so plot line connects back to start
-                ax.plot(thetas, radii, 'k-')
-                ax.set_theta_zero_location("N")
-                ax.set_yticks([curr_resps.min(), curr_resps.max()])
-                ax.set_yticklabels(['', round(curr_resps.max(), 1)])
-                
+                ax2.plot(thetas, radii, 'k-')
+                ax2.set_theta_zero_location("N")
+                ax2.set_yticks([curr_resps.min(), curr_resps.max()])
+                ax2.set_yticklabels(['', round(curr_resps.max(), 1)])
+                                
+                # Plot fits:
                 if roi_fit_dir is not None and roi_fit_dir['success']:
-                    if plot_interpolate:
-                        x_plot = np.array(oris_interp).copy()   
-                    else:
-                        x_plot = x.copy()
+                    # Interpolate the data using a cubic spline to "new_length" samples      
+                    x_plot = np.array(oris_interp).copy() if plot_interpolate else x.copy()
+                    tuning_fit = double_gaussian( x_plot, *roi_fit_dir['popt']) if plot_interpolate else roi_fit_dir['fit_y'].copy()
+                    ax1.plot(x_plot, tuning_fit, c=dir_fit_color, label='dir (r2=%.2f)' % roi_fit_dir['r2'])
+                    ax1.text(0, ax.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
+                    # Plot polar fit:
                     x_plot_polar = np.append(x_plot, x_plot[0])
-                    radii = double_gaussian( x_plot_polar, *roi_fit_dir['popt'])
                     thetas = np.array([np.deg2rad(c) for c in x_plot_polar])
-                    ax.plot(thetas, radii, color=dir_fit_color)
-    
-                    #%
-                    
+                    polar_fit = double_gaussian( x_plot_polar, *roi_fit_dir['popt'])
+                    ax2.plot(thetas, polar_fit, color=dir_fit_color)
+                else:            
+                    ax1.text(0, ax.get_ylim()[-1]*0.75, 'no fit', fontsize=6)
+            
+                #% Format plot, save and close:
                 pl.subplots_adjust(top=0.8, hspace=0.5)
                 fig.suptitle('roi %i' % int(roi+1))
                 label_figure(fig, data_identifier)
@@ -1000,7 +987,6 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         
             roi_all_metrics = g.groupby(['config']).mean().loc[curr_cfgs]
             roi_all_metrics['roi'] = [roi for _ in range(len(curr_oris))]
-            
             all_metrics_list.append(roi_all_metrics)
         
         print("--- FITS complete ---")
@@ -1289,8 +1275,8 @@ def extract_options(options):
 
 #%%
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC080' 
-session = '20190603' #'20190319'
+animalid = 'JC084' 
+session = '20190522' #'20190319'
 fov = 'FOV1_zoom2p0x' 
 run = 'combined_gratings_static'
 traceid = 'traces001' #'traces002'
