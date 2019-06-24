@@ -241,10 +241,16 @@ def warp_runs_in_fov(acquisition_dir, roi_id, stimtype=None, warp_threshold=0.7,
        
         # First check if std_images.tif already exists:
         if stimtype is not None:
-            # Only get zproj images for current stimtype:
-            std_stack_paths = glob.glob(os.path.join(acquisition_dir, '%s_run*' % stimtype, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
-            img_paths = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % stimtype, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, channel, 'File*', '*.tif')), key=natural_keys)
-            print "TOTAL N IMAGES (across %s runs): %i" % (stimtype, len(img_paths))
+            std_stack_paths = []
+            img_paths = []
+            for stim in stimtype:
+                # Only get zproj images for current stimtype:
+                curr_std_stack_paths = glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
+                curr_img_paths = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, channel, 'File*', '*.tif')), key=natural_keys)
+                print "TOTAL N IMAGES (across %s runs): %i" % (stim, len(img_paths))
+                std_stack_paths.extend(curr_std_stack_paths)
+                img_paths.extend(currr_img_paths)
+            print "TOTAL N IMAGES (across $i stim types): %i" % (len(stimtype), len(img_paths))
 
         else:
             std_stack_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
@@ -421,9 +427,14 @@ def get_roi_reference(options):
     roi_id = optsE.rid
     warp_threshold = float(optsE.warp_threshold)
     enhance_factor = float(optsE.enhance_factor)
-    
+    #stimtype = optsE.stimtype
+    if optsE.stimtype is not None:
+        stimtype = optsE.stimtype.split(',')
+        print("Warping all runs of stim type:", stimtype) 
+    else:
+        stimtype = optsE.stimtype
     warp_results = warp_runs_in_fov(acquisition_dir, roi_id, 
-                                        stimtype=optsE.stimtype,
+                                        stimtype=stimtype,
                                         zproj=optsE.zproj,
                                         warp_threshold=warp_threshold, 
                                         enhance_factor=enhance_factor,
