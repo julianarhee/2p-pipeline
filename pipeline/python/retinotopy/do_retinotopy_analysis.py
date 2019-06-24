@@ -282,7 +282,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
 
-        nmasks,szx, szy= masks.shape
+        nmasks, szy, szx= masks.shape
 
         #apply masks to stack
         roi_trace = get_mask_traces(tiff_stack,masks)
@@ -299,7 +299,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
             return
 
         mask_slice_str = slice_str
-        print('...processing file | slice: %s | %s' % (file_str, slice_str))
+        print('...processing file %s | slice %s' % (file_str, slice_str))
                 
 
         #print masks_file[masks_file.keys()[0]]['masks'].keys()
@@ -315,8 +315,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         masks = masks.T #np.swapaxes(0, 2)
         print "...Loaded processed masks: %s" % str(masks.shape)
 
-	#swap axes for familiarity
-	masks = np.swapaxes(masks,1,2) # visualization  
+        # swap axes for familiarity
+    	    masks = np.swapaxes(masks,1,2) # visualization  
 
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
@@ -336,8 +336,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
                 masks_ds[ri, :, :] = mask_ds
             masks = copy.copy(masks_ds)
             print "...Resized masks: %s" % str(masks.shape)
-  
-	nmasks, szx, szy= masks.shape
+            
+        nmasks, szy, szx= masks.shape
 
         #apply masks to stack
         #roi_trace = get_mask_traces(tiff_stack,masks)
@@ -388,16 +388,16 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tset.attrs['correction_factor'] = np_cfactor
 
 
-	roi_trace = process_array(roi_trace, RETINOID, stack_info)
+        	roi_trace = process_array(roi_trace, RETINOID, stack_info)
     
-        #  TRACES outfile:  Save processed roi trace
-        pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
-        pset[...] = roi_trace 
-        pset.attrs['source'] = tiff_path_full
-        pset.attrs['dims'] = szx, szy, nframes
-        traces_outfile.close()
-        print("... Extracted traces!")
-    
+    #  TRACES outfile:  Save processed roi trace
+    pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
+    pset[...] = roi_trace 
+    pset.attrs['source'] = tiff_path_full
+    pset.attrs['dims'] = szx, szy, nframes
+    traces_outfile.close()
+    print("... Extracted traces!")
+
 
     frame_rate = stack_info['frame_rate']
     stimfreq = stack_info['stimfreq']
@@ -602,6 +602,20 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             ds = int(RETINOID['PARAMS']['downsample_factor'])
             im0 = block_mean(im0,ds)
+
+
+        # Resize images to make square:
+        im_d1, im_d2 = im0.shape
+        if im_d1 != im_d2:
+            dim_r = max([im_d1, im_d2])
+            im0 = cv2.resize(im0, (dim_r, dim_r))
+#            magratio_roi = cv2.resize(magratio_roi, (dim_r, dim_r))
+#            mag_roi = cv2.resize(mag_roi, (dim_r, dim_r))
+#            varexp_roi = cv2.resize(varexp_roi, (dim_r, dim_r))
+            phase_map_disp = cv2.resize(phase_map_disp, (dim_r, dim_r))
+            
+            
+
         im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
         im2 = np.dstack((im1,im1,im1))
 
@@ -710,6 +724,18 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             ds = int(RETINOID['PARAMS']['downsample_factor'])
             im0 = block_mean(im0,ds)
+            
+        # Resize images to make square:
+        im_d1, im_d2 = im0.shape
+        if im_d1 != im_d2:
+            dim_r = max([im_d1, im_d2])
+            im0 = cv2.resize(im0, (dim_r, dim_r))
+            magratio_roi = cv2.resize(magratio_roi, (dim_r, dim_r))
+            mag_roi = cv2.resize(mag_roi, (dim_r, dim_r))
+            varexp_roi = cv2.resize(varexp_roi, (dim_r, dim_r))
+            phase_roi = cv2.resize(phase_roi, (dim_r, dim_r))
+            
+            
         im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
         im2 = np.dstack((im1,im1,im1))
 
@@ -717,6 +743,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         fig=plt.figure()
         plt.imshow(im2,'gray')
         plt.imshow(phase_roi,'nipy_spectral',alpha = 0.5,vmin=0,vmax=2*np.pi)
+        plt.axis('off')
         plt.colorbar()
         plt.savefig(os.path.join(fig_dir,fig_name))
         plt.close()
@@ -725,6 +752,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         fig=plt.figure()
         plt.imshow(im2,'gray')
         plt.imshow(mag_roi, alpha = 0.5)
+        plt.axis('off')
         plt.colorbar()
         plt.savefig(os.path.join(fig_dir,fig_name))
         plt.close()
@@ -733,6 +761,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         fig=plt.figure()
         plt.imshow(im2,'gray')
         plt.imshow(magratio_roi, alpha = 0.5)
+        plt.axis('off')
         plt.colorbar()
         plt.savefig(os.path.join(fig_dir,fig_name))
         plt.close()
@@ -741,6 +770,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         fig=plt.figure()
         plt.imshow(im2,'gray')
         plt.imshow(varexp_roi, alpha = 0.5)
+        plt.axis('off')
         plt.colorbar()
         plt.savefig(os.path.join(fig_dir,fig_name))
         plt.close()
@@ -791,6 +821,16 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
             plt.savefig(os.path.join(fig_dir,fig_fn))
             plt.close()
 
+
+
+#%%
+
+
+options = ['--slurm', '-i', 'JC097', '-S', '20190615', '-A', 'FOV4_zoom1p0x', '-R', 'retino_run1', 
+           '-d', 'analysis003', '-a', 20]
+
+
+#%%
 
 def do_analysis(options):
     #Get options
@@ -915,7 +955,7 @@ def do_analysis(options):
         parainfo = json.load(r)
 
 
-    #OPEN MASK FILE
+    #%%OPEN MASK FILE
     if RETINOID['PARAMS']['roi_type'] != 'pixels':
         print 'Getting masks'
         # Load ROI set specified in analysis param set:
