@@ -316,7 +316,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         print "...Loaded processed masks: %s" % str(masks.shape)
 
         # swap axes for familiarity
-    	    masks = np.swapaxes(masks,1,2) # visualization  
+    	masks = np.swapaxes(masks,1,2) # visualization  
 
         if RETINOID['PARAMS']['downsample_factor'] is not None:
             masks = block_mean_stack(masks, int(RETINOID['PARAMS']['downsample_factor']), along_axis=0)
@@ -388,7 +388,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tset.attrs['correction_factor'] = np_cfactor
 
 
-        	roi_trace = process_array(roi_trace, RETINOID, stack_info)
+        roi_trace = process_array(roi_trace, RETINOID, stack_info)
     
     #  TRACES outfile:  Save processed roi trace
     pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
@@ -534,6 +534,8 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         plt.close()
 
 
+        # -- plot maps --
+
         mag_map = np.reshape(mag_array,(szy,szx))
         mag_ratio_map = np.reshape(mag_ratio_array,(szy,szx))
         phase_map = np.reshape(phase_array,(szy,szx))
@@ -541,6 +543,32 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         varexp_map = np.reshape(varexp_array,(szy,szx))
 
 
+        # Find corresponding avg img/file path by current file name:
+        curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
+        curr_slice = 'Slice%02d' % int(slicenum+1)
+           
+        # #Read in average image (for viuslization)
+        avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible') 
+        avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
+        print "Loaded avg img: %s" % avg_img_path
+        im0 = tf.imread(avg_img_path)
+
+        if RETINOID['PARAMS']['downsample_factor'] is not None:
+            ds = int(RETINOID['PARAMS']['downsample_factor'])
+            im0 = block_mean(im0,ds)
+
+        # Resize images to make square:
+        im_d1, im_d2 = im0.shape
+        if im_d1 != im_d2:
+            dim_r = max([im_d1, im_d2])
+            im0 = cv2.resize(im0, (dim_r, dim_r))
+            mag_map = cv2.resize(mag_map, (dim_r, dim_r))
+            mag_ratio_map = cv2.resize(mag_ratio_map, (dim_r, dim_r))
+            phase_map = cv2.resize(phase_map, (dim_r, dim_r))
+            beta_map = cv2.resize(beta_map, (dim_r, dim_r))
+            varexp_map = cv2.resize(varexp_map, (dim_r, dim_r))
+          
+ 
         fig_name = 'phase_map_%s.png' % data_str #(tiff_fn[:-4])
         #set phase map range for visualization
         phase_map_disp=np.copy(phase_map)
@@ -581,46 +609,12 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         plt.savefig(os.path.join(tiff_fig_dir,fig_name))
         plt.close()
 
-        # #Read in average image (for viuslization)
-        avg_dir = os.path.join('%s_mean_deinterleaved'%(str(RETINOID['SRC'])),'visible')
-        
-        # Find corresponding avg img/file path by current file name:
-        curr_file = str(re.search('File(\d{3})', tiff_fn).group(0))
-        curr_slice = 'Slice%02d' % int(slicenum+1)
-        #curr_slice = str(re.search('Slice(\d{2})', tiff_fn).group(0))
-
-
-        avg_img_path = glob.glob(os.path.join(avg_dir, '*%s_*%s.tif' % (curr_slice, curr_file)))[0] 
-        print "Loaded avg img: %s" % avg_img_path
-
-        im0 = tf.imread(avg_img_path)
-
-#		s0 = tiff_fn[:-4]
-#		s1 = s0[s0.find('Slice'):]
-#		avg_fn = 'vis_mean_%s.tif'%(s1)
-#		im0 = tf.imread(os.path.join(avg_dir, avg_fn))
-        if RETINOID['PARAMS']['downsample_factor'] is not None:
-            ds = int(RETINOID['PARAMS']['downsample_factor'])
-            im0 = block_mean(im0,ds)
-
-
-        # Resize images to make square:
-        im_d1, im_d2 = im0.shape
-        if im_d1 != im_d2:
-            dim_r = max([im_d1, im_d2])
-            im0 = cv2.resize(im0, (dim_r, dim_r))
-#            magratio_roi = cv2.resize(magratio_roi, (dim_r, dim_r))
-#            mag_roi = cv2.resize(mag_roi, (dim_r, dim_r))
-#            varexp_roi = cv2.resize(varexp_roi, (dim_r, dim_r))
-            phase_map_disp = cv2.resize(phase_map_disp, (dim_r, dim_r))
-            
-            
-
+               
+        # -- plot phase map overlay on FOV image --
+ 
         im1 = np.uint8(np.true_divide(im0,np.max(im0))*255)
         im2 = np.dstack((im1,im1,im1))
-
         fig_name = 'phase_map_overlay_%s.png' % data_str #curr_file #(tiff_fn[:-4])
-
 
         fig=plt.figure()
         plt.imshow(im2,'gray')
