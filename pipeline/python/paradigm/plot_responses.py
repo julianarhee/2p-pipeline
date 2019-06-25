@@ -497,6 +497,11 @@ def make_clean_psths(options):
 #%%
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
+    # pick some colors:
+    colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+    palette = sns.xkcd_palette(colors) 
+
+
     for ridx in range(xdata.shape[-1]):
         #%%
         if ridx % 20 == 0:
@@ -512,7 +517,7 @@ def make_clean_psths(options):
         rdata[ylabel] = xdata_c[ridx]
                         
         if optsE.plot_trials:
-            p = sns.FacetGrid(rdata, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], sharex=True, sharey=True)
+            p = sns.FacetGrid(rdata, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], sharex=True, sharey=True, palette=palette)
             p.map(pl.plot, "tsec", ylabel, lw=0.5, alpha=0.5)
         else:
             for k, g in rdata.groupby(['config']):
@@ -547,7 +552,7 @@ def make_clean_psths(options):
     #        meandfs['annot_x'] = [-0.999 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_y'] = [ylim*0.9 for _ in range(meandfs.shape[0])]
     #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
-            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True)
+            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True, palette=palette)
 
             if len(meandfs[plot_params['rows']].unique()) == 1:
                 p.fig.set_figheight(3)
