@@ -527,7 +527,7 @@ def warp_masks(masks, ref, img, warp_mode=cv2.MOTION_HOMOGRAPHY, save_warp_image
         warp_matrix = np.eye(2, 3, dtype=np.float32)
 
     # Set the stopping criteria for the algorithm.
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-9)
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 2000,  1e-9)
 
     sample = img.copy()
     # Warp REFERENCE image into sample:
@@ -709,10 +709,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                 # Get average image of CURRENT .tif (to be aligned to):
                 zproj_img_path = glob.glob(os.path.join(curr_zproj_dir, '*_%s_*.tif' % curr_slice))[0]
                 img = tf.imread(zproj_img_path)
-                print "... loaded TIFF %i of %i to warp ROIs onto..." % (fidx, len(maskinfo['filenames']))
-                zproj = filegrp.create_dataset('/'.join([curr_slice, 'zproj']), img.shape, img.dtype)
-                zproj[...] = img
-                zproj.attrs['source'] = zproj_img_path
+                print "... loaded TIFF %i of %i for ROI warping %s" % (fidx, len(maskinfo['filenames']), str(img.shape))
 
                 # Get masks from ROI SOURCE:
                 if maskinfo['is_slice_format']: #slice_masks:
@@ -721,6 +718,15 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                 else:
                     src_roi_idxs = maskfile[maskfile_key]['masks'].attrs['src_roi_idxs']
                     masks = maskfile[maskfile_key]['masks'][:].T.copy()
+
+                # Resize img if scaling has been done:
+#                d1_ref, d2_ref, nmasks = masks.shape
+#                d1_img, d2_img = img.shape
+#                if d1_img != d1_ref or d2_img != d2_ref:
+#                    img = cv2.resize(img, (d1_ref, d2_ref))
+                zproj = filegrp.create_dataset('/'.join([curr_slice, 'zproj']), img.shape, img.dtype)
+                zproj[...] = img
+                zproj.attrs['source'] = zproj_img_path
 
                 # Warp reference tiff to current tiff so that ROIs line up:
                 # ------------------------------------------------------------
@@ -742,7 +748,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                     # If ROI source and TIFF source differ, load the ROI reference
                     # and use this to align to all the tifs in the current run.
                     if maskinfo['matched_sources'] is False:
-                        print "... loading ROI src reference img to warp."
+                        #print "... loading ROI src reference img to warp."
                         ref_img_fpath = glob.glob(os.path.join(maskinfo['roi_source_dir'], '*.tif'))[0]
                     # Otherwise, we are within the same run, just a different .tif,
                     # so we just need to align:
@@ -758,6 +764,14 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
                     print "... [src]: %s" % ref_img_fpath
                     print "... [target]: %s (%s)" % (zproj_source_dir, curr_file)
                     ref_img = tf.imread(ref_img_fpath)
+                    
+                    
+                    # Resize ref if scaling has been done:
+                    d1_ref, d2_ref, nmasks = masks.shape
+                    d1_img, d2_img = img.shape
+                    if d1_img != d1_ref or d2_img != d2_ref:
+                        ref_img = cv2.resize(ref_img, (d1_ref, d2_ref))
+
 
                     # Get warp matrix to transform reference to current file:
                     if save_warp_images:
@@ -833,6 +847,7 @@ def get_masks(mask_write_path, maskinfo, RID, save_warp_images=False, do_neuropi
         maskfile.close()
 
     return mask_write_path #, curr_rois
+
 
 
 
@@ -2045,9 +2060,7 @@ def create_formatted_maskfile(TID, RID, nslices=1, save_warp_images=True,
 
     return maskinfo, maskdict_path
 
-#%%
-options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x', '-R', 'gratings_run1',
-        '-t', 'traces004', '--neuropil', '-c', 0.7, '-a', 10]
+
 
 #%%
 
@@ -2286,9 +2299,13 @@ class Traces():
 
 
 
+
 #%%
+options = ['--slurm', '-i', 'JC097', '-S', '20190615', '-A', 'FOV4_zoom1p0x', '-R', 'rfs10_run1',
+        '-t', 'traces002', '--neuropil', '-c', 0.7, '-a', 20, '--neuropil', '--warp', '--align', '--raw', '--nonnegative', 
+        '--post=1.0', '--pre=0.05']
 
-
+#%%
 def extract_traces(options):
     # Set USER INPUT options:
     options = extract_options(options)
@@ -2393,25 +2410,28 @@ def extract_traces(options):
         os.makedirs(trace_figdir)
 
     # Check to see if we're re-using the same ROI set:
-    warp_masks = True
+    do_warps = True
     maskfig_dir = os.path.join(trace_figdir, 'masks')
     if not os.path.exists(maskfig_dir): os.makedirs(maskfig_dir)
 
     # First check that we haven't already warped current ROIs to current run:
     tdict_path = glob.glob(os.path.join(run_dir, 'traces', 'traceids_*.json'))[0]
     with open(tdict_path, 'r') as f: tdicts = json.load(f)
-    reused_rids = [t for t,td in tdicts.items() if td['PARAMS']['roi_id']==TID['PARAMS']['roi_id'] and td['PARAMS']['rid_hash']==TID['PARAMS']['rid_hash'] and t != trace_id]
-    if len(reused_rids) > 0:
+    reused_rids = [t for t,td in tdicts.items() \
+                   if td['PARAMS']['roi_id']==TID['PARAMS']['roi_id'] \
+                   and td['PARAMS']['rid_hash']==TID['PARAMS']['rid_hash'] \
+                   and t != trace_id]
+    if len(reused_rids) > 0 and create_new is False:
         print "This ROI set has already been warped, re-using masks."
         maskdict_path = os.path.join(tdicts[reused_rids[0]]['DST'], 'MASKS.hdf5')
         print "SRC:", maskdict_path
         if rootdir not in maskdict_path: maskdict_path = replace_root(maskdict_path, rootdir, animalid, session)
         maskinfo = None
-        warp_masks = False
+        do_warps = False
         maskfig_dir = os.path.join(tdicts[reused_rids[0]]['DST'], 'figures', 'masks')
         if rootdir not in maskfig_dir: maskfig_dir = replace_root(maskfig_dir, rootdir, animalid, session)
        
-    if warp_masks: 
+    if do_warps: 
         #%
         # Create mask array and save mask images for each slice specified in ROI set:
         # =============================================================================
