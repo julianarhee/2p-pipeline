@@ -13,7 +13,8 @@ import json
 import copy
 import optparse
 import sys
-
+import matplotlib as mpl
+mpl.use('agg')
 import pylab as pl
 import seaborn as sns
 import cPickle as pkl
@@ -36,7 +37,6 @@ from pipeline.python.retinotopy import utils as rutils
 
 from matplotlib.pyplot import cm
 import statsmodels as sm
-import matplotlib as mpl
 from pipeline.python.retinotopy import target_visual_field as targ
 
 
