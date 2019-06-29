@@ -498,9 +498,10 @@ def make_clean_psths(options):
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     # pick some colors:
-    colors = ["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+    colors = ["forest green", "purple"] #["windows blue", "amber", "greyish", "faded green", "dusty purple"]
     palette = sns.xkcd_palette(colors) 
-
+    #sns.set()
+    #palette = sns.color_palette('colorblind')
 
     for ridx in range(xdata.shape[-1]):
         #%%
