@@ -13,6 +13,7 @@ import glob
 import h5py
 import sys
 import optparse
+import copy
 
 import pylab as pl
 from collections import Counter
@@ -153,7 +154,7 @@ def angdir180(x):
 def double_gaussian( x, c1, c2, mu, sigma, C ):
     #(c1, c2, mu, sigma) = params
     x1vals = np.array([angdir180(xi - mu) for xi in x])
-    x2vals = np.array([angdir180(xi + 180 - mu) for xi in x])
+    x2vals = np.array([angdir180(xi - mu - 180 ) for xi in x])
     res =   C + c1 * np.exp( - x1vals**2.0 / (2.0 * sigma**2.0) ) \
             + c2 * np.exp( - x2vals**2.0 / (2.0 * sigma**2.0) )
 
@@ -758,14 +759,22 @@ def get_vector_response(thetas, responses):
     
     return ptheta, pmag
 
-
-
+#%%
+roi_trialdir = os.path.join(roi_fitdir, 'roi_trials')
+if not os.path.exists(roi_trialdir):
+    os.makedirs(roi_trialdir)
+    
 
 roi = 30
 
 roi = 93
 #%
-for roi in [30, 91, 93, 151]:
+
+import spm1d
+
+
+sig_rois = []
+for roi in roi_list: #[30, 91, 93, 151]:
     
     roi_df = gdf.get_group(roi)
     
@@ -787,10 +796,18 @@ for roi in [30, 91, 93, 151]:
     # create "trials" of tuning curve (20 total) - randomly sample? go in order?
     trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
     #trialdict = dict((stimdf['ori'][cfg], tdf[response_type].values) for cfg, tdf in sorted(trialdf.groupby(['config']), key=lambda x: stimdf['ori'][x[0]])            
-        
+    
     trial_arr = np.array([tdf[response_type].values for cfg, tdf in sorted(trialdf.groupby(['config']), \
                                     key=lambda x: stimdf['ori'][x[0]])]).T # nreps x noris
-    
+    # TODO:  make this not stupid
+    ntrials_in_cond = np.unique([len(t) for t in trial_arr])
+    if len(np.unique([len(t) for t in trial_arr])) > 1:
+        min_ntrials = np.min(np.unique([len(t) for t in trial_arr]))
+        trial_arr_tmp = []
+        for ti, tarr in enumerate(trial_arr):
+            trial_arr_tmp.append(trial_arr[ti][0:min_ntrials])
+        trial_arr = np.array(trial_arr_tmp).T
+        
     ntrials, nthetas = trial_arr.shape
             
             
@@ -811,17 +828,50 @@ for roi in [30, 91, 93, 151]:
     mag_vals=[]
     for rep in range(ntrials):
         pt = np.sum( tr*np.exp( (2*np.pi*1j*tv) / 360.)  for tv, tr in zip(oris, trial_arr[rep, :]))
-        theta_vals.append( np.deg2rad(np.rad2deg(np.angle(pt)) % 360.) )
+        theta_vals.append( np.angle(pt) % (2*np.pi) )
         mag_vals.append(np.abs(pt))
     ax2 = pl.subplot2grid((1,2), (0, 1), colspan=1, polar=True) #pl.subplots(1, 3) #pl.figure()
     ax2.plot(theta_vals, mag_vals, 'o')
     ax2.set_theta_zero_location("N")
-                
+    
+#    vector_mag=[]; vector_dir=[];
+#    for a, b in zip(theta_vals, mag_vals):
+#        vecdir = np.arctan(b / a)
+#        vx = np.sqrt(a**2 + b**2) * np.cos(vecdir)
+#        vy = np.sqrt(a**2 + b**2) * np.sin(vecdir)
+#        
+#        vector_mag.append(vx)
+#        vector_dir.append(vy)
+#    
+#    for a, b in zip(vector_mag, vector_dir):
+#        print a, np.rad2deg(b)
+#    
     mean_theta = stats.circmean(theta_vals)
     mean_mag = np.mean(mag_vals)
     ax2.annotate("", xy=(0, 0), xytext=(mean_theta, mean_mag), arrowprops=dict(arrowstyle="<-"))
-    ax2.set_title('theta=%.2f' % np.rad2deg(mean_theta)) #(0, 0, 'theta=%.2f' % np.rad2deg(mean_theta))
-    fig.suptitle('roi %i' % int(roi+1))
+
+    # Do stats:    
+    XA = np.array((theta_vals, mag_vals)).T
+    XB = np.zeros(XA.shape)
+    XB[:, 0] = XA[:, 0]
+    T2 = spm1d.stats.hotellings2(XA, XB, equal_var=True)
+    
+    T2i = T2.inference(0.05)
+    
+    if T2i.h0reject:
+        stats_str = 'hotelling 2s ttest, p=%.3f' % T2i.p
+        sig_rois.append(roi)
+    else:
+        stats_str = 'h0 reject fails'
+    ax2.set_title('theta=%.2f (%s)' % (np.rad2deg(mean_theta), stats_str), fontsize=6) #(0, 0, 'theta=%.2f' % np.rad2deg(mean_theta))
+
+    pl.subplots_adjust(top=0.8, hspace=0.5)
+
+    fig.suptitle('roi %i' % int(roi+1), fontsize=12)
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(roi_trialdir, 'orderedreps_roi%05d.png' % int(roi+1)))
+    pl.close()
+
 
 #%%
 def calculate_gratings_stats(animalid, session, fov, run, traceid, 
@@ -957,6 +1007,9 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
 
 
     #%%
+    fit_interp = True
+    plot_interp = True
+    new_length = 20
     
     if do_fits:
             
@@ -972,20 +1025,24 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
     
         oris = sorted(sdf['ori'].unique())
     
-        if plot_interpolate:
-            new_length = 20 
+        oris = np.append(oris, oris[0])
+        
+        if plot_interpolate or fit_interp:
+            #new_length = 20
             oris_interp = []
             for orix, ori in enumerate(oris[0:-1]):
                 if ori == oris[-2]:
                     oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=True, num=new_length+1))
                 else:
                     oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=False, num=new_length))          
-        
+        else:
+            new_length = 1
+            
         dir_fit_color = 'cornflowerblue'
         ori_fit_color = 'red'
         
         # Fit each roi's response, and plot:
-        roi_figdir = os.path.join(roi_fitdir, 'roi_fits')
+        roi_figdir = os.path.join(roi_fitdir, 'roi_fits2')
         if not os.path.exists(roi_figdir):
             os.makedirs(roi_figdir)
         
@@ -1059,6 +1116,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                 
             curr_oris = np.array([stimdf['ori'][c] for c in curr_cfgs])        
     
+
             # Least squares fit. Starting values found by inspection.
             r_max = mean_responses[curr_cfgs].max()
             r_pref = mean_responses.loc[best_cfg] + offset
@@ -1067,8 +1125,21 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
             C_offset = np.mean([mean_responses.loc[c] for c in curr_cfgs if c not in [best_cfg, null_cfg]]) + offset #r_pref*-1 #0 #mean_responses.min()
             #init_params = [r_pref, r_null, theta_pref, sigma, C_offset]
                 
-            x = curr_oris.copy()        
-            y = curr_resps.copy()
+            if fit_interp:
+                resps_interp = []
+                resps = copy.copy(curr_resps)
+                resps = np.append(curr_resps, curr_resps[0])
+                for orix, resp in enumerate(resps[0:-1]):
+                    if resp == resps[-2]:
+                        resps_interp.extend(np.linspace(resp, resps[orix+1], endpoint=True, num=new_length+1))
+                    else:
+                        resps_interp.extend(np.linspace(resp, resps[orix+1], endpoint=False, num=new_length))          
+                x = copy.copy(oris_interp)
+                y = copy.copy(resps_interp)
+            else:
+                x = curr_oris.copy()        
+                y = curr_resps.copy()
+            
             try:
                 # Fit for direction:
                 init_params_dsi = [r_pref, r_null, theta_pref, sigma, C_offset]
@@ -1107,8 +1178,12 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                 # Plot fits:
                 if roi_fit_dir is not None and roi_fit_dir['success']:
                     # Interpolate the data using a cubic spline to "new_length" samples      
-                    x_plot = np.array(oris_interp).copy() if plot_interpolate else x.copy()
-                    tuning_fit = double_gaussian( x_plot, *roi_fit_dir['popt']) if plot_interpolate else roi_fit_dir['fit_y'].copy()
+                    if not fit_interp:
+                        x_plot = np.array(oris_interp).copy() if plot_interpolate else x.copy()
+                        tuning_fit = double_gaussian( x_plot, *roi_fit_dir['popt']) if plot_interpolate else roi_fit_dir['fit_y'].copy()
+                    else:
+                        x_plot = roi_fit_dir['x'][0:-new_length]
+                        tuning_fit = roi_fit_dir['fit_y'][0:-new_length]
                     ax1.plot(x_plot, tuning_fit, c=dir_fit_color, label='dir (r2=%.2f)' % roi_fit_dir['r2'])
                     ax1.text(0, ax1.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
                     # Plot polar fit:
@@ -1143,9 +1218,14 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
                 
         #%%
         
+        fit_thr = 0.7
+        tuned_cells = [r for r, res in fit_results.items() if res['r2']>=fit_thr]
+        
         all_metrics = pd.concat(all_metrics_list, axis=0)
         
-        g = sns.pairplot(all_metrics[[s for s in all_metrics.columns if s != 'roi']])
+        tuning_df = all_metrics[all_metrics['roi'].isin(tuned_cells)]
+        
+        g = sns.pairplot(tuning_df[[s for s in all_metrics.columns if s != 'roi']])
         
         #sns.distplot([g.groupby(['config']).mean()[metric_type].max() for k, g in gdf], ax=ax, kde=False, norm_hist=True)
         #ax.set_title('%s (thr: %.3f)' % (metric_type, response_thr))
@@ -1156,7 +1236,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         label_figure(g.fig, data_identifier)
         
         
-        pl.savefig(os.path.join(roi_fitdir, 'compare_all_metrics.png'))
+        pl.savefig(os.path.join(roi_fitdir, 'compare_all_metrics_tuned_cells_fit_thr_%.2f.png'))
         pl.close()
     
         #%%
@@ -1180,18 +1260,23 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         #            uopp = mean response to opposite direction
         #              
         
-        
-        fit_thr = 0.9
-        fit_roi_list = [r for r, results in fit_results.items() if results['r2'] >= fit_thr]
-        print("%i out of %i responsive cells fit for osi/dsi." % (len(fit_roi_list), len(roi_list)))
+        #oris = sorted(sdf['ori'].unique())
+
+        #fit_roi_list = [r for r, results in fit_results.items() if results['r2'] >= fit_thr]
+        print("%i out of %i responsive cells fit for osi/dsi." % (len(tuned_cells), len(roi_list)))
         
         DSIs=[]; OSIs=[]; OSI_cvs=[]; DSI_cvs=[]; pref_oris=[]; curr_roi_list=[]; r2_values=[]
-        for roi, fresults in fit_results.items():
+        for roi in tuned_cells:
+            
+            fresults = fit_results[roi] #roi, fresults in fit_results.items():
             [r_pref_fit, r_null_fit, theta_pref, sigma, C_offset] = fresults['popt']
             
-            mean_response = fresults['fit_y'] #fit_results[roi]['mean_responses']
+            #mean_response = fresults['fit_y'][0:-new_length] #fit_results[roi]['mean_responses']
+            #oris = fresults['x'][0:-new_length]
+            oris = fresults['x'][0::new_length][0:-1]
+            mean_response = np.array(fresults['fit_y'][0::new_length][0:-1])
             
-            theta_prefE = int(curr_oris[np.where(np.abs(curr_oris - theta_pref) == np.min(np.abs(curr_oris - theta_pref)))])
+            theta_prefE = int( oris[ int(np.where(np.abs(oris - theta_pref) == np.min(np.abs(oris - theta_pref)))[0]) ])
             if r_pref_fit < r_null_fit:
                 theta_prefE = (theta_prefE - 180) % 360. #list(curr_oris).index((theta_prefE - 180)%360.)
             theta_null = (theta_prefE - 180) % 360.
@@ -1209,10 +1294,11 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
             rDSI = (r_pref - r_null) / (r_pref + r_null)
             rOSI = (r_pref - r_orth) / (r_pref + r_orth)
             
-            curr_resps =  mean_response #fit_results[roi]['mean_responses']
-            curr_oris =  fresults['oris']
-            rOSI_cv = 1 - np.abs( np.sum( [r_theta * np.exp(2j*theta) for r_theta, theta in zip(curr_resps, curr_oris)] ) / np.sum(curr_resps) )
-            rDSI_cv = 1 - np.abs( np.sum( [r_theta * np.exp(1j*theta) for r_theta, theta in zip(curr_resps, curr_oris)] ) / np.sum(curr_resps) )
+            #curr_resps = mean_response #fit_results[roi]['mean_responses']
+            #curr_oris =  fresults['oris']
+            rOSI_cv = np.abs( np.sum( [r_theta * np.exp(2j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
+            #rOSI_cv = np.abs( np.sum( [r_theta * np.exp(2j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
+            rDSI_cv = np.abs( np.sum( [r_theta * np.exp(1j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
             
             DSIs.append(rDSI)
             OSIs.append(rOSI)
@@ -1305,18 +1391,15 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
     
         label_figure(g.fig, data_identifier)
         
-        figname = 'distN_osi_dsi_circvar_all'
+        figname = 'distN_osi_dsi_circvar_fit_thr_%.2f' % fit_thr
         pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
-        pl.close()
+        #pl.close()
         
         #%% Plot thresholded:
-        fit_thr = 0.9
         
         cmap = 'hls'
         noris = len(curr_oris)
-        
-        
-        
+
         fig, ax = pl.subplots()
         colorvals = sns.color_palette(cmap, noris) # len(gratings_sconfigs))
         if statsdf.shape[0] > 0:
@@ -1325,22 +1408,11 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid,
         ax.set_ylabel('counts')
         
         label_figure(fig, data_identifier)
-        figname = 'hist_dir_selectivity_all' 
+        figname = 'hist_dir_selectivity_fit_thr_%.2f' % fit_thr 
         pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
         pl.close()
         
-        
-        fig, ax = pl.subplots()
-        colorvals = sns.color_palette(cmap, noris) # len(gratings_sconfigs))
-        if statsdf.shape[0] > 0:
-            hist_gratings_stats(statsdf[statsdf['r2']>=fit_thr], colorvals, ax=ax) 
-        ax.set_title('preferred orientation', fontsize=18)
-        ax.set_ylabel('counts')
-        
-        label_figure(fig, data_identifier)
-        figname = 'hist_dir_selectivity_fit_thr_%.2f' % fit_thr
-        pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
-        pl.close()
+    
         
         #%
         ddf = statsdf[statsdf['r2'] >= fit_thr][quant_stats]
