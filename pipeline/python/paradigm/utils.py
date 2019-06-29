@@ -481,9 +481,22 @@ def load_raw_run(traceid_dir, trace_type='np_subtracted', combined=False, create
 #        ons.append(on_idx)
 #    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
 #    stim_on_frame = list(set(ons))[0]
-    ons = [int(np.where(t==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
-    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
-    stim_on_frame = list(set(ons))[0]
+    try:
+        ons = [int(np.where(np.array(t)==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        assert len(list(set(ons))) == 1
+        stim_on_frame = list(set(ons))[0]
+    except Exception as e: 
+        all_ons = [np.where(np.array(t)==0)[0] for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        all_ons = np.concatenate(all_ons).ravel()
+        print len(all_ons)
+        unique_ons = np.unique(all_ons)
+        print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(unique_ons))))
+        stim_on_frame = int(round( np.mean(unique_ons) ))
+        print("--- assigning stim on frame: %i" % stim_on_frame)  
+        
+    #ons = [int(np.where(t==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+    #assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
+    #stim_on_frame = list(set(ons))[0]
 
     if verbose:
         print "-------------------------------------------"
@@ -1638,17 +1651,29 @@ def collate_trials(trace_arrays_dir, dff=False, smoothed=False, fmt='hdf5', nonn
                               'stim_dur': stim_durs #np.tile(stim_dur, trials.shape)
                               }, index=xdata_df.index)
     #print np.where([t for t in labels_df.groupby('trial')['tsec'].apply(np.array)][0] == 0)[0]
+    print("*** LABELS:", labels_df.shape)
     #print [t for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
     for t in sorted(list(set(labels_df['trial'])), key=natural_keys):
         onset = np.where(labels_df[labels_df['trial']==t]['tsec'].values==0)[0]
+        #print t, onset
         if len(onset) == 0:
             break
             #print t
             #print labels_df['tsec']
 
-    ons = [int(np.where(np.array(t)==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
-    assert len(list(set(ons))) == 1, "Stim onset index has multiple values..."
-    stim_on_frame = list(set(ons))[0]
+    try:
+        ons = [int(np.where(np.array(t)==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        assert len(list(set(ons))) == 1
+        stim_on_frame = list(set(ons))[0]
+    except Exception as e: 
+        all_ons = [np.where(np.array(t)==0)[0] for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        all_ons = np.concatenate(all_ons).ravel()
+        print len(all_ons)
+        unique_ons = np.unique(all_ons)
+        print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(unique_ons))))
+        stim_on_frame = int(round( np.mean(unique_ons) ))
+        print("--- assigning stim on frame: %i" % stim_on_frame)
+ 
     stim_ons_df = pd.DataFrame({'stim_on_frame': np.tile(stim_on_frame, (len(tstamps),)),
                                 'nframes_on': nframes_on,
                                 }, index=labels_df.index)
