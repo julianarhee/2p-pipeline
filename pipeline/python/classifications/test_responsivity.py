@@ -308,7 +308,63 @@ def group_roidata_stimresponse(roidata, labels_df):
 
 
 
-def get_roi_response_by_trial(roidata, labels_df):
+def get_roi_trial_response(roidata, labels_df):
+    '''
+    roidata: array of shape nframes_total x nrois
+    labels:  dataframe of corresponding nframes_total with trial/config info
+    
+    Returns:
+        grouped dataframe, where each group is a cell's dataframe of shape ntrials x (various trial metrics and trial/config info)
+    '''
+    
+#    print('...min')
+#    if np.nanmin(roidata) < 0:
+#        roidata = roidata - np.nanmin(roidata)
+#        print(roidata.min())
+#    
+    try:
+        stimdur_vary = False
+        assert len(labels_df['nframes_on'].unique())==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
+        assert len(labels_df['stim_on_frame'].unique())==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
+        nframes_on = int(round(labels_df['nframes_on'].unique()[0]))
+        stim_on_frame =  int(round(labels_df['stim_on_frame'].unique()[0]))
+    except Exception as e:
+        stimdur_vary = True
+        
+    groupby_list = ['config', 'trial']
+    config_groups = labels_df.groupby(groupby_list)
+
+    df_list = []
+    for (config, trial), trial_ixs in config_groups:
+        if stimdur_vary:
+            # Get stim duration info for this config:
+            assert len(labels_df[labels_df['config']==config]['nframes_on'].unique())==1, "Something went wrong! More than 1 unique stim dur for config: %s" % config
+            assert len(labels_df[labels_df['config']==config]['stim_on_frame'].unique())==1, "Something went wrong! More than 1 unique stim ON frame for config: %s" % config
+            nframes_on = labels_df[labels_df['config']==config]['nframes_on'].unique()[0]
+            stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
+             
+        trial_frames = roidata[trial_ixs.index.tolist(), :]
+    
+        nrois = trial_frames.shape[-1]
+        #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
+        base_mean = trial_frames[0:stim_on_frame, :].mean(axis=0)
+        base_std = trial_frames[0:stim_on_frame, :].std(axis=0)
+        stim_mean = trial_frames[stim_on_frame:stim_on_frame+(nframes_on*2), :].mean(axis=0)
+        
+        df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
+                                     'trial': np.tile(trial, (nrois,)), 
+                                     'meanstim': stim_mean,
+                                     'base_std': base_std,
+                                     'base_mean': base_mean,
+                                     }))
+
+    df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois
+    df_by_rois = df.groupby(df.index)
+    
+    return df_by_rois
+
+
+def get_roi_metrics_by_trial(roidata, labels_df):
     '''
     roidata: array of shape nframes_total x nrois
     labels:  dataframe of corresponding nframes_total with trial/config info
