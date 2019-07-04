@@ -242,6 +242,116 @@ def do_KW_test(rdata, post_hoc='dunn', metric='meanstim', asdict=True):
 
 #%%
 
+def group_df_roidata_stimresponse(roidata, labels_df):
+    '''
+    roidata: dataframe of shape nframes_total x nrois
+    labels:  dataframe of corresponding nframes_total with trial/config info
+    
+    Returns:
+        grouped dataframe, where each group is a cell's dataframe of shape ntrials x (various trial metrics and trial/config info)
+    '''
+
+    try:
+        stimdur_vary = False
+        assert len(labels_df['nframes_on'].unique())==1, "More than 1 idx found for nframes on... %s" % str(list(set(labels_df['nframes_on'])))
+        assert len(labels_df['stim_on_frame'].unique())==1, "More than 1 idx found for first frame on... %s" % str(list(set(labels_df['stim_on_frame'])))
+        nframes_on = int(round(labels_df['nframes_on'].unique()[0]))
+        stim_on_frame =  int(round(labels_df['stim_on_frame'].unique()[0]))
+    except Exception as e:
+        stimdur_vary = True
+        
+##        
+    groupby_list = ['config', 'trial']
+    config_groups = labels_df.groupby(groupby_list)
+
+    df_list = []
+    for (config, trial), trial_ixs in config_groups:
+        if stimdur_vary:
+            # Get stim duration info for this config:
+            assert len(labels_df[labels_df['config']==config]['nframes_on'].unique())==1, "Something went wrong! More than 1 unique stim dur for config: %s" % config
+            assert len(labels_df[labels_df['config']==config]['stim_on_frame'].unique())==1, "Something went wrong! More than 1 unique stim ON frame for config: %s" % config
+            nframes_on = labels_df[labels_df['config']==config]['nframes_on'].unique()[0]
+            stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
+            
+        tix = trial_ixs.index.tolist()
+        
+        trial_frames = roidata.loc[tix] #, :]
+        trial_start = tix[0]
+        stim_start = tix[stim_on_frame]
+        stim_end = tix[stim_on_frame+nframes_on]
+        nrois = trial_frames.shape[-1]
+        #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
+        base_mean = trial_frames.loc[trial_start:stim_start].apply(np.nanmean, axis=0) #np.nanmean(trial_frames[0:stim_on_frame, :], axis=0)
+        base_std = trial_frames.loc[trial_start:stim_start].apply(np.nanstd, axis=0) #np.nanstd(trial_frames[0:stim_on_frame, :], axis=0)
+        stim_mean = trial_frames.loc[stim_start:stim_end].apply(np.nanmean, axis=0)  #np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_on, :], axis=0)
+        
+#        nrois = trial_frames.shape[-1]
+#        #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
+#        base_mean = np.nanmean(trial_frames[0:stim_on_frame, :], axis=0)
+#        base_std = np.nanstd(trial_frames[0:stim_on_frame, :], axis=0)
+#        stim_mean = np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_on, :], axis=0)
+#        
+        #zscore = (stim_mean - base_mean) / base_std
+        zscore = (stim_mean) / base_std
+        dff = (stim_mean - base_mean) / base_mean
+        df = stim_mean - base_mean
+        snr = stim_mean / base_mean
+        df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
+                                     'trial': np.tile(trial, (nrois,)), 
+                                     'meanstim': stim_mean,
+                                     'zscore': zscore,
+                                     'dff': dff,
+                                     'df': df, 
+                                     'snr': snr,
+                                     'base_std': base_std,
+                                     'base_mean': base_mean,
+                                     
+                                     }))
+#    df_list = []
+#    for config, cdf in labels_df.groupby(['config']):
+#        if stimdur_vary:
+#            # Get stim duration info for this config:
+#            assert len(labels_df[labels_df['config']==config]['nframes_on'].unique())==1, "Something went wrong! More than 1 unique stim dur for config: %s" % config
+#            assert len(labels_df[labels_df['config']==config]['stim_on_frame'].unique())==1, "Something went wrong! More than 1 unique stim ON frame for config: %s" % config
+#            nframes_on = labels_df[labels_df['config']==config]['nframes_on'].unique()[0]
+#            stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
+#        
+#        for trial, tdf in cdf.groupby(['trial']):
+#            
+#            tix = tdf.index.tolist()
+#            trial_frames = roidata.loc[tix] #, :]
+#            trial_start = tix[0]
+#            stim_start = tix[stim_on_frame]
+#            stim_end = tix[stim_on_frame+int(nframes_on*1.5)]
+#            nrois = trial_frames.shape[-1]
+#            #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
+#            base_mean = trial_frames.loc[trial_start:stim_start].apply(np.nanmean, axis=0) #np.nanmean(trial_frames[0:stim_on_frame, :], axis=0)
+#            base_std = trial_frames.loc[trial_start:stim_start].apply(np.nanstd, axis=0) #np.nanstd(trial_frames[0:stim_on_frame, :], axis=0)
+#            stim_mean = trial_frames.loc[stim_start:stim_end].apply(np.nanmean, axis=0)  #np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_on, :], axis=0)
+#            
+#            #zscore = (stim_mean - base_mean) / base_std
+#            zscore = (stim_mean) / base_std
+#            dff = (stim_mean - base_mean) / base_mean
+#            df = stim_mean - base_mean
+#            snr = stim_mean / base_mean
+#            df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
+#                                         'trial': np.tile(trial, (nrois,)), 
+#                                         'meanstim': stim_mean,
+#                                         'zscore': zscore,
+#                                         'dff': dff,
+#                                         'df': df, 
+#                                         'snr': snr,
+#                                         'base_std': base_std,
+#                                         'base_mean': base_mean,
+#                                         
+#                                         }))
+    
+    df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois
+    df_by_rois = df.groupby(df.index)
+    
+    return df_by_rois
+
+
 def group_roidata_stimresponse(roidata, labels_df):
     '''
     roidata: array of shape nframes_total x nrois
@@ -255,6 +365,9 @@ def group_roidata_stimresponse(roidata, labels_df):
 #    if np.nanmin(roidata) < 0:
 #        roidata = roidata - np.nanmin(roidata)
 #        print(roidata.min())
+
+    if isinstance(roidata, pd.DataFrame):
+        roidata = roidata.values
 #    
     try:
         stimdur_vary = False
@@ -281,11 +394,12 @@ def group_roidata_stimresponse(roidata, labels_df):
     
         nrois = trial_frames.shape[-1]
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
-        base_mean = trial_frames[0:stim_on_frame, :].mean(axis=0)
-        base_std = trial_frames[0:stim_on_frame, :].std(axis=0)
-        stim_mean = trial_frames[stim_on_frame:stim_on_frame+(nframes_on*2), :].mean(axis=0)
+        base_mean = np.nanmean(trial_frames[0:stim_on_frame, :], axis=0)
+        base_std = np.nanstd(trial_frames[0:stim_on_frame, :], axis=0)
+        stim_mean = np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_on, :], axis=0)
         
-        zscore = (stim_mean - base_mean) / base_std
+        #zscore = (stim_mean - base_mean) / base_std
+        zscore = (stim_mean) / base_std
         dff = (stim_mean - base_mean) / base_mean
         df = stim_mean - base_mean
         snr = stim_mean / base_mean
