@@ -46,50 +46,151 @@ from pipeline.python.traces.utils import load_TID
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
 
+
+
+#%%
+
+
+import glob
+import os
+import json
+import re
+import pandas as pd
+
+class Struct():
+    pass
+
+def get_roi_id(animalid, session, fov, run, traceid, rootdir='/n/coxfs01/2p-data'):
+    traceid_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run, \
+                                         'traces', 'traceids_*.json'))[0] # % traceid, ))
+    with open(traceid_fpath, 'r') as f:
+        traceids = json.load(f)
+    return traceids[traceid]['PARAMS']['roi_id']
+
+class Experiment():
+    def __init__(self, experiment_type, animalid, session, fov, \
+                 traceid='traces001', trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+        self.name = experiment_type
+        self.animalid = animalid
+        self.session = session
+        self.fov = fov
+        self.traceid = traceid
+        self.trace_type = trace_type
+        self.rois = get_roi_id(animalid, session, fov, experiment_type, traceid, rootdir=rootdir)
+        self.source =  self.get_data_paths(rootdir=rootdir)
+        self.data = self.load()
+        
+                
+    def load(self):
+        data = Struct()
+        assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
+        if self.source.endswith('npz'):
+            dset = np.load(self.source)
+            print("[%s]...loading data array\n(%s)" % (self.name, self.source))
+            data.traces  = pd.DataFrame(dset[self.trace_type])
+            data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+            sdf = pd.DataFrame(dset['sconfigs'][()]).T
+            round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+            sdf['size'] = round_sz
+            data.sdf = sdf
+            data.info = dset['run_info'][()]
+        else:
+            print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
+        #elif self.source.endswith('h5'):
+        #    data = h5py.File(fpath, 'r')
+            # TODO: formatt retino data in sensible way with rutils
+            
+        return data
+    
+            
+    def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
+        fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+        all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name))
+        combined_runs = [r for r in all_runs if 'combined' in r]
+        single_runs = []
+        for crun in combined_runs:
+            stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
+            print stim_type
+            single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
+        run_list = [r for r in all_runs if r not in single_runs and 'compare' not in r]
+
+        data_fpaths = []
+        for run_dir in run_list:
+            run_name = os.path.split(run_dir)[-1]
+            print("[%s] ... getting data path." % run_name)
+            try:
+                if 'retino' in run_dir:
+                    fpath = glob.glob(os.path.join(run_dir, 'traces', 'extracted_traces.h5'))[0]
+                else:
+                    fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
+                                                   'data_arrays', 'datasets.npz'))[0]
+                data_fpaths.append(fpath)
+                
+            except IndexError:
+                print("... no data arrays found for: %s" % run_name)
+        if len(data_fpaths) > 1:
+            print("More than 1 file found for %s" % self.name)
+            for fi, fpath in enumerate(data_fpaths):
+                print fi, fpath
+            sel = input("Select IDX of file path to use: ")
+            data_fpath = data_fpaths[int(sel)]
+        else:
+            data_fpath = data_fpaths[0]
+        
+        corresp_run_name = os.path.split(data_fpath.split('/traces/')[0])[-1]
+        if self.name != corresp_run_name:
+            print("Renaming experiment to run name: %s" % corresp_run_name)
+            self.name = corresp_run_name
+
+        return data_fpath
+
+
+
+
 #%% Load Datasets:
-
-def extract_options(options):
-
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
-                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid',
-                          default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session',
-                          default='', help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
-    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-                          action='append',
-                          help="run ID in order of runs")
-    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-                          action='append',
-                          help="trace ID in order of runs")
-    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
-    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
-
-
-    # Pupil filtering info:
-    parser.add_option('--no-pupil', action="store_false",
-                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
-    parser.add_option('-s', '--radius-min', action="store",
-                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
-    parser.add_option('-B', '--radius-max', action="store",
-                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
-    parser.add_option('-d', '--dist', action="store",
-                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
-
-    (options, args) = parser.parse_args(options)
-
-    return options
+#
+#def extract_options(options):
+#
+#    parser = optparse.OptionParser()
+#
+#    parser.add_option('-D', '--root', action='store', dest='rootdir',
+#                          default='/nas/volume1/2photon/data',
+#                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+#    parser.add_option('-i', '--animalid', action='store', dest='animalid',
+#                          default='', help='Animal ID')
+#
+#    # Set specific session/run for current animal:
+#    parser.add_option('-S', '--session', action='store', dest='session',
+#                          default='', help='session dir (format: YYYMMDD_ANIMALID')
+#    parser.add_option('-A', '--acq', action='store', dest='acquisition',
+#                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+#                          default='raw', help="trace type [default: 'raw']")
+#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
+#                          action='append',
+#                          help="run ID in order of runs")
+#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
+#                          action='append',
+#                          help="trace ID in order of runs")
+#    parser.add_option('-n', '--nruns', action='store', dest='nruns', default=1, help="Number of consecutive runs if combined")
+#    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+#    parser.add_option('--combo', action='store_true', dest='combined', default=False, help="Set if using combined runs with same default name (blobs_run1, blobs_run2, etc.)")
+#    parser.add_option('-q', '--quant', action='store', dest='quantile', default=0.08, help="Quantile of trace to include for drift calculation (default: 0.08)")
+#
+#
+#    # Pupil filtering info:
+#    parser.add_option('--no-pupil', action="store_false",
+#                      dest="filter_pupil", default=True, help="Set flag NOT to filter PSTH traces by pupil threshold params")
+#    parser.add_option('-s', '--radius-min', action="store",
+#                      dest="pupil_radius_min", default=25, help="Cut-off for smnallest pupil radius, if --pupil set [default: 25]")
+#    parser.add_option('-B', '--radius-max', action="store",
+#                      dest="pupil_radius_max", default=65, help="Cut-off for biggest pupil radius, if --pupil set [default: 65]")
+#    parser.add_option('-d', '--dist', action="store",
+#                      dest="pupil_dist_thr", default=5, help="Cut-off for pupil distance from start, if --pupil set [default: 5]")
+#
+#    (options, args) = parser.parse_args(options)
+#
+#    return options
 
 
         
