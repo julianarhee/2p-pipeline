@@ -60,6 +60,137 @@ def cleanup_axes(axes_list, which_axis='y'):
                 label.set_visible(False)
             ax.xaxis.offsetText.set_visible(False)
 
+def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, stimdf,  trace_type='dff',\
+                  fig=None, nr=1, nc=1, s_row=0, colspan=1):
+    if fig is None:
+        fig = pl.figure()
+
+    pl.figure(fig.number)
+        
+    # ---------------------------------------------------------------------
+    #% plot raw traces:
+    mean_traces, std_traces, tpoints = get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, stimdf)
+    nframes_on = labels['nframes_on'].unique()[0]
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    
+    ymin = (mean_traces - std_traces ).min()
+    ymax = (mean_traces + std_traces ).max()
+    for icfg in range(len(curr_cfgs)):
+        ax = pl.subplot2grid((nr, nc), (s_row, icfg), colspan=colspan)
+        ax.plot(tpoints, mean_traces[icfg, :], color='k')
+        ax.set_xticks([tpoints[stim_on_frame], round(tpoints[stim_on_frame+nframes_on], 1)])
+        ax.set_xticklabels(['', round(tpoints[stim_on_frame+nframes_on], 1)])
+        ax.set_ylim([ymin, ymax])
+        if icfg > 0:
+            ax.set_yticks([]); ax.set_yticklabels([]);
+            ax.set_xticks([]); ax.set_xticklabels([]);
+            sns.despine(ax=ax, offset=4, trim=True, left=True, bottom=True)
+        else:
+            ax.set_ylabel(trace_type); ax.set_xlabel('time (s)');
+            sns.despine(ax=ax, offset=4, trim=True)
+        sem_plus = np.array(mean_traces[icfg,:]) + np.array(std_traces[icfg,:])
+        sem_minus = np.array(mean_traces[icfg,:]) - np.array(std_traces[icfg,:])
+        ax.fill_between(tpoints, sem_plus, y2=sem_minus, alpha=0.5, color='k')
+
+    return fig, ax
+
+
+def plot_tuning_curve_roi(curr_oris, curr_resps, curr_sems=None, response_type='dff',\
+                          fig=None, ax=None, nr=1, nc=1, colspan=1, s_row=0, s_col=0, color='k',
+                         marker='o', lw=1, markersize=5):
+    if fig is None:
+        fig = pl.figure()
+    
+    pl.figure(fig.number)
+        
+    # Plot tuning curve:
+    if ax is None:
+        ax = pl.subplot2grid((nr, nc), (s_row, s_col), colspan=colspan)
+    ax.plot(curr_oris, curr_resps, color=color, marker=marker, markersize=markersize, lw=lw)
+    if curr_sems is not None:
+        ax.errorbar(curr_oris, curr_resps, yerr=curr_sems, fmt='none', ecolor=color)
+    ax.set_xticks(curr_oris)
+    ax.set_xticklabels(curr_oris)
+    ax.set_ylabel(response_type)
+    #ax.set_title('(sz %i, sf %.2f)' % (best_cfg_params['size'], best_cfg_params['sf']), fontsize=8)
+    sns.despine(trim=True, offset=4, ax=ax)
+    
+    return fig, ax
+
+def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='dff',\
+                          fig=None, ax=None, nr=1, nc=1, colspan=1, s_row=0, s_col=0, color='k'):
+    if fig is None:
+        fig = pl.figure()
+    
+    pl.figure(fig.number)
+    
+    # Plot polar graph:
+    if ax is None:
+        ax = pl.subplot2grid((nr,nc), (s_row, s_col), colspan=colspan, polar=True)
+    thetas = np.array([np.deg2rad(c) for c in curr_oris])
+    radii = curr_resps.copy()
+    thetas = np.append(thetas, np.deg2rad(curr_oris[0]))  # append first value so plot line connects back to start
+    radii = np.append(radii, curr_resps[0]) # append first value so plot line connects back to start
+    ax.plot(thetas, radii, '-', color=color)
+    ax.set_theta_zero_location("N")
+    ax.set_yticks([curr_resps.min(), curr_resps.max()])
+    ax.set_yticklabels(['', round(curr_resps.max(), 1)])
+
+    
+    return fig, ax
+
+def plot_roi_tuning_raw_and_fit(roi, raw_traces, labels, curr_cfgs, stimdf,\
+                                responses_df, fit_results=None,
+                                trace_type='dff'):
+
+    fig = pl.figure(figsize=(12,8))
+    fig.patch.set_alpha(1)
+    nr=2; nc=8;
+
+    fig, ax = plot_psth_roi(roi, raw_traces, labels, curr_cfgs, stimdf, 
+                            trace_type=trace_type,
+                            fig=fig, nr=nr, nc=nc, s_row=0)
+
+    curr_oris = np.array([stimdf['ori'][c] for c in curr_cfgs])  
+    curr_resps = responses_df.mean()
+    curr_sems = responses_df.sem()
+    fig, ax1 = plot_tuning_curve_roi(curr_oris, curr_resps, curr_sems=curr_sems, 
+                                     response_type=trace_type,
+                                     fig=fig, nr=nr, nc=nc, s_row=1, colspan=5,
+                                     marker='o', markersize=5, lw=0)
+
+    fig, ax2 = plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=curr_sems, 
+                                     response_type=trace_type,
+                                     fig=fig, nr=nr, nc=nc, s_row=1, s_col=6, colspan=2)
+
+
+    if fit_results is not None:
+        oris_interp = fit_results['x'] #np.array([rfit['x'] for rfit in fit_results]).mean(axis=0)
+        resps_interp = fit_results['y'] ##np.array([rfit['y'] for rfit in fit_results]).mean(axis=0)
+        #resps_interp_sem = stats.sem(np.array([rfit['y'] for rfit in fit_results]), axis=0)
+        resps_fit = fit_results['fit_y'] #np.array([rfit['fit_y'] for rfit in fit_results]).mean(axis=0)
+        n_intervals_interp = fit_results['n_intervals_interp'] # rfit['n_intervals_interp']
+
+        fig, ax1 = plot_tuning_curve_roi(oris_interp[0:-n_intervals_interp], 
+                                         resps_fit[0:-n_intervals_interp], 
+                                         curr_sems=None, #resps_interp_sem[0:-n_intervals_interp], 
+                                         response_type=trace_type,color='cornflowerblue',
+                                         markersize=0, lw=1, marker=None,
+                                         fig=fig, ax=ax1, nr=nr, nc=nc, s_row=1, colspan=5)
+
+        fig, ax2 = plot_tuning_polar_roi(oris_interp, 
+                                         resps_fit, 
+                                         curr_sems=None, #resps_interp_sem, 
+                                         response_type=trace_type, color='cornflowerblue',
+                                         fig=fig, ax=ax2, nr=nr, nc=nc, s_row=1, s_col=6, colspan=2)
+
+    if fit_results['success']: ##any([rfit['success'] for rfit in fit_results]):
+        r2_avg = fit_results['r2'] #np.mean([rfit['r2'] for rfit in fit_results])
+        ax1.text(0, ax1.get_ylim()[-1]*0.75, 'r2=%.2f' % r2_avg, fontsize=6)
+    else:
+        ax1.text(0, ax.get_ylim()[-1]*0.75, 'no fit', fontsize=6)
+    
+    return fig, ax, ax1, ax2
 
 
 #%%
@@ -732,150 +863,74 @@ data_identifier = '|'.join([animalid, session, fov, run, traceid])
 create_new=True
 n_processes=1
 
+response_type = 'meanstim'
+response_thr = 0.1
+goodness_type = 'zscore' #['zscore', 'snr']
+goodness_thr = 2.5 # [1.5, 1.5]
 
+metric_type = 'zscore'
     
 #%%
-def get_dft_response(thetas, responses, n=2):
-    real = np.sum( [tr * np.cos( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
-    imag = np.sum( [tr * np.sin( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
-    return real + imag
-
-def get_vector_length(thetas, responses):
-    #mag = np.abs( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
-    #theta = np.angle( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
-    return pt# theta, mag
-
-
-#%
-
-def get_vector_response(thetas, responses):
-    print thetas
-    a = np.sum( [tr*np.cos(2*tv) for tv, tr in zip(thetas, responses)] )
-    b = np.sum( [tr*np.sin(2*tv) for tv, tr in zip(thetas, responses)] )
-    if a > 0:
-        ptheta = 0.5*np.arctan(b/a)
-    elif a < 0:
-        ptheta = np.deg2rad(180.) + 0.5*np.arctan(b/a)
-        
-    #ptheta = (0.5*np.arctan(b/a) if a>0 else (180 + 0.5*np.arctan(b/a))
-    
-    #pmag = (1. / len(thetas)) * np.sqrt(a**2 + b**2)
-    pmag = np.sqrt(a**2 + b**2) / np.sum( responses )
-    
-    return ptheta, pmag
-
-#%%
-#roi_trialdir = os.path.join(roi_fitdir, 'roi_trials')
-#if not os.path.exists(roi_trialdir):
-#    os.makedirs(roi_trialdir)
-#    
+#def get_dft_response(thetas, responses, n=2):
+#    real = np.sum( [tr * np.cos( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
+#    imag = np.sum( [tr * np.sin( (2*np.pi*tv*n) / len(thetas) ) for tv, tr in zip(thetas, responses)] )
+#    return real + imag
 #
-#roi = 30
+#def get_vector_length(thetas, responses):
+#    #mag = np.abs( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
+#    #theta = np.angle( np.sum( [resp*np.exp(1j*theta) for theta, resp in zip(thetas, responses)] ) / np.sum( responses ) )
+#    return pt# theta, mag
 #
-#roi = 93
+#
 ##%
 #
-#import spm1d
-#
-#
-#sig_rois = []
-#for roi in roi_list: #[30, 91, 93, 151]:
-#    
-#    roi_df = gdf.get_group(roi)
-#    
-#    mean_responses = roi_df.groupby(['config']).mean()[response_type]
-#    sem_responses = roi_df.groupby(['config']).sem()[response_type]
-#    sorted_config_ixs = mean_responses.values.argsort()[::-1]
-#    sorted_configs = [mean_responses.index[s] for s in sorted_config_ixs]
-#    
-#    constant_params = ['aspect', 'luminance', 'position', 'stimtype']
-#    params = [c for c in sdf.columns if c not in constant_params]
-#    stimdf = sdf[params]
-#    
-#    best_cfg = sorted_configs[0]
-#    best_cfg_params = stimdf.loc[best_cfg][[p for p in params if p!='ori']]
-#    curr_cfgs = sorted([c for c in stimdf.index.tolist() \
-#                        if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
-#                        key = lambda x: stimdf['ori'][x])
-#    
-#    # create "trials" of tuning curve (20 total) - randomly sample? go in order?
-#    trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
-#    #trialdict = dict((stimdf['ori'][cfg], tdf[response_type].values) for cfg, tdf in sorted(trialdf.groupby(['config']), key=lambda x: stimdf['ori'][x[0]])            
-#    
-#    trial_arr = np.array([tdf[response_type].values for cfg, tdf in sorted(trialdf.groupby(['config']), \
-#                                    key=lambda x: stimdf['ori'][x[0]])]).T # nreps x noris
-#    # TODO:  make this not stupid
-#    ntrials_in_cond = np.unique([len(t) for t in trial_arr])
-#    if len(np.unique([len(t) for t in trial_arr])) > 1:
-#        min_ntrials = np.min(np.unique([len(t) for t in trial_arr]))
-#        trial_arr_tmp = []
-#        for ti, tarr in enumerate(trial_arr):
-#            trial_arr_tmp.append(trial_arr[ti][0:min_ntrials])
-#        trial_arr = np.array(trial_arr_tmp).T
+#def get_vector_response(thetas, responses):
+#    print thetas
+#    a = np.sum( [tr*np.cos(2*tv) for tv, tr in zip(thetas, responses)] )
+#    b = np.sum( [tr*np.sin(2*tv) for tv, tr in zip(thetas, responses)] )
+#    if a > 0:
+#        ptheta = 0.5*np.arctan(b/a)
+#    elif a < 0:
+#        ptheta = np.deg2rad(180.) + 0.5*np.arctan(b/a)
 #        
-#    ntrials, nthetas = trial_arr.shape
-#            
-#            
-#    fig = pl.figure(figsize=(8,4))
-#    ax1 = pl.subplot2grid((1,2), (0, 0), colspan=1) #pl.subplots(1, 3) #pl.figure()
-#    for rep in range(ntrials):
-#        ax1.plot(trial_arr[rep, :], 'k')     
-#    ax1.plot(trial_arr.mean(axis=0), 'r')
-#    ax1.set_xticks(np.arange(0, len(oris)))
-#    ax1.set_xticklabels(oris)
+#    #ptheta = (0.5*np.arctan(b/a) if a>0 else (180 + 0.5*np.arctan(b/a))
 #    
-#    oris = sorted(sdf['ori'].unique())
-#    print(oris)
-#    thetas_rad = [np.deg2rad(o) for o in oris]
-#    print(thetas_rad)
+#    #pmag = (1. / len(thetas)) * np.sqrt(a**2 + b**2)
+#    pmag = np.sqrt(a**2 + b**2) / np.sum( responses )
 #    
-#    theta_vals=[]
-#    mag_vals=[]
-#    for rep in range(ntrials):
-#        pt = np.sum( tr*np.exp( (2*np.pi*1j*tv) / 360.)  for tv, tr in zip(oris, trial_arr[rep, :]))
-#        theta_vals.append( np.angle(pt) % (2*np.pi) )
-#        mag_vals.append(np.abs(pt))
-#    ax2 = pl.subplot2grid((1,2), (0, 1), colspan=1, polar=True) #pl.subplots(1, 3) #pl.figure()
-#    ax2.plot(theta_vals, mag_vals, 'o')
-#    ax2.set_theta_zero_location("N")
-#    
-##    vector_mag=[]; vector_dir=[];
-##    for a, b in zip(theta_vals, mag_vals):
-##        vecdir = np.arctan(b / a)
-##        vx = np.sqrt(a**2 + b**2) * np.cos(vecdir)
-##        vy = np.sqrt(a**2 + b**2) * np.sin(vecdir)
-##        
-##        vector_mag.append(vx)
-##        vector_dir.append(vy)
-##    
-##    for a, b in zip(vector_mag, vector_dir):
-##        print a, np.rad2deg(b)
-##    
-#    mean_theta = stats.circmean(theta_vals)
-#    mean_mag = np.mean(mag_vals)
-#    ax2.annotate("", xy=(0, 0), xytext=(mean_theta, mean_mag), arrowprops=dict(arrowstyle="<-"))
-#
-#    # Do stats:    
-#    XA = np.array((theta_vals, mag_vals)).T
-#    XB = np.zeros(XA.shape)
-#    XB[:, 0] = XA[:, 0]
-#    T2 = spm1d.stats.hotellings2(XA, XB, equal_var=True)
-#    
-#    T2i = T2.inference(0.05)
-#    
-#    if T2i.h0reject:
-#        stats_str = 'hotelling 2s ttest, p=%.3f' % T2i.p
-#        sig_rois.append(roi)
-#    else:
-#        stats_str = 'h0 reject fails'
-#    ax2.set_title('theta=%.2f (%s)' % (np.rad2deg(mean_theta), stats_str), fontsize=6) #(0, 0, 'theta=%.2f' % np.rad2deg(mean_theta))
-#
-#    pl.subplots_adjust(top=0.8, hspace=0.5)
-#
-#    fig.suptitle('roi %i' % int(roi+1), fontsize=12)
-#    label_figure(fig, data_identifier)
-#    pl.savefig(os.path.join(roi_trialdir, 'orderedreps_roi%05d.png' % int(roi+1)))
-#    pl.close()
+#    return ptheta, pmag
+
+#%%
+
+def group_configs(group, response_type):
+    config = group['config'].unique()[0]
+    group.index = np.arange(0, group.shape[0])
+
+    return pd.DataFrame(data={'%s' % config: group[response_type]})
+
+def get_init_params(response_vector):
+    theta_pref = response_vector.idxmax()
+    theta_null = (theta_pref + 180) % 360.
+    r_pref = response_vector.loc[theta_pref]
+    r_null = response_vector.loc[theta_null]
+    sigma = np.mean(np.diff([response_vector.index.tolist()]))
+    non_prefs = [t for t in response_vector.index.tolist() if t not in [theta_pref, theta_null]]
+    r_offset = np.mean([response_vector.loc[t] for t in non_prefs])
+    return r_pref, r_null, theta_pref, sigma, r_offset
+
+
+
+def interp_values(response_vector, n_intervals=3, wrap_value=None):
+    resps_interp = []
+    resps = copy.copy(response_vector)
+    if wrap_value is not None:
+        resps = np.append(response_vector, wrap_value)
+    for orix, resp in enumerate(resps[0:-1]):
+        if resp == resps[-2]:
+            resps_interp.extend(np.linspace(resp, resps[orix+1], endpoint=True, num=n_intervals+1))
+        else:
+            resps_interp.extend(np.linspace(resp, resps[orix+1], endpoint=False, num=n_intervals))          
+    return resps_interp
 
 
 #%%
@@ -923,12 +978,12 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
 
     
     #%%
-    response_type = 'meanstim'
-    response_thr = 0.1
-    goodness_type = 'zscore' #['zscore', 'snr']
-    goodness_thr = 1.1 # [1.5, 1.5]
-
-    metric_type = 'zscore'
+#    response_type = 'meanstim'
+#    response_thr = 0.1
+#    goodness_type = 'zscore' #['zscore', 'snr']
+#    goodness_thr = 2.5 # [1.5, 1.5]
+#
+#    metric_type = 'zscore'
     
     roi_list = [k for k, g in gdf if g.groupby(['config']).mean()[response_type].max() >= response_thr\
                 and g.groupby(['config']).mean()[goodness_type].max() >= goodness_thr] #\
@@ -952,73 +1007,27 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
     #roi_fitdir = os.path.join(traceid_dir, 'figures', 'fits', 'tuning_by_roi_%s' % response_type)
     #roi_fitdir = os.path.join(traceid_dir, 'figures', 'tuning', 'fit_%s_%s' % (response_type, fit_str))
     roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_str)
-    if not os.path.exists(roi_fitdir):
-        os.makedirs(roi_fitdir)
+    roi_figdir = os.path.join(roi_fitdir, 'roi_fits')
+    if not os.path.exists(roi_figdir):
+        os.makedirs(roi_figdir)
     print("Saving roi fits to: %s" % roi_fitdir)
     
     fit_results_fpath = os.path.join(roi_fitdir, 'roi_fits.pkl')
-    osi_results_fpath = os.path.join(roi_fitdir, 'roi_stats.pkl') #% osi_dsi_str
+    stat_results_fpath = os.path.join(roi_fitdir, 'roi_stats.pkl') #% osi_dsi_str
 
-    if not os.path.exists(fit_results_fpath) or create_new is True:
-        do_fits = True
-        
+
+    if create_new is False:
+        try:
+            print("Checking for existing results...")
+            with open(stat_results_fpath, 'rb') as f:
+                statsdf = pkl.load(f)    
+            with open(fit_results_fpath, 'rb') as f:
+                fit_results = pkl.load(f)
+        except Exception as e:
+            print("... unable to load, refitting.")
+            do_fits = True
     else:
-        do_fits = False
-        print("Loading existing results...")
-        with open(osi_results_fpath, 'rb') as f:
-            statsdf = pkl.load(f)    
-        with open(fit_results_fpath, 'rb') as f:
-            fit_results = pkl.load(f)
-            
-    
-    
-    #%%
-#    roi = 54
-#    roi_df = gdf.get_group(roi)
-#    roi_df.groupby(['config'])['trial'].count()
-#    
-#    pl.figure()
-#    sns.pairplot(roi_df)
-#    
-#    b_mean = roi_df['base_mean'].mean()
-#    b_std = roi_df['base_std'].std()
-#    dff = (roi_df['meanstim'] - b_mean) / b_mean
-#    df = roi_df['meanstim'] - b_mean
-#    snr = roi_df['meanstim'] / b_mean
-#    zs = (roi_df['meanstim'] - b_mean) / b_std
-#    
-#    rdf2 = pd.DataFrame({'dff': dff,
-#                         'snr': snr,
-#                         'zscore': zs,
-#                         'meanstim': roi_df['meanstim'],
-#                         'df': df})
-#            
-#    sns.pairplot(rdf2)
-#            
-#    rdf1 = roi_df[['dff', 'snr', 'zscore', 'meanstim', 'df']]
-#    
-#    sns.pairplot(rdf1)
-    
-#    roi = 17
-#    g = gdf.get_group(roi)
-#             
-#    quants = [c for c in g.columns if g[c].dtype==np.float64]
-#    g_df = g[quants]
-#    g_std = (g_df - g_df.mean()) / g_df.std()
-#    
-##    
-##    pl.figure()
-##    for c in quants:
-##        print c
-##        sns.distplot(g_std[c].values)
-#        
-#    sns.pairplot(g_std)
-#
-#
-#    lgroups = labels.groupby(['config', 'trial'])
-#    for (config, trial), trial_ixs in config_groups:
-#        raw_traces[roi]
-
+        do_fits = True
 
     #%%
     fit_interp = True
@@ -1036,191 +1045,130 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
         circuits, 8, 92. doi:10.3389/fncir.2014.00092
         '''
     
-    
-        oris = sorted(sdf['ori'].unique())
-    
-        oris = np.append(oris, 360) #oris[0])
-        
-        if plot_interpolate or fit_interp:
-            #new_length = 20
-            oris_interp = []
-            for orix, ori in enumerate(oris[0:-1]):
-                if ori == oris[-2]:
-                    oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=True, num=new_length+1))
-                else:
-                    oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=False, num=new_length))          
-        else:
-            new_length = 1
-            
-        dir_fit_color = 'cornflowerblue'
-        ori_fit_color = 'red'
-        
-        # Fit each roi's response, and plot:
-        roi_figdir = os.path.join(roi_fitdir, 'roi_fits')
-        if not os.path.exists(roi_figdir):
-            os.makedirs(roi_figdir)
-        
-        fit_results = {}
+#    
+#        oris = sorted(sdf['ori'].unique())
+#    
+#        oris = np.append(oris, 360) #oris[0])
+#        
+#        if plot_interpolate or fit_interp:
+#            #new_length = 20
+#            oris_interp = []
+#            for orix, ori in enumerate(oris[0:-1]):
+#                if ori == oris[-2]:
+#                    oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=True, num=new_length+1))
+#                else:
+#                    oris_interp.extend(np.linspace(ori, oris[orix+1], endpoint=False, num=new_length))          
+#        else:
+#            new_length = 1
+#            
+#        dir_fit_color = 'cornflowerblue'
+#        ori_fit_color = 'red'
+#        
+#        # Fit each roi's response, and plot:
+#        roi_figdir = os.path.join(roi_fitdir, 'roi_fits')
+#        if not os.path.exists(roi_figdir):
+#            os.makedirs(roi_figdir)
+        constant_params = ['aspect', 'luminance', 'position', 'stimtype']
+        params = [c for c in sdf.columns if c not in constant_params]
+        stimdf = sdf[params]
+        n_intervals_interp = 2
+
+        all_fit_results = {}
         all_metrics_list = []
         #roi = 4 #5
         
         for roi in roi_list:
                 #%
+            #print(roi)
             roi_df = gdf.get_group(roi)
-            
-            mean_responses = roi_df.groupby(['config']).mean()[metric_type]
-            sem_responses = roi_df.groupby(['config']).sem()[metric_type]
-            sorted_config_ixs = mean_responses.values.argsort()[::-1]
-            sorted_configs = [mean_responses.index[s] for s in sorted_config_ixs]
-            
-            constant_params = ['aspect', 'luminance', 'position', 'stimtype']
-            params = [c for c in sdf.columns if c not in constant_params]
-            stimdf = sdf[params]
-            
-            best_cfg = sorted_configs[0]
+            metric_abs = np.abs(roi_df[response_type])
+            roi_df[metric_type] = metric_abs
+        
+            # Find best config:
+            best_cfg = roi_df.groupby(['config']).mean()[metric_type].idxmax()
             best_cfg_params = stimdf.loc[best_cfg][[p for p in params if p!='ori']]
             curr_cfgs = sorted([c for c in stimdf.index.tolist() \
                                 if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
                                 key = lambda x: stimdf['ori'][x])
+            tested_oris = sorted(np.array([sdf['ori'][cfg] for cfg in curr_cfgs]))
             
-            # create "trials" of tuning curve (20 total) - randomly sample? go in order?
+            # Get all trials of current set of cfgs:
             trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
-            #trialdict = dict((stimdf['ori'][cfg], tdf[response_type].values) for cfg, tdf in sorted(trialdf.groupby(['config']), key=lambda x: stimdf['ori'][x[0]])            
-                
+            rdf = trialdf[['config', 'trial', response_type]]
+            grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
+            responses_df = pd.concat(grouplist, axis=1)
+            responses_df.columns = [sdf['ori'][cfg] for cfg in responses_df.columns]
+            mean_responses = responses_df.mean(axis=0)
+            sem_responses = responses_df.sem(axis=0)
             #%
-                
-            fig = pl.figure(figsize=(12,8))
-    
-            # ---------------------------------------------------------------------
-            #% plot raw traces:
-            mean_traces, std_traces, tpoints = get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, stimdf)
-            
-            ymin = (mean_traces - std_traces ).min()
-            ymax = (mean_traces + std_traces ).max()
-            for icfg in range(len(curr_cfgs)):
-                ax = pl.subplot2grid((2, 8), (0, icfg), colspan=1) #pl.subplots(1, 3) #pl.figure()
-                ax.plot(tpoints, mean_traces[icfg, :], color='k')
-                ax.set_xticks([tpoints[stim_on_frame], round(tpoints[stim_on_frame+nframes_on], 1)])
-                ax.set_xticklabels(['', round(tpoints[stim_on_frame+nframes_on], 1)])
-                ax.set_ylim([ymin, ymax])
-                if icfg > 0:
-                    ax.set_yticks([]); ax.set_yticklabels([]);
-                    ax.set_xticks([]); ax.set_xticklabels([]);
-                    sns.despine(ax=ax, offset=4, trim=True, left=True, bottom=True)
-                else:
-                    ax.set_ylabel('intensity'); ax.set_xlabel('time (s)');
-                    sns.despine(ax=ax, offset=4, trim=True)
-                sem_plus = np.array(mean_traces[icfg,:]) + np.array(std_traces[icfg,:])
-                sem_minus = np.array(mean_traces[icfg,:]) - np.array(std_traces[icfg,:])
-                ax.fill_between(tpoints, sem_plus, y2=sem_minus, alpha=0.5, color='k')
-            # ---------------------------------------------------------------------
 
-            theta_pref = stimdf['ori'][best_cfg]
-            theta_null = (stimdf['ori'][best_cfg] + 180) % 360    
-            null_cfg = [c for c in curr_cfgs if stimdf['ori'][c]==theta_null]
-            
-            curr_resps = np.array([mean_responses[s] for s in curr_cfgs])
-            curr_sems = np.array([sem_responses[s] for s in curr_cfgs])
-            if curr_resps.min() < 0:
-                offset = curr_resps.min()
-                curr_resps = curr_resps - offset
-                curr_sems = curr_sems - offset
-            else:
-                offset = 0 
-                
-            curr_oris = np.array([stimdf['ori'][c] for c in curr_cfgs])        
-    
+            # Find init params for tuning fits and set fit constraints:
+            init_params = get_init_params(mean_responses)
+            r_pref, r_null, theta_pref, sigma, r_offset = init_params
+            init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
+        
+
+            # ---------------------------------------------------------------------
+            # Interpolate values for finer steps:
+            oris_interp = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
+            resps_interp = interp_values(mean_responses, n_intervals=n_intervals_interp, \
+                                         wrap_value=mean_responses[0])
+
+#            curr_resps = np.array([mean_responses[s] for s in curr_cfgs])
+#            curr_sems = np.array([sem_responses[s] for s in curr_cfgs])
+#            if curr_resps.min() < 0:
+#                offset = curr_resps.min()
+#                curr_resps = curr_resps - offset
+#                curr_sems = curr_sems - offset
+#            else:
+#                offset = 0 
+#                
+#            curr_oris = np.array([stimdf['ori'][c] for c in curr_cfgs])        
+#    
 
             # Least squares fit. Starting values found by inspection.
-            r_max = mean_responses[curr_cfgs].max()
-            r_pref = mean_responses.loc[best_cfg] + offset
-            r_null = float(mean_responses.loc[null_cfg]) + offset
-            sigma = np.mean(np.diff(curr_oris)) #/ 2.
-            C_offset = np.mean([mean_responses.loc[c] for c in curr_cfgs if c not in [best_cfg, null_cfg]]) + offset #r_pref*-1 #0 #mean_responses.min()
-            #init_params = [r_pref, r_null, theta_pref, sigma, C_offset]
-                
             if fit_interp:
-                resps_interp = []
-                responses = copy.copy(curr_resps)
-                responses = np.append(curr_resps, curr_resps[0])
-                #new_length = 20
-                for orix, response in enumerate(responses[0:-1]):
-                    if response == responses[-2]:
-                        resps_interp.extend(np.linspace(response, responses[orix+1], endpoint=True, num=new_length+1))
-                    else:
-                        resps_interp.extend(np.linspace(response, responses[orix+1], endpoint=False, num=new_length))    
-                        
-                    
                 x = copy.copy(oris_interp)
                 y = copy.copy(resps_interp)
             else:
-                x = curr_oris.copy()        
-                y = curr_resps.copy()
+                x = tested_oris.copy()        
+                y = mean_responses.copy()
             
             try:
                 # Fit for direction:
-                init_params_dsi = [r_pref, r_null, theta_pref, sigma, C_offset]
-                init_bounds = ([0, 0, -np.inf, sigma/2., -r_max], [3*r_max, 3*r_max, np.inf, np.inf, r_max])
-                roi_fit_dir = fit_direction_selectivity(x, y, init_params_dsi, bounds=init_bounds)
-                assert roi_fit_dir is not None
-                roi_fit_dir['configs'] = curr_cfgs
-                roi_fit_dir['mean_responses'] = curr_resps
-                roi_fit_dir['offset'] = offset
-                roi_fit_dir['oris'] = curr_oris
+                rfit = fit_direction_selectivity(x, y, init_params, bounds=init_bounds)
+                assert rfit is not None
+                rfit['configs'] = curr_cfgs
+                rfit['mean_responses'] = mean_responses
+                #rfit['offset'] = offset
+                rfit['tested_oris'] = tested_oris
+                rfit['n_intervals_interp'] = n_intervals_interp
+                
             except Exception as e:
                 print("-- roi %i: no fit." % roi)
-                roi_fit_dir = None
+                rfit = None
                 
             if make_plots:
                 # Plot tuning curve:
-                ax1 = pl.subplot2grid((2, 8), (1, 0), colspan=5)
-                ax1.plot(curr_oris, curr_resps, 'ko', markersize=5, lw=0)
-                ax1.errorbar(curr_oris, curr_resps, yerr=curr_sems, fmt='none', ecolor='k')
-                ax1.set_xticks(curr_oris)
-                ax1.set_xticklabels(curr_oris)
-                ax1.set_ylabel(response_type)
-                ax1.set_title('(sz %i, sf %.2f)' % (best_cfg_params['size'], best_cfg_params['sf']), fontsize=8)
-                sns.despine(trim=True, offset=4, ax=ax1)
-                # Plot polar graph:
-                ax2 = pl.subplot2grid((2,8), (1,6), colspan=2, polar=True)
-                thetas = np.array([np.deg2rad(c) for c in curr_oris])
-                radii = curr_resps.copy()
-                thetas = np.append(thetas, np.deg2rad(curr_oris[0]))  # append first value so plot line connects back to start
-                radii = np.append(radii, curr_resps[0]) # append first value so plot line connects back to start
-                ax2.plot(thetas, radii, 'k-')
-                ax2.set_theta_zero_location("N")
-                ax2.set_yticks([curr_resps.min(), curr_resps.max()])
-                ax2.set_yticklabels(['', round(curr_resps.max(), 1)])
-                                
-                # Plot fits:
-                if roi_fit_dir is not None and roi_fit_dir['success']:
-                    # Interpolate the data using a cubic spline to "new_length" samples      
-                    if not fit_interp:
-                        x_plot = np.array(oris_interp).copy() if plot_interpolate else x.copy()
-                        tuning_fit = double_gaussian( x_plot, *roi_fit_dir['popt']) if plot_interpolate else roi_fit_dir['fit_y'].copy()
-                    else:
-                        x_plot = roi_fit_dir['x'][0:-new_length]
-                        tuning_fit = roi_fit_dir['fit_y'][0:-new_length]
-                    ax1.plot(x_plot, tuning_fit, c=dir_fit_color, label='dir (r2=%.2f)' % roi_fit_dir['r2'])
-                    ax1.text(0, ax1.get_ylim()[-1]*0.75, 'r2=%.2f' % roi_fit_dir['r2'], fontsize=6)
-                    # Plot polar fit:
-                    x_plot_polar = np.append(x_plot, x_plot[0])
-                    thetas = np.array([np.deg2rad(c) for c in x_plot_polar])
-                    polar_fit = double_gaussian( x_plot_polar, *roi_fit_dir['popt'])
-                    ax2.plot(thetas, polar_fit, color=dir_fit_color)
-                else:            
-                    ax1.text(0, ax.get_ylim()[-1]*0.75, 'no fit', fontsize=6)
-            
+                #print("... plotting")
+                fig, ax, ax1, ax2 = plot_roi_tuning_raw_and_fit(roi, raw_traces, labels, curr_cfgs, stimdf,
+                                                                responses_df, fit_results=rfit, trace_type=trace_type)
                 #% Format plot, save and close:
                 pl.subplots_adjust(top=0.8, hspace=0.5)
                 fig.suptitle('roi %i' % int(roi+1))
+    
+                ax.set_title('(sz %i, sf %.2f)' % (best_cfg_params['size'], best_cfg_params['sf']), fontsize=8)
+
+                curr_oris = sorted(sdf['ori'].unique())
+                ax1.set_xticks(curr_oris)
+                ax1.set_xticklabels(curr_oris)
                 label_figure(fig, data_identifier)
-                figname = 'roi%05d_fits' % int(roi+1)
-                pl.savefig(os.path.join(roi_figdir, '%s.png' % figname))
+                pl.savefig(os.path.join(roi_figdir, 'roi%05d.png' % int(roi+1)))
                 pl.close()
         
-            if roi_fit_dir is not None:
-                fit_results[roi] = roi_fit_dir
+        
+            if rfit is not None:
+                all_fit_results[roi] = rfit
         
             roi_all_metrics = roi_df.groupby(['config']).mean().loc[curr_cfgs]
             roi_all_metrics['roi'] = [roi for _ in range(len(curr_oris))]
@@ -1230,13 +1178,14 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
         #print("%i out of %i responsive cells (%s, thr: %.2f) appear orientation selective" % (len(fit_results), len(roi_list), metric_type, response_thr))
             
         with open(fit_results_fpath, 'wb') as f:
-            pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+            pkl.dump(all_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
             
                 
         #%%
         
-        #fit_thr = 0.7
-        tuned_cells = [r for r, res in fit_results.items() if res['r2']>=fit_thr]
+        fit_thr = 0.9
+        tuned_cells = [r for r, rfit in all_fit_results.items() if rfit['r2']>=fit_thr]
+        print("%i out of %i responsive cells were fit with thr %.2f" % (len(tuned_cells), len(roi_list), fit_thr))
         
         all_metrics = pd.concat(all_metrics_list, axis=0)
         
@@ -1283,17 +1232,17 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
         #print("%i out of %i responsive cells fit for osi/dsi." % (len(tuned_cells), len(roi_list)))
         
         DSIs=[]; OSIs=[]; OSI_cvs=[]; DSI_cvs=[]; pref_oris=[]; curr_roi_list=[]; r2_values=[]
-        for roi, fresults in fit_results.items():
+        for roi, rfit in all_fit_results.items():
             
-            #fresults = fit_results[roi] #roi, fresults in fit_results.items():
-            [r_pref_fit, r_null_fit, theta_pref, sigma, C_offset] = fresults['popt']
+            #rfit = fit_results[roi] #roi, rfit in fit_results.items():
+            [r_pref_fit, r_null_fit, theta_pref, sigma, C_offset] = rfit['popt']
             
-            #mean_response = fresults['fit_y'][0:-new_length] #fit_results[roi]['mean_responses']
-            #oris = fresults['x'][0:-new_length]
-            oris = fresults['x'][0::new_length][0:-1]
-            mean_response = np.array(fresults['fit_y'][0::new_length][0:-1])
+            mean_response = rfit['fit_y'] #[0:-new_length] #fit_results[roi]['mean_responses']
+            oris = rfit['x'] #[0:-new_length]
+            #oris = rfit['x'][0::new_length][0:-1]
+            #mean_response = np.array(rfit['fit_y'][0::new_length][0:-1])
             
-            theta_prefE = int( oris[ int(np.where(np.abs(oris - theta_pref) == np.min(np.abs(oris - theta_pref)))[0]) ])
+            theta_prefE = int( tested_oris[ int(np.where(np.abs(tested_oris - theta_pref) == np.min(np.abs(tested_oris - theta_pref)))[0]) ])
             if r_pref_fit < r_null_fit:
                 theta_prefE = (theta_prefE - 180) % 360. #list(curr_oris).index((theta_prefE - 180)%360.)
             theta_null = (theta_prefE - 180) % 360.
@@ -1312,7 +1261,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
             rOSI = (r_pref - r_orth) / (r_pref + r_orth)
             
             #curr_resps = mean_response #fit_results[roi]['mean_responses']
-            #curr_oris =  fresults['oris']
+            #curr_oris =  rfit['oris']
             rOSI_cv = np.abs( np.sum( [r_theta * np.exp(2j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
             #rOSI_cv = np.abs( np.sum( [r_theta * np.exp(2j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
             rDSI_cv = np.abs( np.sum( [r_theta * np.exp(1j*theta) for r_theta, theta in zip(mean_response, oris)] ) / np.sum(mean_response) )
@@ -1323,7 +1272,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
             DSI_cvs.append(rDSI_cv)
             pref_oris.append(theta_prefE)
             curr_roi_list.append(roi)
-            r2_values.append(fresults['r2'])
+            r2_values.append(rfit['r2'])
             
             
         statsdf = pd.DataFrame({'OSI': OSIs,
@@ -1375,7 +1324,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
         
         #osi_results_fpath = os.path.join(roi_fitdir, 'roi_stats.pkl') #% osi_dsi_str
         
-        with open(osi_results_fpath, 'wb') as f:
+        with open(stat_results_fpath, 'wb') as f:
             pkl.dump(statsdf, f, protocol=pkl.HIGHEST_PROTOCOL)
         print("Saved roi gratings stats.")
         
@@ -1400,10 +1349,10 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
 #        g = g.map_offdiag(pl.scatter, marker='+')
         g = g.map_offdiag(pl.scatter, marker='o',  alpha=0.5, s=5)
         g = g.map_diag(pl.hist, normed=True) #histtype="step",  
-        g.set(xlim=(0,1), ylim=(0,1))
-        g.set(xticks=[0, 1])
-        g.set(yticks=[0, 1])
-        sns.despine(trim=True)
+        #g.set(xlim=(0,1), ylim=(0,1))
+        #g.set(xticks=[0, 1])
+        #g.set(yticks=[0, 1])
+        #sns.despine(trim=True)
         cleanup_axes(g.axes[:, 1:].flat, which_axis='y')
         cleanup_axes( g.axes[:-1, :].flat, which_axis='x')
         pl.subplots_adjust(top=0.9) #)
@@ -1423,10 +1372,10 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
 #        g = g.map_offdiag(pl.scatter, marker='+')
         g = g.map_offdiag(pl.scatter, marker='o',  alpha=0.5, s=5)
         g = g.map_diag(pl.hist, normed=True) #histtype="step",  
-        g.set(xlim=(0,1), ylim=(0,1))
-        g.set(xticks=[0, 1])
-        g.set(yticks=[0, 1])
-        sns.despine(trim=True)
+        #g.set(xlim=(0,1), ylim=(0,1))
+        #g.set(xticks=[0, 1])
+        #g.set(yticks=[0, 1])
+        #sns.despine(trim=True)
         cleanup_axes(g.axes[:, 1:].flat, which_axis='y')
         cleanup_axes( g.axes[:-1, :].flat, which_axis='x')
         pl.subplots_adjust(top=0.9) #)
@@ -1436,7 +1385,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
         
         figname = 'distN_osi_dsi_circvar_fit_thr_%.2f' % fit_thr
         pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
-        #pl.close()
+        pl.close()
         
         
         
@@ -1481,7 +1430,7 @@ def calculate_gratings_stats(animalid, session, fov, run, traceid, trace_type='d
             
             
             #%%
-    return fit_results, statsdf
+    return all_fit_results, statsdf
 
 #%%
 def extract_options(options):
