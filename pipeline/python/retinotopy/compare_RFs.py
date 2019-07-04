@@ -137,20 +137,22 @@ stimtype = 'gratings'
 V1_datasets = {
                'JC083': ['20190511_FOV1'],
                'JC084': ['20190522_FOV1'], #, '20190510_FOV1'],
-               'JC097': ['20190613_FOV1', '20190616_FOV1', '20190617_FOV1']
+               'JC097': ['20190613_FOV1', '20190616_FOV1', '20190617_FOV1'],
+               'JC085': ['20190622_FOV1']
                }
 
 LM_datasets = {'JC078': ['20190513_FOV1'],
                'JC080': ['20190603_FOV1'],
                'JC083': ['20190512_FOV1', '20190517_FOV1'],
                'JC084': ['20190525_FOV1'],
-               'JC097': ['20190618_FOV1']
+               'JC097': ['20190618_FOV1'],
+               'JC091': ['20190627_FOV1']
                }
 
 LI_datasets = {#'JC076': ['20190502_FOV1'],
                'JC090': ['20190605_FOV1'],
                'JC091': ['20190602_FOV1', '20190606_FOV1', '20190607_FOV1', '20190614_FOV1'],
-               'JC099': ['20190609_FOV1', '20190612_FOV1'] #, '20190617_FOV1']
+               'JC099': ['20190609_FOV1', '20190612_FOV1', '20190617_FOV1']
                }
 #%%
 
@@ -224,8 +226,12 @@ def get_rf_results(traceid_dir, trace_type='corrected', visual_area='', select_r
     
     return statsdf
 
-def get_gratings_results(traceid_dir, metric_type='snr', metric_thr=1.5, goodness_str='',
-                         response_type='dff', n_processes=1, create_new=False, rootdir='/n/coxfs01/2p0data'):
+#def get_gratings_results(traceid_dir, metric_type='snr', metric_thr=1.5, goodness_str='',
+#                         response_type='dff', n_processes=1, create_new=False, rootdir='/n/coxfs01/2p0data'):
+def get_gratings_results(traceid_dir, trace_type='dff', metric_type='zscore', 
+                         response_type='dff', response_thr=0.5,
+                         goodness_type='zscore', goodness_thr=2.5, 
+                         n_processes=1, create_new=False, rootdir='/n/coxfs01/2p0data'):
     
     animalid, session, fov, run, traceid = split_traceid_dir_path(traceid_dir)
     
@@ -234,16 +240,18 @@ def get_gratings_results(traceid_dir, metric_type='snr', metric_thr=1.5, goodnes
     #results_outfile = 'RESULTS_%s.pkl' % osi_dsi_str
     #goodness_str = ''
     
-    fit_str = 'responsemin_%s%.2f_%s' % (metric_type, metric_thr, goodness_str)
-    osi_dir = os.path.join(traceid_dir, 'figures', 'tuning', 'fit_%s_%s' % (response_type, fit_str))
-    results_outfile = os.path.join(osi_dir, 'roistats.pkl') #% osi_dsi_str
+    fit_str = 'fit_%s__%s_responsemin_%s%.2f_goodness_%s%.2f' % (metric_type, trace_type, response_type, response_thr, goodness_type, goodness_thr)
+    
+    osi_dir = os.path.join(traceid_dir, 'tuning', fit_str) #'fit_%s_%s' % (response_type, fit_str))
+    results_outfile = os.path.join(osi_dir, 'roi_stats.pkl') #% osi_dsi_str
 
 
     if not os.path.exists(results_outfile) or create_new is True:
         
-        statsdf = osi.calculate_gratings_stats(animalid, session, fov, run, traceid, 
-                                     metric_type=metric_type, metric_thr=metric_thr,
-                                     response_type=response_type,
+        fit_results, statsdf = osi.calculate_gratings_stats(animalid, session, fov, run, traceid, 
+                                     trace_type=trace_type, metric_type=metric_type,
+                                     response_type=response_type, response_thr=response_thr,
+                                     goodness_type=goodness_type, goodness_thr=goodness_thr,
                                      rootdir=rootdir, create_new=create_new, 
                                      n_processes=n_processes)
         
@@ -254,11 +262,12 @@ def get_gratings_results(traceid_dir, metric_type='snr', metric_thr=1.5, goodnes
     return statsdf
 
 def get_stats_by_visual_area(V1_datasets, stimtype='rfs', 
-                             metric_type='snr', metric_thr=1.5,
+                             metric_type='zscore', metric_thr=2.5,
                              cutoff_type='no_trim', set_to_min_str='',
-                             trace_type='corrected', visual_area='', select_rois=False,
-                             response_type='dff', n_processes=1, create_new=False,
-                             goodness_str='',
+                             trace_type='dff', visual_area='', select_rois=False,
+                             response_type='dff', response_thr=0.1,
+                             n_processes=1, create_new=False,
+                             goodness_type='zscore', goodness_thr=2.5,
                              rootdir='/n/coxfs01/2p-data'):
     '''
     V1_datasets:  dict for datasets to include {animalid, [session_fov, session_fov, ...]}
@@ -278,8 +287,9 @@ def get_stats_by_visual_area(V1_datasets, stimtype='rfs',
                                          cutoff_type=cutoff_type, set_to_min_str=set_to_min_str)
     
             elif stimtype == 'gratings':
-                statsdf = get_gratings_results(traceid_dir, metric_type=metric_type, metric_thr=metric_thr, 
-                                               response_type=response_type, goodness_str=goodness_str,
+                statsdf = get_gratings_results(traceid_dir, metric_type=metric_type,
+                                               response_type=response_type, response_thr=response_thr,
+                                               goodness_type=goodness_type, goodness_thr=goodness_thr,
                                                n_processes=n_processes, create_new=create_new,
                                                rootdir=rootdir)
     
@@ -400,7 +410,7 @@ def get_rf_stats(rfdf, row_vals, col_vals, max_size=80, fit_thr=0.7, sigma_scale
 
 #stimtype = 'gratings'
 
-trace_type = 'corrected'
+trace_type = 'dff'
 visual_area = ''
 select_rois = False
 create_new = False
@@ -431,40 +441,42 @@ if stimtype == 'rfs':
     goodness_str=''
     
 elif stimtype == 'gratings':
-    response_type = 'zscore'
-    metric_type = 'dff'
-    metric_thr = 0.5
+    response_type = 'meanstim'
+    response_thr = 0.1
+    goodness_type = 'zscore'
+    goodness_thr = 2.5
 
     n_processes = 1
     cutoff_type = ''
     map_thr=''
     set_to_min_str=''
     
-    goodness_type = ['zscore', 'snr']
-    goodness_thr = [0.5, 1.5]
-    goodness_params= '_'.join(['%s%.2f' % (gt, gthr) for gt, gthr in zip(goodness_type, goodness_thr)])
-    goodness_str = 'goodness_%s' % goodness_params
-
+    metric_type = 'zscore'
+    
 #%%
 V1, sdf = get_stats_by_visual_area(V1_datasets, stimtype=stimtype, 
-                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     response_type=response_type, response_thr=response_thr,
+                                     goodness_type=goodness_type, goodness_thr=goodness_thr,
                                      cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
                                      trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
-                                     response_type=response_type, goodness_str=goodness_str,
+                                     metric_type=metric_type, 
                                      n_processes=n_processes, create_new=create_new)
 
+#%%
 LM, _ = get_stats_by_visual_area(LM_datasets, stimtype=stimtype, 
-                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     response_type=response_type, response_thr=response_thr,
+                                     goodness_type=goodness_type, goodness_thr=goodness_thr,
                                      cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
                                      trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
-                                     response_type=response_type, goodness_str=goodness_str,
+                                     metric_type=metric_type, 
                                      n_processes=n_processes, create_new=create_new)
-
+#%%
 LI, _ = get_stats_by_visual_area(LI_datasets, stimtype=stimtype, 
-                                     metric_type=metric_type, metric_thr=metric_thr,
+                                     response_type=response_type, response_thr=response_thr,
+                                     goodness_type=goodness_type, goodness_thr=goodness_thr,
                                      cutoff_type=cutoff_type, set_to_min_str=set_to_min_str,
                                      trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
-                                     response_type=response_type, goodness_str=goodness_str,
+                                     metric_type=metric_type, 
                                      n_processes=n_processes, create_new=create_new)
 
 
@@ -601,95 +613,106 @@ if stimtype == 'gratings':
     area_names = ['V1', 'LM', 'LI']
     area_nrats = [len(V1_datasets.keys()), len(LM_datasets.keys()), len(LI_datasets.keys())]
     
-    for ai, (roi_stat, ax) in enumerate(zip(roi_stat_plots, axes)):
-        
-        for vi, (curr_color, visual_area_name, nrats, Vx) in enumerate(zip(area_colors, area_names, area_nrats, [V1, LM, LI])):
-            animalid_labels = []
-            curr_rfs = {}
-            for animalid, rfdf in Vx.items():
-        
-                curr_rfs[animalid] = rfdf
-        
-                #curr_avg_rfs = rfdf[roi_stat] #[i for i in rfdf[roi_stat] if 0 <= i <=1]
-                vis_area = [visual_area_name for _ in range(rfdf.shape[0])]
-                vis_ix = [vi for _ in range(rfdf.shape[0])]
-                animal_name = [animalid for _ in range(rfdf.shape[0])]
-                rfdf['animalid'] = animal_name
-                rfdf['visual_area'] = vis_area
-                rfdf['visual_area_ix'] = vis_ix
-                rfs_list.append(rfdf)
-                
-    #            rfs_list.append(pd.DataFrame({'%s' % roi_stat: curr_avg_rfs,
-    #                                          'animalid': animalid,
-    #                                          'visual_area': vis_area,
-    #                                          'visual_area_ix': vis_ix
-    #                                          }))
-                #animalid_labels.extend([animalid for _ in range(len(curr_avg_rfs))])
+    #for ai, (roi_stat, ax) in enumerate(zip(roi_stat_plots, axes)):
     
-            vstats = pd.concat([v for k, v in curr_rfs.items()], axis=0)
-            #vstats['visual_area'] = [visual_area_name for _ in range(vstats.shape[0])]
-            #vstats['visual_area_ix'] = [vi for _ in range(vstats.shape[0])]
-            #vstats['animalid'] = animalid_labels
+    for vi, (curr_color, visual_area_name, nrats, Vx) in enumerate(zip(area_colors, area_names, area_nrats, [V1, LM, LI])):
+        animalid_labels = []
+        #curr_rfs = dict((animalid, []) for animalid in Vx.keys() ) #{}
+        curr_rfs = []
+        for animalid, rfdf in Vx.items():
             
-    #        values = list(vstats[roi_stat].values)
-    #        ax.hist(values, histtype='step', color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
-    #                normed=True)
-    ##        
-    #        sns.distplot(values, norm_hist=norm_hist, ax=ax,
-    #                     color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
-    #                     kde=plot_kde, rug=plot_rug, hist=True,
-    #                     rug_kws={"color": curr_color},
-    #                     #norm_hist=True)
-    #                     hist_kws={"histtype": "step", "linewidth": 2, "color": curr_color, "alpha": hist_alpha})
-    #                
-        ax.set_title(roi_stat)
-        #ax.set_xlabel('%s' % roi_stat)
-        
-        if ai == 0:
-            if plot_kde:
-                ax.set_ylabel('kde')
-            else:
-                if norm_hist:
-                    ax.set_ylabel('fraction')
-                else:
-                    ax.set_ylabel('counts')
-                
+            ddf = rfdf[rfdf['r2']>=fit_thr]
+            print animalid, ddf.shape
     
-    pl.legend()
+            #curr_avg_rfs = rfdf[roi_stat] #[i for i in rfdf[roi_stat] if 0 <= i <=1]
+            vis_area = [visual_area_name for _ in range(ddf.shape[0])]
+            vis_ix = [vi for _ in range(ddf.shape[0])]
+            animal_name = [animalid for _ in range(ddf.shape[0])]
+            ddf['animalid'] = animal_name
+            ddf['visual_area'] = vis_area
+            ddf['visual_area_ix'] = vis_ix
+            rfs_list.append(ddf)
+            curr_rfs.append(ddf)
+            
+#            rfs_list.append(pd.DataFrame({'%s' % roi_stat: curr_avg_rfs,
+#                                          'animalid': animalid,
+#                                          'visual_area': vis_area,
+#                                          'visual_area_ix': vis_ix
+#                                          }))
+            animalid_labels.extend([animalid for _ in range(ddf.shape[0])])
+
+        vstats = pd.concat(curr_rfs, axis=0).reset_index() # pd.concat([ v for k, v in curr_rfs.items()], axis=0)
+        #vstats['visual_area'] = [visual_area_name for _ in range(vstats.shape[0])]
+        #vstats['visual_area_ix'] = [vi for _ in range(vstats.shape[0])]
+        #vstats['animalid'] = animalid_labels
+        
+#        values = list(vstats[roi_stat].values)
+#        ax.hist(values, histtype='step', color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
+#                normed=True)
+
+        for ai, (roi_stat, ax) in enumerate(zip(roi_stat_plots, axes)):
+            sns.distplot(vstats[roi_stat], norm_hist=norm_hist, ax=ax,
+                         color=curr_color, label='%s (n=%i (%i))' % (visual_area_name, nrats, vstats.shape[0]),
+                         kde=plot_kde, rug=plot_rug, hist=True,
+                         rug_kws={"color": curr_color},
+                         #norm_hist=True
+                         hist_kws={"histtype": "step", "linewidth": 2, "color": curr_color, "alpha": hist_alpha})
+                    
+            ax.set_title(roi_stat)
+        #ax.set_xlabel('%s' % roi_stat)
+            
+            if ai == 0:
+                if plot_kde:
+                    ax.set_ylabel('kde')
+                else:
+                    if norm_hist:
+                        ax.set_ylabel('fraction')
+                    else:
+                        ax.set_ylabel('counts')
+                    
+        
+    pl.legend(bbox_to_anchor=(0.9, 1))
     sns.despine(offset=4, trim=True)
     
     pl.subplots_adjust(top=0.8)
     
     #%%
     
-    RFs = pd.concat(rfs_list, axis=0).reset_index(drop=True)
+    RFs = pd.concat(rfs_list, axis=0) #.reset_index(drop=True)
     
     #%%
-    fit_thr = 0.8
+    #fit_thr = 0.9
     odf = RFs[RFs['r2']>=fit_thr]
 
     #%
     visual_area_names = ['V1', 'Lm', 'Li']
-    osi_metric_types = ['OSI', 'DSI', 'OSI_cv', 'DSI_cv']
+    osi_metric_types = ['OSI', 'DSI'] #, 'OSI_cv', 'DSI_cv']
     
-    fig, axes = pl.subplots(2,2, figsize=(8,6), sharex=True)
+    fig, axes = pl.subplots(1,2, figsize=(8,3), sharex=True)
     values = list(vstats[roi_stat].values)
     for osi_metric, ax in zip(osi_metric_types, axes.flat):
+        
         for vi, (curr_color, curr_area, curr_nrats) in enumerate(zip(area_colors, area_names, area_nrats)):
+            
             values = list(odf[odf['visual_area']==curr_area][osi_metric].values)
             weights = np.ones_like(values)/float(len(values))
             
-            ax.hist(values, weights=weights, histtype='step', color=curr_color, 
-                    label='%s (n=%i (%i))' % (curr_area, curr_nrats, len(values)),
-                    normed=0)
-        
+            mean_v = np.mean(values)
+            
+            ax.hist(values,  histtype='step', color=curr_color, 
+                    label='%s (n=%i (%i))' % (curr_area, curr_nrats, len(values)) ),
+                    #normed=0, alpha=1.0, weights=weights)
+            
+            ax.axvline(x=mean_v, lw=1, color=curr_color)
+            
         ax.set_title(osi_metric)
+        #ax.set_ylim([0, 0.5])
     
-    pl.legend(loc='upper right', bbox_to_anchor=(1.7, 2.5),
+    pl.legend(loc='upper right', bbox_to_anchor=(0.95, 1.0),
               ncol=1, fancybox=False, shadow=False, fontsize=8)
     
     sns.despine(trim=True)
-    pl.subplots_adjust(hspace=0.5, wspace=0.5, right=0.8, bottom=0.1)
+    pl.subplots_adjust(hspace=0.3, wspace=0.2, right=0.9, bottom=0.1)
 
 #%%%
 rdf = RFs[((RFs[roi_stat]>=0) & (RFs[roi_stat]<=1))][['OSI', 'DSI', 'OSI_cv', 'pref_ori', 'visual_area']].reset_index()
