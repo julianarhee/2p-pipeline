@@ -250,7 +250,7 @@ def main(options):
     exp, gdf = load_data(opts.experiment, opts.animalid, opts.session, opts.fov, opts.traceid, 
                          trace_type=opts.trace_type, rootdir=opts.rootdir)
     
-    data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment_name, opts.trace_type])
+    data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, opts.trace_type])
 
     results = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,
@@ -273,14 +273,32 @@ def extract_options(options):
     parser.add_option('-E', '--exp', action='store', dest='experiment', default='', help="Name of experiment (stimulus type), e.g., rfs")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('-t', '--trace-id', action='store', dest='trace_id', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+    parser.add_option('-t', '--trace-id', action='store', dest='traceid', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
     parser.add_option('-n', '--nproc', action="store",
                       dest="n_processes", default=2, help="N processes [default: 1]")
     parser.add_option('-d', '--trace-type', action="store",
-                      dest="corrected", default=1, help="Trace type to use for calculating stats [default: corrected]")
+                      dest="trace_type", default='corrected', help="Trace type to use for calculating stats [default: corrected]")
 
+    parser.add_option('-N', '--niter', action="store",
+                      dest="n_iterations", default=1000, help="N iterations for bootstrap [default: 1000]")
+    parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, help="set to plot results of each roi's analysis")
 
     (options, args) = parser.parse_args(options)
 
     return options
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+
+ 
+ 
+    ons = [int(np.where(np.array(t)==0)[0][0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+    if len(list(set(ons))) > 1:
+        print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(ons))))
+        stim_on_frame = np.min(list(set(ons)))
+    else:
+        stim_on_frame = list(set(ons))[0]
+    #assert len(list(set(ons))) == 1, "Stim onset index has multiple values: %s" % str(list(set(ons)))
+    #stim_on_frame = list(set(ons))[0]
+
