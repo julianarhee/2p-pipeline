@@ -46,7 +46,7 @@ from pipeline.python.traces.utils import load_TID
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
 
-
+from pipeline.python.retinotopy import utils as retinotools
 
 #%%
 
@@ -60,47 +60,184 @@ import pandas as pd
 class Struct():
     pass
 
-def get_roi_id(animalid, session, fov, run, traceid, rootdir='/n/coxfs01/2p-data'):
-    traceid_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run, \
+def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01/2p-data'):
+    extraction_type = re.sub('[0-9]+', '', traceid) if 'traces' in traceid else 'retino_analysis'
+    #extraction_num = int(re.findall(r'\d+', traceid)[0])
+    
+    if 'retino' in run_name and extraction_type=='traces': #using traceid in reference to other run types
+        traceid_info_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*', \
                                          'traces', 'traceids_*.json'))[0] # % traceid, ))
-    with open(traceid_fpath, 'r') as f:
+    else:
+        traceid_info_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_name, \
+                                             '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+    with open(traceid_info_fpath, 'r') as f:
         traceids = json.load(f)
-    return traceids[traceid]['PARAMS']['roi_id']
+        
+    roi_id = traceids[traceid]['PARAMS']['roi_id']
+    if extraction_type == 'retino_analysis':
+        found_ids = [t for t, tinfo in traceids.items() if tinfo['PARAMS']['roi_id'] == roi_id]
+        if len(found_ids) > 1:
+            for fi, fid in enumerate(found_ids):
+                print fi, fid
+            sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
+            traceid = found_ids[int(sel)]
+        else:
+            traceid = found_ids[0]
+        
+    return roi_id, traceid
 
+def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p-data'):
+    anatomical = None
+    fov_dir = os.path.join(rootdir, animalid, session, fov)
+    anatomical_dirs = glob.glob(os.path.join(fov_dir, 'anatomical'))
+    print("[%s] %s - %s:  Getting anatomicals..." % (animalid, session, fov))
+    try:
+        assert len(anatomical_dirs) > 0, "No anatomicals for current session: (%s | %s | %s)" (animalid, session, fov)
+        anatomical_dir = anatomical_dirs[0]
+        print("... Found %i anatomical runs." % len(anatomical_dirs))
+        anatomical_imgs = glob.glob(os.path.join(anatomical_dir, 'processed',
+                                                 'processed*', 'mcorrected_*_mean_deinterleaved',
+                                                 'Channel%02d' % channel_num, 'File*', '*.tif'))
+        assert len(anatomical_imgs) > 0, "... No processed anatomicals found!"
+        images=[]
+        for fpath in anatomical_imgs:
+            im = tf.imread(fpath)
+            images.append(im)
+        anatomical = np.array(images).sum(axis=0)
+    except Exception as e:
+        print e
+        
+    return anatomical
+        
+
+def get_retino_analysis(run_dir, rois=None):
+    
+    analysis_info_fpath = glob.glob(os.path.join(run_dir, 'retino_analysis', 'analysisids*.json'))[0]
+    with open(analysis_info_fpath, 'r') as f:
+        ainfo = json.load(f)
+        
+    # Find analysis id using roi type specified:
+    if rois == 'pixels':
+        found_ids = sorted([a for a, info in ainfo.items() if info['PARAMS']['roi_type']==rois], key=natural_keys)
+    else:
+        found_ids = sorted([a for a, info in ainfo.items() if 'roi_id' in info['PARAMS'].keys()\
+                            and info['PARAMS']['roi_id'] == rois], key=natural_keys)
+    assert len(found_ids) > 0, "No analysis ids found of type: %s (run dir:\n%s)" % (rois, run_dir)
+    if len(found_ids) > 1:
+        for fi, fr in enumerate(found_ids):
+            print fi, fr
+        sel = input("Select ID of analysis to use: ")
+        analysis_id = found_ids[int(sel)]
+    else:
+        analysis_id = found_ids[0]
+        
+    data_fpath = glob.glob(os.path.join(run_dir, 'retino_analysis', '%s*' % analysis_id, 'traces', 'extracted_traces.h5'))[0]
+    
+    return data_fpath
+
+    
+    
+class Session():
+    def __init__(self, animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+        self.animalid = animalid
+        self.session = session
+        self.fov = fov
+        self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
+        
+        self.rois = None
+        self.traceid = None
+        self.trace_type = None
+        self.experiments = {}
+        
+        self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
+
+    def load_data(self, traceid='traces001', trace_type='corrected',\
+                  experiment=None, rootdir='/n/coxfs01/2p-data'):
+        
+        '''Set experiment = None to load all data'''
+        
+        self.traceid = traceid
+        self.trace_type = trace_type
+        print("Loading data: %s - %s" % (traceid, trace_type))
+        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
+        if tmp_tid != self.traceid:
+            self.traceid = tmp_tid
+            
+        self.experiments = self.get_experiment_data(experiment=experiment,\
+                                                    trace_type=trace_type,\
+                                                    rootdir=rootdir)
+        
+    def get_experiment_data(self, experiment=None, trace_type='corrected',\
+                            rootdir='/n/coxfs01/2p-data'):
+        experiment_dict = {}
+        
+        if experiment is None: # Get ALL experiments
+            fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+            run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
+            experiment_types = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
+        else:
+            if not isinstance(experiment, list):
+                experiment_types = [experiment]
+            else:
+                experiment_types = experiment
+                
+        # Create object for each experiment:
+        for experiment_type in experiment_types:
+            exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+            exp.load(trace_type=trace_type)
+            experiment_dict[experiment_type] = exp
+            
+        return experiment_dict
+    
+    
+    
 class Experiment():
     def __init__(self, experiment_type, animalid, session, fov, \
-                 traceid='traces001', trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+                 traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+        print("[%s] creating experiment object." % experiment_type)
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
         self.fov = fov
         self.traceid = traceid
-        self.trace_type = trace_type
-        self.rois = get_roi_id(animalid, session, fov, experiment_type, traceid, rootdir=rootdir)
+        self.rois, tmp_tid = get_roi_id(animalid, session, fov, traceid, run_name=experiment_type, rootdir=rootdir)
+        if tmp_tid != self.traceid:
+            self.traceid = tmp_tid
         self.source =  self.get_data_paths(rootdir=rootdir)
-        self.data = self.load()
+        self.trace_type = None #trace_type
+        self.data = Struct() #self.load()
         
                 
-    def load(self):
-        data = Struct()
-        assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
-        if self.source.endswith('npz'):
-            dset = np.load(self.source)
-            print("[%s]...loading data array\n(%s)" % (self.name, self.source))
-            data.traces  = pd.DataFrame(dset[self.trace_type])
-            data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-            sdf = pd.DataFrame(dset['sconfigs'][()]).T
-            round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-            sdf['size'] = round_sz
-            data.sdf = sdf
-            data.info = dset['run_info'][()]
+    def load(self, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+        '''
+        Populates trace_type and data
+        '''
+        
+        self.trace_type=trace_type
+        if not(isinstance(self.source, list)):
+            assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
+            print("... loading data array (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
+            if self.source.endswith('npz'):
+                dset = np.load(self.source)
+                self.data.traces  = pd.DataFrame(dset[self.trace_type])
+                self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+                sdf = pd.DataFrame(dset['sconfigs'][()]).T
+                round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+                sdf['size'] = round_sz
+                self.data.sdf = sdf
+                self.data.info = dset['run_info'][()]
+                
+            elif self.source.endswith('h5'):
+                #dfile = h5py.File(self.source, 'r')
+                # TODO: formatt retino data in sensible way with rutils
+                self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
+                                                               rootdir=rootdir)
+                self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
+                
         else:
             print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
-        #elif self.source.endswith('h5'):
-        #    data = h5py.File(fpath, 'r')
-            # TODO: formatt retino data in sensible way with rutils
-            
-        return data
+
+        #return data
     
             
     def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
@@ -110,42 +247,82 @@ class Experiment():
         single_runs = []
         for crun in combined_runs:
             stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
-            print stim_type
+            #print stim_type
             single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
         run_list = [r for r in all_runs if r not in single_runs and 'compare' not in r]
 
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
-            print("[%s] ... getting data path." % run_name)
+            print("... [%s] getting data path." % run_name)
             try:
-                if 'retino' in run_dir:
-                    fpath = glob.glob(os.path.join(run_dir, 'traces', 'extracted_traces.h5'))[0]
+                if 'retino' in run_name:
+                    # Select analysis ID that corresponds to current ROI set:
+                    extraction_name = 'retino_analysis'
+                    fpath = get_retino_analysis(run_dir, rois=self.rois) # retrun extracted raw tracs (.h5)
+                    
                 else:
+                    extraction_name = 'traces'
                     fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
                                                    'data_arrays', 'datasets.npz'))[0]
                 data_fpaths.append(fpath)
-                
             except IndexError:
                 print("... no data arrays found for: %s" % run_name)
+                
         if len(data_fpaths) > 1:
             print("More than 1 file found for %s" % self.name)
             for fi, fpath in enumerate(data_fpaths):
                 print fi, fpath
-            sel = input("Select IDX of file path to use: ")
-            data_fpath = data_fpaths[int(sel)]
+            sel = raw_input("Select IDX of file path to use: ")
+            if sel=='':
+                data_fpath = data_fpaths
+            else:
+                data_fpath = data_fpaths[int(sel)]
         else:
             data_fpath = data_fpaths[0]
         
-        corresp_run_name = os.path.split(data_fpath.split('/traces/')[0])[-1]
-        if self.name != corresp_run_name:
-            print("Renaming experiment to run name: %s" % corresp_run_name)
-            self.name = corresp_run_name
+        if not isinstance(data_fpath, list):
+            corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
+            if self.name != corresp_run_name:
+                print("... renaming experiment to run name: %s" % corresp_run_name)
+                self.name = corresp_run_name
 
         return data_fpath
 
 
 
+def check_counts_per_condition(raw_traces, labels):
+    # Check trial counts / condn:
+    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
+    conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
+    if len(conds_to_downsample) > 0:
+        print("incorrect reps / condn...")
+        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
+                  for i in conds_to_downsample]
+        trials_kept = []
+        for cfg in labels['config'].unique():
+            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
+            if cfg in d_cfgs:
+                #ntrials_remove = len(c_trialnames) - min_n
+                #print("... removing %i trials" % ntrials_remove)
+    
+                # In-place shuffle
+                random.shuffle(c_trialnames)
+    
+                # Take the first 2 elements of the now randomized array
+                trials_kept.extend(c_trialnames[0:min_n])
+            else:
+                trials_kept.extend(c_trialnames)
+    
+        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist()
+        
+        tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
+        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+    else:
+        return raw_traces, labels
+    
+    return tmp_traces, tmp_labels
+    
 
 #%% Load Datasets:
 #
