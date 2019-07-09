@@ -13,6 +13,8 @@ import h5py
 import optparse
 import sys
 import math
+import cPickle as pkl
+import json
 
 import matplotlib as mpl
 mpl.use('agg')
@@ -237,7 +239,7 @@ def do_roc_bootstrap_mp(exp, gdf, n_iters=1000, n_processes=1, plot_rois=False,
         print "Finished:", p
         p.join()
         
-    return results
+    return results, roc_dir
         
 
 def main(options):
@@ -252,13 +254,54 @@ def main(options):
     
     data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, opts.trace_type])
 
-    results = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
+    results, roc_dir = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,
                                   data_identifier=data_identifier)
     
     print("FINISHED CALCULATING ROC BOOTSTRAP ANALYSIS.")
+
+    fmts = ['pkl', 'json']
+    for fmt in fmts:
+        results_outfile = os.path.join(roc_dir, 'roc_results.%s' % fmt)
+        if fmt == 'pkl':
+            with open(results_outfile, 'wb') as f:
+                pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
+        elif fmt == 'json':
+            with open(results_outfile, 'w') as f:
+                json.dump(results, f, sort_keys=True, indent=4)
+                
+    print("-- saved results to: %s" % results_outfile)
     
-    return results
+    thr_rois = [r for r, res in results.items() if res['pval'] < 0.05]
+    sig_aucs = [res['max_auc'] for r, res in results.items() if r in thr_rois]
+    nonsig_aucs = [res['max_auc'] for r, res in results.items() if r not in thr_rois]
+    
+    fig = pl.figure()
+    fig.patch.set_alpha(1)
+    weights1 = np.ones_like(sig_aucs) / float(len(results.keys()))
+    weights2 = np.ones_like(nonsig_aucs) / float(len(results.keys())) #float(len(nonsig_aucs))
+    
+    pl.hist(sig_aucs, alpha=0.5, label='sig. (%i)' % len(sig_aucs), weights=weights1, normed=0)
+    pl.hist(nonsig_aucs, alpha=0.5, label='non-sig. (%i)' % len(nonsig_aucs), weights=weights2, normed=0)
+    pl.legend()
+    
+    pl.ylabel('frac of all selected cells')
+    pl.xlabel('max AUC')
+    pl.xlim([0, 1])
+    
+    sns.despine(offset=4, trim=True)
+    label_figure(fig, data_identifier)
+    pl.savefig(os.path.join(roc_dir, 'max_aucs.png'))
+    pl.close()
+    
+    # Save list of rois that pass for quick ref:
+    with open(os.path.join(roc_dir, 'significant_rois.json'), 'w') as f:
+        json.dump(thr_rois, f)
+    
+    print("-- %i out if %i cells are responsive." % (len(thr_rois), len(results.keys())))
+    
+    
+    #return results
 
 
 def extract_options(options):
@@ -292,13 +335,3 @@ if __name__ == '__main__':
     main(sys.argv[1:])
 
  
- 
-    ons = [int(np.where(np.array(t)==0)[0][0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
-    if len(list(set(ons))) > 1:
-        print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(ons))))
-        stim_on_frame = np.min(list(set(ons)))
-    else:
-        stim_on_frame = list(set(ons))[0]
-    #assert len(list(set(ons))) == 1, "Stim onset index has multiple values: %s" % str(list(set(ons)))
-    #stim_on_frame = list(set(ons))[0]
-
