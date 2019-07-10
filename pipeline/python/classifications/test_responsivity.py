@@ -352,7 +352,7 @@ def group_df_roidata_stimresponse(roidata, labels_df):
     return df_by_rois
 
 
-def group_roidata_stimresponse(roidata, labels_df):
+def group_roidata_stimresponse(roidata, labels_df, roi_list=None):
     '''
     roidata: array of shape nframes_total x nrois
     labels:  dataframe of corresponding nframes_total with trial/config info
@@ -380,6 +380,9 @@ def group_roidata_stimresponse(roidata, labels_df):
         
     groupby_list = ['config', 'trial']
     config_groups = labels_df.groupby(groupby_list)
+    
+    if roi_list is None:
+        roi_list = np.arange(0, roidata.shape[-1])
 
     df_list = []
     for (config, trial), trial_ixs in config_groups:
@@ -413,9 +416,9 @@ def group_roidata_stimresponse(roidata, labels_df):
                                      'base_std': base_std,
                                      'base_mean': base_mean,
                                      
-                                     }))
+                                     }, index=roi_list))
 
-    df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois
+    df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois\
     df_by_rois = df.groupby(df.index)
     
     return df_by_rois
