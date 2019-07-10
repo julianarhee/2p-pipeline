@@ -206,7 +206,7 @@ def do_roc_bootstrap_mp(exp, gdf, n_iters=1000, n_processes=1, plot_rois=False,
             roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters)
             # PLOT:
             if plot_rois:
-                fig = plot_roc_bootstrap_results(roi, roc_results)
+                fig = plot_roc_bootstrap_results(roc_results)
                 fig.suptitle('cell %i' % (int(roi+1)))
                 label_figure(fig, data_identifier)
                 pl.savefig(os.path.join(roi_figdir, 'roi%05d.png' % (int(roi+1))))
