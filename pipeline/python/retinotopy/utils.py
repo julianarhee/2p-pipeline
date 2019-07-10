@@ -203,7 +203,87 @@ def get_retino_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
 
     return retino_info
 
+def format_retino_traces(data_fpath, info=None, trace_type='corrected'):
+    f = h5py.File(data_fpath, 'r')
+    
+    labels_list = []
+    nrois, nframes_per = f[f.keys()[0]][trace_type].shape
+    dtype = f[f.keys()[0]][trace_type].dtype
+    nfiles = len(f.keys())
+    tmat = np.empty((nframes_per*nfiles, nrois), dtype=dtype)
+    s_ix = 0
+    for tix, tfile in enumerate(sorted(f.keys(), key=natural_keys)):
+        tmat[s_ix:s_ix+nframes_per, :] = f[tfile][trace_type][:].T
+        
+        if info is not None:
+            trials_by_cond = info['trials']
+            # Condition info:
+            curr_cond = [cond for cond, trial_list in trials_by_cond.items() if int(tix+1) in trial_list][0]
+            curr_trial = 'trial%05d' % int(tix+1)
+            frame_tsecs = info['frame_tstamps_sec']
+            if info['nchannels'] == 2:
+                frame_tsecs = frame_tsecs[0::2]
+                
+            curr_labels = pd.DataFrame({'tsec': frame_tsecs,
+                                        'config': [curr_cond for _ in range(len(frame_tsecs))],
+                                        'trial': [curr_trial for _ in range(len(frame_tsecs))],
+                                        'frame': [i for i in range(len(frame_tsecs))]
+                                        })
+            labels_list.append(curr_labels)
+            
+        s_ix = s_ix + nframes_per
+        
+    traces = pd.DataFrame(tmat)
+    labels = pd.concat(labels_list, axis=0).reset_index(drop=True)
+    
+    return traces, labels
+    
+    
+    
+def get_protocol_info(animalid, session, fov, run='retino_run1', rootdir='/n/coxfs01/2p-data'):
+    
+    run_dir = os.path.join(rootdir, animalid, session, fov, run)
+    mw_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed*.json'))[0]
+    with open(mw_fpath, 'r') as f:
+        mwinfo = json.load(f)
+    
+    si_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
+    with open(si_fpath, 'r') as f:
+        scaninfo = json.load(f)
+    
+    conditions = list(set([cdict['stimuli']['stimulus'] for trial_num, cdict in mwinfo.items()]))
+    trials_by_cond = dict((cond, [int(k) for k, v in mwinfo.items() if v['stimuli']['stimulus']==cond]) \
+                           for cond in conditions)
+    print(trials_by_cond)
+    n_frames = scaninfo['nvolumes']
+    fr = scaninfo['frame_rate']
+        
 
+    stiminfo = dict((cond, dict()) for cond in conditions)
+    curr_cond = conditions[0]
+    # get some info from paradigm and run file
+    stimfreq = np.unique([v['stimuli']['scale'] for k,v in mwinfo.items() if v['stimuli']['stimulus']==curr_cond])[0]
+    stimperiod = 1./stimfreq # sec per cycle
+    
+    n_cycles = int(round((n_frames/fr) / stimperiod))
+    n_frames_per_cycle = int(np.floor(stimperiod * fr))
+    cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
+
+
+    stiminfo = {'stimfreq': stimfreq,
+               'frame_rate': fr,
+               'n_reps': len(trials_by_cond[curr_cond]),
+               'nframes': n_frames,
+               'n_cycles': n_cycles,
+               'n_frames_per_cycle': n_frames_per_cycle,
+               'cycle_start_ixs': cycle_starts,
+                }
+    
+    scaninfo.update({'stimulus': stiminfo})
+    scaninfo.update({'trials': trials_by_cond})
+
+
+    return scaninfo
 
 
 def get_retino_stimulus_info(mwinfo, runinfo):

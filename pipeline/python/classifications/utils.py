@@ -74,8 +74,15 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
         traceids = json.load(f)
         
     roi_id = traceids[traceid]['PARAMS']['roi_id']
-    if extraction_type == 'retino_analysis':
-        found_ids = [t for t, tinfo in traceids.items() if tinfo['PARAMS']['roi_id'] == roi_id]
+    
+    if 'retino' in run_name: #extraction_type == 'retino_analysis':
+        extraction_type = 'retino_analysis'
+        retinoid_info_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_name, \
+                                             '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+        with open(retinoid_info_fpath, 'r') as f:
+            retino_ids = json.load(f)
+        found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
+                     and tinfo['PARAMS']['roi_id'] == roi_id]
         if len(found_ids) > 1:
             for fi, fid in enumerate(found_ids):
                 print fi, fid
@@ -83,6 +90,7 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
             traceid = found_ids[int(sel)]
         else:
             traceid = found_ids[0]
+            
         
     return roi_id, traceid
 
