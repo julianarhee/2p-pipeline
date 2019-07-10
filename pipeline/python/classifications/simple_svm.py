@@ -112,39 +112,6 @@ def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
 
 #%%
 
-def check_counts_per_condition(raw_traces, labels):
-    # Check trial counts / condn:
-    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
-    conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
-    if len(conds_to_downsample) > 0:
-        print("incorrect reps / condn...")
-        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
-                  for i in conds_to_downsample]
-        trials_kept = []
-        for cfg in labels['config'].unique():
-            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
-            if cfg in d_cfgs:
-                #ntrials_remove = len(c_trialnames) - min_n
-                #print("... removing %i trials" % ntrials_remove)
-    
-                # In-place shuffle
-                random.shuffle(c_trialnames)
-    
-                # Take the first 2 elements of the now randomized array
-                trials_kept.extend(c_trialnames[0:min_n])
-            else:
-                trials_kept.extend(c_trialnames)
-    
-        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist()
-        
-        tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
-        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
-    else:
-        return raw_traces, labels
-    
-    return tmp_traces, tmp_labels
-    
-
 def get_filtered_roi_dfs(traces, labels, response_type='meanstim', response_thr=0.2,
                          goodness_type='snr', goodness_thr=1.5):
         
@@ -213,7 +180,7 @@ for session, ax in zip(session_list, axes.flat):
         
     # Load data:
     blobs = utils.Experiment('blobs', animalid, session, fov, traceid, trace_type='dff')
-    blobs.data.traces, blobs.data.labels = check_counts_per_condition(blobs.data.traces, blobs.data.labels)
+    blobs.data.traces, blobs.data.labels = utils.check_counts_per_condition(blobs.data.traces, blobs.data.labels)
     
     # Exclude non-morph controls for now:
     blobs.data.sdf = blobs.data.sdf[blobs.data.sdf['morphlevel']!=-1] # get rid of controls for now
