@@ -637,7 +637,7 @@ def sort_rois_2D(traceid_dir):
 
 #
 def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, 
-                          draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False):
+                          draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False, ax=None):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
@@ -645,7 +645,8 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True,
     # Use some color map to indicate distance from upper-left corner:
     sorted_colors = sns.color_palette("Spectral", len(sorted_rids)) #masks.shape[-1])
 
-    fig, ax = pl.subplots(1, figsize=(10,10))
+    if ax is None:
+        fig, ax = pl.subplots(1, figsize=(10,10))
 #    p2, p98 = np.percentile(refRGB, (1, 99))
 #    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
     im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
@@ -713,6 +714,8 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True,
         distances.append(D)
 
     pl.axis('off')
+    
+    return ax
     
     
 #
