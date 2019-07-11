@@ -33,7 +33,7 @@ from scipy.signal import argrelextrema
 from scipy.interpolate import splrep, sproot, splev, interp1d
 
 from pipeline.python.retinotopy import utils as rutils
-
+from pipeline.python.classifications import test_responsivity as resp
 
 from matplotlib.pyplot import cm
 import statsmodels as sm
@@ -98,7 +98,7 @@ def get_trials_by_cond(labels):
     return trials_by_cond
 
 
-def zscore_traces(raw_traces, labels, nframes_post_onset=None):
+def zscore_traces(raw_traces, labels, response_type='zscore', nframes_post_onset=None):
         
     # Get stim onset frame: 
     stim_on_frame = labels['stim_on_frame'].unique()
@@ -115,7 +115,7 @@ def zscore_traces(raw_traces, labels, nframes_post_onset=None):
         
     zscored_traces_list = []
     zscores_list = []
-    snrs_list = []
+    #snrs_list = []
     for trial, tmat in labels.groupby(['trial']):
 
         # Get traces using current trial's indices: divide by std of baseline
@@ -127,16 +127,19 @@ def zscore_traces(raw_traces, labels, nframes_post_onset=None):
         
         # Also get zscore (single value) for each trial:
         stim_mean = curr_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)
-        zscores_list.append((stim_mean-bas_mean)/bas_std)
-        snrs_list.append(stim_mean/bas_mean)
+        if response_type == 'zscore':
+            zscores_list.append((stim_mean-bas_mean)/bas_std)
+        elif response_type == 'snr':
+            zscores_list.append(stim_mean/bas_mean)
+        elif response_type == 'meanstim':
+            zscores_list.append(stim_mean)
         
         #zscores_list.append(curr_zscored_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)) # Get average zscore value for current trial
         
     zscored_traces = pd.concat(zscored_traces_list, axis=0)
     zscores =  pd.concat(zscores_list, axis=1).T # cols=rois, rows = trials
-    snrs = pd.concat(snrs_list, axis=1).T
     
-    return zscored_traces, zscores, snrs
+    return zscored_traces, zscores
 
 def group_zscores_by_cond(zscores, trials_by_cond):
     zscores_by_cond = dict()
@@ -666,18 +669,18 @@ def extract_options(options):
 
 #%%
 
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC090' #'JC059'
-#session = '20190604' #'20190227'
-#fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-#run = 'combined_rfs10_static'
-#traceid = 'traces001' #'traces001'
-##segment = False
-#visual_area = ''
-##trace_type = 'corrected'
-##select_rois = False
-#rows = 'ypos'
-#cols = 'xpos'
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC084' #'JC059'
+session = '20190522' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_rfs_static'
+traceid = 'traces001' #'traces001'
+segment = False
+visual_area = 'V1'
+trace_type = 'corrected'
+select_rois = False
+rows = 'ypos'
+cols = 'xpos'
 
 #options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid]
 #if segment:
@@ -752,12 +755,12 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     trials_by_cond = get_trials_by_cond(labels)
     
     #%
-    if select_rois:
-        visual_rois, selective_rois, rstats_fpath = get_responsive_rois(traceid_dir, included_rois=included_rois)
-    else:
-        visual_rois = np.arange(raw_traces.shape[-1])
-        selective_rois = np.arange(raw_traces.shape[-1])
-    
+#    if select_rois:
+#        visual_rois, selective_rois, rstats_fpath = get_responsive_rois(traceid_dir, included_rois=included_rois)
+#    else:
+#        visual_rois = np.arange(raw_traces.shape[-1])
+#        selective_rois = np.arange(raw_traces.shape[-1])
+#    
     
     # Format condition info:
     sdf = pd.DataFrame(dset['sconfigs'][()]).T
@@ -777,26 +780,26 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     
     #%%
     #metric_type = 'zscore'
+    response_type = 'zscore' #'None'
+    response_thr = None
     
     # zscore the traces:
     nframes_post_onset = nframes_on + int(round(1.*fr))
-    zscored_traces, zscores, snrs = zscore_traces(raw_traces, labels, nframes_post_onset=nframes_post_onset)
+    zscored_traces, zscores = zscore_traces(raw_traces, labels, response_type=response_type,
+                                            nframes_post_onset=nframes_post_onset)
     
-    if metric_type == 'zscore':
-        zscores_by_cond = group_zscores_by_cond(zscores, trials_by_cond)
-    elif metric_type == 'snr':
-        zscores_by_cond = group_zscores_by_cond(snrs, trials_by_cond)
-    
+    resp_by_cond = group_zscores_by_cond(zscores, trials_by_cond)
+
     # Sort ROIs by zscore by cond
     # -----------------------------------------------------------------------------
-    avg_zscores_by_cond = pd.DataFrame([zscores_by_cond[cfg].mean(axis=0) \
-                                        for cfg in sorted(zscores_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+    avg_resp_by_cond = pd.DataFrame([resp_by_cond[cfg].mean(axis=0) \
+                                        for cfg in sorted(resp_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
     
     #%
     # Sort mean (or max) zscore across trials for each config, and find "best config"
-    sorted_visual = sort_rois_by_max_response(avg_zscores_by_cond, visual_rois) if select_rois else []
-    sorted_selective = sort_rois_by_max_response(avg_zscores_by_cond, selective_rois) if select_rois else []
-    
+    #sorted_visual = sort_rois_by_max_response(avg_zscores_by_cond, visual_rois) if select_rois else []
+    #sorted_selective = sort_rois_by_max_response(avg_zscores_by_cond, selective_rois) if select_rois else []
+    del raw_traces
 
     
         #%%
@@ -804,8 +807,12 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     
     #map_thr = 0.6
     #response_thr =  1.5 #2.0
-    roi_list = [r for r in avg_zscores_by_cond.columns.tolist() if avg_zscores_by_cond[r].max() >= response_thr]
-    print("%i out of %i cells meet min req. of %.2f" % (len(roi_list), avg_zscores_by_cond.shape[1], response_thr))
+    if response_thr is None:
+        roi_list = avg_resp_by_cond.columns.tolist()
+        response_thr = 0
+    else:    
+        roi_list = [r for r in avg_resp_by_cond.columns.tolist() if avg_resp_by_cond[r].max() >= response_thr]
+        print("%i out of %i cells meet min req. of %.2f" % (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
     
     trim = False
     
@@ -827,7 +834,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     
     # Create subdir for saving figs/results based on fit params:
     # -----------------------------------------------------------------------------
-    rf_param_str = 'rfs_2dgaus_responsemin_%s%.2f_%s_%s' % (metric_type, response_thr, cutoff_type, set_to_min_str)
+    rf_param_str = 'rfs_2dgaus_responsemin_%s%.2f_%s_%s' % (response_type, response_thr, cutoff_type, set_to_min_str)
     rf_results_dir = os.path.join(rf_dir, rf_param_str)
     
     
@@ -870,13 +877,13 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             #%
             print rid
     
-            roi_fit_results, fig = plot_and_fit_roi_RF(avg_zscores_by_cond[rid], row_vals, col_vals, trim=trim,
+            roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], row_vals, col_vals, trim=trim,
                                                        hard_cutoff=hard_cutoff, map_thr=map_thr, 
                                                        set_to_min=set_to_min, perc_min=perc_min)
             fig.suptitle('roi %i' % int(rid+1))
             
             label_figure(fig, data_identifier)            
-            figname = '%s_RF_roi%05d' % (metric_type, int(rid+1))
+            figname = '%s_%s_RF_roi%05d' % (trace_type, response_type, int(rid+1))
             pl.savefig(os.path.join(rf_results_dir, 'roi_fits', '%s.png' % figname))
             pl.close()
             
@@ -891,7 +898,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                       'set_to_min': set_to_min_str,
                                       'xx': RF[RF.keys()[0]]['xx'],
                                       'yy': RF[RF.keys()[0]]['yy'],
-                                      'metric': metric_type},
+                                      'metric': response_type},
                        'row_vals': row_vals,
                        'col_vals': col_vals}
                        
@@ -926,8 +933,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     cmap = 'magma' if plot_ellipse else 'inferno' # inferno
     cbar_mode = 'single' if single_colorbar else  'each'
     
-    vmin = max([avg_zscores_by_cond.min().min(), 0])
-    vmax = min([5, avg_zscores_by_cond.max().max()])
+    vmin = max([avg_resp_by_cond.min().min(), 0])
+    vmax = min([5, avg_resp_by_cond.max().max()])
     
     nr = 6# 6 #6
     nc=10 #10 #10
@@ -942,7 +949,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     for aix, rid in enumerate(fit_roi_list[0:nr*nc]):
         ax = grid.axes_all[aix]
         ax.clear()
-        coordmap = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
+        coordmap = np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T
         
         im = ax.imshow(coordmap, cmap=cmap) #, vmin=vmin, vmax=vmax)
         #ax.contour(results['fit_params']['xx'], results['fit_params']['yy'], fitdf['fit'][rid].reshape(coordmap.shape), 1, colors='w')
@@ -1010,7 +1017,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         
         for rid in fit_roi_list:
             
-            coordmap = np.reshape(avg_zscores_by_cond[rid], (len(col_vals), len(row_vals))).T
+            coordmap = np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T
             
             nframes_plot = stim_on_frame + nframes_on + int(np.floor(fr*1.0))
             start_frame = 0 #labels['stim_on_frame'].unique()[0]
@@ -1089,7 +1096,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='1%', pad=0.1)
             cbar = ax.figure.colorbar(im, cax=cax, orientation='vertical')
-            cbar.set_label('%s' % metric_type)
+            cbar.set_label('%s' % response_type)
             
             pl.subplots_adjust(left=0.05, right=0.8)
         
@@ -1177,7 +1184,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             max(row_vals)-min(row_vals), facecolor='none', edgecolor='k')
     #ax.add_patch(screen_rect)
     
-    max_zscores = avg_zscores_by_cond.max(axis=0)
+    max_zscores = avg_resp_by_cond.max(axis=0)
     
     xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
         
