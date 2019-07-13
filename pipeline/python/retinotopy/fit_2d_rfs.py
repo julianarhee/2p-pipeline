@@ -657,10 +657,10 @@ def extract_options(options):
     parser.add_option('--select-rois', action='store_true', dest='select_rois', default=False, \
                       help="Set flag to select only visual or selective rois")
     
-    parser.add_option('-T', '--thr', action='store', dest='response_thr', default=1.5, \
-                      help="Min snr or zscore value for cells to fit (default: 1.5)")
-    parser.add_option('-M', '--metric', action='store', dest='metric_type', default='snr', \
-                      help="Metric to use for creating RF maps (default: snr)")
+    parser.add_option('-T', '--thr', action='store', dest='response_thr', default=None, \
+                      help="Min snr or zscore value for cells to fit (default: None (fits all))")
+    parser.add_option('-M', '--resp', action='store', dest='response_type', default='zscore', \
+                      help="Response metric to use for creating RF maps (default: zscore)")
     
     (options, args) = parser.parse_args(options)
 
@@ -691,7 +691,7 @@ cols = 'xpos'
 
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                             trace_type='corrected', visual_area='', select_rois=False, segment=False,
-                            metric_type='snr', response_thr=1.5, rootdir='/n/coxfs01/2p-data'):
+                            response_type='zscore', response_thr=None, rootdir='/n/coxfs01/2p-data'):
 #    optsE = extract_options(options)
 #    
 #    rootdir = optsE.rootdir
@@ -1339,13 +1339,13 @@ def main(options):
     visual_area = optsE.visual_area
     select_rois = optsE.select_rois
     
-    metric_type = optsE.metric_type
+    response_type = optsE.response_type
     response_thr = optsE.response_thr
     
     
     results = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
-                                metric_type=metric_type, response_thr=response_thr)
+                                response_type=response_type, response_thr=response_thr)
 
     print "((( RFs done! )))))"
         
