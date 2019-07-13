@@ -30,6 +30,12 @@ def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
 
 
+def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+    oldrange = (oldmax - oldmin)
+    newrange = (newmax - newmin)
+    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+    return newval
+
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
 # -----------------------------------------------------------------------------
