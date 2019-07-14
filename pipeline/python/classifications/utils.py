@@ -365,10 +365,11 @@ def check_counts_per_condition(raw_traces, labels):
 #%%
 
 class Session():
-    def __init__(self, animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, visual_area='AREA', rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
+        self.visual_area = visual_area
         self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
         self.rois = None
@@ -385,7 +386,7 @@ class Session():
     
     
     def load_data(self, traceid='traces001', trace_type='corrected',\
-                  experiment=None, rootdir='/n/coxfs01/2p-data'):
+                  experiment=None, rootdir='/n/coxfs01/2p-data', update_self=True):
         
         '''Set experiment = None to load all data'''
         
@@ -399,18 +400,24 @@ class Session():
         expdict = self.get_experiment_data(experiment=experiment,\
                                                     trace_type=trace_type,\
                                                     rootdir=rootdir)
-        self.experiments.update(expdict)
-
+        
+        if update_self:
+            self.experiments.update(expdict)
+        return expdict
+    
 
     def get_experiment_data(self, experiment=None, trace_type='corrected',\
                             rootdir='/n/coxfs01/2p-data'):
         experiment_dict = {}
+
+        fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+        run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
+        all_experiments = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
         
         if experiment is None: # Get ALL experiments
-            fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
-            run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
-            experiment_types = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
+            experiment_types = all_experiments
         else:
+            assert any(experiment in r for r in all_experiments), "-- specified experiment -%s- not found: %s" % (experiment, str(all_experiments))
             if not isinstance(experiment, list):
                 experiment_types = [experiment]
             else:
@@ -425,10 +432,31 @@ class Session():
         return experiment_dict
     
     
-    def get_grouped_stats(self, exp, responsive_thr=0.01, responsive_test='ROC'):
+    def get_grouped_stats(self, experiment_type, responsive_thr=0.01, responsive_test='ROC',
+                          traceid='traces001', trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
         
-        assert exp in [v for k, v in self.experiments.items()], "*ERROR* - specified experiment (%s) not found in Session object." % exp.name
+        #assert exp in [v for k, v in self.experiments.items()], "*ERROR* - specified experiment (%s) not found in Session object." % exp.name
         
+        experiment_names = [k for k, v in self.experiments.items()]
+
+        # see if already loaded data:
+        found_exp_names = [k for k in experiment_names if experiment_type in k]
+        print("Object has %i loaded experiments." % len(found_exp_names))
+        if len(found_exp_names) > 1:
+            for fi, fname in enumerate(found_exp_names):
+                print fi, fname
+            sel = input("Select IDX of exp to use: ")
+            exp_name = found_exp_names[int(sel)]
+            exp = self.experiments[exp_name]
+        elif len(found_exp_names) == 1:
+            exp_name = found_exp_names[0]
+            exp = self.experiments[exp_name]
+        else:
+            # Load just this experiment type:
+            expdict = self.load_data(experiment=experiment_type, traceid=traceid, trace_type=trace_type, rootdir=rootdir, update_self=False)
+            exp = expdict[experiment_type]
+            
+            
         print("[%s] Loading roi stats and cell list..." % exp.name)
         rstats, roi_list = exp.get_responsive_cells(responsive_test=responsive_test, responsive_thr=responsive_thr)
         if 'gratings' in exp.name and int(exp.session) < 20190511:
