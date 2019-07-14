@@ -40,6 +40,28 @@ import statsmodels as sm
 from pipeline.python.retinotopy import target_visual_field as targ
 
 
+
+def rfits_to_df(rffits, roi_list=None):
+    if roi_list is None:
+        roi_list = sorted(rffits.keys())
+        
+    rf_fits_df = pd.DataFrame({'x0': [rffits['fits'][r]['x0'] for r in roi_list],
+                               'y0': [rffits['fits'][r]['y0'] for r in roi_list],
+                               'sigma_x': [rffits['fits'][r]['sigma_x'] for r in roi_list],
+                               'sigma_y': [rffits['fits'][r]['sigma_y'] for r in roi_list],
+                               'theta': [rffits['fits'][r]['theta'] for r in roi_list] },
+                              index=roi_list)
+
+    x0, y0, sigma_x, sigma_y = convert_fit_to_coords(rf_fits_df, rffits['row_vals'], rffits['col_vals'])
+    rf_fits_df['x0'] = x0
+    rf_fits_df['y0'] = y0
+    rf_fits_df['sigma_x'] = sigma_x
+    rf_fits_df['sigma_y'] = sigma_y
+    
+    return rf_fits_df
+
+
+
 def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
     newrange = (newmax - newmin)
