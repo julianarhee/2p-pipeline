@@ -47,6 +47,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.traces.utils import get_frame_info
 
 from pipeline.python.retinotopy import utils as retinotools
+from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+from pipeline.python.classifications import test_responsivity as resp
 
 #%%
 
@@ -57,6 +59,8 @@ import json
 import re
 import pandas as pd
 
+
+#### GENERAL FUNCTIONS ########################################################
 class Struct():
     pass
 
@@ -94,6 +98,7 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
         
     return roi_id, traceid
 
+
 def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p-data'):
     anatomical = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
@@ -118,8 +123,25 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
     return anatomical
         
 
-def get_retino_analysis(run_dir, rois=None):
+def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
+    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
+    mfile = h5py.File(mask_fpath, 'r')
+
+    # Load and reshape masks
+    masks = mfile[mfile.keys()[0]]['masks']['Slice01'][:].T
+    print(masks.shape)
+    mfile[mfile.keys()[0]].keys()
+
+    zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:].T
+    zimg.shape
     
+    return masks, zimg
+
+
+#### RETINOTOPY EXPERIMENT FUNCTIONS ##########################################
+def get_retino_analysis(animalid, session, fov, run='retino_run1', rois=None, rootdir='/n/coxfs01/2p-data'):
+    
+    run_dir = os.path.join(rootdir, animalid, session, fov, run)
     analysis_info_fpath = glob.glob(os.path.join(run_dir, 'retino_analysis', 'analysisids*.json'))[0]
     with open(analysis_info_fpath, 'r') as f:
         ainfo = json.load(f)
@@ -143,160 +165,168 @@ def get_retino_analysis(run_dir, rois=None):
     
     return data_fpath
 
+def get_retino_stats(expdata, responsive_thr=0.01):
+    magratios, phases, traces = do_retino_analysis_on_raw(expdata)
+    roi_list = [r for r in magratios.index.tolist() if any(magratios.loc[r] > responsive_thr)]
+    rstats = {'magratios': magratios, 'phases': phases, 'traces': traces}
     
-    
-class Session():
-    def __init__(self, animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
-        self.animalid = animalid
-        self.session = session
-        self.fov = fov
-        self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
+    return rstats, roi_list
         
-        self.rois = None
-        self.traceid = None
-        self.trace_type = None
-        self.experiments = {}
-        
-        self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
 
-    def load_data(self, traceid='traces001', trace_type='corrected',\
-                  experiment=None, rootdir='/n/coxfs01/2p-data'):
-        
-        '''Set experiment = None to load all data'''
-        
-        self.traceid = traceid
-        self.trace_type = trace_type
-        print("Loading data: %s - %s" % (traceid, trace_type))
-        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
-        if tmp_tid != self.traceid:
-            self.traceid = tmp_tid
-            
-        self.experiments = self.get_experiment_data(experiment=experiment,\
-                                                    trace_type=trace_type,\
-                                                    rootdir=rootdir)
-        
-    def get_experiment_data(self, experiment=None, trace_type='corrected',\
-                            rootdir='/n/coxfs01/2p-data'):
-        experiment_dict = {}
-        
-        if experiment is None: # Get ALL experiments
-            fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
-            run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
-            experiment_types = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
-        else:
-            if not isinstance(experiment, list):
-                experiment_types = [experiment]
-            else:
-                experiment_types = experiment
-                
-        # Create object for each experiment:
-        for experiment_type in experiment_types:
-            exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
-            exp.load(trace_type=trace_type)
-            experiment_dict[experiment_type] = exp
-            
-        return experiment_dict
-    
-    
-    
-class Experiment():
-    def __init__(self, experiment_type, animalid, session, fov, \
-                 traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        print("[%s] creating experiment object." % experiment_type)
-        self.name = experiment_type
-        self.animalid = animalid
-        self.session = session
-        self.fov = fov
-        self.traceid = traceid
-        self.rois, tmp_tid = get_roi_id(animalid, session, fov, traceid, run_name=experiment_type, rootdir=rootdir)
-        if tmp_tid != self.traceid:
-            self.traceid = tmp_tid
-        self.source =  self.get_data_paths(rootdir=rootdir)
-        self.trace_type = None #trace_type
-        self.data = Struct() #self.load()
-        
-                
-    def load(self, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
-        '''
-        Populates trace_type and data
-        '''
-        
-        self.trace_type=trace_type
-        if not(isinstance(self.source, list)):
-            assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
-            print("... loading data array (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
-            if self.source.endswith('npz'):
-                dset = np.load(self.source)
-                self.data.traces  = pd.DataFrame(dset[self.trace_type])
-                self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-                sdf = pd.DataFrame(dset['sconfigs'][()]).T
-                round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-                sdf['size'] = round_sz
-                self.data.sdf = sdf
-                self.data.info = dset['run_info'][()]
-                
-            elif self.source.endswith('h5'):
-                #dfile = h5py.File(self.source, 'r')
-                # TODO: formatt retino data in sensible way with rutils
-                self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
-                                                               rootdir=rootdir)
-                self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
-                
-        else:
-            print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
+def do_retino_analysis_on_raw(expdata):
+    n_frames = expdata.info['stimulus']['nframes']
+    n_files = expdata.info['ntiffs']
+    fr = expdata.info['stimulus']['frame_rate']
+    stimfreq = expdata.info['stimulus']['stimfreq']
 
-        #return data
-    
-            
-    def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
-        fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
-        all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name))
-        combined_runs = [r for r in all_runs if 'combined' in r]
-        single_runs = []
-        for crun in combined_runs:
-            stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
-            #print stim_type
-            single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
-        run_list = [r for r in all_runs if r not in single_runs and 'compare' not in r]
+    # label frequency bins
+    freqs = np.fft.fftfreq(n_frames, float(1/fr))
+    sorted_freq_ixs = np.argsort(freqs)
+    freqs=freqs[sorted_freq_ixs]
+    #print(freqs)
 
-        data_fpaths = []
-        for run_dir in run_list:
-            run_name = os.path.split(run_dir)[-1]
-            print("... [%s] getting data path." % run_name)
+    # exclude DC offset from data
+    freqs=freqs[int(np.round(n_frames/2.))+1:]
+
+    # Identify freq idx:
+    stim_freq_ix=np.argmin(np.absolute(freqs-stimfreq))#find out index of stimulation freq
+    top_freq_ix=np.where(freqs>1)[0][0]#find out index of 1Hz, to cut-off zoomed out plot
+    print("Target freq: %.3f Hz" % (freqs[stim_freq_ix]))
+    
+
+    trials_by_cond = expdata.info['trials']
+    trial_nums = np.array([v for k,v in trials_by_cond.items()])
+    trial_nums = sorted(trial_nums.flatten())
+
+    nframes_total, nrois = expdata.traces.shape
+    magratios=[]
+    phases=[]
+    conds=[]
+    traces={}
+    for curr_cond in trials_by_cond.keys():
+        avg_traces = []
+        for rid in expdata.traces.columns:
+            tracemat = pd.DataFrame(np.reshape(expdata.traces[rid], (n_frames, n_files), order='F'),\
+                                    columns=trial_nums)
+            avg = tracemat[trials_by_cond[curr_cond]].mean(axis=1)
+            avg_traces.append(avg)
+        avg_traces = pd.DataFrame(np.array(avg_traces).T, columns=expdata.traces.columns)
+        traces[curr_cond] = avg_traces
+
+        magratio_array, phase_array = do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames)
+
+        magratios.append(magratio_array)
+        phases.append(phase_array)
+        conds.append(curr_cond)
+        
+    magratios = pd.DataFrame(np.array(magratios).T, columns=conds)
+    phases = pd.DataFrame(np.array(phases).T, columns=conds)
+    
+    return magratios, phases, traces
+
+
+def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
+    fft_results = np.fft.fft(avg_traces, axis=0) #avg_traces.apply(np.fft.fft, axis=1)
+
+    # get phase and magnitude
+    mag_data = abs(fft_results)
+    phase_data = np.angle(fft_results)
+
+    # sort mag and phase by freq idx:
+    mag_data = mag_data[sorted_freq_ixs]
+    phase_data = phase_data[sorted_freq_ixs]
+
+    # exclude DC offset from data
+    mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
+    phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
+
+    #unpack values from frequency analysis
+    mag_array = mag_data[stim_freq_ix, :]
+    phase_array = phase_data[stim_freq_ix, :]
+
+    #get magnitude ratio
+    tmp = np.copy(mag_data)
+    #tmp = np.delete(tmp,freq_idx,0)
+    nontarget_mag_array=np.sum(tmp,0)
+    magratio_array=mag_array/nontarget_mag_array
+
+    return magratio_array, phase_array
+
+
+#### RECEPTIVE FIELD EXPERIMENT FUNCTIONS #####################################
+def get_receptive_field_fits(animalid, session, fov, run='combined_rfs*_static', traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
+    rfits = None
+    fov_dir = os.path.join(rootdir, animalid, session, fov)
+    
+    try:
+        combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
+        #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
+        rf_traceid_dir = combined_rf_dirs[0]
+        
+        rf_fits = sorted(glob.glob(os.path.join(rf_traceid_dir,
+                                         'figures', 'receptive_fields', 'rfs_2dgaus*', '*.pkl')), key=natural_keys)
+        if len(rf_fits) > 1:
+            print("EXP: %s - more than 1 RF fit result found:" % run)
+            for r, ri in enumerate(rf_fits):
+                print(r, ri)
+            sel = input("-- Select IDX of fits to use: ")
+            rfs_fpath = rf_fits[int(sel)]
+        elif len(rf_fits) == 1:
+            rfs_fpath = rf_fits[0]
+        
+        print("... loading RF fits:\n...%s" % rfs_fpath)
+        with open(rfs_fpath, 'rb') as f:
+            rfits = pkl.load(f)
+    except Exception as e:
+        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
+        print e
+        
+    return rfits
+
+
+#### EVENT PROTOCOL FUNCTIONS #################################################
+def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
+                  responsive_test='ROC', rootdir='/n/coxfs01/2p-data'):
+    rstats = None
+    roi_list = None
+    # Load list of "visually responsive" cells
+    if ('blobs' in exp_name) or ('gratings' in exp_name and int(session) >= 20190511):
+        print("... loading ROI stats: %s" % responsive_test)
+        curr_traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, fov, \
+                                                  exp_name, 'traces', '%s*' % traceid))[0]
+        #print("...", curr_traceid_dir)
+        #exp.source.split('/data_arrays/')[0]
+        try:
+            curr_stats_dir = os.path.join(curr_traceid_dir, 'summary_stats', responsive_test)
+            stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results*.pkl'))
+            assert len(stats_fpath) > 0, "No stats results found for: %s" % curr_stats_dir
+            with open(stats_fpath[0], 'rb') as f:
+                rstats = pkl.load(f)
+            roi_list = [r for r, res in rstats.items() if res['pval'] < 0.05]
+        except Exception as e:
+            print e
+            print("-- Unable to load stats: %s [%s]" % (responsive_test, exp_name))
+            
+    else:
+        if 'rfs' in exp_name or (exp_name == 'gratings' and int(session) < 20190511):
+            if (exp_name == 'gratings' and int(session) < 20190511):
+                print "OLD"
             try:
-                if 'retino' in run_name:
-                    # Select analysis ID that corresponds to current ROI set:
-                    extraction_name = 'retino_analysis'
-                    fpath = get_retino_analysis(run_dir, rois=self.rois) # retrun extracted raw tracs (.h5)
-                    
-                else:
-                    extraction_name = 'traces'
-                    fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
-                                                   'data_arrays', 'datasets.npz'))[0]
-                data_fpaths.append(fpath)
-            except IndexError:
-                print("... no data arrays found for: %s" % run_name)
-                
-        if len(data_fpaths) > 1:
-            print("More than 1 file found for %s" % self.name)
-            for fi, fpath in enumerate(data_fpaths):
-                print fi, fpath
-            sel = raw_input("Select IDX of file path to use: ")
-            if sel=='':
-                data_fpath = data_fpaths
-            else:
-                data_fpath = data_fpaths[int(sel)]
-        else:
-            data_fpath = data_fpaths[0]
-        
-        if not isinstance(data_fpath, list):
-            corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
-            if self.name != corresp_run_name:
-                print("... renaming experiment to run name: %s" % corresp_run_name)
-                self.name = corresp_run_name
-
-        return data_fpath
-
+                rf_fit_thr = 0.5
+                rstats = get_receptive_field_fits(animalid, session, fov,
+                                                 run=exp_name, traceid=traceid, rootdir=rootdir) #(S.experiments[exp_name])
+                print("... loaded rf fits")
+                roi_list = [r for r, res in rstats['fits'].items() if res['fit_r']['r2'] >= rf_fit_thr]
+                #if exp_name == 'gratings':
+                #    exp_name = 'rfs'
+            except Exception as e:
+                print e
+                print("-- No RF fits! [%s]" % exp_name)
+        elif 'retino' in exp_name:
+            print("-- Not implemented -- [%s] run get_retino_stats()" % exp_name)
+            
+    return rstats, roi_list
 
 
 def check_counts_per_condition(raw_traces, labels):
@@ -331,6 +361,225 @@ def check_counts_per_condition(raw_traces, labels):
     
     return tmp_traces, tmp_labels
     
+
+#%%
+
+class Session():
+    def __init__(self, animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+        self.animalid = animalid
+        self.session = session
+        self.fov = fov
+        self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
+        
+        self.rois = None
+        self.traceid = None
+        self.trace_type = None
+        self.experiments = {}
+        
+        self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
+
+    
+    def load_masks(self, rootdir='/n/coxfs01/2p-data'):
+        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=self.rois, rootdir=rootdir)
+        return masks, zimg
+    
+    
+    def load_data(self, traceid='traces001', trace_type='corrected',\
+                  experiment=None, rootdir='/n/coxfs01/2p-data'):
+        
+        '''Set experiment = None to load all data'''
+        
+        self.traceid = traceid
+        self.trace_type = trace_type
+        print("Loading data: %s - %s" % (traceid, trace_type))
+        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
+        if tmp_tid != self.traceid:
+            self.traceid = tmp_tid
+            
+        expdict = self.get_experiment_data(experiment=experiment,\
+                                                    trace_type=trace_type,\
+                                                    rootdir=rootdir)
+        self.experiments.update(expdict)
+
+
+    def get_experiment_data(self, experiment=None, trace_type='corrected',\
+                            rootdir='/n/coxfs01/2p-data'):
+        experiment_dict = {}
+        
+        if experiment is None: # Get ALL experiments
+            fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+            run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
+            experiment_types = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
+        else:
+            if not isinstance(experiment, list):
+                experiment_types = [experiment]
+            else:
+                experiment_types = experiment
+                
+        # Create object for each experiment:
+        for experiment_type in experiment_types:
+            exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+            exp.load(trace_type=trace_type)
+            experiment_dict[experiment_type] = exp
+            
+        return experiment_dict
+    
+    
+    def get_grouped_stats(self, exp, responsive_thr=0.01, responsive_test='ROC'):
+        
+        assert exp in [v for k, v in self.experiments.items()], "*ERROR* - specified experiment (%s) not found in Session object." % exp.name
+        
+        print("[%s] Loading roi stats and cell list..." % exp.name)
+        rstats, roi_list = exp.get_responsive_cells(responsive_test=responsive_test, responsive_thr=responsive_thr)
+        if 'gratings' in exp.name and int(exp.session) < 20190511:
+            experiment_id = 'rfs'
+        else:
+            if 'combined' in exp.name:
+                experiment_id = exp.name.split('_')[1]
+            else:
+                experiment_id = exp.name.split('_')[0]
+        
+        estats = Struct()
+        estats.experiment_id = experiment_id
+        estats.rois= roi_list
+        estats.gdf = None
+        
+        if 'retino' not in experiment_id:
+            exp.load(trace_type='dff')
+            estats.gdf = resp.group_roidata_stimresponse(exp.data.traces[roi_list], exp.data.labels, roi_list=roi_list)
+            if 'rf' in experiment_id:
+                estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
+                rstats.pop('fits')
+                print rstats.keys()
+                estats.finfo = rstats
+        else:
+            estats.gdf = rstats #rstats['magratios'].max(axis=1)
+        
+        return estats
+        
+    
+class Experiment():
+    def __init__(self, experiment_type, animalid, session, fov, \
+                 traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+        print("[%s] creating experiment object." % experiment_type)
+        self.name = experiment_type
+        self.animalid = animalid
+        self.session = session
+        self.fov = fov
+        self.traceid = traceid
+        self.rois, tmp_tid = get_roi_id(animalid, session, fov, traceid, run_name=experiment_type, rootdir=rootdir)
+        if tmp_tid != self.traceid:
+            self.traceid = tmp_tid
+        self.source =  self.get_data_paths(rootdir=rootdir)
+        self.trace_type = None #trace_type
+        self.data = Struct() #self.load()
+    
+    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.01):
+        
+        roi_list=None; rstats=None; 
+        nattrs = [i for i in dir(self.data) if '__' not in i]
+        assert len(nattrs) > 0, "ERROR:  no data loaded."
+        print self.name
+        if 'retino' in self.name:
+            print("... loading retino data")
+            rstats, roi_list = get_retino_stats(self.data, responsive_thr=responsive_thr)
+        else:
+            print("... loading event data")
+            rstats, roi_list = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
+                                             exp_name=self.name, responsive_test=responsive_test)
+        print("... Found %i responsive cells." % (len(roi_list)))
+        
+        return rstats, roi_list
+               
+    
+    
+    def load(self, trace_type='corrected', make_equal=True, rootdir='/n/coxfs01/2p-data'):
+        '''
+        Populates trace_type and data
+        '''
+        
+        self.trace_type=trace_type
+        if not(isinstance(self.source, list)):
+            assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
+            print("... loading data array (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
+            if self.source.endswith('npz'):
+                dset = np.load(self.source)
+                self.data.traces  = pd.DataFrame(dset[self.trace_type])
+                self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+                sdf = pd.DataFrame(dset['sconfigs'][()]).T
+                round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+                sdf['size'] = round_sz
+                self.data.sdf = sdf
+                self.data.info = dset['run_info'][()]
+                
+                if make_equal:
+                    self.data.traces, self.data.labels = check_counts_per_condition(self.data.traces, self.data.labels)
+
+            elif self.source.endswith('h5'):
+                #dfile = h5py.File(self.source, 'r')
+                # TODO: formatt retino data in sensible way with rutils
+                self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
+                                                               rootdir=rootdir)
+                self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
+                
+        else:
+            print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
+
+        #return data
+    
+            
+    def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
+        fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+        all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name))
+        combined_runs = [r for r in all_runs if 'combined' in r]
+        single_runs = []
+        for crun in combined_runs:
+            stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
+            #print stim_type
+            single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
+        run_list = [r for r in all_runs if r not in single_runs and 'compare' not in r]
+
+        data_fpaths = []
+        for run_dir in run_list:
+            run_name = os.path.split(run_dir)[-1]
+            print("... [%s] getting data path." % run_name)
+            try:
+                if 'retino' in run_name:
+                    # Select analysis ID that corresponds to current ROI set:
+                    extraction_name = 'retino_analysis'
+                    fpath = get_retino_analysis(self.animalid, self.session, self.fov,\
+                                                run=run_name, rois=self.rois, rootdir=rootdir) # retrun extracted raw tracs (.h5)
+                    
+                else:
+                    extraction_name = 'traces'
+                    fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
+                                                   'data_arrays', 'datasets.npz'))[0]
+                data_fpaths.append(fpath)
+            except IndexError:
+                print("... no data arrays found for: %s" % run_name)
+                
+        if len(data_fpaths) > 1:
+            print("More than 1 file found for %s" % self.name)
+            for fi, fpath in enumerate(data_fpaths):
+                print fi, fpath
+            sel = raw_input("Select IDX of file path to use: ")
+            if sel=='':
+                data_fpath = data_fpaths
+            else:
+                data_fpath = data_fpaths[int(sel)]
+        else:
+            data_fpath = data_fpaths[0]
+        
+        if not isinstance(data_fpath, list):
+            corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
+            if self.name != corresp_run_name:
+                print("... renaming experiment to run name: %s" % corresp_run_name)
+                self.name = corresp_run_name
+
+
+        return data_fpath
+
+
 
 #%% Load Datasets:
 #
@@ -636,7 +885,7 @@ def sort_rois_2D(traceid_dir):
     return sorted_rids, cnts, zproj
 
 #
-def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, 
+def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, label_rois=[],
                           draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False, ax=None):
 
     # Create ZPROJ img to draw on:
@@ -693,14 +942,19 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True,
 
         # draw the contours on the image
         #orig = refRGB.copy()
-        if single_color:
-            col255 = roi_color
+        if len(label_rois) > 1 and rid not in label_rois:
+            col255 = 0
         else:
-            col255 = tuple([cval*255 for cval in sorted_colors[cidx]])
+            if single_color:
+                col255 = roi_color
+            else:
+                col255 = tuple([cval*255 for cval in sorted_colors[cidx]])
+                
         if draw_box:
             cv2.drawContours(orig, [box.astype("int")], -1, col255, thickness)
         else:
             cv2.drawContours(orig, cnt, -1, col255, thickness)
+            
         if label:
             cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
         ax.imshow(orig)
