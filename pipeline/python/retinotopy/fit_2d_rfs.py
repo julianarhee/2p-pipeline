@@ -376,11 +376,13 @@ def fwhm(x, y, k=3):
     roots = sproot(s)
 
     if len(roots) > 2:
-        raise MultiplePeaks("The dataset appears to have multiple peaks, and "
-                "thus the FWHM can't be determined.")
+        raise
+#        raise MultiplePeaks("The dataset appears to have multiple peaks, and "
+#                "thus the FWHM can't be determined.")
     elif len(roots) < 2:
-        raise NoPeaksFound("No proper peaks were found in the data set; likely "
-                "the dataset is flat (e.g. all zeros).")
+        raise
+#        raise NoPeaksFound("No proper peaks were found in the data set; likely "
+#                "the dataset is flat (e.g. all zeros).")
     else:
         return abs(roots[1] - roots[0])
 
@@ -445,7 +447,7 @@ def do_2d_fit(rfmap, nx=None, ny=None):
         amplitude = rfmap.max()
 
         y0, x0 = np.where(rfmap == rfmap.max())
-        print "x0, y0: (%i, %i)" % (int(x0), int(y0))
+        #print "x0, y0: (%i, %i)" % (int(x0), int(y0))
     
         try:
             sigma_x = fwhm(xi, rfmap.sum(axis=0))
@@ -802,8 +804,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     
     #%%
     #metric_type = 'zscore'
-    response_type = 'zscore' #'None'
-    response_thr = None
+    #response_type = 'zscore' #'None'
+    #response_thr = None
     
     # zscore the traces:
     nframes_post_onset = nframes_on + int(round(1.*fr))
@@ -893,11 +895,12 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     #rid = 106 ##89 #106 #36 # 89
     if do_fits:
         #%
+        print("--- [%s|%s|%s|%s]: Fitting receptive fields." % (animalid, session, fov, run))
         RF = {}
         results = {}
         for rid in roi_list:
             #%
-            print rid
+            #print rid
     
             roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], row_vals, col_vals, trim=trim,
                                                        hard_cutoff=hard_cutoff, map_thr=map_thr, 

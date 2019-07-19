@@ -158,7 +158,7 @@ def get_linear_coords(width, height, resolution, leftedge=None, rightedge=None, 
     if topedge is None:
         topedge = height/2.
 
-    print("center 2 Top/Anterior:", topedge, rightedge)
+    #print("center 2 Top/Anterior:", topedge, rightedge)
 
 
     mapx = np.linspace(leftedge, rightedge, resolution[0] * ((rightedge-leftedge)/float(width)))
@@ -382,14 +382,15 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
 
 #%%
 def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
-        
+    
+    print("... Getting screen info")    
     screen = {}
     
     try:
         # Get bounding box values from epi:
         epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
         epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
-        print("Found epi sessions: %s" % str(epi_sessions))
+        #print("Found epi sessions: %s" % str(epi_sessions))
         if len(epi_sessions) > 0:
             epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
             print("Most recent: %s" % str(epi_sesh))
@@ -399,7 +400,7 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
 
         else:
-            print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
+            #print("No EPI maps found for session: %s * (using tmp session boundaries file)" % session)
             epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
         
         assert len(epi_fpaths) > 0, "No epi screen info found!"
@@ -425,7 +426,7 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 
             epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
         
-        print("-- getting screen info from:", epi_fpaths)
+        #print("-- getting screen info from:", epi_fpaths)
         
         for epath in epi_fpaths:
             with open(epath, 'r') as f:
@@ -450,9 +451,9 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
                 screen['bb_right'] = screen['azimuth']/2.0
 
 
-        print("*********************************")
-        pp.pprint(screen)
-        print("*********************************")
+        #print("*********************************")
+        #pp.pprint(screen)
+        #print("*********************************")
       
     except Exception as e:
         traceback.print_exc()
