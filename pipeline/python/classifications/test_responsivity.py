@@ -352,7 +352,7 @@ def group_df_roidata_stimresponse(roidata, labels_df):
     return df_by_rois
 
 
-def group_roidata_stimresponse(roidata, labels_df, roi_list=None):
+def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped=True):
     '''
     roidata: array of shape nframes_total x nrois
     labels:  dataframe of corresponding nframes_total with trial/config info
@@ -404,14 +404,14 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None):
         #zscore = (stim_mean - base_mean) / base_std
         zscore = (stim_mean) / base_std
         dff = (stim_mean - base_mean) / base_mean
-        df = stim_mean - base_mean
+        dF = stim_mean - base_mean
         snr = stim_mean / base_mean
         df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
                                      'trial': np.tile(trial, (nrois,)), 
                                      'meanstim': stim_mean,
                                      'zscore': zscore,
                                      'dff': dff,
-                                     'df': df, 
+                                     'df': dF, 
                                      'snr': snr,
                                      'base_std': base_std,
                                      'base_mean': base_mean,
@@ -419,9 +419,11 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None):
                                      }, index=roi_list))
 
     df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois\
-    df_by_rois = df.groupby(df.index)
-    
-    return df_by_rois
+    if return_grouped:    
+        df_by_rois = df.groupby(df.index)
+        return df_by_rois
+    else:
+        return df
 
 
 
