@@ -105,7 +105,7 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
     anatomical_dirs = glob.glob(os.path.join(fov_dir, 'anatomical'))
     print("[%s] %s - %s:  Getting anatomicals..." % (animalid, session, fov))
     try:
-        assert len(anatomical_dirs) > 0, "No anatomicals for current session: (%s | %s | %s)" (animalid, session, fov)
+        assert len(anatomical_dirs) > 0, "No anatomicals for current session: (%s | %s | %s)" % (animalid, session, fov)
         anatomical_dir = anatomical_dirs[0]
         print("... Found %i anatomical runs." % len(anatomical_dirs))
         anatomical_imgs = glob.glob(os.path.join(anatomical_dir, 'processed',
@@ -166,11 +166,12 @@ def get_retino_analysis(animalid, session, fov, run='retino_run1', rois=None, ro
     return data_fpath
 
 def get_retino_stats(expdata, responsive_thr=0.01):
-    magratios, phases, traces = do_retino_analysis_on_raw(expdata)
+    magratios, phases, traces, trials_by_cond = do_retino_analysis_on_raw(expdata)
     roi_list = [r for r in magratios.index.tolist() if any(magratios.loc[r] > responsive_thr)]
+    nrois_total = len(magratios.index.tolist())
     rstats = {'magratios': magratios, 'phases': phases, 'traces': traces}
     
-    return rstats, roi_list
+    return rstats, roi_list, nrois_total, trials_by_cond
         
 
 def do_retino_analysis_on_raw(expdata):
@@ -222,7 +223,7 @@ def do_retino_analysis_on_raw(expdata):
     magratios = pd.DataFrame(np.array(magratios).T, columns=conds)
     phases = pd.DataFrame(np.array(phases).T, columns=conds)
     
-    return magratios, phases, traces
+    return magratios, phases, traces, trials_by_cond
 
 
 def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
@@ -254,18 +255,20 @@ def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
 
 
 #### RECEPTIVE FIELD EXPERIMENT FUNCTIONS #####################################
-def get_receptive_field_fits(animalid, session, fov, run='combined_rfs*_static', traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+def get_receptive_field_fits(animalid, session, fov, receptive_field_fit='zscore0.00_no_trim',
+                             run='combined_rfs*_static', traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
     rfits = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    
+    do_fits = False
     try:
         combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
         #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
         rf_traceid_dir = combined_rf_dirs[0]
         
         rf_fits = sorted(glob.glob(os.path.join(rf_traceid_dir,
-                                         'figures', 'receptive_fields', 'rfs_2dgaus*', '*.pkl')), key=natural_keys)
+                                         'figures', 'receptive_fields', 
+                                         'rfs_2dgaus*%s*' % receptive_field_fit, '*.pkl')), key=natural_keys)
         if len(rf_fits) > 1:
             print("EXP: %s - more than 1 RF fit result found:" % run)
             for r, ri in enumerate(rf_fits):
@@ -274,10 +277,19 @@ def get_receptive_field_fits(animalid, session, fov, run='combined_rfs*_static',
             rfs_fpath = rf_fits[int(sel)]
         elif len(rf_fits) == 1:
             rfs_fpath = rf_fits[0]
+        else:
+            do_fits = True
         
-        print("... loading RF fits:\n...%s" % rfs_fpath)
-        with open(rfs_fpath, 'rb') as f:
-            rfits = pkl.load(f)
+        if do_fits:
+            print("... specified RF fit method not found, running now.")
+            rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+                            trace_type='corrected', visual_area='', select_rois=False, segment=False,
+                            response_type='zscore', response_thr=None, rootdir='/n/coxfs01/2p-data')
+        
+        else:
+            print("... loading RF fits: %s" % receptive_field_fit)
+            with open(rfs_fpath, 'rb') as f:
+                rfits = pkl.load(f)
     except Exception as e:
         print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
         print e
@@ -287,9 +299,11 @@ def get_receptive_field_fits(animalid, session, fov, run='combined_rfs*_static',
 
 #### EVENT PROTOCOL FUNCTIONS #################################################
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
-                  responsive_test='ROC', rootdir='/n/coxfs01/2p-data'):
+                  responsive_test='ROC', responsive_thr=0.01, 
+                  receptive_field_fit='zscore0.00_no_trim', rootdir='/n/coxfs01/2p-data'):
     rstats = None
     roi_list = None
+    nrois_total = None
     # Load list of "visually responsive" cells
     if ('blobs' in exp_name) or ('gratings' in exp_name and int(session) >= 20190511):
         print("... loading ROI stats: %s" % responsive_test)
@@ -303,30 +317,34 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
             assert len(stats_fpath) > 0, "No stats results found for: %s" % curr_stats_dir
             with open(stats_fpath[0], 'rb') as f:
                 rstats = pkl.load(f)
-            roi_list = [r for r, res in rstats.items() if res['pval'] < 0.05]
+            roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
+            nrois_total = len(rstats.keys())
         except Exception as e:
             print e
             print("-- Unable to load stats: %s [%s]" % (responsive_test, exp_name))
             
     else:
-        if 'rfs' in exp_name or (exp_name == 'gratings' and int(session) < 20190511):
-            if (exp_name == 'gratings' and int(session) < 20190511):
-                print "OLD"
+        if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
+#            if (exp_name == 'gratings' and int(session) < 20190511):
+#                print "OLD"
             try:
                 rf_fit_thr = 0.5
                 rstats = get_receptive_field_fits(animalid, session, fov,
-                                                 run=exp_name, traceid=traceid, rootdir=rootdir) #(S.experiments[exp_name])
+                                                 run=exp_name, traceid=traceid, 
+                                                 receptive_field_fit=receptive_field_fit,
+                                                 rootdir=rootdir) #(S.experiments[exp_name])
                 print("... loaded rf fits")
                 roi_list = [r for r, res in rstats['fits'].items() if res['fit_r']['r2'] >= rf_fit_thr]
                 #if exp_name == 'gratings':
                 #    exp_name = 'rfs'
+                nrois_total = len(rstats['fits'].keys())
             except Exception as e:
                 print e
                 print("-- No RF fits! [%s]" % exp_name)
         elif 'retino' in exp_name:
             print("-- Not implemented -- [%s] run get_retino_stats()" % exp_name)
             
-    return rstats, roi_list
+    return rstats, roi_list, nrois_total
 
 
 def check_counts_per_condition(raw_traces, labels):
@@ -365,11 +383,13 @@ def check_counts_per_condition(raw_traces, labels):
 #%%
 
 class Session():
-    def __init__(self, animalid, session, fov, visual_area='AREA', rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, visual_area='AREA', state='STATE', rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
         self.visual_area = visual_area
+        self.state = state
+        
         self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
         self.rois = None
@@ -379,6 +399,13 @@ class Session():
         
         self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
 
+    def save_session(self, rootdir='/n/coxfs01/2p-data'):
+        outdir = os.path.join(rootdir, self.animalid, self.session, self.fov, 'summaries')
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+        with open(os.path.join(outdir, 'sessiondata.pkl'), 'wb') as f:
+            pkl.dump(self, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
     
     def load_masks(self, rootdir='/n/coxfs01/2p-data'):
         masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=self.rois, rootdir=rootdir)
@@ -392,21 +419,26 @@ class Session():
         
         self.traceid = traceid
         self.trace_type = trace_type
-        print("Loading data: %s - %s" % (traceid, trace_type))
-        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
-        if tmp_tid != self.traceid:
-            self.traceid = tmp_tid
+        if experiment is not None:
+            print("... Loading data (%s - %s - %s)" % (experiment, traceid, trace_type))
+        else:
+            print("... Loading all experiments (%s - %s)" % (traceid, trace_type))
+#            
+#        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
+#        if tmp_tid != self.traceid:
+#            self.traceid = tmp_tid
             
         expdict = self.get_experiment_data(experiment=experiment,\
-                                                    trace_type=trace_type,\
-                                                    rootdir=rootdir)
+                                           traceid=traceid,
+                                           trace_type=trace_type,\
+                                           rootdir=rootdir)
         
-        if update_self:
+        if update_self and expdict is not None:
             self.experiments.update(expdict)
         return expdict
     
 
-    def get_experiment_data(self, experiment=None, trace_type='corrected',\
+    def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
                             rootdir='/n/coxfs01/2p-data'):
         experiment_dict = {}
 
@@ -414,82 +446,90 @@ class Session():
         run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
         all_experiments = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
         
-        if experiment is None: # Get ALL experiments
-            experiment_types = all_experiments
-        else:
-            assert any(experiment in r for r in all_experiments), "-- specified experiment -%s- not found: %s" % (experiment, str(all_experiments))
-            if not isinstance(experiment, list):
-                experiment_types = [experiment]
+        try:
+            if experiment is None: # Get ALL experiments
+                experiment_types = all_experiments
             else:
-                experiment_types = experiment
-                
-        # Create object for each experiment:
-        for experiment_type in experiment_types:
-            exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
-            exp.load(trace_type=trace_type)
-            experiment_dict[experiment_type] = exp
+                if not isinstance(experiment, list):
+                    experiment_types = [experiment]
+                else:
+                    experiment_types = experiment
+                    
+
+            # Create object for each experiment:
+            for experiment_type in experiment_types:         
+                    
+                self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
+                if tmp_tid != self.traceid:
+                    self.traceid = tmp_tid
+                exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                if exp.source is None:
+                    continue
+                exp.load(trace_type=trace_type)
+                if 'gratings' in experiment_type and int(self.session) < 20190511:
+                    experiment_type = 'rfs'
+                experiment_dict[experiment_type] = exp
+        except Exception as e:
+            print e
+            print("--- skipping ---")
+            experiment_dict = None
             
         return experiment_dict
     
     
-    def get_grouped_stats(self, experiment_type, responsive_thr=0.01, responsive_test='ROC',
-                          traceid='traces001', trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+    def get_grouped_stats(self, experiment_type, responsive_thr=0.01, responsive_test='ROC', 
+                          receptive_field_fit='zscore0.00_no_trim',
+                          update=True, get_grouped=True,
+                          traceid='traces001', trace_type='corrected',
+                          rootdir='/n/coxfs01/2p-data'):
         
         #assert exp in [v for k, v in self.experiments.items()], "*ERROR* - specified experiment (%s) not found in Session object." % exp.name
+        expdict=None; estats_dict=None;
         
         experiment_names = [k for k, v in self.experiments.items()]
-
         # see if already loaded data:
-        found_exp_names = [k for k in experiment_names if experiment_type in k]
-        print("Object has %i loaded experiments." % len(found_exp_names))
+        print("Getting stats:", experiment_type)
+        if experiment_type is not None:
+            found_exp_names = [k for k in experiment_names if experiment_type in k]
+        else:
+            found_exp_names = experiment_names
+            
+        print("... Session Object has %i loaded experiments." % len(found_exp_names))
         if len(found_exp_names) > 1:
             for fi, fname in enumerate(found_exp_names):
                 print fi, fname
-            sel = input("Select IDX of exp to use: ")
-            exp_name = found_exp_names[int(sel)]
-            exp = self.experiments[exp_name]
+            sel = raw_input("Select IDX of exp to use: ")
+            if sel == '':
+                expdict = dict((exp_name, self.experiments[exp_name]) for exp_name in found_exp_names)
+            else:
+                exp_name = found_exp_names[int(sel)]
+                expdict = {exp_name: self.experiments[exp_name]}
         elif len(found_exp_names) == 1:
             exp_name = found_exp_names[0]
-            exp = self.experiments[exp_name]
+            expdict = {exp_name: self.experiments[exp_name]}
         else:
             # Load just this experiment type:
-            expdict = self.load_data(experiment=experiment_type, traceid=traceid, trace_type=trace_type, rootdir=rootdir, update_self=False)
-            exp = expdict[experiment_type]
-            
-            
-        print("[%s] Loading roi stats and cell list..." % exp.name)
-        rstats, roi_list = exp.get_responsive_cells(responsive_test=responsive_test, responsive_thr=responsive_thr)
-        if 'gratings' in exp.name and int(exp.session) < 20190511:
-            experiment_id = 'rfs'
-        else:
-            if 'combined' in exp.name:
-                experiment_id = exp.name.split('_')[1]
-            else:
-                experiment_id = exp.name.split('_')[0]
+            expdict = self.load_data(experiment=experiment_type, traceid=traceid,
+                                     trace_type=trace_type, rootdir=rootdir, 
+                                     update_self=update)
+            #exp = None if expdict is None else expdict[expdict.keys()[0]] 
         
-        estats = Struct()
-        estats.experiment_id = experiment_id
-        estats.rois= roi_list
-        estats.gdf = None
-        
-        if 'retino' not in experiment_id:
-            exp.load(trace_type='dff')
-            estats.gdf = resp.group_roidata_stimresponse(exp.data.traces[roi_list], exp.data.labels, roi_list=roi_list)
-            if 'rf' in experiment_id:
-                estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
-                rstats.pop('fits')
-                print rstats.keys()
-                estats.finfo = rstats
-        else:
-            estats.gdf = rstats #rstats['magratios'].max(axis=1)
-        
-        return estats
+        if expdict is not None:
+            estats_dict = {}
+            for exp_name, exp in expdict.items():
+                #print("... [%s] Loading roi stats and cell list..." % exp.name)
+                tmp_estats_dict = exp.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                get_grouped=get_grouped, receptive_field_fit=receptive_field_fit)
+                if tmp_estats_dict is not None:
+                    estats_dict.update(tmp_estats_dict)
+                
+        return estats_dict
         
     
 class Experiment():
     def __init__(self, experiment_type, animalid, session, fov, \
                  traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        print("[%s] creating experiment object." % experiment_type)
+        print(" [%s | %s | %s] creating experiment object - %s" % (animalid, session, fov, experiment_type))
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
@@ -498,28 +538,87 @@ class Experiment():
         self.rois, tmp_tid = get_roi_id(animalid, session, fov, traceid, run_name=experiment_type, rootdir=rootdir)
         if tmp_tid != self.traceid:
             self.traceid = tmp_tid
-        self.source =  self.get_data_paths(rootdir=rootdir)
+            
+        paths = self.get_data_paths(rootdir=rootdir)
+        self.source = paths
         self.trace_type = None #trace_type
         self.data = Struct() #self.load()
-    
-    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.01):
         
-        roi_list=None; rstats=None; 
+        
+        if 'gratings' in self.name and int(self.session) < 20190511:
+            self.experiment_type = 'rfs'
+        else:
+            self.experiment_type = self.name
+                    
+    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.01, 
+                             receptive_field_fit='zscore0.00_no_trim'):
+        
+        roi_list=None; rstats=None; nrois_total=None; trials_by_cond=None;
         nattrs = [i for i in dir(self.data) if '__' not in i]
         assert len(nattrs) > 0, "ERROR:  no data loaded."
-        print self.name
+        #print self.name
         if 'retino' in self.name:
             print("... loading retino data")
-            rstats, roi_list = get_retino_stats(self.data, responsive_thr=responsive_thr)
+            rstats, roi_list, nrois_total, trials_by_cond = get_retino_stats(self.data, responsive_thr=responsive_thr)
         else:
             print("... loading event data")
-            rstats, roi_list = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-                                             exp_name=self.name, responsive_test=responsive_test)
-        print("... Found %i responsive cells." % (len(roi_list)))
+            rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
+                                             exp_name=self.name, responsive_test=responsive_test, 
+                                             receptive_field_fit=receptive_field_fit)
+            trials_by_cond = None
+        if rstats is not None:
+            print("... Found %i responsive cells." % (len(roi_list)))
         
-        return rstats, roi_list
+        return rstats, roi_list, nrois_total, trials_by_cond
                
+    def get_stats(self, responsive_test='ROC', responsive_thr=0.01, 
+                  receptive_field_fit='zscore0.00_no_trim', get_grouped=True):
+        print("... [%s] Loading roi stats and cell list..." % self.name)
+        rstats, roi_list, nrois_total, trials_by_cond = self.get_responsive_cells(responsive_test=responsive_test,
+                                                                 responsive_thr=responsive_thr,
+                                                                 receptive_field_fit=receptive_field_fit)
+        
+        if rstats is None and roi_list is None:
+            print("--- NO STATS (%s)" % responsive_test)
+            return None
     
+    
+        if 'gratings' in self.name and int(self.session) < 20190511:
+            print("... renaming experiment to 'rfs' (old, pre-20190511)")
+            experiment_id = 'rfs'
+        else:
+            if 'combined' in self.name:
+                experiment_id = self.name.split('_')[1]
+            else:
+                experiment_id = self.name.split('_')[0]
+            
+        estats = Struct()
+        estats.experiment_id = experiment_id
+        estats.rois = roi_list
+        estats.nrois = nrois_total
+        estats.gdf = None
+        estats.sdf = None
+        
+        if 'retino' not in experiment_id:
+            self.load(trace_type='dff')
+            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
+                                                         roi_list=roi_list,
+                                                         return_grouped=get_grouped)
+            if 'rf' in experiment_id:
+                estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
+                rstats.pop('fits')
+                print("*** got rf fits***")
+                
+                estats.finfo = rstats
+            estats.sdf = self.data.sdf
+        else:
+            estats.gdf = rstats #rstats['magratios'].max(axis=1)
+            assert trials_by_cond is not None, "Retino trial data failed to return"
+            estats.sdf = trials_by_cond
+            
+        return {experiment_id: estats}
+        
+                
     
     def load(self, trace_type='corrected', make_equal=True, rootdir='/n/coxfs01/2p-data'):
         '''
@@ -558,15 +657,26 @@ class Experiment():
             
     def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
-        all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name))
+        if 'retino' in self.name:
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'retino_analysis', 'anaylsis*', 'traces', '*.h5'))
+            trace_extraction = 'retino_analysis'
+        else:
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
+            trace_extraction = 'traces'
+        if len(all_runs) == 0:
+            print("[%s|%s|%s] No extracted traces: %s" % (self.animalid, self.session, self.fov, self.name))
+            return None
+        
+        all_runs = [s.split('/%s' % trace_extraction)[0] for s in all_runs]
         combined_runs = [r for r in all_runs if 'combined' in r]
         single_runs = []
         for crun in combined_runs:
             stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
             #print stim_type
             single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
-        run_list = [r for r in all_runs if r not in single_runs and 'compare' not in r]
-
+        run_list = list(set([r for r in all_runs if r not in single_runs and 'compare' not in r]))
+        #print run_list
+        
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
@@ -585,7 +695,8 @@ class Experiment():
                 data_fpaths.append(fpath)
             except IndexError:
                 print("... no data arrays found for: %s" % run_name)
-                
+        
+        data_fpaths = list(set(data_fpaths))
         if len(data_fpaths) > 1:
             print("More than 1 file found for %s" % self.name)
             for fi, fpath in enumerate(data_fpaths):
