@@ -383,10 +383,18 @@ def check_counts_per_condition(raw_traces, labels):
 #%%
 
 class Session():
-    def __init__(self, animalid, session, fov, visual_area='AREA', state='STATE', rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, visual_area=None, state=None, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
+        
+        if visual_area is None or state is None:
+            with open(os.path.join(rootdir, animalid, 'sessionmeta.json'), 'r') as f:
+                sessionmeta = json.load(f)
+            skey = [k for k in sessionmeta.keys() if k.split('_')[0] == session and k.split('_')[1] in fov][0]
+            visual_area = sessionmeta[skey]['visual_area']
+            state = sessionmeta[skey]['state']
+            
         self.visual_area = visual_area
         self.state = state
         
@@ -396,9 +404,64 @@ class Session():
         self.traceid = None
         self.trace_type = None
         self.experiments = {}
+        self.experiment_list = self.get_experiment_list(rootdir=rootdir)
         
         self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
 
+    def get_stimulus_coordinates(self, update_self=False):
+
+        # Get stimulus positions - blobs and gratings only
+        xpositions=[]; ypositions=[];
+        for ex in ['blobs', 'gratings']:
+            if ex not in self.experiment_list: #.keys():
+                print("[%s|%s] No experiment exists for: %s" % (self.animalid, self.session, ex))
+                continue
+            if ex not in self.experiments.keys():
+                expdict = self.load_data(experiment=ex, update_self=update_self)
+                expdata = expdict[ex]
+            else:
+                expdata = self.experiments[ex]
+                
+            sdf = expdata.data.sdf.copy()
+            if ex == 'gratings': # deal with FF stimuli
+                sdf = sdf[sdf['size']<200]
+                sdf.pop('luminance')
+            curr_xpos = sdf.dropna()['xpos'].unique()
+            assert len(curr_xpos)==1, "[%s] more than 1 xpos found! %s" % (ex, str(curr_xpos))
+            curr_ypos = sdf.dropna()['ypos'].unique()
+            assert len(curr_ypos)==1, "[%s] more than 1 ypos found! %s" % (ex, str(curr_ypos))
+            xpositions.append(curr_xpos[0])
+            ypositions.append(curr_ypos[0])
+        
+        xpos = list(set(xpositions))
+        assert len(xpos)==1, "blobs and gratings have different XPOS: %s" % str(xpos)
+        ypos = list(set(ypositions))
+        assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
+        xpos = xpos[0]
+        ypos = ypos[0]
+        print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
+        
+        return xpos, ypos
+    
+
+    def get_stimulus_sizes(self, size_tested = ['gratings', 'blobs']):
+        
+        tested_exps = [e for e in self.experiment_list if e in size_tested]
+    
+        stimsizes = {}
+        for exp in tested_exps:
+            stimsizes[exp] = self.experiments[exp].data.sdf.dropna()['size'].unique()
+            
+    #    gratings_sz = S.experiments['gratings'].data.sdf['size'].unique().min()
+    #    print("Gratings: min apertured size %i" % gratings_sz)
+    #    
+    #    # Get blob size(s):
+    #    blobs_sz_min = S.experiments['blobs'].data.sdf.dropna()['size'].unique().min()
+    #    blobs_sz_max = S.experiments['blobs'].data.sdf.dropna()['size'].unique().max()
+    #    print("Blobs: min/max size = %i/%i" % (blobs_sz_min, blobs_sz_max))
+        return stimsizes
+ 
+    
     def save_session(self, rootdir='/n/coxfs01/2p-data'):
         outdir = os.path.join(rootdir, self.animalid, self.session, self.fov, 'summaries')
         if not os.path.exists(outdir):
@@ -417,8 +480,9 @@ class Session():
         
         '''Set experiment = None to load all data'''
         
-        self.traceid = traceid
-        self.trace_type = trace_type
+        if update_self:
+            self.traceid = traceid
+            self.trace_type = trace_type
         if experiment is not None:
             print("... Loading data (%s - %s - %s)" % (experiment, traceid, trace_type))
         else:
@@ -446,6 +510,11 @@ class Session():
         run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
         experiment_list = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
         
+        if int(self.session) < 20190511 and 'gratings' in experiment_list:
+            # Old experiment, where "gratings" were actually RFs
+            experiment_list = [e for e in experiment_list if e != 'gratings']
+            experiment_list.append('rfs') # These are always 5 degree res        
+        
         return experiment_list
     
     def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
@@ -466,7 +535,10 @@ class Session():
        
         #try:
             # Create object for each experiment:
-        for experiment_type in experiment_types:         
+        for experiment_type in experiment_types:     
+            if int(self.session) < 20190511 and experiment_type == 'rfs':
+                experiment_type = 'gratings' # Temporarily revert back to old-name since get_experiment_list() changed
+        
             try:        
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
                 print("-- %s: got rois" % experiment_type)
@@ -1056,7 +1128,8 @@ def sort_rois_2D(traceid_dir):
 
 #
 def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, label_rois=[],
-                          draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False, ax=None):
+                          draw_box=False, thickness=1, roi_color=(0, 255, 0), transform=False,
+                          single_color=False, ax=None):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
@@ -1066,6 +1139,9 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, la
 
     if ax is None:
         fig, ax = pl.subplots(1, figsize=(10,10))
+        
+    
+    
 #    p2, p98 = np.percentile(refRGB, (1, 99))
 #    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
     im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
@@ -1127,8 +1203,18 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, la
             
         if label:
             cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
-        ax.imshow(orig)
-
+        
+        if transform:
+            img = imutils.rotate(orig, 90)  
+            #imageROI = orig.copy()
+            #img = imutils.rotate_bound(imageROI, -90)
+            
+            ax.imshow(img)
+            ax.invert_xaxis()
+        else:
+            ax.imshow(orig)
+        
+        
         # stack the reference coordinates and the object coordinates
         # to include the object center
         refCoords = refObj[1] #np.vstack([refObj[0], refObj[1]])

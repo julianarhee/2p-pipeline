@@ -297,12 +297,90 @@ def extract_options(options):
 
     return options
 
+#%%
+def get_session_stats(S, responsive_test='ROC', trace_type='corrected',
+                      experiment_list=None, traceid='traces001',
+                      rootdir='/n/coxfs01/2p-data', create_new=True):
+
+    # Create output dirs:    
+    output_dir = os.path.join(rootdir, S.animalid, S.session, S.fov, 'summaries')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    print(output_dir)
+
+    stats_desc = '-'.join([traceid, trace_type, responsive_test])
+    
+    statsdir = os.path.join(output_dir, 'stats')
+    if not os.path.exists(statsdir):
+        os.makedirs(statsdir)
+
+    statsfigdir = os.path.join(statsdir, 'figures')
+    if not os.path.exists(statsfigdir):
+        os.makedirs(statsfigdir)
+        
+    # Create or load stats:
+    stats_fpath = os.path.join(statsdir, 'sessionstats_%s.pkl' % stats_desc)
+    if os.path.exists(stats_fpath) and create_new is False:
+        print("found stats")
+        try:
+            print("loading existing stats")
+            with open(stats_fpath, 'rb') as f:
+                gdfs = pkl.load(f)
+            assert len(gdfs.keys()) > 0, "No experiment stats found! creating new..."
+        except Exception as e:
+            print e
+            create_new = True
+    else:
+        create_new = True
+
+
+    if experiment_list is None:
+        experiment_list = S.get_experiment_list(traceid=traceid, trace_type=trace_type)
+        print("found %i experiments" % len(experiment_list))
+
+    
+    if create_new:
+        print("Calculating stats")
+        # # Calculate stats using dff
+        mag_ratio_thr = 0.01
+        gdfs = {}
+        for exp_name in experiment_list:
+            if 'dyn' in exp_name:
+                continue
+            
+            rename=False; new_name=None;
+            if int(S.session) < 2019511 and exp_name == 'rfs':
+                # is actually called 'gratings'
+                exp_name = 'gratings'
+                rename = True
+                new_name = 'rfs'
+                
+            print("[%s] Loading roi lists..." % exp_name)
+            estats = S.get_grouped_stats(exp_name, responsive_test=responsive_test, 
+                                         traceid=traceid, trace_type=trace_type,
+                                         responsive_thr=mag_ratio_thr, update=True)
+            if rename:
+                print("[%s] - renaming gratings back to rfs")
+                estats[new_name] = estats.pop(exp_name)
+            gdfs.update(estats)
+            
+            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
+            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
+            data_identifier
+            print(data_identifier)
+        
+        with open(stats_fpath, 'wb') as f:
+            pkl.dump(gdfs, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("Saved stats to file: %s" % stats_fpath)
+    
+    return gdfs, statsdir, stats_desc
+        
 
 # In[15]:
 
     
-def visualize_session_stats(animalid, session, fov, 
-                            traceid='traces001', trace_type='dff', 
+def visualize_session_stats(animalid, session, fov, responsive_test='ROC',
+                            traceid='traces001', trace_type='dff', experiment_list=None,
                             rootdir='/n/coxfs01/2p-data', create_new=False,
                             altdir=None):
     
@@ -333,81 +411,13 @@ def visualize_session_stats(animalid, session, fov,
 
     print("creating new session object...")
     S = util.Session(animalid, session, fov, rootdir=rootdir, visual_area=visual_area, state=state)
-    experiment_list = S.get_experiment_list(traceid=traceid, trace_type=trace_type)
-    print("found %i experiments" % len(experiment_list))
-#    for experiment in experiment_list:
-#        traces_outfile = os.path.join(output_dir, '%s_%s_%s.pkl' % (experiment, traceid, trace_type))
-#    
-#    
-#        if os.path.exists(traces_outfile):
-#            print("loading session object...")
-#            with open(traces_outfile, 'rb') as f:
-#                S = pkl.load(f)
-#            if len(S.experiments) == 0:
-#                create_new = True
-#        else:
-#            create_new = True
-#            
-#            
-#        S.load_data(experiment=experiment, traceid=traceid, trace_type=trace_type, update_self=False)
-#        
-#        # Save session data object
-#        with open(traces_outfile, 'wb') as f:
-#            pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
-#        print("saved traces: %s" % traces_outfile)
-        
-    #print(S.experiments.keys())
 
+    gdfs, stats_dir, stats_desc = get_session_stats(S, responsive_test=responsive_test, rootdir=rootdir, create_new=create_new,
+                             experiment_list=experiment_list)
     
-    
-    responsive_test = 'ROC'
-    stats_desc = '-'.join([traceid, trace_type, responsive_test])
-    
-    statsdir = os.path.join(output_dir, 'stats')
-    if not os.path.exists(statsdir):
-        os.makedirs(statsdir)
-
-    statsfigdir = os.path.join(statsdir, 'figures')
+    statsfigdir = os.path.join(stats_dir, 'figures')
     if not os.path.exists(statsfigdir):
         os.makedirs(statsfigdir)
-        
-        
-    stats_fpath = os.path.join(statsdir, 'sessionstats_%s.pkl' % stats_desc)
-    if os.path.exists(stats_fpath) and create_new is False:
-        print("found stats")
-        try:
-            print("loading existing stats")
-            with open(stats_fpath, 'rb') as f:
-                gdfs = pkl.load(f)
-            assert len(gdfs.keys()) > 0, "No experiment stats found! creating new..."
-        except Exception as e:
-            print e
-            create_new = True
-    else:
-        create_new = True
-    
-    if create_new:
-        print("Calculating stats")
-        # # Calculate stats using dff
-        mag_ratio_thr = 0.01
-        gdfs = {}
-        for exp_name in experiment_list:
-            if 'dyn' in exp_name:
-                continue
-            
-            print("[%s] Loading roi lists..." % exp_name)
-            estats = S.get_grouped_stats(exp_name, responsive_test=responsive_test, responsive_thr=mag_ratio_thr)
-            gdfs.update(estats)
-            
-            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
-            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
-            data_identifier
-            print(data_identifier)
-        
-        with open(stats_fpath, 'wb') as f:
-            pkl.dump(gdfs, f, protocol=pkl.HIGHEST_PROTOCOL)
-        print("Saved stats to file: %s" % stats_fpath)
-        
         
     print("=============ROI SUMMARY=============")
     for exp_name, exp_gdf in gdfs.items():
@@ -440,17 +450,13 @@ def visualize_session_stats(animalid, session, fov,
     tmp_roi_list = [v.rois for k, v in gdfs.items()]
     all_rois = list(set(itertools.chain(*tmp_roi_list)))
     
-    #tmp_roi_list = [gdfs[k].rois for k in exp_names]
-    #event_rois = list(set(itertools.chain(*tmp_roi_list)))
-    
-    
+
     exp_colors= {rf_exp_name: 'black',
                 'gratings': 'orange',
                 'blobs': 'blue'}
     #              'retino': 'gray'}
     
 
-    
     fig = compare_experiments_responsivity(gdfs, exp_names=exp_names, exp_colors=exp_colors)
     
     label_figure(fig, data_identifier)
