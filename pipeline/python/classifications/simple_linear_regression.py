@@ -9,6 +9,8 @@ Created on Mon Jun  3 14:47:49 2019
 import glob
 import os
 import copy
+import json
+
 import numpy as np
 import  pylab as pl
 import pandas as pd
@@ -53,13 +55,19 @@ correlation_dict = {'size': {},
 
 rootdir = '/n/coxfs01/2p-data'
 #session = '20190626' #'20190319'
-fov = 'FOV1_zoom2p0x' 
+#fov = 'FOV1_zoom2p0x' 
 run = 'combined_blobs_static'
 traceid = 'traces001' #'traces002'
-visual_area = 'LM'
+visual_area = 'V1'
 segment = False
 
-animalid = 'JC097' 
+animalid = 'JC083' 
+
+with open(os.path.join(rootdir, animalid, 'sessionmeta.json'), 'r') as f:
+    sessionmeta = json.load(f)
+
+session_keys = [k for k, v in sessionmeta.items() if v['state']==state and v['visual_area']==visual_area]
+
 session_list = ['20190618'] #, '20190512', '20190517']
 
 
