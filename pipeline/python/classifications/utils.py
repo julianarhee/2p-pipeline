@@ -298,6 +298,27 @@ def get_receptive_field_fits(animalid, session, fov, receptive_field_fit='zscore
 
 
 #### EVENT PROTOCOL FUNCTIONS #################################################
+
+
+def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
+                         responsive_test='ROC', responsive_thr=0.05,
+                         rootdir='/n/coxfs01/2p-data'):
+        
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]
+
+    if responsive_test == 'ROC':
+        stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+        stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
+        with open(stats_fpath[0], 'rb') as f:
+            rstats = pkl.load(f)
+
+    roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
+    
+    return roi_list
+    
+
+
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
                   responsive_test='ROC', responsive_thr=0.01, 
                   receptive_field_fit='zscore0.00_no_trim', rootdir='/n/coxfs01/2p-data'):

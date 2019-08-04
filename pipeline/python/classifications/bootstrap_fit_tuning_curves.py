@@ -1,9 +1,9 @@
+#!/usr/bin/env python2
+"""
+Created on Fri Aug 2 16:20:01 2019
 
-# coding: utf-8
-
-# In[2]:
-
-
+@author: julianarhee
+"""
 
 import datetime
 import os
@@ -13,6 +13,7 @@ import h5py
 import sys
 import optparse
 import copy
+import json
 
 import pylab as pl
 from collections import Counter
@@ -26,8 +27,7 @@ import tifffile as tf
 
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import test_responsivity as resp #import calculate_roi_responsivity, group_roidata_stimresponse, find_barval_index
-#from pipeline.python.classifications import osi_dsi as osi
-#from pipeline.python.visualization import get_session_summary as ss
+from pipeline.python.classifications import utils as util
 from pipeline.python.utils import natural_keys, label_figure
 
 from pipeline.python.retinotopy import fit_2d_rfs as rf
@@ -117,8 +117,27 @@ def interp_values(response_vector, n_intervals=3, wrap_value=None):
     return resps_interp
 
 #%%
-def bootstrap_tuning_curves(gdf, roi_list=[]):
+def do_bootstrap_fits(gdf, sdf, df_traces, labels, roi_list=[], 
+                            response_type='dff',
+                            n_bootstrap_iters=100, n_intervals_interp=3,
+                            data_identifier='METADATA',
+                            make_plots=True, roi_fitdir='/tmp'):
 
+    #% Set output dir for roi plots:
+    roi_fitdir_figures = os.path.join(roi_fitdir, 'roi_fits')
+    if not os.path.exists(roi_fitdir_figures):
+        os.makedirs(roi_fitdir_figures)
+    if make_plots:
+        print("... Saving ROI fit plots to:\n%s" % roi_fitdir_figures)
+
+
+    constant_params = ['aspect', 'luminance', 'position', 'stimtype']
+    params = [c for c in sdf.columns if c not in constant_params]
+    stimdf = sdf[params]
+    tested_oris = sdf['ori'].unique()
+
+    fit_results_by_iter = {}
+    orig_data = {}
     roi_fits = []
     for ri, roi in enumerate(roi_list): #[30, 91, 93, 151]:
         fit_results = []
@@ -132,7 +151,7 @@ def bootstrap_tuning_curves(gdf, roi_list=[]):
         #roi_df[metric_type] = metric_abs
 
         # Find best config:
-        best_cfg = roi_df.groupby(['config']).mean()[metric_type].idxmax()
+        best_cfg = roi_df.groupby(['config']).mean()[response_type].idxmax()
         best_cfg_params = stimdf.loc[best_cfg][[p for p in params if p!='ori']]
         curr_cfgs = sorted([c for c in stimdf.index.tolist() \
                             if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
@@ -156,7 +175,7 @@ def bootstrap_tuning_curves(gdf, roi_list=[]):
         init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
 
         # Interpolate values for finer steps:
-        asi=[];dsi=[];r2=[];
+        asi=[];dsi=[];r2=[]; circvar_asi=[]; circvar_dsi=[];
         for niter in bootstrapped_df.columns:
             oris_interp = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
             resps_interp = interp_values(bootstrapped_df[niter], n_intervals=n_intervals_interp, wrap_value=bootstrapped_df[niter][0])
@@ -171,9 +190,13 @@ def bootstrap_tuning_curves(gdf, roi_list=[]):
                 rfit = fit_direction_selectivity(oris_interp, resps_interp, init_params, bounds=init_bounds)
                 asi_t = get_ASI(rfit['fit_y'][0:], oris_interp[0:])
                 dsi_t = get_DSI(rfit['fit_y'][0:], oris_interp[0:])
+                circvar_asi_t, circvar_dsi_t = get_circular_variance(rfit['fit_y'][0:], oris_interp[0:])
 
                 asi.append(asi_t)
                 dsi.append(dsi_t)
+                circvar_asi.append(circvar_asi_t)
+                circvar_dsi.append(circvar_dsi_t)
+                
                 r2.append(rfit['r2'])
 
                 rfit['x'] = oris_interp
@@ -209,10 +232,18 @@ def bootstrap_tuning_curves(gdf, roi_list=[]):
             roi_fits.append(pd.DataFrame({'ASI': asi,
                                           'DSI': dsi,
                                           'r2': r2,
+                                          'ASI_cv': circvar_asi,
+                                          'DSI_cv': circvar_dsi,
                                           'cell': [roi for _ in np.arange(0, len(asi))]}))
+            fit_results_by_iter[roi] = fit_results
+            orig_data[roi] = {'responses': responses_df, 
+                              'stimulus_configs': curr_cfgs,
+                              'init_params': init_params}
+                     
+    
 
         #print("[%i] ASI: %.3f (+/- %.3f), DSI: %.3f (+/- %.3f) (bootstrap %i iter)" % (roi, np.mean(asi), np.std(asi), np.mean(dsi), np.std(dsi), n_bootstrap_iters))
-
+        
 
     ### Save bootstrap fit results 
 
@@ -220,11 +251,16 @@ def bootstrap_tuning_curves(gdf, roi_list=[]):
     fitdf.head()
     fitdf['cell'] = [str(i) for i in fitdf['cell'].values] #fitdf['cell'].astype('category')
 
+    fitparams = {'n_bootstrap_iters': n_bootstrap_iters,
+                        'n_intervals_interp': n_intervals_interp,
+                        'tested_values': list(tested_oris),
+                        'interp_values': oris_interp,
+                        'response_type': response_type,
+                        'roi_list': [r for r in roi_list],
+                        'directory': roi_fitdir
+                        }    
 
-    with open(tuning_fit_results_path, 'wb') as f:
-        pkl.dump(fitdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-    return fitdf
+    return fitdf, fitparams, orig_data, fit_results_by_iter
 
 #%%
 # #############################################################################
@@ -240,6 +276,7 @@ def group_configs(group, response_type):
 def get_ASI(response_vector, thetas):
     if np.max(thetas) > np.pi:
         thetas = [np.deg2rad(th) for th in thetas]
+        
     asi = np.abs( np.sum( [theta_resp * np.exp((2j*2*np.pi*theta_val) / (2*np.pi))\
                            for theta_resp, theta_val in zip(response_vector, thetas)] ) ) / np.sum(np.abs(response_vector))
     return asi
@@ -250,6 +287,158 @@ def get_DSI(response_vector, thetas):
     dsi = np.abs( np.sum( [theta_resp * np.exp((1j*2*np.pi*theta_val) / (2*np.pi))\
                            for theta_resp, theta_val in zip(response_vector, thetas)] ) ) / np.sum(np.abs(response_vector))
     return dsi
+
+
+def get_circular_variance(response_vector, thetas):
+    if np.max(thetas) > np.pi:
+        thetas = [np.deg2rad(th) for th in thetas]
+        
+    circvar_asi = 1 - (np.abs( np.sum( [theta_resp * np.exp( (1j*theta_val) ) \
+                                        for theta_resp, theta_val in zip(response_vector, thetas)] ) ) / np.sum(np.abs(response_vector)) )
+    
+    circvar_dsi = 1 - (np.abs( np.sum( [theta_resp * np.exp( (1j*theta_val*2) ) \
+                           for theta_resp, theta_val in zip(response_vector, thetas)] ) ) / np.sum(np.abs(response_vector)) )
+    
+    return circvar_asi, circvar_dsi
+
+#%
+
+    
+def get_tuning(animalid, session, fov, run_name, return_iters=False,
+               traceid='traces001', 
+               roi_list=None, response_type='dff',
+                 n_bootstrap_iters=100, n_intervals_interp=3,
+                  make_plots=True, roi_fitdir='/tmp',
+                 create_new=False, rootdir='/n/coxfs01/2p-data'):
+
+    #fr = 44.65 #dset['run_info'][()]['framerate']
+    #nframes_on = labels['nframes_on'].unique()[0]
+    #stim_on_frame = labels['stim_on_frame'].unique()[0]
+    #nframes_post_onset = nframes_on + int(round(1.*fr))
+    #%
+
+    print("Getting tuning for: %s" % roi_fitdir)
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]
+    data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
+    
+    # Do fits:
+    fitname = os.path.split(roi_fitdir)[-1]
+    data_identifier = '|'.join([animalid, session, fov, run_name, traceid, fitname])
+
+    tuning_fit_results_path = os.path.join(roi_fitdir, 'tuning_bootstrap_results.pkl')
+    params_info_path = os.path.join(roi_fitdir, 'tuning_bootstrap_params.json')
+    fit_data_path = os.path.join(roi_fitdir, 'tuning_bootstrap_data.pkl')
+    
+    if os.path.exists(tuning_fit_results_path) and create_new is False:
+        print("Loading existing fits.")
+        with open(tuning_fit_results_path, 'rb') as f:
+            fitdf = pkl.load(f)
+        with open(params_info_path, 'r') as f:
+            fitparams = json.load(f)
+
+        do_fits = False 
+    else:
+        do_fits = True 
+         
+        
+    if do_fits:
+        print("Loading data and doing fits")
+        
+        df_traces, labels, gdf, sdf = load_gratings_data(data_fpath)
+
+        #% Set bootstrap params:
+        #tested_oris = sdf['ori'].unique()
+        #oris_interp = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
+
+        if roi_list is None:
+            roi_list = np.arange(0, len(gdf.groups))
+        #%
+        #% # Fit all rois in list
+        print "... Fitting %i rois:" % len(roi_list), roi_list
+
+    
+        #% Set output dir for roi plots:
+        roi_fitdir_figures = os.path.join(roi_fitdir, 'roi_fits')
+        if not os.path.exists(roi_fitdir_figures):
+            os.makedirs(roi_fitdir_figures)
+        if make_plots:
+            print("... Saving ROI fit plots to:\n%s" % roi_fitdir_figures)
+
+        # Save fits
+        fitdf, fitparams, orig_data, fit_results_by_iter = do_bootstrap_fits(gdf, sdf, df_traces, labels, roi_list=roi_list, 
+                                                                                response_type=response_type,
+                                                                                n_bootstrap_iters=n_bootstrap_iters, n_intervals_interp=n_intervals_interp,
+                                                                                data_identifier=data_identifier,
+                                                                                make_plots=make_plots, roi_fitdir=roi_fitdir)
+                    
+        with open(tuning_fit_results_path, 'wb') as f:
+            pkl.dump(fitdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+        fitdata = {'results_by_iter': fit_results_by_iter,
+                   'original_data': orig_data}
+        
+        with open(fit_data_path, 'wb') as f:
+            pkl.dump(fitdata, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+        # Save params:
+        
+        with open(params_info_path, 'w') as f:
+            json.dump(fitparams, f, indent=4, sort_keys=True)
+            
+    
+    if return_iters:
+        with open(fit_data_path, 'r') as f:
+            fitdata = pkl.load(f)
+        return fitdf, fitparams, fitdata
+    else:
+            
+        return fitdf, fitparams
+
+
+
+def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_type='dff', 
+                          n_bootstrap_iters=100, n_intervals_interp=3,
+                          responsive_test='ROC', responsive_thr=0.05, make_plots=True,
+                          create_new=False, n_processes=1, rootdir='/n/coxfs01/2p-data'):
+    
+    fitdf = None
+    fitparams = None
+    
+    run_name = get_gratings_run(animalid, session, fov, traceid=traceid, rootdir=rootdir)    
+    assert run_name is not None, "ERROR: [%s|%s|%s|%s] Unable to find gratings run..." % (animalid, session, fov, traceid)
+
+    # Select only responsive cells:
+    roi_list = util.get_responsive_cells(animalid, session, fov, run=run_name, traceid=traceid, 
+                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                    rootdir=rootdir)
+
+    # Create output base dir for tuning fits:
+    fitname = 'bootstrap-fit-remove-bas_responsive-%s-thr%.2f' % (responsive_test, responsive_thr)
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]
+
+    roi_fitdir = os.path.join(traceid_dir,'tuning', fitname) #, desc_str)
+    if not os.path.exists(roi_fitdir):
+        os.makedirs(roi_fitdir)
+    print("Fit descriptor: %s" % fitname)
+    
+    
+    
+    #% GET FITS:
+    fitdf, fitparams = get_tuning(animalid, session, fov, run_name, roi_list=roi_list, create_new=create_new,
+                                 n_bootstrap_iters=n_bootstrap_iters, n_intervals_interp=n_intervals_interp,
+                                 response_type=response_type, make_plots=make_plots, roi_fitdir=roi_fitdir, return_iters=False)
+    
+    print("... plotting comparison metrics ...")
+    roi_fitdir = fitparams['directory']
+    run_name = os.path.split(roi_fitdir.split('/traces')[0])[-1]
+    data_identifier = '|'.join([animalid, session, fov, run_name, traceid])
+
+    plot_selectivity_metrics(fitdf, fitparams, fit_thr=0.9, data_identifier=data_identifier)
+    plot_top_asi_and_dsi(fitdf, fitparams, fit_thr=0.9, topn=10, data_identifier=data_identifier)
+    
+    print("*** done! ***")
+    
+    return fitdf, fitparams
 
 
 # In[21]:
@@ -281,7 +470,10 @@ def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, stimdf,  trace_type='dff',
     # ---------------------------------------------------------------------
     #% plot raw traces:
     mean_traces, std_traces, tpoints = osi.get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, stimdf)
-
+    
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    nframes_on = labels['nframes_on'].unique()[0]
+    
     ymin = (mean_traces - std_traces ).min()
     ymax = (mean_traces + std_traces ).max()
     for icfg in range(len(curr_cfgs)):
@@ -348,8 +540,6 @@ def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='
     
     return fig, ax
 
-
-# In[28]:
 
 
 def plot_roi_tuning_raw_and_fit(roi, responses_df, curr_cfgs,
@@ -426,7 +616,7 @@ def compare_selectivity_all_fits(fitdf, fit_thr=0.9):
     
     df = fitdf[fitdf['cell'].isin(strong_fits)]
 
-    g = sns.PairGrid(df, hue='cell', vars=['ASI', 'DSI', 'r2'])
+    g = sns.PairGrid(df, hue='cell', vars=['ASI', 'DSI', 'ASI_cv', 'DSI_cv', 'r2'])
     g.fig.patch.set_alpha(1)
     
     
@@ -437,6 +627,9 @@ def compare_selectivity_all_fits(fitdf, fit_thr=0.9):
     
     g.set(ylim=(0, 1))
     g.set(xlim=(0, 1))
+    #g.set(xticks=(0, 1))
+    #g.set(yticks=(0, 1))
+    g.set(aspect='equal')
     
     #sns.distplot, kde=False, hist=True, rug=True,\
                    #hist_kws={"histtype": "step", "linewidth": 2, "alpha": 1.0})
@@ -446,14 +639,14 @@ def compare_selectivity_all_fits(fitdf, fit_thr=0.9):
     
     pl.subplots_adjust(left=0.1, right=0.85)
 
-    cleanup_axes(g.axes[:, 1:].flat, which_axis='y')
-    cleanup_axes( g.axes[:-1, :].flat, which_axis='x')
+    #cleanup_axes(g.axes[:, 1:].flat, which_axis='y')
+    #cleanup_axes( g.axes[:-1, :].flat, which_axis='x')
     
     
     return g.fig, strong_fits
 
 
-def sort_by_selectivity(fit_thr=0.9, topn=10):
+def sort_by_selectivity(fitdf, fit_thr=0.9, topn=10):
     strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()['r2'] >= fit_thr]
     print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
     
@@ -463,11 +656,11 @@ def sort_by_selectivity(fit_thr=0.9, topn=10):
     
     top_asi = df.groupby(['cell']).mean().sort_values(['ASI'], ascending=False)
     top_dsi = df.groupby(['cell']).mean().sort_values(['DSI'], ascending=False)
-    top_r2 = df.groupby(['cell']).mean().sort_values(['r2'], ascending=False)
+    #top_r2 = df.groupby(['cell']).mean().sort_values(['r2'], ascending=False)
     
     top_asi_cells = top_asi.index.tolist()[0:topn]
     top_dsi_cells = top_dsi.index.tolist()[0:topn]
-    top_r2_cells = top_r2.index.tolist()[0:topn]
+    #top_r2_cells = top_r2.index.tolist()[0:topn]
 
     top10_asi = [roi for rank, roi in enumerate(top_asi.index.tolist()) if rank < topn]
     top10_dsi = [roi for rank, roi in enumerate(top_dsi.index.tolist()) if rank < topn]
@@ -528,231 +721,238 @@ def compare_topn_selective(df, color_by='ASI', palette='cubehelix'):
     
     return g.fig
 
-#%%
 
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084' 
-session = '20190522' #'20190319'
-fov = 'FOV1_zoom2p0x' 
-run = 'combined_gratings_static'
-traceid = 'traces001' #'traces002'
-trace_type = 'corrected'
-
-data_identifier = '|'.join([animalid, session, fov, run, traceid])
-
-create_new=True
-n_processes=1
-
-
-# In[5]:
-
-
-traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]
-data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
-dset = np.load(data_fpath)
-
-data_identifier = '|'.join([animalid, session, fov, run, traceid])
-
-
-#%% Add baseline offset back into raw traces:
     
-F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-print("offset: %.2f" % F0)
-raw_traces = pd.DataFrame(dset['corrected']) + F0
-
-
-labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-sdf = pd.DataFrame(dset['sconfigs'][()]).T
-
-fr = 44.65 #dset['run_info'][()]['framerate']
-nframes_on = labels['nframes_on'].unique()[0]
-stim_on_frame = labels['stim_on_frame'].unique()[0]
-nframes_post_onset = nframes_on + int(round(1.*fr))
-
-#%%
-
-gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
-nrois_total = len(gdf.groups)
-
-# In[12]:
-
-responsive_test = 'ROC'
-
-if responsive_test == 'ROC':
-
-    stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
-    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
-    assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
-    with open(stats_fpath[0], 'rb') as f:
-        rstats = pkl.load(f)
-
-    responsive_thr = 0.05
-    roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
-    fit_str = 'remove-bas_pass-ROC-thr%.2f' % responsive_thr
-
-print fit_str
-
-#%%
-# # Create output dir
-
-#roi_fitdir = os.path.join(traceid_dir, 'figures', 'fits', 'tuning_by_roi_%s' % response_type)
-desc_str = 'Liang2018_Andermann'
-roi_fitdir = os.path.join(traceid_dir,'tuning', desc_str, fit_str) #, desc_str)
-#roi_fitdir = os.path.join(traceid_dir, 'figures', 'tuning', desc_str)
-
-
-if not os.path.exists(roi_fitdir):
-    os.makedirs(roi_fitdir)
-print("Saving roi fits to: %s" % roi_fitdir)
-
-
-#%%  # Bootstrap responses
-tested_oris = sdf['ori'].unique()
-oris_interp = interp_values(tested_oris, n_intervals=3, wrap_value=360)
-
-#response_type = 'zscore'
-n_bootstrap_iters = 100
-n_intervals_interp = 3
-
-
-oris_interp = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
-
-
-#%% # Convert raw + offset traces to df/F traces
-
-
-tmp_df = []
-for k, g in labels.groupby(['trial']):
-    tmat = raw_traces.loc[g.index]
-    bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-    tmat_df = (tmat - bas_mean) / bas_mean
-    tmp_df.append(tmat_df)
+def plot_selectivity_metrics(fitdf, fitparams, fit_thr=0.9, data_identifier='METADATA'):
+    
+    roi_fitdir = fitparams['directory']
+    
+    #% PLOT -- plot ALL fits:
+    fitdf['ASI_cv'] = [1-f for f in fitdf['ASI_cv'].values] # Revert to make 1 = very tuned, 0 = not tuned
+    fitdf['DSI_cv'] = [1-f for f in fitdf['DSI_cv'].values] # Revert to make 1 = very tuned, 0 = not tuned
+    
+    fig, strong_fits = compare_selectivity_all_fits(fitdf, fit_thr=fit_thr)
+    label_figure(fig, data_identifier)
+    
+    nrois_fit = len(fitdf['cell'].unique())
+    nrois_thr = len(strong_fits)
+    n_bootstrap_iters = fitparams['n_bootstrap_iters']
+    
+    figname = 'compare-metrics_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (fit_thr, n_bootstrap_iters, nrois_thr, nrois_fit)
+    
+    pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.close()
+    print("Saved:\n%s" % os.path.join(roi_fitdir, '%s.png' % figname))
     
     
-
-df_traces = pd.concat(tmp_df, axis=0)
-print df_traces.shape
-
-
-#%% # Fit all rois in list
-print "Fitting %i rois:" % len(roi_list), roi_list
-
-response_type = 'dff'
-metric_type = 'dff'
-make_plots = True
-
-
-constant_params = ['aspect', 'luminance', 'position', 'stimtype']
-params = [c for c in sdf.columns if c not in constant_params]
-stimdf = sdf[params]
-
-
-
-#%% # Plot and fit ROIs
-
-roi_fitdir_figures = os.path.join(roi_fitdir, 'roi_fits')
-if not os.path.exists(roi_fitdir_figures):
-    os.makedirs(roi_fitdir_figures)
-if make_plots:
-    print("Saving ROI fit plots to:\n%s" % roi_fitdir_figures)
-
-
-# In[35]:
-
-
-tuning_fit_results_path = os.path.join(roi_fitdir, 'tuning_bootstrap_results.pkl')
-if os.path.exists(tuning_fit_results_path):
-    with open(tuning_fit_results_path, 'rb') as f:
-        fitdf = pkl.load(f)
-    do_fits = False
-else:
-    do_fits = True
-
-
-
-# In[36]:
-
-
-if do_fits:
-    fitdf = bootstrap_tuning_curves(gdf, roi_list=roi_list)
+def plot_top_asi_and_dsi(fitdf, fitparams, fit_thr=0.9, topn=10, data_identifier='METADATA'):
+    #%
+    # ##### Compare metrics
     
+    # Sort cells by ASi and DSi    
+    topn=10
+    df, top_asi_cells, top_dsi_cells = sort_by_selectivity(fitdf, fit_thr=fit_thr, topn=topn)
     
-#%%
-
-fit_thr = 0.9
-fig, strong_fits = compare_selectivity_all_fits(fitdf, fit_thr=fit_thr)
-label_figure(fig, data_identifier)
-
-nrois_fit = len(fitdf['cell'].unique())
-nrois_thr = len(strong_fits)
-
-figname = 'bootstrap%i_tuning_fit_thr_%.2f_%iof%i' % (n_bootstrap_iters, fit_thr,
-                                                      nrois_thr, nrois_fit)
-
-pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
-#pl.close()
-print("Saved:\n%s" % os.path.join(roi_fitdir, '%s.png' % figname))
-
-
-#%%
-# ##### Compare metrics
-
-# Sort cells by ASi and DSi    
-topn=10
-df, top_asi_cells, top_dsi_cells = sort_by_selectivity(fit_thr=fit_thr, topn=topn)
-
-#% Set color palettes:
-palette = sns.color_palette('cubehelix', len(top_asi_cells))
-main_alpha = 0.8
-sub_alpha = 0.01
-asi_colordict = dict(( str(roi), palette[i]) for i, roi in enumerate(top_asi_cells))
-for k, v in asi_colordict.items():
-    asi_colordict[k] = (v[0], v[1], v[2], main_alpha)
-    
-dsi_colordict = dict(( str(roi), palette[i]) for i, roi in enumerate(top_dsi_cells))
-for k, v in dsi_colordict.items():
-    dsi_colordict[k] = (v[0], v[1], v[2], main_alpha)
-      
-asi_colordict.update({ str(-10): (0.8, 0.8, 0.8, sub_alpha)})
-dsi_colordict.update({ str(-10): (0.8, 0.8, 0.8, sub_alpha)})
-
-
-#%% PLOT by ASI:
-
-nrois_fit = len(fitdf['cell'].unique())
-nrois_pass = len(df['cell'].unique())
-
-color_by = 'ASI'
-
-if color_by == 'ASI':
-    palette = asi_colordict
-elif color_by == 'DSI':
-    palette = dsi_colordict
+    #% Set color palettes:
+    palette = sns.color_palette('cubehelix', len(top_asi_cells))
+    main_alpha = 0.8
+    sub_alpha = 0.01
+    asi_colordict = dict(( str(roi), palette[i]) for i, roi in enumerate(top_asi_cells))
+    for k, v in asi_colordict.items():
+        asi_colordict[k] = (v[0], v[1], v[2], main_alpha)
         
-fig = compare_topn_selective(df, color_by=color_by, palette=palette)
-label_figure(fig, data_identifier)
-
-figname = 'bootstrap%i_tuning_fit_thr_%.2f_%iof%i_colortop10_%s' % (n_bootstrap_iters, fit_thr,
-                                                      nrois_pass, nrois_fit, color_by)
-
-pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
-
-#%% Color by DSI:
-color_by = 'DSI'
-
-if color_by == 'ASI':
-    palette = asi_colordict
-elif color_by == 'DSI':
-    palette = dsi_colordict
+    dsi_colordict = dict(( str(roi), palette[i]) for i, roi in enumerate(top_dsi_cells))
+    for k, v in dsi_colordict.items():
+        dsi_colordict[k] = (v[0], v[1], v[2], main_alpha)
+          
+    asi_colordict.update({ str(-10): (0.8, 0.8, 0.8, sub_alpha)})
+    dsi_colordict.update({ str(-10): (0.8, 0.8, 0.8, sub_alpha)})
         
-fig = compare_topn_selective(df, color_by=color_by, palette=palette)
-label_figure(fig, data_identifier)
+    
+    #% PLOT by ASI:
+    roi_fitdir = fitparams['directory']
+    n_bootstrap_iters = fitparams['n_bootstrap_iters']
+    nrois_fit = len(fitdf['cell'].unique())
+    nrois_pass = len(df['cell'].unique())
+    
+    color_by = 'ASI'
+    
+    if color_by == 'ASI':
+        palette = asi_colordict
+    elif color_by == 'DSI':
+        palette = dsi_colordict
+            
+    fig = compare_topn_selective(df, color_by=color_by, palette=palette)
+    label_figure(fig, data_identifier)
+    
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
 
-figname = 'bootstrap%i_tuning_fit_thr_%.2f_%iof%i_colortop10_%s' % (n_bootstrap_iters, fit_thr,
-                                                      nrois_pass, nrois_fit, color_by)
+    pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.close()
+    
+    #% Color by DSI:
+    color_by = 'DSI'
+    if color_by == 'ASI':
+        palette = asi_colordict
+    elif color_by == 'DSI':
+        palette = dsi_colordict
+            
+    fig = compare_topn_selective(df, color_by=color_by, palette=palette)
+    label_figure(fig, data_identifier)
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
 
-pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.close()
+    
+    
 
+
+
+#%%
+
+# #############################################################################
+# Generic data loading:
+# #############################################################################
+
+def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    
+    fovdir = os.path.join(rootdir, animalid, session, fov)
+    
+    found_dirs = glob.glob(os.path.join(fovdir, '*gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'datasets.npz'))
+    if int(session) < 20190511:
+        return None
+    
+    try:
+        if any('combined' in d for d in found_dirs):
+            extracted_dir = [d for d in found_dirs if 'combined' in d][0]
+        else:
+            assert len(found_dirs) == 1, "ERROR: [%s|%s|%s|%s] More than 1 gratings experiments found, with no combined!" % (animalid, session, fov, traceid)
+            extracted_dir = found_dirs[0]
+    except Exception as e:
+        print e
+        return None
+    
+    run_name = os.path.split(extracted_dir.split('/traces')[0])[-1]
+        
+    return run_name
+
+
+def load_gratings_data(data_fpath):
+    dset = np.load(data_fpath)
+    
+    #% Add baseline offset back into raw traces:
+    F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+    print("offset: %.2f" % F0)
+    raw_traces = pd.DataFrame(dset['corrected']) + F0
+    
+    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    
+    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
+    
+    #% # Convert raw + offset traces to df/F traces
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        tmat_df = (tmat - bas_mean) / bas_mean
+        tmp_df.append(tmat_df)
+    df_traces = pd.concat(tmp_df, axis=0)
+    del tmp_df
+
+    return df_traces, labels, gdf, sdf
+
+
+#%%
+
+
+
+
+def extract_options(options):
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', 
+                      help='root project dir containing all animalids [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', 
+                      help='Animal ID')
+    parser.add_option('-S', '--session', action='store', dest='session', default='', 
+                      help='Session (format: YYYYMMDD)')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', 
+                      help="fov name (default: FOV1_zoom2p0x)")
+    
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
+                      help="traceid (default: traces001)")
+    
+    # Responsivity params:
+    parser.add_option('-R', '--responsive-test', action='store', dest='responsive_test', default='ROC', 
+                      help="responsive test (default: ROC)")
+    parser.add_option('-f', '--responseive-thr', action='store', dest='responsive_thr', default=0.05, 
+                      help="responsive test threshold (default: p<0.05 for responsive_test=ROC)")
+    
+    # Tuning params:
+    parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=100, 
+                      help="N bootstrap iterations (default: 100)")
+    parser.add_option('-p', '--interp', action='store', dest='n_intervals_interp', default=3, 
+                      help="N intervals to interp between tested angles (default: 3)")
+    parser.add_option('-d', '--response-type', action='store', dest='response_type', default='dff', 
+                      help="Trial response measure to use for fits (default: dff)")
+    parser.add_option('-n', '--n-processes', action='store', dest='n_processes', default=1, 
+                      help="N processes (default: 1)")
+
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, 
+                      help="Create all session objects from scratch")
+
+    (options, args) = parser.parse_args(options)
+#    
+#    if len(options.visual_areas) == 0:
+#        options.visual_areas = ['V1', 'Lm', 'Li']
+
+    return options
+
+#%%
+
+#rootdir = '/n/coxfs01/2p-data'
+#animalid = 'JC084' 
+#session = '20190522' #'20190319'
+#fov = 'FOV1_zoom2p0x' 
+#run = 'combined_gratings_static'
+#traceid = 'traces001' #'traces002'
+##trace_type = 'corrected'
+#
+#response_type = 'dff'
+##metric_type = 'dff'
+#make_plots = True
+#n_bootstrap_iters = 100
+#n_intervals_interp = 3
+#
+#responsive_test = 'ROC'
+#responsive_thr = 0.05
+#
+
+
+
+#%%
+
+def main(options):
+    opts = extract_options(options)
+    
+    fitdf, fitparams = get_tuning_for_fov(opts.animalid, opts.session, opts.fov, 
+                                             traceid=opts.traceid, response_type=opts.response_type, 
+                                             n_bootstrap_iters=int(opts.n_bootstrap_iters), 
+                                             n_intervals_interp=int(opts.n_intervals_interp),
+                                             responsive_test=opts.responsive_test, responsive_thr=float(opts.responsive_thr),
+                                             create_new=opts.create_new, n_processes=int(opts.n_processes), rootdir=opts.rootdir)
+
+    print("*** COMPLETED: bootstrap tuning! ***")
+    
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+    
 
 # In[429]: ALL CELLS:
 
