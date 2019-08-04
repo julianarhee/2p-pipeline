@@ -270,7 +270,7 @@ def get_receptive_field_fits(animalid, session, fov, receptive_field_fit='zscore
                                          'figures', 'receptive_fields', 
                                          'rfs_2dgaus*%s*' % receptive_field_fit, '*.pkl')), key=natural_keys)
         if len(rf_fits) > 1:
-            print("EXP: %s - more than 1 RF fit result found:" % run)
+            print("RFs: %s - more than 1 RF fit result found:" % run)
             for r, ri in enumerate(rf_fits):
                 print(r, ri)
             sel = input("-- Select IDX of fits to use: ")
@@ -298,6 +298,27 @@ def get_receptive_field_fits(animalid, session, fov, receptive_field_fit='zscore
 
 
 #### EVENT PROTOCOL FUNCTIONS #################################################
+
+
+def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
+                         responsive_test='ROC', responsive_thr=0.05,
+                         rootdir='/n/coxfs01/2p-data'):
+        
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]
+
+    if responsive_test == 'ROC':
+        stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+        stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
+        with open(stats_fpath[0], 'rb') as f:
+            rstats = pkl.load(f)
+
+    roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
+    
+    return roi_list
+    
+
+
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
                   responsive_test='ROC', responsive_thr=0.01, 
                   receptive_field_fit='zscore0.00_no_trim', rootdir='/n/coxfs01/2p-data'):
@@ -383,10 +404,18 @@ def check_counts_per_condition(raw_traces, labels):
 #%%
 
 class Session():
-    def __init__(self, animalid, session, fov, visual_area='AREA', state='STATE', rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, visual_area=None, state=None, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
+        
+        if visual_area is None or state is None:
+            with open(os.path.join(rootdir, animalid, 'sessionmeta.json'), 'r') as f:
+                sessionmeta = json.load(f)
+            skey = [k for k in sessionmeta.keys() if k.split('_')[0] == session and k.split('_')[1] in fov][0]
+            visual_area = sessionmeta[skey]['visual_area']
+            state = sessionmeta[skey]['state']
+            
         self.visual_area = visual_area
         self.state = state
         
@@ -396,9 +425,64 @@ class Session():
         self.traceid = None
         self.trace_type = None
         self.experiments = {}
+        self.experiment_list = self.get_experiment_list(rootdir=rootdir)
         
         self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
 
+    def get_stimulus_coordinates(self, update_self=False):
+
+        # Get stimulus positions - blobs and gratings only
+        xpositions=[]; ypositions=[];
+        for ex in ['blobs', 'gratings']:
+            if ex not in self.experiment_list: #.keys():
+                print("[%s|%s] No experiment exists for: %s" % (self.animalid, self.session, ex))
+                continue
+            if ex not in self.experiments.keys():
+                expdict = self.load_data(experiment=ex, update_self=update_self)
+                expdata = expdict[ex]
+            else:
+                expdata = self.experiments[ex]
+                
+            sdf = expdata.data.sdf.copy()
+            if ex == 'gratings': # deal with FF stimuli
+                sdf = sdf[sdf['size']<200]
+                sdf.pop('luminance')
+            curr_xpos = sdf.dropna()['xpos'].unique()
+            assert len(curr_xpos)==1, "[%s] more than 1 xpos found! %s" % (ex, str(curr_xpos))
+            curr_ypos = sdf.dropna()['ypos'].unique()
+            assert len(curr_ypos)==1, "[%s] more than 1 ypos found! %s" % (ex, str(curr_ypos))
+            xpositions.append(curr_xpos[0])
+            ypositions.append(curr_ypos[0])
+        
+        xpos = list(set(xpositions))
+        assert len(xpos)==1, "blobs and gratings have different XPOS: %s" % str(xpos)
+        ypos = list(set(ypositions))
+        assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
+        xpos = xpos[0]
+        ypos = ypos[0]
+        print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
+        
+        return xpos, ypos
+    
+
+    def get_stimulus_sizes(self, size_tested = ['gratings', 'blobs']):
+        
+        tested_exps = [e for e in self.experiment_list if e in size_tested]
+    
+        stimsizes = {}
+        for exp in tested_exps:
+            stimsizes[exp] = self.experiments[exp].data.sdf.dropna()['size'].unique()
+            
+    #    gratings_sz = S.experiments['gratings'].data.sdf['size'].unique().min()
+    #    print("Gratings: min apertured size %i" % gratings_sz)
+    #    
+    #    # Get blob size(s):
+    #    blobs_sz_min = S.experiments['blobs'].data.sdf.dropna()['size'].unique().min()
+    #    blobs_sz_max = S.experiments['blobs'].data.sdf.dropna()['size'].unique().max()
+    #    print("Blobs: min/max size = %i/%i" % (blobs_sz_min, blobs_sz_max))
+        return stimsizes
+ 
+    
     def save_session(self, rootdir='/n/coxfs01/2p-data'):
         outdir = os.path.join(rootdir, self.animalid, self.session, self.fov, 'summaries')
         if not os.path.exists(outdir):
@@ -412,13 +496,14 @@ class Session():
         return masks, zimg
     
     
-    def load_data(self, traceid='traces001', trace_type='corrected',\
+    def load_data(self, traceid='traces001', trace_type='corrected', make_equal=True,\
                   experiment=None, rootdir='/n/coxfs01/2p-data', update_self=True):
         
         '''Set experiment = None to load all data'''
         
-        self.traceid = traceid
-        self.trace_type = trace_type
+        if update_self:
+            self.traceid = traceid
+            self.trace_type = trace_type
         if experiment is not None:
             print("... Loading data (%s - %s - %s)" % (experiment, traceid, trace_type))
         else:
@@ -431,55 +516,78 @@ class Session():
         expdict = self.get_experiment_data(experiment=experiment,\
                                            traceid=traceid,
                                            trace_type=trace_type,\
-                                           rootdir=rootdir)
+                                           rootdir=rootdir, 
+                                          make_equal=make_equal)
         
         if update_self and expdict is not None:
             self.experiments.update(expdict)
         return expdict
     
 
-    def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
+    def get_experiment_list(self, traceid='traces001', trace_type='corrected',\
                             rootdir='/n/coxfs01/2p-data'):
-        experiment_dict = {}
 
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
-        all_experiments = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
+        experiment_list = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
         
-        try:
-            if experiment is None: # Get ALL experiments
-                experiment_types = all_experiments
-            else:
-                if not isinstance(experiment, list):
-                    experiment_types = [experiment]
-                else:
-                    experiment_types = experiment
-                    
+        if int(self.session) < 20190511 and 'gratings' in experiment_list:
+            # Old experiment, where "gratings" were actually RFs
+            experiment_list = [e for e in experiment_list if e != 'gratings']
+            experiment_list.append('rfs') # These are always 5 degree res        
+        
+        return experiment_list
+    
+    def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
+                            rootdir='/n/coxfs01/2p-data', make_equal=True):
+        experiment_dict = {}
 
+        all_experiments = self.get_experiment_list(traceid=traceid, trace_type=trace_type, rootdir=rootdir)
+         
+        if experiment is None: # Get ALL experiments
+            experiment_types = all_experiments
+        else:
+            if not isinstance(experiment, list):
+                experiment_types = [experiment]
+            else:
+                experiment_types = experiment
+        print("EXP:", experiment_types)
+
+       
+        #try:
             # Create object for each experiment:
-            for experiment_type in experiment_types:         
-                    
+        for experiment_type in experiment_types:     
+            if int(self.session) < 20190511 and experiment_type == 'rfs':
+                experiment_type = 'gratings' # Temporarily revert back to old-name since get_experiment_list() changed
+        
+            try:        
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
+                print("-- %s: got rois" % experiment_type)
                 if tmp_tid != self.traceid:
                     self.traceid = tmp_tid
+                    print("renamed traceid")
                 exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                print("-- %s: got source" % (experiment_type)) 
                 if exp.source is None:
                     continue
-                exp.load(trace_type=trace_type)
+                exp.load(trace_type=trace_type, make_equal=make_equal)
+                print("loaded")
                 if 'gratings' in experiment_type and int(self.session) < 20190511:
                     experiment_type = 'rfs'
-                experiment_dict[experiment_type] = exp
-        except Exception as e:
-            print e
-            print("--- skipping ---")
-            experiment_dict = None
+            except Exception as e:
+                print e
+                print("--- %s skipping ---" % experiment_type)
+                exp = None
+                #experiment_dict = None
             
+            experiment_dict[experiment_type] = exp
+               
         return experiment_dict
     
     
     def get_grouped_stats(self, experiment_type, responsive_thr=0.01, responsive_test='ROC', 
                           receptive_field_fit='zscore0.00_no_trim',
-                          update=True, get_grouped=True,
+                          update=True, get_grouped=True, make_equal=True,
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
         
@@ -490,36 +598,43 @@ class Session():
         # see if already loaded data:
         print("Getting stats:", experiment_type)
         if experiment_type is not None:
-            found_exp_names = [k for k in experiment_names if experiment_type in k]
+            found_exp_names = [k for k in experiment_names if experiment_type == k]
         else:
             found_exp_names = experiment_names
-            
-        print("... Session Object has %i loaded experiments." % len(found_exp_names))
-        if len(found_exp_names) > 1:
-            for fi, fname in enumerate(found_exp_names):
-                print fi, fname
-            sel = raw_input("Select IDX of exp to use: ")
-            if sel == '':
-                expdict = dict((exp_name, self.experiments[exp_name]) for exp_name in found_exp_names)
-            else:
-                exp_name = found_exp_names[int(sel)]
+        
+        print("... getting grouped stats  for experiments: ", found_exp_names)
+        if isinstance(found_exp_names, list) and len(found_exp_names) > 0:
+            print("loading found experiments")
+            if len(found_exp_names) > 1:
+                for fi, fname in enumerate(found_exp_names):
+                    print fi, fname
+                sel = raw_input("Select IDX of exp to use: ")
+                if sel == '':
+                    expdict = dict((exp_name, self.experiments[exp_name]) for exp_name in found_exp_names)
+                else:
+                    exp_name = found_exp_names[int(sel)]
+                    expdict = {exp_name: self.experiments[exp_name]}
+            elif len(found_exp_names) == 1:
+                exp_name = found_exp_names[0]
                 expdict = {exp_name: self.experiments[exp_name]}
-        elif len(found_exp_names) == 1:
-            exp_name = found_exp_names[0]
-            expdict = {exp_name: self.experiments[exp_name]}
         else:
             # Load just this experiment type:
+            print("no exp data saved, loading now...")
             expdict = self.load_data(experiment=experiment_type, traceid=traceid,
                                      trace_type=trace_type, rootdir=rootdir, 
-                                     update_self=update)
+                                     update_self=update, make_equal=make_equal)
             #exp = None if expdict is None else expdict[expdict.keys()[0]] 
         
         if expdict is not None:
             estats_dict = {}
             for exp_name, exp in expdict.items():
+                if exp is None:
+                    continue
+                print("%s: calculating stats" % exp_name)
                 #print("... [%s] Loading roi stats and cell list..." % exp.name)
                 tmp_estats_dict = exp.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                get_grouped=get_grouped, receptive_field_fit=receptive_field_fit)
+                                                get_grouped=get_grouped, receptive_field_fit=receptive_field_fit,
+                                               make_equal=make_equal)
                 if tmp_estats_dict is not None:
                     estats_dict.update(tmp_estats_dict)
                 
@@ -571,7 +686,7 @@ class Experiment():
         
         return rstats, roi_list, nrois_total, trials_by_cond
                
-    def get_stats(self, responsive_test='ROC', responsive_thr=0.01, 
+    def get_stats(self, responsive_test='ROC', responsive_thr=0.01, make_equal=True,
                   receptive_field_fit='zscore0.00_no_trim', get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
         rstats, roi_list, nrois_total, trials_by_cond = self.get_responsive_cells(responsive_test=responsive_test,
@@ -600,7 +715,7 @@ class Experiment():
         estats.sdf = None
         
         if 'retino' not in experiment_id:
-            self.load(trace_type='dff')
+            self.load(trace_type='dff', make_equal=make_equal)
             estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
                                                          roi_list=roi_list,
                                                          return_grouped=get_grouped)
@@ -629,26 +744,33 @@ class Experiment():
         if not(isinstance(self.source, list)):
             assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
             print("... loading data array (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
-            if self.source.endswith('npz'):
-                dset = np.load(self.source)
-                self.data.traces  = pd.DataFrame(dset[self.trace_type])
-                self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-                sdf = pd.DataFrame(dset['sconfigs'][()]).T
-                round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-                sdf['size'] = round_sz
-                self.data.sdf = sdf
-                self.data.info = dset['run_info'][()]
-                
-                if make_equal:
-                    self.data.traces, self.data.labels = check_counts_per_condition(self.data.traces, self.data.labels)
+            try:
+                if self.source.endswith('npz'):
+                    dset = np.load(self.source)
+                    print("... loaded")
+                    self.data.traces  = pd.DataFrame(dset[self.trace_type])
+                    self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+                    print self.data.labels.shape
+                    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+                    round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+                    sdf['size'] = round_sz
+                    self.data.sdf = sdf
+                    self.data.info = dset['run_info'][()]
+                    
+                    if make_equal:
+                        print("... making equal")
+                        self.data.traces, self.data.labels = check_counts_per_condition(self.data.traces, self.data.labels)
 
-            elif self.source.endswith('h5'):
-                #dfile = h5py.File(self.source, 'r')
-                # TODO: formatt retino data in sensible way with rutils
-                self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
-                                                               rootdir=rootdir)
-                self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
-                
+                elif self.source.endswith('h5'):
+                    #dfile = h5py.File(self.source, 'r')
+                    # TODO: formatt retino data in sensible way with rutils
+                    self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
+                                                                   rootdir=rootdir)
+                    self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
+            except Exception as e:
+                print("ERROR LOADING DATA")
+                print e
+    
         else:
             print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
 
@@ -656,12 +778,13 @@ class Experiment():
     
             
     def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
+        print("... getting data paths")
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         if 'retino' in self.name:
             all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'retino_analysis', 'anaylsis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
         else:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
             trace_extraction = 'traces'
         if len(all_runs) == 0:
             print("[%s|%s|%s] No extracted traces: %s" % (self.animalid, self.session, self.fov, self.name))
@@ -680,7 +803,7 @@ class Experiment():
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
-            print("... [%s] getting data path." % run_name)
+            print("... ... %s" % run_name)
             try:
                 if 'retino' in run_name:
                     # Select analysis ID that corresponds to current ROI set:
@@ -695,25 +818,26 @@ class Experiment():
                 data_fpaths.append(fpath)
             except IndexError:
                 print("... no data arrays found for: %s" % run_name)
-        
-        data_fpaths = list(set(data_fpaths))
-        if len(data_fpaths) > 1:
-            print("More than 1 file found for %s" % self.name)
-            for fi, fpath in enumerate(data_fpaths):
-                print fi, fpath
-            sel = raw_input("Select IDX of file path to use: ")
-            if sel=='':
-                data_fpath = data_fpaths
+
+            data_fpaths = list(set(data_fpaths))
+            if len(data_fpaths) > 1:
+                data_fpath = [f for f in data_fpaths if self.name in f][0]
+#                print("More than 1 file found for %s" % self.name)
+#                for fi, fpath in enumerate(data_fpaths):
+#                    print fi, fpath
+#                sel = raw_input("Select IDX of file path to use: ")
+#                if sel=='':
+#                    data_fpath = data_fpaths
+#                else:
+#                    data_fpath = data_fpaths[int(sel)]
             else:
-                data_fpath = data_fpaths[int(sel)]
-        else:
-            data_fpath = data_fpaths[0]
-        
-        if not isinstance(data_fpath, list):
-            corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
-            if self.name != corresp_run_name:
-                print("... renaming experiment to run name: %s" % corresp_run_name)
-                self.name = corresp_run_name
+                data_fpath = data_fpaths[0]
+
+            if not isinstance(data_fpath, list):
+                corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
+                if self.name != corresp_run_name:
+                    print("... ... renaming experiment to run name: %s" % corresp_run_name)
+                    self.name = corresp_run_name
 
 
         return data_fpath
@@ -1025,7 +1149,8 @@ def sort_rois_2D(traceid_dir):
 
 #
 def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, label_rois=[],
-                          draw_box=False, thickness=1, roi_color=(0, 255, 0), single_color=False, ax=None):
+                          draw_box=False, thickness=1, roi_color=(0, 255, 0), transform=False,
+                          single_color=False, ax=None):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
@@ -1035,6 +1160,9 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, la
 
     if ax is None:
         fig, ax = pl.subplots(1, figsize=(10,10))
+        
+    
+    
 #    p2, p98 = np.percentile(refRGB, (1, 99))
 #    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
     im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
@@ -1096,8 +1224,18 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, la
             
         if label:
             cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
-        ax.imshow(orig)
-
+        
+        if transform:
+            img = imutils.rotate(orig, 90)  
+            #imageROI = orig.copy()
+            #img = imutils.rotate_bound(imageROI, -90)
+            
+            ax.imshow(img)
+            ax.invert_xaxis()
+        else:
+            ax.imshow(orig)
+        
+        
         # stack the reference coordinates and the object coordinates
         # to include the object center
         refCoords = refObj[1] #np.vstack([refObj[0], refObj[1]])

@@ -394,27 +394,38 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
             stim_on_frame = labels_df[labels_df['config']==config]['stim_on_frame'].unique()[0]
              
         trial_frames = roidata[trial_ixs.index.tolist(), :]
+        
+        nframes_stim = int(round(nframes_on*1.5))
     
         nrois = trial_frames.shape[-1]
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)
         base_mean = np.nanmean(trial_frames[0:stim_on_frame, :], axis=0)
         base_std = np.nanstd(trial_frames[0:stim_on_frame, :], axis=0)
-        stim_mean = np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_on, :], axis=0)
+        stim_mean = np.nanmean(trial_frames[stim_on_frame:stim_on_frame+nframes_stim, :], axis=0)
         
-        #zscore = (stim_mean - base_mean) / base_std
-        zscore = (stim_mean) / base_std
+        df_trace = (trial_frames - base_mean) / base_mean
+        bas_mean_df = np.nanmean(df_trace[0:stim_on_frame, :], axis=0)
+        bas_std_df = np.nanstd(df_trace[0:stim_on_frame, :], axis=0)
+        stim_mean_df = np.nanmean(df_trace[stim_on_frame:stim_on_frame+nframes_stim, :], axis=0)
+        
+        zscore = (stim_mean - base_mean) / base_std
+        #zscore = (stim_mean) / base_std
         dff = (stim_mean - base_mean) / base_mean
         dF = stim_mean - base_mean
         snr = stim_mean / base_mean
         df_list.append(pd.DataFrame({'config': np.tile(config, (nrois,)),
                                      'trial': np.tile(trial, (nrois,)), 
-                                     'meanstim': stim_mean,
+                                     'stim_mean': stim_mean, # called meanstim ...
                                      'zscore': zscore,
                                      'dff': dff,
                                      'df': dF, 
                                      'snr': snr,
                                      'base_std': base_std,
                                      'base_mean': base_mean,
+                                     
+                                     'stim_mean_df': stim_mean_df,
+                                     'bas_mean_df': bas_mean_df,
+                                     'bas_std_df': bas_std_df
                                      
                                      }, index=roi_list))
 
