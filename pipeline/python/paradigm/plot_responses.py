@@ -72,8 +72,8 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-                          default='raw', help="trace type [default: 'raw']")
+#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
+#                          default='raw', help="trace type [default: 'raw']")
 #    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
 #                          action='append',
 #                          help="run ID in order of runs")
@@ -86,8 +86,9 @@ def extract_options(options):
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
                           default='corrected', help='Traces to plot (must be in dataset.npz [default: corrected]')
-    parser.add_option('--offset', action='store_true', dest='correct_offset',
-                          default=False, help='Set to correct df/f offset after drift correction')           
+#    parser.add_option('--offset', action='store_true', dest='correct_offset',
+#                          default=False, help='Set to correct df/f offset after drift correction')      
+     
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='png', help='File type for images [default: png]')
     parser.add_option('--scale', action='store_true', dest='scale_y',
@@ -139,11 +140,31 @@ def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
 def load_traces_and_configs(traceid_dir, inputdata='corrected'):
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
     print "Loaded data from: %s" % data_fpath #traceid_dir
-    dataset = np.load(data_fpath)
-    assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
-    xdata = pd.DataFrame(dataset[inputdata])
-    labels = pd.DataFrame(data=dataset['labels_data'], columns=dataset['labels_columns'])
-    sdf = pd.DataFrame(dataset['sconfigs'][()]).T
+    dset = np.load(data_fpath)
+    
+    #assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
+    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    
+    #% Add baseline offset back into raw traces:
+    if inputdata in ['corrected', 'dff']:
+        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+        print("offset: %.2f" % F0)
+        raw_traces = pd.DataFrame(dset['corrected']) + F0
+        if inputdata == 'dff':
+            stim_on_frame = labels['stim_on_frame'].unique()[0]
+            tmp_df = []
+            for k, g in labels.groupby(['trial']):
+                tmat = raw_traces.loc[g.index]
+                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+                tmat_df = (tmat - bas_mean) / bas_mean
+                tmp_df.append(tmat_df)
+            xdata = pd.concat(tmp_df, axis=0)
+        else:
+            xdata = raw_traces.copy()
+    else:
+        xdata = pd.DataFrame(dset[inputdata])
+
     return xdata, labels, sdf
                           
       #%%                    
