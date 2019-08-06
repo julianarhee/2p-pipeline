@@ -25,6 +25,8 @@ import math
 import random
 import itertools
 import copy
+import traceback
+
 import scipy.io
 import optparse
 import cPickle as pkl
@@ -57,9 +59,7 @@ from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.retinotopy import utils as retinotools
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from pipeline.python.classifications import test_responsivity as resp
-
-#%%
-
+from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
 
 import glob
 import os
@@ -67,8 +67,13 @@ import json
 import re
 import pandas as pd
 
+#%%
 
-#### GENERAL FUNCTIONS ########################################################
+# #############################################################################
+# General functions
+# #############################################################################
+
+
 class Struct():
     pass
 
@@ -89,23 +94,25 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
     
     if 'retino' in run_name: #extraction_type == 'retino_analysis':
         extraction_type = 'retino_analysis'
-        retinoid_info_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_name, \
-                                             '%s' % extraction_type, '*.json'))[0] # % traceid, ))
-        with open(retinoid_info_fpath, 'r') as f:
-            retino_ids = json.load(f)
-        found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
-                     and tinfo['PARAMS']['roi_id'] == roi_id]
-        if len(found_ids) > 1:
-            for fi, fid in enumerate(found_ids):
-                print fi, fid
-            sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
-            traceid = found_ids[int(sel)]
-        else:
-            traceid = found_ids[0]
-            
+        try:
+            retinoid_info_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_name, \
+                                                 '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+            with open(retinoid_info_fpath, 'r') as f:
+                retino_ids = json.load(f)
+            found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
+                         and tinfo['PARAMS']['roi_id'] == roi_id]
+            if len(found_ids) > 1:
+                for fi, fid in enumerate(found_ids):
+                    print fi, fid
+                sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
+                traceid = found_ids[int(sel)]
+            else:
+                traceid = found_ids[0]
+        except Exception as e:
+            print("--- %s: not processed" % run_name)
+            return None, None
         
     return roi_id, traceid
-
 
 def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p-data'):
     anatomical = None
@@ -130,14 +137,13 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
         
     return anatomical
         
-
 def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
     mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
     mfile = h5py.File(mask_fpath, 'r')
 
     # Load and reshape masks
     masks = mfile[mfile.keys()[0]]['masks']['Slice01'][:].T
-    print(masks.shape)
+    #print(masks.shape)
     mfile[mfile.keys()[0]].keys()
 
     zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:].T
@@ -145,8 +151,111 @@ def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-dat
     
     return masks, zimg
 
+# #############################################################################
+# Data processing and formatting
+# #############################################################################
 
-#### RETINOTOPY EXPERIMENT FUNCTIONS ##########################################
+def process_traces(raw_traces, labels, response_type='dff', nframes_post_onset=None):
+
+#    stim_on_frame = labels['stim_on_frame'].unique()[0]
+#    tmp_df = []
+#    for k, g in labels.groupby(['trial']):
+#        tmat = raw_traces.loc[g.index]
+#        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#        tmat_df = (tmat - bas_mean) / bas_mean
+#        tmp_df.append(tmat_df)
+#    df_traces = pd.concat(tmp_df, axis=0)
+#    
+
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        if response_type == 'dff':
+            tmat_df = (tmat - bas_mean) / bas_mean
+        elif response_type == 'zscore':
+            bas_std = np.nanstd(tmat[0:stim_on_frame], axis=0)
+            tmat_df = (tmat - bas_mean) / bas_std
+        tmp_df.append(tmat_df)
+    processed_traces = pd.concat(tmp_df, axis=0)
+    
+    return processed_traces
+
+def get_trial_metrics(raw_traces, labels, response_type='mean', nframes_post_onset=None):
+    '''
+    Parses raw trace dataframes into single metric assign to each trial.
+    
+    raw_traces:
+        (dataframe) indices = frames, columns = rois. Assumes "raw" (i.e., only corrected) for
+        calculating anything besides "dff" (Provide 'corrected' to use zscore or other).
+        
+    nframes_post_onset:
+        (int) N frames to include as "trial" response (default uses nframes_on*2, if None provided)
+
+    '''
+    # Get stim onset frame: 
+    stim_on_frame = labels['stim_on_frame'].unique()
+    assert len(stim_on_frame) == 1, "---[stim_on_frame]: More than 1 stim onset found: %s" % str(stim_on_frame)
+    stim_on_frame = stim_on_frame[0]
+    
+    # Get n frames stimulus on:
+    nframes_on = labels['nframes_on'].unique()
+    assert len(nframes_on) == 1, "---[nframes_on]: More than 1 stim dur found: %s" % str(nframes_on)
+    nframes_on = nframes_on[0]
+        
+    if nframes_post_onset is None:
+        nframes_post_onset = nframes_on*2
+        
+    stats_list = []
+    for trial, tmat in labels.groupby(['trial']):
+
+        # Get traces using current trial's indices: divide by std of baseline
+        curr_traces = raw_traces.iloc[tmat.index] 
+        bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
+        bas_mean = curr_traces.iloc[0:stim_on_frame].mean(axis=0)
+        
+        # Also get zscore (single value) for each trial:
+        stim_mean = curr_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)
+        if response_type == 'zscore':
+            stats_list.append((stim_mean-bas_mean)/bas_std)
+        elif response_type == 'snr':
+            stats_list.append(stim_mean/bas_mean)
+        elif response_type == 'mean':
+            stats_list.append(stim_mean)
+        elif response_type == 'dff':
+            stats_list.append((stim_mean-bas_mean) / bas_mean)
+                
+    trialstats =  pd.concat(stats_list, axis=1).T # cols=rois, rows = trials
+    
+    return trialstats
+
+def get_trials_by_cond(labels):
+    # Get single value for each trial and sort by config:
+    trials_by_cond = dict()
+    for k, g in labels.groupby(['config']):
+        trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+    return trials_by_cond
+
+def group_trial_values_by_cond(trialstats, labels):
+    trials_by_cond = get_trials_by_cond(labels)
+
+    resp_by_cond = dict()
+    for cfg, trial_ixs in trials_by_cond.items():
+        resp_by_cond[cfg] = trialstats.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
+
+    trialstats_by_cond = pd.DataFrame([resp_by_cond[cfg].mean(axis=0) \
+                                            for cfg in sorted(resp_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+         
+    return trialstats_by_cond
+
+
+
+#%%
+# #############################################################################
+# RETINOBAR FUNCTIONS
+# #############################################################################
+
 def get_retino_analysis(animalid, session, fov, run='retino_run1', rois=None, rootdir='/n/coxfs01/2p-data'):
     
     run_dir = os.path.join(rootdir, animalid, session, fov, run)
@@ -262,52 +371,88 @@ def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
     return magratio_array, phase_array
 
 
-#### RECEPTIVE FIELD EXPERIMENT FUNCTIONS #####################################
-def get_receptive_field_fits(animalid, session, fov, receptive_field_fit='zscore0.00_no_trim',
-                             run='combined_rfs*_static', traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+# #############################################################################
+# RECEPTIVE FIELD EXPERIMENT functions
+# #############################################################################
+
+def get_receptive_field_fits(animalid, session, fov, response_type='dff', #receptive_field_fit='zscore0.00_no_trim',
+                             run='combined_rfs*_static', traceid='traces001', 
+                             pretty_plots=False, create_new=False,
+                             rootdir='/n/coxfs01/2p-data'):
     #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
     rfits = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    do_fits = False
+    do_fits = create_new #False
     try:
         combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
         #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
         rf_traceid_dir = combined_rf_dirs[0]
         
-        rf_fits = sorted(glob.glob(os.path.join(rf_traceid_dir,
-                                         'figures', 'receptive_fields', 
-                                         'rfs_2dgaus*%s*' % receptive_field_fit, '*.pkl')), key=natural_keys)
-        if len(rf_fits) > 1:
+        found_fresults = sorted(glob.glob(os.path.join(rf_traceid_dir,
+                                         'receptive_fields', 
+                                         'fit-2dgaus_%s-no-trim' % response_type, '*.pkl')), key=natural_keys)
+        if len(found_fresults) > 1:
             print("RFs: %s - more than 1 RF fit result found:" % run)
-            for r, ri in enumerate(rf_fits):
+            for r, ri in enumerate(found_fresults):
                 print(r, ri)
             sel = input("-- Select IDX of fits to use: ")
-            rfs_fpath = rf_fits[int(sel)]
-        elif len(rf_fits) == 1:
-            rfs_fpath = rf_fits[0]
+            rfs_fpath = found_fresults[int(sel)]
+        elif len(found_fresults) == 1:
+            rfs_fpath = found_fresults[0]
         else:
             do_fits = True
-        
+    
         if do_fits:
             print("... specified RF fit method not found, running now.")
             rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
-                            trace_type='corrected', visual_area='', select_rois=False, segment=False,
-                            response_type='zscore', response_thr=None, rootdir='/n/coxfs01/2p-data')
+                                                  make_pretty_plots=pretty_plots,
+                                                  create_new=create_new,
+                                                  trace_type='corrected', response_type=response_type,
+#                                                  select_rois=False, segment=False,
+                                                  rootdir=rootdir)
         
         else:
-            print("... loading RF fits: %s" % receptive_field_fit)
+            print("... loading RF fits (response-type: %s)" % response_type)
             with open(rfs_fpath, 'rb') as f:
                 rfits = pkl.load(f)
     except Exception as e:
         print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
-        print e
+        traceback.print_exc()
         
     return rfits
 
 
-#### EVENT PROTOCOL FUNCTIONS #################################################
+def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
+                 response_type='dff', pretty_plots=False, create_new=False,
+                 rootdir='/n/coxfs01/2p-data'):
+
+    #if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
+#            if (exp_name == 'gratings' and int(session) < 20190511):
+#                print "OLD"
+    try:
+        rf_fit_thr = 0.5
+        rstats = get_receptive_field_fits(animalid, session, fov,
+                                         run=exp_name, traceid=traceid, 
+                                         response_type=response_type,
+                                         pretty_plots=pretty_plots,
+                                         create_new=create_new,
+                                         rootdir=rootdir) #(S.experiments[exp_name])
+        print("... loaded rf fits")
+        roi_list = [r for r, res in rstats['fit_results'].items() if res['fit_r']['r2'] >= rf_fit_thr]
+        #if exp_name == 'gratings':
+        #    exp_name = 'rfs'
+        nrois_total = len(rstats['fit_results'].keys())
+        
+    except Exception as e:
+        print e
+        print("-- No RF fits! [%s]" % exp_name)
+        
+    return rstats, roi_list, nrois_total
 
 
+# #############################################################################
+# Generic "event"-based experiments
+# #############################################################################
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                          responsive_test='ROC', responsive_thr=0.05,
                          rootdir='/n/coxfs01/2p-data'):
@@ -325,8 +470,6 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     
     return roi_list
     
-
-
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
                   responsive_test='ROC', responsive_thr=0.05, rootdir='/n/coxfs01/2p-data'):
     rstats = None
@@ -353,32 +496,9 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
         
     return rstats, roi_list, nrois_total
 
-def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
-                 receptive_field_fit='zscore0.00_no_trim', rootdir='/n/coxfs01/2p-data'):
-
-    #if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
-#            if (exp_name == 'gratings' and int(session) < 20190511):
-#                print "OLD"
-    try:
-        rf_fit_thr = 0.5
-        rstats = get_receptive_field_fits(animalid, session, fov,
-                                         run=exp_name, traceid=traceid, 
-                                         receptive_field_fit=receptive_field_fit,
-                                         rootdir=rootdir) #(S.experiments[exp_name])
-        print("... loaded rf fits")
-        roi_list = [r for r, res in rstats['fits'].items() if res['fit_r']['r2'] >= rf_fit_thr]
-        #if exp_name == 'gratings':
-        #    exp_name = 'rfs'
-        nrois_total = len(rstats['fits'].keys())
-    except Exception as e:
-        print e
-        print("-- No RF fits! [%s]" % exp_name)
-        
-    return rstats, roi_list, nrois_total
-
-
 def check_counts_per_condition(raw_traces, labels):
     # Check trial counts / condn:
+    print("Checking counts / condition...")
     min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
     conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
     if len(conds_to_downsample) > 0:
@@ -404,12 +524,11 @@ def check_counts_per_condition(raw_traces, labels):
         
         tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
         tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+        return tmp_traces, tmp_labels
+
     else:
         return raw_traces, labels
-    
-    return tmp_traces, tmp_labels
-    
-
+        
 #%%
 
 class Session():
@@ -474,21 +593,11 @@ class Session():
         return xpos, ypos
     
 
-    def get_stimulus_sizes(self, size_tested = ['gratings', 'blobs']):
-        
-        tested_exps = [e for e in self.experiment_list if e in size_tested]
-    
+    def get_stimulus_sizes(self, size_tested = ['gratings', 'blobs']):        
+        tested_exps = [e for e in self.experiment_list if e in size_tested]    
         stimsizes = {}
         for exp in tested_exps:
             stimsizes[exp] = self.experiments[exp].data.sdf.dropna()['size'].unique()
-            
-    #    gratings_sz = S.experiments['gratings'].data.sdf['size'].unique().min()
-    #    print("Gratings: min apertured size %i" % gratings_sz)
-    #    
-    #    # Get blob size(s):
-    #    blobs_sz_min = S.experiments['blobs'].data.sdf.dropna()['size'].unique().min()
-    #    blobs_sz_max = S.experiments['blobs'].data.sdf.dropna()['size'].unique().max()
-    #    print("Blobs: min/max size = %i/%i" % (blobs_sz_min, blobs_sz_max))
         return stimsizes
  
     
@@ -499,17 +608,17 @@ class Session():
         with open(os.path.join(outdir, 'sessiondata.pkl'), 'wb') as f:
             pkl.dump(self, f, protocol=pkl.HIGHEST_PROTOCOL)
             
-    
     def load_masks(self, rootdir='/n/coxfs01/2p-data'):
         masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=self.rois, rootdir=rootdir)
         return masks, zimg
     
     
-    def load_data(self, traceid='traces001', trace_type='corrected', make_equal=True,\
-                  experiment=None, rootdir='/n/coxfs01/2p-data', update_self=True):
+    def load_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
+                  make_equal=True, rootdir='/n/coxfs01/2p-data', update_self=True):
         
         '''Set experiment = None to load all data'''
         
+        print("Session Object- loading data")
         if update_self:
             self.traceid = traceid
             self.trace_type = trace_type
@@ -517,16 +626,12 @@ class Session():
             print("... Loading data (%s - %s - %s)" % (experiment, traceid, trace_type))
         else:
             print("... Loading all experiments (%s - %s)" % (traceid, trace_type))
-#            
-#        self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, rootdir=rootdir)
-#        if tmp_tid != self.traceid:
-#            self.traceid = tmp_tid
-            
-        expdict = self.get_experiment_data(experiment=experiment,\
+
+        expdict = self.get_experiment_data(experiment=experiment,
                                            traceid=traceid,
-                                           trace_type=trace_type,\
+                                           trace_type=trace_type,
                                            rootdir=rootdir, 
-                                          make_equal=make_equal)
+                                           make_equal=make_equal)
         
         if update_self and expdict is not None:
             self.experiments.update(expdict)
@@ -560,31 +665,41 @@ class Session():
                 experiment_types = [experiment]
             else:
                 experiment_types = experiment
-        print("EXP:", experiment_types)
+        print("Session Object- Getting experiment data:", experiment_types)
 
-       
-        #try:
-            # Create object for each experiment:
         for experiment_type in experiment_types:     
+            print("... loading: %s" % experiment_type)
             if int(self.session) < 20190511 and experiment_type == 'rfs':
                 experiment_type = 'gratings' # Temporarily revert back to old-name since get_experiment_list() changed
-        
-            try:        
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
-                print("-- %s: got rois" % experiment_type)
-                if tmp_tid != self.traceid:
+                experiment_type = 'rfs' # change back
+            else:
+                self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
+            print("... got rois")
+            try:        
+                if tmp_tid != self.traceid and 'retino' not in experiment_type:
                     self.traceid = tmp_tid
-                    print("renamed traceid")
-                exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
-                print("-- %s: got source" % (experiment_type)) 
+                    print("... (renamed traceid)")
+                # exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                if 'rf' in experiment_type:
+                    exp = ReceptiveFields(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                elif 'grating' in experiment_type:
+                    exp = Gratings(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                elif 'blob' in experiment_type:
+                    # TODO:  ficx this, not implemented
+                    exp = Objects(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                else:
+                    exp = Experiment(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                    assert exp.roi_id is not None, "NOT PROCESSED"
+                    
                 if exp.source is None:
                     continue
-                exp.load(trace_type=trace_type, make_equal=make_equal)
-                print("loaded")
+                exp.load(trace_type=trace_type, update_self=True, make_equal=make_equal)
+                print("... loaded traces")
                 if 'gratings' in experiment_type and int(self.session) < 20190511:
                     experiment_type = 'rfs'
             except Exception as e:
-                print e
+                traceback.print_exc()
                 print("--- %s skipping ---" % experiment_type)
                 exp = None
                 #experiment_dict = None
@@ -594,26 +709,27 @@ class Session():
         return experiment_dict
     
     
-    def get_grouped_stats(self, experiment_type, responsive_thr=0.01, responsive_test='ROC', 
-                          receptive_field_fit='zscore0.00_no_trim',
+    def get_grouped_stats(self, experiment_type, response_type='dff',
+                          responsive_thr=0.01, responsive_test='ROC', 
                           update=True, get_grouped=True, make_equal=True,
+                          pretty_plots=False,
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
-        
+        print("Session Object- Getting grouped roi stats: exp is", experiment_type)
+
         #assert exp in [v for k, v in self.experiments.items()], "*ERROR* - specified experiment (%s) not found in Session object." % exp.name
-        expdict=None; estats_dict=None;
+        expdict=None; estats_dict=None; nostats=[];
         
         experiment_names = [k for k, v in self.experiments.items()]
         # see if already loaded data:
-        print("Getting stats:", experiment_type)
         if experiment_type is not None:
             found_exp_names = [k for k in experiment_names if experiment_type == k]
         else:
             found_exp_names = experiment_names
         
-        print("... getting grouped stats  for experiments: ", found_exp_names)
+        print("... found loaded experiments: ", found_exp_names)
         if isinstance(found_exp_names, list) and len(found_exp_names) > 0:
-            print("loading found experiments")
+            print("... loading found experiments")
             if len(found_exp_names) > 1:
                 for fi, fname in enumerate(found_exp_names):
                     print fi, fname
@@ -628,7 +744,7 @@ class Session():
                 expdict = {exp_name: self.experiments[exp_name]}
         else:
             # Load just this experiment type:
-            print("no exp data saved, loading now...")
+            print("... no experiment data saved, loading now...")
             expdict = self.load_data(experiment=experiment_type, traceid=traceid,
                                      trace_type=trace_type, rootdir=rootdir, 
                                      update_self=update, make_equal=make_equal)
@@ -637,19 +753,19 @@ class Session():
         if expdict is not None:
             estats_dict = {}
             for exp_name, exp in expdict.items():
-                if exp is None:
+                if exp is None or 'retino' in exp_name:
                     continue
-                print("%s: calculating stats" % exp_name)
+                print("... %s: calculating stats" % exp_name)
                 #print("... [%s] Loading roi stats and cell list..." % exp.name)
-                tmp_estats_dict = exp.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                get_grouped=get_grouped, receptive_field_fit=receptive_field_fit,
-                                               make_equal=make_equal)
+                tmp_estats_dict = exp.get_stats(response_type=response_type, pretty_plots=pretty_plots,
+                                                responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                get_grouped=get_grouped, make_equal=make_equal)
                 if tmp_estats_dict is not None:
-                    estats_dict.update(tmp_estats_dict)
+                    estats_dict.update({exp_name: tmp_estats_dict})
+                else:
+                    nostats.append(','.join([self.animalid, self.session, self.fov, self.traceid, exp_name]))
                 
-        return estats_dict
-
-#%%
+        return estats_dict, nostats
 
 
     #%%
@@ -657,7 +773,7 @@ class Session():
 class Experiment(object):
     def __init__(self, experiment_type, animalid, session, fov, \
                  traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        print("[%s|%s|%s] creating %s object" % (animalid, session, fov, experiment_type))
+        print("... [%s|%s|%s] creating %s object" % (animalid, session, fov, experiment_type))
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
@@ -707,19 +823,23 @@ class Experiment(object):
         
         if 'retino' in self.name: #extraction_type == 'retino_analysis':
             extraction_type = 'retino_analysis'
-            retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % self.name, \
-                                                 '%s' % extraction_type, '*.json'))[0] # % traceid, ))
-            with open(retinoid_info_fpath, 'r') as f:
-                retino_ids = json.load(f)
-            found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
-                         and tinfo['PARAMS']['roi_id'] == roi_id]
-            if len(found_ids) > 1:
-                for fi, fid in enumerate(found_ids):
-                    print fi, fid
-                sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
-                traceid = found_ids[int(sel)]
-            else:
-                traceid = found_ids[0]
+            try:
+                retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % self.name, \
+                                                     '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+                with open(retinoid_info_fpath, 'r') as f:
+                    retino_ids = json.load(f)
+                found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
+                             and tinfo['PARAMS']['roi_id'] == roi_id]
+                if len(found_ids) > 1:
+                    for fi, fid in enumerate(found_ids):
+                        print fi, fid
+                    sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
+                    traceid = found_ids[int(sel)]
+                else:
+                    traceid = found_ids[0]
+            except Exception as e:
+                print("-- can't create EXP for retino, not processed: %s|%s|%s|%s" % (self.animalid, self.session, self.fov, self.name))
+                roi_id = None
             
         self.rois = roi_id
         self.traceid = traceid
@@ -727,7 +847,7 @@ class Experiment(object):
         #return roi_id, traceid
 
     
-    def load(self, trace_type='corrected', make_equal=True, rootdir='/n/coxfs01/2p-data'):
+    def load(self, trace_type='corrected', update_self=True, make_equal=True, rootdir='/n/coxfs01/2p-data'):
         '''
         Populates trace_type and data
         '''
@@ -752,11 +872,12 @@ class Experiment(object):
                     self.data.info = dset['run_info'][()]
                     
                     #% Add baseline offset back into raw traces:
+                    assert 'corrected' in dset.keys() and 'dff' in dset.keys(), "Unable to find correct/dff traces..."
                     F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
                     print("... offset: %.2f" % F0)
                     raw_traces = pd.DataFrame(dset['corrected']) + F0
                     if trace_type == 'corrected':
-                        self.data.traces = raw_traces
+                        traces = raw_traces
                     elif trace_type == 'dff':
                         #% # Convert raw + offset traces to df/F traces
                         stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
@@ -766,25 +887,34 @@ class Experiment(object):
                             bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
                             tmat_df = (tmat - bas_mean) / bas_mean
                             tmp_df.append(tmat_df)
-                        self.data.traces = pd.concat(tmp_df, axis=0)    
+                        traces = pd.concat(tmp_df, axis=0)    
                     #self.data.traces  = pd.DataFrame(dset[self.trace_type])                    
                     if make_equal:
                         print("... making equal")
-                        self.data.traces, self.data.labels = check_counts_per_condition(self.data.traces, self.data.labels)
+                        traces, self.data.labels = check_counts_per_condition(traces, self.data.labels)
 
                 elif self.source.endswith('h5'):
                     #dfile = h5py.File(self.source, 'r')
                     # TODO: formatt retino data in sensible way with rutils
                     self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
                                                                    rootdir=rootdir)
-                    self.data.traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
+                    traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
+                
+                # Update self:"
+                if update_self:
+                    print("... updating self")
+                    self.data.traces = traces
+                else:
+                    print(".... returning")
+                    return traces, self.data.labels
+                
             except Exception as e:
+                traceback.print_exc()
                 print("ERROR LOADING DATA")
-                print e
+                self.data = None
     
         else:
             print("*** NOT IMPLEMENTED ***\n--%s--" % self.source)
-
         #return data
     
             
@@ -853,113 +983,41 @@ class Experiment(object):
 
         return data_fpath
 
-
-  
+    def process_traces(self, response_type='dff', nframes_post_onset=None):
+        traces = process_traces(self.data.traces, self.data.labels, 
+                                response_type=response_type, nframes_post_onset=nframes_post_onset)
         
-#    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05, 
-#                             receptive_field_fit='zscore0.00_no_trim'):
-#        
-#        roi_list=None; rstats=None; nrois_total=None; trials_by_cond=None;
-#        nattrs = [i for i in dir(self.data) if '__' not in i]
-#        assert len(nattrs) > 0, "ERROR:  no data loaded."
-#        #print self.name
-#        if 'retino' in self.name:
-#            print("... loading retino data")
-#            rstats, roi_list, nrois_total, trials_by_cond = get_retino_stats(self.data, responsive_thr=responsive_thr)
-#        else:
-#            print("... loading event data")
-#            if 'rfs' in self.name or ('gratings' in self.name and int(self.session) < 20190511):
-#                rstats, roi_list, nrois_total = get_rf_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-#                                                             exp_name=self.name, receptive_field_fit=receptive_field_fit)
-#            else:
-#                rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-#                                                              exp_name=self.name, responsive_test=responsive_test)
-#            trials_by_cond = None
-#        if rstats is not None:
-#            print("... Found %i responsive cells." % (len(roi_list)))
-#        
-#        return rstats, roi_list, nrois_total, trials_by_cond
-#               
-#    def get_stats(self, responsive_test='ROC', responsive_thr=0.01, make_equal=True,
-#                  receptive_field_fit='zscore0.00_no_trim', get_grouped=True):
-#        print("... [%s] Loading roi stats and cell list..." % self.name)
-#
-#        rstats, roi_list, nrois_total, trials_by_cond = self.get_responsive_cells(
-#                                                                 responsive_test=responsive_test,
-#                                                                 responsive_thr=responsive_thr,
-#                                                                 receptive_field_fit=receptive_field_fit)
-#        
-#        if rstats is None and roi_list is None:
-#            print("--- NO STATS (%s)" % responsive_test)
-#            return None
-#    
-#    
-#        if 'gratings' in self.name and int(self.session) < 20190511:
-#            print("... renaming experiment to 'rfs' (old, pre-20190511)")
-#            experiment_id = 'rfs'
-#        else:
-#            if 'combined' in self.name:
-#                experiment_id = self.name.split('_')[1]
-#            else:
-#                experiment_id = self.name.split('_')[0]
-#            
-#        estats = Struct()
-#        estats.experiment_id = experiment_id
-#        estats.rois = roi_list
-#        estats.nrois = nrois_total
-#        estats.gdf = None
-#        estats.sdf = None
-#        
-#        if 'retino' not in experiment_id:
-#            self.load(trace_type='dff', make_equal=make_equal)
-#            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
-#                                                         roi_list=roi_list,
-#                                                         return_grouped=get_grouped)
-#            if 'rf' in experiment_id:
-#                estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
-#                rstats.pop('fits')
-#                print("*** got rf fits***")
-#                
-#                estats.finfo = rstats
-#            estats.sdf = self.data.sdf
-#        else:
-#            estats.gdf = rstats #rstats['magratios'].max(axis=1)
-#            assert trials_by_cond is not None, "Retino trial data failed to return"
-#            estats.sdf = trials_by_cond
-#            
-#        return {experiment_id: estats}
-#        
-   
-
-#%%             
-
-from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+        return traces
     
-               
-class Gratings(Experiment):
-    def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        super(Gratings, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
-        self.experiment_type = 'gratings'
+    def get_trial_metrics(self, response_type='dff', nframes_post_onset=None):
+
+        if self.data is None or self.trace_type != 'corrected':
+            traces, labels = self.load(trace_type='corrected', update_self=False)
         
+        trialmetrics = get_trial_metrics(traces, labels, response_type=response_type, nframes_post_onset=nframes_post_onset)
         
+        return trialmetrics
+                    
+
     def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05):
+        print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
         assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
         rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
                                                       exp_name=self.name, responsive_test=responsive_test)
         
         return rstats, roi_list, nrois_total
 
- 
-    def get_stats(self, responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
+    def get_stats(self, responsive_test='ROC', responsive_thr=0.05, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
-
+        responsive_test = kwargs.get('responsive_test', 'ROC')
+        responsive_thr = kwargs.get('responsive_thr', 0.5)
+        make_equal = kwargs.get('make_equal', True)
+        get_grouped = kwargs.get('get_grouped', True)
         rstats, roi_list, nrois_total = self.get_responsive_cells(responsive_test=responsive_test,
                                                                  responsive_thr=responsive_thr)
-        
         if rstats is None and roi_list is None:
             print("--- NO STATS (%s)" % responsive_test)
             return None
-
 
         if 'combined' in self.name:
             experiment_id = self.name.split('_')[1]
@@ -973,7 +1031,7 @@ class Gratings(Experiment):
         estats.gdf = None
         estats.sdf = None
     
-        if self.data is None:
+        if self.data is None or self.trace_type != 'corrected':
             self.load(trace_type='corrected', make_equal=make_equal)
         estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
                                                      roi_list=roi_list,
@@ -982,14 +1040,24 @@ class Gratings(Experiment):
 
         return estats #{experiment_id: estats}
     
-    def fit_tuning(self, response_type='dff', make_plots=True,
+#%%
+               
+class Gratings(Experiment):
+    def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+        super(Gratings, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
+        self.experiment_type = 'gratings'
+        
+    
+    
+    def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
                    n_bootstrap_iters=100, n_intervals_interp=3,
                    responsive_test='ROC', responsive_thr=0.05, create_new=False,
                    rootdir='/n/coxfs01/2p-data'):
         
         fitdf, fitparams, fitdata = osi.get_tuning_for_fov(self.animalid, self.session, self.fov, traceid=self.traceid, 
                                                        response_type=response_type, n_bootstrap_iters=n_bootstrap_iters, n_intervals_interp=n_intervals_interp,
-                                                       responsive_test=responsive_test, responsive_thr=responsive_thr, make_plots=make_plots,
+                                                       responsive_test=responsive_test, responsive_thr=responsive_thr, 
+                                                       make_plots=make_plots, plot_metrics=plot_metrics,
                                                        create_new=create_new, rootdir=rootdir)
         
         return fitdf, fitparams, fitdata
@@ -1004,141 +1072,21 @@ class Gratings(Experiment):
         
         return goodfits
     
-#%%
 
-
-
-# TEST GRATINGS:
-# ========================================================
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084' #'JC059'
-session = '20190522' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-traceid = 'traces001' #'traces001'
-trace_type = 'dff'
-
-
-exp = Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-exp.print_info()
-exp.load(trace_type='dff')
-
-estats = exp.get_stats(responsive_test='ROC', responsive_thr=0.05)
-
-
-fitdf, fitparams, fitdata = exp.fit_tuning(response_type='dff', make_plots=True,
-                                           n_bootstrap_iters=100, n_intervals_interp=3, goodness_thr=0.66,
-                                           responsive_test='ROC', responsive_thr=0.05, create_new=False)
-
-#goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata, goodness_thr=0.66)
-                 
-# Get subset of good fits:
-goodness_thr = 0.66
-fitdf, gfits = osi.check_fit_quality(fitdf, fitdata)
-goodfits = osi.threshold_fitness_quality(gfits, goodness_thr=goodness_thr, plot_hist=False)
-
-# 
-df = fitdf[fitdf['cell'].isin(goodfits)]
-
-fit_desc = os.path.split(fitparams['directory'])[-1]
-data_identifier = '|'.join([exp.animalid, exp.session, exp.fov, exp.traceid, fit_desc])
-
-#%%
-dsi_values = df.groupby(['cell']).mean()['DSI']
-dsi_sorted_ixs = np.argsort(dsi_values).values[::-1] #Sort from biggest to smallest
-rsort_by_dsi = np.array(dsi_values.index.tolist())[dsi_sorted_ixs]
-
-evens = []
-odds= []
-for roi in rsort_by_dsi:
-    #print roi, dsi_values[roi]
-#    best_configs = fitdata['original_data'][roi]['stimulus_configs']
-#    trace_ixs = exp.data.labels[exp.data.labels['config'].isin(best_configs)].index.tolist()
-#    tmat = exp.data.traces[roi][trace_ixs]
-#    rdf = pd.DataFrame(data=tmat.values, index=tmat.index, columns=['traces'])
-#    rdf['trial'] = exp.data.labels['trial'][trace_ixs]
-#    rdf['config'] = exp.data.labels['config'][trace_ixs]
-#    tmat = np.vstack(rdf.groupby(['config', 'trial'])['traces'].apply(np.array).values)
-    responses = fitdata['original_data'][roi]['responses']
-    
-    evens.append(responses[0::2].mean().values)
-    odds.append(responses[1::2].mean().values)
-
-evens = np.array(evens)
-odds = np.array(odds)
-
-
-cmap = 'inferno'
-fig, axes = pl.subplots(1,2, sharex=True, sharey=True)
-cbar_ax = fig.add_axes([.85, .3, .03, .4])
-vmin = min([evens.min(), odds.min()])
-vmax = max([evens.max(), odds.max()])
-
-sns.heatmap(evens, ax=axes[0], cbar=True, vmin=vmin, vmax=vmax, cbar_ax=cbar_ax, cmap=cmap)
-axes[0].set_title('evens')
-axes[0].set_xticklabels(fitparams['tested_values'], rotation=45)
-axes[0].tick_params(labelsize=8)
-axes[0].set_ylabel('cell')
-
-sns.heatmap(odds, ax=axes[1], cbar=0, vmin=vmin, vmax=vmax, cbar_ax=None, cmap=cmap)
-axes[1].set_title('odds')
-axes[1].set_xticklabels(fitparams['tested_values'], rotation=45)
-axes[1].tick_params(labelsize=8)
-
-pl.subplots_adjust(wspace=0.05, right=0.80)
-
-fig.suptitle('sort by DSI')
-
-
-#%%
-
-from scipy import stats as spstats
-#pthetas = df['preferred_theta'])
-df['preferred_rad'] = np.deg2rad(df['preferred_theta']).values
-
-dsi_values = df.groupby(['cell'])['preferred_rad'].apply(spstats.circmean)
-
-dsi_sorted_ixs = np.argsort(dsi_values).values #Sort from biggest to smallest
-rsort_by_dsi = np.array(dsi_values.index.tolist())[dsi_sorted_ixs]
-
-evens = []
-odds= []
-for roi in rsort_by_dsi:
-    print roi, dsi_values[roi]
-#    best_configs = fitdata['original_data'][roi]['stimulus_configs']
-#    trace_ixs = exp.data.labels[exp.data.labels['config'].isin(best_configs)].index.tolist()
-#    tmat = exp.data.traces[roi][trace_ixs]
-#    rdf = pd.DataFrame(data=tmat.values, index=tmat.index, columns=['traces'])
-#    rdf['trial'] = exp.data.labels['trial'][trace_ixs]
-#    rdf['config'] = exp.data.labels['config'][trace_ixs]
-#    tmat = np.vstack(rdf.groupby(['config', 'trial'])['traces'].apply(np.array).values)
-    responses = fitdata['original_data'][roi]['responses']
-    
-    evens.append(responses[0::2].mean().values)
-    odds.append(responses[1::2].mean().values)
-
-evens = np.array(evens)
-odds = np.array(odds)
-
-cmap = 'inferno'
-fig, axes = pl.subplots(1,2, sharex=True, sharey=True)
-cbar_ax = fig.add_axes([.85, .3, .03, .4])
-vmin = min([evens.min(), odds.min()])
-vmax = max([evens.max(), odds.max()])
-
-sns.heatmap(evens, ax=axes[0], cbar=True, vmin=vmin, vmax=vmax, cbar_ax=cbar_ax, cmap=cmap)
-axes[0].set_title('evens')
-axes[0].set_xticklabels(fitparams['tested_values'], rotation=45)
-axes[0].tick_params(labelsize=8)
-axes[0].set_ylabel('cell')
-
-sns.heatmap(odds, ax=axes[1], cbar=0, vmin=vmin, vmax=vmax, cbar_ax=None, cmap=cmap)
-axes[1].set_title('odds')
-axes[1].set_xticklabels(fitparams['tested_values'], rotation=45)
-axes[1].tick_params(labelsize=8)
-
-pl.subplots_adjust(wspace=0.05, right=0.80)
-
-fig.suptitle('sort by preferred angle')
+               
+class Objects(Experiment):
+    def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+        super(Objects, self).__init__('blobs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
+        self.experiment_type = 'blobs'
+        
+        
+    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05):
+        print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
+        assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
+        rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
+                                                      exp_name=self.name, responsive_test=responsive_test)
+        
+        return rstats, roi_list, nrois_total
 
 
 
@@ -1153,86 +1101,66 @@ class ReceptiveFields(Experiment):
         
         self.experiment_type = 'rfs'
         
-    def get_responsive_cells(self, receptive_field_fit='zscore0.00_no_trim'):
+    def get_responsive_cells(self, response_type='dff', fit_thr=0.5, 
+                             pretty_plots=False, create_new=False):
         '''
         roi_list: Actually returns all cells w/ receptive field fit >= threshold (0.5).
         nrois: cells that a fit was possible (regardless of how good the fit was).
         
-        '''
+        '''        
+        print("... getting responsive cells (response-type: %s, fit-thr: %.2f')" % (response_type, fit_thr))
         assert 'rfs' in self.name or ('gratings' in self.name and int(self.session) < 20190511), "Incorrect call for RF analysis."
-        rstats, roi_list, nrois_total = get_rf_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-                                                     exp_name=self.name, receptive_field_fit=receptive_field_fit)
-                        
+        rstats, roi_list, nrois_total = get_rf_stats(self.animalid, self.session, self.fov, 
+                                                     traceid=self.traceid,
+                                                     exp_name=self.name, response_type=response_type,
+                                                     create_new=create_new,
+                                                     pretty_plots=pretty_plots)
+        
         return rstats, roi_list, nrois_total
     
  
-    def get_stats(self, receptive_field_fit='zscore0.00_no_trim', make_equal=True, get_grouped=True):
+    def get_stats(self, response_type='dff', pretty_plots=False, create_new=False, **kwargs): #make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
-
-        rstats, roi_list, nrois_total = self.get_responsive_cells(receptive_field_fit=receptive_field_fit)
+        response_type = kwargs.get('response_type', 'dff')
+        
+        pretty_plots = kwargs.get('pretty_plots', False)
+        create_new = kwargs.get('create_new', False)
+        
+        make_equal = kwargs.get('make_equal', True)
+        get_grouped = kwargs.get('get_grouped', True)
+        rstats, roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
+                                                                  pretty_plots=pretty_plots,
+                                                                  create_new=create_new)
         
         if rstats is None and roi_list is None:
-            print("--- NO STATS (%s)" % receptive_field_fit)
+            print("--- NO STATS (%s)" % response_type)
             return None
-    
-    
-        if 'gratings' in self.name and int(self.session) < 20190511:
-            print("... renaming experiment to 'rfs' (old, pre-20190511)")
-            experiment_id = 'rfs'
 
         estats = Struct()
-        estats.experiment_id = experiment_id
+        estats.experiment_id = 'rfs'
         estats.rois = roi_list
         estats.nrois = nrois_total
         estats.gdf = None
         estats.sdf = None
         
-        if self.data is None:
+        if self.data is None or self.trace_type != 'corrected':
             self.load(trace_type='corrected', make_equal=make_equal)
         
         estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
                                                          roi_list=roi_list,
                                                          return_grouped=get_grouped)
 
-        estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
-        rstats.pop('fits')
+        estats.fits = fitrf.rfits_to_df(rstats['fit_results'], 
+                                        row_vals=rstats['row_vals'],
+                                        col_vals=rstats['col_vals'],
+                                        roi_list=sorted(roi_list))
+        rstats.pop('fit_results')
         print("*** got rf fits***")
                 
-        estats.finfo = rstats
+        estats.fitinfo = rstats
         estats.sdf = self.data.sdf
 
         return estats #{experiment_id: estats}
-
-#%%
-
-
-# TEST RECEPTIVE FIELDS:
-# ========================================================
-
-rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC076' #'JC059'
-session = '20190420' #'20190227'
-fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-#run = 'combined_rfs_static'
-traceid = 'traces001' #'traces001'
-segment = False
-visual_area = 'V1'
-trace_type = 'dff'
-#select_rois = False
-#rows = 'ypos'
-
-S = Session(animalid, session, fov, rootdir=rootdir)
-
-exp = ReceptiveFields(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-exp.print_info()
-#exp.load(trace_type='dff')
-
-estats = exp.get_stats(receptive_field_fit='zscore0.00_no_trim')
-
-pl.figure()
-pl.scatter(estats.fits['sigma_x'], estats.fits['sigma_y'])
-pl.xlim([-S.screen['width']/2., S.screen['width']/2.])
-pl.ylim([-S.screen['height']/2., S.screen['height']/2.])
 
 
     #%%
@@ -1491,7 +1419,6 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, la
 
     # Use some color map to indicate distance from upper-left corner:
     sorted_colors = sns.color_palette("Spectral", len(sorted_rids)) #masks.shape[-1])
-
     if ax is None:
         fig, ax = pl.subplots(1, figsize=(10,10))
         

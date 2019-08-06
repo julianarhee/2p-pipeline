@@ -21,10 +21,10 @@ import seaborn as sns
 import cPickle as pkl
 import matplotlib.gridspec as gridspec
 
-from pipeline.python.classifications import utils as util
+from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys, convert_range
-from pipeline.python.classifications import run_experiment_stats as stats
+from pipeline.python.classifications import run_experiment_stats as estats
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from matplotlib.patches import Ellipse, Rectangle
@@ -51,9 +51,9 @@ def extract_options(options):
     parser.add_option('-o', '--aggregate-dir', action='store', dest='aggregate_dir', default='/n/coxfs01/julianarhee/aggregate-visual-areas', 
                       help='output dir for saving aggregated data and figures [default: /n/coxfs01/julianarhee/aggregate-visual-areas]')
    
-
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', 
-                      help='Animal ID')
+#
+#    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', 
+#                      help='Animal ID')
 
     # Set specific session/run for current animal:
     parser.add_option('-f', '--fov-type', action='store', dest='fov_type', default='zoom2p0x', 
@@ -62,8 +62,10 @@ def extract_options(options):
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
                       help="traceid (default: traces001)")
     
-    parser.add_option('-T', '--trace_type', action='store', dest='trace_type', default='corrected', 
-                      help="trace type (default: dff, for calculating mean stats)")
+    parser.add_option('-T', '--trace-type', action='store', dest='trace_type', default='corrected', 
+                      help="trace type (default: corrected, for traces and calculating stats)")
+    parser.add_option('-r', '--response-type', action='store', dest='response_type', default='dff', 
+                      help="trace type (default: dff, stat to compare)")
     
     parser.add_option('-x', '--exclude', action='append', dest='blacklist', default=['20190514', '20190530'], nargs=1,
                       help="session to exclude (default includes 20190514, 20190530)")
@@ -147,8 +149,8 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                             sessiondata.append(pd.DataFrame({'visual_area': visual_area, 
                                                                'animalid': animalid, 
                                                                'experiment': e,
-                                                              'session': session_str,
-                                                            'fov': '%s_%s' % (fov_str, fov_type)}, index=[dcounter]) )
+                                                               'session': session_str,
+                                                               'fov': '%s_%s' % (fov_str, fov_type)}, index=[dcounter]) )
                             dcounter += 1
     
             else:
@@ -158,6 +160,7 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
     
     return sessiondata
 
+#%%
 def main(options):
     
     optsE = extract_options(options)
@@ -196,17 +199,26 @@ def main(options):
         os.makedirs(aggregate_session_dir)
         
     #%%
-        
+    emptystats = {}
     for animalid in sessiondata['animalid'].unique():
         session_list = sessions_by_animal[animalid].index.tolist()
         for session in session_list:
             fovs = sessions_by_animal[animalid][session]
     
             for fov in fovs:
-                stats.visualize_session_stats(animalid, session, fov, create_new=False, altdir=aggregate_session_dir)
+                nostats = estats.visualize_session_stats(animalid, session, fov, create_new=True, altdir=aggregate_session_dir)
                 
-                
-                
+                dset_key = '_'.join([animalid, session, fov])
+                emptystats[dset_key] = nostats
+    
+    for k, checklist in emptystats.items():
+        if len(checklist) == 0:
+            emptystats.pop(k)
+     
+    error_fpath = os.path.join(datasetdir, 'check_stats.json')
+    with open(error_fpath, 'w') as f:
+        json.dump(emptystats, f, indent=4, sort_keys=True)
+        
             
 if __name__ == '__main__':
     main(sys.argv[1:])
@@ -215,5 +227,10 @@ if __name__ == '__main__':
             
             
             
-            
-            
+#%%
+
+#animalid = 'JC084'
+#session = '20190522'
+#fov = 'FOV1_zoom2p0x'
+#create_new=True
+#aggregate_session_dir=None

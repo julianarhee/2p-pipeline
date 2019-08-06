@@ -402,7 +402,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
 
 def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_type='dff', 
-                          n_bootstrap_iters=100, n_intervals_interp=3,
+                          n_bootstrap_iters=100, n_intervals_interp=3, plot_metrics=True,
                           responsive_test='ROC', responsive_thr=0.05, make_plots=True,
                           create_new=False, n_processes=1, rootdir='/n/coxfs01/2p-data'):
     
@@ -439,8 +439,9 @@ def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_typ
     run_name = os.path.split(roi_fitdir.split('/traces')[0])[-1]
     data_identifier = '|'.join([animalid, session, fov, run_name, traceid])
 
-    plot_selectivity_metrics(fitdf, fitparams, fit_thr=0.9, data_identifier=data_identifier)
-    plot_top_asi_and_dsi(fitdf, fitparams, fit_thr=0.9, topn=10, data_identifier=data_identifier)
+    if plot_metrics:
+        plot_selectivity_metrics(fitdf, fitparams, fit_thr=0.9, data_identifier=data_identifier)
+        plot_top_asi_and_dsi(fitdf, fitparams, fit_thr=0.9, topn=10, data_identifier=data_identifier)
     
     print("*** done! ***")
     
@@ -748,7 +749,7 @@ def plot_selectivity_metrics(fitdf, fitparams, fit_thr=0.9, data_identifier='MET
     nrois_thr = len(strong_fits)
     n_bootstrap_iters = fitparams['n_bootstrap_iters']
     
-    figname = 'compare-metrics_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (fit_thr, n_bootstrap_iters, nrois_thr, nrois_fit)
+    figname = 'compare-metrics_tuning-fit-thr%.2f_bootstrap-%iiters-interp%i' % (fit_thr, n_bootstrap_iters, n_intervals_interp)
     
     pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
     pl.close()
