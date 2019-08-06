@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python2
 # coding: utf-8
 
 # In[1]:
@@ -19,7 +19,7 @@ import seaborn as sns
 import cPickle as pkl
 import matplotlib.gridspec as gridspec
 
-from pipeline.python.classifications import utils as util
+from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.classifications import run_experiment_stats as rstats
 from pipeline.python.utils import label_figure, natural_keys, convert_range
@@ -167,8 +167,8 @@ def create_ellipse(center, lengths, angle=0):
 
 rootdir = '/n/coxfs01/2p-data'
 
-animalid = 'JC076'
-session = '20190501'
+animalid = 'JC084' #JC076'
+session = '20190522' #'20190501'
 fov = 'FOV1_zoom2p0x'
 
 
@@ -188,7 +188,8 @@ def get_session_object(animalid, session, fov, traceid='traces001', trace_type='
         
     
     # # Creat session object
-    session_outfile = os.path.join(rootdir, animalid, session, fov, 'summaries', 'sessiondata.pkl')
+    summarydir = os.path.join(rootdir, animalid, session, fov, 'summaries')
+    session_outfile = os.path.join(summarydir, 'sessiondata.pkl')
     if os.path.exists(session_outfile) and create_new is False:
         print("... loading session object")
         with open(session_outfile, 'rb') as f:
@@ -208,6 +209,9 @@ def get_session_object(animalid, session, fov, traceid='traces001', trace_type='
 #                S.load_data(experiment='rfs', traceid=traceid, trace_type=trace_type)
 #                
         # Save session data object
+        if not os.path.exists(summarydir):
+            os.makedirs(summarydir)
+            
         with open(session_outfile, 'wb') as f:
             pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
             print("... new session object to: %s" % session_outfile)
@@ -230,28 +234,43 @@ def get_session_object(animalid, session, fov, traceid='traces001', trace_type='
 
 #%%
 
-trace_type = 'dff'
+def group_configs(group, response_type):
+    '''
+    Takes each trial's reponse for specified config, and puts into dataframe
+    '''
+    config = group['config'].unique()[0]
+    group.index = np.arange(0, group.shape[0])
+
+    return pd.DataFrame(data={'%s' % config: group[response_type]})
+
+def get_empirical_ci(stat, alpha=0.95):
+    p = ((1.0-alpha)/2.0) * 100
+    lower = np.percentile(stat, p) #max(0.0, np.percentile(stat, p))
+    p = (alpha+((1.0-alpha)/2.0)) * 100
+    upper = np.percentile(stat, p) # min(1.0, np.percentile(x0, p))
+    print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
+    return lower, upper
+
+
+#%%
+
+trace_type = 'corrected'
 S = get_session_object(animalid, session, fov, traceid=traceid, trace_type=trace_type,
                        create_new=True, rootdir=rootdir)
 
 if S is not None:
-
-    
-    # Create session summary dir
-    summarydir = os.path.join(rootdir, S.animalid, S.session, S.fov, 'summaries')
-    if not os.path.exists(summarydir):
-        os.makedirs(summarydir)
-    print("Saving session summary outputs to:\n%s" % summarydir)
     
     
     # Get Receptive Field measures:
     rf_exp_name = 'rfs10' if 'rfs10' in S.experiment_list else 'rfs'
 
     # Get grouped roi stat metrics:
-    gdfs, statsdir, stats_desc = rstats.get_session_stats(S, responsive_test=responsive_test, 
+    gdfs, statsdir, stats_desc, nostats = rstats.get_session_stats(S, response_type='dff', 
+                                                          experiment_list=S.experiment_list,
+                                                          responsive_test=responsive_test, 
                                                           traceid=traceid, trace_type=trace_type,
-                                                          create_new=False,
-                                                          experiment_list=S.experiment_list, rootdir=rootdir)
+                                                          create_new=False, rootdir=rootdir,
+                                                          pretty_plots=False)
     
     
     # Create output dir for figures:
@@ -259,6 +278,96 @@ if S is not None:
     if not os.path.exists(statsfigdir):
         os.makedirs(statsfigdir)
         
+        
+    #%%
+    response_type = 'dff'
+
+    row_vals = gdfs[rf_exp_name].fitinfo['row_vals']
+    col_vals = gdfs[rf_exp_name].fitinfo['col_vals']
+    xres = np.unique(np.diff(row_vals))[0]
+    yres = np.unique(np.diff(col_vals))[0]
+    sigma_scale = 2.35
+    min_sigma=5; max_sigma=50;
+    
+    #%%
+    
+    rfdir = glob.glob(os.path.join(rootdir, S.animalid, S.session, S.fov, '*rfs*', 'traces', '%s*' % traceid,
+                                   'receptive_fields', 'fit-2dgaus_%s-no-cutoff' % response_type))[0]
+            
+    bootstrapdir = os.path.join(rfdir, 'evaluation')
+    if not os.path.exists(os.path.join(bootstrapdir, 'rois')):
+        os.makedirs(os.path.join(bootstrapdir, 'rois'))
+    
+    
+    #%%
+    n_bootstrap_iters=1000
+    n_resamples = 60
+    
+    #%
+    
+    for roi in gdfs[rf_exp_name].rois:
+            
+        rdf = gdfs[rf_exp_name].gdf.get_group(roi)[['config', 'trial', response_type]]
+        
+        grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
+        responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
+    
+        # Get mean response across re-sampled trials for each condition, do this n-bootstrap-iters times
+        bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
+        print(bootdf.shape)
+        
+        x0=[]; y0=[];
+        for ii in bootdf.columns:
+            response_vector = bootdf[ii].values
+            rfmap = fitrf.get_rf_map(response_vector, len(col_vals), len(row_vals))
+            fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+            # {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
+            if fitr['success']:
+                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+                if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
+                    or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
+                    fitr['success'] = False
+                    
+            if fitr['success']:
+                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+                xx = fitrf.convert_values(x0_f, newmin=min(col_vals), newmax=max(col_vals), 
+                                            oldmax=len(col_vals)-1, oldmin=0)
+                
+                yy = fitrf.convert_values(y0_f, newmin=min(row_vals), newmax=max(row_vals), 
+                                            oldmax=len(row_vals)-1, oldmin=0)
+                x0.append(xx)
+                y0.append(yy)
+    
+        #%
+        alpha=0.90
+        lower_x0, upper_x0 = get_empirical_ci(x0, alpha=alpha)
+        lower_y0, upper_y0 = get_empirical_ci(y0, alpha=alpha)
+    
+        fig, axes = pl.subplots(1, 2, figsize=(5,3))
+        ax=axes[0]
+        ax.hist(x0, color='k', alpha=0.5)
+        ax.axvline(x=lower_x0, color='k', linestyle=':')
+        ax.axvline(x=upper_x0, color='k', linestyle=':')
+        ax.axvline(x=gdfs[rf_exp_name].fits['x0'][roi], color='r', linestyle='-')
+        ax.set_title('x0')
+        
+        ax=axes[1]
+        ax.hist(y0, color='k', alpha=0.5)
+        ax.axvline(x=lower_y0, color='k', linestyle=':')
+        ax.axvline(x=upper_y0, color='k', linestyle=':')
+        ax.axvline(x=gdfs[rf_exp_name].fits['y0'][roi], color='r', linestyle='-')
+        ax.set_title('y0')
+        pl.subplots_adjust(wspace=0.5, top=0.8)
+        fig.suptitle('roi %i' % int(roi+1))
+        
+        pl.savefig(os.path.join(bootstrapdir, 'rois', 'roi%05d_%i-bootstrap-iters_%i-resample' % (int(roi+1), n_bootstrap_iters, n_resamples)))
+        pl.close()
+        
+    
+    #%%
+    pl.figure()
+    for i in range(n_bootstrap_iters):
+        pl.hist(grouplist[0].sample(60, replace=True))
 
     #%%
     # Load session's rois:
@@ -342,8 +451,9 @@ if S is not None:
     # #ax.set_aspect('auto')
     sns.despine(offset=4, trim=True, ax=ax)
     
-    pl.subplots_adjust(wspace=0.5, top=0.9, hspace=0.5, bottom=0.2)
+    #pl.subplots_adjust(wspace=0.5, top=0.9, hspace=0.5, bottom=0.2)
     
+    #%
     label_figure(fig, data_identifier)
     if transform:
         pl.savefig(os.path.join(statsfigdir, 'transformed_spatially_sorted_rois_%s_only_%s.png' % (rf_exp_name, units)))
