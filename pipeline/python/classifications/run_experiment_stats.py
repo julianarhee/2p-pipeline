@@ -19,7 +19,7 @@ import seaborn as sns
 import cPickle as pkl
 import matplotlib.gridspec as gridspec
 
-from pipeline.python.classifications import utils as util
+from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 
@@ -75,9 +75,9 @@ from shapely.geometry import box
 
 
 
-def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001'):
+def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001', response_type='dff'):
     '''
-    Assumes trace_type = 'dff' and calculates using 'meanstim' stat metric.
+    Assumes trace_type = 'dff' and calculates using 'stim_mean' stat metric.
     '''
     
     roi_lists = dict((exp, d.rois) for exp, d in gdfs.items())
@@ -87,8 +87,10 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001'):
     rf_sets = [set(gdfs[k].rois) for k in rf_set_labels]
     
     ## Get distribution of RF sizes
-    rfits = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid, run='combined_rfs_static')
-    rfits10 = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid, run='combined_rfs10_static')
+    rfits = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
+                                          response_type=response_type, run='combined_rfs_static')
+    rfits10 = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
+                                            response_type=response_type, run='combined_rfs10_static')
 
     rfits_df = gdfs['rfs'].fits
     xres = list(set(np.diff(rfits['col_vals'])))[0]
@@ -119,8 +121,8 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001'):
 
     ## Distribution of peak dF/Fs:
     ax = pl.subplot2grid((2, 5), (0, 1), colspan=2, rowspan=1)
-    peak_dfs = [gdfs['rfs'].gdf.get_group(roi).groupby(['config']).mean()['meanstim'].max() for roi in roi_lists['rfs']]
-    peak_dfs10 = [gdfs['rfs10'].gdf.get_group(roi).groupby(['config']).mean()['meanstim'].max() for roi in roi_lists['rfs10']]
+    peak_dfs = [gdfs['rfs'].gdf.get_group(roi).groupby(['config']).mean()[response_type].max() for roi in roi_lists['rfs']]
+    peak_dfs10 = [gdfs['rfs10'].gdf.get_group(roi).groupby(['config']).mean()[response_type].max() for roi in roi_lists['rfs10']]
     weights_rfs = np.ones_like(peak_dfs) / float(len(peak_dfs))
     sns.distplot(peak_dfs, ax=ax, color=rf_colors['rfs'], label='rfs (n=%i)' % len(peak_dfs),
                  kde=False, hist=True,
@@ -131,7 +133,14 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001'):
                  hist_kws={'histtype': 'step', 'alpha': 0.5, 'weights': weights_rfs10, 'normed':0, 'lw': 2})
     ax.legend(loc='upper right', fontsize=6)
     ax.set_xlim([0, ax.get_xlim()[-1]])
-    ax.set_xlabel('peak dF/F')
+    if response_type == 'stim_mean':
+        response_unit = 'intensity'
+    elif response_type == 'zscore':
+        response_unit = 'std'
+    else:
+        response_unit = response_type
+        
+    ax.set_xlabel('peak %s' % response_unit)
     ax.set_ylabel('fraction')
     #ax.set_ylim([0, max([max(peak_dfs), max(peak_dfs10)])])
     sns.despine(trim=True, offset=2)
@@ -184,7 +193,7 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001'):
 
 
 
-def compare_experiments_responsivity(gdfs, exp_names=[], exp_colors={}):
+def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], exp_colors={}):
 
     print("Comparing experiments:", exp_names)
     tmp_roi_list = [gdfs[k].rois for k in exp_names]
@@ -226,7 +235,7 @@ def compare_experiments_responsivity(gdfs, exp_names=[], exp_colors={}):
     # Fraction of cells:
     ax = axes[1]
     for exp_name in exp_names:
-        peak_values = gdfs[exp_name].gdf.max()['meanstim'].values
+        peak_values = gdfs[exp_name].gdf.max()[response_type].values
         weights = np.ones_like(peak_values) / float(len(event_rois))
         exp_str = '%s (%i)' % (exp_name, len(peak_values))
         sns.distplot(peak_values, label=exp_str, ax=ax, norm_hist=0, kde=False,
@@ -248,7 +257,7 @@ def compare_experiments_responsivity(gdfs, exp_names=[], exp_colors={}):
     ax = axes[2]
     all_values = []
     for exp_name in exp_names:
-        all_values.extend(gdfs[exp_name].gdf.max()['meanstim'].values)
+        all_values.extend(gdfs[exp_name].gdf.max()[response_type].values)
     #weights = np.ones_like(all_values) / float(len(all_values))
     sns.distplot(all_values, ax=ax, norm_hist=0, kde=False,
                 rug=False,
@@ -298,8 +307,8 @@ def extract_options(options):
     return options
 
 #%%
-def get_session_stats(S, responsive_test='ROC', trace_type='corrected',
-                      experiment_list=None, traceid='traces001',
+def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type='corrected',
+                      experiment_list=None, traceid='traces001', pretty_plots=False,
                       rootdir='/n/coxfs01/2p-data', create_new=True):
 
     # Create output dirs:    
@@ -308,7 +317,7 @@ def get_session_stats(S, responsive_test='ROC', trace_type='corrected',
         os.makedirs(output_dir)
     print(output_dir)
 
-    stats_desc = '-'.join([traceid, trace_type, responsive_test])
+    stats_desc = '-'.join([traceid, trace_type, response_type, responsive_test])
     
     statsdir = os.path.join(output_dir, 'stats')
     if not os.path.exists(statsdir):
@@ -338,7 +347,7 @@ def get_session_stats(S, responsive_test='ROC', trace_type='corrected',
         experiment_list = S.get_experiment_list(traceid=traceid, trace_type=trace_type)
         print("found %i experiments" % len(experiment_list))
 
-    
+    datasets_nostats=[]
     if create_new:
         print("Calculating stats")
         # # Calculate stats using dff
@@ -356,31 +365,36 @@ def get_session_stats(S, responsive_test='ROC', trace_type='corrected',
                 new_name = 'rfs'
                 
             print("[%s] Loading roi lists..." % exp_name)
-            estats = S.get_grouped_stats(exp_name, responsive_test=responsive_test, 
+            estats, nostats = S.get_grouped_stats(exp_name, response_type=response_type,
+                                         responsive_test=responsive_test, 
+                                         pretty_plots=pretty_plots,
                                          traceid=traceid, trace_type=trace_type,
                                          responsive_thr=mag_ratio_thr, update=True)
-            if rename:
-                print("[%s] - renaming gratings back to rfs")
-                estats[new_name] = estats.pop(exp_name)
-            gdfs.update(estats)
+            if estats is not None:
+                if rename:
+                    print("[%s] - renaming gratings back to rfs")
+                    estats[new_name] = estats.pop(exp_name)
+                gdfs.update(estats)
+                
+            datasets_nostats.extend(nostats)
             
-            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
-            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
-            data_identifier
-            print(data_identifier)
+#            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
+#            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
+#            data_identifier
+#            print(data_identifier)
         
         with open(stats_fpath, 'wb') as f:
             pkl.dump(gdfs, f, protocol=pkl.HIGHEST_PROTOCOL)
         print("Saved stats to file: %s" % stats_fpath)
     
-    return gdfs, statsdir, stats_desc
+    return gdfs, statsdir, stats_desc, datasets_nostats
         
 
 # In[15]:
 
     
-def visualize_session_stats(animalid, session, fov, responsive_test='ROC',
-                            traceid='traces001', trace_type='dff', experiment_list=None,
+def visualize_session_stats(animalid, session, fov, response_type='dff', responsive_test='ROC',
+                            traceid='traces001', trace_type='corrected', experiment_list=None,
                             rootdir='/n/coxfs01/2p-data', create_new=False,
                             altdir=None):
     
@@ -412,19 +426,32 @@ def visualize_session_stats(animalid, session, fov, responsive_test='ROC',
     print("creating new session object...")
     S = util.Session(animalid, session, fov, rootdir=rootdir, visual_area=visual_area, state=state)
 
-    gdfs, stats_dir, stats_desc = get_session_stats(S, responsive_test=responsive_test, rootdir=rootdir, create_new=create_new,
-                             experiment_list=experiment_list)
+    gdfs, stats_dir, stats_desc, nostats = get_session_stats(S, traceid=traceid,
+                                                    response_type=response_type, trace_type=trace_type,
+                                                    responsive_test=responsive_test, 
+                                                    rootdir=rootdir, create_new=create_new,
+                                                    experiment_list=experiment_list)
     
     statsfigdir = os.path.join(stats_dir, 'figures')
     if not os.path.exists(statsfigdir):
         os.makedirs(statsfigdir)
-        
+    
+    none2compare = False
     print("=============ROI SUMMARY=============")
-    for exp_name, exp_gdf in gdfs.items():
-        print('%s: %i rois' % (exp_name, len(exp_gdf.rois)))
+    if len(gdfs.keys()) == 0:
+        print('NO STATS FOUND FOR:')
+        for ni, nostats in enumerate(nostats):
+            print ni, nostats
+        none2compare = True
+    else:
+        for exp_name, exp_gdf in gdfs.items():
+            print('%s: %i rois' % (exp_name, len(exp_gdf.rois)))
     print("=====================================")
 
-    print([S.animalid, S.session, S.fov, S.traceid, S.rois])
+    if none2compare:
+        return nostats
+    
+    
     data_identifier = '|'.join([S.animalid, S.session, S.fov, traceid]) # S.rois])
     
     compare_rf_exps = False
@@ -437,9 +464,7 @@ def visualize_session_stats(animalid, session, fov, responsive_test='ROC',
             pl.savefig(os.path.join(alternate_savedir, "%s_%s_%s_compareRFs_%s.png" % (state, visual_area, data_identifier.replace('|', '-'), stats_desc)))
     
         # # Visualize responses to event-based experiments:
-    
-    
-    
+
     rf_exp_name = 'rfs10' if 'rfs10' in gdfs.keys() else 'rfs'
     exp_names = [r for r in gdfs.keys() if 'rfs' not in r and 'retino' not in r]
     if any(['rfs' in r for r in gdfs.keys()]):
@@ -468,6 +493,8 @@ def visualize_session_stats(animalid, session, fov, responsive_test='ROC',
 
     print("--- done! ---")
     
+    return nostats
+
 #%%
 
 
