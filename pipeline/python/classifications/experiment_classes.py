@@ -1410,29 +1410,33 @@ def sort_rois_2D(traceid_dir):
     return sorted_rids, cnts, zproj
 
 #
-def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, label=True, label_rois=[],
-                          draw_box=False, thickness=1, roi_color=(0, 255, 0), transform=False,
-                          single_color=False, ax=None):
+def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=None,
+                      overlay=True, label=True, label_rois=[], thickness=2, 
+                      draw_box=False, roi_color=(0, 255, 0), transform=False,
+                      single_color=False, ax=None):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
 
     # Use some color map to indicate distance from upper-left corner:
-    sorted_colors = sns.color_palette("Spectral", len(sorted_rids)) #masks.shape[-1])
+    if sorted_colors is None:
+        sorted_colors = sns.color_palette("Spectral", len(sorted_rids)) #masks.shape[-1])
     if ax is None:
         fig, ax = pl.subplots(1, figsize=(10,10))
+    
+    if overlay:
+        #p2, p98 = np.percentile(refRGB, (1, 99))
+        #img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
+        im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
+        im_adapthist *= 256
+        im_adapthist= im_adapthist.astype('uint8')
+        ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
+        orig = im_adapthist.copy()
+    else:
+        orig = np.zeros(refRGB.shape).astype('uint8')
+        ax.imshow(orig)
         
-    
-    
-#    p2, p98 = np.percentile(refRGB, (1, 99))
-#    img_rescale = exposure.rescale_intensity(refRGB, in_range=(p2, p98))
-    im_adapthist = exposure.equalize_adapthist(refRGB, clip_limit=clip_limit)
-    im_adapthist *= 256
-    im_adapthist= im_adapthist.astype('uint8')
-    ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
-
     refObj = None
-    orig = im_adapthist.copy()
     distances = []
     # loop over the contours individually
     for cidx, (rid, cnt) in enumerate(zip(sorted_rids, cnts)):
