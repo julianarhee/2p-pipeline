@@ -457,7 +457,7 @@ def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=True,
 
 
     
-def do_2d_fit(rfmap, nx=None, ny=None):
+def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 
     # Set params for fit:
     xi = np.arange(0, nx)
@@ -503,7 +503,8 @@ def do_2d_fit(rfmap, nx=None, ny=None):
         else:
             success = True
     except Exception as e:
-        print e
+        if verbose:
+            print e
     
     return {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
 
