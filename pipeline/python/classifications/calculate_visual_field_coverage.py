@@ -47,7 +47,7 @@ import itertools
 # Functions for processing ROIs (masks)
 # ############################################
 
-def get_roi_position_um(tmp_roi_contours, rf_exp_name='rfs', convert_um=True, npix_y=512, npix_x=512,
+def get_roi_position_um(rffits, tmp_roi_contours, rf_exp_name='rfs', convert_um=True, npix_y=512, npix_x=512,
                         xaxis_conversion=2.312, yaxis_conversion=1.904):
     
     '''
@@ -68,7 +68,7 @@ def get_roi_position_um(tmp_roi_contours, rf_exp_name='rfs', convert_um=True, np
     ylinspace = np.linspace(0, npix_y*yaxis_conversion, num=npix_y)
     
     # ---- Spatially sorted ROIs vs. RF position -----------------------
-    rf_rois = gdfs[rf_exp_name].fits.index.tolist() 
+    rf_rois = rffits.index.tolist() 
     #colors = ['k' for _ in range(len(rf_rois))]
     # Get values for azimuth:
     spatial_rank_x = [sorted_roi_indices_xaxis.index(roi) for roi in rf_rois] # Get sorted rank for indexing
@@ -80,7 +80,7 @@ def get_roi_position_um(tmp_roi_contours, rf_exp_name='rfs', convert_um=True, np
     else:
         fov_pos_x = pixel_order_xvals
         xlim = npix_x
-    rf_xpos = [gdfs[rf_exp_name].fits.loc[roi]['x0'] for roi in rf_rois]
+    rf_xpos = rffits['x0'][rf_rois] #[gdfs[rf_exp_name].fits.loc[roi]['x0'] for roi in rf_rois]
 
     # Get values for elevation
     spatial_rank_y = [sorted_roi_indices_yaxis.index(roi) for roi in rf_rois] # Get sorted rank for indexing
@@ -92,7 +92,7 @@ def get_roi_position_um(tmp_roi_contours, rf_exp_name='rfs', convert_um=True, np
     else:
         fov_pos_y = pixel_order_yvals
         ylim = npix_y
-    rf_ypos = [gdfs[rf_exp_name].fits.loc[roi]['y0'] for roi in rf_rois]
+    rf_ypos = rffits['y0'][rf_rois] #[gdfs[rf_exp_name].fits.loc[roi]['y0'] for roi in rf_rois]
 
     return fov_pos_x, rf_xpos, xlim, fov_pos_y, rf_ypos, ylim
 
@@ -251,6 +251,27 @@ def get_empirical_ci(stat, alpha=0.95):
     print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
     return lower, upper
 
+def plot_bootstrapped_position_estimates(x0, y0, true_x, true_y, alpha=0.9):
+    lower_x0, upper_x0 = get_empirical_ci(x0, alpha=alpha)
+    lower_y0, upper_y0 = get_empirical_ci(y0, alpha=alpha)
+
+    fig, axes = pl.subplots(1, 2, figsize=(5,3))
+    ax=axes[0]
+    ax.hist(x0, color='k', alpha=0.5)
+    ax.axvline(x=lower_x0, color='k', linestyle=':')
+    ax.axvline(x=upper_x0, color='k', linestyle=':')
+    ax.axvline(x=true_x, color='r', linestyle='-')
+    ax.set_title('x0 (n=%i)' % len(x0))
+    
+    ax=axes[1]
+    ax.hist(y0, color='k', alpha=0.5)
+    ax.axvline(x=lower_y0, color='k', linestyle=':')
+    ax.axvline(x=upper_y0, color='k', linestyle=':')
+    ax.axvline(x=true_y, color='r', linestyle='-')
+    ax.set_title('y0 (n=%i)' % len(y0))
+    pl.subplots_adjust(wspace=0.5, top=0.8)
+    
+    return fig
 
 #%%
 
@@ -298,85 +319,302 @@ if S is not None:
     if not os.path.exists(os.path.join(bootstrapdir, 'rois')):
         os.makedirs(os.path.join(bootstrapdir, 'rois'))
     
+        
+    data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois, S.trace_type, responsive_test])
+    rf_rois = gdfs[rf_exp_name].rois #gdfs[rf_exp_name].fits.index.tolist() # These are all ROIs w/ r2 fit > 0.5
+
+#%%
+import time
+import multiprocessing as mp
+
+def bootstrap_roi_responses(rdf, n_resamples=10, n_bootstrap_iters=1000):
+    grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
+    responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
+
+    # Get mean response across re-sampled trials for each condition, do this n-bootstrap-iters times
+    bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
+    
+    bparams = []; #x0=[]; y0=[];
+    for ii in bootdf.columns:
+#        if ii % 100 == 0:
+#            print("%i of %i iters." % (ii, n_bootstrap_iters))
+#            
+        response_vector = bootdf[ii].values
+        rfmap = fitrf.get_rf_map(response_vector, len(col_vals), len(row_vals))
+        fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+        # {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
+        if fitr['success']:
+            amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+            if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
+                or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
+                fitr['success'] = False
+                
+        if fitr['success']:
+            amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+            bparams.append(fitr['popt'])
+
+    #%    
+    bparams = np.array(bparams)  
+    paramsdf = pd.DataFrame(data=bparams, columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'theta', 'offset'])
+    paramsdf['cell'] = [rdf.index[0] for _ in range(bparams.shape[0])]
+    
+    return paramsdf
+
+def pool_bootstrap(rdf_list):
+    pool = mp.Pool()
+    results = pool.map(bootstrap_roi_responses, rdf_list)
+    return results
+
     
     #%%
-    n_bootstrap_iters=1000
-    n_resamples = 60
-    
-    #%
-    
-    for roi in gdfs[rf_exp_name].rois:
-            
-        rdf = gdfs[rf_exp_name].gdf.get_group(roi)[['config', 'trial', response_type]]
+
+
+n_bootstrap_iters=1000
+n_resamples = 10
+plot_distns = True
+alpha = 0.95
+
+
+rdf_list = [gdfs[rf_exp_name].gdf.get_group(roi)[['config', 'trial', response_type]] for roi in rf_rois]
+start_t = time.time()
+bootstrap_results = pool_bootstrap(rdf_list)
+end_t = time.time() - start_t
+
+print "Multiple processes: {0:.2f}sec".format(end_t)
+
+
+#%%
+
+
+bootdf = pd.concat(bootstrap_results)
+
+xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdf, row_vals, col_vals)
+bootdf['x0'] = xx
+bootdf['y0'] = yy
+bootdf['sigma_x'] = sigx
+bootdf['sigma_y'] = sigy
+
+
+
+#%%
+counts = bootdf.groupby(['cell']).count()['x0']
+unreliable = counts[counts < n_bootstrap_iters*0.5].index.tolist()
+
+# Plot distribution of params w/ 95% CI
+alpha=0.95
+if plot_distns:
+    for roi, paramsdf in bootdf.groupby(['cell']):
         
-        grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
-        responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
-    
-        # Get mean response across re-sampled trials for each condition, do this n-bootstrap-iters times
-        bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
-        print(bootdf.shape)
-        
-        x0=[]; y0=[];
-        for ii in bootdf.columns:
-            response_vector = bootdf[ii].values
-            rfmap = fitrf.get_rf_map(response_vector, len(col_vals), len(row_vals))
-            fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
-            # {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
-            if fitr['success']:
-                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
-                if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
-                    or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
-                    fitr['success'] = False
-                    
-            if fitr['success']:
-                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
-                xx = fitrf.convert_values(x0_f, newmin=min(col_vals), newmax=max(col_vals), 
-                                            oldmax=len(col_vals)-1, oldmin=0)
-                
-                yy = fitrf.convert_values(y0_f, newmin=min(row_vals), newmax=max(row_vals), 
-                                            oldmax=len(row_vals)-1, oldmin=0)
-                x0.append(xx)
-                y0.append(yy)
-    
-        #%
-        alpha=0.90
-        lower_x0, upper_x0 = get_empirical_ci(x0, alpha=alpha)
-        lower_y0, upper_y0 = get_empirical_ci(y0, alpha=alpha)
-    
-        fig, axes = pl.subplots(1, 2, figsize=(5,3))
-        ax=axes[0]
-        ax.hist(x0, color='k', alpha=0.5)
-        ax.axvline(x=lower_x0, color='k', linestyle=':')
-        ax.axvline(x=upper_x0, color='k', linestyle=':')
-        ax.axvline(x=gdfs[rf_exp_name].fits['x0'][roi], color='r', linestyle='-')
-        ax.set_title('x0')
-        
-        ax=axes[1]
-        ax.hist(y0, color='k', alpha=0.5)
-        ax.axvline(x=lower_y0, color='k', linestyle=':')
-        ax.axvline(x=upper_y0, color='k', linestyle=':')
-        ax.axvline(x=gdfs[rf_exp_name].fits['y0'][roi], color='r', linestyle='-')
-        ax.set_title('y0')
-        pl.subplots_adjust(wspace=0.5, top=0.8)
+        true_x = gdfs[rf_exp_name].fits['x0'][roi]
+        true_y = gdfs[rf_exp_name].fits['y0'][roi]
+        fig = plot_bootstrapped_position_estimates(paramsdf['x0'], paramsdf['y0'], true_x, true_y, alpha=alpha)
         fig.suptitle('roi %i' % int(roi+1))
         
         pl.savefig(os.path.join(bootstrapdir, 'rois', 'roi%05d_%i-bootstrap-iters_%i-resample' % (int(roi+1), n_bootstrap_iters, n_resamples)))
         pl.close()
-        
+            
+
+#%% box plot of top 30 r2 cells for distn of estimated param
+
+rffits = gdfs[rf_exp_name].fits
+rffits[rffits['r2'] > 0.5]
+   
+# Plot estimated x0, y0 as a function of r2 rank (plot top 30 neurons):
+sorted_r2 = rffits['r2'].argsort()[::-1]
+sorted_rois = np.array(rf_rois)[sorted_r2.values]
+for roi in sorted_rois:
+    print roi, rffits['r2'][roi]
+
+dflist = []
+for roi, d in bootdf.groupby(['cell']): #.items():
+    if roi not in sorted_rois[0:30]:
+        continue
+    tmpd = d.copy()
+    tmpd['cell'] = [roi for _ in range(len(tmpd))]
+    tmpd['r2_rank'] = [sorted_r2[roi] for _ in range(len(tmpd))]
+    dflist.append(tmpd)
+df = pd.concat(dflist, axis=0)
+
+fig, axes = pl.subplots(1,2)
+sns.boxplot(x='r2_rank', y='x0', data=df, ax=axes[0])
+sns.boxplot(x='r2_rank', y='y0', data=df, ax=axes[1])
     
-    #%%
-    pl.figure()
-    for i in range(n_bootstrap_iters):
-        pl.hist(grouplist[0].sample(60, replace=True))
+
+#%%
+# Load session's rois:
+S.load_data(rf_exp_name, traceid=traceid) # Load data to get traceid and roiid
+masks, zimg = S.load_masks()
+
+# Create contours from maskL
+roi_contours = contours_from_masks(masks)
+
+# Convert to brain coords
+fov_pos_x, rf_xpos, xlim, fov_pos_y, rf_ypos, ylim = get_roi_position_um(rffits, roi_contours, 
+                                                                     rf_exp_name=rf_exp_name,
+                                                                     convert_um=True)
+
+
+
+posdf = pd.DataFrame({'xpos_fov': fov_pos_y,
+                   'xpos_rf': rf_xpos,
+                   'ypos_fov': fov_pos_x,
+                   'ypos_rf': rf_ypos
+                   }, index=rf_rois)
+    
+#%%
+params = [p for p in bootdf.columns if p != 'cell']
+
+CI = {}
+for p in params:
+    CI[p] = dict((roi, get_empirical_ci(bdf[p].values, alpha=0.95)) for roi, bdf in bootdf.groupby(['cell']))
+
+cis = {}
+for p in params:
+    cvals = np.array([get_empirical_ci(bdf[p].values, alpha=0.95) for roi, bdf in bootdf.groupby(['cell'])])
+    cis['%s_lower' % p] = cvals[:, 0]
+    cis['%s_upper' % p] = cvals[:, 1]
+cis = pd.DataFrame(cis, index=[rf_rois])
+
+    
+#%%
+fig, ax = pl.subplots()
+
+ax.set_title('Azimuth')
+ax.set_ylabel('RF position (rel. deg.)')
+ax.set_xlabel('FOV position (um)')
+ax.set_xlim([0, ylim])
+
+ax.plot(xv, fitv, 'r') # regression line
+
+# Get rois sorted by position:
+plot_rois = [r for r in rf_rois if r not in unreliable]
+sortby_fov = posdf['xpos_fov'][plot_rois].argsort()
+sorted_rois_fov = np.array(plot_rois)[sortby_fov]
+
+xvals = posdf['xpos_fov'][sorted_rois_fov].values
+x0_meds = [bootdf.groupby(['cell']).get_group(roi)['x0'].median() for roi in sorted_rois_fov]
+x0_lower = cis['x0_lower'][sorted_rois_fov]
+x0_upper = cis['x0_upper'][sorted_rois_fov]
+
+ax.scatter(xvals, x0_meds, c='k', marker='_')
+ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
+        fmt='none', color='k', alpha=0.5)
+
+ax.scatter(posdf['xpos_fov'][sorted_rois_fov], posdf['xpos_rf'][sorted_rois_fov], c='cornflowerblue', marker='_', alpha=1.0)
+ax.set_xlim([0, xlim])
+ax.set_xticks(np.arange(0, xlim, 100))
+sns.despine(offset=1, trim=True, ax=ax)
+
+for roi in sorted_rois_fov[-10:]:
+    ix = list(sorted_rois_fov).index(roi)
+    print roi, x0_lower.loc[roi], posdf['xpos_rf'][roi], x0_upper.loc[roi]
+
+rs = []
+for roi,lo,up,med in zip(sorted_rois_fov, x0_lower, x0_upper, x0_meds):
+    if lo <= med <= up:
+        continue
+    else:
+        rs.append(roi)
+    
+#%%
+
+
+fig, ax = pl.subplots()
+#bp = pl.boxplot([bootdf.groupby(['cell']).get_group(roi)['x0'],])
+bdata = [bootdf.groupby(['cell']).get_group(roi)['x0'] for roi in sorted_rois_fov]
+bp = pl.boxplot(bdata, sym='.', whis=[2.5, 97.5], 
+                usermedians=x0_meds, 
+                conf_intervals=np.array(zip(x0_lower, x0_upper)),
+                positions=posdf['xpos_fov'][sorted_rois_fov].values,
+                medianprops={'color': 'cornflowerblue', 'lw': 2, 'alpha':1}, notch=False,
+                boxprops={'lw': 0.5, 'color': 'k', 'alpha': 0.5},
+                flierprops={'markersize': 1},
+                widths=10,
+                showfliers=False
+                )
+
+ax.set_xlim([0, xlim])
+ax.set_xticks([])
+ax.plot(xv, fitv, 'k', alpha=0.5) # regression line
+
+ax.scatter(posdf['xpos_fov'], posdf['xpos_rf'], c='r', marker='o', s=5, alpha=1.0)
+
+
+
+    #%% Fit linear regression for brain coords vs VF coords
+    
+    from sklearn.linear_model import LinearRegression
+    import scipy.stats as spstats
+    
+    df = pd.DataFrame({'fov': fov_pos_y,
+                       'vf': rf_xpos}, index=rf_rois)
+    
+    regr = LinearRegression()
+    xv = np.array(df['fov']).reshape(-1, 1) 
+    yv = np.array(df['vf']).reshape(-1, 1)
+    regr.fit(xv, yv)
+    fitv = regr.predict(xv)
+    df['dist'] = yv - fitv
+    
+        
+    fig, axes = pl.subplots(1, 3, figsize=(10, 3))
+    ax=axes[0]
+    ax.scatter(df['fov'], df['vf'], c='k', alpha=0.5)
+    ax.set_title('Azimuth')
+    ax.set_ylabel('RF position (rel. deg.)')
+    ax.set_xlabel('FOV position (um)')
+    ax.set_xlim([0, ylim])
+    sns.despine(offset=1, trim=True, ax=ax)
+    ax.plot(xv, fitv, 'r')
+    r, p = spstats.pearsonr(df['fov'], df['vf'].abs())
+    ax.text(0.5, ax.get_ylim()[-1]-1, 'pearson=%.2f (p=%.2f)' % (r, p), fontsize=8)
+    
+    ax = axes[1]
+    ax.hist(df['dist'], histtype='step', color='k')
+    sns.despine(offset=1, trim=True, ax=ax)
+    ax.set_xlabel('distance')
+    ax.set_ylabel('counts')
+    
+    ax = axes[2]
+    r2_vals = gdfs[rf_exp_name].fits['r2']
+    ax.scatter(r2_vals, df['dist'].abs(), c='k', alpha=0.5)
+    ax.set_xlabel('r2')
+    ax.set_ylabel('abs(distance)')
+    testregr = LinearRegression()
+    testregr.fit(r2_vals.reshape(-1, 1), df['dist'].abs().values.reshape(-1, 1)) #, yv)
+    r2_dist_corr = testregr.predict(r2_vals.reshape(-1, 1))
+    ax.plot(r2_vals, r2_dist_corr, 'r')
+    sns.despine(offset=1, trim=True, ax=ax)
+    r, p = spstats.pearsonr(r2_vals.values, df['dist'].abs())
+    ax.text(0.5, ax.get_ylim()[-1], 'pearson=%.2f (p=%.2f)' % (r, p), fontsize=8)
+    
+    pl.subplots_adjust(top=0.8, bottom=0.2)
+    
+#    sns.jointplot(r2_vals, df['dist'].abs())
+
+
 
     #%%
-    # Load session's rois:
-    masks, zimg = S.load_masks()
-    print zimg.shape
+
+# Which cells' CI contain the regression line, and which don't?
+
+
     
-    # Create contours from maskL
-    roi_contours = contours_from_masks(masks)
+    #%%
     
+    
+    sorted_dist = np.argsort(df['dist'].abs())[::-1]
+    sortby_dist = np.array(rf_rois)[sorted_dist.values]
+#    for roi in sortby_dist:
+#        print roi, df['dist'].abs()[roi]
+
+    pl.figure()
+    pl.scatter(sortby_dist, [df['dist'].abs()[r] for r in sortby_dist])
+    
+    
+    
+
+    #%%
     # # Sort ROIs by x,y position:
     sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(roi_contours, sort_by='x')
     sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(roi_contours, sort_by='y')
@@ -384,38 +622,24 @@ if S is not None:
     _, sorted_roi_centroids_xaxis = spatially_sort_contours(roi_contours, sort_by='x', get_centroids=True)
     _, sorted_roi_centroids_yaxis = spatially_sort_contours(roi_contours, sort_by='y', get_centroids=True)
 
-
-
-    # Identify stimulus location for current session:
-    xpos, ypos = S.get_stimulus_coordinates()
-        
-    # Get stimulus size(s):
-    stimsizes = S.get_stimulus_sizes()
+    # x-axis in FOV = posterior to anterior, from left to right (0-->512)
+    # y-axis in FOV = lateral to medial, from top to bottom (0-->512)
     
-        
-    #%%
-
-
+    # Color by RF position:
 
     #%% #### Plot
 
-    
-    data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois, S.trace_type, responsive_test])
-    
+    convert_um = True
     transform = True
-    
+
     fig, axes = pl.subplots(2,2)
     fig.patch.set_alpha(1)
-    
-    
-    rf_rois = gdfs[rf_exp_name].fits.index.tolist() 
-    
-    
     ### Plot ALL sorted rois:
-    ax = axes[0,1]
-    util.plot_roi_contours(zimg, sorted_roi_indices_xaxis, sorted_roi_contours_xaxis, label_rois=rf_rois,
-                           clip_limit=0.008, label=False, draw_box=False, 
-                           thickness=2, roi_color=(255, 255, 255), single_color=False, ax=ax, transform=transform)
+    ax = axes[0,1] 
+    util.plot_roi_contours(zimg, sorted_roi_indices_xaxis, sorted_roi_contours_xaxis, 
+                           label_rois=rf_rois, label=False, single_color=False, overlay=False,
+                           clip_limit=0.02, draw_box=False, thickness=2, 
+                           ax=ax, transform=transform)
     ax.axis('off')
                         
     ax = axes[0,0]
@@ -424,15 +648,10 @@ if S is not None:
                            thickness=2, roi_color=(255, 255, 255), single_color=False, ax=ax, transform=transform)
     ax.axis('off')
                     
-    
     ### Plot corresponding RF centroids:
     colors = ['k' for roi in rf_rois]
     units = 'um' if convert_um else 'pixels'
-    # Get values for azimuth:
-    fov_pos_x, rf_xpos, xlim, fov_pos_y, rf_ypos, ylim = get_roi_position_um(roi_contours, 
-                                                                             rf_exp_name=rf_exp_name,
-                                                                             convert_um=convert_um)
-    
+    # Get values for azimuth:    
     ax = axes[1,0]
     ax.scatter(fov_pos_y, rf_xpos, c=colors, alpha=0.5)
     ax.set_title('Azimuth')
@@ -440,7 +659,7 @@ if S is not None:
     ax.set_xlabel('FOV position (%s)' % units)
     ax.set_xlim([0, ylim])
     sns.despine(offset=4, trim=True, ax=ax)
-    
+    # Get values for elevation:
     ax = axes[1,1]
     ax.scatter(fov_pos_x, rf_ypos, c=colors, alpha=0.5)
     ax.set_title('Elevation')
@@ -448,7 +667,6 @@ if S is not None:
     ax.set_xlabel('FOV position (%s)' % units)
     ax.set_xlim([0, xlim])
     ax.axis('on')
-    # #ax.set_aspect('auto')
     sns.despine(offset=4, trim=True, ax=ax)
     
     #pl.subplots_adjust(wspace=0.5, top=0.9, hspace=0.5, bottom=0.2)
@@ -461,7 +679,9 @@ if S is not None:
         pl.savefig(os.path.join(statsfigdir, 'spatially_sorted_rois_%s_only_%s.png' % (rf_exp_name, units)))
     
 
+#%%
 # # Calculate RF sizes/overlap with stimuli
+
 
 # In[27]:
 
@@ -480,6 +700,14 @@ def create_ellipse(center, lengths, angle=0):
 from shapely.geometry import box
 
 
+
+# Identify stimulus location for current session:
+xpos, ypos = S.get_stimulus_coordinates()
+    
+# Get stimulus size(s):
+stimsizes = S.get_stimulus_sizes()
+
+    
 # In[28]:
 
 
@@ -690,4 +918,88 @@ print(output_dir)
 
 
 
+
+
+def get_percentiles_from_box_plots(bp):
+    percentiles = []
+    for i in range(len(bp['boxes'])):
+        percentiles.append((bp['caps'][2*i].get_ydata()[0],
+                           bp['boxes'][i].get_ydata()[0],
+                           bp['medians'][i].get_ydata()[0],
+                           bp['boxes'][i].get_ydata()[2],
+                           bp['caps'][2*i + 1].get_ydata()[0],
+                           (bp['fliers'][i].get_xdata(),
+                            bp['fliers'][i].get_ydata())))
+    return percentiles
+
+def customized_box_plot(box_plot, percentiles, axes, redraw = True, *args, **kwargs):
+    """
+    Generates a customized boxplot based on the given percentile values
+    """
+
+    #box_plot = axes.boxplot([[-9, -4, 2, 4, 9],]*n_box, *args, **kwargs) 
+    # Creates len(percentiles) no of box plots
+
+    min_y, max_y = float('inf'), -float('inf')
+
+    for box_no, (q1_start, 
+                 q2_start,
+                 q3_start,
+                 q4_start,
+                 q4_end,
+                 fliers_xy) in enumerate(percentiles):
+
+        # Lower cap
+        box_plot['caps'][2*box_no].set_ydata([q1_start, q1_start])
+        # xdata is determined by the width of the box plot
+
+        # Lower whiskers
+        box_plot['whiskers'][2*box_no].set_ydata([q1_start, q2_start])
+
+        # Higher cap
+        box_plot['caps'][2*box_no + 1].set_ydata([q4_end, q4_end])
+
+        # Higher whiskers
+        box_plot['whiskers'][2*box_no + 1].set_ydata([q4_start, q4_end])
+
+        # Box
+        box_plot['boxes'][box_no].set_ydata([q2_start, 
+                                             q2_start, 
+                                             q4_start,
+                                             q4_start,
+                                             q2_start])
+
+        # Median
+        box_plot['medians'][box_no].set_ydata([q3_start, q3_start])
+
+        # Outliers
+        if fliers_xy is not None and len(fliers_xy[0]) != 0:
+            # If outliers exist
+            box_plot['fliers'][box_no].set(xdata = fliers_xy[0],
+                                           ydata = fliers_xy[1])
+
+            min_y = min(q1_start, min_y, fliers_xy[1].min())
+            max_y = max(q4_end, max_y, fliers_xy[1].max())
+
+        else:
+            min_y = min(q1_start, min_y)
+            max_y = max(q4_end, max_y)
+
+        # The y axis is rescaled to fit the new box plot completely with 10% 
+        # of the maximum value at both ends
+        axes.set_ylim([min_y*1.1, max_y*1.1])
+
+    # If redraw is set to true, the canvas is updated.
+    if redraw:
+        ax.figure.canvas.draw()
+
+    return box_plot
+
+#%
+
+percentiles = get_percentiles_from_box_plots(bp)
+
+
+fig, ax = pl.subplots()
+b = customized_box_plot(bp, percentiles, ax, redraw=True, notch=0, sym='+', vert=1, whis=1.5)
 
