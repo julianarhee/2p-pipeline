@@ -81,7 +81,7 @@ def load_data(experiment_name, animalid, session, fov, traceid, trace_type='corr
 
 def calculate_roc_bootstrap(roi_df, n_iters=1000):
 
-    resp_stim = np.vstack(roi_df.groupby(['config'])['meanstim'].apply(np.array).values)
+    resp_stim = np.vstack(roi_df.groupby(['config'])['stim_mean'].apply(np.array).values)
     resp_bas = np.vstack(roi_df.groupby(['config'])['base_mean'].apply(np.array).values)
 
     # Generate ROC curve 
