@@ -375,53 +375,53 @@ def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
 # #############################################################################
 # RECEPTIVE FIELD EXPERIMENT functions
 # #############################################################################
-#
-#def get_receptive_field_fits(animalid, session, fov, response_type='dff', #receptive_field_fit='zscore0.00_no_trim',
-#                             run='combined_rfs*_static', traceid='traces001', 
-#                             pretty_plots=False, create_new=False,
-#                             rootdir='/n/coxfs01/2p-data'):
-#    #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
-#    rfits = None
-#    fov_dir = os.path.join(rootdir, animalid, session, fov)
-#    do_fits = create_new #False
-#    try:
-#        combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
-#        #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
-#        rf_traceid_dir = combined_rf_dirs[0]
-#        
-#        fit_desc = fitrf.get_fit_desc(response_type=response_type)
-#        found_fresults = sorted(glob.glob(os.path.join(rf_traceid_dir,
-#                                         'receptive_fields', fit_desc, '*.pkl')), key=natural_keys)
-#        if len(found_fresults) > 1:
-#            print("RFs: %s - more than 1 RF fit result found:" % run)
-#            for r, ri in enumerate(found_fresults):
-#                print(r, ri)
-#            sel = input("-- Select IDX of fits to use: ")
-#            rfs_fpath = found_fresults[int(sel)]
-#        elif len(found_fresults) == 1:
-#            rfs_fpath = found_fresults[0]
-#        else:
-#            do_fits = True
-#    
-#        if do_fits:
-#            print("... specified RF fit method not found, running now.")
-#            rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
-#                                                  make_pretty_plots=pretty_plots,
-#                                                  create_new=create_new,
-#                                                  trace_type='corrected', response_type=response_type,
-##                                                  select_rois=False, segment=False,
-#                                                  rootdir=rootdir)
-#        
-#        else:
-#            print("... loading RF fits (response-type: %s)" % response_type)
-#            with open(rfs_fpath, 'rb') as f:
-#                rfits = pkl.load(f)
-#    except Exception as e:
-#        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
-#        traceback.print_exc()
-#        
-#    return rfits
-#
+
+def get_receptive_field_fits(animalid, session, fov, response_type='dff', #receptive_field_fit='zscore0.00_no_trim',
+                             run='combined_rfs*_static', traceid='traces001', 
+                             pretty_plots=False, create_new=False,
+                             rootdir='/n/coxfs01/2p-data'):
+    #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
+    rfits = None
+    fov_dir = os.path.join(rootdir, animalid, session, fov)
+    do_fits = create_new #False
+    try:
+        combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
+        #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
+        rf_traceid_dir = combined_rf_dirs[0]
+        
+        fit_desc = fitrf.get_fit_desc(response_type=response_type)
+        found_fresults = sorted(glob.glob(os.path.join(rf_traceid_dir,
+                                         'receptive_fields', fit_desc, '*.pkl')), key=natural_keys)
+        if len(found_fresults) > 1:
+            print("RFs: %s - more than 1 RF fit result found:" % run)
+            for r, ri in enumerate(found_fresults):
+                print(r, ri)
+            sel = input("-- Select IDX of fits to use: ")
+            rfs_fpath = found_fresults[int(sel)]
+        elif len(found_fresults) == 1:
+            rfs_fpath = found_fresults[0]
+        else:
+            do_fits = True
+    
+        if do_fits:
+            print("... specified RF fit method not found, running now.")
+            rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+                                                  make_pretty_plots=pretty_plots,
+                                                  create_new=create_new,
+                                                  trace_type='corrected', response_type=response_type,
+#                                                  select_rois=False, segment=False,
+                                                  rootdir=rootdir)
+        
+        else:
+            print("... loading RF fits (response-type: %s)" % response_type)
+            with open(rfs_fpath, 'rb') as f:
+                rfits = pkl.load(f)
+    except Exception as e:
+        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
+        traceback.print_exc()
+        
+    return rfits
+
 #
 #def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
 #                 response_type='dff', pretty_plots=False, create_new=False,
@@ -619,7 +619,7 @@ class Session():
         
         '''Set experiment = None to load all data'''
         
-        print("Session Object- loading data")
+        #print("Session Object- loading data")
         if update_self:
             self.traceid = traceid
             self.trace_type = trace_type
@@ -666,24 +666,24 @@ class Session():
                 experiment_types = [experiment]
             else:
                 experiment_types = experiment
-        print("Session Object- Getting experiment data:", experiment_types)
+        print("... Getting experiment data:", experiment_types)
 
         for experiment_type in experiment_types:     
-            print("... loading: %s" % experiment_type)
+            print("... ... loading: %s" % experiment_type)
             if int(self.session) < 20190511 and experiment_type == 'rfs':
                 experiment_type = 'gratings' # Temporarily revert back to old-name since get_experiment_list() changed
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
                 experiment_type = 'rfs' # change back
             else:
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
-            print("... got rois")
+            print("... ... got rois")
             try:        
                 if tmp_tid != self.traceid and 'retino' not in experiment_type:
                     self.traceid = tmp_tid
-                    print("... (renamed traceid)")
+                    print("... ... (renamed traceid)")
                 # exp = Experiment(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
                 if 'rf' in experiment_type:
-                    exp = ReceptiveFields(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                    exp = ReceptiveFields(experiment_type, self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
                 elif 'grating' in experiment_type:
                     exp = Gratings(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
                 elif 'blob' in experiment_type:
@@ -696,7 +696,7 @@ class Session():
                 if exp.source is None:
                     continue
                 exp.load(trace_type=trace_type, update_self=True, make_equal=make_equal)
-                print("... loaded traces")
+                print("... ... loaded traces")
                 if 'gratings' in experiment_type and int(self.session) < 20190511:
                     experiment_type = 'rfs'
             except Exception as e:
@@ -920,14 +920,15 @@ class Experiment(object):
     
             
     def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
-        print("... getting data paths")
+        print("... getting data paths - name: %s" % self.name)
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         if 'retino' in self.name:
             all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'retino_analysis', 'anaylsis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
         else:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
             trace_extraction = 'traces'
+            
         if len(all_runs) == 0:
             print("[%s|%s|%s] No extracted traces: %s" % (self.animalid, self.session, self.fov, self.name))
             return None
@@ -945,7 +946,7 @@ class Experiment(object):
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
-            print("... %s" % run_name)
+            print("... ... %s" % run_name)
             try:
                 if 'retino' in run_name:
                     # Select analysis ID that corresponds to current ROI set:
@@ -1140,11 +1141,11 @@ class Objects(Experiment):
 
 
 class ReceptiveFields(Experiment):
-    def __init__(self, animalid, session, fov, traceid='analysis002', rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, experiment_name, animalid, session, fov, traceid='analysis002', rootdir='/n/coxfs01/2p-data'):
         if int(session) < 20190511:
             super(ReceptiveFields, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         else:
-            super(ReceptiveFields, self).__init__('rfs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
+            super(ReceptiveFields, self).__init__(experiment_name, animalid, session, fov, traceid=traceid, rootdir=rootdir)
         
         self.experiment_type = 'rfs'
 
@@ -1160,7 +1161,7 @@ class ReceptiveFields(Experiment):
         fit_desc = fitrf.get_fit_desc(response_type=response_type)
         print("... getting fits: %s" % fit_desc)
         try:
-            rfdir = glob.glob(os.path.join(fov_dir, self.name, 'traces', '%s*' % self.traceid, 'receptive_fields', fit_desc))
+            rfdir = glob.glob(os.path.join(fov_dir, self.name, 'traces', '%s*' % self.traceid, 'receptive_fields', fit_desc))[0]
             rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
             
             if os.path.exists(rf_results_fpath) and create_new is False:
