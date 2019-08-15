@@ -13,6 +13,8 @@ import h5py
 import copy
 import optparse
 import sys
+import matplotlib as mpl
+mpl.use('agg')
 
 import numpy as np
 import pandas as pd
@@ -78,6 +80,9 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, 
                       help="Create all session objects from scratch")
 
+    parser.add_option('-R', '--stat', action='store', dest='stats', default='responsivity', 
+                      help="Stats to run across datasets (default: responsivity)")
+ 
     (options, args) = parser.parse_args(options)
     
     if len(options.visual_areas) == 0:
@@ -212,71 +217,76 @@ def main(options):
         os.makedirs(aggregate_session_dir)
         
     #%%
-    '''
-    Responsivity stats:
-        - RF comparisons (if relevant)
-        - distribution of peak dF/F values
-        - comparison of N responsive cells (for RFs, this is N fit rois)
-    '''
-    emptystats = {}
-    for animalid in sessiondata['animalid'].unique():
-        session_list = sessions_by_animal[animalid].index.tolist()
-        for session in session_list:
-            fovs = sessions_by_animal[animalid][session]
-    
-            for fov in fovs:
-                nostats = estats.visualize_session_stats(animalid, session, fov, 
-                                                         create_new=True, altdir=aggregate_session_dir)
-                
-                dset_key = '_'.join([animalid, session, fov])
-                emptystats[dset_key] = nostats
-    
-    for k, checklist in emptystats.items():
-        if len(checklist) == 0:
-            emptystats.pop(k)
-     
-    error_fpath = os.path.join(datasetdir, 'check_stats.json')
-    with open(error_fpath, 'w') as f:
-        json.dump(emptystats, f, indent=4, sort_keys=True)
-    
-    
+    stats = optsE.stats
+
+    if stats=='responsivity':
+        '''
+        Responsivity stats:
+            - RF comparisons (if relevant)
+            - distribution of peak dF/F values
+            - comparison of N responsive cells (for RFs, this is N fit rois)
+        '''
+        emptystats = {}
+        for animalid in sessiondata['animalid'].unique():
+            session_list = sessions_by_animal[animalid].index.tolist()
+            for session in session_list:
+                fovs = sessions_by_animal[animalid][session]
+
+                for fov in fovs:
+                    nostats = estats.visualize_session_stats(animalid, session, fov, 
+                                                             create_new=True, altdir=aggregate_session_dir)
+
+                    dset_key = '_'.join([animalid, session, fov])
+                    emptystats[dset_key] = nostats
+
+        for k, checklist in emptystats.items():
+            if len(checklist) == 0:
+                emptystats.pop(k)
+
+        error_fpath = os.path.join(datasetdir, 'check_stats.json')
+        with open(error_fpath, 'w') as f:
+            json.dump(emptystats, f, indent=4, sort_keys=True)
+
+
     #%%
-    '''
-    # Get responsivity stats:
-    responsive_test = 'ROC'
-    responsive_thr = 0.05
-    
-    # Tuning params:
-    n_bootstrap_iters = 1000
-    n_resamples = 60
-    n_intervals_interp = 3
-    '''
-    
-    traceid = optsE.traceid
-    rootdir = optsE.rootdir
-    
-    dsets = sessiondata[sessiondata['experiment']=='gratings']
-    #%%
-    tuning_counts = {}
-    
-    for animalid in dsets['animalid'].unique():
-        session_list = dsets[dsets['animalid']==animalid]['session'].unique()
-        for session in session_list:
-            if animalid=='JC091' and session == '20190606':
-                continue
-            fovs = dsets[(dsets['animalid']==animalid) & (dsets['session']==session)]['fov'].unique()
-            for fov in fovs:
-                exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-                fitdf, fitparams, fitdata = exp.get_tuning(create_new=False)
-                fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata)
-                skey = '_'.join([animalid, session, fov])
-                tuning_counts[skey] = goodfits
-                del fitdf
-                del fitparams
-                del fitdata
-                del exp
-                
-                
+    elif stats=='gratings':
+        '''
+        # Get responsivity stats:
+        responsive_test = 'ROC'
+        responsive_thr = 0.05
+
+        # Tuning params:
+        n_bootstrap_iters = 1000
+        n_resamples = 60
+        n_intervals_interp = 3
+        '''
+
+        traceid = optsE.traceid
+        rootdir = optsE.rootdir
+
+        dsets = sessiondata[sessiondata['experiment']=='gratings']
+        #%%
+        tuning_counts = {}
+
+        for animalid in dsets['animalid'].unique():
+            session_list = dsets[dsets['animalid']==animalid]['session'].unique()
+            for session in session_list:
+                fovs = dsets[(dsets['animalid']==animalid) & (dsets['session']==session)]['fov'].unique()
+                for fov in fovs:
+                    exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+                    fitdf, fitparams, fitdata = exp.get_tuning(create_new=False)
+                    fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata)
+                    skey = '_'.join([animalid, session, fov])
+                    tuning_counts[skey] = goodfits
+                    del fitdf
+                    del fitparams
+                    del fitdata
+                    del exp
+                    
+        with open(os.path.join(aggregate_session_dir, 'gratings_summary.pkl')):
+            pkl.dump(tuning_counts, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+        print("DONE!")                
                 
     #%%
             
