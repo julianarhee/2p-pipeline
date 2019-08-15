@@ -1235,7 +1235,7 @@ cols = 'xpos'
 #%%
 
 def get_fit_desc(response_type='dff'):
-    fit_desc = 'fit-2dgaus_%ss-no-cutoff' % response_type
+    fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
     return fit_desc
 
         
