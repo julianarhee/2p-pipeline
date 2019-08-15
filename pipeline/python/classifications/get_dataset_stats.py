@@ -68,6 +68,9 @@ def extract_options(options):
                       help="trace type (default: corrected, for traces and calculating stats)")
     parser.add_option('-r', '--response-type', action='store', dest='response_type', default='dff', 
                       help="trace type (default: dff, stat to compare)")
+    parser.add_option('-R', '--response-test', action='store', dest='responsive_test', default='ROC', 
+                      help="Responsivity test (default: ROC)")
+    
     
     parser.add_option('-x', '--exclude', action='append', dest='blacklist', default=['20190514', '20190530'], nargs=1,
                       help="session to exclude (default includes 20190514, 20190530)")
@@ -80,7 +83,7 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, 
                       help="Create all session objects from scratch")
 
-    parser.add_option('-R', '--stat', action='store', dest='stats', default='responsivity', 
+    parser.add_option('-S', '--stat', action='store', dest='stats', default='responsivity', 
                       help="Stats to run across datasets (default: responsivity)")
  
     (options, args) = parser.parse_args(options)
@@ -100,8 +103,8 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                            state='awake', fov_type='zoom2p0x', 
                            visual_areas=['V1', 'Lm', 'Li'],
                            blacklist=['20190426', '20190514', '20190530'], 
-                           rootdir='/n/coxfs01/2p-data',
-                           aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+                           rootdir='/n/coxfs01/2p-data'):
+                           #aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
     all_rats = [os.path.split(os.path.split(f)[0])[-1] \
                 for f in glob.glob(os.path.join(rootdir, 'JC*', 'sessionmeta.json'))]
@@ -177,11 +180,9 @@ def main(options):
     
     # Create output aggregate dir:
     #aggregate_dir = '/n/coxfs01/julianarhee/aggregate-visual-areas'
-    datasetdir = os.path.join(optsE.aggregate_dir, 'dataset_info')
-    if not os.path.exists(datasetdir):
-        os.makedirs(datasetdir)
-            
-    dataset_info_fpath = os.path.join(datasetdir, 'dataset_info.pkl')
+    aggregate_dir = optsE.aggregate_dir
+                
+    dataset_info_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     if os.path.exists(dataset_info_fpath) and optsE.create_new is False:
         with open(dataset_info_fpath, 'rb') as f:
             sessiondata = pkl.load(f)
@@ -191,8 +192,8 @@ def main(options):
                                                state=optsE.state, fov_type=optsE.fov_type, 
                                                visual_areas=optsE.visual_areas,
                                                blacklist=optsE.blacklist, 
-                                               rootdir=optsE.rootdir,
-                                               aggregate_dir=optsE.aggregate_dir)
+                                               rootdir=optsE.rootdir)
+                                               #aggregate_dir=optsE.aggregate_dir)
                 
         experiment_types = sorted(sessiondata['experiment'].unique(), key=natural_keys)
         experiment_ids = dict((exp, i) for i, exp in enumerate(experiment_types))
@@ -211,11 +212,13 @@ def main(options):
     
     sessiondata.describe()        
     sessions_by_animal = sessiondata.groupby(['animalid', 'session'])['fov'].unique()
+
+    responsive_dir = os.path.join(aggregate_dir, 'responsivity')
+    if not os.path.exists(responsive_dir):
+        os.makedirs(responsive_dir)
     
-    aggregate_session_dir = os.path.join(datasetdir, 'session_stats')
-    if not os.path.exists(aggregate_session_dir):
-        os.makedirs(aggregate_session_dir)
-        
+    dtype_str = '%s-%s-%s-%s' % (optsE.traceid, optsE.trace_type, optsE.response_type, optsE.responsive_test)
+    
     #%%
     stats = optsE.stats
 
@@ -225,7 +228,14 @@ def main(options):
             - RF comparisons (if relevant)
             - distribution of peak dF/F values
             - comparison of N responsive cells (for RFs, this is N fit rois)
+            - Fits 2d-gaussian for RF data using default params
         '''
+#%%
+        curr_output_dir = os.path.join(responsive_dir, dtype_str)
+        if not os.path.exists(curr_output_dir):
+            os.makedirs(curr_output_dir)
+        print(curr_output_dir)
+        
         emptystats = {}
         for animalid in sessiondata['animalid'].unique():
             session_list = sessions_by_animal[animalid].index.tolist()
@@ -234,7 +244,9 @@ def main(options):
 
                 for fov in fovs:
                     nostats = estats.visualize_session_stats(animalid, session, fov, 
-                                                             create_new=True, altdir=aggregate_session_dir)
+                                                             create_new=True, altdir=curr_output_dir,
+                                                             response_type=optsE.response_type, responsive_test=optsE.responsive_test,
+                                                             traceid=optsE.traceid, trace_type=optsE.trace_type)
 
                     dset_key = '_'.join([animalid, session, fov])
                     emptystats[dset_key] = nostats
@@ -243,7 +255,7 @@ def main(options):
             if len(checklist) == 0:
                 emptystats.pop(k)
 
-        error_fpath = os.path.join(datasetdir, 'check_stats.json')
+        error_fpath = os.path.join(responsive_dir, 'check_stats.json')
         with open(error_fpath, 'w') as f:
             json.dump(emptystats, f, indent=4, sort_keys=True)
 

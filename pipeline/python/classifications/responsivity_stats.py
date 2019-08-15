@@ -232,6 +232,9 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
             c[ci].set_edgecolor(exp_colors[roi_set_labels[ci]])
             c[ci].set_alpha(0.5)
 
+    if len(event_rois) == 0:
+        return fig
+    
     # Fraction of cells:
     ax = axes[1]
     for exp_name in exp_names:
@@ -291,7 +294,11 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     # PATH opts:
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data',
+                      help='data root dir (root project dir containing all animalids) [default: /n/coxfs01/2pdata')
+    parser.add_option('-a', '--altdir', action='store', dest='altdir', default=None, 
+                      help='alternative save dir, e.g., /n/coxfs01/julianarhee/aggregate-visual-areas (splits by visual area)')
+
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
     # Set specific session/run for current animal:
@@ -353,6 +360,7 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
             gdfs = pkl.load(f)
 
     if create_new:
+        
         print("Calculating stats")
         # # Calculate stats using dff
         mag_ratio_thr = 0.01
@@ -381,6 +389,8 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
                 gdfs.update(estats)
                 
             datasets_nostats.extend(nostats)
+            
+            
             
 #            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
 #            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
@@ -466,7 +476,8 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
         pl.savefig(os.path.join(statsfigdir, 'compare_rfs_vs_rfs10_%s.png' % stats_desc))
         if alternate_savedir is not None:
             pl.savefig(os.path.join(alternate_savedir, "%s_%s_%s_compareRFs_%s.png" % (state, visual_area, data_identifier.replace('|', '-'), stats_desc)))
-    
+        pl.close()
+        
         # # Visualize responses to event-based experiments:
 
     rf_exp_name = 'rfs10' if 'rfs10' in gdfs.keys() else 'rfs'
@@ -493,7 +504,7 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
 
     if alternate_savedir is not None:
         pl.savefig(os.path.join(alternate_savedir, "%s_%s_%s_roistats_%s.png" % (state, visual_area, data_identifier.replace('|', '-'), stats_desc)))
-
+    pl.close()
 
     print("--- done! ---")
     
@@ -506,7 +517,8 @@ def main(options):
     opts = extract_options(options)
     visualize_session_stats(opts.animalid, opts.session, opts.fov,
                             traceid=opts.traceid, trace_type=opts.trace_type,
-                            rootdir=opts.rootdir, create_new=opts.create_new)
+                            rootdir=opts.rootdir, create_new=opts.create_new,
+                            altdir=opts.altdir)
     
 # In[51]:
 
