@@ -926,7 +926,7 @@ class Experiment(object):
             all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'retino_analysis', 'anaylsis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
         else:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
             trace_extraction = 'traces'
         if len(all_runs) == 0:
             print("[%s|%s|%s] No extracted traces: %s" % (self.animalid, self.session, self.fov, self.name))
@@ -1159,17 +1159,21 @@ class ReceptiveFields(Experiment):
         
         fit_desc = fitrf.get_fit_desc(response_type=response_type)
         print("... getting fits: %s" % fit_desc)
-        rfdir = glob.glob(os.path.join(fov_dir, self.name, 'traces', '%s*' % self.traceid, 'receptive_fields', fit_desc))[0]
-        rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
-        
-        if os.path.exists(rf_results_fpath) and create_new is False:
-            try:
-                print("... loading RF fits (response-type: %s)" % response_type)
-                with open(rf_results_fpath, 'rb') as f:
-                    rfits = pkl.load(f)
-            except Exception as e:
-                print(".... unable to load RF fits. re-fitting...")
-                do_fits = True
+        try:
+            rfdir = glob.glob(os.path.join(fov_dir, self.name, 'traces', '%s*' % self.traceid, 'receptive_fields', fit_desc))
+            rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
+            
+            if os.path.exists(rf_results_fpath) and create_new is False:
+                try:
+                    print("... loading RF fits (response-type: %s)" % response_type)
+                    with open(rf_results_fpath, 'rb') as f:
+                        rfits = pkl.load(f)
+                except Exception as e:
+                    print(".... unable to load RF fits. re-fitting...")
+                    do_fits = True
+        except Exception as e:
+            traceback.print_exc()
+            do_fits = True
 
         if do_fits:
             try:
