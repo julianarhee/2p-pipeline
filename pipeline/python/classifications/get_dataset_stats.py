@@ -24,7 +24,7 @@ import matplotlib.gridspec as gridspec
 from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys, convert_range
-from pipeline.python.classifications import run_experiment_stats as estats
+from pipeline.python.classifications import responsivity_stats as estats
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from matplotlib.patches import Ellipse, Rectangle
@@ -94,7 +94,7 @@ def extract_options(options):
 def aggregate_session_info(traceid='traces001', trace_type='corrected', 
                            state='awake', fov_type='zoom2p0x', 
                            visual_areas=['V1', 'Lm', 'Li'],
-                           blacklist=['20190514', '20190530'], 
+                           blacklist=['20190426', '20190514', '20190530'], 
                            rootdir='/n/coxfs01/2p-data',
                            aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
@@ -161,37 +161,50 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
     return sessiondata
 
 #%%
+
+options = ['-t', 'traces001']
+
+#%%
 def main(options):
     
+    #%%
     optsE = extract_options(options)
     
-    sessiondata = aggregate_session_info(traceid=optsE.traceid, trace_type=optsE.trace_type, 
-                                           state=optsE.state, fov_type=optsE.fov_type, 
-                                           visual_areas=optsE.visual_areas,
-                                           blacklist=optsE.blacklist, 
-                                           rootdir=optsE.rootdir,
-                                           aggregate_dir=optsE.aggregate_dir)
-    
-    sessiondata.describe()
-    
-    experiment_types = sorted(sessiondata['experiment'].unique(), key=natural_keys)
-    experiment_ids = dict((exp, i) for i, exp in enumerate(experiment_types))
-    animal_names = sorted(sessiondata['animalid'].unique(), key=natural_keys)
-    animal_ids = dict((animal, i) for i, animal in enumerate(animal_names))
-    
-    sessiondata['exp_no'] = [int(experiment_ids[exp]) for exp in sessiondata['experiment']]
-    sessiondata['animal_no'] = [int(animal_ids[animal]) for animal in sessiondata['animalid']]
-
-    
-    #%%
-    
-    # Create output figure dir:
-    
+    # Create output aggregate dir:
     #aggregate_dir = '/n/coxfs01/julianarhee/aggregate-visual-areas'
     datasetdir = os.path.join(optsE.aggregate_dir, 'dataset_info')
     if not os.path.exists(datasetdir):
         os.makedirs(datasetdir)
+            
+    dataset_info_fpath = os.path.join(datasetdir, 'dataset_info.pkl')
+    if os.path.exists(dataset_info_fpath) and optsE.create_new is False:
+        with open(dataset_info_fpath, 'rb') as f:
+            sessiondata = pkl.load(f)
+    else:
         
+        sessiondata = aggregate_session_info(traceid=optsE.traceid, trace_type=optsE.trace_type, 
+                                               state=optsE.state, fov_type=optsE.fov_type, 
+                                               visual_areas=optsE.visual_areas,
+                                               blacklist=optsE.blacklist, 
+                                               rootdir=optsE.rootdir,
+                                               aggregate_dir=optsE.aggregate_dir)
+                
+        experiment_types = sorted(sessiondata['experiment'].unique(), key=natural_keys)
+        experiment_ids = dict((exp, i) for i, exp in enumerate(experiment_types))
+        animal_names = sorted(sessiondata['animalid'].unique(), key=natural_keys)
+        animal_ids = dict((animal, i) for i, animal in enumerate(animal_names))
+        
+        sessiondata['exp_no'] = [int(experiment_ids[exp]) for exp in sessiondata['experiment']]
+        sessiondata['animal_no'] = [int(animal_ids[animal]) for animal in sessiondata['animalid']]
+    
+        
+        #%
+        with open(dataset_info_fpath, 'wb') as f:
+            pkl.dump(sessiondata, f, protocol=pkl.HIGHEST_PROTOCOL)
+                      
+    #%%
+    
+    sessiondata.describe()        
     sessions_by_animal = sessiondata.groupby(['animalid', 'session'])['fov'].unique()
     
     aggregate_session_dir = os.path.join(datasetdir, 'session_stats')
@@ -199,6 +212,12 @@ def main(options):
         os.makedirs(aggregate_session_dir)
         
     #%%
+    '''
+    Responsivity stats:
+        - RF comparisons (if relevant)
+        - distribution of peak dF/F values
+        - comparison of N responsive cells (for RFs, this is N fit rois)
+    '''
     emptystats = {}
     for animalid in sessiondata['animalid'].unique():
         session_list = sessions_by_animal[animalid].index.tolist()
@@ -206,7 +225,8 @@ def main(options):
             fovs = sessions_by_animal[animalid][session]
     
             for fov in fovs:
-                nostats = estats.visualize_session_stats(animalid, session, fov, create_new=True, altdir=aggregate_session_dir)
+                nostats = estats.visualize_session_stats(animalid, session, fov, 
+                                                         create_new=True, altdir=aggregate_session_dir)
                 
                 dset_key = '_'.join([animalid, session, fov])
                 emptystats[dset_key] = nostats
@@ -218,7 +238,47 @@ def main(options):
     error_fpath = os.path.join(datasetdir, 'check_stats.json')
     with open(error_fpath, 'w') as f:
         json.dump(emptystats, f, indent=4, sort_keys=True)
-        
+    
+    
+    #%%
+    '''
+    # Get responsivity stats:
+    responsive_test = 'ROC'
+    responsive_thr = 0.05
+    
+    # Tuning params:
+    n_bootstrap_iters = 1000
+    n_resamples = 60
+    n_intervals_interp = 3
+    '''
+    
+    traceid = optsE.traceid
+    rootdir = optsE.rootdir
+    
+    dsets = sessiondata[sessiondata['experiment']=='gratings']
+    #%%
+    tuning_counts = {}
+    
+    for animalid in dsets['animalid'].unique():
+        session_list = dsets[dsets['animalid']==animalid]['session'].unique()
+        for session in session_list:
+            if animalid=='JC091' and session == '20190606':
+                continue
+            fovs = dsets[(dsets['animalid']==animalid) & (dsets['session']==session)]['fov'].unique()
+            for fov in fovs:
+                exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+                fitdf, fitparams, fitdata = exp.get_tuning(create_new=False)
+                fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata)
+                skey = '_'.join([animalid, session, fov])
+                tuning_counts[skey] = goodfits
+                del fitdf
+                del fitparams
+                del fitdata
+                del exp
+                
+                
+                
+    #%%
             
 if __name__ == '__main__':
     main(sys.argv[1:])

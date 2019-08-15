@@ -60,6 +60,7 @@ from pipeline.python.retinotopy import utils as retinotools
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+from pipeline.python.utils import label_figure, natural_keys
 
 import glob
 import os
@@ -374,80 +375,80 @@ def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
 # #############################################################################
 # RECEPTIVE FIELD EXPERIMENT functions
 # #############################################################################
-
-def get_receptive_field_fits(animalid, session, fov, response_type='dff', #receptive_field_fit='zscore0.00_no_trim',
-                             run='combined_rfs*_static', traceid='traces001', 
-                             pretty_plots=False, create_new=False,
-                             rootdir='/n/coxfs01/2p-data'):
-    #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
-    rfits = None
-    fov_dir = os.path.join(rootdir, animalid, session, fov)
-    do_fits = create_new #False
-    try:
-        combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
-        #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
-        rf_traceid_dir = combined_rf_dirs[0]
-        
-        found_fresults = sorted(glob.glob(os.path.join(rf_traceid_dir,
-                                         'receptive_fields', 
-                                         'fit-2dgaus_%s-no-trim' % response_type, '*.pkl')), key=natural_keys)
-        if len(found_fresults) > 1:
-            print("RFs: %s - more than 1 RF fit result found:" % run)
-            for r, ri in enumerate(found_fresults):
-                print(r, ri)
-            sel = input("-- Select IDX of fits to use: ")
-            rfs_fpath = found_fresults[int(sel)]
-        elif len(found_fresults) == 1:
-            rfs_fpath = found_fresults[0]
-        else:
-            do_fits = True
-    
-        if do_fits:
-            print("... specified RF fit method not found, running now.")
-            rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
-                                                  make_pretty_plots=pretty_plots,
-                                                  create_new=create_new,
-                                                  trace_type='corrected', response_type=response_type,
-#                                                  select_rois=False, segment=False,
-                                                  rootdir=rootdir)
-        
-        else:
-            print("... loading RF fits (response-type: %s)" % response_type)
-            with open(rfs_fpath, 'rb') as f:
-                rfits = pkl.load(f)
-    except Exception as e:
-        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
-        traceback.print_exc()
-        
-    return rfits
-
-
-def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
-                 response_type='dff', pretty_plots=False, create_new=False,
-                 rootdir='/n/coxfs01/2p-data'):
-
-    #if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
-#            if (exp_name == 'gratings' and int(session) < 20190511):
-#                print "OLD"
-    try:
-        rf_fit_thr = 0.5
-        rstats = get_receptive_field_fits(animalid, session, fov,
-                                         run=exp_name, traceid=traceid, 
-                                         response_type=response_type,
-                                         pretty_plots=pretty_plots,
-                                         create_new=create_new,
-                                         rootdir=rootdir) #(S.experiments[exp_name])
-        print("... loaded rf fits")
-        roi_list = [r for r, res in rstats['fit_results'].items() if res['fit_r']['r2'] >= rf_fit_thr]
-        #if exp_name == 'gratings':
-        #    exp_name = 'rfs'
-        nrois_total = len(rstats['fit_results'].keys())
-        
-    except Exception as e:
-        print e
-        print("-- No RF fits! [%s]" % exp_name)
-        
-    return rstats, roi_list, nrois_total
+#
+#def get_receptive_field_fits(animalid, session, fov, response_type='dff', #receptive_field_fit='zscore0.00_no_trim',
+#                             run='combined_rfs*_static', traceid='traces001', 
+#                             pretty_plots=False, create_new=False,
+#                             rootdir='/n/coxfs01/2p-data'):
+#    #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
+#    rfits = None
+#    fov_dir = os.path.join(rootdir, animalid, session, fov)
+#    do_fits = create_new #False
+#    try:
+#        combined_rf_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
+#        #assert len(combined_rf_dirs) == 1, "---> [%s] warning: No unique traceid dir found (%s)" % (run, traceid)
+#        rf_traceid_dir = combined_rf_dirs[0]
+#        
+#        fit_desc = fitrf.get_fit_desc(response_type=response_type)
+#        found_fresults = sorted(glob.glob(os.path.join(rf_traceid_dir,
+#                                         'receptive_fields', fit_desc, '*.pkl')), key=natural_keys)
+#        if len(found_fresults) > 1:
+#            print("RFs: %s - more than 1 RF fit result found:" % run)
+#            for r, ri in enumerate(found_fresults):
+#                print(r, ri)
+#            sel = input("-- Select IDX of fits to use: ")
+#            rfs_fpath = found_fresults[int(sel)]
+#        elif len(found_fresults) == 1:
+#            rfs_fpath = found_fresults[0]
+#        else:
+#            do_fits = True
+#    
+#        if do_fits:
+#            print("... specified RF fit method not found, running now.")
+#            rfits = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+#                                                  make_pretty_plots=pretty_plots,
+#                                                  create_new=create_new,
+#                                                  trace_type='corrected', response_type=response_type,
+##                                                  select_rois=False, segment=False,
+#                                                  rootdir=rootdir)
+#        
+#        else:
+#            print("... loading RF fits (response-type: %s)" % response_type)
+#            with open(rfs_fpath, 'rb') as f:
+#                rfits = pkl.load(f)
+#    except Exception as e:
+#        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
+#        traceback.print_exc()
+#        
+#    return rfits
+#
+#
+#def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
+#                 response_type='dff', pretty_plots=False, create_new=False,
+#                 rootdir='/n/coxfs01/2p-data'):
+#
+#    #if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
+##            if (exp_name == 'gratings' and int(session) < 20190511):
+##                print "OLD"
+#    try:
+#        rf_fit_thr = 0.5
+#        rstats = get_receptive_field_fits(animalid, session, fov,
+#                                         run=exp_name, traceid=traceid, 
+#                                         response_type=response_type,
+#                                         pretty_plots=pretty_plots,
+#                                         create_new=create_new,
+#                                         rootdir=rootdir) #(S.experiments[exp_name])
+#        print("... loaded rf fits")
+#        roi_list = [r for r, res in rstats['fit_results'].items() if res['fit_r']['r2'] >= rf_fit_thr]
+#        #if exp_name == 'gratings':
+#        #    exp_name = 'rfs'
+#        nrois_total = len(rstats['fit_results'].keys())
+#        
+#    except Exception as e:
+#        print e
+#        print("-- No RF fits! [%s]" % exp_name)
+#        
+#    return rstats, roi_list, nrois_total
 
 
 # #############################################################################
@@ -984,6 +985,7 @@ class Experiment(object):
         return data_fpath
 
     def process_traces(self, response_type='dff', nframes_post_onset=None):
+        print("... getting traces: %s" % response_type)
         traces = process_traces(self.data.traces, self.data.labels, 
                                 response_type=response_type, nframes_post_onset=nframes_post_onset)
         
@@ -1047,33 +1049,77 @@ class Gratings(Experiment):
         super(Gratings, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'gratings'
         
+    def get_tuning(self, response_type='dff', responsive_test='ROC', responsive_thr=0.05,
+                   n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
+                   rootdir='/n/coxfs01/2p-data', create_new=False):
+        '''
+        This method is effecively the same as osi.get_tuning(), but without 
+        having to do redundant data loading.
+        '''
+        traceid_dir = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, self.name,
+                                   'traces', '%s*' % self.traceid))[0]
+        fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr)
+        roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_desc)
+        if not os.path.exists(roi_fitdir):
+            os.makedirs(roi_fitdir)
+            
+        if create_new is False:
+            fitdf, fitparams, fitdata = osi.load_tuning_results(traceid_dir, fit_desc=fit_desc, return_iters=True)
+            do_fits = fitdf is None
+        else:
+            do_fits=True
     
+        if do_fits:
+            print("---- doing fits ----")
+            fitdf, fitparams, fitdata, estats = self.fit_tuning()        
+            fitparams.update({'directory': roi_fitdir,
+                              'response_type': response_type})
+            osi.save_tuning_results(fitdf, fitparams, fitdata)
+                
+            if not os.path.exists(os.path.join(roi_fitdir, 'roi_fits')):
+                os.makedirs(os.path.join(roi_fitdir, 'roi_fits'))
+            
+            if response_type == 'dff' and self.trace_type != 'dff':
+                raw_traces = self.process_traces(response_type=response_type)
+            else:
+                raw_traces = self.traces
+        
+            data_identifier = '|'.join([self.animalid, self.session, self.fov, self.name, self.traceid, fit_desc])
+            for roi in fitdf['cell'].unique():
+                fig = osi.plot_roi_tuning(roi, fitdata, estats.sdf, raw_traces, self.data.labels, trace_type=fitparams['response_type'])
+                label_figure(fig, data_identifier)
+                pl.savefig(os.path.join(roi_fitdir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
+                pl.close()
+        
+        return fitdf, fitparams, fitdata
     
+        
     def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
-                   n_bootstrap_iters=100, n_intervals_interp=3,
+                   n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test='ROC', responsive_thr=0.05, create_new=False,
                    rootdir='/n/coxfs01/2p-data'):
         
-        fitdf, fitparams, fitdata = osi.get_tuning_for_fov(self.animalid, self.session, self.fov, traceid=self.traceid, 
-                                                       response_type=response_type, n_bootstrap_iters=n_bootstrap_iters, n_intervals_interp=n_intervals_interp,
-                                                       responsive_test=responsive_test, responsive_thr=responsive_thr, 
-                                                       make_plots=make_plots, plot_metrics=plot_metrics,
-                                                       create_new=create_new, rootdir=rootdir)
+        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr)
         
-        return fitdf, fitparams, fitdata
+        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
+                                                     n_bootstrap_iters=n_bootstrap_iters, 
+                                                     n_resamples=n_resamples,
+                                                     n_intervals_interp=n_intervals_interp)
+        return fitdf, fitparams, fitdata, estats
+    
 
     def evaluate_fits(self, fitdf, fitparams, fitdata, goodness_thr=0.66):
         fit_desc = os.path.split(fitparams['directory'])[-1]
         
         data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, fit_desc])
-        goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
+        fitdf, goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
                                                      response_type=fitparams['response_type'], data_identifier=data_identifier)
         
-        
-        return goodfits
+        return fitdf, goodfits
     
 
-               
+#%%
+            
 class Objects(Experiment):
     def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
         super(Objects, self).__init__('blobs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
@@ -1091,7 +1137,8 @@ class Objects(Experiment):
 
 
 #%%
-    
+
+
 class ReceptiveFields(Experiment):
     def __init__(self, animalid, session, fov, traceid='analysis002', rootdir='/n/coxfs01/2p-data'):
         if int(session) < 20190511:
@@ -1100,26 +1147,54 @@ class ReceptiveFields(Experiment):
             super(ReceptiveFields, self).__init__('rfs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         
         self.experiment_type = 'rfs'
-        
-    def get_responsive_cells(self, response_type='dff', fit_thr=0.5, 
-                             pretty_plots=False, create_new=False):
-        '''
-        roi_list: Actually returns all cells w/ receptive field fit >= threshold (0.5).
-        nrois: cells that a fit was possible (regardless of how good the fit was).
-        
-        '''        
-        print("... getting responsive cells (response-type: %s, fit-thr: %.2f')" % (response_type, fit_thr))
-        assert 'rfs' in self.name or ('gratings' in self.name and int(self.session) < 20190511), "Incorrect call for RF analysis."
-        rstats, roi_list, nrois_total = get_rf_stats(self.animalid, self.session, self.fov, 
-                                                     traceid=self.traceid,
-                                                     exp_name=self.name, response_type=response_type,
-                                                     create_new=create_new,
-                                                     pretty_plots=pretty_plots)
-        
-        return rstats, roi_list, nrois_total
+
     
- 
-    def get_stats(self, response_type='dff', pretty_plots=False, create_new=False, **kwargs): #make_equal=True, get_grouped=True):
+    def get_rf_fits(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
+                                 create_new=False, rootdir='/n/coxfs01/2p-data'):
+        #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
+        
+        rfits=None; roi_list=None; nrois_total=None;
+        fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
+        do_fits = create_new #False
+        
+        fit_desc = fitrf.get_fit_desc(response_type=response_type)
+        print("... getting fits: %s" % fit_desc)
+        rfdir = glob.glob(os.path.join(fov_dir, self.name, 'traces', '%s*' % self.traceid, 'receptive_fields', fit_desc))[0]
+        rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
+        
+        if os.path.exists(rf_results_fpath) and create_new is False:
+            try:
+                print("... loading RF fits (response-type: %s)" % response_type)
+                with open(rf_results_fpath, 'rb') as f:
+                    rfits = pkl.load(f)
+            except Exception as e:
+                print(".... unable to load RF fits. re-fitting...")
+                do_fits = True
+
+        if do_fits:
+            try:
+                print("... fitting receptive fields")
+                rfits = fitrf.fit_2d_receptive_fields(self.animalid, self.session, self.fov, self.name, self.traceid, 
+                                                      make_pretty_plots=pretty_plots,
+                                                      create_new=create_new,
+                                                      trace_type='corrected', 
+                                                      response_type=response_type,
+                                                      rootdir=rootdir)
+            except Exception as e:
+                print("*** NO receptive field fits found: %s ***")
+                traceback.print_exc()
+
+        print("... got rf fits")
+        roi_list = [r for r, res in rfits['fit_results'].items() if res['fit_r']['r2'] >= fit_thr]
+        #if exp_name == 'gratings':
+        #    exp_name = 'rfs'
+        nrois_total = len(rfits['fit_results'].keys())
+        
+        return rfits, roi_list, nrois_total
+
+
+    def get_stats(self, response_type='dff', fit_thr=0.5, 
+                  pretty_plots=False, create_new=False, **kwargs): #make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
         response_type = kwargs.get('response_type', 'dff')
         
@@ -1128,11 +1203,12 @@ class ReceptiveFields(Experiment):
         
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
-        rstats, roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
-                                                                  pretty_plots=pretty_plots,
-                                                                  create_new=create_new)
+        rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type, 
+                                                        fit_thr=fit_thr,
+                                                        pretty_plots=pretty_plots,
+                                                        create_new=create_new)
         
-        if rstats is None and roi_list is None:
+        if rfits is None and roi_list is None:
             print("--- NO STATS (%s)" % response_type)
             return None
 
@@ -1150,14 +1226,14 @@ class ReceptiveFields(Experiment):
                                                          roi_list=roi_list,
                                                          return_grouped=get_grouped)
 
-        estats.fits = fitrf.rfits_to_df(rstats['fit_results'], 
-                                        row_vals=rstats['row_vals'],
-                                        col_vals=rstats['col_vals'],
+        estats.fits = fitrf.rfits_to_df(rfits['fit_results'], 
+                                        row_vals=rfits['row_vals'],
+                                        col_vals=rfits['col_vals'],
                                         roi_list=sorted(roi_list))
-        rstats.pop('fit_results')
+        rfits.pop('fit_results')
         print("*** got rf fits***")
                 
-        estats.fitinfo = rstats
+        estats.fitinfo = rfits
         estats.sdf = self.data.sdf
 
         return estats #{experiment_id: estats}

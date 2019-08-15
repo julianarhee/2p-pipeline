@@ -503,6 +503,7 @@ def main(options):
     visualize_session_stats(opts.animalid, opts.session, opts.fov,
                             traceid=opts.traceid, trace_type=opts.trace_type,
                             rootdir=opts.rootdir, create_new=opts.create_new)
+    
 # In[51]:
 
 if __name__ == '__main__':

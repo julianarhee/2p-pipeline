@@ -1234,7 +1234,11 @@ cols = 'xpos'
 
 #%%
 
+def get_fit_desc(response_type='dff'):
+    fit_desc = 'fit-2dgaus_%ss-no-cutoff' % response_type
+    return fit_desc
 
+        
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=False,
                             trace_type='corrected', response_type='dff', make_pretty_plots=False,
                             visual_area='', select_rois=False, segment=False,
@@ -1263,8 +1267,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     # Set output dirs
     # -----------------------------------------------------------------------------
     # rfdir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
-    rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) #, response_thr) #, cutoff_type, set_to_min_str)
-    rfdir = os.path.join(traceid_dir, 'receptive_fields', rf_param_str)
+    # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) #, response_thr) #, cutoff_type, set_to_min_str)
+    fit_desc = get_fit_desc(response_type=response_type)
+    rfdir = os.path.join(traceid_dir, 'receptive_fields', fit_desc)
     if segment:
         rfdir = os.path.join(rfdir, visual_area)
     if not os.path.exists(rfdir):
@@ -1274,11 +1279,11 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     #%
     # Create subdir for saving figs/results based on fit params
     # -----------------------------------------------------------------------------
-    data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area, rf_param_str])
+    data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area, fit_desc])
     
     # Create results outfile, or load existing:
     do_fits = False
-    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl') #results_outfile = 'RESULTS_%s.pkl' % rf_param_str
+    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl') #results_outfile = 'RESULTS_%s.pkl' % fit_desc
     if os.path.exists(rf_results_fpath) or create_new is False:
         try:
             print "... checking for existing results"
@@ -1351,7 +1356,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                                 plot_ellipse=True, single_colorbar=True)
             
             label_figure(fig, data_identifier)
-            figname = 'top%i_fit_thr_%.2f_%s_ellipse' % (len(fit_roi_list), fit_thr, rf_param_str)
+            figname = 'top%i_fit_thr_%.2f_%s_ellipse' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
             pl.close()
@@ -1398,7 +1403,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             fig = plot_rfs_to_screen(fitdf, sdf, screen, fit_roi_list=fit_roi_list)
             label_figure(fig, data_identifier)
             #%
-            figname = 'overlaid_RFs_top%i_fit_thr_%.2f_%s' % (len(fit_roi_list), fit_thr, rf_param_str)
+            figname = 'overlaid_RFs_top%i_fit_thr_%.2f_%s' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
             pl.close()
