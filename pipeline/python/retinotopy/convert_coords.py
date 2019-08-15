@@ -145,19 +145,3 @@ def get_contour_center(cnt):
     cY = int(M["m01"] / M["m00"])
     return (cX, cY)
 
-
-#%%
-
-# ############################################
-# Functions for processing visual field coverage
-# ############################################
-
-def create_ellipse(center, lengths, angle=0):
-    """
-    create a shapely ellipse. adapted from
-    https://gis.stackexchange.com/a/243462
-    """
-    circ = Point(center).buffer(1)
-    ell = affinity.scale(circ, int(lengths[0]), int(lengths[1]))
-    ellr = affinity.rotate(ell, angle)
-    return ellr
