@@ -25,5 +25,5 @@ echo ${3}
 echo ${4}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/paradigm/plot_responses.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -t ${5} --shade -r ${6} -c ${7} -H ${8}
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/paradigm/plot_responses.py --slurm -i ${1} -S ${2} -A ${3} -R ${4} -t ${5} --shade -r ${6} -c ${7} -H ${8} -d ${9}
 
