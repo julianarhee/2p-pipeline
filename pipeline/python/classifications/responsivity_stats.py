@@ -348,6 +348,10 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
         print("found %i experiments" % len(experiment_list))
 
     datasets_nostats=[]
+    if os.path.exists(stats_fpath) and create_new is False:
+        with open(stats_fpath, 'rb') as f:
+            gdfs = pkl.load(f)
+
     if create_new:
         print("Calculating stats")
         # # Calculate stats using dff
