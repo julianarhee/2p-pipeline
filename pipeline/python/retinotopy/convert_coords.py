@@ -59,11 +59,11 @@ def get_roi_position_um(rffits, tmp_roi_contours, rf_exp_name='rfs', convert_um=
     '''
     
     # Sort ROIs b y x,y position:
-    sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, sort_by='x')
-    sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, sort_by='y')
+    sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x')
+    sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y')
 
-    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, sort_by='x', get_centroids=True)
-    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, sort_by='y', get_centroids=True)
+    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x', get_centroids=True)
+    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y', get_centroids=True)
 
     # Convert pixels to um:
     xlinspace = np.linspace(0, npix_x*xaxis_conversion, num=npix_x)
@@ -117,10 +117,10 @@ def contours_from_masks(masks):
     return tmp_roi_contours
 
 
-def spatially_sort_contours(tmp_roi_contours, zimg, sort_by='xy', get_centroids=False):
+def spatially_sort_contours(tmp_roi_contours, dims=(512, 512), sort_by='xy', get_centroids=False):
 
     if sort_by == 'xy':
-        sorted_rois =  sorted(tmp_roi_contours, key=lambda ctr: (cv2.boundingRect(ctr[1])[1] + cv2.boundingRect(ctr[1])[0]) * zimg.shape[1])  
+        sorted_rois =  sorted(tmp_roi_contours, key=lambda ctr: (cv2.boundingRect(ctr[1])[1] + cv2.boundingRect(ctr[1])[0]) * dims[1])  
     elif sort_by == 'x':
         sorted_rois = sorted(tmp_roi_contours, key=lambda ctr: cv2.boundingRect(ctr[1])[0])
     elif sort_by == 'y':
