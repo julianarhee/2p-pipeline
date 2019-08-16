@@ -314,8 +314,8 @@ def boot_star(a_b):
     """Convert `f([1,2])` to `f(1,2)` call."""
     return bootstrap_roi_responses(*a_b)
 
-def pool_bootstrap(rdf_list, sdf):
-    pool = mp.Pool()
+def pool_bootstrap(rdf_list, sdf, n_processes=1):
+    pool = mp.Pool(processes=n_processes)
     results = pool.map(boot_star, itertools.izip(rdf_list, itertools.repeat(sdf)))
     return results
 
@@ -324,12 +324,12 @@ def pool_bootstrap(rdf_list, sdf):
 def do_bootstrap_fits(gdf, sdf, roi_list=None, 
                         response_type='dff',
                         n_bootstrap_iters=100, n_resamples=60,
-                        n_intervals_interp=3):
+                        n_intervals_interp=3, n_processes=1):
 
     if roi_list is None:
         roi_list = np.arange(0, len(gdf.groups))
 
-    results = pool_bootstrap([gdf.get_group(roi) for roi in roi_list], sdf)
+    results = pool_bootstrap([gdf.get_group(roi) for roi in roi_list], sdf, n_processes=n_processes)
     tested_values = sdf['ori'].unique()
     interp_values = results[0]['fitdata']['results_by_iter'][0]['x']
     
@@ -357,7 +357,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                traceid='traces001', roi_list=None, response_type='dff',
                n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                make_plots=True, responsive_test='ROC', responsive_thr=0.05,
-               create_new=False, rootdir='/n/coxfs01/2p-data'):
+               create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1):
 
     # Do fits:
     traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]
@@ -392,7 +392,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
         fitdf, fitparams, fitdata = do_bootstrap_fits(gdf, sdf, roi_list=roi_list, 
                                                      n_bootstrap_iters=n_bootstrap_iters, 
                                                      n_resamples=n_resamples,
-                                                     n_intervals_interp=n_intervals_interp)
+                                                     n_intervals_interp=n_intervals_interp, n_processes=n_processes)
         
         fitparams.update({'directory': roi_fitdir,
                           'response_type': response_type})
@@ -439,7 +439,7 @@ def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_typ
                                            n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                            n_intervals_interp=n_intervals_interp, make_plots=make_plots,
                                            responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                           create_new=create_new, rootdir=rootdir)
+                                           create_new=create_new, rootdir=rootdir, n_processes=n_processes)
 
     print("... plotting comparison metrics ...")
     roi_fitdir = fitparams['directory']

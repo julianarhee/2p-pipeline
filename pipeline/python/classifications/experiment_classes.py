@@ -713,7 +713,7 @@ class Session():
     def get_grouped_stats(self, experiment_type, response_type='dff',
                           responsive_thr=0.01, responsive_test='ROC', 
                           update=True, get_grouped=True, make_equal=True,
-                          pretty_plots=False,
+                          pretty_plots=False, n_processes=1,
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
         print("Session Object- Getting grouped roi stats: exp is", experiment_type)
@@ -1010,7 +1010,7 @@ class Experiment(object):
         
         return rstats, roi_list, nrois_total
 
-    def get_stats(self, responsive_test='ROC', responsive_thr=0.05, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
+    def get_stats(self, responsive_test='ROC', responsive_thr=0.05, n_processes=1, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
         responsive_test = kwargs.get('responsive_test', 'ROC')
         responsive_thr = kwargs.get('responsive_thr', 0.5)
@@ -1052,7 +1052,7 @@ class Gratings(Experiment):
         
     def get_tuning(self, response_type='dff', responsive_test='ROC', responsive_thr=0.05,
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
-                   rootdir='/n/coxfs01/2p-data', create_new=False):
+                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
         having to do redundant data loading.
@@ -1072,7 +1072,7 @@ class Gratings(Experiment):
     
         if do_fits:
             print("---- doing fits ----")
-            fitdf, fitparams, fitdata, estats = self.fit_tuning()        
+            fitdf, fitparams, fitdata, estats = self.fit_tuning(n_processes=n_processes)        
             fitparams.update({'directory': roi_fitdir,
                               'response_type': response_type})
             osi.save_tuning_results(fitdf, fitparams, fitdata)
@@ -1098,14 +1098,17 @@ class Gratings(Experiment):
     def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test='ROC', responsive_thr=0.05, create_new=False,
-                   rootdir='/n/coxfs01/2p-data'):
-        
+                   rootdir='/n/coxfs01/2p-data', n_processes=1):
+       
+        print("... FIT: getting stats") 
         estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr)
-        
+       
+        print("... FIT: doing bootstrap") 
         fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
                                                      n_bootstrap_iters=n_bootstrap_iters, 
                                                      n_resamples=n_resamples,
-                                                     n_intervals_interp=n_intervals_interp)
+                                                     n_intervals_interp=n_intervals_interp, n_processes=n_processes)
+        print("... FIT: done!")  
         return fitdf, fitparams, fitdata, estats
     
 

@@ -308,7 +308,9 @@ def extract_options(options):
     parser.add_option('-T', '--trace_type', action='store', dest='trace_type', default='dff', help="trace type (default: dff, for calculating mean stats)")
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Create all session objects from scratch")
+    parser.add_option('--n', action='store', dest='n_processes', default=1, help="N processes")
 
+ 
     (options, args) = parser.parse_args(options)
 
     return options
@@ -316,7 +318,7 @@ def extract_options(options):
 #%%
 def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type='corrected',
                       experiment_list=None, traceid='traces001', pretty_plots=False,
-                      rootdir='/n/coxfs01/2p-data', create_new=True):
+                      rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
 
     # Create output dirs:    
     output_dir = os.path.join(rootdir, S.animalid, S.session, S.fov, 'summaries')
@@ -381,7 +383,7 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
                                          responsive_test=responsive_test, 
                                          pretty_plots=pretty_plots,
                                          traceid=traceid, trace_type=trace_type,
-                                         responsive_thr=mag_ratio_thr, update=True)
+                                         responsive_thr=mag_ratio_thr, update=False, n_processes=n_processes)
             if estats is not None:
                 if rename:
                     print("[%s] - renaming gratings back to rfs")
@@ -410,7 +412,7 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
 def visualize_session_stats(animalid, session, fov, response_type='dff', responsive_test='ROC',
                             traceid='traces001', trace_type='corrected', experiment_list=None,
                             rootdir='/n/coxfs01/2p-data', create_new=False,
-                            altdir=None):
+                            altdir=None, n_processes=1):
     
     
     # Create output_dir
@@ -444,7 +446,7 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
                                                     response_type=response_type, trace_type=trace_type,
                                                     responsive_test=responsive_test, 
                                                     rootdir=rootdir, create_new=create_new,
-                                                    experiment_list=experiment_list)
+                                                    experiment_list=experiment_list, n_processes=n_processes)
     
     statsfigdir = os.path.join(stats_dir, 'figures')
     if not os.path.exists(statsfigdir):
@@ -518,7 +520,7 @@ def main(options):
     visualize_session_stats(opts.animalid, opts.session, opts.fov,
                             traceid=opts.traceid, trace_type=opts.trace_type,
                             rootdir=opts.rootdir, create_new=opts.create_new,
-                            altdir=opts.altdir)
+                            altdir=opts.altdir, n_processes=opts.n_processes)
     
 # In[51]:
 

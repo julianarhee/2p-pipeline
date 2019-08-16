@@ -85,6 +85,8 @@ def extract_options(options):
 
     parser.add_option('-S', '--stat', action='store', dest='stats', default='responsivity', 
                       help="Stats to run across datasets (default: responsivity)")
+    parser.add_option('-n', '--n-processes', action='store', dest='n_processes', default=1, 
+                      help="N processes (default: 1)")
  
     (options, args) = parser.parse_args(options)
     
@@ -221,6 +223,7 @@ def main(options):
     
     #%%
     stats = optsE.stats
+    n_processes= int(optsE.n_processes)
 
     if stats=='responsivity':
         '''
@@ -286,7 +289,7 @@ def main(options):
                 fovs = dsets[(dsets['animalid']==animalid) & (dsets['session']==session)]['fov'].unique()
                 for fov in fovs:
                     exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-                    fitdf, fitparams, fitdata = exp.get_tuning(create_new=False)
+                    fitdf, fitparams, fitdata = exp.get_tuning(create_new=False, n_processes=n_processes)
                     fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata)
                     skey = '_'.join([animalid, session, fov])
                     tuning_counts[skey] = goodfits
