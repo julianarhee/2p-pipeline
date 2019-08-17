@@ -609,8 +609,10 @@ class Session():
         with open(os.path.join(outdir, 'sessiondata.pkl'), 'wb') as f:
             pkl.dump(self, f, protocol=pkl.HIGHEST_PROTOCOL)
             
-    def load_masks(self, rootdir='/n/coxfs01/2p-data'):
-        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=self.rois, rootdir=rootdir)
+    def load_masks(self, rois='', rootdir='/n/coxfs01/2p-data'):
+        if rois == '':
+            rois = self.rois
+        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=rois, rootdir=rootdir)
         return masks, zimg
     
     
@@ -1155,6 +1157,29 @@ class ReceptiveFields(Experiment):
     
     def get_rf_fits(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
                                  create_new=False, rootdir='/n/coxfs01/2p-data'):
+        '''
+        Loads or does RF 2d-gaussian fit.
+        
+        Returns
+            rfits (dict):
+                rfits = {'fit_results': RF, # Dict (roi, fit-results dict) of all fitable rois
+                           'fit_params': {'rfmap_thr': map_thr,
+                                          'cut_off': hard_cutoff,
+                                          'set_to_min': set_to_min,
+                                          'trim': trim,
+                                          'xx': xx,
+                                          'yy': yy,
+                                          'metric': response_type},
+                           'row_vals': row_vals,
+                           'col_vals': col_vals}   
+                           
+            roi_list (list): 
+                All rois that pass fit_thr (0.5)
+                
+            nrois_total (int): 
+                N cells for which a fit was possible.
+                   
+        '''
         #assert 'rfs' in S.experiments['rfs'].name, "This is not a RF experiment object! %s" % exp.name
         
         rfits=None; roi_list=None; nrois_total=None;
