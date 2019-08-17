@@ -315,16 +315,19 @@ def extract_options(options):
 
     return options
 
+
+
 #%%
-def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type='corrected',
-                      experiment_list=None, traceid='traces001', pretty_plots=False,
-                      rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
+
+
+def create_stats_dir(animalid, session, fov, traceid='traces001', 
+                     trace_type='corrected', response_type='dff', 
+                     responsive_test='ROC', rootdir='/n/coxfs01/2p-data'):
 
     # Create output dirs:    
-    output_dir = os.path.join(rootdir, S.animalid, S.session, S.fov, 'summaries')
+    output_dir = os.path.join(rootdir, animalid, session, fov, 'summaries')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    print(output_dir)
 
     stats_desc = '-'.join([traceid, trace_type, response_type, responsive_test])
     
@@ -336,6 +339,18 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
     if not os.path.exists(statsfigdir):
         os.makedirs(statsfigdir)
         
+    return statsdir, stats_desc
+
+
+def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type='corrected',
+                      experiment_list=None, traceid='traces001', pretty_plots=False,
+                      rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
+
+    # Create output dirs:  
+    statsdir, stats_desc = create_stats_dir(S.animalid, S.session, S.fov, traceid=traceid,
+                                            response_type=response_type, responsive_test=responsive_test,
+                                            rootdir=rootdir)
+
     # Create or load stats:
     stats_fpath = os.path.join(statsdir, 'sessionstats_%s.pkl' % stats_desc)
     if os.path.exists(stats_fpath) and create_new is False:
@@ -392,13 +407,6 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
                 
             datasets_nostats.extend(nostats)
             
-            
-            
-#            print([S.animalid, S.session, S.fov, S.traceid, S.rois])
-#            data_identifier = '|'.join([S.animalid, S.session, S.fov, S.traceid, S.rois])
-#            data_identifier
-#            print(data_identifier)
-        
         with open(stats_fpath, 'wb') as f:
             pkl.dump(gdfs, f, protocol=pkl.HIGHEST_PROTOCOL)
         print("Saved stats to file: %s" % stats_fpath)
