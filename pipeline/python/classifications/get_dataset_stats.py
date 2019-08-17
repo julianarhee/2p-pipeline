@@ -297,10 +297,14 @@ def main(options):
                     del fitparams
                     del fitdata
                     del exp
-                    
-        with open(os.path.join(aggregate_session_dir, 'gratings_summary.pkl')):
+                   
+        aggregate_tuning_dir = os.path.join(aggregate_dir, 'tuning')
+        if not os.path.exists(aggregate_tuning_dir):
+            os.makedirs(aggregate_tuning_dir)
+ 
+        with open(os.path.join(aggregate_tuning_dir, 'gratings_summary.pkl'), 'wb') as f:
             pkl.dump(tuning_counts, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+       
         print("DONE!")                
                 
     #%%
