@@ -331,7 +331,7 @@ def create_stats_dir(animalid, session, fov, traceid='traces001',
 
     stats_desc = '-'.join([traceid, trace_type, response_type, responsive_test])
     
-    statsdir = os.path.join(output_dir, 'stats')
+    statsdir = os.path.join(output_dir, 'stats-%s-%s-%s-%s' % (traceid, trace_type, response_type, responsive_test))
     if not os.path.exists(statsdir):
         os.makedirs(statsdir)
 
@@ -464,8 +464,8 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
     print("=============ROI SUMMARY=============")
     if len(gdfs.keys()) == 0:
         print('NO STATS FOUND FOR:')
-        for ni, nostats in enumerate(nostats):
-            print ni, nostats
+        for ni, ns in enumerate(nostats):
+            print ni, ns
         none2compare = True
     else:
         for exp_name, exp_gdf in gdfs.items():
