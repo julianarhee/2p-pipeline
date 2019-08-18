@@ -567,12 +567,19 @@ class Session():
                 print("[%s|%s] No experiment exists for: %s" % (self.animalid, self.session, ex))
                 continue
             if ex not in self.experiments.keys():
-                expdict = self.load_data(experiment=ex, update_self=update_self)
-                expdata = expdict[ex]
+                #expdict = self.load_data(experiment=ex, update_self=update_self)
+                #expdata = expdict[ex]
+                traceid = 'traces001' if self.traceid is None else self.traceid
+                if 'grating' in ex:
+                    exp = Gratings(self.animalid, self.session, self.fov, traceid)
+                elif 'blob' in ex:
+                    # TODO:  ficx this, not implemented
+                    exp = Objects(self.animalid, self.session, self.fov, traceid)
+                sdf = exp.get_stimuli()
             else:
                 expdata = self.experiments[ex]
+                sdf = expdata.data.sdf.copy()
                 
-            sdf = expdata.data.sdf.copy()
             if ex == 'gratings': # deal with FF stimuli
                 sdf = sdf[sdf['size']<200]
                 sdf.pop('luminance')
@@ -580,18 +587,21 @@ class Session():
             assert len(curr_xpos)==1, "[%s] more than 1 xpos found! %s" % (ex, str(curr_xpos))
             curr_ypos = sdf.dropna()['ypos'].unique()
             assert len(curr_ypos)==1, "[%s] more than 1 ypos found! %s" % (ex, str(curr_ypos))
-            xpositions.append(curr_xpos[0])
-            ypositions.append(curr_ypos[0])
+            xpositions.append(float(curr_xpos))
+            ypositions.append(float(curr_ypos))
         
-        xpos = list(set(xpositions))
-        assert len(xpos)==1, "blobs and gratings have different XPOS: %s" % str(xpos)
-        ypos = list(set(ypositions))
-        assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
-        xpos = xpos[0]
-        ypos = ypos[0]
-        print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
-        
-        return xpos, ypos
+        if len(xpositions) > 0 and len(ypositions) > 0:
+            xpos = list(set(xpositions))
+            assert len(xpos)==1, "blobs and gratings have different XPOS: %s" % str(xpos)
+            ypos = list(set(ypositions))
+            assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
+            xpos = xpos[0]
+            ypos = ypos[0]
+            print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
+            
+            return xpos, ypos
+        else:
+            return None, None
     
 
     def get_stimulus_sizes(self, size_tested = ['gratings', 'blobs']):        
@@ -849,6 +859,14 @@ class Experiment(object):
         
         #return roi_id, traceid
 
+    def get_stimuli(self, rootdir='/n/coxfs01/2p-data'):
+        print("Getting stimulus info for: %s" % self.name)
+        dset_path = glob.glob(os.path.join(rootdir, self.animalid, self.session,
+                                           self.fov, self.name, 'traces/traces*', 'data_arrays', 'datasets.npz'))[0]
+        dset = np.load(dset_path)
+        sdf = pd.DataFrame(dset['sconfigs'][()]).T
+        
+        return sdf
     
     def load(self, trace_type='corrected', update_self=True, make_equal=True, rootdir='/n/coxfs01/2p-data'):
         '''
