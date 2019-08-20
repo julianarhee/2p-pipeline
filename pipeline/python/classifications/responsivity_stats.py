@@ -87,9 +87,9 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001', res
     rf_sets = [set(gdfs[k].rois) for k in rf_set_labels]
     
     ## Get distribution of RF sizes
-    rfits = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
+    rfits, _ = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
                                           response_type=response_type, run='combined_rfs_static')
-    rfits10 = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
+    rfits10, _ = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
                                             response_type=response_type, run='combined_rfs10_static')
 
     rfits_df = gdfs['rfs'].fits
