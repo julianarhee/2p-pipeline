@@ -15,7 +15,7 @@ import optparse
 import copy
 import json
 import traceback
-
+import time
 import pylab as pl
 from collections import Counter
 import seaborn as sns
@@ -164,60 +164,97 @@ def get_circular_variance(response_vector, thetas):
 
 
 
-def load_tuning_results(traceid_dir, fit_desc='', return_iters=True):
+def load_tuning_results(animalid='', session='', fov='', run_name='', traceid='traces001',
+                        fit_desc='', return_iters=True, traceid_dir=None, rootdir='/n/coxfs01/2p-data'):
 
     fitdf=None; fitparams=None; fitdata=None;
-    roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_desc)
+    if traceid_dir is None:
+        osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name,
+                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))
+    else:
+        osidir = os.path.join(traceid_dir, '*tuning*', fit_desc)
 
-    tuning_fit_results_path = os.path.join(roi_fitdir, 'tuning_bootstrap_results.pkl')
-    params_info_path = os.path.join(roi_fitdir, 'tuning_bootstrap_params.json')
-    fit_data_path = os.path.join(roi_fitdir, 'tuning_bootstrap_data.pkl')
+    results_fpath = os.path.join(osidir, 'tuning_bootstrap_results.pkl')
+    params_fpath = os.path.join(osidir, 'tuning_bootstrap_params.json')
+    bootdata_fpath = os.path.join(osidir, 'tuning_bootstrap_data.pkl')
     
-    if os.path.exists(tuning_fit_results_path):
+    if os.path.exists(results_fpath):
         print("Loading existing fits.")
-        with open(tuning_fit_results_path, 'rb') as f:
+        with open(results_fpath, 'rb') as f:
             fitdf = pkl.load(f)
-        with open(params_info_path, 'r') as f:
+        with open(params_fpath, 'r') as f:
             fitparams = json.load(f)
     else:
         print "NO FITS FOUND: %s" % fit_desc
         
     if return_iters:
-        if os.path.exists(fit_data_path):
-            with open(fit_data_path, 'r') as f:
+        if os.path.exists(bootdata_fpath):
+            with open(bootdata_fpath, 'r') as f:
                 fitdata = pkl.load(f)
         return fitdf, fitparams, fitdata
     else:
         return fitdf, fitparams
 
 def save_tuning_results(fitdf, fitparams, fitdata):
-    roi_fitdir = fitparams['directory']
-    tuning_fit_results_path = os.path.join(roi_fitdir, 'tuning_bootstrap_results.pkl')
-    params_info_path = os.path.join(roi_fitdir, 'tuning_bootstrap_params.json')
-    fit_data_path = os.path.join(roi_fitdir, 'tuning_bootstrap_data.pkl')
+    osidir = fitparams['directory']
+    results_fpath = os.path.join(osidir, 'tuning_bootstrap_results.pkl')
+    params_fpath = os.path.join(osidir, 'tuning_bootstrap_params.json')
+    bootdata_fpath = os.path.join(osidir, 'tuning_bootstrap_data.pkl')
     
-    with open(tuning_fit_results_path, 'wb') as f:
+    with open(results_fpath, 'wb') as f:
         pkl.dump(fitdf, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     
-    with open(fit_data_path, 'wb') as f:
+    with open(bootdata_fpath, 'wb') as f:
         pkl.dump(fitdata, f, protocol=pkl.HIGHEST_PROTOCOL)
     
     # Save params:
-    with open(params_info_path, 'w') as f:
+    with open(params_fpath, 'w') as f:
         json.dump(fitparams, f, indent=4, sort_keys=True)
 
     print("Saved!")
-    return roi_fitdir
+    return osidir
 
 
-def get_fit_desc(response_type='dff', responsive_test=None, responsive_thr=0.05):
+def get_fit_desc(response_type='dff', responsive_test=None, responsive_thr=0.05,
+                 n_bootstrap_iters=1000, n_resamples=20):
     if responsive_test is None:
-        fit_desc = 'bootstrap-fit-%s_all-cells' % (response_type) #, responsive_test, responsive_thr)
+        fit_desc = 'fit-%s_all-cells_boot-%i-resample-%i' % (response_type, n_bootstrap_iters, n_resamples) #, responsive_test, responsive_thr)
     else:
-        fit_desc = 'bootstrap-fit-%s_responsive-%s-thr%.2f' % (response_type, responsive_test, responsive_thr)
+        fit_desc = 'fit-%s_responsive-%s-thr%.2f_boot-%i-resample-%i' % (response_type, responsive_test, responsive_thr, n_bootstrap_iters, n_resamples)
 
     return fit_desc
+
+def create_osi_dir(animalid, session, fov, run_name='gratings', 
+                   traceid='traces001', response_type='dff', 
+                   responsive_test=None, responsive_thr=0.05,
+                   n_bootstrap_iters=1000, n_resamples=20,
+                   rootdir='/n/coxfs01/2p-data', traceid_dir=None):
+        
+
+    # Get RF dir for current fit type
+    fit_desc = get_fit_desc(response_type=response_type, responsive_test=responsive_test, 
+                            responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
+                            n_resamples=n_resamples)
+
+    if traceid_dir is None:
+        fov_dir = os.path.join(rootdir, animalid, session, fov)
+        traceid_dirs = glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))
+        if len(traceid_dirs) > 1:
+            print "More than 1 trace ID found:"
+            for ti, traceid_dir in enumerate(traceid_dirs):
+                print ti, traceid_dir
+            sel = input("Select IDX of traceid to use: ")
+            traceid_dir = traceid_dirs[int(sel)]
+        else:
+            traceid_dir = traceid_dirs[0]
+        #traceid = os.path.split(traceid_dir)[-1]
+    
+    osidir = os.path.join(traceid_dir, 'tuning', fit_desc)
+    if not os.path.exists(osidir):
+        os.makedirs(osidir)
+
+    return osidir, fit_desc
 
 #%%
 import multiprocessing as mp
@@ -327,21 +364,25 @@ def pool_bootstrap(rdf_list, sdf, n_processes=1):
     
 def do_bootstrap_fits(gdf, sdf, roi_list=None, 
                         response_type='dff',
-                        n_bootstrap_iters=100, n_resamples=60,
+                        n_bootstrap_iters=1000, n_resamples=20,
                         n_intervals_interp=3, n_processes=1):
 
     if roi_list is None:
         roi_list = np.arange(0, len(gdf.groups))
-
+        
+    start_t = time.time()
     results = pool_bootstrap([gdf.get_group(roi) for roi in roi_list], sdf, n_processes=n_processes)
+    end_t = time.time() - start_t
+    print "Multiple processes: {0:.2f}sec".format(end_t)
+    
+
     tested_values = sdf['ori'].unique()
     interp_values = results[0]['fitdata']['results_by_iter'][0]['x']
-    
 
     fitdf = pd.concat([res['fitdf'] for res in results])
 
-
     fitparams = {'n_bootstrap_iters': n_bootstrap_iters,
+                 'n_resamples': n_resamples,
                 'n_intervals_interp': n_intervals_interp,
                 'tested_values': list(tested_values),
                 'interp_values': interp_values,
@@ -359,7 +400,7 @@ def do_bootstrap_fits(gdf, sdf, roi_list=None,
 
 def get_tuning(animalid, session, fov, run_name, return_iters=False,
                traceid='traces001', roi_list=None, response_type='dff',
-               n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
+               n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
                make_plots=True, responsive_test='ROC', responsive_thr=0.05,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1):
 
@@ -367,23 +408,28 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
 
-    fit_desc = get_fit_desc(response_type=response_type, responsive_test=responsive_test, responsive_thr=responsive_thr)
-    data_identifier = '|'.join([animalid, session, fov, run_name, traceid, fit_desc])
+    osidir, fit_desc = create_osi_dir(animalid, session, fov, run_name, traceid=traceid,
+                                      response_type=response_type, responsive_test=responsive_test, 
+                                      responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
+                                      n_resamples=n_resamples, rootdir=rootdir)
+    
+    data_identifier = '%s\n%s' % ('|'.join([animalid, session, fov, run_name, traceid]), fit_desc)
 
-    roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_desc)
-    if not os.path.exists(roi_fitdir):
-        os.makedirs(roi_fitdir)
+    #roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_desc)
+    if not os.path.exists(osidir):
+        os.makedirs(osidir)
         
     if create_new is False:
-        fitdf, fitparams, fitdata = load_tuning_results(traceid_dir, fit_desc=fit_desc, return_iters=return_iters)
-        do_fits = fitdf is not None
+        fitdf, fitparams, fitdata = load_tuning_results(traceid_dir=traceid_dir,
+                                                        fit_desc=fit_desc, return_iters=True)
+        do_fits = fitdf is None
     else:
         do_fits=True
     
         
     if do_fits:
-        print("Loading data and doing fits")
         
+        print("Loading data and doing fits")
         df_traces, labels, gdf, sdf = load_gratings_data(data_fpath)
         
         if roi_list is None:
@@ -398,20 +444,22 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                                                      n_resamples=n_resamples,
                                                      n_intervals_interp=n_intervals_interp, n_processes=n_processes)
         
-        fitparams.update({'directory': roi_fitdir,
-                          'response_type': response_type})
-                        
+        fitparams.update({'directory': osidir,
+                          'response_type': response_type,
+                          'responsive_test': responsive_test,
+                          'responsive_thr': responsive_thr if responsive_test is not None else None})
+    
         save_tuning_results(fitdf, fitparams, fitdata)
             
         if make_plots:
-            if not os.path.exists(os.path.join(roi_fitdir, 'roi_fits')):
-                os.makedirs(os.path.join(roi_fitdir, 'roi_fits'))
-            print("Saving roi tuning fits to: %s" % os.path.join(roi_fitdir, 'roi_fits'))
+            if not os.path.exists(os.path.join(osidir, 'roi_fits')):
+                os.makedirs(os.path.join(osidir, 'roi_fits'))
+            print("Saving roi tuning fits to: %s" % os.path.join(osidir, 'roi_fits'))
             for roi in fitdf['cell'].unique():
-                fig = plot_roi_tuning(roi, fitdata, sdf, df_traces, labels, roi_fitdir=roi_fitdir,
+                fig = plot_roi_tuning(roi, fitdata, sdf, df_traces, labels,
                                       trace_type=response_type)
                 label_figure(fig, data_identifier)
-                pl.savefig(os.path.join(roi_fitdir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
+                pl.savefig(os.path.join(osidir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
                 pl.close()
         
     return fitdf, fitparams, fitdata
@@ -420,7 +468,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
 
 def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_type='dff', 
-                          n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
+                          n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
                           responsive_test='ROC', responsive_thr=0.05, 
                           make_plots=True, plot_metrics=True, return_iters=True,
                           create_new=False, n_processes=1, rootdir='/n/coxfs01/2p-data'):
@@ -433,9 +481,12 @@ def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_typ
     assert run_name is not None, "ERROR: [%s|%s|%s|%s] Unable to find gratings run..." % (animalid, session, fov, traceid)
 
     # Select only responsive cells:
-    roi_list = util.get_responsive_cells(animalid, session, fov, run=run_name, traceid=traceid, 
-                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                    rootdir=rootdir)
+    if responsive_test is not None:
+        roi_list = util.get_responsive_cells(animalid, session, fov, run=run_name, traceid=traceid, 
+                                        responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                        rootdir=rootdir)
+    else:
+        roi_list = None
     
     #% GET FITS:
     fitdf, fitparams, fitdata = get_tuning(animalid, session, fov, run_name, return_iters=return_iters,
@@ -627,14 +678,9 @@ def plot_roi_tuning_raw_and_fit(roi, responses_df, curr_cfgs,
 
 
 
-def plot_roi_tuning(roi, fitdata, sdf, df_traces, labels, trace_type='dff',
-                    roi_fitdir='/tmp'):
+def plot_roi_tuning(roi, fitdata, sdf, df_traces, labels, trace_type='dff'):
     #print("... plotting")
     
-    #% Set output dir for roi plots:
-    roi_fitdir_figures = os.path.join(roi_fitdir, 'roi_fits')
-    if not os.path.exists(roi_fitdir_figures):
-        os.makedirs(roi_fitdir_figures)
     #print("... Saving ROI fit plots to:\n%s" % roi_fitdir_figures)
 
     responses_df = fitdata['original_data'][roi]['responses']
@@ -1336,10 +1382,10 @@ def extract_options(options):
                       help="responsive test threshold (default: p<0.05 for responsive_test=ROC)")
     
     # Tuning params:
-    parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=100, 
-                      help="N bootstrap iterations (default: 100)")
-    parser.add_option('-s', '--samples', action='store', dest='n_resamples', default=60, 
-                      help="N trials to sample w/ replacement (default: 60)")
+    parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=1000, 
+                      help="N bootstrap iterations (default: 1000)")
+    parser.add_option('-s', '--samples', action='store', dest='n_resamples', default=20, 
+                      help="N trials to sample w/ replacement (default: 20)")
     parser.add_option('-p', '--interp', action='store', dest='n_intervals_interp', default=3, 
                       help="N intervals to interp between tested angles (default: 3)")
     
@@ -1386,7 +1432,7 @@ def extract_options(options):
 
 def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces001', response_type='dff',
                                          responsive_test='ROC', responsive_thr=0.05,
-                                         n_bootstrap_iters=100, n_resamples=60,
+                                         n_bootstrap_iters=1000, n_resamples=20,
                                          n_intervals_interp=3, goodness_thr = 0.66,
                                          n_processes=1, create_new=False, rootdir='/n/coxfs01/2p-data'):
     
@@ -1429,6 +1475,12 @@ def main(options):
 if __name__ == '__main__':
     main(sys.argv[1:])
     
+
+
+#%%
+
+options = ['-i', 'JC084', '-S', '20190522', '-t', 'traces001']
+
 
 # In[429]: ALL CELLS:
 

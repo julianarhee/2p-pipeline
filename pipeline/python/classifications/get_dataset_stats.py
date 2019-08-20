@@ -57,13 +57,19 @@ def extract_options(options):
     parser.add_option('-o', '--aggregate-dir', action='store', dest='aggregate_dir', default='/n/coxfs01/julianarhee/aggregate-visual-areas', 
                       help='output dir for saving aggregated data and figures [default: /n/coxfs01/julianarhee/aggregate-visual-areas]')
    
-    # Set specific session/run for current animal:
+    # Data selection parameters
     parser.add_option('-F', '--fov-type', action='store', dest='fov_type', default='zoom2p0x', 
                       help="fov type (default: zoom2p0x)")
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
                       help="traceid (default: traces001)")
+    parser.add_option('-x', '--exclude', action='append', dest='blacklist', default=['20190514', '20190530'], nargs=1,
+                      help="session to exclude (default includes 20190514, 20190530)")
+    parser.add_option('-v', '--area', action='append', dest='visual_areas', default=[], nargs=1,
+                      help="visual areas (default = V1, Lm, Li, if not provided)")
+    parser.add_option('-s', '--state', action='store', dest='state', default='awake', 
+                      help="Behavior state of rats (default: awake)")
     
-    
+    # Trace type parameters
     parser.add_option('-d', '--trace-type', action='store', dest='trace_type', default='corrected', 
                       help="trace type (default: corrected, for traces and calculating stats)")
     parser.add_option('-m', '--response-type', action='store', dest='response_type', default='dff', 
@@ -73,31 +79,29 @@ def extract_options(options):
     parser.add_option('--response-thr', action='store', dest='responsive_thr', default=0.05, 
                       help="Responsivity threshold (default: 0.05)")
         
-    parser.add_option('-x', '--exclude', action='append', dest='blacklist', default=['20190514', '20190530'], nargs=1,
-                      help="session to exclude (default includes 20190514, 20190530)")
-    
-    parser.add_option('-v', '--area', action='append', dest='visual_areas', default=[], nargs=1,
-                      help="visual areas (default = V1, Lm, Li, if not provided)")
-    parser.add_option('-s', '--state', action='store', dest='state', default='awake', 
-                      help="Behavior state of rats (default: awake)")
-    
+
+    # Processing parameters
     parser.add_option('--new', action='store_true', dest='create_new', default=False, 
                       help="Create all session objects from scratch")
     parser.add_option('-n', '--n-processes', action='store', dest='n_processes', default=1, 
                       help="N processes (default: 1)")
-
-
+    parser.add_option('--plot-rois', action='store_true', dest='plot_rois', default=False, 
+                      help="Plot fit results for each roi (takes longer)")
+    
+    
+    # Bootstrap parameters
     parser.add_option('-b', '--n-boot', action='store', dest='n_bootstrap_iters', type='int', default=1000, \
                       help="N bootstrap iterations for evaluating RF param fits (default: 1000)")
     parser.add_option('-i', '--n-resamples', action='store', dest='n_resamples', type='int', default=20, \
                       help="N trials to sample with replacement (default: 20)")
     
-    
+    # Gratings-specific parameters
     parser.add_option('-p', '--interp', action='store', dest='n_intervals_interp', default=3, 
                       help="[gratings only] N intervals to interp between tested angles (default: 3)")
     parser.add_option('-G', '--goodness-thr', action='store', dest='goodness_thr', default=0.66, 
                       help="[gratings only] Goodness-of-fit threshold (default: 0.66)")
     
+    # RF-specific parameters
     parser.add_option('--sigma', action='store', dest='sigma_scale', default=2.35, 
                       help="[rfs only] Sigma scale for RF 2d gaus fits (default: 2.35 for FWHM)")
     parser.add_option('--ci', action='store', dest='ci', default=0.95, 
@@ -107,10 +111,7 @@ def extract_options(options):
     parser.add_option('-r', '--rf-thr', action='store', dest='rf_fit_thr', default=0.5, 
                       help="[rfs only] Threshold for coeff. of determination for RF fits (default: 0.5)")
                         
-    parser.add_option('--plot-rois', action='store_true', dest='plot_rois', default=False, 
-                      help="Plot fit results for each roi (takes longer)")
-    
-    
+
     choices_stat = ('gratings','responsivity', 'rfs')
     default_stat = 'responsivity'
     
@@ -246,31 +247,22 @@ def main(options):
     sessiondata.describe()        
     sessions_by_animal = sessiondata.groupby(['animalid', 'session'])['fov'].unique()
 
-    responsive_dir = os.path.join(aggregate_dir, 'responsivity')
-    if not os.path.exists(responsive_dir):
-        os.makedirs(responsive_dir)
-    
-    #dtype_str = '%s-%s-%s-%s' % (optsE.traceid, optsE.trace_type, optsE.response_type, optsE.responsive_test)
-    stats_desc = util.get_stats_desc(traceid=optsE.traceid,
-                                          trace_type= optsE.trace_type,
-                                          response_type = optsE.response_type,
-                                          responsive_test = optsE.responsive_test,
-                                          responsive_thr = float(optsE.responsive_thr))
-    
     #%%
     stats = optsE.stats
     n_processes= int(optsE.n_processes)
     traceid = optsE.traceid
     rootdir = optsE.rootdir
-    n_bootstrap_iters = optsE.n_bootstrap_iters
-    n_resamples = optsE.n_resamples
-    n_intervals_interp = optsE.n_intervals_interp,
+    n_bootstrap_iters = int(optsE.n_bootstrap_iters)
+    n_resamples = int(optsE.n_resamples)
+    n_intervals_interp = int(optsE.n_intervals_interp)
     responsive_test = optsE.responsive_test
+    if responsive_test == 'None':
+        responsive_test = None
     responsive_thr = float(optsE.responsive_thr)
     plot_rois = optsE.plot_rois
     goodness_thr = optsE.goodness_thr
-    sigma_scale = optsE.sigma_scale
-    ci = optsE.ci
+    sigma_scale = float(optsE.sigma_scale)
+    ci = float(optsE.ci)
     transform_fov = optsE.transform_fov
     create_new = optsE.create_new
     response_type = optsE.response_type
@@ -284,10 +276,18 @@ def main(options):
             - Fits 2d-gaussian for RF data using default params
         '''
 #%%
-        curr_output_dir = os.path.join(responsive_dir, stats_desc)
-        if not os.path.exists(curr_output_dir):
-            os.makedirs(curr_output_dir)
-        print(curr_output_dir)
+    
+        #dtype_str = '%s-%s-%s-%s' % (optsE.traceid, optsE.trace_type, optsE.response_type, optsE.responsive_test)
+        stats_desc = util.get_stats_desc(traceid=optsE.traceid,
+                                              trace_type= optsE.trace_type,
+                                              response_type = optsE.response_type,
+                                              responsive_test = optsE.responsive_test,
+                                              responsive_thr = float(optsE.responsive_thr))
+        
+        aggregate_stats_dir = os.path.join(aggregate_dir, 'responsivity', stats_desc)
+        if not os.path.exists(aggregate_stats_dir):
+            os.makedirs(aggregate_stats_dir)
+        print(aggregate_stats_dir)
         
         emptystats = {}
         for animalid in sessiondata['animalid'].unique():
@@ -297,7 +297,7 @@ def main(options):
 
                 for fov in fovs:
                     nostats = respstats.visualize_session_stats(animalid, session, fov, 
-                                                             create_new=create_new, altdir=curr_output_dir, 
+                                                             create_new=create_new, altdir=aggregate_stats_dir, 
                                                              traceid=optsE.traceid, trace_type=optsE.trace_type,
                                                              plot_rois=optsE.plot_rois,
                                                              response_type=optsE.response_type, 
@@ -311,7 +311,7 @@ def main(options):
             if len(checklist) == 0:
                 emptystats.pop(k)
 
-        error_fpath = os.path.join(curr_output_dir, 'check_stats.json')
+        error_fpath = os.path.join(aggregate_stats_dir, 'check_stats.json')
         with open(error_fpath, 'w') as f:
             json.dump(emptystats, f, indent=4, sort_keys=True)
 
@@ -375,10 +375,10 @@ def main(options):
         
         if stats == 'gratings':
             fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr)
-            aggregate_stats_dir = os.path.join(aggregate_dir, 'orientation-tuning', fit_desc)
+            aggregate_stats_dir = os.path.join(aggregate_dir, 'orientation-tuning', '%s-%s' % (traceid, fit_desc))
         elif stats == 'rfs':
             fit_desc = fitrf.get_fit_desc(response_type=response_type)
-            aggregate_stats_dir = os.path.join(aggregate_dir, 'receptive-fields', fit_desc)
+            aggregate_stats_dir = os.path.join(aggregate_dir, 'receptive-fields', '%s-%s' % (traceid, fit_desc))
             
         if not os.path.exists(aggregate_stats_dir):
             os.makedirs(aggregate_stats_dir)

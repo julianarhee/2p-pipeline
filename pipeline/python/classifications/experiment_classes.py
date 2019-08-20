@@ -1141,16 +1141,18 @@ class Gratings(Experiment):
         This method is effecively the same as osi.get_tuning(), but without 
         having to do redundant data loading.
         '''
-        traceid_dir = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, self.name,
-                                   'traces', '%s*' % self.traceid))[0]
-        
-        fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr)
-        roi_fitdir = os.path.join(traceid_dir, 'tuning', fit_desc)
-        if not os.path.exists(roi_fitdir):
-            os.makedirs(roi_fitdir)
+        osidir, fit_desc = osi.create_osi_dir(self.animalid, self.session, self.fov, self.name, 
+                                          traceid=self.traceid, response_type=response_type, 
+                                          responsive_test=responsive_test, responsive_thr=responsive_thr, 
+                                          n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
+                                          rootdir=rootdir)
+    
             
         if create_new is False:
-            fitdf, fitparams, fitdata = osi.load_tuning_results(traceid_dir, fit_desc=fit_desc, return_iters=True)
+            fitdf, fitparams, fitdata = osi.load_tuning_results(self.animalid, self.session, self.fov,
+                                                                self.name, traceid=self.traceid, 
+                                                                fit_desc=fit_desc, return_iters=True,
+                                                                rootdir=rootdir)
             do_fits = fitdf is None
         else:
             do_fits=True
@@ -1158,10 +1160,10 @@ class Gratings(Experiment):
         if do_fits:
             print("---- doing fits ----")
             fitdf, fitparams, fitdata = self.fit_tuning(n_processes=n_processes, response_type=response_type,
-                                                                responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                                n_resamples=n_resamples, n_bootstrap_iters=n_bootstrap_iters,
-                                                                n_intervals_interp=n_intervals_interp)        
-            fitparams.update({'directory': roi_fitdir,
+                                                        responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                        n_resamples=n_resamples, n_bootstrap_iters=n_bootstrap_iters,
+                                                        n_intervals_interp=n_intervals_interp)        
+            fitparams.update({'directory': osidir,
                               'response_type': response_type,
                               'responsive_test': responsive_test,
                               'responsive_thr': responsive_thr if responsive_test is not None else None})
@@ -1174,9 +1176,9 @@ class Gratings(Experiment):
     
     def plot_roi_tuning_and_fit(self, fitdf, fitparams, fitdata):
         print("---- plotting tuning curves and fits for each roi ----")
-        roi_fitdir = fitparams['directory']
-        if not os.path.exists(os.path.join(roi_fitdir, 'roi_fits')):
-            os.makedirs(os.path.join(roi_fitdir, 'roi_fits'))
+        osidir = fitparams['directory']
+        if not os.path.exists(os.path.join(osidir, 'roi_fits')):
+            os.makedirs(os.path.join(osidir, 'roi_fits'))
         
         if fitparams['response_type'] == 'dff' and self.trace_type == 'corrected': #'dff':
             raw_traces = self.process_traces(response_type=fitparams['response_type'])
@@ -1185,12 +1187,12 @@ class Gratings(Experiment):
         
         sdf = self.get_stimuli()
         
-        fit_desc = os.path.split(roi_fitdir)[-1]
+        fit_desc = os.path.split(osidir)[-1]
         data_identifier = '|'.join([self.animalid, self.session, self.fov, self.name, self.traceid, fit_desc])
         for roi in fitdf['cell'].unique():
             fig = osi.plot_roi_tuning(roi, fitdata, sdf, raw_traces, self.data.labels, trace_type=fitparams['response_type'])
             label_figure(fig, data_identifier)
-            pl.savefig(os.path.join(roi_fitdir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
+            pl.savefig(os.path.join(osidir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
             pl.close()
     
         
