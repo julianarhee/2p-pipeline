@@ -207,12 +207,15 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
     fig.patch.set_alpha(1)
 
     ax = axes[0]
-    
     if len(exp_names) > 2:
         v = mpvenn.venn3(roi_sets, set_labels=roi_set_labels, ax=ax)
-        for pid in v.id2idx.keys():
-            v.get_patch_by_id(pid).set_alpha(0)
-    
+#        for pid in v.id2idx.keys():
+#            v.get_patch_by_id(pid).set_alpha(0)
+        for s in range(len(v.patches)):
+            if v.patches[s] is None:
+                continue
+            v.patches[s].set_alpha(0) #(s).set_alpha(0)
+            
         c=mpvenn.venn3_circles(roi_sets, ax=ax) #set_labels=roi_set_labels, ax=ax)
         for ci in range(len(c)):
             c[ci].set_edgecolor(exp_colors[roi_set_labels[ci]])
@@ -225,6 +228,8 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
 #            v.get_patch_by_id(pid).set_alpha(0)
     
         for s in range(len(v.patches)):
+            if v.patches[s] is None:
+                continue
             v.patches[s].set_alpha(0) #(s).set_alpha(0)
             
         c=mpvenn.venn2_circles(subsets=roi_sets, lw=2, ax=ax) #set_labels=roi_set_labels, ax=ax)
@@ -246,7 +251,8 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
                      hist_kws={"histtype": "step", "linewidth": 2, "alpha": 0.5,
                              'weights': weights, 'normed': 0, "color": exp_colors[exp_name]})
 
-    ax.set_xlabel('peak response\n(dF/F)', fontsize=8)
+    response_units = 'dF/F' if response_type=='dff' else 'intensity'
+    ax.set_xlabel('peak response\n(%s)' % response_units, fontsize=8)
     ax.set_ylabel('fraction of\nresponsive cells', fontsize=8)
     ax.legend()
     ax.set_xlim([min([0, ax.get_xlim()[0]]), max([3, ax.get_xlim()[1]+2])])
@@ -310,7 +316,24 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Create all session objects from scratch")
     parser.add_option('--n', action='store', dest='n_processes', default=1, help="N processes")
 
- 
+     # Responsivity params:
+    parser.add_option('-R', '--responsive-test', action='store', dest='responsive_test', default=None, 
+                      help="responsive test (default: None)")
+    parser.add_option('-f', '--responsive-thr', action='store', dest='responsive_thr', default=0.05, 
+                      help="responsive test threshold (default: p<0.05 for responsive_test=ROC)")
+#    
+#    # Tuning params:
+#    parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=100, 
+#                      help="N bootstrap iterations (default: 100)")
+#    parser.add_option('-s', '--samples', action='store', dest='n_resamples', default=60, 
+#                      help="N trials to sample w/ replacement (default: 60)")
+#    parser.add_option('-p', '--interp', action='store', dest='n_intervals_interp', default=3, 
+#                      help="N intervals to interp between tested angles (default: 3)")
+#    
+    parser.add_option('-d', '--response-type', action='store', dest='response_type', default='dff', 
+                      help="Trial response measure to use for fits (default: dff)")
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -318,37 +341,53 @@ def extract_options(options):
 
 
 #%%
+#
+#
+#def get_stats_desc(traceid='traces001', trace_type='corrected', response_type='dff',
+#                   responsive_test=None, responsive_thr=0.05):
+#
+#    if responsive_test is None:
+#        dtype_str = '-'.join([traceid, trace_type, response_type, 'all'])
+#    else:
+#        dtype_str = '-'.join([traceid, trace_type, response_type, responsive_test, 'thr-%.2f' % responsive_thr])
+#    
+#    stats_desc = 'stats-%s' % dtype_str
+#    return stats_desc
+#
+#def create_stats_dir(animalid, session, fov, traceid='traces001', 
+#                     trace_type='corrected', response_type='dff', 
+#                     responsive_test=None, responsive_thr=0.05, 
+#                     rootdir='/n/coxfs01/2p-data'):
+#
+#    # Create output dirs:    
+#    output_dir = os.path.join(rootdir, animalid, session, fov, 'summaries')
+#    if not os.path.exists(output_dir):
+#        os.makedirs(output_dir)
+#
+#    stats_desc = get_stats_desc(traceid=traceid, trace_type=trace_type,
+#                                response_type=response_type, responsive_test=responsive_test, responsive_thr=responsive_thr)
+#    
+#    statsdir = os.path.join(output_dir, stats_desc)
+#    if not os.path.exists(statsdir):
+#        os.makedirs(statsdir)
+#
+##    statsfigdir = os.path.join(statsdir, 'figures')
+##    if not os.path.exists(statsfigdir):
+##        os.makedirs(statsfigdir)
+#        
+#    return statsdir, stats_desc
+#
 
-
-def create_stats_dir(animalid, session, fov, traceid='traces001', 
-                     trace_type='corrected', response_type='dff', 
-                     responsive_test='ROC', rootdir='/n/coxfs01/2p-data'):
-
-    # Create output dirs:    
-    output_dir = os.path.join(rootdir, animalid, session, fov, 'summaries')
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    stats_desc = '-'.join([traceid, trace_type, response_type, responsive_test])
-    
-    statsdir = os.path.join(output_dir, 'stats-%s-%s-%s-%s' % (traceid, trace_type, response_type, responsive_test))
-    if not os.path.exists(statsdir):
-        os.makedirs(statsdir)
-
-    statsfigdir = os.path.join(statsdir, 'figures')
-    if not os.path.exists(statsfigdir):
-        os.makedirs(statsfigdir)
-        
-    return statsdir, stats_desc
-
-
-def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type='corrected',
+def get_session_stats(S, response_type='dff', trace_type='corrected', 
+                      responsive_test=None, responsive_thr=0.05,
                       experiment_list=None, traceid='traces001', pretty_plots=False,
                       rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
 
     # Create output dirs:  
-    statsdir, stats_desc = create_stats_dir(S.animalid, S.session, S.fov, traceid=traceid,
-                                            response_type=response_type, responsive_test=responsive_test,
+    statsdir, stats_desc = util.create_stats_dir(S.animalid, S.session, S.fov, traceid=traceid,
+                                            response_type=response_type, 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
                                             rootdir=rootdir)
 
     # Create or load stats:
@@ -385,6 +424,7 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
         for exp_name in experiment_list:
             if 'dyn' in exp_name:
                 continue
+            thr = responsive_thr if 'retino' not in exp_name else mag_ratio_thr
             
             rename=False; new_name=None;
             if int(S.session) < 2019511 and exp_name == 'rfs':
@@ -398,7 +438,7 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
                                          responsive_test=responsive_test, 
                                          pretty_plots=pretty_plots,
                                          traceid=traceid, trace_type=trace_type,
-                                         responsive_thr=mag_ratio_thr, update=False, n_processes=n_processes)
+                                         responsive_thr=thr, update=False, n_processes=n_processes)
             if estats is not None:
                 if rename:
                     print("[%s] - renaming gratings back to rfs")
@@ -417,9 +457,10 @@ def get_session_stats(S, response_type='dff', responsive_test='ROC', trace_type=
 # In[15]:
 
     
-def visualize_session_stats(animalid, session, fov, response_type='dff', responsive_test='ROC',
+def visualize_session_stats(animalid, session, fov, response_type='dff', 
+                            responsive_test=None, responsive_thr=0.05,
                             traceid='traces001', trace_type='corrected', experiment_list=None,
-                            rootdir='/n/coxfs01/2p-data', create_new=False,
+                            rootdir='/n/coxfs01/2p-data', create_new=False,plot_rois=False,
                             altdir=None, n_processes=1):
     
     
@@ -441,7 +482,7 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
     state = meta[skey]['state']
     
     if altdir is not None:
-        alternate_savedir = os.path.join(altdir, '%s' % visual_area)
+        alternate_savedir = os.path.join(altdir, '%s-sessions' % visual_area)
         if not os.path.exists(alternate_savedir):
             os.makedirs(alternate_savedir)
     else:
@@ -452,13 +493,14 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
 
     gdfs, stats_dir, stats_desc, nostats = get_session_stats(S, traceid=traceid,
                                                     response_type=response_type, trace_type=trace_type,
-                                                    responsive_test=responsive_test, 
+                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
                                                     rootdir=rootdir, create_new=create_new,
+                                                    pretty_plots=plot_rois,
                                                     experiment_list=experiment_list, n_processes=n_processes)
     
-    statsfigdir = os.path.join(stats_dir, 'figures')
-    if not os.path.exists(statsfigdir):
-        os.makedirs(statsfigdir)
+#    statsfigdir = os.path.join(stats_dir, 'figures')
+#    if not os.path.exists(statsfigdir):
+#        os.makedirs(statsfigdir)
     
     none2compare = False
     print("=============ROI SUMMARY=============")
@@ -475,17 +517,17 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
     if none2compare:
         return nostats
     
+    stats_desc = os.path.split(stats_dir)[-1]
+    data_identifier = '|'.join([S.animalid, S.session, S.fov, traceid, stats_desc]) # S.rois])
     
-    data_identifier = '|'.join([S.animalid, S.session, S.fov, traceid]) # S.rois])
-    
-    compare_rf_exps = False
+    #compare_rf_exps = False
     if 'rfs' in gdfs.keys() and 'rfs10' in gdfs.keys():
         fig = compare_rf_resolution(gdfs, animalid, session, fov, traceid=traceid)
         
         label_figure(fig, '%s_%s' % (data_identifier, stats_desc))
-        pl.savefig(os.path.join(statsfigdir, 'compare_rfs_vs_rfs10_%s.png' % stats_desc))
+        pl.savefig(os.path.join(stats_dir, 'compare_rfs_vs_rfs10_%s.png' % stats_desc))
         if alternate_savedir is not None:
-            pl.savefig(os.path.join(alternate_savedir, "%s_%s_%s_compareRFs_%s.png" % (state, visual_area, data_identifier.replace('|', '-'), stats_desc)))
+            pl.savefig(os.path.join(alternate_savedir, "compareRFs_%s_%s_%s.png" % (state, visual_area, data_identifier.replace('|', '-'))))
         pl.close()
         
         # # Visualize responses to event-based experiments:
@@ -510,10 +552,10 @@ def visualize_session_stats(animalid, session, fov, response_type='dff', respons
     fig = compare_experiments_responsivity(gdfs, exp_names=exp_names, exp_colors=exp_colors)
     
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(statsfigdir, "cell_counts_peak_w%s_%s.png" % (rf_exp_name, stats_desc)))
+    pl.savefig(os.path.join(stats_dir, "cell_counts_peak_w%s_%s.png" % (rf_exp_name, stats_desc)))
 
     if alternate_savedir is not None:
-        pl.savefig(os.path.join(alternate_savedir, "%s_%s_%s_roistats_%s.png" % (state, visual_area, data_identifier.replace('|', '-'), stats_desc)))
+        pl.savefig(os.path.join(alternate_savedir, "%s-roistats_%s_%s.png" % (visual_area, data_identifier.replace('|', '-'), state)))
     pl.close()
 
     print("--- done! ---")
@@ -528,9 +570,13 @@ def main(options):
     visualize_session_stats(opts.animalid, opts.session, opts.fov,
                             traceid=opts.traceid, trace_type=opts.trace_type,
                             rootdir=opts.rootdir, create_new=opts.create_new,
-                            altdir=opts.altdir, n_processes=opts.n_processes)
-    
-# In[51]:
+                            altdir=opts.altdir, n_processes=opts.n_processes,
+                            response_type=opts.response_type, 
+                            responsive_test=opts.responsive_test,
+                            responsive_thr=opts.responsive_thr
+                            )
+
+    # In[51]:
 
 if __name__ == '__main__':
     main(sys.argv[1:])
