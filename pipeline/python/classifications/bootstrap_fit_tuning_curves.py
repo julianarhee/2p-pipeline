@@ -180,7 +180,7 @@ def load_tuning_results(traceid_dir, fit_desc='', return_iters=True):
         with open(params_info_path, 'r') as f:
             fitparams = json.load(f)
     else:
-        print "NO FITS FOUND."
+        print "NO FITS FOUND: %s" % fit_desc
         
     if return_iters:
         if os.path.exists(fit_data_path):
@@ -211,8 +211,12 @@ def save_tuning_results(fitdf, fitparams, fitdata):
     return roi_fitdir
 
 
-def get_fit_desc(response_type='dff', responsive_test='ROC', responsive_thr=0.05):
-    fit_desc = 'bootstrap-fit-%s_responsive-%s-thr%.2f' % (response_type, responsive_test, responsive_thr)
+def get_fit_desc(response_type='dff', responsive_test=None, responsive_thr=0.05):
+    if responsive_test is None:
+        fit_desc = 'bootstrap-fit-%s_all-cells' % (response_type) #, responsive_test, responsive_thr)
+    else:
+        fit_desc = 'bootstrap-fit-%s_responsive-%s-thr%.2f' % (response_type, responsive_test, responsive_thr)
+
     return fit_desc
 
 #%%
@@ -1281,21 +1285,22 @@ def evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=0.66,
     n_rois_fit = len(fitdf['cell'].unique())
     print("%i out of %i fit cells pass goodness-thr %.2f" % (n_rois_pass, n_rois_fit, goodness_thr))
 
-    print("plotting some metrics...")
-    # Plot pairwise comparisons of metrics:
-    fig = compare_all_metrics_for_good_fits(fitdf, good_fits=goodfits)
-    label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(evaldir, 'pairplot-all-metrics_goodness-thr%.2f.png' % goodness_thr))
-    pl.close()
-    
-    #% Plot tuning curves for all cells with good fits:
-    fig = plot_tuning_for_good_fits(fitdata, fitparams, good_fits=goodfits, plot_polar=True)
-    label_figure(fig, data_identifier)
-    fig.suptitle("Cells with GoF > %.2f" % goodness_thr)
-    
-    figname = 'polar-tuning_goodness-of-fit%.2f_%irois' % (goodness_thr, len(goodfits))
-    pl.savefig(os.path.join(evaldir, '%s.png' % figname))
-    pl.close()
+    if do_evaluation:
+        print("plotting some metrics...")
+        # Plot pairwise comparisons of metrics:
+        fig = compare_all_metrics_for_good_fits(fitdf, good_fits=goodfits)
+        label_figure(fig, data_identifier)
+        pl.savefig(os.path.join(evaldir, 'pairplot-all-metrics_goodness-thr%.2f.png' % goodness_thr))
+        pl.close()
+        
+        #% Plot tuning curves for all cells with good fits:
+        fig = plot_tuning_for_good_fits(fitdata, fitparams, good_fits=goodfits, plot_polar=True)
+        label_figure(fig, data_identifier)
+        fig.suptitle("Cells with GoF > %.2f" % goodness_thr)
+        
+        figname = 'polar-tuning_goodness-of-fit%.2f_%irois' % (goodness_thr, len(goodfits))
+        pl.savefig(os.path.join(evaldir, '%s.png' % figname))
+        pl.close()
     
     return fitdf, goodfits
 
