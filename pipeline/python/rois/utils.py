@@ -16,6 +16,7 @@ import pprint
 import time
 import traceback
 import re
+import glob
 from skimage import exposure
 
 import cv2
@@ -28,6 +29,35 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 #%%
+
+def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    
+    if run_type is not None:
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
+    else:
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+    with open(a_traceid_dict, 'r') as f:
+        tracedict = json.load(f)
+    
+    tid = tracedict[traceid]
+    roiid = tid['PARAMS']['roi_id']
+    
+    return roiid
+
+def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
+    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
+    mfile = h5py.File(mask_fpath, 'r')
+
+    # Load and reshape masks
+    masks = mfile[mfile.keys()[0]]['masks']['Slice01'][:].T
+    #print(masks.shape)
+    mfile[mfile.keys()[0]].keys()
+
+    zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:].T
+    zimg.shape
+    
+    return masks, zimg
+
 
 
 def get_roi_contours(roi_masks, roi_axis=0):
