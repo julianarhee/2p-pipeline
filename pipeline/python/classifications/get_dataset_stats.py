@@ -255,7 +255,7 @@ def main(options):
                                           trace_type= optsE.trace_type,
                                           response_type = optsE.response_type,
                                           responsive_test = optsE.responsive_test,
-                                          responsive_thr = optsE.responsive_thr)
+                                          responsive_thr = float(optsE.responsive_thr))
     
     #%%
     stats = optsE.stats
@@ -266,7 +266,7 @@ def main(options):
     n_resamples = optsE.n_resamples
     n_intervals_interp = optsE.n_intervals_interp,
     responsive_test = optsE.responsive_test
-    responsive_thr = optsE.responsive_thr
+    responsive_thr = float(optsE.responsive_thr)
     plot_rois = optsE.plot_rois
     goodness_thr = optsE.goodness_thr
     sigma_scale = optsE.sigma_scale
@@ -302,7 +302,7 @@ def main(options):
                                                              plot_rois=optsE.plot_rois,
                                                              response_type=optsE.response_type, 
                                                              responsive_test=optsE.responsive_test,
-                                                             responsive_thr=optsE.responsive_thr)
+                                                             responsive_thr=float(optsE.responsive_thr))
                     
                     dset_key = '_'.join([animalid, session, fov])
                     emptystats[dset_key] = nostats
