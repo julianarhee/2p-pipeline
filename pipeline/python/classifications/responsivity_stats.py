@@ -317,11 +317,17 @@ def extract_options(options):
     parser.add_option('--n', action='store', dest='n_processes', default=1, help="N processes")
 
      # Responsivity params:
-    parser.add_option('-R', '--responsive-test', action='store', dest='responsive_test', default=None, 
-                      help="responsive test (default: None)")
+    choices_resptest = ('ROC','nstds', None)
+    default_resptest = None
+    
+    parser.add_option('-R', '--response-test', type='choice', choices=choices_resptest,
+                      dest='responsive_test', default=default_resptest, 
+                      help="Stat to get. Valid choices are %s. Default: %s" % (choices_resptest, str(default_resptest)))
+    
     parser.add_option('-f', '--responsive-thr', action='store', dest='responsive_thr', default=0.05, 
                       help="responsive test threshold (default: p<0.05 for responsive_test=ROC)")
-#    
+    parser.add_option('-s', '--n-stds', action='store', dest='n_stds', default=2.5, 
+                      help="n stds above/below baseline to count frames, if test=nstds (default: 2.5)")    
 #    # Tuning params:
 #    parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=100, 
 #                      help="N bootstrap iterations (default: 100)")
@@ -379,7 +385,7 @@ def extract_options(options):
 #
 
 def get_session_stats(S, response_type='dff', trace_type='corrected', 
-                      responsive_test=None, responsive_thr=0.05,
+                      responsive_test=None, responsive_thr=0.05, n_stds=2.5,
                       experiment_list=None, traceid='traces001', pretty_plots=False,
                       rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
 
@@ -388,6 +394,7 @@ def get_session_stats(S, response_type='dff', trace_type='corrected',
                                             response_type=response_type, 
                                             responsive_test=responsive_test,
                                             responsive_thr=responsive_thr,
+                                            n_stds=n_stds,
                                             rootdir=rootdir)
 
     # Create or load stats:
@@ -436,9 +443,11 @@ def get_session_stats(S, response_type='dff', trace_type='corrected',
             print("[%s] Loading roi lists..." % exp_name)
             estats, nostats = S.get_grouped_stats(exp_name, response_type=response_type,
                                          responsive_test=responsive_test, 
+                                         responsive_thr=responsive_thr,
+                                         n_stds=n_stds,
                                          pretty_plots=pretty_plots,
                                          traceid=traceid, trace_type=trace_type,
-                                         responsive_thr=thr, update=False, n_processes=n_processes)
+                                         update=False, n_processes=n_processes)
             if estats is not None:
                 if rename:
                     print("[%s] - renaming gratings back to rfs")
@@ -458,7 +467,7 @@ def get_session_stats(S, response_type='dff', trace_type='corrected',
 
     
 def visualize_session_stats(animalid, session, fov, response_type='dff', 
-                            responsive_test=None, responsive_thr=0.05,
+                            responsive_test=None, responsive_thr=0.05, n_stds=2.5,
                             traceid='traces001', trace_type='corrected', experiment_list=None,
                             rootdir='/n/coxfs01/2p-data', create_new=False,plot_rois=False,
                             altdir=None, n_processes=1):
@@ -493,7 +502,8 @@ def visualize_session_stats(animalid, session, fov, response_type='dff',
 
     gdfs, stats_dir, stats_desc, nostats = get_session_stats(S, traceid=traceid,
                                                     response_type=response_type, trace_type=trace_type,
-                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                    responsive_test=responsive_test, responsive_thr=responsive_thr, 
+                                                    n_stds=n_stds,
                                                     rootdir=rootdir, create_new=create_new,
                                                     pretty_plots=plot_rois,
                                                     experiment_list=experiment_list, n_processes=n_processes)
@@ -573,7 +583,8 @@ def main(options):
                             altdir=opts.altdir, n_processes=opts.n_processes,
                             response_type=opts.response_type, 
                             responsive_test=opts.responsive_test,
-                            responsive_thr=opts.responsive_thr
+                            responsive_thr=opts.responsive_thr,
+                            n_stds=opts.n_stds
                             )
 
     # In[51]:

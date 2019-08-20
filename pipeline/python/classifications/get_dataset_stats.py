@@ -66,7 +66,7 @@ def extract_options(options):
                       help="session to exclude (default includes 20190514, 20190530)")
     parser.add_option('-v', '--area', action='append', dest='visual_areas', default=[], nargs=1,
                       help="visual areas (default = V1, Lm, Li, if not provided)")
-    parser.add_option('-s', '--state', action='store', dest='state', default='awake', 
+    parser.add_option('-a', '--state', action='store', dest='state', default='awake', 
                       help="Behavior state of rats (default: awake)")
     
     # Trace type parameters
@@ -74,12 +74,19 @@ def extract_options(options):
                       help="trace type (default: corrected, for traces and calculating stats)")
     parser.add_option('-m', '--response-type', action='store', dest='response_type', default='dff', 
                       help="Metric to use for comparing responses per trial (default: dff, stat to compare)")
-    parser.add_option('--response-test', action='store', dest='responsive_test', default=None, 
-                      help="Responsivity test (default: fit all; options: ROC)")
+
+
+    choices_resptest = ('ROC','nstds', None)
+    default_resptest = None
+    
+    parser.add_option('--response-test', type='choice', choices=choices_resptest,
+                      dest='responsive_test', default=default_resptest, 
+                      help="Stat to get. Valid choices are %s. Default: %s" % (choices_resptest, str(default_resptest)))
     parser.add_option('--response-thr', action='store', dest='responsive_thr', default=0.05, 
                       help="Responsivity threshold (default: 0.05)")
-        
-
+    parser.add_option('-s', '--n-stds', action='store', dest='n_stds', default=2.5, 
+                      help="n stds above/below baseline to count frames, if test=nstds (default: 2.5)")    
+    
     # Processing parameters
     parser.add_option('--new', action='store_true', dest='create_new', default=False, 
                       help="Create all session objects from scratch")
@@ -92,7 +99,7 @@ def extract_options(options):
     # Bootstrap parameters
     parser.add_option('-b', '--n-boot', action='store', dest='n_bootstrap_iters', type='int', default=1000, \
                       help="N bootstrap iterations for evaluating RF param fits (default: 1000)")
-    parser.add_option('-i', '--n-resamples', action='store', dest='n_resamples', type='int', default=20, \
+    parser.add_option('-k', '--n-resamples', action='store', dest='n_resamples', type='int', default=20, \
                       help="N trials to sample with replacement (default: 20)")
     
     # Gratings-specific parameters
@@ -259,13 +266,15 @@ def main(options):
     if responsive_test == 'None':
         responsive_test = None
     responsive_thr = float(optsE.responsive_thr)
+    n_stds = float(optsE.n_stds)
     plot_rois = optsE.plot_rois
-    goodness_thr = optsE.goodness_thr
+    goodness_thr = float(optsE.goodness_thr)
     sigma_scale = float(optsE.sigma_scale)
     ci = float(optsE.ci)
     transform_fov = optsE.transform_fov
     create_new = optsE.create_new
     response_type = optsE.response_type
+    trace_type = optsE.trace_type
     
     if stats=='responsivity':
         '''
@@ -279,10 +288,11 @@ def main(options):
     
         #dtype_str = '%s-%s-%s-%s' % (optsE.traceid, optsE.trace_type, optsE.response_type, optsE.responsive_test)
         stats_desc = util.get_stats_desc(traceid=optsE.traceid,
-                                              trace_type= optsE.trace_type,
-                                              response_type = optsE.response_type,
-                                              responsive_test = optsE.responsive_test,
-                                              responsive_thr = float(optsE.responsive_thr))
+                                              trace_type= trace_type,
+                                              response_type = response_type,
+                                              responsive_test = responsive_test,
+                                              responsive_thr = responsive_thr,
+                                              n_stds = n_stds)
         
         aggregate_stats_dir = os.path.join(aggregate_dir, 'responsivity', stats_desc)
         if not os.path.exists(aggregate_stats_dir):
@@ -298,11 +308,12 @@ def main(options):
                 for fov in fovs:
                     nostats = respstats.visualize_session_stats(animalid, session, fov, 
                                                              create_new=create_new, altdir=aggregate_stats_dir, 
-                                                             traceid=optsE.traceid, trace_type=optsE.trace_type,
-                                                             plot_rois=optsE.plot_rois,
-                                                             response_type=optsE.response_type, 
-                                                             responsive_test=optsE.responsive_test,
-                                                             responsive_thr=float(optsE.responsive_thr))
+                                                             traceid=traceid, trace_type=trace_type,
+                                                             plot_rois=plot_rois,
+                                                             response_type=response_type, 
+                                                             responsive_test=responsive_test,
+                                                             responsive_thr=responsive_thr,
+                                                             n_stds = n_stds)
                     
                     dset_key = '_'.join([animalid, session, fov])
                     emptystats[dset_key] = nostats
@@ -354,6 +365,7 @@ def main(options):
                         
                         fitdf, fitparams, fitdata = exp.get_tuning(create_new=create_new, n_processes=n_processes,
                                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                                   n_stds=n_stds,
                                                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
                                                                    n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
                         fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata, goodness_thr=goodness_thr)
@@ -362,8 +374,9 @@ def main(options):
                         del fitparams
                         del fitdata
                         del exp
+                        
                     elif stats == 'rfs':
-                        fit_thr = optsE.rf_fit_thr
+                        fit_thr = float(optsE.rf_fit_thr)
                         deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
                                                   traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                                                   n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
@@ -374,7 +387,11 @@ def main(options):
                         
         
         if stats == 'gratings':
-            fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr)
+            #fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr, n_stds)
+            fit_desc = osi.get_fit_desc(response_type=response_type, responsive_test=responsive_test, n_stds=n_stds,
+                                    responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
+                                    n_resamples=n_resamples)
+
             aggregate_stats_dir = os.path.join(aggregate_dir, 'orientation-tuning', '%s-%s' % (traceid, fit_desc))
         elif stats == 'rfs':
             fit_desc = fitrf.get_fit_desc(response_type=response_type)

@@ -216,24 +216,26 @@ def save_tuning_results(fitdf, fitparams, fitdata):
     return osidir
 
 
-def get_fit_desc(response_type='dff', responsive_test=None, responsive_thr=0.05,
+def get_fit_desc(response_type='dff', responsive_test=None, responsive_thr=0.05, n_stds=2.5,
                  n_bootstrap_iters=1000, n_resamples=20):
     if responsive_test is None:
         fit_desc = 'fit-%s_all-cells_boot-%i-resample-%i' % (response_type, n_bootstrap_iters, n_resamples) #, responsive_test, responsive_thr)
+    elif responsive_test == 'nstds':
+        fit_desc = 'fit-%s_responsive-%s-%.2f-thr%.2f_boot-%i-resample-%i' % (response_type, responsive_test, n_stds, responsive_thr, n_bootstrap_iters, n_resamples)
     else:
         fit_desc = 'fit-%s_responsive-%s-thr%.2f_boot-%i-resample-%i' % (response_type, responsive_test, responsive_thr, n_bootstrap_iters, n_resamples)
 
     return fit_desc
 
 def create_osi_dir(animalid, session, fov, run_name='gratings', 
-                   traceid='traces001', response_type='dff', 
+                   traceid='traces001', response_type='dff', n_stds=2.5,
                    responsive_test=None, responsive_thr=0.05,
                    n_bootstrap_iters=1000, n_resamples=20,
                    rootdir='/n/coxfs01/2p-data', traceid_dir=None):
         
 
     # Get RF dir for current fit type
-    fit_desc = get_fit_desc(response_type=response_type, responsive_test=responsive_test, 
+    fit_desc = get_fit_desc(response_type=response_type, responsive_test=responsive_test, n_stds=n_stds,
                             responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
                             n_resamples=n_resamples)
 
@@ -260,6 +262,7 @@ def create_osi_dir(animalid, session, fov, run_name='gratings',
 import multiprocessing as mp
 import itertools
 
+
 def bootstrap_roi_responses(roi_df, sdf, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=60, 
                             n_intervals_interp=3):
@@ -281,6 +284,108 @@ def bootstrap_roi_responses(roi_df, sdf, response_type='dff',
 
     # Get all trials of current set of cfgs:
     trialdf = roi_df[roi_df['config'].isin(curr_cfgs)]
+    rdf = trialdf[['config', 'trial', response_type]]
+    grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
+    responses_df = pd.concat(grouplist, axis=1)
+
+    # Bootstrap distN of responses (rand w replacement):
+    bootdf = [responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)]
+    bootstrapped_df = pd.concat(bootdf, axis=1)
+    bootstrapped_df.index = [sdf['ori'][c] for c in bootstrapped_df.index]
+
+    # Find init params for tuning fits and set fit constraints:
+    init_params = get_init_params(bootstrapped_df[0])
+    r_pref, r_null, theta_pref, sigma, r_offset = init_params
+    init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
+
+    # Interpolate values for finer steps:
+    asi=[];dsi=[];r2=[]; preferred_theta=[];
+    #circvar_asi=[]; circvar_dsi=[];
+    for niter in bootstrapped_df.columns:
+        oris_interp = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
+        resps_interp = interp_values(bootstrapped_df[niter], n_intervals=n_intervals_interp, wrap_value=bootstrapped_df[niter][0])
+
+
+        init_params = get_init_params(bootstrapped_df[niter])
+        r_pref, r_null, theta_pref, sigma, r_offset = init_params
+        init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
+
+        success = True
+        try:
+            rfit = fit_direction_selectivity(oris_interp, resps_interp, init_params, bounds=init_bounds)
+            asi_t = get_ASI(rfit['fit_y'][0:], oris_interp[0:])
+            dsi_t = get_DSI(rfit['fit_y'][0:], oris_interp[0:])
+            #circvar_asi_t, circvar_dsi_t = get_circular_variance(rfit['fit_y'][0:], oris_interp[0:])
+
+            asi.append(asi_t)
+            dsi.append(dsi_t)
+            preferred_theta.append(rfit['popt'][2])
+            #circvar_asi.append(circvar_asi_t)
+            #circvar_dsi.append(circvar_dsi_t)
+            r2.append(rfit['r2'])
+
+            rfit['x'] = oris_interp
+            rfit['y'] = resps_interp
+            rfit['n_intervals_interp'] = n_intervals_interp
+
+            bootstrapfits.append(rfit)
+
+        except Exception as e:
+            #print(e)
+            success = False
+            #print("... skipping %i" % roi)
+            break
+        
+    roi_fitdf = pd.DataFrame({'ASI': asi,
+                              'DSI': dsi,
+                              'r2': r2,
+                              #'ASI_cv': circvar_asi,
+                              #'DSI_cv': circvar_dsi,
+                              'preferred_theta': preferred_theta,
+                              'cell': [roi for _ in np.arange(0, len(asi))]})
+
+    
+    origdata = {'responses': responses_df, 
+                 'stimulus_configs': curr_cfgs,
+                 'init_params': init_params}
+
+
+    return {'fitdata': {'results_by_iter': bootstrapfits, 
+                        'original_data': origdata},
+            'fitdf': roi_fitdf}
+
+
+def bootstrap_roi_responses_allconfigs(roi_df, sdf, response_type='dff',
+                            n_bootstrap_iters=1000, n_resamples=60, 
+                            n_intervals_interp=3):
+    bootstrapfits = []
+    roi = roi_df.index[0]
+    
+    constant_params = ['aspect', 'luminance', 'position', 'stimtype', 'direction', 'xpos', 'ypos']
+    params = [c for c in sdf.columns if c not in constant_params]
+    stimdf = sdf[params]
+    tested_oris = sdf['ori'].unique()
+    
+    non_ori_params = sorted([s for s in params if s != 'ori'], key=natural_keys)
+    altparams = dict((param, stimdf[param].unique().astype(float)) for param in sorted(non_ori_params, key=natural_keys))
+    all_combinations = [tuple(round(i, 1) for i in tup) for tup in list(itertools.product(*[altparams[k] \
+                        for k in sorted(altparams, key=natural_keys)])) ] # ORDER:  sf, size, speed
+    
+    
+#    # Find best config:
+#    best_cfg = roi_df.groupby(['config']).mean()[response_type].idxmax()
+#    best_cfg_params = stimdf.loc[best_cfg][[p for p in params if p!='ori']]
+#    curr_cfgs = sorted([c for c in stimdf.index.tolist() \
+#                        if all(stimdf.loc[c][[p for p in params if p!='ori']] == best_cfg_params)],\
+#                        key = lambda x: stimdf['ori'][x])
+
+    # Get all config sets:
+    configsets= dict((tuple(round(ki, 1) for ki in k), sorted(cfgs.index.tolist(), key=lambda x: stimdf['ori'][x]) )\
+                     for k, cfgs in stimdf.groupby(['sf', 'size', 'speed']) )
+
+    
+    # Get all trials of current set of cfgs:
+    trialdf = roi_df[roi_df['config'].isin(curr_cfgs)][['config', 'trial', response_type]]
     rdf = trialdf[['config', 'trial', response_type]]
     grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
     responses_df = pd.concat(grouplist, axis=1)
@@ -398,10 +503,14 @@ def do_bootstrap_fits(gdf, sdf, roi_list=None,
     return fitdf, fitparams, fitdata
 
 
+    
+#%%
+
+
 def get_tuning(animalid, session, fov, run_name, return_iters=False,
                traceid='traces001', roi_list=None, response_type='dff',
                n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
-               make_plots=True, responsive_test='ROC', responsive_thr=0.05,
+               make_plots=True, responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1):
 
     # Do fits:
@@ -409,7 +518,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
 
     osidir, fit_desc = create_osi_dir(animalid, session, fov, run_name, traceid=traceid,
-                                      response_type=response_type, responsive_test=responsive_test, 
+                                      response_type=response_type, responsive_test=responsive_test, n_stds=n_stds,
                                       responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
                                       n_resamples=n_resamples, rootdir=rootdir)
     
@@ -423,7 +532,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
         try:
             fitdf, fitparams, fitdata = load_tuning_results(traceid_dir=traceid_dir,
                                                         fit_desc=fit_desc, return_iters=True)
-            assert fitdf is not None, "Unable to load tuning: %s" % fit_Desc
+            assert fitdf is not None, "Unable to load tuning: %s" % fit_desc
         except Exception as e:
             traceback.print_exc()
             do_fits = True
@@ -451,7 +560,8 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
         fitparams.update({'directory': osidir,
                           'response_type': response_type,
                           'responsive_test': responsive_test,
-                          'responsive_thr': responsive_thr if responsive_test is not None else None})
+                          'responsive_thr': responsive_thr if responsive_test is not None else None,
+                          'n_stds': n_stds if responsive_test=='nstds' else None})
     
         save_tuning_results(fitdf, fitparams, fitdata)
             
@@ -473,7 +583,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
 def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_type='dff', 
                           n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
-                          responsive_test='ROC', responsive_thr=0.05, 
+                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                           make_plots=True, plot_metrics=True, return_iters=True,
                           create_new=False, n_processes=1, rootdir='/n/coxfs01/2p-data'):
     
@@ -487,7 +597,7 @@ def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_typ
     # Select only responsive cells:
     if responsive_test is not None:
         roi_list = util.get_responsive_cells(animalid, session, fov, run=run_name, traceid=traceid, 
-                                        responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                         rootdir=rootdir)
     else:
         roi_list = None
@@ -497,7 +607,7 @@ def get_tuning_for_fov(animalid, session, fov, traceid='traces001', response_typ
                                            traceid=traceid, roi_list=roi_list, response_type=response_type,
                                            n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                            n_intervals_interp=n_intervals_interp, make_plots=make_plots,
-                                           responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                           responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                            create_new=create_new, rootdir=rootdir, n_processes=n_processes)
 
     print("... plotting comparison metrics ...")
@@ -987,6 +1097,7 @@ def get_params_all_iters(fiters):
                         'sigma': [fiter['popt'][3] for fiter in fiters],
                         'r_offset': [fiter['popt'][4] for fiter in fiters]
                         })
+    fparams['theta_pref'] = fparams['theta_pref'] % 360.
     
     return fparams
 
@@ -1000,7 +1111,7 @@ def get_average_params_over_iters(fiters):
     r_pref = fparams.mean()['r_pref']
     r_null = fparams.mean()['r_null']
 
-    theta_r = np.array([np.deg2rad(t) for t in fparams['theta_pref'].values])
+    theta_r = np.array([np.deg2rad(t) for t in [fparams['theta_pref'].values % 360.]])
     theta_r.min()
     theta_r.max()
     np.rad2deg(spstats.circmean(theta_r))
@@ -1013,6 +1124,18 @@ def get_average_params_over_iters(fiters):
     
     return popt
 
+def get_average_tuning_over_iters(fitdf):
+    means = {}
+    roi = int(fitdf['cell'].unique()[0])
+    for param in fitdf.columns():
+        if 'theta' in param:
+            meanval = spstats.circmean(np.deg2rad(fitdf[param] % 360.))
+        else:
+            meanval = fitdf[param].mean()
+        
+        means[param] = meanval
+    
+    return pd.DataFrame(means, index=[roi])
 
 #%%  Look at residuals
 
@@ -1380,15 +1503,22 @@ def extract_options(options):
                       help="traceid (default: traces001)")
     
     # Responsivity params:
-    parser.add_option('-R', '--responsive-test', action='store', dest='responsive_test', default='ROC', 
-                      help="responsive test (default: ROC)")
+     # Responsivity params:
+    choices_resptest = ('ROC','nstds', None)
+    default_resptest = None
+    
+    parser.add_option('-R', '--response-test', type='choice', choices=choices_resptest,
+                      dest='responsive_test', default=default_resptest, 
+                      help="Stat to get. Valid choices are %s. Default: %s" % (choices_resptest, str(default_resptest)))
     parser.add_option('-f', '--responsive-thr', action='store', dest='responsive_thr', default=0.05, 
                       help="responsive test threshold (default: p<0.05 for responsive_test=ROC)")
+    parser.add_option('-s', '--n-stds', action='store', dest='n_stds', default=2.5, 
+                      help="n stds above/below baseline to count frames, if test=nstds (default: 2.5)")    
     
     # Tuning params:
     parser.add_option('-b', '--iter', action='store', dest='n_bootstrap_iters', default=1000, 
                       help="N bootstrap iterations (default: 1000)")
-    parser.add_option('-s', '--samples', action='store', dest='n_resamples', default=20, 
+    parser.add_option('-k', '--samples', action='store', dest='n_resamples', default=20, 
                       help="N trials to sample w/ replacement (default: 20)")
     parser.add_option('-p', '--interp', action='store', dest='n_intervals_interp', default=3, 
                       help="N intervals to interp between tested angles (default: 3)")
@@ -1435,7 +1565,7 @@ def extract_options(options):
 
 
 def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces001', response_type='dff',
-                                         responsive_test='ROC', responsive_thr=0.05,
+                                         responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                                          n_bootstrap_iters=1000, n_resamples=20,
                                          n_intervals_interp=3, goodness_thr = 0.66,
                                          n_processes=1, create_new=False, rootdir='/n/coxfs01/2p-data'):
@@ -1445,7 +1575,7 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                              n_bootstrap_iters=int(n_bootstrap_iters), 
                                              n_resamples = int(n_resamples),
                                              n_intervals_interp=int(n_intervals_interp),
-                                             responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                             responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                              create_new=create_new, n_processes=n_processes, rootdir=rootdir)
     
     fit_desc = os.path.split(fitparams['directory'])[-1]
@@ -1472,7 +1602,7 @@ def main(options):
                                              n_bootstrap_iters=int(opts.n_bootstrap_iters), 
                                              n_resamples=int(opts.n_resamples),
                                              n_intervals_interp=int(opts.n_intervals_interp),
-                                             responsive_test=opts.responsive_test, responsive_thr=float(opts.responsive_thr),
+                                             responsive_test=opts.responsive_test, responsive_thr=float(opts.responsive_thr), n_stds=float(opts.n_stds),
                                              create_new=opts.create_new, n_processes=int(opts.n_processes), rootdir=opts.rootdir)
     print("***** DONE *****")
     
