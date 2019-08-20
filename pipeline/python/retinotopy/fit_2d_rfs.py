@@ -37,7 +37,8 @@ from scipy.interpolate import splrep, sproot, splev, interp1d
 
 from pipeline.python.retinotopy import utils as rutils
 from pipeline.python.classifications import test_responsivity as resp
-
+from pipeline.python.rois.utils import load_roi_masks, get_roiid_from_traceid
+from pipeline.python.retinotopy import convert_coords as coor
 from matplotlib.pyplot import cm
 import statsmodels as sm
 from pipeline.python.retinotopy import target_visual_field as targ
@@ -1205,8 +1206,8 @@ def extract_options(options):
     
     parser.add_option('-T', '--thr', action='store', dest='response_thr', default=None, \
                       help="Min snr or zscore value for cells to fit (default: None (fits all))")
-    parser.add_option('-M', '--resp', action='store', dest='response_type', default='zscore', \
-                      help="Response metric to use for creating RF maps (default: zscore)")
+    parser.add_option('-M', '--resp', action='store', dest='response_type', default='dff', \
+                      help="Response metric to use for creating RF maps (default: dff)")
     
     (options, args) = parser.parse_args(options)
 
@@ -1238,16 +1239,15 @@ def get_fit_desc(response_type='dff'):
     fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
     return fit_desc
 
-        
-def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=False,
-                            trace_type='corrected', response_type='dff', make_pretty_plots=False,
-                            visual_area='', select_rois=False, segment=False,
-                            response_thr=None, rootdir='/n/coxfs01/2p-data'):
 
-    rows = 'ypos'
-    cols = 'xpos'
+def create_rf_dir(animalid, session, fov, run_name, 
+               traceid='traces001', response_type='dff', fit_thr=0.5,
+               rootdir='/n/coxfs01/2p-data'):
     
-    
+
+    # Get RF dir for current fit type
+    fit_desc = get_fit_desc(response_type=response_type)
+
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     traceid_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
     if len(traceid_dirs) > 1:
@@ -1260,21 +1260,41 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         traceid_dir = traceid_dirs[0]
     #traceid = os.path.split(traceid_dir)[-1]
          
-    data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
-    dset = np.load(data_fpath)
-    dset.keys()
+    rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name,
+                                   'traces', '%s*' % traceid, 'receptive_fields', fit_desc))[0]
+
+    return rfdir, fit_desc
+
+
+        
+def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=False,
+                            trace_type='corrected', response_type='dff', make_pretty_plots=False,
+                            visual_area='', select_rois=False, segment=False,
+                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
+
+    rows = 'ypos'
+    cols = 'xpos'
+
     
     # Set output dirs
     # -----------------------------------------------------------------------------
     # rfdir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
     # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) #, response_thr) #, cutoff_type, set_to_min_str)
-    fit_desc = get_fit_desc(response_type=response_type)
-    rfdir = os.path.join(traceid_dir, 'receptive_fields', fit_desc)
+    rfdir, fit_desc = create_rf_dir(animalid, session, fov, run, traceid=traceid,
+                                    response_type=response_type, fit_thr=fit_thr)
+
+    traceid_dir = rfdir.split('/receptive_fields/')[0]
+    #print(traceid_dir)
+    data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
+    dset = np.load(data_fpath)
+    dset.keys()
+    
+    
     if segment:
         rfdir = os.path.join(rfdir, visual_area)
     if not os.path.exists(rfdir):
         os.makedirs(rfdir)
-    print "Saving output to:", rfdir
+    #print "Saving output to:", rfdir
     
     #%
     # Create subdir for saving figs/results based on fit params
@@ -1399,7 +1419,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         try:
             screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
         
-            fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
             fig = plot_rfs_to_screen(fitdf, sdf, screen, fit_roi_list=fit_roi_list)
             label_figure(fig, data_identifier)
             #%
@@ -1426,19 +1445,85 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             traceback.print_exc()
             print("Error finding target coords for FOV.")
             
-    #%%
-    row_vals = results['row_vals']
-    col_vals = results['col_vals']
-    fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
-    fit_thr = 0.5
-    fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-    print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
-#    
 
-        
-    #%%
+    fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
+    #fit_thr = 0.5
+    #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+    #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
+#    
+    rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
+    masks, zimg = load_roi_masks(animalid, session, fov, rois=rois, rootdir=rootdir)
+    fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir)
   
-    return results
+    return results, fovinfo
+
+#%%
+
+
+
+
+def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
+                       plot_spatial=False, transform_fov=True):    
+    '''
+    Get FOV info relating cortical position to RF position of all cells.
+    Info is saved in: rfdir/fov_info.pkl
+    
+    Returns:
+        fovinfo (dict)
+            'positions': 
+                dataframe of azimuth (xpos) and elevation (ypos) for cell's 
+                cortical position and cell's RF position (i.e., 'posdf')
+            'zimg': 
+                (array) z-projected image 
+            'roi_contours': 
+                (list) roi contours created from classifications.convert_coords.contours_from_masks()
+            'xlim' and 'ylim': 
+                (float) FOV limits (in pixels or um) for azimuth and elevation axes
+    '''
+    
+    get_fovinfo =False
+    fovinfo_fpath = os.path.join(rfdir, 'fov_info.pkl')
+    if os.path.exists(fovinfo_fpath):
+        print("... loading fov info")
+        try:
+            with open(fovinfo_fpath, 'rb') as f:
+                fovinfo = pkl.load(f)
+            assert 'zimg' in fovinfo.keys(), "Redoing rf-to-fov conversion"
+        except Exception as e:
+            get_fovinfo = True
+    else:
+        get_fovinfo = True
+            
+    if get_fovinfo:
+        print("... getting fov info")
+        # Get masks
+        npix_y, npix_x, nrois_total = masks.shape
+        
+        # Create contours from maskL
+        roi_contours = coor.contours_from_masks(masks)
+        
+        # Convert to brain coords
+        fov_x, rf_x, xlim, fov_y, rf_y, ylim = coor.get_roi_position_um(rfdf, roi_contours, 
+                                                                         rf_exp_name=rfname,
+                                                                         convert_um=True,
+                                                                         npix_y=npix_y,
+                                                                         npix_x=npix_x)
+        posdf = pd.DataFrame({'xpos_fov': fov_y,
+                               'xpos_rf': rf_x,
+                               'ypos_fov': fov_x,
+                               'ypos_rf': rf_y}, index=rfdf.index)
+    
+        # Save fov info
+        fovinfo = {'zimg': zimg,
+                    'roi_contours': roi_contours,
+                    'positions': posdf,
+                    'xlim': xlim,
+                    'ylim': ylim}
+
+        with open(fovinfo_fpath, 'wb') as f:
+            pkl.dump(fovinfo, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return fovinfo   
 
 #%%%
 def main(options):
@@ -1464,6 +1549,9 @@ def main(options):
     results = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
                                 response_type=response_type, response_thr=response_thr)
+
+
+    #%
 
     print "((( RFs done! )))))"
         
