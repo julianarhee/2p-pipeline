@@ -377,7 +377,11 @@ def do_bootstrap_fits(gdf, sdf, roi_list=None,
     
 
     tested_values = sdf['ori'].unique()
-    interp_values = results[0]['fitdata']['results_by_iter'][0]['x']
+    print len(results)
+    doables = [r for r in results if len(r['fitdata']['results_by_iter']) > 0]
+    print "Doable fits: %i" % len(doables)
+    #interp_values = results[0]['fitdata']['results_by_iter'][0]['x']
+    interp_values = doables[0]['fitdata']['results_by_iter'][0]['x']
 
     fitdf = pd.concat([res['fitdf'] for res in results])
 
