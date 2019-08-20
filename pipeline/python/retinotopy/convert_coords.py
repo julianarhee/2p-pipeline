@@ -22,12 +22,12 @@ import seaborn as sns
 import cPickle as pkl
 import matplotlib.gridspec as gridspec
 
-from pipeline.python.classifications import experiment_classes as util
+#from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import run_experiment_stats as rstats
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 
-from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+#from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from matplotlib.patches import Ellipse, Rectangle
 
 from shapely.geometry.point import Point
