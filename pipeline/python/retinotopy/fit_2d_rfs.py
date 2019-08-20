@@ -1249,7 +1249,7 @@ def create_rf_dir(animalid, session, fov, run_name,
     fit_desc = get_fit_desc(response_type=response_type)
 
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    traceid_dirs = glob.glob(os.path.join(fov_dir, run, 'traces', '%s*' % traceid))
+    traceid_dirs = glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))
     if len(traceid_dirs) > 1:
         print "More than 1 trace ID found:"
         for ti, traceid_dir in enumerate(traceid_dirs):
@@ -1451,7 +1451,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
     #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
 #    
-    rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
+    if int(session) < 20190511:
+        rois = get_roiid_from_traceid(animalid, session, fov, run_type='gratings', traceid=traceid)
+    else:
+        rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=rois, rootdir=rootdir)
     fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir)
   
