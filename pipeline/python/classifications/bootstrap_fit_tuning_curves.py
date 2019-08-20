@@ -170,7 +170,7 @@ def load_tuning_results(animalid='', session='', fov='', run_name='', traceid='t
     fitdf=None; fitparams=None; fitdata=None;
     if traceid_dir is None:
         osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name,
-                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))
+                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))[0]
     else:
         osidir = os.path.join(traceid_dir, '*tuning*', fit_desc)
 
@@ -420,9 +420,13 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
         os.makedirs(osidir)
         
     if create_new is False:
-        fitdf, fitparams, fitdata = load_tuning_results(traceid_dir=traceid_dir,
+        try:
+            fitdf, fitparams, fitdata = load_tuning_results(traceid_dir=traceid_dir,
                                                         fit_desc=fit_desc, return_iters=True)
-        do_fits = fitdf is None
+            assert fitdf is not None, "Unable to load tuning: %s" % fit_Desc
+        except Exception as e:
+            traceback.print_exc()
+            do_fits = True
     else:
         do_fits=True
     
