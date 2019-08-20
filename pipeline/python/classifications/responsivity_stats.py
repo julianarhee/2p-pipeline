@@ -75,7 +75,8 @@ from shapely.geometry import box
 
 
 
-def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001', response_type='dff'):
+def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001', 
+                          response_type='dff', sigma_scale=2.35):
     '''
     Assumes trace_type = 'dff' and calculates using 'stim_mean' stat metric.
     '''
@@ -103,7 +104,6 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001', res
     print("rfs10: X- and Y-res: (%i, %i)" % (xres10, yres10))
 
     rf_colors = {'rfs': 'red', 'rfs10': 'cornflowerblue'}
-    sigma_scale = 2.36
 
     #fig, axes = pl.subplots(2,5, figsize=(10,4))
     fig = pl.figure(figsize=(10, 6))
