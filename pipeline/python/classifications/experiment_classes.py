@@ -252,7 +252,7 @@ def get_trial_metrics(raw_traces, labels, response_type='mean', nframes_post_ons
     nframes_on = nframes_on[0]
         
     if nframes_post_onset is None:
-        nframes_post_onset = nframes_on*2
+        nframes_post_onset = nframes_on #*2
         
     stats_list = []
     for trial, tmat in labels.groupby(['trial']):
@@ -493,6 +493,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff', #recep
 # Generic "event"-based experiments
 # #############################################################################
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
+                         response_type='dff',
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                          rootdir='/n/coxfs01/2p-data'):
         
@@ -686,6 +687,39 @@ class Session():
         return masks, zimg
     
     
+    def get_all_responsive_cells(self, traceid='traces001', response_type='dff',
+                                 responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, fit_thr=0.5):
+        all_rois = []
+        experiment_list = self.get_experiment_list(traceid=traceid)
+        for e in experiment_list:
+            if 'rfs' in e:
+                exp = ReceptiveFields(e, self.animalid, self.session, self.fov, traceid=traceid)
+                roi_list, _ = exp.get_responsive_cells(response_type=response_type,
+                                                       responsive_test=responsive_test, 
+                                                       fit_thr=fit_thr)
+            elif 'gratings' in e:
+                exp = Gratings(self.animalid, self.session, self.fov, traceid=traceid)
+                roi_list, _ = exp.get_responsive_cells(response_type=response_type,
+                                                       responsive_test=responsive_test, 
+                                                       responsive_thr=responsive_thr)
+            elif 'blobs' in e:
+                print(traceid)
+                exp = Objects(self.animalid, self.session, self.fov, traceid=traceid)
+                roi_list, _ = exp.get_responsive_cells(response_type=response_type,
+                                                       responsive_test=responsive_test, 
+                                                       responsive_thr=responsive_thr)
+            else:
+                print("--> [%s] not implemented" % e)
+                continue
+            
+            exp.data = None
+            self.experiments.update({e: exp})
+            all_rois.extend(roi_list)
+        
+        unique_cells = list(set(all_rois))
+        return np.array(unique_cells)
+    
+                
     def load_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
                   make_equal=True, rootdir='/n/coxfs01/2p-data', update_self=True):
         
@@ -1076,13 +1110,16 @@ class Experiment(object):
 
         if self.data is None or self.trace_type != 'corrected':
             traces, labels = self.load(trace_type='corrected', update_self=False)
-        
+        else:
+            traces = self.data.traces
+            labels = self.data.labels
+            
         trialmetrics = get_trial_metrics(traces, labels, response_type=response_type, nframes_post_onset=nframes_post_onset)
         
         return trialmetrics
                     
 
-    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05, n_stds=2.5):
+    def get_responsive_cells(self, response_type='dff', responsive_test='ROC', responsive_thr=0.05, n_stds=2.5):
         print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
         assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
@@ -1119,7 +1156,8 @@ class Experiment(object):
 #                                                       responsive_thr=responsive_thr)
         if responsive_test is not None:    
             print("filtering responsive cells: %s" % responsive_test)
-            roi_list, nrois_total = self.get_responsive_cells(responsive_test=responsive_test, 
+            roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
+                                                              responsive_test=responsive_test, 
                                                  responsive_thr=responsive_thr,
                                                  n_stds=n_stds)
             
@@ -1294,7 +1332,6 @@ class Objects(Experiment):
         super(Objects, self).__init__('blobs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'blobs'
         
-        
 #    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05):
 #        print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
 #        assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
@@ -1319,6 +1356,10 @@ class ReceptiveFields(Experiment):
         self.traceid = traceid
         self.trace_type = trace_type
     
+    def get_responsive_cells(self, response_type='dff', fit_thr=0.5, **kwargs):
+        rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type, fit_thr=fit_thr)
+        return roi_list, nrois_total
+        
     def get_rf_fits(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
                     create_new=False, rootdir='/n/coxfs01/2p-data'):
         '''
