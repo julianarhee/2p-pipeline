@@ -210,31 +210,22 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
     
     return sessiondata
 
-#%%
 
-options = ['-t', 'traces001']
-
-#%%
-def main(options):
-    
-    #%%
-    optsE = extract_options(options)
-    
-    # Create output aggregate dir:
-    #aggregate_dir = '/n/coxfs01/julianarhee/aggregate-visual-areas'
-    aggregate_dir = optsE.aggregate_dir
-                
+def get_dataset_info(aggregate_dir='/n/coxfs01/2p-data/aggregate-visual-areas',
+                      traceid='traces001', trace_type='corrected', state='awake',
+                      fov_type='zoom2p0x', visual_areas=['V1', 'Lm', 'Li'],
+                      blacklist = ['20190514', '20190530'], rootdir='/n/coxfs01/2p-data', create_new=False):
     dataset_info_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
-    if os.path.exists(dataset_info_fpath) and optsE.create_new is False:
+    if os.path.exists(dataset_info_fpath) and create_new is False:
         with open(dataset_info_fpath, 'rb') as f:
             sessiondata = pkl.load(f)
     else:
         
-        sessiondata = aggregate_session_info(traceid=optsE.traceid, trace_type=optsE.trace_type, 
-                                               state=optsE.state, fov_type=optsE.fov_type, 
-                                               visual_areas=optsE.visual_areas,
-                                               blacklist=optsE.blacklist, 
-                                               rootdir=optsE.rootdir)
+        sessiondata = aggregate_session_info(traceid=traceid, trace_type=trace_type, 
+                                               state=state, fov_type=fov_type, 
+                                               visual_areas=visual_areas,
+                                               blacklist=blacklist, 
+                                               rootdir=rootdir)
                                                #aggregate_dir=optsE.aggregate_dir)
                 
         experiment_types = sorted(sessiondata['experiment'].unique(), key=natural_keys)
@@ -248,8 +239,27 @@ def main(options):
         #%
         with open(dataset_info_fpath, 'wb') as f:
             pkl.dump(sessiondata, f, protocol=pkl.HIGHEST_PROTOCOL)
-                      
+            
+    return sessiondata
+
+#%%
+
+options = ['-t', 'traces001']
+
+#%%
+def main(options):
+    
     #%%
+    optsE = extract_options(options)
+    
+    # Create output aggregate dir:
+    #aggregate_dir = '/n/coxfs01/julianarhee/aggregate-visual-areas'
+    aggregate_dir = optsE.aggregate_dir
+    
+
+    #%%
+    sessiondata = get_dataset_info(aggregate_dir=aggregate_dir, traceid=optsE.traceid,
+                                   fov_type=optsE.fov_type, state=optsE.state)
     
     sessiondata.describe()        
     sessions_by_animal = sessiondata.groupby(['animalid', 'session'])['fov'].unique()
