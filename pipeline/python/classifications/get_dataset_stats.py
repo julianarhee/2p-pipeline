@@ -76,7 +76,7 @@ def extract_options(options):
                       help="Metric to use for comparing responses per trial (default: dff, stat to compare)")
 
 
-    choices_resptest = ('ROC','nstds', None)
+    choices_resptest = ('ROC','nstds', None, 'None')
     default_resptest = None
     
     parser.add_option('--response-test', type='choice', choices=choices_resptest,
