@@ -1050,13 +1050,16 @@ def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/co
     return run_name
 
 
-def load_gratings_data(data_fpath):
+def load_gratings_data(data_fpath, add_offset=True):
     dset = np.load(data_fpath)
     
-    #% Add baseline offset back into raw traces:
-    F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-    print("offset: %.2f" % F0)
-    raw_traces = pd.DataFrame(dset['corrected']) + F0
+    if add_offset:
+        #% Add baseline offset back into raw traces:
+        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+        print("offset: %.2f" % F0)
+        raw_traces = pd.DataFrame(dset['corrected']) + F0
+    else:
+        raw_traces = pd.DataFrame(dset['corrected']) 
     
     labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
     sdf = pd.DataFrame(dset['sconfigs'][()]).T
