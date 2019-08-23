@@ -43,7 +43,7 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.source_extraction.cnmf import params as params
 from caiman.utils.utils import download_demo
 from caiman.utils.visualization import plot_contours, nb_view_patches, nb_plot_contour
-bpl.output_notebook()
+#bpl.output_notebook()
 
 import pylab as pl
 
@@ -61,13 +61,13 @@ logging.basicConfig(format=
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC084'
-session = '20190522' #'20190505_JC083'
+session = '20190525' #'20190505_JC083'
 session_dir = os.path.join(rootdir, animalid, session)
 fov = 'FOV1_zoom2p0x'
 run_list = ['gratings']
 run_label = 'gratings'
 
-motion_correct = False
+motion_correct = True
 
 fnames = []
 for run in run_list:
@@ -178,7 +178,6 @@ mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
 
 #%% Run piecewise-rigid motion correction using NoRMCorre
 mc.motion_correct(save_movie=True)
-m_els = cm.load(mc.fname_tot_els)
 border_to_0 = 0 if mc.border_nan is 'copy' else mc.border_to_0 
 # maximum shift to be used for trimming against NaNs
 
@@ -189,10 +188,24 @@ base_name = '%s/memmap/Yr' % results_dir
 print(base_name)
 
 # memory map the file in order 'C'
-fname_new = cm.save_memmap(mc.mmap_file, base_name='memmap_', order='C',
+fname_new = cm.save_memmap(mc.mmap_file, base_name=base_name, order='C',
                        border_to_0=border_to_0) # exclude borders
 
-                           
+
+np.savez(os.path.join(results_dir, 'mc_rigid.npz'),
+        fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
+        border_nan=mc.border_nan,
+        fname_tot_rig=mc.fname_tot_rig,
+        total_template_rig=mc.total_template_rig,
+        templates_rig=mc.templates_rig,
+        shifts_rig=mc.shifts_rig,
+        mmap_file=mc.mmap_file,
+        border_to_0=mc.border_to_0)
+print("--- saved MC results: %s" % os.path.join(results_dir, 'mc_rigid.npz'))
+
+
+m_rig = cm.load(mc.fname_tot_rig)
+                          
                            # Load the file
 Yr, dims, T = cm.load_memmap(fname_new)
 #images = np.reshape(Yr.T, [T] + list(dims), order='F') # load frames in python format (T x X x Y)
