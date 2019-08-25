@@ -185,76 +185,66 @@ def get_full_memmap_path(results_dir, prefix='Yr'):
 
 
 
-def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix='Yr'):
+def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True):
     fnames = glob.glob(os.path.join(srcdir, '*.tif')) 
     fnames = sorted(fnames, key=natural_keys)
     print("Found %i movies." % len(fnames))
 
     data_identifier = '|'.join([animalid, session, fov, run_label])
     print("*** Dataset: %s ***" % data_identifier)
+    
+    # Check for existing memmaped/processed files
+    source_key = os.path.split(srcdir)[-1]
+    print("... Checking for existing processed mmaps in src: %s" % source_key)
+    memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
+    if len(fnames) == len(memfiles):
+        print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
+        do_memmap = False
+    else:
+        do_memmap = True
 
     #%%
     fovdir = os.path.join(rootdir, animalid, session, fov)
     results_dir = os.path.join(fovdir, 'caiman_results', run_label)
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    print(results_dir)
+    prefix = source_key #run_label if prefix is None else prefix
 
-    opts_dict = caiman_params(fnames)
-    opts = params.CNMFParams(params_dict=opts_dict)
-
-
-    #%% start a cluster for parallel processing (if a cluster already exists it will be closed and a new session will be opened)
+    #%% start a cluster for parallel processing
+    # (if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=None, single_thread=False)
 
-    #%%
-    base_name = '%s/memmap/%s' % (results_dir, prefix)
-    print(base_name)
-    fname_new = None
 
-    mc = load_mc_results(results_dir, prefix=prefix)
-    if mc is None:
+    #mc = load_mc_results(results_dir, prefix=prefix)
+    if do_memmap:
+
+        opts_dict = caiman_params(fnames)
+        opts = params.CNMFParams(params_dict=opts_dict)
+
         # first we create a motion correction object with the parameters specified
         mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
         # note that the file is not loaded in memory
 
         #%% Run piecewise-rigid motion correction using NoRMCorre
         mc.motion_correct(save_movie=True)
+        save_mc_results(results_dir, prefix=prefix)
+        memfiles = mc.mmap_file
+        print("... memmaped %i MC files (prefix: %s)." % (len(memfiles), prefix))
 
+    # memory map the file in order 'C'
+    if save_total:
+        base_name = '%s/memmap/%s' % (results_dir, prefix)
+        print("... saving total result to: %s" % base_name)
         if not os.path.exists(os.path.join(results_dir, 'memmap')):
             os.makedirs(os.path.join(results_dir, 'memmap'))
-            
-        border_to_0 = 0 if mc.border_nan is 'copy' else mc.border_to_0 
+        fname_new = cm.save_memmap_join(memfiles, base_name=base_name, dview=dview)
 
-        # memory map the file in order 'C'
-        fname_new = cm.save_memmap(mc.mmap_file, base_name=base_name, order='C',
-                               border_to_0=border_to_0) # exclude borders
-
-        save_mc_results(results_dir, prefix=prefix)
-    else:
-        fname_new = get_full_memmap_path(results_dir, prefix=prefix)
+        #fname_new = get_full_memmap_path(results_dir, prefix=prefix)
  
-#    m_rig = cm.load(mc.fname_tot_rig)
-    # maximum shift to be used for trimming against NaNs
-                              
-##    # Load the file
-#    corrim_fpath = os.path.join(results_dir, 'corrimg.npz')
-#    if os.path.exists(corrim_fpath):
-#        saveddata = np.load(corrim_fpath)
-#        Cn = saveddata['Cn']
-#    else:
-#        print("... calculating correlations")
-#        Yr, dims, T = cm.load_memmap(fname_new)
-#        images = np.reshape(Yr, dims + (T,), order='F')
-#        print(images.shape) 
-#        Cn = cm.local_correlations(images)
-#        # Save:
-#        print("Saving correlation image...", corrim_fpath)
-#        np.savez(corrim_fpath, Cn=Cn)
-    print("DONE! MMAP and MC results saved to: %s" % fname_new)
+        print("DONE! MMAP and MC results saved to: %s" % fname_new)
 
     return mc #results_dir, Cn
 

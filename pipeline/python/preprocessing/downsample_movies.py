@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
+import math
 
 try:
     cv2.setNumThreads(0)
@@ -142,7 +143,7 @@ def downsample_experiment_movies(animalid, session, fov, experiment='', ds_facto
         print("Downsampled movies found. Skipping...")
         do_downsample = False
     else:
-        print("Saving downsampled movies to: %s" % tmpdir)
+        print("Saving downsampled movies to: %s" % outdir)
         do_downsample = True 
    
     if do_downsample: 
@@ -157,7 +158,7 @@ def downsample_experiment_movies(animalid, session, fov, experiment='', ds_facto
                     print("... processed %i of %i movies." % (int(fi+1), len(fnames)))
                 outname = downsample_movie(fn, fi=fi, ds_factor=ds_factor, outdir=outdir) 
         else:
-            downsample_move_list(fnames, ds_factor=ds_factor, outdir=outdir, n_processes=n_processes) 
+            downsample_movie_list_mp(fnames, ds_factor=ds_factor, outdir=outdir, n_processes=n_processes) 
         end_t = time.time() - start_t
         print("Downsample: {0:.2f}sec".format(end_t))
     print("**** done! ****")
@@ -189,14 +190,14 @@ def downsample_movie_list_mp(file_list, ds_factor=5, outdir='/tmp', n_processes=
                        args=(file_list[chunksize * i:chunksize * (i + 1)],
                              file_ids[chunksize * i:chunksize * (i+1)],
                              ds_factor,
-                             destdir,
+                             outdir,
                              out_q))
         procs.append(p)
         p.start()
         
     # Collect all results into single results dict. We should know how many dicts to expect:
     resultdict = {}
-    for i in range(nprocs):
+    for i in range(n_processes):
         resultdict.update(out_q.get())
 
     # Wait for all worker processes to finish
@@ -223,7 +224,7 @@ def main(options):
     outdir = downsample_experiment_movies(animalid, session, fov, experiment=experiment,
                                 ds_factor=ds_factor, destdir=destdir, use_raw=use_raw, n_processes=n_processes, create_new=create_new) 
 
-    print("--- all movies saved to:\n---%s" % tmpdir)
+    print("--- all movies saved to:\n---%s" % outdir)
 
 if __name__=='__main__':
     mp.freeze_support()
