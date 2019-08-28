@@ -133,12 +133,16 @@ def downsample_experiment_movies(animalid, session, fov, experiment='', ds_facto
     ds = ds_factor[0] if isinstance(ds_factor, tuple) else ds_factor
     skey = '-'.join([animalid, session, fov, experiment, 'downsample-%i' % ds])
 
+    if not use_raw:
+        skey = '%s-mcorrected' % skey
+
     outdir = os.path.join(destdir, skey)
     if not os.path.exists(outdir):
         os.makedirs(outdir)
    
     do_downsample = create_new 
     found_movs = glob.glob(os.path.join(outdir, '*.tif'))
+    print("Found %i downsampled movies. Expecting %i." % (len(found_movs), len(fnames)))
     if len(found_movs) == len(fnames) and create_new is False:
         print("Downsampled movies found. Skipping...")
         do_downsample = False
@@ -158,7 +162,7 @@ def downsample_experiment_movies(animalid, session, fov, experiment='', ds_facto
                     print("... processed %i of %i movies." % (int(fi+1), len(fnames)))
                 outname = downsample_movie(fn, fi=fi, ds_factor=ds_factor, outdir=outdir) 
         else:
-            downsample_movie_list_mp(fnames, ds_factor=ds_factor, outdir=outdir, n_processes=n_processes) 
+            outdir = downsample_movie_list_mp(fnames, ds_factor=ds_factor, outdir=outdir, n_processes=n_processes) 
         end_t = time.time() - start_t
         print("Downsample: {0:.2f}sec".format(end_t))
     print("**** done! ****")
@@ -173,10 +177,10 @@ def downsample_movie_list_mp(file_list, ds_factor=5, outdir='/tmp', n_processes=
     file_list = sorted(file_list, key=natural_keys)
     file_ids = [i for i, fn in enumerate(sorted(file_list, key=natural_keys))]
  
-    def downsampler(file_list, file_ids, downsample_factor, outdir, out_q):
+    def downsampler(file_list, file_ids, ds_factor, outdir, out_q):
         
         outdict = {}
-        for fi, fn in zip(file_list, file_ids):
+        for fi, fn in zip(file_ids, file_list):
             outname = downsample_movie(fn, fi=fi, ds_factor=ds_factor, outdir=outdir)
             outdict['%i_%s' % (fi, fn)] = outname 
         out_q.put(outdict)

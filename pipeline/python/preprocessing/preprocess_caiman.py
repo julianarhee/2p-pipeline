@@ -35,6 +35,10 @@ from caiman.utils.utils import download_demo
 from caiman.utils.visualization import plot_contours, nb_view_patches, nb_plot_contour
 
 
+#%%
+from caiman.source_extraction.cnmf.initialization import downscale as cmdownscale
+import downsample_movies as preproc
+
 import pylab as pl
 from functools import partial
 import tifffile as tf
@@ -44,7 +48,8 @@ import time
 import re
 import optparse
 import sys
-
+import _pickle as pkl
+import traceback
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -52,11 +57,6 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
-
-
-from caiman.source_extraction.cnmf.initialization import downscale as cmdownscale
-
-import downsample_movies as preproc
 
 
 def extract_options(options):
@@ -148,39 +148,79 @@ def caiman_params(fnames):
                 'cnn_lowest': cnn_lowest}
     return opts_dict
 
-def save_mc_results(results_dir, prefix='Yr'):
+def save_memmap_params(results_dir, resize_fact=(), add_to_movie=None, border_to_0=None, fnames=[], prefix='Yr'):
+    # create mmap params file
+    mmap_fpath = os.path.join(results_dir, '%s_memmap-params.json' % prefix)
+    mmap_params = {'resize_fact': list(resize_fact), 
+                   'add_to_movie': add_to_movie,
+                   'border_to_0': border_to_0,
+                   'fnames': fnames}
+    for k, m in mmap_params.items():
+        if isinstance(m, list):
+            if not isinstance(m[0], (str, bytes)):
+                mmap_params[k] = [float(mi) for mi in m]
+            #print
+        else:
+            mmap_params[k] = float(m)
+
+    with open(mmap_fpath, 'w') as f:
+        json.dump(mmap_params, f, indent=4)
+     
+
+def save_mc_results(mc, results_dir, prefix='Yr'):
     np.savez(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix),
-            mc=mc,
-            fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
+            #mc=mc,
+            fname=mc.fname, 
+            max_shifts=mc.max_shifts, 
+            min_mov=mc.min_mov,
             border_nan=mc.border_nan,
             fname_tot_rig=mc.fname_tot_rig,
             total_template_rig=mc.total_template_rig,
             templates_rig=mc.templates_rig,
             shifts_rig=mc.shifts_rig,
             mmap_file=mc.mmap_file,
-            border_to_0=mc.border_to_0)
+            border_to_0=mc.border_to_0,
+            gSig_filt=mc.gSig_filt)
+
     print("--- saved MC results: %s" % os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
- 
-def load_mc_results(results_dir, prefix='Yr'):
+    
+    # Also save params as json 
+    if 'downsample' in prefix:
+        ds_fact = int(prefix.split('downsample-')[-1])
+        resize_fact = (1, 1, 1./ds_fact)
+    else:
+        resize_fact = (1, 1, 1)
+    save_memmap_params(results_dir, resize_fact=resize_fact, add_to_movie=mc.min_mov, 
+                   border_to_0=mc.border_to_0, fnames=mc.fname, prefix=prefix)
+    print("--- saved MC params to JSON")
+
+
+def load_mc_results(results_dir, mc, prefix='Yr'):
     try:
         mc_results = np.load(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
-        mc = mc_results[mc] 
-        print(mc.border_to_0)
-#            fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
-#            border_nan=mc.border_nan,
-#            fname_tot_rig=mc.fname_tot_rig,
-#            total_template_rig=mc.total_template_rig,
-#            templates_rig=mc.templates_rig,
-#            shifts_rig=mc.shifts_rig,
-#            mmap_file=mc.mmap_file,
-#            border_to_0=mc.border_to_0)
+        #mc = mc_results[mc] 
+        mc.fname = res['fname']
+        mc.max_shifts = res['max_shifts']
+        mc.min_mov = res['min_mov']
+        mc.border_nan = res['border_nan']
+        mc.fname_tot_rig = res['fname_tot_rig']
+        mc.total_template_rig = res['total_template_rig']
+        mc.templates_rig = res['templates_rig']
+        mc.shifts_rig = res['mc_shifts_rig']
+        mc.mmap_file = res['mmap_file']
+        mc.border_to_0 = res['border_to_0']
+        mc.gSig_filt = res['gSig_filt']
+
     except Exception as e:
         return None
 
     return mc 
 
 def get_full_memmap_path(results_dir, prefix='Yr'):
-    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '%s_d*_.mmap' % prefix))[0]
+    try:
+        fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % prefix))[0]
+    except Exception as e:
+        return None
     return fname_new
 
 
@@ -215,12 +255,13 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=None, single_thread=False)
+        backend='local', n_processes=n_processes, single_thread=False)
 
 
     #mc = load_mc_results(results_dir, prefix=prefix)
     if do_memmap:
-
+        print("Creating memmapped files and motion-correcting...")
+        start_t = time.time()
         opts_dict = caiman_params(fnames)
         opts = params.CNMFParams(params_dict=opts_dict)
 
@@ -230,23 +271,33 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
 
         #%% Run piecewise-rigid motion correction using NoRMCorre
         mc.motion_correct(save_movie=True)
-        save_mc_results(results_dir, prefix=prefix)
         memfiles = mc.mmap_file
+
         print("... memmaped %i MC files (prefix: %s)." % (len(memfiles), prefix))
+        print("... motion correction - Elapsed time: {0:.2f}sec".format(time.time()-start_t))
+       
+        # Save MC info 
+        save_mc_results(mc, results_dir, prefix=prefix)
+       
+      
 
     # memory map the file in order 'C'
     if save_total:
+        start_t = time.time() 
         base_name = '%s/memmap/%s' % (results_dir, prefix)
         print("... saving total result to: %s" % base_name)
         if not os.path.exists(os.path.join(results_dir, 'memmap')):
             os.makedirs(os.path.join(results_dir, 'memmap'))
-        fname_new = cm.save_memmap_join(memfiles, base_name=base_name, dview=dview)
+        fname_new = get_full_memmap_path(results_dir, prefix=prefix)
+        if fname_new is None:
+            fname_new = cm.save_memmap_join(memfiles, base_name=base_name, dview=dview)                
+            #fname_new = cm.save_memmap(memfiles, base_name=base_name, dview=dview, order='C')
+        end_t = time.time() - start_t
+        print("... MMAP total - Elapsed time: {0:.2f}sec".format(end_t))
 
-        #fname_new = get_full_memmap_path(results_dir, prefix=prefix)
- 
         print("DONE! MMAP and MC results saved to: %s" % fname_new)
 
-    return mc #results_dir, Cn
+    return prefix #results_dir, Cn
 
 def main(options):
     opts = extract_options(options) 
@@ -270,7 +321,7 @@ def main(options):
 
 
     if do_motion:
-        mc = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=outdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix)
+        prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=outdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix)
 
         print("--- finished motion correction ----")
         #print("All results saved to: %s" % results_dir)

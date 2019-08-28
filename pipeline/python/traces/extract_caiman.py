@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import time
+import h5py
 
 try:
     cv2.setNumThreads(0)
@@ -68,6 +69,8 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='fov', default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom2p0x') [default: FOV1_zoom2p0x]")
     parser.add_option('-E', '--exp', action='store', dest='experiment', default='', help="Name of experiment (stimulus type), e.g., rfs")
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', help="Traceid from which to get seeded rois (default: traces001)")
+
 
     parser.add_option('-n', '--nproc', action="store",
                       dest="n_processes", default=2, help="N processes [default: 1]")
@@ -82,6 +85,7 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set to downsample and motion correct anew")
     parser.add_option('--prefix', action='store', dest='prefix', default='Yr', help="Prefix for sourced memmap/mc files (default: Yr)")
 
+    parser.add_option('--seed', action='store_true', dest='seed_rois', default=False, help="Set flag to seed ROIs with manual (must provide traceid)")
 
     (options, args) = parser.parse_args(options)
 
@@ -142,10 +146,12 @@ def caiman_params(fnames):
                 'use_cnn': True,
                 'min_cnn_thr': cnn_thr,
                 'cnn_lowest': cnn_lowest}
-    return opts_dict
+    opts = params.CNMFParams(params_dict=opts_dict)
+
+    return opts
 
 def save_mc_results(results_dir, prefix='Yr'):
-    np.savez(os.path.join(results_dir, 'mc_rigid.npz'),
+    np.savez(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix),
             mc=mc,
             fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
             border_nan=mc.border_nan,
@@ -174,57 +180,95 @@ def load_mc_results(results_dir, prefix='Yr'):
 
     return mc 
 
-def get_original_tifs(results_dir):
-    mparams_fpath = os.path.join(results_dir, 'memmap', 'memmap_params.json')
-    with open(mparams, fpath, 'r') as f:
-        mparams = json.load(f)
+def get_file_paths(results_dir, prefix='Yr'):
+    try:
+        mparams_fpath = os.path.join(results_dir, '%s_memmap-params.json' % prefix)
+        print("Loading memmap params...")
+        with open(mparams_fpath, 'r') as f:
+            mparams = json.load(f)
+        fnames = mparams['fnames']
+    except Exception as e:
+        print("Unable to load memmap params, trying alt.")
+        try:
+            fnames = []
+            if 'downsample' in prefix:
+                print("checking scratch")
+                fovdir = results_dir.split('/caiman_results/')[0]
+                fov = os.path.split(fovdir)[-1]
+                sessiondir = os.path.split(fovdir)[0]
+                session = os.path.split(sessiondir)[-1]
+                animalid = os.path.split(os.path.split(sessiondir)[0])[-1]
+                print("Animal: %s, Fov: %s, Session: %s" % (animalid, fov, session))
+                fnames = sorted(glob.glob(os.path.join('/n/scratchlfs/cox_lab/julianarhee/downsampled/*%s*/*.tif' % prefix)), key=natural_keys)
+                print(fnames[0:5]) 
+            if len(fnames)==0 and 'downsample' not in prefix: 
+                dpath = glob.glob(os.path.join(results_dir, 'memmap', '*%s*.npz' % prefix))[0]#) [0]) 
+                minfo = np.load(dpath)
+                fnames = sorted(list(minfo['mmap_fnames']))
+        except Exception as e:
+            print("unable to load file names.")
+            return None
+    
+    return fnames #fnames = mparams['fnames']
 
-    return mparams #fnames = mparams['fnames']
 
 def get_full_memmap_path(results_dir, prefix='Yr'):
-    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '%s_d*_.mmap' % prefix))[0]
-    return fname_new
+    print("Getting full mmap path for prefix: %s" % prefix)
+    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % prefix))[0]
+    prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
+    print("CORRECTED PREFIX: %s" % prefix)
+    return fname_new, prefix
 
 
-def run_seeded_cnmf(animalid, session, fov, experiment='', rootdir='/n/coxfs01/2p-data', prefix='gratings'):
+def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', prefix='gratings', n_processes=1):
 
     # Load manual ROIs and format
     print("Getting seeds...")
-    roiid = get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid=traceid)
+    roiid = get_roiid_from_traceid(animalid, session, fov, run_type=experiment, traceid=traceid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
+    uimg = zimg.T
     Ain = reshape_and_binarize_masks(masks)
 
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-    fname_tot = get_full_memmap_path(results_dir, prefix=prefix)
+    fname_tot, prefix = get_full_memmap_path(results_dir, prefix=prefix)
     print("Extracting CNMF from: %s" % fname_tot)
 
     # Load data
     Yr, dims, T = cm.load_memmap(fname_tot)
-    images = np.reshape(Yr, dims + (T,), order='F')
+    images = np.reshape(Yr.T, [T] + list(dims), order='F') #np.reshape(Yr, dims + (T,), order='F')
     print("Loaded data:", images.shape)
 
     # Create opts for cnmf
     print("Preparing for CNMF extraction...") 
-    memparams = get_original_tifs(results_dir) 
-    opts = caiman_params(memparams['fnames'])
+    fnames = get_file_paths(results_dir, prefix=prefix) 
+    print("--> got %i files for extraction" % len(fnames))
+    
+#    if 'fov' in fnames[0]:
+#        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment,
+#                                'raw*', '*.tif')))
+        
+    opts = caiman_params(fnames)
+    prefix = 'seeded-%s' % prefix
 
     #%% start a cluster for parallel processing 
     #(if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=2, single_thread=False)
-
-
+        backend='local', n_processes=n_processes, single_thread=False)
+    print("--- running on %i processes ---" % n_processes)
+    print("--- dview: ", dview)
+    #dview=None 
+    
     # Reset default patch params to run on full
     rf = None          # half-size of the patches in pixels. `None` when seeded CNMF is used.
     only_init = False  # has to be `False` when seeded CNMF is used
     gSig = (2, 2)      # expected half size of neurons in pixels, v important for proper component detection
 
     # params object
-    opts_dict = {'fnames': memparams['fnames'],
+    opts_dict = {'fnames': fnames,
                 'decay_time': 0.4,
                 'p': 2,
                 'nb': 2,
@@ -233,7 +277,8 @@ def run_seeded_cnmf(animalid, session, fov, experiment='', rootdir='/n/coxfs01/2
                 'gSig': gSig,
                 'ssub': 1,
                 'tsub': 1,
-                'merge_thr': 0.85}
+                'merge_thr': 0.85,
+                'n_pixels_per_process': 1000}
 
     opts.change_params(opts_dict)
 
@@ -243,37 +288,67 @@ def run_seeded_cnmf(animalid, session, fov, experiment='', rootdir='/n/coxfs01/2
 
     cnm = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
     cnm.fit(images)
-
-    end_t = time.time()
+    end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
+    print("A:", cnm.estimates.A.shape)
+
+    Cn = cm.local_correlations(images.transpose(1,2,0))
+    fig = pl.figure()
+    pl.imshow(Cn, cmap='gray')
+    pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
+    pl.close()
+   
+    # Evaluate components 
+    print("Evaluatnig components...")
+    # parameters for component evaluation
+    min_SNR = 1.5               # signal to noise ratio for accepting a component
+    rval_thr = 0.85              # space correlation threshold for accepting a component
+    min_cnn_thr = 0.99          # threshold for CNN based classifier
+    cnn_lowest = 0.05           # neurons with cnn probability lower than this value are rejected
+    #cnm_seeded.estimates.restore_discarded_components()
+    cnm.params.set('quality', {'min_SNR': min_SNR,
+                               'rval_thr': rval_thr,
+                               'use_cnn': True,
+                               'min_cnn_thr': min_cnn_thr,
+                               'cnn_lowest': cnn_lowest})
+
+    #%% COMPONENT EVALUATION
+    # the components are evaluated in three ways:
+    #   a) the shape of each component must be correlated with the data
+    #   b) a minimum peak SNR is required over the length of a transient
+    #   c) each shape passes a CNN based classifier
+    start_t = time.time()
+    cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
+    end_t = time.time() - start_t
+    print("--> evaluation - Elapsed time: {0:.2f}sec".format(end_t))
 
     #%% Extract DF/F values
     print("Extracting df/f...")
     quantileMin = 10 # 8
     frames_window_sec = 30.
-    ds_factor = opts.init['tsub']
-    frames_window = frames_window_sec * (fr * ds_factor) # 250
-
+    ds_factor = float(prefix.split('downsample-')[-1]) #opts.init['tsub']
+    fr = float(opts.data['fr'])
+    frames_window = int(round(frames_window_sec * (fr / ds_factor))) # 250
     dff_params = {'quantileMin': quantileMin,
                   'frames_window_sec': frames_window_sec,
                   'ds_factor': ds_factor,
                   'fr': fr,
                   'frames_window': frames_window,
                   'source': fname_tot}
-    with open(os.path.join(results_dir, 'processing_params.json'), 'w') as f:
+
+    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
 
     start_t = time.time()
     cnm.estimates.detrend_df_f(quantileMin=quantileMin, frames_window=frames_window)
-    end_t = time.time()
+    end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
 
     # save results
     save_results = True
     if save_results:
-        cnm.save(os.path.join(results_dir, 'cnm_analysis_results.hdf5'))
-    print("Saved results: %s" % os.path.join(results_dir, 'cnm_analysis_results.hdf5'))
-
+        cnm.save(os.path.join(results_dir, 'seed-cnm_%s_results.hdf5' % prefix))
+    print("Saved results: %s" % os.path.join(results_dir, 'seed-cnm_%s_results.hdf5' % prefix))
 
     print("******DONE!**********")
 
@@ -281,7 +356,10 @@ def run_seeded_cnmf(animalid, session, fov, experiment='', rootdir='/n/coxfs01/2
 def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     
     if run_type is not None:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
+        if int(session) < 20190511 and run_type == 'gratings':
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+        else:
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
     else:
         a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
     with open(a_traceid_dict, 'r') as f:
@@ -294,27 +372,160 @@ def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='trace
 
 
 def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
+    masks=None; zimg=None;
     mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
-    mfile = h5py.File(mask_fpath, 'r')
+    try:
+        mfile = h5py.File(mask_fpath, 'r')
 
-    # Load and reshape masks
-    masks = mfile[mfile.keys()[0]]['masks']['Slice01'][:] #.T
-    #print(masks.shape)
-    mfile[mfile.keys()[0]].keys()
+        # Load and reshape masks
+        fkey = list(mfile.keys())[0]
+        masks = mfile[fkey]['masks']['Slice01'][:] #.T
+        #print(masks.shape)
+        #mfile[mfile.keys()[0]].keys()
 
-    zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:] #.T
-    zimg.shape
-    
+        zimg = mfile[fkey]['zproj_img']['Slice01'][:] #.T
+        zimg.shape
+    except Exception as e:
+        print("error loading masks")
+    finally:
+        mfile.close()
+        
     return masks, zimg
+
+# def reshape_and_binarize_masks(masks):
+#     # Binarze and reshape:
+#     nrois, d1, d2 = masks.shape
+#     Ain = np.reshape(masks, (nrois, d1*d2))
+#     Ain[Ain>0] = 1
+#     Ain = Ain.astype(bool).T 
+    
+#     return Ain
 
 def reshape_and_binarize_masks(masks):
     # Binarze and reshape:
     nrois, d1, d2 = masks.shape
+    #masks2 = np.swapaxes(masks, 1, 2)
     Ain = np.reshape(masks, (nrois, d1*d2))
     Ain[Ain>0] = 1
     Ain = Ain.astype(bool).T 
     
     return Ain
+
+
+def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', prefix='gratings', n_processes=1):
+
+    # Load memmapped file(s)
+    fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
+    results_dir = os.path.join(fovdir, 'caiman_results', experiment)
+    fname_tot, prefix = get_full_memmap_path(results_dir, prefix=prefix)
+    print("Extracting CNMF from: %s" % fname_tot)
+
+    # Load data
+    Yr, dims, T = cm.load_memmap(fname_tot)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F') #np.reshape(Yr, dims + (T,), order='F')
+    print("Loaded data:", images.shape)
+
+    # Create opts for cnmf
+    print("Preparing for CNMF extraction...") 
+    fnames = get_file_paths(results_dir, prefix=prefix) 
+    print("--> got %i files for extraction" % len(fnames))    
+       
+    opts = caiman_params(fnames)
+
+    prefix = 'patches-%s' % prefix
+
+    #%% start a cluster for parallel processing 
+    #(if a cluster already exists it will be closed and a new session will be opened)
+    if 'dview' in locals():
+        cm.stop_server(dview=dview)
+    c, dview, n_processes = cm.cluster.setup_cluster(
+        backend='local', n_processes=n_processes, single_thread=False)
+    print("--- running on %i processes ---" % n_processes)
+    print("--- dview: ", dview)
+    #dview=None 
+
+    # First extract spatial and temporal components on patches and combine them
+    # for this step deconvolution is turned off (p=0)
+    #opts.change_params({'p': 0})
+
+    # Run cnmf
+    print("Extracting from patches...")
+    start_t = time.time() 
+    cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
+    cnm = cnm.fit(images)
+    end_t = time.time() - start_t
+    print("--> patches - Elapsed time: {0:.2f}sec".format(end_t))
+
+    #%% RE-RUN seeded CNMF on accepted patches to refine and perform deconvolution 
+    print("Refitting on accepted patches")
+    start_t = time.time() 
+    cnm.params.change_params({'p': 2})
+    cnm = cnm.refit(images, dview=dview)
+    end_t = time.time() - start_t
+    print("--> refit - Elapsed time: {0:.2f}sec".format(end_t))
+
+    print("Getting local correlations...")
+    Cn = cm.local_correlations(images.transpose(1,2,0))
+    fig = pl.figure()
+    pl.imshow(Cn, cmap='gray')
+    pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
+    pl.close()
+ 
+ 
+    # Evaluate components 
+    print("Evaluatnig components...")
+    # parameters for component evaluation
+    min_SNR = 1.5               # signal to noise ratio for accepting a component
+    rval_thr = 0.85              # space correlation threshold for accepting a component
+    min_cnn_thr = 0.99          # threshold for CNN based classifier
+    cnn_lowest = 0.05           # neurons with cnn probability lower than this value are rejected
+    #cnm_seeded.estimates.restore_discarded_components()
+    cnm.params.set('quality', {'min_SNR': min_SNR,
+                               'rval_thr': rval_thr,
+                               'use_cnn': True,
+                               'min_cnn_thr': min_cnn_thr,
+                               'cnn_lowest': cnn_lowest})
+
+    #%% COMPONENT EVALUATION
+    # the components are evaluated in three ways:
+    #   a) the shape of each component must be correlated with the data
+    #   b) a minimum peak SNR is required over the length of a transient
+    #   c) each shape passes a CNN based classifier
+    start_t = time.time()
+    cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
+    end_t = time.time() - start_t
+    print("--> evaluation - Elapsed time: {0:.2f}sec".format(end_t))
+
+
+    #%% Extract DF/F values
+    print("Extracting df/f...")
+    start_t = time.time()
+    quantileMin = 10 # 8
+    frames_window_sec = 30.
+    ds_factor = float(prefix.split('downsample-')[-1]) #opts.init['tsub']
+    fr = float(opts.data['fr'])
+    frames_window = int(round(frames_window_sec * (fr / ds_factor))) # 250
+    dff_params = {'quantileMin': quantileMin,
+                  'frames_window_sec': frames_window_sec,
+                  'ds_factor': ds_factor,
+                  'fr': fr,
+                  'frames_window': frames_window,
+                  'source': fname_tot}
+
+    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
+        json.dump(dff_params, f, indent=4)
+    cnm.estimates.detrend_df_f(quantileMin=quantileMin, frames_window=frames_window)
+    end_t = time.time() - start_t
+    print("--> dF_F - Elapsed time: {0:.2f}sec".format(end_t))
+
+    # save results
+    if save_results:
+        cnm.save(os.path.join(results_dir, 'patch-cnm_%s_results.hdf5' % prefix))
+    print("Saved results 2: %s" % os.path.join(results_dir, 'patch-cnm_%s_results.hdf5' % prefix))
+
+
+    print("******DONE!**********")
+
 
 def main(options):
     opts = extract_options(options) 
@@ -329,8 +540,16 @@ def main(options):
     n_processes = int(opts.n_processes) 
     create_new = opts.create_new
     prefix = opts.prefix
+    traceid=opts.traceid
+    seed_rois = opts.seed_rois
 
-    run_seeded_cnmf(animalid, session, fov, experiment=experiment, rootdir=rootdir, prefix=prefix)
+    if seed_rois:
+        run_cnmf_seeded(animalid, session, fov, experiment=experiment, traceid=traceid,
+                        rootdir=rootdir, prefix=prefix, n_processes=n_processes)
+    else:
+        run_cnmf_patches(animalid, session, fov, experiment=experiment, traceid=traceid,
+                         rootdir=rootdir, prefix=prefix, n_processes=n_processes)
+
 
 if __name__=='__main__':
     main(sys.argv[1:])

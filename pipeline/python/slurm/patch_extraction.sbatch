@@ -11,7 +11,6 @@
 module load centos6/0.0.1-fasrc01
 module load matlab/R2015b-fasrc01
 module load Anaconda/5.0.1-fasrc01
-
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 
@@ -23,5 +22,5 @@ source activate /n/coxfs01/2p-pipeline/envs/caiman
 #echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 16 -t ${5} --prefix=${6} --seed
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 16 --prefix=${5} 
 
