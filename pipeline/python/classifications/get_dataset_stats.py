@@ -107,7 +107,9 @@ def extract_options(options):
                       help="[gratings only] N intervals to interp between tested angles (default: 3)")
     parser.add_option('-G', '--goodness-thr', action='store', dest='goodness_thr', default=0.66, 
                       help="[gratings only] Goodness-of-fit threshold (default: 0.66)")
-    
+    parser.add_option('-c', '--min-configs', action='store', dest='min_cfgs_above', default=2, 
+                      help="[n_stds only] Min N configs in which min-n-frames threshold is met, if responsive_test=nstds (default: 2)")   
+
     # RF-specific parameters
     parser.add_option('--sigma', action='store', dest='sigma_scale', default=2.35, 
                       help="[rfs only] Sigma scale for RF 2d gaus fits (default: 2.35 for FWHM)")
@@ -278,9 +280,12 @@ def main(options):
     responsive_thr = float(optsE.responsive_thr)
     n_stds = float(optsE.n_stds)
     plot_rois = optsE.plot_rois
+
     goodness_thr = float(optsE.goodness_thr)
     sigma_scale = float(optsE.sigma_scale)
     ci = float(optsE.ci)
+    min_cfgs_above = int(optsE.min_cfgs_above)
+    
     transform_fov = optsE.transform_fov
     create_new = optsE.create_new
     response_type = optsE.response_type
@@ -343,13 +348,15 @@ def main(options):
         Get tuning / fit stats:
             
         GRATINGS:
-            responsive_test = 'ROC'
-            responsive_thr = 0.05
-    
+            responsive_test = 'nstds'
+            responsive_thr = 10 (N frames above baseline*n_std to count as responsive)
+            n_stds = 2.5
+            
             # Tuning params:
             n_bootstrap_iters = 1000
-            n_resamples = 60
+            n_resamples = 20
             n_intervals_interp = 3
+            min_cfgs_above = 2 (# of stim configs (orientations) that meet reposnsive_thr for cell to count as responsive to a given stim-config)
             
         RFS:
             responsive_test = None
@@ -386,9 +393,10 @@ def main(options):
 #                        del exp
                         bootresults, fitparams = exp.get_tuning(create_new=create_new, n_processes=n_processes,
                                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                                   n_stds=n_stds,
+                                                                   n_stds=n_stds, min_cfgs_above=min_cfgs_above,
                                                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
                                                                    n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
+                        
                         rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, rootdir=rootdir)
                         tuning_counts[skey] = goodrois
                         del bootresults

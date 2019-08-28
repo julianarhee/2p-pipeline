@@ -1236,8 +1236,8 @@ class Gratings(Experiment):
         super(Gratings, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'gratings'
         
-    def get_tuning(self, response_type='dff', responsive_test=None, responsive_thr=0.05, n_stds=2.5,
-                   n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3, min_cfgs_above=2,
+    def get_tuning(self, response_type='dff', responsive_test='nstds', responsive_thr=10, n_stds=2.5,
+                   n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, min_cfgs_above=2,
                    rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, plot_rois=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
