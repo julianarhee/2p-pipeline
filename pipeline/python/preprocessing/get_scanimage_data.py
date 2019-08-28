@@ -24,6 +24,7 @@ from pipeline.python.utils import write_dict_to_json, isreadonly# , get_image_de
 
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 #from caiman.utils import utils
+from tifffile import TiffFile
 from os.path import expanduser
 home = expanduser("~")
 from memory_profiler import profile
