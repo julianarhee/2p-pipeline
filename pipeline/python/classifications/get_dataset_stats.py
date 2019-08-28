@@ -244,7 +244,7 @@ def get_dataset_info(aggregate_dir='/n/coxfs01/2p-data/aggregate-visual-areas',
 
 #%%
 
-options = ['-t', 'traces001']
+options = ['-t', 'traces001', '--response-test', 'nstds', '--response-thr', '10', '-S', 'gratings']
 
 #%%
 def main(options):
@@ -373,17 +373,24 @@ def main(options):
                     if stats=='gratings':
                         exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
                         
-                        fitdf, fitparams, fitdata = exp.get_tuning(create_new=create_new, n_processes=n_processes,
+#                        fitdf, fitparams, fitdata = exp.get_tuning(create_new=create_new, n_processes=n_processes,
+#                                                                   responsive_test=responsive_test, responsive_thr=responsive_thr,
+#                                                                   n_stds=n_stds,
+#                                                                   n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
+#                                                                   n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
+#                        fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata, goodness_thr=goodness_thr)
+#                        tuning_counts[skey] = goodfits
+#                        del fitdf
+#                        del fitparams
+#                        del fitdata
+#                        del exp
+                        bootresults, fitparams = exp.get_tuning(create_new=create_new, n_processes=n_processes,
                                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
                                                                    n_stds=n_stds,
                                                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
                                                                    n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
-                        fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata, goodness_thr=goodness_thr)
-                        tuning_counts[skey] = goodfits
-                        del fitdf
-                        del fitparams
-                        del fitdata
-                        del exp
+                        rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, rootdir=rootdir)
+                        tuning_counts[skey] = goodrois
                         
                     elif stats == 'rfs':
                         fit_thr = float(optsE.rf_fit_thr)

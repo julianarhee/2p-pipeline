@@ -63,7 +63,8 @@ from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import responsivity_stats as respstats
 
-from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+#from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+from pipeline.python.classifications import bootstrap_osi as osi
 from pipeline.python.utils import label_figure, natural_keys
 
 import glob
@@ -1236,7 +1237,7 @@ class Gratings(Experiment):
         self.experiment_type = 'gratings'
         
     def get_tuning(self, response_type='dff', responsive_test=None, responsive_thr=0.05, n_stds=2.5,
-                   n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
+                   n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3, min_cfgs_above=2,
                    rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, plot_rois=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
@@ -1250,80 +1251,187 @@ class Gratings(Experiment):
         print("...getting OSI results: %s" % fit_desc)
             
         if create_new is False:
-            fitdf, fitparams, fitdata = osi.load_tuning_results(self.animalid, self.session, self.fov,
+            bootresults, fitparams = osi.load_tuning_results(self.animalid, self.session, self.fov,
                                                                 self.name, traceid=self.traceid, 
-                                                                fit_desc=fit_desc, return_iters=True,
+                                                                fit_desc=fit_desc,
                                                                 rootdir=rootdir)
-            do_fits = fitdf is None
+            do_fits = bootresults is None
         else:
             do_fits=True
     
         if do_fits:
             print("---- doing fits ----")
-            fitdf, fitparams, fitdata = self.fit_tuning(n_processes=n_processes, response_type=response_type,
+#            fitdf, fitparams, fitdata = self.fit_tuning(n_processes=n_processes, response_type=response_type,
+#                                                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+#                                                        n_resamples=n_resamples, n_bootstrap_iters=n_bootstrap_iters,
+#                                                        n_intervals_interp=n_intervals_interp)        
+#            fitparams.update({'directory': osidir,
+#                              'response_type': response_type,
+#                              'responsive_test': responsive_test,
+#                              'responsive_thr': responsive_thr if responsive_test is not None else None,
+#                              'n_stds': n_stds if responsive_test=='nstds' else None})
+#            osi.save_tuning_results(fitdf, fitparams, fitdata)
+            bootresults, fitparams = self.fit_tuning(n_processes=n_processes, response_type=response_type,
                                                         responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                                         n_resamples=n_resamples, n_bootstrap_iters=n_bootstrap_iters,
-                                                        n_intervals_interp=n_intervals_interp)        
-            fitparams.update({'directory': osidir,
-                              'response_type': response_type,
-                              'responsive_test': responsive_test,
-                              'responsive_thr': responsive_thr if responsive_test is not None else None,
-                              'n_stds': n_stds if responsive_test=='nstds' else None})
-            osi.save_tuning_results(fitdf, fitparams, fitdata)
-                            
-            if plot_rois:
-                self.plot_roi_tuning_and_fit(fitdf, fitparams, fitdata)
+                                                        n_intervals_interp=n_intervals_interp, min_cfgs_above=min_cfgs_above)                
         
-        return fitdf, fitparams, fitdata
-    
-    def plot_roi_tuning_and_fit(self, fitdf, fitparams, fitdata):
+            fitparams['directory'] = osidir
+            osi.save_tuning_results(bootresults, fitparams)
+            if plot_rois:
+                self.plot_roi_tuning_and_fit(bootresults, fitparams)
+
+        return bootresults, fitparams
+
+                    
+    def plot_roi_tuning_and_fit(self, bootresults, fitparams):
         print("---- plotting tuning curves and fits for each roi ----")
         osidir = fitparams['directory']
-        if not os.path.exists(os.path.join(osidir, 'roi_fits')):
-            os.makedirs(os.path.join(osidir, 'roi_fits'))
-        
+        if not os.path.exists(os.path.join(osidir, 'roi-fits')):
+            os.makedirs(os.path.join(osidir, 'roi-fits'))
+        print("Saving roi tuning fits to: %s" % os.path.join(osidir, 'roi-fits'))
+
         if fitparams['response_type'] == 'dff' and self.trace_type == 'corrected': #'dff':
             raw_traces = self.process_traces(response_type=fitparams['response_type'])
         else:
             raw_traces = self.traces
         
-        sdf = self.get_stimuli()
+        passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
+        print("%i cells fit at least 1 tuning curve." % len(passrois))
         
+        sdf = self.get_stimuli()
         fit_desc = os.path.split(osidir)[-1]
         data_identifier = '|'.join([self.animalid, self.session, self.fov, self.name, self.traceid, fit_desc])
-        for roi in fitdf['cell'].unique():
-            fig = osi.plot_roi_tuning(roi, fitdata, sdf, raw_traces, self.data.labels, trace_type=fitparams['response_type'])
-            label_figure(fig, data_identifier)
-            pl.savefig(os.path.join(osidir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
-            pl.close()
+        for roi in passrois:
+            #stimparams = [cfg for cfg, res in bootresults[roi].items() if res is not None]
+            for stimpara, bootr in bootresults[roi].items():
+                #  ['fits', 'stimulus_configs', 'data', 'results']
+                fig, stimkey = osi.plot_tuning_bootresults(roi, bootr, raw_traces, self.data.labels, sdf, trace_type=fitparams['response_type'])
+                label_figure(fig, data_identifier)
+                pl.savefig(os.path.join(osidir, 'roi-fits', 'roi%05d__%s.png' % (int(roi+1), stimkey)))
+                pl.close()
+                    
+                    
+              
+#    def plot_roi_tuning_and_fit(self, fitdf, fitparams, fitdata):
+#        print("---- plotting tuning curves and fits for each roi ----")
+#        osidir = fitparams['directory']
+#        if not os.path.exists(os.path.join(osidir, 'roi_fits')):
+#            os.makedirs(os.path.join(osidir, 'roi_fits'))
+#        
+#        if fitparams['response_type'] == 'dff' and self.trace_type == 'corrected': #'dff':
+#            raw_traces = self.process_traces(response_type=fitparams['response_type'])
+#        else:
+#            raw_traces = self.traces
+#        
+#        sdf = self.get_stimuli()
+#        
+#        fit_desc = os.path.split(osidir)[-1]
+#        data_identifier = '|'.join([self.animalid, self.session, self.fov, self.name, self.traceid, fit_desc])
+#        for roi in fitdf['cell'].unique():
+#            fig = osi.plot_roi_tuning(roi, fitdata, sdf, raw_traces, self.data.labels, trace_type=fitparams['response_type'])
+#            label_figure(fig, data_identifier)
+#            pl.savefig(os.path.join(osidir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
+#            pl.close()
     
         
     def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test=None, responsive_thr=0.05, n_stds=2.5, create_new=False,
-                   rootdir='/n/coxfs01/2p-data', n_processes=1):
+                   rootdir='/n/coxfs01/2p-data', n_processes=8, min_cfgs_above=2):
        
         print("... FIT: getting stats") 
+        rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
+                                                      exp_name=self.name, responsive_test=responsive_test, 
+                                                      responsive_thr=responsive_thr, n_stds=n_stds)
+        if responsive_test == 'nstds':
+            statdf = rstats['nframes_above']
+        else:
+            statdf = None
+            
         estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds)
        
         print("... FIT: doing bootstrap") 
-        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
-                                                     n_bootstrap_iters=n_bootstrap_iters, 
-                                                     n_resamples=n_resamples,
-                                                     n_intervals_interp=n_intervals_interp, n_processes=n_processes)
+#        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
+#                                                     n_bootstrap_iters=n_bootstrap_iters, 
+#                                                     n_resamples=n_resamples,
+#                                                     n_intervals_interp=n_intervals_interp, n_processes=n_processes)
+        
+        # Save fitso_bootstrap_fits
+        bootresults = osi.do_bootstrap(estats.gdf, estats.sdf, allconfigs=True,
+                                   roi_list=estats.rois, statdf=statdf,
+                                    response_type=response_type,
+                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
+                                    n_intervals_interp=n_intervals_interp, n_processes=n_processes,
+                                    min_cfgs_above=min_cfgs_above, min_nframes_above=responsive_thr)
+
+        non_ori_configs = osi.get_non_ori_params(estats.sdf)
+        fitparams = {#'directory': osidir,
+                          'response_type': response_type,
+                          'responsive_test': responsive_test,
+                          'responsive_thr': responsive_thr if responsive_test is not None else None,
+                          'n_stds': n_stds if responsive_test=='nstds' else None,
+                          'n_bootstrap_iters': n_bootstrap_iters,
+                          'n_resamples': n_resamples,
+                          'n_intervals_interp': n_intervals_interp,
+                          'min_cfgs_above': min_cfgs_above if statdf is not None else None,
+                          'min_nframes_above': responsive_thr if statdf is not None else None,
+                          'non_ori_configs': non_ori_configs}
+
         print("... FIT: done!")  
-        return fitdf, fitparams, fitdata
+        return bootresults, fitparams
     
 
-    def evaluate_fits(self, fitdf, fitparams, fitdata, goodness_thr=0.66):
+    def evaluate_fits(self, bootresults, fitparams, goodness_thr=0.66, rootdir='/n/coxfs01/2p-data'):
         fit_desc = os.path.split(fitparams['directory'])[-1]
         
-        data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, fit_desc])
-        fitdf, goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
-                                                     response_type=fitparams['response_type'], data_identifier=data_identifier)
+        #data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, fit_desc])
+        rmetrics, rmetrics_by_cfg = osi.evaluate_tuning(self.animalid, self.session, self.fov, self.name, 
+                                                    traceid=self.traceid, fit_desc=fit_desc, gof_thr=goodness_thr,
+                                                    rootdir=rootdir)
+
+#        fitdf, goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
+#                                                     response_type=fitparams['response_type'], data_identifier=data_identifier)
         
-        return fitdf, goodfits
+        goodrois = rmetrics.index.tolist()
+        return rmetrics, goodrois
     
+
+    def get_nonori_params(self, paramnames=['size', 'speed', 'sf'], response_type='dff',
+                          responsive_test='nstds', responsive_thr=10, n_stds=2.5):
+        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds)                
+        sdf = self.get_stimuli()
+                
+        n_params = len(paramnames)        
+        tmplist = []
+        for roi in estats.rois:
+            # Get mean response across trials for each config
+            responsevec = estats.gdf.get_group(roi).groupby(['config']).mean()[response_type]
+            # Get all combinations of non-orientation configs
+            paramconfigs = list(itertools.product(*[sdf[p].unique() for p in paramnames]))
+            
+            allresponses = []
+            for paramvals in paramconfigs:
+                if n_params == 3:
+                    currcfgs = sdf[( (sdf[paramnames[0]]==paramvals[0]) \
+                                      & (sdf[paramnames[1]]==paramvals[1]) \
+                                      & (sdf[paramnames[2]]==paramvals[2]) )].index.tolist()
+                elif n_params == 2:
+                    currcfgs = sdf[( (sdf[paramnames[0]]==paramvals[0]) \
+                                      & (sdf[paramnames[1]]==paramvals[1]) )].index.tolist()
+                    
+                if len(currcfgs)==0:
+                    continue
+                meanr = responsevec.loc[currcfgs].mean()
+                currvs = dict((pname, pval) for pname, pval in zip(paramnames, paramvals))
+                currvs['response'] = meanr
+                allresponses.append(pd.Series(currvs))
+            respdf = pd.concat(allresponses, axis=1).T
+            respdf['cell'] = [roi for _ in range(respdf.shape[0])]
+            tmplist.append(respdf)
+        nonori_responses = pd.concat(tmplist, axis=0)
+        return nonori_responses
+
 
 #%%
             
