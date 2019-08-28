@@ -938,6 +938,9 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                make_plots=True, responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1,
                min_cfgs_above=2, min_nframes_above=10):
+    
+    from pipeline.python.classifications import experiment_classes as util
+    
     roi_list=None; statdf=None;
     # Select only responsive cells:
     if responsive_test is not None:

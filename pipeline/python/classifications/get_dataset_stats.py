@@ -391,6 +391,9 @@ def main(options):
                                                                    n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
                         rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, rootdir=rootdir)
                         tuning_counts[skey] = goodrois
+                        del bootresults
+                        del fitparams
+                        del rmetrics
                         
                     elif stats == 'rfs':
                         fit_thr = float(optsE.rf_fit_thr)
