@@ -3,7 +3,8 @@
 
 # In[1]:
 
-
+import matplotlib
+matplotlib.use('agg')
 
 import cv2
 import glob
