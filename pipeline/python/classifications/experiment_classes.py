@@ -1147,7 +1147,7 @@ class Experiment(object):
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
 
-        if self.data is None or self.trace_type != 'corrected':
+        if self.data is None or self.data.traces is None or self.trace_type != 'corrected':
             self.load(trace_type='corrected', make_equal=make_equal)
         
         # if responsive_test is not None:
