@@ -5,7 +5,7 @@
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-8:00 # Running time of 3 hours
-#SBATCH --mem 98304 #70656 # Memory request of 70 GB (inc to 98304)
+#SBATCH --mem 114688 #98304 #70656 # Memory request of 70 GB (inc to 98304)
 
 # load modules
 module load centos6/0.0.1-fasrc01

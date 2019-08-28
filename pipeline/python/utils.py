@@ -61,6 +61,7 @@ def print_elapsed_time(t_start):
 # -----------------------------------------------------------------------------
 # Data-saving and -formatting methods:
 # -----------------------------------------------------------------------------
+
 def jsonify_array(curropts):
     jsontypes = (list, tuple, str, int, float, bool, unicode, long)
     for pkey in curropts.keys():

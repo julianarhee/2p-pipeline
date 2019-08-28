@@ -253,11 +253,14 @@ def warp_runs_in_fov(acquisition_dir, roi_id, stimtype=None, zproj='mean',
             for stim in stimtype:
                 # Only get zproj images for current stimtype:
                 curr_std_stack_paths = glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
+                #print curr_std_stack_paths
                 curr_img_paths = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, channel, 'File*', '*.tif')), key=natural_keys)
-                print "TOTAL N IMAGES (across %s runs): %i" % (stim, len(img_paths))
+                print channel
+                #print curr_img_paths
+                #print "TOTAL N IMAGES (across %s runs): %i" % (stim, len(img_paths))
                 std_stack_paths.extend(curr_std_stack_paths)
-                img_paths.extend(currr_img_paths)
-            print "TOTAL N IMAGES (across $i stim types): %i" % (len(stimtype), len(img_paths))
+                img_paths.extend(curr_img_paths)
+            print "TOTAL N IMAGES (across %i stim types): %i" % (len(stimtype), len(img_paths))
 
         else:
             std_stack_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))

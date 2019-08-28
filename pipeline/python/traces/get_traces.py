@@ -981,6 +981,8 @@ def apply_masks_to_tiff(currtiff_path, TID, si_info, maskdict_path=None, do_neur
     nvolumes = si_info['nvolumes']
     frames_tsec = si_info['frames_tsec']
     signal_channel_idx = int(TID['PARAMS']['signal_channel']) - 1 # 0-indexing into tiffs
+    if nchannels==2:
+        frames_tsec = frames_tsec[0::2]
 
     traceid_dir = TID['DST']
 
@@ -1606,6 +1608,8 @@ def create_filetraces_from_fissa(exp, TID, RID, si_info, filetraces_dir, rootdir
     nslices = 1 #si_info['nslices']
     nvolumes = si_info['nvolumes']
     frames_tsec = si_info['frames_tsec']
+    if nchannels == 2:
+        frames_tsec = frames_tsec[0::2]
 
     #roi_slices = maskinfo['roi_slices']
     tiff_dir = TID['SRC']

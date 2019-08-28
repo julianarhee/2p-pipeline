@@ -20,13 +20,50 @@ mpl.use('TKAgg')
 from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
-from pipeline.python.utils import write_dict_to_json, isreadonly
+from pipeline.python.utils import write_dict_to_json, isreadonly# , get_image_description_SI
 
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from caiman.utils import utils
+#from caiman.utils import utils
 from os.path import expanduser
 home = expanduser("~")
 from memory_profiler import profile
+
+def si_parse(imd):
+    """parse image_description field embedded by scanimage from get image description
+     Args:
+         imd: image description
+    Returns:
+        imd: the parsed description
+    """
+
+    imddata = imd.split('\n')
+    imddata = [i for i in imddata if '=' in i]
+    imddata = [i.split('=') for i in imddata]
+    imddata = [[ii.strip(' \r') for ii in i] for i in imddata]
+    imddata = {i[0]: val_parse(i[1]) for i in imddata}
+    return imddata
+
+def get_image_description_SI(fname):
+    """Given a tif file acquired with Scanimage it returns a dictionary containing the information in the image description field
+     Args:
+         fname: name of the file
+     Returns:
+        image_description: information of the image
+    """
+
+    image_descriptions = []
+
+    tf = TiffFile(fname)
+
+    for idx, pag in enumerate(tf.pages):
+        if idx % 1000 == 0:
+            logging.debug(idx) # progress report to the user
+        field = pag.tags['image_description'].value
+
+        image_descriptions.append(si_parse(field))
+
+    return image_descriptions
+
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -261,7 +298,7 @@ def get_meta(options):
                         t = t.setdefault(part, {})
 
             # Get img descriptions for each frame:
-            imgdescr = utils.get_image_description_SI(currtiffpath)
+            imgdescr = get_image_description_SI(currtiffpath)
 
             scanimage_metadata['filenames'].append(rawtiff)
             if 'SI' not in SI_struct.keys():
