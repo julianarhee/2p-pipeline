@@ -398,7 +398,7 @@ def main(options):
                                                                    n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
                         
                         rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, rootdir=rootdir)
-                        tuning_counts[skey] = goodrois
+                        tuning_counts[skey] = goodrois if goodrois is not None else 0
                         del bootresults
                         del fitparams
                         del rmetrics

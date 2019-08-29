@@ -1383,6 +1383,8 @@ class Gratings(Experiment):
     
 
     def evaluate_fits(self, bootresults, fitparams, goodness_thr=0.66, rootdir='/n/coxfs01/2p-data'):
+        rmetrics = None; goodrois = None;
+
         fit_desc = os.path.split(fitparams['directory'])[-1]
         
         #data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, fit_desc])
@@ -1392,8 +1394,9 @@ class Gratings(Experiment):
 
 #        fitdf, goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
 #                                                     response_type=fitparams['response_type'], data_identifier=data_identifier)
-        
-        goodrois = rmetrics.index.tolist()
+        if rmetrics is not None: 
+            goodrois = rmetrics.index.tolist()
+      
         return rmetrics, goodrois
     
 

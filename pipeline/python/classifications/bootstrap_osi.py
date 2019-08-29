@@ -1053,6 +1053,10 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
 
     
     rmetrics, rmetrics_by_cfg = get_good_fits(bootresults, fitparams, gof_thr=gof_thr)
+    if rmetrics is None:
+        print("Nothing to do here, all rois suck!")
+        return None, None
+
     goodrois = rmetrics.index.tolist()
     print("%i cells have good fits (thr >= %.2f)" % (len(goodrois), gof_thr))
 
@@ -1156,7 +1160,8 @@ def evaluate_fits(bootr, interp=False):
     
 
 def get_good_fits(bootresults, fitparams, gof_thr=0.66):
-    
+   
+    rmetrics=None; rmetrics_by_cfg=None; 
     niters = fitparams['n_bootstrap_iters']
 
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
@@ -1199,9 +1204,10 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
                 
             roidfs.append(pd.Series(roif.mean(axis=0), name=roi))
             metrics_by_config.append(roif)
-    
-    rmetrics = pd.concat(roidfs, axis=1).T
-    rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
+   
+    if len(roidfs) > 0: 
+        rmetrics = pd.concat(roidfs, axis=1).T
+        rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
     
     return rmetrics, rmetrics_by_cfg
 
@@ -1998,6 +2004,10 @@ def get_non_ori_params(sdf):
 
 def roi_polar_plot_by_config(bootresults, fitparams, gof_thr=0.66, plot_polar=True):
     rmetrics, rmetrics_by_cfg = get_good_fits(bootresults, fitparams, gof_thr=gof_thr)
+    if rmetrics is None:
+        print("No good rois!")
+        return None
+
     goodrois = rmetrics.index.tolist()
     
     n_intervals_interp = fitparams['n_intervals_interp']
@@ -2289,8 +2299,13 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
     rmetrics, rmetrics_by_cfg = evaluate_tuning(animalid, session, fov, run_name, 
                                                 traceid=traceid, fit_desc=fit_desc, gof_thr=goodness_thr,
                                                 create_new=create_new, rootdir=rootdir)
-    
-    print("----- COMPLETED 2/2: evaluation (%i good cells)! -----" % len(rmetrics.index.tolist()))
+   
+    if rmetrics is None:
+        n_goodcells = 0
+    else:
+        n_goodcells = len(rmetrics.index.tolist())
+ 
+    print("----- COMPLETED 2/2: evaluation (%i good cells)! -----" % n_goodcells)
     
     return bootresults, fitparams, rmetrics, rmetrics_by_cfg
 
