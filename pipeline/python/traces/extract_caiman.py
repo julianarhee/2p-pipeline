@@ -84,7 +84,8 @@ def extract_options(options):
     parser.add_option('--processed', action='store_false', dest='use_raw', default=True, help="set to downsample on non-raw source")
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set to downsample and motion correct anew")
-    parser.add_option('--prefix', action='store', dest='prefix', default='Yr', help="Prefix for sourced memmap/mc files (default: Yr)")
+    parser.add_option('--mmap', action='store', dest='mmap_prefix', default='Yr', help="Prefix for sourced memmap/mc files (default: Yr)")
+    parser.add_option('--prefix', action='store', dest='save_prefix', default=None, help="Prefix for saveing caiman results (default: 'seeded-/patch-Yr')")
 
     parser.add_option('--seed', action='store_true', dest='seed_rois', default=False, help="Set flag to seed ROIs with manual (must provide traceid)")
 
@@ -92,15 +93,14 @@ def extract_options(options):
 
     return options
 
-
-def caiman_params(fnames):
+def caiman_params(fnames, **kwargs):
     # dataset dependent parameters
     fr = 44.65                             # imaging rate in frames per second
     decay_time = 0.4                    # length of a typical transient in seconds
 
     # motion correction parameters
-    strides = (48, 48)          # start a new patch for pw-rigid motion correction every x pixels
-    overlaps = (24, 24)         # overlap between pathes (size of patch strides+overlaps)
+    strides = (96, 96)          # start a new patch for pw-rigid motion correction every x pixels
+    overlaps = (48, 48)         # overlap between pathes (size of patch strides+overlaps)
     max_shifts = (6,6)          # maximum allowed rigid shifts (in pixels)
     max_deviation_rigid = 3     # maximum shifts deviation allowed for patch with respect to rigid shifts
     pw_rigid = False             # flag for performing non-rigid motion correction
@@ -111,7 +111,7 @@ def caiman_params(fnames):
     merge_thr = 0.85            # merging threshold, max correlation allowed
     rf = 25                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 12             # amount of overlap between the patches in pixels
-    K = 8                      # number of components per patch
+    K = 8                       # number of components per patch
     gSig = [2, 2]               # expected half size of neurons in pixels
     method_init = 'greedy_roi'  # initialization method (if analyzing dendritic data using 'sparse_nmf')
     ssub = 1                    # spatial subsampling during initialization
@@ -131,10 +131,11 @@ def caiman_params(fnames):
                 'max_shifts': max_shifts,
                 'max_deviation_rigid': max_deviation_rigid,
                 'pw_rigid': pw_rigid,
-                'p': 1,
+                'p': p,
                 'nb': gnb,
                 'rf': rf,
                 'K': K, 
+                'gSig': gSig,
                 'stride': stride_cnmf,
                 'method_init': method_init,
                 'rolling_sum': True,
@@ -142,11 +143,35 @@ def caiman_params(fnames):
                 'ssub': ssub,
                 'tsub': tsub,
                 'merge_thr': merge_thr, 
-                'min_SNR': min_SNR,
-                'rval_thr': rval_thr,
-                'use_cnn': True,
-                'min_cnn_thr': cnn_thr,
-                'cnn_lowest': cnn_lowest}
+
+   
+    if kwargs is not None:
+        for k, v in kwargs.iteritems():
+            opts_dict.update({k: v})
+            print("... updating opt %s to value %s" % (k, str(v)))
+
+    if opts_dict['ssub'] != 1:
+        print("Updating params for spatial ds factor: %i" % opts_dict['ssub'])
+        ssub_val = float(opts_dict['ssub'])
+        gsig_val = float(opts_dict['gSig'][0])
+        rf_val = float(opts_dict['rf'])
+
+        strides = (int(round(opts_dict['strides'][0]/ssub_val)), int(round(opts_dict['strides'][1]/ssub_val)))
+        overlaps = (int(round(opts_dict['overlaps'][0]/ssub_val)), int(round(opts_dict['overlaps'][1]/ssub_val)))
+        gSig = (int(round(gsig_val/ssub_val)), int(round(gsig_val/ssub_val)))
+        rf = (int(round(rf_val/ssub_val)), int(round(rf_val/ssub_val)))
+        strid_cnmf = int(round(opts_dict['stride']))
+
+        opts_dict.update({'strides': strides, 
+                          'overlaps': overlaps,
+                          'gSig': gSig,
+                          'rf': rf,
+                          'stride': stride_cnmf})
+
+    opts_dict.update({'p_ssub': opts_dict['ssub'],
+                      'p_tsub': opts_dict['tsub']}) 
+
+
     opts = params.CNMFParams(params_dict=opts_dict)
 
     return opts
@@ -181,9 +206,9 @@ def load_mc_results(results_dir, prefix='Yr'):
 
     return mc 
 
-def get_file_paths(results_dir, prefix='Yr'):
+def get_file_paths(results_dir, mm_prefix='Yr'):
     try:
-        mparams_fpath = os.path.join(results_dir, '%s_memmap-params.json' % prefix)
+        mparams_fpath = os.path.join(results_dir, '%s_memmap-params.json' % mm_prefix)
         print("Loading memmap params...")
         with open(mparams_fpath, 'r') as f:
             mparams = json.load(f)
@@ -192,7 +217,7 @@ def get_file_paths(results_dir, prefix='Yr'):
         print("Unable to load memmap params, trying alt.")
         try:
             fnames = []
-            if 'downsample' in prefix:
+            if 'downsample' in mm_prefix:
                 print("checking scratch")
                 fovdir = results_dir.split('/caiman_results/')[0]
                 fov = os.path.split(fovdir)[-1]
@@ -200,10 +225,10 @@ def get_file_paths(results_dir, prefix='Yr'):
                 session = os.path.split(sessiondir)[-1]
                 animalid = os.path.split(os.path.split(sessiondir)[0])[-1]
                 print("Animal: %s, Fov: %s, Session: %s" % (animalid, fov, session))
-                fnames = sorted(glob.glob(os.path.join('/n/scratchlfs/cox_lab/julianarhee/downsampled/*%s*/*.tif' % prefix)), key=natural_keys)
+                fnames = sorted(glob.glob(os.path.join('/n/scratchlfs/cox_lab/julianarhee/downsampled/*%s*/*.tif' % mm_prefix)), key=natural_keys)
                 print(fnames[0:5]) 
-            if len(fnames)==0 and 'downsample' not in prefix: 
-                dpath = glob.glob(os.path.join(results_dir, 'memmap', '*%s*.npz' % prefix))[0]#) [0]) 
+            if len(fnames)==0 and 'downsample' not in mm_prefix: 
+                dpath = glob.glob(os.path.join(results_dir, 'memmap', '*%s*.npz' % mm_prefix))[0]#) [0]) 
                 minfo = np.load(dpath)
                 fnames = sorted(list(minfo['mmap_fnames']))
         except Exception as e:
@@ -213,15 +238,15 @@ def get_file_paths(results_dir, prefix='Yr'):
     return fnames #fnames = mparams['fnames']
 
 
-def get_full_memmap_path(results_dir, prefix='Yr'):
-    print("Getting full mmap path for prefix: %s" % prefix)
-    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % prefix))[0]
-    prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
-    print("CORRECTED PREFIX: %s" % prefix)
-    return fname_new, prefix
+def get_full_memmap_path(results_dir, mm_prefix='Yr'):
+    print("Getting full mmap path for prefix: %s" % mm_prefix)
+    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % mm_prefix))[0]
+    mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
+    print("CORRECTED PREFIX: %s" % mm_prefix)
+    return fname_new, mm_prefix
 
 
-def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', prefix='gratings', n_processes=1):
+def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
 
     # Load manual ROIs and format
     print("Getting seeds...")
@@ -233,7 +258,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-    fname_tot, prefix = get_full_memmap_path(results_dir, prefix=prefix)
+    fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
     print("Extracting CNMF from: %s" % fname_tot)
 
     # Load data
@@ -243,14 +268,16 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
 
     # Create opts for cnmf
     print("Preparing for CNMF extraction...") 
-    fnames = get_file_paths(results_dir, prefix=prefix) 
+    fnames = get_file_paths(results_dir, mm_prefix=mm_prefix) 
     print("--> got %i files for extraction" % len(fnames))
     
 #    if 'fov' in fnames[0]:
 #        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment,
 #                                'raw*', '*.tif')))
         
-    opts = caiman_params(fnames)
+    opts = caiman_params(fnames, opts_kws)
+    if prefix is None:
+         prefix = mm_prefix
     prefix = 'seeded-%s' % prefix
 
     #%% start a cluster for parallel processing 
@@ -266,7 +293,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # Reset default patch params to run on full
     rf = None          # half-size of the patches in pixels. `None` when seeded CNMF is used.
     only_init = False  # has to be `False` when seeded CNMF is used
-    gSig = (2, 2)      # expected half size of neurons in pixels, v important for proper component detection
+    #gSig = (2, 2)      # expected half size of neurons in pixels, v important for proper component detection
 
     # params object
     opts_dict = {'fnames': fnames,
@@ -275,11 +302,8 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
                 'nb': 2,
                 'rf': rf,
                 'only_init': only_init,
-                'gSig': gSig,
-                'ssub': 1,
-                'tsub': 1,
                 'merge_thr': 0.85,
-                'n_pixels_per_process': 1000}
+                'n_pixels_per_process': 100}
 
     opts.change_params(opts_dict)
 
@@ -327,7 +351,10 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     print("Extracting df/f...")
     quantileMin = 10 # 8
     frames_window_sec = 30.
-    ds_factor = float(prefix.split('downsample-')[-1]) #opts.init['tsub']
+    if 'downsample' in mm_prefix:
+        ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
+    else:
+        ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
     frames_window = int(round(frames_window_sec * (fr / ds_factor))) # 250
     dff_params = {'quantileMin': quantileMin,
@@ -413,12 +440,12 @@ def reshape_and_binarize_masks(masks):
     return Ain
 
 
-def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', prefix='gratings', n_processes=1):
+def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
 
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-    fname_tot, prefix = get_full_memmap_path(results_dir, prefix=prefix)
+    fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
     print("Extracting CNMF from: %s" % fname_tot)
 
     # Load data
@@ -428,11 +455,13 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
 
     # Create opts for cnmf
     print("Preparing for CNMF extraction...") 
-    fnames = get_file_paths(results_dir, prefix=prefix) 
-    print("--> got %i files for extraction" % len(fnames))    
+    fnames = get_file_paths(results_dir, mm_prefix=mm_prefix) 
+    print("--> got %i files for extraction" % len(fnames))
+      
+    opts = caiman_params(fnames, opts_kws)
        
-    opts = caiman_params(fnames)
-
+    if prefix is None:
+         prefix = mm_prefix
     prefix = 'patches-%s' % prefix
 
     #%% start a cluster for parallel processing 
@@ -503,7 +532,10 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     start_t = time.time()
     quantileMin = 10 # 8
     frames_window_sec = 30.
-    ds_factor = float(prefix.split('downsample-')[-1]) #opts.init['tsub']
+    if 'downsample' in mm_prefix:
+        ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
+    else:
+        ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
     frames_window = int(round(frames_window_sec * (fr / ds_factor))) # 250
     dff_params = {'quantileMin': quantileMin,
@@ -540,16 +572,29 @@ def main(options):
     use_raw = opts.use_raw
     n_processes = int(opts.n_processes) 
     create_new = opts.create_new
-    prefix = opts.prefix
+    mm_prefix = opts.mmap_prefix
+    prefix = opts.save_prefix
     traceid=opts.traceid
     seed_rois = opts.seed_rois
 
-    if seed_rois:
-        run_cnmf_seeded(animalid, session, fov, experiment=experiment, traceid=traceid,
-                        rootdir=rootdir, prefix=prefix, n_processes=n_processes)
+    cparams = [a for a in options if 'c_' in a]
+    if len(cparams) > 0:
+        if ',' in cparams and len(cparams)==1:
+            cparams = cparams[0].split(',')
+        c_args = dict([a[2:].split('=', maxsplit=1) for a in cparams])
     else:
-        run_cnmf_patches(animalid, session, fov, experiment=experiment, traceid=traceid,
-                         rootdir=rootdir, prefix=prefix, n_processes=n_processes)
+        c_args = None
+
+    print(c_args)
+
+
+
+    if seed_rois:
+        run_cnmf_seeded(animalid, session, fov, experiment=experiment, traceid=traceid, mm_prefix=mm_prefix,
+                        rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
+    else:
+        run_cnmf_patches(animalid, session, fov, experiment=experiment, traceid=traceid, mm_prefix=mm_prefix,
+                         rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
 
 
 if __name__=='__main__':

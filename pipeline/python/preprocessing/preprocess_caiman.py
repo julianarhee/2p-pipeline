@@ -82,9 +82,13 @@ def extract_options(options):
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set to downsample and motion correct anew")
     parser.add_option('--motion', action='store_true', dest='do_motion', default=False, help="Set to do motion correction")
+    parser.add_option('--downsample', action='store_true', dest='do_downsample', default=False, help="Set to temporally downsample tifs before caiman memmap and MC")
 
     parser.add_option('--prefix', action="store",
                       dest="prefix", default='Yr', help="Prefix for memmapped files [default: Yr]")
+    parser.add_option('--source-file', action="store",
+                      dest="source_file", default=None, help="Full path to full memmaped file [default: None]")
+
 
 
     (options, args) = parser.parse_args(options)
@@ -92,25 +96,26 @@ def extract_options(options):
     return options
 
 
-def caiman_params(fnames):
+
+def caiman_params(fnames, **kwargs):
     # dataset dependent parameters
     fr = 44.65                             # imaging rate in frames per second
     decay_time = 0.4                    # length of a typical transient in seconds
 
     # motion correction parameters
-    strides = (48, 48)          # start a new patch for pw-rigid motion correction every x pixels
-    overlaps = (24, 24)         # overlap between pathes (size of patch strides+overlaps)
+    strides = (96, 96)          # start a new patch for pw-rigid motion correction every x pixels
+    overlaps = (48, 48)         # overlap between pathes (size of patch strides+overlaps)
     max_shifts = (6,6)          # maximum allowed rigid shifts (in pixels)
     max_deviation_rigid = 3     # maximum shifts deviation allowed for patch with respect to rigid shifts
     pw_rigid = False             # flag for performing non-rigid motion correction
 
     # parameters for source extraction and deconvolution
-    p = 1                       # order of the autoregressive system
+    p = 2                       # order of the autoregressive system
     gnb = 2                     # number of global background components
     merge_thr = 0.85            # merging threshold, max correlation allowed
-    rf = 15                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
-    stride_cnmf = 6             # amount of overlap between the patches in pixels
-    K = 4                       # number of components per patch
+    rf = 25                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
+    stride_cnmf = 12             # amount of overlap between the patches in pixels
+    K = 8                       # number of components per patch
     gSig = [2, 2]               # expected half size of neurons in pixels
     method_init = 'greedy_roi'  # initialization method (if analyzing dendritic data using 'sparse_nmf')
     ssub = 1                    # spatial subsampling during initialization
@@ -130,10 +135,11 @@ def caiman_params(fnames):
                 'max_shifts': max_shifts,
                 'max_deviation_rigid': max_deviation_rigid,
                 'pw_rigid': pw_rigid,
-                'p': 1,
+                'p': p,
                 'nb': gnb,
                 'rf': rf,
                 'K': K, 
+                'gSig': gSig,
                 'stride': stride_cnmf,
                 'method_init': method_init,
                 'rolling_sum': True,
@@ -141,12 +147,42 @@ def caiman_params(fnames):
                 'ssub': ssub,
                 'tsub': tsub,
                 'merge_thr': merge_thr, 
-                'min_SNR': min_SNR,
-                'rval_thr': rval_thr,
-                'use_cnn': True,
-                'min_cnn_thr': cnn_thr,
-                'cnn_lowest': cnn_lowest}
-    return opts_dict
+
+   
+    if kwargs is not None:
+        for k, v in kwargs.iteritems():
+            opts_dict.update({k: v})
+            print("... updating opt %s to value %s" % (k, str(v)))
+
+    if opts_dict['ssub'] != 1:
+        print("Updating params for spatial ds factor: %i" % opts_dict['ssub'])
+        ssub_val = float(opts_dict['ssub'])
+        gsig_val = float(opts_dict['gSig'][0])
+        rf_val = float(opts_dict['rf'])
+
+        strides = (int(round(opts_dict['strides'][0]/ssub_val)), int(round(opts_dict['strides'][1]/ssub_val)))
+        overlaps = (int(round(opts_dict['overlaps'][0]/ssub_val)), int(round(opts_dict['overlaps'][1]/ssub_val)))
+        gSig = (int(round(gsig_val/ssub_val)), int(round(gsig_val/ssub_val)))
+        rf = (int(round(rf_val/ssub_val)), int(round(rf_val/ssub_val)))
+        strid_cnmf = int(round(opts_dict['stride']))
+
+        opts_dict.update({'strides': strides, 
+                          'overlaps': overlaps,
+                          'gSig': gSig,
+                          'rf': rf,
+                          'stride': stride_cnmf})
+
+    opts_dict.update({'p_ssub': opts_dict['ssub'],
+                      'p_tsub': opts_dict['tsub']}) 
+
+
+    opts = params.CNMFParams(params_dict=opts_dict)
+
+    return opts
+
+
+
+
 
 def save_memmap_params(results_dir, resize_fact=(), add_to_movie=None, border_to_0=None, fnames=[], prefix='Yr'):
     # create mmap params file
@@ -225,30 +261,43 @@ def get_full_memmap_path(results_dir, prefix='Yr'):
 
 
 
-def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True):
-    fnames = glob.glob(os.path.join(srcdir, '*.tif')) 
-    fnames = sorted(fnames, key=natural_keys)
-    print("Found %i movies." % len(fnames))
+def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
+    if srcdir is None:
+        fnames = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_run*' % run_label, 'raw*', '*.tif'))
+        print("No sourcedir provided. Found %i .tif files to process." % len(fnames))
+        do_memmap=True
+        if prefix is None:
+            prefix = ''
+        source_key = '-'.join([animalid, session, fov, run_label, prefix])
+    else:
+        fnames = glob.glob(os.path.join(srcdir, '*.tif')) 
+        fnames = sorted(fnames, key=natural_keys)
+        print("Found %i movies." % len(fnames))
+
+        # Check for existing memmaped/processed files
+        source_key = os.path.split(srcdir)[-1]
+        print("... Checking for existing processed mmaps in src: %s" % source_key)
+        memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
+        if len(fnames) == len(memfiles):
+            print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
+            dco_memmap = False
+        else:
+            do_memmap = True
+
 
     data_identifier = '|'.join([animalid, session, fov, run_label])
     print("*** Dataset: %s ***" % data_identifier)
     
-    # Check for existing memmaped/processed files
-    source_key = os.path.split(srcdir)[-1]
-    print("... Checking for existing processed mmaps in src: %s" % source_key)
-    memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
-    if len(fnames) == len(memfiles):
-        print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
-        do_memmap = False
-    else:
-        do_memmap = True
-
     #%%
     fovdir = os.path.join(rootdir, animalid, session, fov)
     results_dir = os.path.join(fovdir, 'caiman_results', run_label)
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    prefix = source_key #run_label if prefix is None else prefix
+    if prefix is not None and prefix not in source_key:
+        prefix = '%s_%s' % (source_key, prefix)
+    else:
+        prefix = source_key #run_label if prefix is None else prefix
+    print("***PROCESSING: %s ***" % prefix)
 
     #%% start a cluster for parallel processing
     # (if a cluster already exists it will be closed and a new session will be opened)
@@ -262,8 +311,7 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
     if do_memmap:
         print("Creating memmapped files and motion-correcting...")
         start_t = time.time()
-        opts_dict = caiman_params(fnames)
-        opts = params.CNMFParams(params_dict=opts_dict)
+        opts = caiman_params(fnames, opts_kws)
 
         # first we create a motion correction object with the parameters specified
         mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
@@ -301,6 +349,12 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
 
 def main(options):
     opts = extract_options(options) 
+    cparams = [a for a in options if 'c_' in a]
+    if ',' in cparams and len(cparams)==1:
+        cparams = cparams[0].split(',')
+    c_args = dict([a[2:].split('=', maxsplit=1) for a in cparams])
+    print(c_args)
+
     rootdir = opts.rootdir #'/n/coxfs01/2p-data'
     animalid = opts.animalid #'JC084'
     session = opts.session #'20190525' #'20190505_JC083'
@@ -313,15 +367,19 @@ def main(options):
     create_new = opts.create_new
     do_motion = opts.do_motion
     prefix = opts.prefix
+    do_downsample = opts.do_downsample
 
-    outdir = preproc.downsample_experiment_movies(animalid, session, fov, experiment=experiment,
+    outdir = None
+    if do_downsample:
+        outdir = preproc.downsample_experiment_movies(animalid, session, fov, experiment=experiment,
                                 ds_factor=ds_factor, destdir=destdir, use_raw=use_raw, n_processes=n_processes, create_new=create_new) 
+    
     print("[Downsampling] Complete!")
     print("... all movies saved to:\n... %s" % outdir)
 
 
     if do_motion:
-        prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=outdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix)
+        prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=outdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix, opts_kws=c_args)
 
         print("--- finished motion correction ----")
         #print("All results saved to: %s" % results_dir)
