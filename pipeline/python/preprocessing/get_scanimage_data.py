@@ -29,6 +29,9 @@ from os.path import expanduser
 home = expanduser("~")
 from memory_profiler import profile
 
+# FUNCTIONS FROM CAIMAN ##############################################################
+# https://github.com/flatironinstitute/CaImAn
+
 def si_parse(imd):
     """parse image_description field embedded by scanimage from get image description
      Args:
@@ -65,6 +68,7 @@ def get_image_description_SI(fname):
 
     return image_descriptions
 
+# #################################################################################3
 
 def atoi(text):
     return int(text) if text.isdigit() else text
