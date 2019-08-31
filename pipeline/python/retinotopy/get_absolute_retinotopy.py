@@ -37,7 +37,7 @@ import pylab as plt
 
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import target_visual_field as vf
-from pipeline.python.retinotopy import visualize_rois as visroi
+from pipeline.python.retinotopy import utils as util
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 from pipeline.python.retinotopy import estimate_RF_size as est
 # In[3]:
@@ -85,7 +85,10 @@ def extract_options(options):
 #options = ['-i', 'JC070', '-S', '20190316', '-A', 'FOV1', '-R', 'retino_run1', '-t', 'analysis002']
 
 #options = ['-i', 'JC067', '-S', '20190320', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
-options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC076', '-S', '20190420', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+options = ['-i', 'JC090', '-S', '20190604', '-A', 'FOV3', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC085', '-S', '20190622', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 opts = extract_options(options)
@@ -150,7 +153,7 @@ print("Saving fit results to: %s" % output_dir)
 
 
 # Get screen info:
-screen = visroi.get_screen_info(animalid, session, rootdir=rootdir)
+screen = util.get_screen_info(animalid, session, rootdir=rootdir)
 
 
 # Convert phase to linear coords:
@@ -204,9 +207,6 @@ else:
     
 print("Loading pre-averaged traces from: %s" % avg_traces_fpath)
 
-
-print("Loading pre-averaged traces from: %s" % avg_traces_fpath)
-
 with open(avg_traces_fpath, 'rb') as f:
     traces = pkl.load(f)
 print("averaged_traces.pkl contains:", traces.keys())
@@ -223,13 +223,13 @@ print "Cond dict:", traces['traces']['right']
 
 
 # Comine all trial data into data frames:
-fit, magratio, phase, trials_by_cond = vf.trials_to_dataframes(processed_fpaths, conditions_fpath)
+fit, magratio, phase, trials_by_cond = util.trials_to_dataframes(processed_fpaths, conditions_fpath)
 #print fit.head()
 print trials_by_cond
 conditions = trials_by_cond.keys()
 
 # Correct phase to wrap around:
-corrected_phase = vf.correct_phase_wrap(phase)
+corrected_phase = util.correct_phase_wrap(phase)
 
 
 # ### 4.  Get stimulus parameters
@@ -261,7 +261,7 @@ use_magratio = True
 
 fit_thr = 0.2
 #mag_thr = 0.02
-mag_thr = 0.02 #magratio.max(axis=1).max() * 0.25 #0.02
+mag_thr = 0.01 #magratio.max(axis=1).max() * 0.25 #0.02
 
 if use_magratio:
     roi_metric = 'magratio'
@@ -291,15 +291,17 @@ ax = axes[0]
 ax.plot(traces['traces']['right']['traces'][rid, :], 'orange', lw=0.5, label='right')
 ax.plot(traces['traces']['left']['traces'][rid, :], 'b', lw=0.5, label='left')
 for cyc in cycle_starts:
-    ax.axvline(x=cyc, color='k', lw=0.5)
+    ax.axvline(x=cyc, color='k', lw=0.5, linestyle=':')
 ax.legend(loc='upper right', bbox_to_anchor=(1.0, 1.5))
+sns.despine(ax=ax, trim=True, offset=2)
 
 ax = axes[1]
 ax.plot(traces['traces']['top']['traces'][rid, :], 'orange', lw=0.5, label='top')
 ax.plot(traces['traces']['bottom']['traces'][rid, :], 'b', lw=0.5, label='bottom')
 for cyc in cycle_starts:
-    ax.axvline(x=cyc, color='k', lw=0.5)
+    ax.axvline(x=cyc, color='k', lw=0.5, linestyle=':')
 ax.legend(loc='upper right', bbox_to_anchor=(1.0, 1.5))
+sns.despine(ax=ax, trim=True, offset=2)
 
 fig.suptitle('roi %i (%s %.2f)' % (int(rid+1), roi_metric, means_by_metric[rid]), fontsize=10)
 
@@ -322,15 +324,17 @@ for ri,rid in enumerate(strong_cells):
     ax.plot(traces['traces']['right']['traces'][rid, :], 'orange', lw=0.5, label='right')
     ax.plot(traces['traces']['left']['traces'][rid, :], 'b', lw=0.5, label='left')
     for cyc in cycle_starts:
-        ax.axvline(x=cyc, color='k', lw=0.5)
+        ax.axvline(x=cyc, color='k', lw=0.5, linestyle=':')
     ax.legend(loc='upper right', bbox_to_anchor=(1.0, 1.5))
+    sns.despine(ax=ax, trim=True, offset=2)
 
     ax = axes[1]
     ax.plot(traces['traces']['top']['traces'][rid, :], 'orange', lw=0.5, label='top')
     ax.plot(traces['traces']['bottom']['traces'][rid, :], 'b', lw=0.5, label='bottom')
     for cyc in cycle_starts:
-        ax.axvline(x=cyc, color='k', lw=0.5)
+        ax.axvline(x=cyc, color='k', lw=0.5, linestyle=':')
     ax.legend(loc='upper right', bbox_to_anchor=(1.0, 1.5))
+    sns.despine(ax=ax, trim=True, offset=2)
 
     fig.suptitle('roi %i (%s %.2f)' % (int(rid+1), roi_metric, means_by_metric[rid]), fontsize=10)
     fig.subplots_adjust(right=0.8, top=0.7, bottom=0.3, left=0.05, wspace=0.2)
@@ -427,7 +431,7 @@ for (c1, c2) in [('left', 'right'), ('bottom', 'top')]:
     # 1. Condition1 map
     ax = axes[0, 0]
     ax.imshow(fov_img, 'gray')
-    cmask1_wrap = vf.correct_phase_wrap(cmask1)
+    cmask1_wrap = util.correct_phase_wrap(cmask1)
     im = ax.imshow(cmask1_wrap.T, cmap='nipy_spectral', vmin=0, vmax=np.pi*2)
     ax.set_title(c1); ax.axis('off')
     cbaxes = fig.add_axes(cbar_axes1) 
@@ -441,7 +445,7 @@ for (c1, c2) in [('left', 'right'), ('bottom', 'top')]:
     # 2.  Condition2 map
     ax = axes[0, 1]
     ax.imshow(fov_img, 'gray')
-    cmask2_wrap = vf.correct_phase_wrap(cmask2)
+    cmask2_wrap = util.correct_phase_wrap(cmask2)
     im = ax.imshow(cmask2_wrap.T, cmap='nipy_spectral', vmin=0, vmax=np.pi*2)
     ax.set_title(c2); ax.axis('off')
     cbaxes = fig.add_axes(cbar_axes2) 
@@ -563,7 +567,7 @@ cbar_axes2 = [0.65, 0.85, 0.15, 0.1]
     
 ax = axes[0]
 ax.imshow(fov_img, 'gray')
-im = ax.imshow(absolute_az.T, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi) #vmin=0, vmax=np.pi*2)
+im = ax.imshow(absolute_az.T, cmap='nipy_spectral_r', vmin=-np.pi, vmax=np.pi) #vmin=0, vmax=np.pi*2)
 ax.set_title('azimuth'); ax.axis('off')
 cbaxes = fig.add_axes(cbar_axes1) 
 cb = pl.colorbar(im, cax = cbaxes, orientation='horizontal')  
@@ -571,7 +575,7 @@ cb = pl.colorbar(im, cax = cbaxes, orientation='horizontal')
 # 5. Abs map - cond2
 ax = axes[1]
 ax.imshow(fov_img, 'gray')
-im = ax.imshow(absolute_el.T, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi) # <-- use reverse cmap to match abs condN
+im = ax.imshow(absolute_el.T, cmap='nipy_spectral_r', vmin=-np.pi, vmax=np.pi) # <-- use reverse cmap to match abs condN
 ax.set_title('elevation'); ax.axis('off')
 cbaxes = fig.add_axes(cbar_axes2) 
 cb = pl.colorbar(im, cax = cbaxes, orientation='vertical')  

@@ -29,7 +29,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 from pipeline.python.utils import natural_keys, label_figure, replace_root
-from pipeline.python.retinotopy import visualize_rois as visroi
+from pipeline.python.retinotopy import utils as util
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -424,7 +424,7 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
         interactive=False
     else:
         interactive=True
-    screen_info = visroi.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
+    screen_info = util.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
     el_degrees_per_cycle = screen_info['elevation']
     az_degrees_per_cycle = screen_info['azimuth']
 
@@ -510,7 +510,7 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_siz
         screen_resolution = screen_info['resolution']
 
     #retino_info = vis.get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
-    retino_info = vis.get_retino_info(animalid, session, fov=acquisition, interactive=interactive, rootdir=rootdir, \
+    retino_info = util.get_retino_info(animalid, session, fov=acquisition, interactive=interactive, rootdir=rootdir, \
                         azimuth='right', elevation='top') #,
 #                        leftedge=None, rightedge=None, 
 #                        bottomedge=None, topedge=None)
