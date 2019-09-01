@@ -1,0 +1,511 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Sep  1 11:01:55 2019
+
+@author: julianarhee
+"""
+
+import h5py
+import glob
+import os
+import json
+import copy
+import traceback
+import re
+
+import pandas as pd
+import numpy as np
+from pipeline.python.utils import natural_keys
+from pipeline.python.traces import utils as tutils
+
+from pipeline.python.paradigm import utils as putils
+
+#%%
+
+
+def get_run_summary(xdata_df, labels_df, stimconfigs, si, verbose=False):
+    
+    run_info = {}
+    transform_dict, object_transformations = putils.get_transforms(stimconfigs)
+    trans_types = object_transformations.keys()
+
+    conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
+ 
+    # Get trun info:
+    roi_list = sorted(list(set([r for r in xdata_df.columns.tolist() if not r=='index'])))
+    ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
+    trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
+    ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
+    #assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
+    nframes_per_trial = list(set(labels_df.groupby(['trial'])['stim_on_frame'].count())) #[0]
+    nframes_on = list(set(labels_df['stim_dur']))
+    #assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
+    #nframes_on = nframes_on[0] * si_info['framerate']
+    nframes_on = [int(round(si['framerate'])) * n for n in nframes_on]
+    
+    # Get stim onset index for all trials:
+#    tmat = np.reshape(labels_df['tsec'].values, (ntrials_total, nframes_per_trial))    
+#    ons = []
+#    for ts in range(tmat.shape[0]):
+#        on_idx = [t for t in tmat[ts,:]].index(0)
+#        ons.append(on_idx)
+#    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
+#    stim_on_frame = list(set(ons))[0]
+    try:
+        ons = [int(np.where(np.array(t)==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        assert len(list(set(ons))) == 1
+        stim_on_frame = list(set(ons))[0]
+    except Exception as e: 
+        all_ons = [np.where(np.array(t)==0)[0] for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+        all_ons = np.concatenate(all_ons).ravel()
+        print len(all_ons)
+        unique_ons = np.unique(all_ons)
+        print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(unique_ons))))
+        stim_on_frame = int(round( np.mean(unique_ons) ))
+        print("--- assigning stim on frame: %i" % stim_on_frame)  
+        
+    #ons = [int(np.where(t==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+    #assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
+    #stim_on_frame = list(set(ons))[0]
+
+    if verbose:
+        print "-------------------------------------------"
+        print "Run summary:"
+        print "-------------------------------------------"
+        print "N rois:", len(roi_list)
+        print "N trials:", ntrials_total
+        print "N frames per trial:", nframes_per_trial
+        print "N trials per stimulus:", ntrials_by_cond
+        print "-------------------------------------------"
+
+    run_info['roi_list'] = roi_list
+    run_info['ntrials_total'] = ntrials_total
+    run_info['nframes_per_trial'] = nframes_per_trial
+    run_info['ntrials_by_cond'] = ntrials_by_cond
+    run_info['condition_list'] = conditions
+    run_info['stim_on_frame'] = stim_on_frame
+    run_info['nframes_on'] = nframes_on
+    run_info['trace_type'] = trace_type
+    run_info['transforms'] = object_transformations
+    #run_info['datakey'] = datakey
+    run_info['trans_types'] = trans_types
+    run_info['framerate'] = si['framerate']
+    run_info['nfiles'] = len(labels_df['file_ix'].unique())
+
+    return run_info
+
+
+#%%
+
+def frames_to_trials(parsed_frames_fpath, trials_in_block, si, frame_shift=0,
+                     frame_ixs=None):
+
+    all_frames_tsecs = np.array(si['frames_tsec'])
+    nslices_full = len(all_frames_tsecs) / si['nvolumes']
+    if si['nchannels']==2:
+        all_frames_tsecs = np.array(all_frames_tsecs[0::2])
+    print "N tsecs:", len(all_frames_tsecs)
+
+    # Get volume indices to assign frame numbers to volumes:
+    vol_ixs_tif = np.empty((si['nvolumes']*nslices_full,))
+    vcounter = 0
+    for v in range(si['nvolumes']):
+        vol_ixs_tif[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
+        vcounter += nslices_full
+    vol_ixs_tif = np.array([int(v) for v in vol_ixs_tif])
+    vol_ixs = []
+    vol_ixs.extend(np.array(vol_ixs_tif) + si['nvolumes']*tiffnum for tiffnum in range(si['ntiffs']))
+    vol_ixs = np.array(sorted(np.concatenate(vol_ixs).ravel()))
+    
+    try:
+        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
+        
+        trial_list = sorted(parsed_frames.keys(), key=natural_keys)
+        print "There are %i total trials across all .tif files." % len(trial_list)
+        
+        # Check if frame indices are indexed relative to full run (all .tif files)
+        # or relative to within-tif frames (i.e., a "block")
+        block_indexed = True
+        if all([all(parsed_frames[t]['frames_in_run'][:] == parsed_frames[t]['frames_in_file'][:]) for t in trial_list]):
+            block_indexed = False
+            print "Frame indices are NOT block indexed"
+            
+        # Assumes all trials have same structure
+        min_frame_interval = 1 #list(set(np.diff(frames_to_select['Slice01'].values)))  # 1 if not slices
+        nframes_pre = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['baseline_dur_sec'] * si['volumerate']))
+        nframes_post = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['iti_dur_sec'] * si['volumerate']))
+        nframes_on = int(round(parsed_frames['trial00001']['frames_in_run'].attrs['stim_dur_sec'] * si['volumerate']))
+        nframes_per_trial = nframes_pre + nframes_on + nframes_post 
+    
+    
+        # Get ALL frames corresponding to trial epochs:
+        # -----------------------------------------------------
+        # Get all frame indices for trial epochs (if there are overlapping frame indices, there will be repeats)    
+        all_frames_in_trials = np.hstack([np.array(parsed_frames[t]['frames_in_file']) \
+                                   for t in trials_in_block])
+        print "N frames in curr trials:", len(all_frames_in_trials)
+        print "N unique frames:", len(np.unique(all_frames_in_trials))
+        print "Last frame idx: %i (N frames total, %i)" % (all_frames_in_trials[-1], len(all_frames_tsecs))
+        stim_onset_idxs = np.array([parsed_frames[t]['frames_in_file'].attrs['stim_on_idx'] \
+                                    for t in trials_in_block])
+    
+        # Since we are cycling thru FILES readjust frame indices to match within-file, rather than across-files.
+        # block_frame_offset set in extract_paradigm_events (MW parsing) - supposedly set this up to deal with skipped tifs?
+        # -------------------------------------------------------
+        if block_indexed is False:
+            all_frames_in_trials = all_frames_in_trials - len(all_frames_tsecs)*file_ix - frame_shift  
+            if all_frames_in_trials[-1] >= len(all_frames_tsecs):
+                print 'File: %i' % file_ix, len(all_frames_tsecs)
+                print "*** %i extra frames..." % (all_frames_in_trials[-1] - len(all_frames_tsecs))
+            stim_onset_idxs = stim_onset_idxs - len(all_frames_tsecs)*file_ix - frame_shift 
+    
+        stim_onset_idxs_adjusted = vol_ixs_tif[stim_onset_idxs]
+        stim_onset_idxs = copy.copy(stim_onset_idxs_adjusted)
+        
+        trial_frames_to_vols = dict((t, []) for t in trials_in_block)
+        for t in trials_in_block: 
+            frames_to_vols = parsed_frames[t]['frames_in_file'][:] 
+            frames_to_vols = frames_to_vols - len(all_frames_tsecs)*file_ix - frame_shift  
+            actual_frames_in_trial = [i for i in frames_to_vols if i < len(vol_ixs_tif)]
+            trial_vol_ixs = np.empty(frames_to_vols.shape, dtype=int)
+            trial_vol_ixs[0:len(actual_frames_in_trial)] = vol_ixs_tif[actual_frames_in_trial]
+            if varying_stim_dur is False:
+                trial_vol_ixs = trial_vol_ixs[0:nframes_per_trial]
+            trial_frames_to_vols[t] = np.array(trial_vol_ixs)
+
+
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        parsed_frames.close()
+            
+    #%
+    # Convert frame-reference to volume-reference. Only select first frame for each volume.
+    # Only relevant for multi-plane
+    # -------------------------------------------------------
+    # Don't take unique values, since stim period of trial N can be ITI of trial N-1
+    actual_frames = [i for i in all_frames_in_trials if i < len(vol_ixs_tif)]
+    frames_in_trials = vol_ixs_tif[actual_frames]
+    
+    # Turn frame_tsecs into RELATIVE tstamps (to stim onset):
+    # ------------------------------------------------
+    first_plane_tstamps = all_frames_tsecs[np.array(frame_ixs)]
+    print "--> N tstamps:", len(first_plane_tstamps)
+    trial_tstamps = first_plane_tstamps[frames_in_trials[0:len(actual_frames)]] #all_frames_tsecs[frames_in_trials] #indices]  
+    # Check whether we are asking for more frames than there are unique, and pad array if so
+    if len(trial_tstamps) < len(all_frames_in_trials): #len(frames_in_trials):
+        print "padding trial tstamps array... (should be %i)" % len(all_frames_in_trials)
+        trial_tstamps = np.pad(trial_tstamps, (0, len(all_frames_in_trials)-len(trial_tstamps)), mode='constant', constant_values=np.nan)
+        frames_in_trials = np.pad(frames_in_trials, (0, len(all_frames_in_trials)-len(frames_in_trials)), mode='constant', constant_values=np.nan)
+    #print "trial tstamps: size", len(trial_tstamps)
+    print "%s - N trials in block: %i (%i frames)" % (int(file_ix+1), len(trials_in_block), len(frames_in_trials))
+
+    # All trials have the same structure:
+    reformat_tstamps = False
+    print "nframes per trial:", nframes_per_trial
+    print "N tstamps:", len(trial_tstamps)
+    print "N trials in block:", len(trials_in_block)
+    try: 
+        tsec_mat = np.reshape(trial_tstamps, (len(trials_in_block), nframes_per_trial))
+        # Subtract stim_on tstamp from each frame of each trial to get relative tstamp:
+        tsec_mat -= np.tile(all_frames_tsecs[stim_onset_idxs].T, (tsec_mat.shape[1], 1)).T
+        
+    except Exception as e: #ValueError:
+        traceback.print_exc()
+#        reformat_tstamps = True
+
+    x, y = np.where(tsec_mat==0)
+    assert len(list(set(y)))==1, "Incorrect stim onset alignment: %s" % str(list(set(y)))
+       
+    relative_tsecs = np.reshape(tsec_mat, (len(trials_in_block)*nframes_per_trial, ))
+
+    # Convert frames_in_file to volume idxs:
+#    trial_frames_to_vols = pd.DataFrame(data=np.reshape(all_frames_in_trials, (len(trials_in_block), nframes_per_trial)),
+#                                        index=trials_in_block)
+    trial_frames_to_vols = pd.DataFrame(trial_frames_to_vols)
+
+
+
+    return trial_frames_to_vols, relative_tsecs
+
+#%%
+
+
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC085'
+session = '20190622'
+fov = 'FOV1_zoom2p0x'
+
+experiment = 'rfs10'
+traceid = 'traces001'
+
+
+
+fovdir = os.path.join(rootdir, animalid, session, fov)
+rawfns = sorted(glob.glob(os.path.join(fovdir, '*%s*' % experiment, 'traces', '%s*' % traceid, 'files', '*.hdf5')), key=natural_keys)
+print("Found %i raw file arrays." % len(rawfns))
+#
+#fn = rawfns[0]
+#
+#rfile = h5py.File(fn, 'r')
+#fdata = rfile['Slice01']
+#fdata['traces'].keys()
+
+
+##%%
+#
+#
+#
+#    
+#    trace_types = list(fdata['traces'].keys())
+#    trace_type = 'neuropil'
+#    df = pd.DataFrame(fdata['traces'][trace_type][:])
+#    
+#    # Get frame indices corresponding to slices:
+
+
+#%%    
+runpaths = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment,
+                          'traces', '%s*' % traceid, 'files')), key=natural_keys)
+assert len(runpaths) > 0, "No extracted traces for run %s (%s)" % (experiment, traceid)
+
+# Get .tif file list with corresponding aux file (i.e., run) index:
+rawfns = [(run_ix, file_ix, fn) for run_ix, rpath in enumerate(sorted(runpaths, key=natural_keys))\
+          for file_ix, fn in enumerate(sorted(glob.glob(os.path.join(rpath, '*.hdf5')), key=natural_keys))]
+
+
+# Check if this run has any excluded tifs
+rundirs = sorted([d for d in glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment))\
+          if 'combined' not in d], key=natural_keys)
+
+dfs = {}
+frame_times=[]; trial_ids=[]; config_ids=[]; sdf_list=[]; run_ids=[]; file_ids=[];
+for (run_ix, file_ix, fpath) in rawfns:
+    
+    try:
+            
+        rfile = h5py.File(fpath, 'r')
+        fdata = rfile['Slice01']
+        trace_types = list(fdata['traces'].keys())
+        for trace_type in trace_types:
+            if not any([trace_type in k for k in dfs.keys()]):
+                dfs['%s-detrended' % trace_type] = []
+                dfs['%s-F0' % trace_type] = []
+        frames_to_select = pd.DataFrame(fdata['frames_indices'][:])
+    
+        #%
+    
+        rundir = rundirs[run_ix]
+        tid_fpath = glob.glob(os.path.join(rundir, 'traces', '*.json'))[0]
+        with open(tid_fpath, 'r') as f:
+            tids = json.load(f)
+        excluded_tifs = tids[traceid]['PARAMS']['excluded_tiffs']
+        print "*** Excluding:", excluded_tifs
+        currfile = str(re.search(r"File\d{3}", fpath).group())
+        if currfile in excluded_tifs:
+            print "... skipping..."
+            continue
+        
+        basedir = os.path.split(os.path.split(fpath)[0])[0]
+        
+        # Set output dir
+        data_array_dir = os.path.join(basedir, 'data_arrays')
+        if not os.path.exists(data_array_dir):
+            os.makedirs(data_array_dir)
+                
+        #% # Get SCAN IMAGE info for run:
+        run_name = os.path.split(rundir)[-1]
+        si = tutils.get_frame_info(rundir)
+        
+        #% # Load MW info to get stimulus details:
+        mw_fpath = glob.glob(os.path.join(rundir, 'paradigm', 'trials_*.json'))[0] # 
+        with open(mw_fpath,'r') as m:
+            mwinfo = json.load(m)
+        pre_iti_sec = round(mwinfo[mwinfo.keys()[0]]['iti_dur_ms']/1E3) 
+        nframes_iti_full = int(round(pre_iti_sec * si['volumerate']))
+        
+        with open(os.path.join(rundir, 'paradigm', 'stimulus_configs.json'), 'r') as s:
+            stimconfigs = json.load(s)
+        if 'frequency' in stimconfigs[stimconfigs.keys()[0]].keys():
+            stimtype = 'gratings'
+        elif 'fps' in stimconfigs[stimconfigs.keys()[0]].keys():
+            stimtype = 'movie'
+        else:
+            stimtype = 'image'
+        for conf, params in stimconfigs.items():
+            if 'filename' in params.keys():
+                params.pop('filename')
+            stimconfigs[conf] = params
+    
+        # Get all trials contained in current .tif file:
+        tmp_trials_in_block = sorted([t for t, mdict in mwinfo.items() if mdict['block_idx']==file_ix], key=natural_keys)
+        # 20181016 BUG: ignore trials that are BLANKS:
+        trials_in_block = sorted([t for t in tmp_trials_in_block if mwinfo[t]['stimuli']['type'] != 'blank'], key=natural_keys)
+    
+        frame_shift = 0 if 'block_frame_offset' not in mwinfo[trials_in_block[0]].keys() else mwinfo[trials_in_block[0]]['block_frame_offset']
+        parsed_frames_fpath = glob.glob(os.path.join(rundir, 'paradigm', 'parsed_frames_*.hdf5'))[0] #' in pfn][0]
+        frame_ixs = np.array(frames_to_select[0].values)
+        
+        
+        trial_frames_to_vols, relative_tsecs = frames_to_trials(parsed_frames_fpath, trials_in_block, si, frame_shift=frame_shift, 
+                                                                frame_ixs=frame_ixs)
+    
+    #%
+        # Get Stimulus info for each trial:        
+        # -----------------------------------------------------
+        excluded_params = [k for k in mwinfo[trials_in_block[0]]['stimuli'].keys() if k not in stimconfigs['config001'].keys()]
+        curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
+                                       if k not in excluded_params) for t in trials_in_block]
+        varying_stim_dur = False
+        # Add stim_dur if included in stim params:
+        if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+            varying_stim_dur = True
+            for ti, trial in enumerate(sorted(trials_in_block, key=natural_keys)):
+                curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3, 1)
+    
+        # Get corresponding stimulus/trial labels for each frame in each trial:
+        # --------------------------------------------------------------
+        curr_config_ids = [k for trial_configs in curr_trial_stimconfigs \
+                           for k,v in stimconfigs.iteritems() if v==trial_configs]
+        
+        config_labels = np.hstack([np.tile(conf, \
+                            trial_frames_to_vols[t].shape) \
+                            for conf, t in \
+                            zip(curr_config_ids, trials_in_block)])
+        
+        trial_labels = np.hstack([np.tile(t, 
+                            trial_frames_to_vols[t].shape) \
+                            for t in trial_frames_to_vols.columns])
+        
+        # Get relevant timecourse points
+        frames_in_trials = trial_frames_to_vols.T.values.ravel()
+        
+        #%
+        window_size_sec = 10.
+        framerate = si['framerate']
+        quantile= 0.10
+        windowsize = window_size_sec*framerate
+            
+        for trace_type in trace_types:
+            # Load raw traces and detrend
+            df = pd.DataFrame(fdata['traces'][trace_type][:])
+            detrended_df, F0_df = putils.get_rolling_baseline(df, windowsize, quantile=quantile)
+            print "Showing initial drift correction (quantile: %.2f)" % quantile
+            print "Min value for all ROIs:", np.min(np.min(detrended_df, axis=0))
+            dfs['%s-detrended' % trace_type].append(detrended_df.loc[frames_in_trials])
+            dfs['%s-F0' % trace_type].append(detrended_df.loc[frames_in_trials])
+    
+        frame_times.append(relative_tsecs)
+        trial_ids.append(trial_labels)
+        config_ids.append(config_labels)
+        run_ids.append([run_ix for _ in range(len(trial_labels))])
+        file_ids.append([file_ix for _ in range(len(trial_labels))])
+        
+        sdf = pd.DataFrame(putils.format_stimconfigs(stimconfigs)).T
+        sdf_list.append(sdf)
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        rfile.close()
+        
+
+#%%
+
+# Make sure all configs the same
+check_configs = [i for i, s in enumerate(sdf_list[1:]) if not all(s == sdf_list[0])]
+assert len(check_configs) == 0
+
+
+trial_list = sorted(mwinfo.keys(), key=natural_keys)
+    
+
+xdata_df = pd.concat(dfs[dfs.keys()[0]], axis=0).reset_index() #drop=True)
+print "XDATA concatenated: %s" % str(xdata_df.shape)
+
+# Also collate relevant frame info (i.e., labels):
+tstamps = np.hstack(frame_times)
+trials = np.hstack(trial_ids)  # Need to reindex trials
+configs = np.hstack(config_ids)
+run_ids = np.hstack(run_ids)
+
+# Reindex trial numbers in order
+last_trial_num = 0
+for run_id in sorted(np.unique(run_ids)):
+    next_run_ixs = np.where(run_ids==run_id)[0]
+    
+    old_trial_names = trials[next_run_ixs]
+    new_trial_names = ['trial%05d' % int(int(ti[-5:])+last_trial_num) for ti in old_trial_names]
+    trials[next_run_ixs] = new_trial_names
+    
+    last_trial_num = int(sorted(trials[next_run_ixs], key=natural_keys)[-1][-5:])
+    
+if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
+    stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
+else:
+    stim_durs = list(set([round(mwinfo[t]['stim_dur_ms']/1e3, 1) for t in trial_list]))
+nframes_on = np.array([int(round(dur*si['volumerate'])) for dur in stim_durs])
+print "Nframes on:", nframes_on
+print "stim_durs (sec):", stim_durs
+ 
+# Turn paradigm info into dataframe:
+labels_df = pd.DataFrame({'tsec': tstamps, 
+                          'config': configs,
+                          'trial': trials,
+                          'stim_dur': stim_durs #np.tile(stim_dur, trials.shape)
+                          }, index=xdata_df.index)
+try:
+    ons = [int(np.where(np.array(g['tsec'])==0)[0]) for t, g in labels_df.groupby('trial')]
+    assert len(list(set(ons))) == 1
+    stim_on_frame = list(set(ons))[0]
+except Exception as e: 
+    all_ons = [np.where(np.array(t)==0)[0] for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
+    all_ons = np.concatenate(all_ons).ravel()
+    unique_ons = np.unique(all_ons)
+    print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(unique_ons))))
+    stim_on_frame = int(round( np.mean(unique_ons) ))
+    print("--- assigning stim on frame: %i" % stim_on_frame)
+ 
+labels_df['stim_on_frame'] = np.tile(stim_on_frame, (len(tstamps),))
+labels_df['nframes_on'] = np.tile(int(nframes_on), (len(tstamps),))
+labels_df['run_ix'] = run_ids
+labels_df['file_ix'] = np.hstack(file_ids)
+print("*** LABELS:", labels_df.shape)
+
+sconfigs = putils.format_stimconfigs(stimconfigs)
+run_info = get_run_summary(xdata_df, labels_df, stimconfigs, si)
+
+
+# Get combo dir
+combined_traceids = '_'.join([os.path.split(f)[-1] \
+                              for f in [glob.glob(os.path.join(rundir, 'traces', '%s*' % traceid))[0] \
+                                        for rundir in rundirs]])
+
+combined_dir = os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', combined_traceids, 'data_arrays')
+if not os.path.exists(combined_dir):
+    os.makedirs(combined_dir)
+    
+
+labels_fpath = os.path.join(combined_dir, 'labels.npz')
+print "Saving labels data...", labels_fpath
+np.savez(labels_fpath, 
+         sconfigs = sconfigs,
+         labels_data=labels_df,
+         labels_columns=labels_df.columns.tolist(),
+         run_info=run_info)
+
+# Save all the dtypes
+for trace_type in trace_types:
+    print trace_type
+    xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index() #drop=True)
+    f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index() #drop=True)
+    
+    data_fpath = os.path.join(combined_dir, '%s.npz' % trace_type)
+    print "Saving labels data...", data_fpath
+    np.savez(data_fpath, 
+             data=xdata_df.values,
+             f0=f0_df.values,
+             sconfigs=sconfigs,
+             labels_data=labels_df,
+             labels_columns=labels_df.columns.tolist(),
+             run_info=run_info)
