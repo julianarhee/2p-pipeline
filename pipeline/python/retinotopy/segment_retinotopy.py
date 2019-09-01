@@ -74,9 +74,9 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC091' #'JC059'
-session = '20190623' #'20190227'
-fov = 'FOV1_zoom1p0x' #'FOV4_zoom4p0x'
+animalid = 'JC090' # 'JC076' #'JC091' #'JC059'
+session = '20190604' #'20190420' #20190623' #'20190227'
+fov = 'FOV3_zoom2p0x' #'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'retino_run1'
 traceid = 'analysis001' #'traces001'
 visual_area = ''
@@ -148,7 +148,7 @@ fit, magratio, phase, trials_by_cond = rutils.trials_to_dataframes(processed_fpa
 
 #%%
 
-mag_thr = 0.003
+mag_thr = 0.0025
 d2 = runinfo['pixels_per_line']
 d1 = runinfo['lines_per_frame']
 
@@ -169,8 +169,8 @@ delay_el = (phasemaps['bottom'] + phasemaps['top']) / 2.
 
 #%%
 fig, axes = pl.subplots(2,2)
-im1 = axes[0,0].imshow(absolute_az, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
-im2 = axes[0,1].imshow(absolute_el, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
+im1 = axes[0,0].imshow(absolute_az, cmap='nipy_spectral_r', vmin=-np.pi, vmax=np.pi)
+im2 = axes[0,1].imshow(absolute_el, cmap='nipy_spectral_r', vmin=-np.pi, vmax=np.pi)
 axes[1,0].imshow(delay_az, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
 axes[1,1].imshow(delay_el, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
 
