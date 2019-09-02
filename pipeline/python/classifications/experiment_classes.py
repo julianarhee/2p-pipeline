@@ -761,7 +761,7 @@ class Session():
         return experiment_list
     
     def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
-                            rootdir='/n/coxfs01/2p-data', make_equal=True):
+                            add_offset=True, rootdir='/n/coxfs01/2p-data', make_equal=True):
         experiment_dict = {}
 
         all_experiments = self.get_experiment_list(traceid=traceid, trace_type=trace_type, rootdir=rootdir)
@@ -802,7 +802,7 @@ class Session():
                     
                 if exp.source is None:
                     continue
-                exp.load(trace_type=trace_type, update_self=True, make_equal=make_equal)
+                exp.load(trace_type=trace_type, update_self=True, make_equal=make_equal, add_offset=add_offset)
                 print("... ... loaded traces")
                 if 'gratings' in experiment_type and int(self.session) < 20190511:
                     experiment_type = 'rfs'
@@ -820,7 +820,7 @@ class Session():
     def get_grouped_stats(self, experiment_type, response_type='dff',
                           responsive_thr=0.01, responsive_test=None, n_stds=2.5,
                           update=True, get_grouped=True, make_equal=True,
-                          pretty_plots=False, n_processes=1,
+                          pretty_plots=False, n_processes=1, add_offset=True, 
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
         print("Session Object- Getting grouped roi stats: exp is", experiment_type)
@@ -855,7 +855,7 @@ class Session():
             print("... no experiment data saved, loading now...")
             expdict = self.load_data(experiment=experiment_type, traceid=traceid,
                                      trace_type=trace_type, rootdir=rootdir, 
-                                     update_self=update, make_equal=make_equal)
+                                     update_self=update, make_equal=make_equal, add_offset=add_offset)
             #exp = None if expdict is None else expdict[expdict.keys()[0]] 
         
         if expdict is not None:
@@ -970,7 +970,7 @@ class Experiment(object):
         
         return sdf
     
-    def load(self, trace_type='corrected', update_self=True, make_equal=True, rootdir='/n/coxfs01/2p-data'):
+    def load(self, trace_type='corrected', update_self=True, make_equal=True, add_offset=True, rootdir='/n/coxfs01/2p-data'):
         '''
         Populates trace_type and data
         '''
@@ -996,9 +996,13 @@ class Experiment(object):
                     
                     #% Add baseline offset back into raw traces:
                     assert 'corrected' in dset.keys() and 'dff' in dset.keys(), "Unable to find correct/dff traces..."
-                    F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-                    print("... offset: %.2f" % F0)
-                    raw_traces = pd.DataFrame(dset['corrected']) + F0
+                    if add_offset:
+                        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+                        print("... offset: %.2f" % F0)
+                        raw_traces = pd.DataFrame(dset['corrected'][:]) + F0
+                    else:
+                        raw_traces = pd.DataFrame(dset['corrected'][:])
+                        
                     if trace_type == 'corrected':
                         traces = raw_traces
                     elif trace_type == 'dff':
@@ -1107,10 +1111,10 @@ class Experiment(object):
         
         return traces
     
-    def get_trial_metrics(self, response_type='dff', nframes_post_onset=None):
+    def get_trial_metrics(self, response_type='dff', nframes_post_onset=None, add_offset=True):
 
         if self.data is None or self.trace_type != 'corrected':
-            traces, labels = self.load(trace_type='corrected', update_self=False)
+            traces, labels = self.load(trace_type='corrected', update_self=False, add_offset=add_offset)
         else:
             traces = self.data.traces
             labels = self.data.labels
@@ -1140,7 +1144,7 @@ class Experiment(object):
         return roi_list, nrois_total
 
     def get_stats(self, trace_type='corrected', response_type='dff', responsive_test=None, 
-                  responsive_thr=0.05, n_stds=2.5, n_processes=1, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
+                  responsive_thr=0.05, n_stds=2.5, n_processes=1, add_offset=True, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
         #responsive_test = kwargs.get('responsive_test', None)
         #responsive_thr = kwargs.get('responsive_thr', 0.5)
@@ -1149,7 +1153,7 @@ class Experiment(object):
 
         if self.data is None or len([i for i in dir(self.data) if not i.startswith('__')])==0 \
             or ('traces' in dir(self.data) and self.data.traces is None) or self.trace_type != 'corrected':
-            self.load(trace_type='corrected', make_equal=make_equal)
+            self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset)
         
         # if responsive_test is not None:
 #        rstats, roi_list, nrois_total = get_roi_stats(trace_type=trace_type,
@@ -1193,7 +1197,7 @@ class Experiment(object):
         return estats #{experiment_id: estats}
     
 
-    def calculate_nframes_above_nstds(self, n_stds=2.5, trace_type='dff'):
+    def calculate_nframes_above_nstds(self, n_stds=2.5, trace_type='dff', add_offset=True):
         traces_basedir = self.source.split('/data_arrays/')[0]
         output_dir = os.path.join(traces_basedir, 'summary_stats', 'nstds')
         if not os.path.exists(output_dir):
@@ -1215,7 +1219,7 @@ class Experiment(object):
         
         if calculate_frames:
             # Load data
-            self.load(trace_type=trace_type)
+            self.load(trace_type=trace_type, add_offset=add_offset)
             ncells_total = self.data.traces.shape[-1]
             
             # Calculate N frames 
@@ -1339,6 +1343,7 @@ class Gratings(Experiment):
     def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test=None, responsive_thr=0.05, n_stds=2.5, create_new=False,
+                   add_offset=True,
                    rootdir='/n/coxfs01/2p-data', n_processes=8, min_cfgs_above=2):
        
         print("... FIT: getting stats") 
@@ -1350,7 +1355,8 @@ class Gratings(Experiment):
         else:
             statdf = None
             
-        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds)
+        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                                add_offset=add_offset)
        
         print("... FIT: doing bootstrap") 
 #        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
@@ -1402,8 +1408,8 @@ class Gratings(Experiment):
     
 
     def get_nonori_params(self, paramnames=['size', 'speed', 'sf'], response_type='dff',
-                          responsive_test='nstds', responsive_thr=10, n_stds=2.5):
-        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds)                
+                          responsive_test='nstds', responsive_thr=10, n_stds=2.5, add_offset=True):
+        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,add_offset=add_offset)                
         sdf = self.get_stimuli()
                 
         n_params = len(paramnames)        
@@ -1543,7 +1549,7 @@ class ReceptiveFields(Experiment):
 
 
     def get_stats(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
-                  create_new=False, rootdir='/n/coxfs01/2p-data', **kwargs): #make_equal=True, get_grouped=True):
+                  create_new=False, rootdir='/n/coxfs01/2p-data', add_offset=True, **kwargs): #make_equal=True, get_grouped=True):
 
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
@@ -1582,7 +1588,7 @@ class ReceptiveFields(Experiment):
             estats.sdf = None
             
             if self.data is None or self.trace_type != 'corrected':
-                self.load(trace_type='corrected', make_equal=make_equal)
+                self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset)
             
             estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
                                                              roi_list=roi_list,
