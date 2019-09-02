@@ -147,6 +147,11 @@ def caiman_params(fnames, **kwargs):
                 'ssub': ssub,
                 'tsub': tsub,
                 'merge_thr': merge_thr, 
+                'min_SNR': min_SNR,
+                'rval_thr': rval_thr,
+                'use_cnn': True,
+                'min_cnn_thr': cnn_thr,
+                'cnn_lowest': cnn_lowest}
 
    
     if kwargs is not None:
