@@ -1002,6 +1002,9 @@ class Experiment(object):
                         raw_traces = pd.DataFrame(dset['corrected'][:]) + F0
                     else:
                         raw_traces = pd.DataFrame(dset['corrected'][:])
+                        min_mov = raw_traces.min().min()
+                        if min_mov < 0:
+                            raw_traces = raw_traces - min_mov
                         
                     if trace_type == 'corrected':
                         traces = raw_traces
