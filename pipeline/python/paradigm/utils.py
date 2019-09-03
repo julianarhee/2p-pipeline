@@ -2048,7 +2048,7 @@ def format_stimconfigs(configs):
         stimtype = 'image'
     
     print "STIM TYPE:", stimtype
-    print "configs:", configs
+    #print "configs:", configs
  
     # Split position into x,y:
     for config in stimconfigs.keys():

@@ -162,7 +162,7 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, si, frame_shift=0,
     
         stim_onset_idxs_adjusted = vol_ixs_tif[stim_onset_idxs]
         stim_onset_idxs = copy.copy(stim_onset_idxs_adjusted)
-        
+        varying_stim_dur=False
         trial_frames_to_vols = dict((t, []) for t in trials_in_block)
         for t in trials_in_block: 
             frames_to_vols = parsed_frames[t]['frames_in_file'][:] 
@@ -233,11 +233,11 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, si, frame_shift=0,
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC085'
-session = '20190622'
+animalid = 'JC084'
+session = '20190522'
 fov = 'FOV1_zoom2p0x'
 
-experiment = 'rfs10'
+experiment = 'gratings'
 traceid = 'traces001'
 
 
@@ -277,12 +277,13 @@ rawfns = [(run_ix, file_ix, fn) for run_ix, rpath in enumerate(sorted(runpaths, 
 
 # Check if this run has any excluded tifs
 rundirs = sorted([d for d in glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment))\
-          if 'combined' not in d], key=natural_keys)
+          if 'combined' not in d and os.path.isdir(d)], key=natural_keys)
 
+#%%
 dfs = {}
 frame_times=[]; trial_ids=[]; config_ids=[]; sdf_list=[]; run_ids=[]; file_ids=[];
-for (run_ix, file_ix, fpath) in rawfns:
-    
+for total_ix, (run_ix, file_ix, fpath) in enumerate(rawfns):
+    print("**** File %i of %i *****" % (int(total_ix+1), len(rawfns)))
     try:
             
         rfile = h5py.File(fpath, 'r')
@@ -355,28 +356,38 @@ for (run_ix, file_ix, fpath) in rawfns:
         # Get Stimulus info for each trial:        
         # -----------------------------------------------------
         excluded_params = [k for k in mwinfo[trials_in_block[0]]['stimuli'].keys() if k not in stimconfigs['config001'].keys()]
-        curr_trial_stimconfigs = [dict((k,v) for k,v in mwinfo[t]['stimuli'].iteritems() \
-                                       if k not in excluded_params) for t in trials_in_block]
+        curr_trial_stimconfigs = dict((trial, dict((k,v) for k,v in mwinfo[trial]['stimuli'].iteritems() \
+                                       if k not in excluded_params)) for trial in trials_in_block)
+    
         varying_stim_dur = False
         # Add stim_dur if included in stim params:
         if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
             varying_stim_dur = True
             for ti, trial in enumerate(sorted(trials_in_block, key=natural_keys)):
-                curr_trial_stimconfigs[ti]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3, 1)
+                curr_trial_stimconfigs[trial]['stim_dur'] = round(mwinfo[trial]['stim_dur_ms']/1E3, 1)
     
+        trial_configs=[]
+        for trial, sparams in curr_trial_stimconfigs.items():
+            config_name = [k for k, v in stimconfigs.items() if v==sparams]
+            assert len(config_name) == 1, "Bad configs - %s" % trial
+            #config_name = config_name[0]
+            sparams['position'] = tuple(sparams['position'])
+            sparams['scale'] = sparams['scale'][0] if not isinstance(sparams['scale'], int) else sparams['scale']
+            sparams['config'] = config_name[0]
+            trial_configs.append(pd.Series(sparams, name=trial))
+            
+        trial_configs = pd.concat(trial_configs, axis=1).T
+        trial_configs = trial_configs.sort_index() #(by=)
+        
         # Get corresponding stimulus/trial labels for each frame in each trial:
-        # --------------------------------------------------------------
-        curr_config_ids = [k for trial_configs in curr_trial_stimconfigs \
-                           for k,v in stimconfigs.iteritems() if v==trial_configs]
+        # --------------------------------------------------------------        
+        tlength = trial_frames_to_vols.shape[0]
+        config_labels = np.hstack([np.tile(trial_configs.T[trial]['config'], (tlength, ))\
+                                   for trial in trials_in_block])
         
-        config_labels = np.hstack([np.tile(conf, \
-                            trial_frames_to_vols[t].shape) \
-                            for conf, t in \
-                            zip(curr_config_ids, trials_in_block)])
-        
-        trial_labels = np.hstack([np.tile(t, 
-                            trial_frames_to_vols[t].shape) \
-                            for t in trial_frames_to_vols.columns])
+        trial_labels = np.hstack([np.tile(trial, (tlength,)) \
+                                  for trial in trials_in_block])
+    
         
         # Get relevant timecourse points
         frames_in_trials = trial_frames_to_vols.T.values.ravel()
@@ -393,8 +404,13 @@ for (run_ix, file_ix, fpath) in rawfns:
             detrended_df, F0_df = putils.get_rolling_baseline(df, windowsize, quantile=quantile)
             print "Showing initial drift correction (quantile: %.2f)" % quantile
             print "Min value for all ROIs:", np.min(np.min(detrended_df, axis=0))
-            dfs['%s-detrended' % trace_type].append(detrended_df.loc[frames_in_trials])
-            dfs['%s-F0' % trace_type].append(detrended_df.loc[frames_in_trials])
+            currdf = detrended_df.loc[frames_in_trials]
+            currdf['ix'] = [total_ix for _ in range(currdf.shape[0])]
+            dfs['%s-detrended' % trace_type].append(currdf)
+            
+            currf0 = F0_df.loc[frames_in_trials]
+            currf0['ix'] = [total_ix for _ in range(currdf.shape[0])]
+            dfs['%s-F0' % trace_type].append(currf0)
     
         frame_times.append(relative_tsecs)
         trial_ids.append(trial_labels)
@@ -410,36 +426,43 @@ for (run_ix, file_ix, fpath) in rawfns:
         rfile.close()
         
 
+
 #%%
-
-# Make sure all configs the same
-check_configs = [i for i, s in enumerate(sdf_list[1:]) if not all(s == sdf_list[0])]
-assert len(check_configs) == 0
-
-
 trial_list = sorted(mwinfo.keys(), key=natural_keys)
-    
 
-xdata_df = pd.concat(dfs[dfs.keys()[0]], axis=0).reset_index() #drop=True)
-print "XDATA concatenated: %s" % str(xdata_df.shape)
+# Make combined stimconfigs
+sdfcombined = pd.concat(sdf_list, axis=0)
+if 'position' in sdfcombined.columns:
+    sdfcombined['position'] = [tuple(s) for s in sdfcombined['position'].values]
+sdf = sdfcombined.drop_duplicates()
+param_names = sorted(sdf.columns.tolist())
+sdf = sdf.sort_values(by=sorted(param_names))
+sdf.index = ['config%03d' % int(ci+1) for ci in range(sdf.shape[0])]
 
-# Also collate relevant frame info (i.e., labels):
-tstamps = np.hstack(frame_times)
-trials = np.hstack(trial_ids)  # Need to reindex trials
-configs = np.hstack(config_ids)
-run_ids = np.hstack(run_ids)
 
+# Rename each run's configs according to combined sconfigs
+new_config_ids=[]
+for orig_cfgs, orig_sdf in zip(config_ids, sdf_list):
+    orig_sdf['position'] = [tuple(s) for s in orig_sdf['position'].values]
+    cfg_cipher= {}
+    for old_cfg_name in orig_cfgs:
+        new_cfg_name = sdf[sdf.eq(orig_sdf.loc[old_cfg_name], axis=1).all(axis=1)].index[0]
+        cfg_cipher[old_cfg_name] = new_cfg_name
+    new_config_ids.append([cfg_cipher[c] for c in orig_cfgs])
+configs = np.hstack(new_config_ids)
+        
 # Reindex trial numbers in order
+trials = np.hstack(trial_ids)  # Need to reindex trials
+run_ids = np.hstack(run_ids)
 last_trial_num = 0
 for run_id in sorted(np.unique(run_ids)):
     next_run_ixs = np.where(run_ids==run_id)[0]
-    
     old_trial_names = trials[next_run_ixs]
     new_trial_names = ['trial%05d' % int(int(ti[-5:])+last_trial_num) for ti in old_trial_names]
     trials[next_run_ixs] = new_trial_names
-    
     last_trial_num = int(sorted(trials[next_run_ixs], key=natural_keys)[-1][-5:])
     
+# Check for stim durations
 if 'stim_dur' in stimconfigs[stimconfigs.keys()[0]].keys():
     stim_durs = np.array([stimconfigs[c]['stim_dur'] for c in configs])
 else:
@@ -447,8 +470,14 @@ else:
 nframes_on = np.array([int(round(dur*si['volumerate'])) for dur in stim_durs])
 print "Nframes on:", nframes_on
 print "stim_durs (sec):", stim_durs
- 
-# Turn paradigm info into dataframe:
+
+# Also collate relevant frame info (i.e., labels):
+tstamps = np.hstack(frame_times)
+
+# Turn paradigm info into dataframe: 
+xdata_df = pd.concat(dfs[dfs.keys()[0]], axis=0).reset_index() #drop=True)
+print "XDATA concatenated: %s" % str(xdata_df.shape)
+
 labels_df = pd.DataFrame({'tsec': tstamps, 
                           'config': configs,
                           'trial': trials,
@@ -472,10 +501,11 @@ labels_df['run_ix'] = run_ids
 labels_df['file_ix'] = np.hstack(file_ids)
 print("*** LABELS:", labels_df.shape)
 
-sconfigs = putils.format_stimconfigs(stimconfigs)
+sconfigs = sdf.T.to_dict()
+
 run_info = get_run_summary(xdata_df, labels_df, stimconfigs, si)
 
-
+#%%
 # Get combo dir
 combined_traceids = '_'.join([os.path.split(f)[-1] \
                               for f in [glob.glob(os.path.join(rundir, 'traces', '%s*' % traceid))[0] \
