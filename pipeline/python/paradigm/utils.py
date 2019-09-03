@@ -2074,6 +2074,8 @@ def format_stimconfigs(configs):
             stimconfigs[config].pop('rotation', None)
         else:
             transform_variables = ['object', 'xpos', 'ypos', 'size', 'yrot', 'morphlevel', 'stimtype', 'color']
+            #if 'stimulus' in configs[c].keys():
+            #    stimconfigs['filename'] = stimconfigs['stimulus']
             
             # Figure out Morph IDX for 1st and last anchor image:
             image_names = list(set([configs[c]['filename'] for c in configs.keys()]))
