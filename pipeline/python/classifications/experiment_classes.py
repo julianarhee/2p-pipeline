@@ -983,29 +983,32 @@ class Experiment(object):
             print("... loading data array") # (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
             try:
                 if self.source.endswith('npz'):
-                    dset = np.load(self.source)
-                    #print("... loaded")
+                    basename = os.path.splitext(os.path.split(self.source)[-1])[0]
+                    soma_fpath = self.source.replace(basename, 'np_subtracted')
+                    print(soma_fpath)
+                    dset = np.load(soma_fpath)
                     
+                    # Stimulus / condition info
                     self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-                    # print self.data.labels.shape
                     sdf = pd.DataFrame(dset['sconfigs'][()]).T
                     round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
                     sdf['size'] = round_sz
                     self.data.sdf = sdf
                     self.data.info = dset['run_info'][()]
                     
-                    #% Add baseline offset back into raw traces:
-                    assert 'corrected' in dset.keys() and 'dff' in dset.keys(), "Unable to find correct/dff traces..."
+                    # Traces
+                    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+                    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
                     if add_offset:
-                        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-                        print("... offset: %.2f" % F0)
-                        raw_traces = pd.DataFrame(dset['corrected'][:]) + F0
+                        #% Add baseline offset back into raw traces:
+                        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+                        npdata = np.load(neuropil_fpath)
+                        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
+                        print("adding NP offset...")
+                        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
                     else:
-                        raw_traces = pd.DataFrame(dset['corrected'][:])
-                        min_mov = raw_traces.min().min()
-                        if min_mov < 0:
-                            raw_traces = raw_traces - min_mov
-                        
+                        raw_traces = xdata_df + F0
+
                     if trace_type == 'corrected':
                         traces = raw_traces
                     elif trace_type == 'dff':
@@ -1017,8 +1020,45 @@ class Experiment(object):
                             bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
                             tmat_df = (tmat - bas_mean) / bas_mean
                             tmp_df.append(tmat_df)
-                        traces = pd.concat(tmp_df, axis=0)    
-                    #self.data.traces  = pd.DataFrame(dset[self.trace_type])                    
+                        traces = pd.concat(tmp_df, axis=0)
+                        del tmp_df
+                    # -----------------------------------------------------------
+#                    dset = np.load(self.source)
+                    #print("... loaded")
+                    
+#                    self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+#                    # print self.data.labels.shape
+#                    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+#                    round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+#                    sdf['size'] = round_sz
+#                    self.data.sdf = sdf
+#                    self.data.info = dset['run_info'][()]
+                    
+#                    #% Add baseline offset back into raw traces:
+#                    assert 'corrected' in dset.keys() and 'dff' in dset.keys(), "Unable to find correct/dff traces..."
+#                    if add_offset:
+#                        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+#                        print("... offset: %.2f" % F0)
+#                        raw_traces = pd.DataFrame(dset['corrected'][:]) + F0
+#                    else:
+#                        raw_traces = pd.DataFrame(dset['corrected'][:])
+#                        min_mov = raw_traces.min().min()
+#                        if min_mov < 0:
+#                            raw_traces = raw_traces - min_mov
+#                        
+#                    if trace_type == 'corrected':
+#                        traces = raw_traces
+#                    elif trace_type == 'dff':
+#                        #% # Convert raw + offset traces to df/F traces
+#                        stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
+#                        tmp_df = []
+#                        for k, g in self.data.labels.groupby(['trial']):
+#                            tmat = raw_traces.loc[g.index]
+#                            bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#                            tmat_df = (tmat - bas_mean) / bas_mean
+#                            tmp_df.append(tmat_df)
+#                        traces = pd.concat(tmp_df, axis=0)    
+                    # ---------------------------------------------------------
                     if make_equal:
                         #print("... making equal")
                         traces, self.data.labels = check_counts_per_condition(traces, self.data.labels)

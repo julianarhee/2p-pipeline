@@ -110,6 +110,10 @@ def extract_options(options):
     parser.add_option('--filter', action='store_true', dest='filter_noise',
                           default=False, help='Set to filter our noisy spikes') 
 
+    parser.add_option('--offset', action='store_true', dest='add_offset',
+                          default=False, help='Set to add offsets to data') 
+    
+    
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -167,6 +171,45 @@ def load_traces_and_configs(traceid_dir, inputdata='corrected'):
 
     return xdata, labels, sdf
                           
+def load_data(traceid_dir, inputdata='dff', add_offset=True, ):
+    soma_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
+    print "Loaded data from: %s" % soma_fpath #traceid_dir
+    dset = np.load(soma_fpath)
+    
+    #assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
+    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+
+    # Traces
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    if inputdata in ['corrected', 'dff'] and add_offset:
+        #% Add baseline offset back into raw traces:
+        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+        npdata = np.load(neuropil_fpath)
+        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
+        print("adding NP offset...")
+        xdata_df = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
+    else:
+        xdata_df = xdata_df + F0
+
+    if inputdata == 'corrected':
+        xdata = xdata_df
+    elif inputdata in ['dff', 'neuropil-dff']:
+        #% # Convert raw + offset traces to df/F traces
+        stim_on_frame = labels['stim_on_frame'].unique()[0]
+        tmp_df = []
+        for k, g in labels.groupby(['trial']):
+            tmat = xdata_df.loc[g.index]
+            bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+            tmat_df = (tmat - bas_mean) / bas_mean
+            tmp_df.append(tmat_df)
+        xdata = pd.concat(tmp_df, axis=0)
+        del tmp_df
+        
+                       
+    return xdata, labels, sdf
+
       #%%                    
 def make_clean_psths(options):
     #%%
@@ -193,7 +236,8 @@ def make_clean_psths(options):
         else:
             traceid_dirs = [traceid_dirs[0]  ]          
 
-
+    add_offset = optsE.add_offset
+    
     #%%   
     subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue not in [None, 'None'] else [None]
     rows = optsE.rows.split(',') if optsE.rows is optsE.rows not in [None, 'None'] else [None]
@@ -213,7 +257,10 @@ def make_clean_psths(options):
     #if compare_runs:
     xdata_list=[]; labels_list=[]; sdf_list=[]; data_ids=[];
     for traceid_dir in traceid_dirs:
-        xdata, labels, sdf = load_traces_and_configs(traceid_dir, inputdata=optsE.datatype)
+        if add_offset:
+            xdata, labels, sdf = load_data(traceid_dir, inputdata=optsE.datatype, add_offset=True)
+        else:
+            xdata, labels, sdf = load_traces_and_configs(traceid_dir, inputdata=optsE.datatype)
         data_identifier = get_data_id_from_tracedir(traceid_dir)
         xdata_list.append(xdata)
         labels_list.append(labels)
@@ -519,8 +566,8 @@ def make_clean_psths(options):
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     # pick some colors:
-    colors = ["forest green", "purple"] #["windows blue", "amber", "greyish", "faded green", "dusty purple"]
-    palette = sns.xkcd_palette(colors) 
+    # = ["forest green", "purple"] #["windows blue", "amber", "greyish", "faded green", "dusty purple"]
+    palette = 'colorblind' #sns.xkcd_palette(colors) 
     #sns.set()
     #palette = sns.color_palette('colorblind')
 
