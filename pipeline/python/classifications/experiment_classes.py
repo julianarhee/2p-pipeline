@@ -1023,9 +1023,9 @@ class Experiment(object):
                     if trace_type == 'corrected':
                         traces = raw_traces
                     elif trace_type == 'dff':
-                        min_mov = raw_traces.min().min()
-                        if min_mov < 0:
-                            raw_traces = raw_traces - min_mov
+                        #min_mov = raw_traces.min().min()
+                        #if min_mov < 0:
+                        #    raw_traces = raw_traces - min_mov
                         #% # Convert raw + offset traces to df/F traces
                         stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
                         tmp_df = []
