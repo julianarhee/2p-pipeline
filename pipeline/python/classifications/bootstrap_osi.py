@@ -123,6 +123,56 @@ def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/co
     return run_name
 
 
+def convert_uint16(tracemat):
+    offset = 32768
+    arr = np.zeros(tracemat.shape, dtype='uint16')
+    arr[:] = tracemat + offset
+    return arr
+
+def load_data(data_fpath, add_offset=True, make_equal=False):
+    from pipeline.python.classifications import experiment_classes as util
+    soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
+    print soma_fpath
+    dset = np.load(soma_fpath)
+    
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    #neuropil_df = pd.concat(dfs['neuropil-detrended'], axis=0).reset_index(drop=True) #drop=True)
+    #neuropil_F0 = pd.concat(dfs['np_subtracted-F0'], axis=0).reset_index(drop=True).mean() #drop=True)
+
+    if add_offset:
+        #% Add baseline offset back into raw traces:
+        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+        npdata = np.load(neuropil_fpath)
+        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
+        print("adding NP offset...")
+        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
+    else:
+        raw_traces = xdata_df + F0
+
+    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+    
+    if make_equal:
+        raw_traces, labels = util.check_counts_per_condition(raw_traces, labels)
+
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    
+    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
+    
+    #% # Convert raw + offset traces to df/F traces
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        tmat_df = (tmat - bas_mean) / bas_mean
+        tmp_df.append(tmat_df)
+    df_traces = pd.concat(tmp_df, axis=0)
+    del tmp_df
+
+    return df_traces, labels, gdf, sdf
+
+
 def load_gratings_data(data_fpath, add_offset=True, make_equal=False):
     from pipeline.python.classifications import experiment_classes as util
 
@@ -576,6 +626,7 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
 
     def bootstrap_fitter(curr_configset, roi_df, statdf, out_q):
         roi = roi_df.index[0]
+        
         oridata = {}
         for ckey, currcfgs in curr_configset.items():
             if filter_configs:
@@ -587,8 +638,8 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
        
             # Get all trials of current set of cfgs:
             rdf = roi_df[roi_df['config'].isin(currcfgs)][['config', 'trial', response_type]]
-            responses_df = pd.concat([pd.Series(g[response_type], name=c) #.reset_index(drop=True)\
-                                      for c, g, in rdf.groupby(['config'])], axis=1)
+            responses_df = pd.concat([pd.Series(g[response_type], name=c).reset_index(drop=True)\
+                                      for c, g in rdf.groupby(['config'])], axis=1)
             datadict = {'responses': responses_df, 
                         'tested_values': tested_oris}
             
@@ -880,7 +931,7 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
     
 
     stimkey = 'sf-%i-sz-%.2f-speed-%if' % (sf, sz, sp)
-    fig.suptitle('roi %i (sf %i, sz %.2f, speed %.2f)' % (roi, sf, sz, sp), fontsize=8)
+    fig.suptitle('roi %i (sf %.1f, sz %i, speed %i)' % (roi, sf, sz, sp), fontsize=8)
 
     return fig, stimkey
 
@@ -985,7 +1036,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     if do_fits:
         data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
         print("Loading data and doing fits")
-        df_traces, labels, gdf, sdf = load_gratings_data(data_fpath, add_offset=True, make_equal=False)
+        df_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
         
         if roi_list is None:
             roi_list = np.arange(0, len(gdf.groups))
@@ -1035,7 +1086,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
 
 def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_desc='', gof_thr=0.66,
-                   create_new=False, rootdir='/n/coxfs01/2p-data'):
+                   create_new=False, rootdir='/n/coxfs01/2p-data', plot_metrics=True):
 
     osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 
                           'traces', '%s*' % traceid, 'tuning', fit_desc))[0]
@@ -1060,8 +1111,8 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
     goodrois = rmetrics.index.tolist()
     print("%i cells have good fits (thr >= %.2f)" % (len(goodrois), gof_thr))
 
-    plot_metrics = create_new
-    if plot_metrics:
+    #plot_metrics = create_new
+    if plot_metrics or create_new:
         print("... plotting comparison metrics across bootstrap iters ...")
         bootd = aggregate_all_iters(bootresults, fitparams, gof_thr=gof_thr)
         plot_bootstrapped_params(bootd, fitparams, fit_metric='gof', fit_thr=gof_thr, data_identifier=data_identifier)
@@ -1660,8 +1711,8 @@ def plot_tuning_curve_roi(curr_oris, curr_resps, curr_sems=None, response_type='
     return fig, ax
 
 def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='dff',
-                          fig=None, ax=None, nr=1, nc=1, colspan=1, s_row=0, s_col=0, color='k',
-                          label=None):
+                          fig=None, ax=None, nr=1, nc=1, colspan=1, s_row=0, s_col=0, 
+                          color='k', linestyle='-', label=None, alpha=1.0):
     if fig is None:
         fig = pl.figure()
     
@@ -1674,7 +1725,7 @@ def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='
     radii = curr_resps.copy()
     thetas = np.append(thetas, np.deg2rad(curr_oris[0]))  # append first value so plot line connects back to start
     radii = np.append(radii, curr_resps[0]) # append first value so plot line connects back to start
-    ax.plot(thetas, radii, '-', color=color, label=label)
+    ax.plot(thetas, radii, '-', color=color, label=label, linestyle=linestyle, alpha=alpha)
     ax.set_theta_zero_location("N")
     ax.set_yticks([curr_resps.min(), curr_resps.max()])
     ax.set_yticklabels(['', round(curr_resps.max(), 1)])
@@ -2045,10 +2096,11 @@ def roi_polar_plot_by_config(bootresults, fitparams, gof_thr=0.66, plot_polar=Tr
             if plot_polar:
                 origr = np.append(origr, origr[0]) # wrap back around
                 plot_tuning_polar_roi(thetas, origr, curr_sems=None, response_type='dff',
-                                          fig=fig, ax=ax, color='k')
+                                          fig=fig, ax=ax, color=colors[si], linestyle='--')
         
                 plot_tuning_polar_roi(thetas_interp, fitr, curr_sems=None, response_type='dff',
-                                          fig=fig, ax=ax, color=colors[si], label='gof %.2f\ndff %.2f' % (gof, origr.max()) )
+                                          fig=fig, ax=ax, color=colors[si], linestyle='-', alpha=0.8,
+                                          label='gof %.2f\ndff %.2f' % (gof, origr.max()) )
             allgofs.append(gof)
             
         ax.set_title('%i (GoF: %.2f)' % (int(roi), np.mean(allgofs)), fontsize=6, y=1)
@@ -2276,7 +2328,7 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          n_bootstrap_iters=1000, n_resamples=20,
                                          n_intervals_interp=3, goodness_thr = 0.66,
                                          n_processes=1, create_new=False, rootdir='/n/coxfs01/2p-data',
-                                         min_cfgs_above=2, min_nframes_above=10):
+                                         min_cfgs_above=2, min_nframes_above=10, make_plots=True):
 
     from pipeline.python.classifications import experiment_classes as util
 
@@ -2291,14 +2343,14 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          n_intervals_interp=int(n_intervals_interp),
                                          responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                          create_new=create_new, n_processes=n_processes, rootdir=rootdir,
-                                         min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above)
+                                         min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above, make_plots=make_plots)
 
     fit_desc = os.path.split(fitparams['directory'])[-1]
     print("----- COMPLETED 1/2: bootstrap tuning! ------")
 
     rmetrics, rmetrics_by_cfg = evaluate_tuning(animalid, session, fov, run_name, 
                                                 traceid=traceid, fit_desc=fit_desc, gof_thr=goodness_thr,
-                                                create_new=create_new, rootdir=rootdir)
+                                                create_new=create_new, rootdir=rootdir, plot_metrics=make_plots)
    
     if rmetrics is None:
         n_goodcells = 0

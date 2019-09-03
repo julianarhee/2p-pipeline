@@ -1286,7 +1286,7 @@ class Gratings(Experiment):
         
     def get_tuning(self, response_type='dff', responsive_test='nstds', responsive_thr=10, n_stds=2.5,
                    n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, min_cfgs_above=2,
-                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, plot_rois=False):
+                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
         having to do redundant data loading.
@@ -1326,7 +1326,7 @@ class Gratings(Experiment):
         
             fitparams['directory'] = osidir
             osi.save_tuning_results(bootresults, fitparams)
-            if plot_rois:
+            if make_plots:
                 self.plot_roi_tuning_and_fit(bootresults, fitparams)
 
         return bootresults, fitparams
@@ -1383,7 +1383,7 @@ class Gratings(Experiment):
 #            pl.close()
     
         
-    def fit_tuning(self, response_type='dff', make_plots=True, plot_metrics=False,
+    def fit_tuning(self, response_type='dff',
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test=None, responsive_thr=0.05, n_stds=2.5, create_new=False,
                    add_offset=True,
@@ -1432,7 +1432,8 @@ class Gratings(Experiment):
         return bootresults, fitparams
     
 
-    def evaluate_fits(self, bootresults, fitparams, goodness_thr=0.66, rootdir='/n/coxfs01/2p-data'):
+    def evaluate_fits(self, bootresults, fitparams, goodness_thr=0.66, 
+                      make_plots=True, rootdir='/n/coxfs01/2p-data'):
         rmetrics = None; goodrois = None;
 
         fit_desc = os.path.split(fitparams['directory'])[-1]
@@ -1440,7 +1441,7 @@ class Gratings(Experiment):
         #data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, fit_desc])
         rmetrics, rmetrics_by_cfg = osi.evaluate_tuning(self.animalid, self.session, self.fov, self.name, 
                                                     traceid=self.traceid, fit_desc=fit_desc, gof_thr=goodness_thr,
-                                                    rootdir=rootdir)
+                                                    rootdir=rootdir, plot_metrics=make_plots)
 
 #        fitdf, goodfits = osi.evaluate_bootstrapped_tuning(fitdf, fitparams, fitdata, goodness_thr=goodness_thr,
 #                                                     response_type=fitparams['response_type'], data_identifier=data_identifier)

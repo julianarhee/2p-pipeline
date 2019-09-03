@@ -395,9 +395,11 @@ def main(options):
                                                                    responsive_test=responsive_test, responsive_thr=responsive_thr,
                                                                    n_stds=n_stds, min_cfgs_above=min_cfgs_above,
                                                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
-                                                                   n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
+                                                                   n_intervals_interp=n_intervals_interp, make_plots=plot_rois)
                         
-                        rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, rootdir=rootdir)
+                        rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, 
+                                                               plot_metrics=plot_rois, rootdir=rootdir)
+                        
                         tuning_counts[skey] = goodrois if goodrois is not None else 0
                         del bootresults
                         del fitparams
