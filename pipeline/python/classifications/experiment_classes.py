@@ -47,7 +47,9 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 from skimage import exposure
 from collections import Counter
 
+from pipeline.python.traces.trial_alignment import aggregate_experiment_runs 
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
+
 import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
@@ -984,8 +986,17 @@ class Experiment(object):
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
-                    soma_fpath = self.source.replace(basename, 'np_subtracted')
+                    if 'np_subtraced' not in basename:
+                        soma_fpath = self.source.replace(basename, 'np_subtracted')
                     print(soma_fpath)
+                    if not os.path.exists(soma_fpath):
+                        # Realign traces
+                        print("*****corrected offset unfound, running now*****")
+                        print("%s | %s | %s | %s | %s" % (self.animalid, self.session, self.fov, self.experiment_type, self.traceid))
+
+                        aggregate_experiment_runs(self.animalid, self.session, self.fov, self.experiment_type, 
+                                                  traceid=self.traceid)
+                        print("*****corrected offsets!*****")
                     dset = np.load(soma_fpath)
                     
                     # Stimulus / condition info
@@ -1012,6 +1023,9 @@ class Experiment(object):
                     if trace_type == 'corrected':
                         traces = raw_traces
                     elif trace_type == 'dff':
+                        min_mov = raw_traces.min().min()
+                        if min_mov < 0:
+                            raw_traces = raw_traces - min_mov
                         #% # Convert raw + offset traces to df/F traces
                         stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
                         tmp_df = []
@@ -1194,9 +1208,8 @@ class Experiment(object):
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
 
-        if self.data is None or len([i for i in dir(self.data) if not i.startswith('__')])==0 \
-            or ('traces' in dir(self.data) and self.data.traces is None) or self.trace_type != 'corrected':
-            self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset)
+        if self.data is None or len([i for i in dir(self.data) if not i.startswith('__')])==0 or ('traces' in dir(self.data) and self.data.traces is None) or self.trace_type != 'corrected':
+            self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset, update_self=True)
         
         # if responsive_test is not None:
 #        rstats, roi_list, nrois_total = get_roi_stats(trace_type=trace_type,
@@ -1228,7 +1241,6 @@ class Experiment(object):
         estats.gdf = None
         estats.sdf = None
     
-
         estats.rois = roi_list
         estats.nrois = self.data.traces.shape[-1]
         
@@ -1297,7 +1309,12 @@ class Gratings(Experiment):
                                           n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                           rootdir=rootdir)
         print("...getting OSI results: %s" % fit_desc)
-            
+        
+        # tmp:
+        if not os.path.exists(os.path.join(os.path.split(self.source)[0], 'np_subtracted.npz')):
+            print("--- no corrected data found, re-doing fits.")
+            create_new = True
+    
         if create_new is False:
             bootresults, fitparams = osi.load_tuning_results(self.animalid, self.session, self.fov,
                                                                 self.name, traceid=self.traceid, 
@@ -1325,6 +1342,20 @@ class Gratings(Experiment):
                                                         n_intervals_interp=n_intervals_interp, min_cfgs_above=min_cfgs_above)                
         
             fitparams['directory'] = osidir
+            if create_new:
+                print("Moving old files...")
+                old_dir = os.path.join(osidir, 'old-fits')
+                if not os.path.exists(old_dir):
+                    os.makedirs(old_dir)
+                old_roi_dir = os.path.join(osidir, 'roi_fits')
+                if os.path.exists(old_roi_dir):
+                    shutil.move(old_roi_dir, old_dir) 
+                
+                if os.path.exists(os.path.join(osidir, 'evaluation')):
+                    shutil.move(os.path.join(osidir, 'evaluation'), old_dir) 
+                for f in glob.glob(os.path.join(osidir, 'tuning_bootstrap*.pkl')):
+                    shutil.move(f, os.path.join(old_dir, os.path.split(f)[-1]))
+                
             osi.save_tuning_results(bootresults, fitparams)
             if make_plots:
                 self.plot_roi_tuning_and_fit(bootresults, fitparams)

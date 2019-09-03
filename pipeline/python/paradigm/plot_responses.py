@@ -196,6 +196,9 @@ def load_data(traceid_dir, inputdata='dff', add_offset=True, ):
     if inputdata == 'corrected':
         xdata = xdata_df
     elif inputdata in ['dff', 'neuropil-dff']:
+        min_mov = xdata_df.min().min()
+        if min_mov < 0:
+            xdata_df = xdata_df - min_mov
         #% # Convert raw + offset traces to df/F traces
         stim_on_frame = labels['stim_on_frame'].unique()[0]
         tmp_df = []

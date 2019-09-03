@@ -160,6 +160,10 @@ def load_data(data_fpath, add_offset=True, make_equal=False):
     gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
     
     #% # Convert raw + offset traces to df/F traces
+    min_mov = raw_traces.min().min()
+    if min_mov < 0:
+        raw_traces = raw_traces - min_mov
+
     stim_on_frame = labels['stim_on_frame'].unique()[0]
     tmp_df = []
     for k, g in labels.groupby(['trial']):
