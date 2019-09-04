@@ -26,6 +26,7 @@ import random
 import itertools
 import copy
 import traceback
+import shutil
 
 import scipy.io
 import optparse
