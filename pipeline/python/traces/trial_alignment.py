@@ -274,6 +274,10 @@ def extract_options(options):
 def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='traces001'):
     
     fovdir = os.path.join(rootdir, animalid, session, fov)
+    if int(session) < 20190511 and experiment=='rfs':
+        print("This is actually a RFs, but was previously called 'gratings'")
+        experiment = 'gratings'
+
     rawfns = sorted(glob.glob(os.path.join(fovdir, '*%s*' % experiment, 'traces', '%s*' % traceid, 'files', '*.hdf5')), key=natural_keys)
     print("Found %i raw file arrays." % len(rawfns))
     
@@ -384,9 +388,10 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
             for k, v in stimconfigs.items():
                 if v['scale'][0] is not None:
                     stimconfigs[k]['scale'] = [round(v['scale'][0], 1), round(v['scale'][1], 1)]
-            for t, v in curr_trial_stimconfigs.items():
-                if 'filename' not in v.keys():
-                    curr_trial_stimconfigs[t].update({'filename': os.path.split(mwinfo[t]['stimuli']['filepath'])[-1]})
+            if stimtype=='image' and 'filepath' in mwinfo['trial00001']['stimuli'].keys():
+                for t, v in curr_trial_stimconfigs.items():
+                    if 'filename' not in v.keys():
+                        curr_trial_stimconfigs[t].update({'filename': os.path.split(mwinfo[t]['stimuli']['filepath'])[-1]})
             
             varying_stim_dur = False
             # Add stim_dur if included in stim params:
