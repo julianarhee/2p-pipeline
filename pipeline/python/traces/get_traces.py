@@ -117,10 +117,10 @@ import pylab as pl
 import numpy as np
 import cPickle as pkl
 from skimage import img_as_uint
-from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root, uint16_to_RGB
+from pipeline.python.utils import natural_keys, hash_file_read_only, load_sparse_mat, print_elapsed_time, hash_file, replace_root, uint16_to_RGB, get_frame_info
 from pipeline.python.set_trace_params import post_tid_cleanup
 from pipeline.python.rois.utils import get_info_from_tiff_dir
-from pipeline.python.traces.utils import get_frame_info, get_metric_set
+from pipeline.python.traces.utils import get_metric_set
 from pipeline.python.paradigm import align_acquisition_events as acq
 from pipeline.python.paradigm import tifs_to_data_arrays as align
 from pipeline.python.paradigm import plot_responses as psth

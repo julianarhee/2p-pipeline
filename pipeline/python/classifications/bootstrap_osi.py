@@ -41,7 +41,8 @@ import itertools
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure#, load_data
+from pipeline.python.traces.trial_alignment import aggregate_experiment_runs 
 
 #from pipeline.python.retinotopy import fit_2d_rfs as rf
 
@@ -1022,6 +1023,18 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
         os.makedirs(osidir)
     
     traceid_dir =  osidir.split('/tuning/')[0] #glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]    
+    
+    data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
+
+    if not os.path.exists(data_fpath):
+        # Realign traces
+        print("*****corrected offset unfound, running now*****")
+        print("%s | %s | %s | %s | %s" % (animalid, session, fov, run_name, traceid))
+
+        aggregate_experiment_runs(animalid, session, fov, 'gratings', traceid=traceid)
+        print("*****corrected offsets!*****")
+                        
+
     do_fits = False
     if create_new is False:
         try:
@@ -1038,7 +1051,6 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
     # Do fits
     if do_fits:
-        data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'datasets.npz'))[0]
         print("Loading data and doing fits")
         df_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
         
@@ -1830,7 +1842,7 @@ def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='
 
 def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
     
-    strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
+    strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr] # check if average gof good
     print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
     
     df = fitdf[fitdf['cell'].isin(strong_fits)]
@@ -2387,7 +2399,7 @@ def main(options):
     create_new = opts.create_new
     goodness_thr = float(opts.goodness_thr)
     
-    fitdf, fitparams, good_fits = bootstrap_tuning_curves_and_evaluate(
+    bootresults, fitparams, rmetrics, rmetrics_by_cfg = bootstrap_tuning_curves_and_evaluate(
                                              animalid, session, fov, 
                                              traceid=traceid, response_type=response_type, 
                                              n_bootstrap_iters=n_bootstrap_iters, 
