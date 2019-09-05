@@ -1128,7 +1128,7 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
     print("%i cells have good fits (thr >= %.2f)" % (len(goodrois), gof_thr))
 
     #plot_metrics = create_new
-    if plot_metrics or create_new:
+    if len(goodrois)>0 and (plot_metrics or create_new):
         print("... plotting comparison metrics across bootstrap iters ...")
         bootd = aggregate_all_iters(bootresults, fitparams, gof_thr=gof_thr)
         plot_bootstrapped_params(bootd, fitparams, fit_metric='gof', fit_thr=gof_thr, data_identifier=data_identifier)
@@ -1148,7 +1148,7 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
         pl.close()
         print("*** done! ***")
    
-    if plot_metrics:
+    if len(goodrois)>0 and plot_metrics:
         # Visualize fit metrics for each roi's stimulus config
         for roi, g in rmetrics_by_cfg.groupby(['cell']):
             for skey in g.index.tolist():
@@ -1844,13 +1844,15 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
     
     strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr] # check if average gof good
     print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
-    
+   
     df = fitdf[fitdf['cell'].isin(strong_fits)]
     df['cell'] = df['cell'].astype(str)
     
     g = sns.PairGrid(df, hue='cell', vars=['asi', 'dsi', 'r2comb'])
     g.fig.patch.set_alpha(1)
     
+    if len(strong_fits)==0:
+        return g.fig, strong_fits
     
     g = g.map_offdiag(pl.scatter, marker='o',  alpha=0.5, s=1)
     
