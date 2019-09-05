@@ -1832,6 +1832,9 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
     
     strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
     print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
+    if len(strong_fits)==0:
+        return pl.figure(), strong_fits
+ 
    
     df = fitdf[fitdf['cell'].isin(strong_fits)]
     df['cell'] = df['cell'].astype(str)
@@ -1839,9 +1842,7 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
     g = sns.PairGrid(df, hue='cell', vars=['asi', 'dsi', 'r2comb'])
     g.fig.patch.set_alpha(1)
     
-    if len(strong_fits)==0:
-        return g.fig, strong_fits
-    
+   
     g = g.map_offdiag(pl.scatter, marker='o',  alpha=0.5, s=1)
     
     
@@ -1871,6 +1872,8 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
 def sort_by_selectivity(fitdf, fit_metric='gof', fit_thr=0.66, topn=10):
     strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
     print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
+    if len(strong_fits)==0:
+        return None, [], []
     
     df = fitdf[fitdf['cell'].isin(strong_fits)]
         
@@ -1977,7 +1980,9 @@ def plot_top_asi_and_dsi(fitdf, fitparams, fit_metric='gof', fit_thr=0.66, topn=
     
     # Sort cells by ASi and DSi    
     df, top_asi_cells, top_dsi_cells = sort_by_selectivity(fitdf, fit_metric=fit_metric, fit_thr=fit_thr, topn=topn)
-    
+    if df is None:
+        return
+ 
     #% Set color palettes:
     palette = sns.color_palette('cubehelix', len(top_asi_cells))
     main_alpha = 0.8
