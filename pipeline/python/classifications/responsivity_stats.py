@@ -339,7 +339,8 @@ def extract_options(options):
     parser.add_option('-d', '--response-type', action='store', dest='response_type', default='dff', 
                       help="Trial response measure to use for fits (default: dff)")
 
-
+    parser.add_option('--visual-area', action='store', dest='visual_area', default=None, help="Visual area, if not zoom2p0x")
+    parser.add_option('--state', action='store', dest='state', default=None, help="State (awake or anesthetized), if not zoom2p0x")
     (options, args) = parser.parse_args(options)
 
     return options
@@ -470,7 +471,7 @@ def visualize_session_stats(animalid, session, fov, response_type='dff',
                             responsive_test=None, responsive_thr=0.05, n_stds=2.5,
                             traceid='traces001', trace_type='corrected', experiment_list=None,
                             rootdir='/n/coxfs01/2p-data', create_new=False,plot_rois=False,
-                            altdir=None, n_processes=1):
+                            altdir=None, n_processes=1, visual_area=None, state=None):
     
     
     # Create output_dir
@@ -480,15 +481,16 @@ def visualize_session_stats(animalid, session, fov, response_type='dff',
         os.makedirs(output_dir)
     print(output_dir)
 
-    
-    # Get meta info:
-    meta_fpath = os.path.join(rootdir, animalid, 'sessionmeta.json')
-    with open(meta_fpath, 'r') as f:
-        meta = json.load(f)
+     
+    if visual_area is None or state is None:
+        # Get meta info:
+        meta_fpath = os.path.join(rootdir, animalid, 'sessionmeta.json')
+        with open(meta_fpath, 'r') as f:
+            meta = json.load(f)
         
-    skey = [k for k, v in meta.items() if session in k and k.split('_')[-1] in fov][0]
-    visual_area = meta[skey]['visual_area']
-    state = meta[skey]['state']
+        skey = [k for k, v in meta.items() if session in k and k.split('_')[-1] in fov][0]
+        visual_area = meta[skey]['visual_area']
+        state = meta[skey]['state']
     
     if altdir is not None:
         alternate_savedir = os.path.join(altdir, '%s-sessions' % visual_area)
@@ -577,14 +579,33 @@ def visualize_session_stats(animalid, session, fov, response_type='dff',
 
 def main(options):
     opts = extract_options(options)
-    visualize_session_stats(opts.animalid, opts.session, opts.fov,
-                            traceid=opts.traceid, trace_type=opts.trace_type,
-                            rootdir=opts.rootdir, create_new=opts.create_new,
-                            altdir=opts.altdir, n_processes=opts.n_processes,
-                            response_type=opts.response_type, 
-                            responsive_test=opts.responsive_test,
-                            responsive_thr=opts.responsive_thr,
-                            n_stds=opts.n_stds
+    
+    animalid = opts.animalid
+    session = opts.session
+    fov = opts.fov
+    traceid = opts.traceid
+    rootdir=opts.rootdir
+    create_new=opts.create_new
+    altdir = opts.altdir
+    n_processes = int(opts.n_processes)
+    response_type = opts.response_type
+    
+    responsive_test = opts.responsive_test
+    responsive_thr = float(opts.responsive_thr)
+    n_stds = float(opts.n_stds)
+    visual_area = opts.visual_area
+    state = opts.state
+    trace_type = opts.trace_type
+    
+    
+    visualize_session_stats(animalid, session, fov,
+                            traceid=traceid, trace_type=trace_type,
+                            rootdir=rootdir, create_new=create_new,
+                            altdir=altdir, n_processes=n_processes,
+                            response_type=response_type, 
+                            responsive_test=responsive_test,
+                            responsive_thr=responsive_thr,
+                            n_stds=n_stds, visual_area=visual_area, state=state,
                             )
 
     # In[51]:

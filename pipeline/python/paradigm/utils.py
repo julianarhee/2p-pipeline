@@ -42,7 +42,7 @@ from collections import Counter
 from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
 #
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pipeline.python.traces.utils import get_frame_info
+from pipeline.python.utils import get_frame_info
 #
 #%%
 def combine_run_info(D, identical_fields=[], combined_fields=[]):

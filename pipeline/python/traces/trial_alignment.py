@@ -18,8 +18,7 @@ import sys
 
 import pandas as pd
 import numpy as np
-from pipeline.python.utils import natural_keys
-from pipeline.python.traces import utils as tutils
+from pipeline.python.utils import natural_keys, get_frame_info
 
 from pipeline.python.paradigm import utils as putils
 
@@ -336,7 +335,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                     
             #% # Get SCAN IMAGE info for run:
             run_name = os.path.split(rundir)[-1]
-            si = tutils.get_frame_info(rundir)
+            si = get_frame_info(rundir)
             
             #% # Load MW info to get stimulus details:
             mw_fpath = glob.glob(os.path.join(rundir, 'paradigm', 'trials_*.json'))[0] # 

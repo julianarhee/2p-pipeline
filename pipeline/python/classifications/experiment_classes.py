@@ -58,7 +58,7 @@ from pipeline.python.traces.utils import load_TID
 from pipeline.python.rois.utils import load_roi_masks, get_roiid_from_traceid
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pipeline.python.traces.utils import get_frame_info
+#from pipeline.python.traces.utils import get_frame_info
 
 from pipeline.python.retinotopy import utils as retinotools
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
@@ -68,7 +68,7 @@ from pipeline.python.classifications import test_responsivity as resp
 
 #from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
 from pipeline.python.classifications import bootstrap_osi as osi
-from pipeline.python.utils import label_figure, natural_keys
+from pipeline.python.utils import label_figure, natural_keys, get_frame_info, check_counts_per_condition
 
 import glob
 import os
@@ -561,39 +561,39 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
         print("-- Unable to load stats: %s [%s]" % (responsive_test, exp_name))
         
     return rstats, roi_list, nrois_total
-
-def check_counts_per_condition(raw_traces, labels):
-    # Check trial counts / condn:
-    #print("Checking counts / condition...")
-    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
-    conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
-    if len(conds_to_downsample) > 0:
-        print("... adjusting for equal reps / condn...")
-        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
-                  for i in conds_to_downsample]
-        trials_kept = []
-        for cfg in labels['config'].unique():
-            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
-            if cfg in d_cfgs:
-                #ntrials_remove = len(c_trialnames) - min_n
-                #print("... removing %i trials" % ntrials_remove)
-    
-                # In-place shuffle
-                random.shuffle(c_trialnames)
-    
-                # Take the first 2 elements of the now randomized array
-                trials_kept.extend(c_trialnames[0:min_n])
-            else:
-                trials_kept.extend(c_trialnames)
-    
-        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist()
-        
-        tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
-        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
-        return tmp_traces, tmp_labels
-
-    else:
-        return raw_traces, labels
+#
+#def check_counts_per_condition(raw_traces, labels):
+#    # Check trial counts / condn:
+#    #print("Checking counts / condition...")
+#    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
+#    conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
+#    if len(conds_to_downsample) > 0:
+#        print("... adjusting for equal reps / condn...")
+#        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
+#                  for i in conds_to_downsample]
+#        trials_kept = []
+#        for cfg in labels['config'].unique():
+#            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
+#            if cfg in d_cfgs:
+#                #ntrials_remove = len(c_trialnames) - min_n
+#                #print("... removing %i trials" % ntrials_remove)
+#    
+#                # In-place shuffle
+#                random.shuffle(c_trialnames)
+#    
+#                # Take the first 2 elements of the now randomized array
+#                trials_kept.extend(c_trialnames[0:min_n])
+#            else:
+#                trials_kept.extend(c_trialnames)
+#    
+#        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist()
+#        
+#        tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
+#        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+#        return tmp_traces, tmp_labels
+#
+#    else:
+#        return raw_traces, labels
         
 #%%
 
@@ -725,7 +725,7 @@ class Session():
     
                 
     def load_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
-                  make_equal=True, rootdir='/n/coxfs01/2p-data', update_self=True):
+                  make_equal=True, rootdir='/n/coxfs01/2p-data', update_self=True, add_offset=True):
         
         '''Set experiment = None to load all data'''
         

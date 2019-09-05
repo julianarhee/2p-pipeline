@@ -94,8 +94,8 @@ from stat import S_IREAD, S_IRGRP, S_IROTH
 
 from pipeline.python.paradigm import utils as util #.utils import format_stimconfigs
 
-from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file
-from pipeline.python.traces.utils import get_frame_info, load_TID, get_metric_set
+from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file, get_frame_info
+from pipeline.python.traces.utils import load_TID, get_metric_set
 
 pp = pprint.PrettyPrinter(indent=4)
 

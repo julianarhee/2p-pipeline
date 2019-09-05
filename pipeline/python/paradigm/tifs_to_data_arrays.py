@@ -21,8 +21,9 @@ import seaborn as sns
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 from pipeline.python.paradigm import align_acquisition_events as acq
-from pipeline.python.traces.utils import get_frame_info
+#from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.paradigm import utils as util
+from pipeline.python.utils import get_frame_info
 #
 #def test_drift_correction(raw_df, F0_df, corrected_df, run_info, test_roi='roi00001',):
 #    
