@@ -1271,8 +1271,10 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             
             if gof >= 0.66:
                 goodrois.append(roi)
-                
-            roidfs.append(average_metrics_across_iters(roif))
+             
+            roidfs.append(pd.DataFrame(roif.sort_values(by='response_pref').iloc[0]).T)
+
+            #roidfs.append(average_metrics_across_iters(roif))
             
             #roidfs.append(pd.Series(roif.mean(axis=0), name=roi))
             metrics_by_config.append(roif)
