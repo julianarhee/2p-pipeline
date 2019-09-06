@@ -234,11 +234,11 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix, si, frame_sh
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084'
-session = '20190522'
+animalid = 'JC091'
+session = '20190602'
 fov = 'FOV1_zoom2p0x'
 
-experiment = 'gratings'
+experiment = 'rfs'
 traceid = 'traces001'
 
 
@@ -277,11 +277,11 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
         print("This is actually a RFs, but was previously called 'gratings'")
         experiment = 'gratings'
 
-    rawfns = sorted(glob.glob(os.path.join(fovdir, '*%s*' % experiment, 'traces', '%s*' % traceid, 'files', '*.hdf5')), key=natural_keys)
+    rawfns = sorted(glob.glob(os.path.join(fovdir, '*%s_*' % experiment, 'traces', '%s*' % traceid, 'files', '*.hdf5')), key=natural_keys)
     print("Found %i raw file arrays." % len(rawfns))
     
     #%
-    runpaths = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment,
+    runpaths = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
                               'traces', '%s*' % traceid, 'files')), key=natural_keys)
     assert len(runpaths) > 0, "No extracted traces for run %s (%s)" % (experiment, traceid)
     
@@ -585,6 +585,9 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                  labels_data=labels_df,
                  labels_columns=labels_df.columns.tolist(),
                  run_info=run_info)
+        
+        del f0_df
+        del xdata_df
 
 
 #%%
