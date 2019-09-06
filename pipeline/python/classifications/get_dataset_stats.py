@@ -31,7 +31,8 @@ from pipeline.python.classifications.analyze_retino_structure import do_rf_fits_
 
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
-from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+#from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
+from pipeline.python.classifications import bootstrap_osi as osi
 
 from matplotlib.patches import Ellipse, Rectangle
 

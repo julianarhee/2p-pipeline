@@ -37,14 +37,14 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 from skimage import exposure
 from collections import Counter
 
-from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time
+from pipeline.python.utils import natural_keys, replace_root, print_elapsed_time, get_frame_info
 import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pipeline.python.traces.utils import get_frame_info
+#from pipeline.python.traces.utils import get_frame_info
 
 from pipeline.python.retinotopy import utils as retinotools
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
