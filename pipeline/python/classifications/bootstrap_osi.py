@@ -1149,6 +1149,7 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
         print("*** done! ***")
    
     if len(goodrois)>0 and plot_metrics:
+        print("plotting evaluation metrics...")
         # Visualize fit metrics for each roi's stimulus config
         for roi, g in rmetrics_by_cfg.groupby(['cell']):
             for skey in g.index.tolist():
