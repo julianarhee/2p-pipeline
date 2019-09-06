@@ -1372,8 +1372,11 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
 def average_metrics_across_iters(fitdf):
     means = {}
     roi = int(fitdf['cell'].unique()[0])
+    #print("COLS:", fitdf.columns)
     for param in fitdf.columns:
-        if 'theta' in param:
+        if 'stim' in param:
+            meanval = fitdf[param].values[0]
+        elif 'theta' in param:
             meanval = np.rad2deg(spstats.circmean(np.deg2rad(fitdf[param] % 360.)))
         else:
             meanval = fitdf[param].mean()
