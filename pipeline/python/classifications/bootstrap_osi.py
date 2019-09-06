@@ -1171,7 +1171,8 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
 def aggregate_all_iters(bootresults, fitparams, gof_thr=0.66):
     
     niters = fitparams['n_bootstrap_iters']
-
+    interp = fitparams['n_intervals_interp'] > 1
+    
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
     print("%i cells fit at least 1 tuning curve." % len(passrois))
 
@@ -1181,7 +1182,7 @@ def aggregate_all_iters(bootresults, fitparams, gof_thr=0.66):
             if bootr['fits'] is None:
                 #print("%s: no fit" % str(stimparam))
                 continue
-            r2comb, gof, fitr = evaluate_fits(bootr)
+            r2comb, gof, fitr = evaluate_fits(bootr, interp=interp)
             if np.isnan(gof): # or gof < gof_thr:
                 #print("%s: bad fit" % str(stimparam))
                 continue
@@ -1230,6 +1231,7 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
    
     rmetrics=None; rmetrics_by_cfg=None; 
     niters = fitparams['n_bootstrap_iters']
+    interp = fitparams['n_intervals_interp']>1
 
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
     print("%i cells fit at least 1 tuning curve." % len(passrois))
@@ -1245,7 +1247,7 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             if bootr['fits'] is None:
                 #print("%s: no fit" % str(stimparam))
                 continue
-            r2comb, gof, fitr = evaluate_fits(bootr)
+            r2comb, gof, fitr = evaluate_fits(bootr, interp=interp)
             if np.isnan(gof) or gof < gof_thr:
                 #print("%s: bad fit" % str(stimparam))
                 continue
@@ -1254,7 +1256,7 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             rfdf['r2comb'] = [r2comb for _ in range(niters)]
             rfdf['gof'] = [gof for _ in range(niters)]
             
-            tmpd = pd.DataFrame(rfdf.mean(axis=0)).T #, index=[roi])
+            tmpd = average_metrics_across_iters(rfdf) #pd.DataFrame(rfdf.mean(axis=0)).T #, index=[roi])
             stimkey = 'sf-%.2f-sz-%i-sp-%i' % stimparam
             #tmpd['stimconfig'] = str(stimparam)
                 
@@ -1269,11 +1271,13 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             if gof >= 0.66:
                 goodrois.append(roi)
                 
-            roidfs.append(pd.Series(roif.mean(axis=0), name=roi))
+            roidfs.append(average_metrics_across_iters(roif))
+            
+            #roidfs.append(pd.Series(roif.mean(axis=0), name=roi))
             metrics_by_config.append(roif)
    
     if len(roidfs) > 0: 
-        rmetrics = pd.concat(roidfs, axis=1).T
+        rmetrics = pd.concat(roidfs, axis=0)
         rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
     
     return rmetrics, rmetrics_by_cfg
@@ -1327,7 +1331,7 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
     thetas = xv[0::n_intervals_interp] #[0:-1]
     origr = bootr['data']['responses'].mean(axis=0).values
     
-    r2comb, gof, fitr = evaluate_fits(bootr)        
+    r2comb, gof, fitr = evaluate_fits(bootr, interp=False)        
     ax = axes[1,0]
     ax.plot(thetas, origr, 'k', label='orig')
     ax.plot(thetas, fitr, 'r:', label='avg-fit')
