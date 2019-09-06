@@ -1281,6 +1281,9 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
    
     if len(roidfs) > 0: 
         rmetrics = pd.concat(roidfs, axis=0)
+        # rename indices to rois
+        new_ixs = [int(i) for i in rmetrics['cell'].values]
+        rmetrics.index = new_ixs
         rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
     
     return rmetrics, rmetrics_by_cfg
