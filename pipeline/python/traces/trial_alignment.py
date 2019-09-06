@@ -291,7 +291,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     
     
     # Check if this run has any excluded tifs
-    rundirs = sorted([d for d in glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment))\
+    rundirs = sorted([d for d in glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment))\
               if 'combined' not in d and os.path.isdir(d)], key=natural_keys)
 
     # #########################################################################
