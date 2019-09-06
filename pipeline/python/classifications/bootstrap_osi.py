@@ -1025,6 +1025,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     traceid_dir =  osidir.split('/tuning/')[0] #glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 'traces', '%s*' % traceid))[0]    
     
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
+    do_fits = False
 
     if not os.path.exists(data_fpath):
         # Realign traces
@@ -1033,9 +1034,8 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
         aggregate_experiment_runs(animalid, session, fov, 'gratings', traceid=traceid)
         print("*****corrected offsets!*****")
-                        
+        do_fits=True                        
 
-    do_fits = False
     if create_new is False:
         try:
             bootresults, fitparams = load_tuning_results(traceid_dir=traceid_dir,
@@ -1373,8 +1373,11 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
 def average_metrics_across_iters(fitdf):
     means = {}
     roi = int(fitdf['cell'].unique()[0])
+    #print("COLS:", fitdf.columns)
     for param in fitdf.columns:
-        if 'theta' in param:
+        if 'stim' in param:
+            meanval = fitdf[param].values[0]
+        elif 'theta' in param:
             meanval = np.rad2deg(spstats.circmean(np.deg2rad(fitdf[param] % 360.)))
         else:
             meanval = fitdf[param].mean()
