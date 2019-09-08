@@ -235,12 +235,16 @@ def load_tuning_results(animalid='', session='', fov='', run_name='', traceid='t
     bootresults=None; fitparams=None;
     if traceid_dir is None:
         osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name,
-                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))[0]
+                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))
     else:
-        osidir = glob.glob(os.path.join(traceid_dir, '*tuning*', fit_desc))[0]
+        osidir = glob.glob(os.path.join(traceid_dir, '*tuning*', fit_desc))
 
-    results_fpath = os.path.join(osidir, 'fitresults.pkl')
-    params_fpath = os.path.join(osidir, 'fitparams.json')
+    if len(osidir)==0:
+        return bootresults, fitparams
+    
+    
+    results_fpath = os.path.join(osidir[0], 'fitresults.pkl')
+    params_fpath = os.path.join(osidir[0], 'fitparams.json')
     
     if os.path.exists(results_fpath):
         print("Loading existing fits.")
