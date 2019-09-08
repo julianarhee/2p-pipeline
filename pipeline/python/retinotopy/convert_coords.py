@@ -169,7 +169,7 @@ def get_roi_position_um(rffits, tmp_roi_contours, rf_exp_name='rfs', convert_um=
     ylinspace = np.linspace(0, npix_y*yaxis_conversion, num=npix_y)
     
     # ---- Spatially sorted ROIs vs. RF position -----------------------
-    rf_rois = rffits.index.tolist() 
+    rf_rois = rffits['cell'].values #.index.tolist() 
     #colors = ['k' for _ in range(len(rf_rois))]
     # Get values for azimuth:
     spatial_rank_x = [sorted_roi_indices_xaxis.index(roi) for roi in rf_rois] # Get sorted rank for indexing
