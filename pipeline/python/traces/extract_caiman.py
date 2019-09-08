@@ -245,6 +245,8 @@ def get_file_paths(results_dir, mm_prefix='Yr'):
 
 def get_full_memmap_path(results_dir, mm_prefix='Yr'):
     print("Getting full mmap path for prefix: %s" % mm_prefix)
+    print("-- dir: %s" % results_dir)
+    print glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap'))
     fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % mm_prefix))[0]
     mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
     print("CORRECTED PREFIX: %s" % mm_prefix)
