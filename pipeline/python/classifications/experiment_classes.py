@@ -1723,12 +1723,22 @@ class ReceptiveFields(Experiment):
         
         data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, self.rois, self.trace_type, fit_desc])
 
+        #% Fit linear regression for brain coords vs VF coords
+        fit_roi_list =  estats.fits.index.tolist()
+        fig = evalrfs.compare_fits_by_condition( estats.fovinfo['positions'].loc[fit_roi_list], estats.fits )
+        pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
+        label_figure(fig, data_identifier)
+        pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.png'))
+        pl.close()
+        
         regresults = evalrfs.compare_regr_to_boot_params(bootresults, estats.fovinfo, 
                                         statsdir=statsdir, data_identifier=data_identifier)
         
         # Identify deviants
         deviants = evalrfs.identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
-        
+        with open(os.path.join(rfdir, 'evaluation', 'deviants.json'), 'w') as f:
+            json.dump(deviants, f, indent=4)
+
         return deviants
     
     

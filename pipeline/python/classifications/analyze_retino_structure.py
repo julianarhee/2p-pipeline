@@ -311,7 +311,7 @@ def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
     return ax, plotter
 
 
-def do_regr_on_fov(bdata, cis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
+def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
     
     fig, ax = pl.subplots(figsize=(15,10))
     
@@ -324,27 +324,33 @@ def do_regr_on_fov(bdata, cis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
     axname = 'xpos' if cond=='azimuth' else 'ypos'
     parname = 'x0' if cond=='azimuth' else 'y0'
     
-#    g = sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf, ci=alpha*100, color='r', marker='o',
-#                scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(alpha*100) )
+    # Get lis of cells that pass boot
+    roi_list = [k for k, g in bootdata.groupby(['cell'])]  
+    
+    # Identify which cells fail...
+    fail_rois = [r for r in posdf.index.tolist() if r not in roi_list]
+    fadedf = posdf.loc[fail_rois]
+    sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=fadedf, color='k', marker='x', fit_reg=False,
+                scatter_kws=dict(s=5, alpha=0.2), ax=ax, label='no fit')
 
-    sax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf, ci=ci*100, color='r', marker='o',
+    # Plot successes
+    ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='r', marker='o',
                 scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
-    
-    grid, yhat, err_bands = plotter.fit_regression(grid=plotter.x)
 
-    roi_list = [k for k, g in bdata.groupby(['cell'])]    
-    xvals = posdf['%s_fov' % axname][roi_list].values
-    yvals = posdf['%s_rf' % axname][roi_list].values
-    
-    # GET CI limits
+    # Get CIs from regression fit to "good data"
+    grid, yhat, err_bands = plotter.fit_regression(grid=plotter.x)
     e1 = err_bands[0, :] # err_bands[0, np.argsort(xvals)] <- sort by xpos to plot
     e2 = err_bands[1, :] #err_bands[1, np.argsort(xvals)]
     regr_cis = [(ex, ey) for ex, ey in zip(e1, e2)]
     
     # Get rois sorted by position:
-    x0_meds = [g[parname].mean() for k, g in bdata.groupby(['cell'])]
-    x0_lower = cis['%s_lower' % parname][roi_list]
-    x0_upper = cis['%s_upper' % parname][roi_list]
+    x0_meds = [g[parname].mean() for k, g in bootdata.groupby(['cell'])]
+    x0_lower = bootcis['%s_lower' % parname][roi_list]
+    x0_upper = bootcis['%s_upper' % parname][roi_list]
+
+    # Plot bootstrap results
+    xvals = posdf['%s_fov' % axname][roi_list].values
+    yvals = posdf['%s_rf' % axname][roi_list].values
     
     ax.scatter(xvals, x0_meds, c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
     ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
@@ -370,6 +376,7 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     
     bootdata = bootresults['data']
     bootcis = bootresults['cis']
+    roi_list = [k for k, g in bootdata.groupby(['cell'])]    
     
     if ax is None:
         fig, ax = pl.subplots(figsize=(15,10))
@@ -382,11 +389,10 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     axname = 'xpos' if cond=='azimuth' else 'ypos'
     parname = 'x0' if cond=='azimuth' else 'y0'
     
-    g = sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf, ci=ci*100, color='r', marker='o',
+    g = sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='r', marker='o',
                 scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
 
 
-    roi_list = [k for k, g in bootdata.groupby(['cell'])]    
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
     
@@ -867,14 +873,17 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         ax = plot_regr_and_cis(bootresults, posdf, cond=cond, ax=ax)
         deviant_fpos = posdf['%s_fov' % axname][trudeviants]
         deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-        ax.scatter(deviant_fpos, deviant_rpos, c='cornflowerblue')
+        ax.scatter(deviant_fpos, deviant_rpos, c='royalblue', alpha=0.7, marker='*')
+        avg_interval = np.diff(ax.get_yticks()).mean()
         if label_deviants:
             deviant_ixs = [roi_list.index(d) for d in trudeviants]
             for ix, roi in zip(deviant_ixs, trudeviants):
                 if deviant_rpos[roi]  > max(regcis[ix]):
-                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+10), fontsize=6)
+                    print roi
+                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
                 else:
-                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-10), fontsize=6)
+                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)
+                    
         pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s.png' % cond))
         pl.close()
 
@@ -982,7 +991,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                                  ci=ci, n_processes=n_processes, sigma_scale=sigma_scale, create_new=create_new)
     
     # Plot distribution of params w/ 95% CI
-    rfdf = estats.fits
+    rfdf = estats.fits # N cells fit w.o evaluation
+    roi_list = rfdf.index.tolist()
     
     if plot_boot_distns:
         for roi, paramsdf in bootresults['data'].groupby(['cell']):
@@ -997,7 +1007,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     print("Doing linear regression of RF position on FOV position.")
 
     #% Fit linear regression for brain coords vs VF coords
-    fig = compare_fits_by_condition( estats.fovinfo['positions'], estats.fits )
+    fig = compare_fits_by_condition( estats.fovinfo['positions'].loc[roi_list], estats.fits )
     pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.png'))
@@ -1043,7 +1053,7 @@ def main(options):
     from pipeline.python.classifications import experiment_classes as util
 
     deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
-                              traceid=traceid, response=response_type, fit_thr=fit_thr,
+                              traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                               n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
                               transform_fov=transform_fov, plot_boot_distns=plot_boot_distns, sigma_scale=sigma_scale,
                               n_processes=n_processes, create_new=create_new, rootdir=rootdir)
@@ -1058,5 +1068,7 @@ if __name__ == '__main__':
             
             
             
+    #%%
     
+    options = ['-i', 'JC084', '-S', '20190525', '-A', 'FOV1_zoom2p0x', '-R', 'rfs']
     

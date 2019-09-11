@@ -52,7 +52,7 @@ import multiprocessing as mp
 def get_roi_fov_info(masks, zimg, roi_list=None, transform_fov=True):    
     '''
     Get FOV info relating cortical position to RF position of all cells.
-    Info is saved in: rfdir/fov_info.pkl
+    Info should be saved in: rfdir/fov_info.pkl
     
     Returns:
         fovinfo (dict)

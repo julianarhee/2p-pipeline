@@ -1258,7 +1258,7 @@ def create_rf_dir(animalid, session, fov, run_name,
 
 
 def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
-                       plot_spatial=False, transform_fov=True):    
+                       plot_spatial=False, transform_fov=True, create_new=False):    
     '''
     Get FOV info relating cortical position to RF position of all cells.
     Info is saved in: rfdir/fov_info.pkl
@@ -1276,9 +1276,9 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
                 (float) FOV limits (in pixels or um) for azimuth and elevation axes
     '''
     
-    get_fovinfo =False
+    get_fovinfo = create_new
     fovinfo_fpath = os.path.join(rfdir, 'fov_info.pkl')
-    if os.path.exists(fovinfo_fpath):
+    if os.path.exists(fovinfo_fpath) and create_new is False:
         print("... loading fov info")
         try:
             with open(fovinfo_fpath, 'rb') as f:
@@ -1526,7 +1526,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     else:
         rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=rois, rootdir=rootdir)
-    fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir)
+    fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir, create_new=create_new)
   
     return results, fovinfo
 
