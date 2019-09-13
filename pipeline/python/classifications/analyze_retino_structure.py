@@ -194,6 +194,9 @@ def bootstrap_rf_params(rdf, response_type='dff',
 
     #%    
     bparams = np.array(bparams)  
+    print("Got bparams", bparams.shape)
+    if bparams.shape[0]==0:
+        return None
     paramsdf = pd.DataFrame(data=bparams, columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'theta', 'offset'])
     paramsdf['cell'] = [rdf.index[0] for _ in range(bparams.shape[0])]
     
@@ -258,7 +261,11 @@ def bootstrap_param_fits(estats, response_type='dff',
     bootstrap_results = pool_bootstrap(rdf_list, bootparams, n_processes=n_processes)
     end_t = time.time() - start_t
     print "Multiple processes: {0:.2f}sec".format(end_t)
-    
+    print "--- %i results" % len(bootstrap_results)
+
+    if len(bootstrap_results)==0:
+        return {}
+ 
     bootdata = pd.concat(bootstrap_results)
     
     xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, estats.fitinfo['row_vals'], estats.fitinfo['col_vals'])
@@ -405,7 +412,7 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
             fmt='none', color='k', alpha=0.5)
     ax.set_xticks(np.arange(0, xaxis_lim, 100))
-    sns.despine(offset=1, trim=True, ax=ax)
+    #sns.despine(offset=1, trim=True, ax=ax)
     
     ax.legend()
             
@@ -883,7 +890,8 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
                     ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
                 else:
                     ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)
-                    
+        sns.despine(offset=1, trim=True, ax=ax)
+      
         pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s.png' % cond))
         pl.close()
 
@@ -989,7 +997,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         
     bootresults = evaluate_rfs(estats, rfdir=rfdir, n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
                                                  ci=ci, n_processes=n_processes, sigma_scale=sigma_scale, create_new=create_new)
-    
+   
+    deviants = [] 
+    if bootresults is None or len(bootresults.keys())==0:
+        return deviants 
     # Plot distribution of params w/ 95% CI
     rfdf = estats.fits # N cells fit w.o evaluation
     roi_list = rfdf.index.tolist()
