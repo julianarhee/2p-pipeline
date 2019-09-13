@@ -72,7 +72,7 @@ def extract_options(options):
 
     parser.add_option('-n', '--nproc', action="store",
                       dest="n_processes", default=2, help="N processes [default: 1]")
-    parser.add_option('-d', '--downsample', action="store",
+    parser.add_option('-d', '--ds-factor', action="store",
                       dest="ds_factor", default=5, help="Downsample factor (int, default: 5)")
 
     parser.add_option('--destdir', action="store",
