@@ -367,20 +367,18 @@ def main(options):
             n_bootstrap_iters = 1000
             n_resamples = 10
         '''
-
-        dsets = sessiondata[sessiondata['experiment']==stats]
+        if stats == 'rfs':
+            dsets = sessiondata[sessiondata['experiment'].isin(['rfs', 'rfs10'])]
+        else: 
+            dsets = sessiondata[sessiondata['experiment']==stats]
         #%%
         tuning_counts = {}
 
-        for animalid in dsets['animalid'].unique():
-            session_list = dsets[dsets['animalid']==animalid]['session'].unique()
-            for session in session_list:
-                fovs = dsets[(dsets['animalid']==animalid) & (dsets['session']==session)]['fov'].unique()
-                for fov in fovs:
-                    skey = '_'.join([animalid, session, fov])
-                    if stats=='gratings':
-                        exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-                        
+        for (visual_area, animalid, session, fov), g in dsets.groupby(['visual_area', 'animalid', 'session', 'fov']):
+            skey = '%s_%s' % (visual_area, '-'.join([animalid, session, fov]))
+            if stats=='gratings':
+                exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+                
 #                        fitdf, fitparams, fitdata = exp.get_tuning(create_new=create_new, n_processes=n_processes,
 #                                                                   responsive_test=responsive_test, responsive_thr=responsive_thr,
 #                                                                   n_stds=n_stds,
@@ -392,30 +390,33 @@ def main(options):
 #                        del fitparams
 #                        del fitdata
 #                        del exp
-                        bootresults, fitparams = exp.get_tuning(create_new=create_new, n_processes=n_processes,
-                                                                   responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                                   n_stds=n_stds, min_cfgs_above=min_cfgs_above,
-                                                                   n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
-                                                                   n_intervals_interp=n_intervals_interp, make_plots=plot_rois)
-                        
-                        rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, 
-                                                               make_plots=plot_rois, rootdir=rootdir)
-                        
-                        tuning_counts[skey] = goodrois if goodrois is not None else 0
-                        del bootresults
-                        del fitparams
-                        del rmetrics
-                        
-                    elif stats == 'rfs':
-                        fit_thr = float(optsE.rf_fit_thr)
-                        deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
-                                                  traceid=traceid, response_type=response_type, fit_thr=fit_thr,
-                                                  n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
-                                                  transform_fov=transform_fov, plot_boot_distns=plot_rois, sigma_scale=sigma_scale,
-                                                  n_processes=n_processes, create_new=plot_rois, rootdir=rootdir)
-                        
-                        tuning_counts[skey] = deviants
-                        
+                bootresults, fitparams = exp.get_tuning(create_new=create_new, n_processes=n_processes,
+                                                           responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                           n_stds=n_stds, min_cfgs_above=min_cfgs_above,
+                                                           n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
+                                                           n_intervals_interp=n_intervals_interp, make_plots=plot_rois)
+                
+                rmetrics, goodrois = exp.evaluate_fits(bootresults, fitparams, goodness_thr=goodness_thr, 
+                                                       make_plots=plot_rois, rootdir=rootdir)
+                
+                tuning_counts[skey] = goodrois if goodrois is not None else 0
+                del bootresults
+                del fitparams
+                del rmetrics
+                
+            elif stats == 'rfs':
+                fit_thr = float(optsE.rf_fit_thr)
+                rfnames = g['experiment'].unique()
+                print("Found %i rf experiments." % len(rfnames))
+                for rfname in rfnames: 
+                    deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
+                                          traceid=traceid, response_type=response_type, fit_thr=fit_thr,
+                                          n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
+                                          transform_fov=transform_fov, plot_boot_distns=plot_rois, sigma_scale=sigma_scale,
+                                          n_processes=n_processes, create_new=plot_rois, rootdir=rootdir)
+                
+                    tuning_counts['%s_%s' % (skey, rfname)] = deviants
+                
         
         if stats == 'gratings':
             #fit_desc = osi.get_fit_desc(response_type, responsive_test, responsive_thr, n_stds)
