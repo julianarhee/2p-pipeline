@@ -23,8 +23,8 @@ from scipy import stats
 from pipeline.python.paradigm import utils as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
-from pipeline.python.traces.utils import get_frame_info
-from pipeline.python.utils import label_figure
+#from pipeline.python.traces.utils import get_frame_info
+from pipeline.python.utils import label_figure, get_frame_info
 
 #rootdir = '/mnt/odyssey'
 #animalid = 'CE077'
