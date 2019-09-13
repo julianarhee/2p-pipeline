@@ -1017,7 +1017,7 @@ class Experiment(object):
                         npdata = np.load(neuropil_fpath)
                         neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
                         print("adding NP offset...")
-                        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
+                        raw_traces = xdata_df + neuropil_df.mean(axis=0).T + F0
                     else:
                         raw_traces = xdata_df + F0
 
