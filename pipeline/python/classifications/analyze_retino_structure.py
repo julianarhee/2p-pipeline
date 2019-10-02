@@ -320,7 +320,7 @@ def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
 
 def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
     
-    fig, ax = pl.subplots(figsize=(15,10))
+    fig, ax = pl.subplots(figsize=(20,10))
     
     ax.set_title(cond)
     ax.set_ylabel('RF position (rel. deg.)')
@@ -351,19 +351,29 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     regr_cis = [(ex, ey) for ex, ey in zip(e1, e2)]
     
     # Get rois sorted by position:
-    x0_meds = [g[parname].mean() for k, g in bootdata.groupby(['cell'])]
+    x0_meds = np.array([g[parname].mean() for k, g in bootdata.groupby(['cell'])])
     x0_lower = bootcis['%s_lower' % parname][roi_list]
     x0_upper = bootcis['%s_upper' % parname][roi_list]
 
+    ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
+    weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
+    #weird = [i for ii, i in enumerate(bootcis.index.tolist()) if ((bootcis['%s_upper' % parname][i]) - (bootcis['%s_lower' % parname][i])) > 40]
+    rlist = [i for i in roi_list if i not in weird]
+    roi_ixs = np.array([roi_list.index(i) for i in rlist])
+    roi_list = np.array([i for i in roi_list if i not in weird])
+    
     # Plot bootstrap results
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
     
-    ax.scatter(xvals, x0_meds, c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
-    ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
+    ax.scatter(xvals, x0_meds[roi_ixs], c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
+    ax.errorbar(xvals, x0_meds[roi_ixs], yerr=np.array(zip(x0_meds[roi_ixs]-x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs]-x0_meds[roi_ixs])).T, 
             fmt='none', color='k', alpha=0.5)
+    
     if xaxis_lim is not None:
         ax.set_xticks(np.arange(0, xaxis_lim, 100))
+        
+    ax.set_ylim([-10, 40])
     sns.despine(offset=1, trim=True, ax=ax)
     
     ax.legend()
@@ -386,7 +396,7 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     roi_list = [k for k, g in bootdata.groupby(['cell'])]    
     
     if ax is None:
-        fig, ax = pl.subplots(figsize=(15,10))
+        fig, ax = pl.subplots(figsize=(20,10))
     
     ax.set_title(cond)
     ax.set_ylabel('RF position (rel. deg.)')
@@ -396,21 +406,37 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     axname = 'xpos' if cond=='azimuth' else 'ypos'
     parname = 'x0' if cond=='azimuth' else 'y0'
     
-    g = sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='r', marker='o',
-                scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
+    g = sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='k', marker='o',
+                scatter_kws=dict(s=50, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
 
 
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
     
     # Get rois sorted by position:
-    x0_meds = [g[parname].mean() for k, g in bootdata.groupby(['cell'])]
+    x0_meds = np.array([g[parname].mean() for k, g in bootdata.groupby(['cell'])])
     x0_lower = bootcis['%s_lower' % parname][roi_list]
     x0_upper = bootcis['%s_upper' % parname][roi_list]
+
+    ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
+    weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
+    #weird = [i for ii, i in enumerate(bootcis.index.tolist()) if ((bootcis['%s_upper' % parname][i]) - (bootcis['%s_lower' % parname][i])) > 40]
+    rlist = [i for i in roi_list if i not in weird]
+    roi_ixs = np.array([roi_list.index(i) for i in rlist])
+    roi_list = np.array([i for i in roi_list if i not in weird])
     
-    ax.scatter(xvals, x0_meds, c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
-    ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
+    # Plot bootstrap results
+    xvals = posdf['%s_fov' % axname][roi_list].values
+    yvals = posdf['%s_rf' % axname][roi_list].values
+    
+    ax.scatter(xvals, x0_meds[roi_ixs], c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
+    ax.errorbar(xvals, x0_meds[roi_ixs], yerr=np.array(zip(x0_meds[roi_ixs]-x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs]-x0_meds[roi_ixs])).T, 
             fmt='none', color='k', alpha=0.5)
+    
+#
+#    ax.scatter(xvals, x0_meds, c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
+#    ax.errorbar(xvals, x0_meds, yerr=np.array(zip(x0_meds-x0_lower, x0_upper-x0_meds)).T, 
+#            fmt='none', color='k', alpha=0.5)
     ax.set_xticks(np.arange(0, xaxis_lim, 100))
     #sns.despine(offset=1, trim=True, ax=ax)
     
@@ -838,7 +864,7 @@ def compare_regr_to_boot_params(bootresults, fovinfo,
         regresults[cond] = {'cis': regci, 'outliers': outliers}
         
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.png' % cond))
+        pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.svg' % cond))
         pl.close()
     
     return regresults
@@ -880,7 +906,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         ax = plot_regr_and_cis(bootresults, posdf, cond=cond, ax=ax)
         deviant_fpos = posdf['%s_fov' % axname][trudeviants]
         deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-        ax.scatter(deviant_fpos, deviant_rpos, c='royalblue', alpha=0.7, marker='*')
+        ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='royalblue', s=20, alpha=0.7)
         avg_interval = np.diff(ax.get_yticks()).mean()
         if label_deviants:
             deviant_ixs = [roi_list.index(d) for d in trudeviants]
@@ -889,10 +915,13 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
                     print roi
                     ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
                 else:
-                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)
-        sns.despine(offset=1, trim=True, ax=ax)
+                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
+        ax.set_ylim([-10, 40])
+        ax.set_xlim([0, 800])
+        
+        sns.despine( trim=True, ax=ax)
       
-        pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s.png' % cond))
+        pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s.svg' % cond))
         pl.close()
 
         deviants[cond] = trudeviants
@@ -974,15 +1003,15 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     print("Getting FOV info for rois.")
     rfdf = estats.fits
     #% Plot spatially ordered rois
-    if len(glob.glob(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted*.png'))) == 0:
+    if len(glob.glob(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted*.svg'))) == 0:
         
         fig = spatially_sort_compare_position(estats.fovinfo, transform=transform_fov)
         #%
         label_figure(fig, data_identifier)
         if transform_fov:
-            pl.savefig(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted_rois_%s_transformed.png' % (rfname)))
+            pl.savefig(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted_rois_%s_transformed.svg' % (rfname)))
         else:
-            pl.savefig(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted_rois_%s.png' % (rfname)))
+            pl.savefig(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted_rois_%s.svg' % (rfname)))
         pl.close()
 
 
@@ -1021,7 +1050,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     fig = compare_fits_by_condition( estats.fovinfo['positions'].loc[roi_list], estats.fits )
     pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.png'))
+    pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.svg'))
     pl.close()
     
     # Compare regression fit to bootstrapped params
