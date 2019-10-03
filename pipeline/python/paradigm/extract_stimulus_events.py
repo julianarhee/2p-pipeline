@@ -194,7 +194,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
       
         
         print "Parsing %s" % trial
-        #if trial == 'trial00421':
+        #if trial == 'trial00051':
         #    break
     
         # Create hash of current MWTRIAL dict:
@@ -302,6 +302,9 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
     
                     if cval[1] == bitcode and prev_val == bitcode: # First time, already have had 1 occurrence
                         nreps_curr += 1
+                        #print nreps_curr, cval
+                    else:
+                        nreps_curr=0
                     prev_val = cval[1]
     
                     if (len(bitcodes) > 2) and bi > 0 and (nreps_curr < min_nreps):

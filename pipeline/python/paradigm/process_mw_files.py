@@ -764,6 +764,8 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
         condition_evs = df.get_events('condition')
         #print len(condition_evs)
         condition_names = ['left', 'right', 'bottom', 'top']  # 0=left start, 1=right start, 2=bottom start, 3=top start
+        if 4 in list(set([e.value for e in condition_evs])):
+            condition_names.append('blank')
         run_start_idxs = [i+1 for i,v in enumerate(condition_evs[0:len(condition_evs)-1]) if v.value==-1 and condition_evs[i+1].value>=0]  # non-run values for "condition" is -1
         run_start_idxs = [run_start_idxs[selected_run] for selected_run in user_run_selection]
         for run_idx,run_start_idx in enumerate(run_start_idxs):
@@ -799,25 +801,29 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
         # Sort bar events into a dict that contains all the session's runs:
         order_in_session = 0
         stimevents = dict()
-        ncond_rep = np.array([0,0,0,0])
+        ncond_rep = np.array([0 for _ in range(len(condition_names))]) #np.array([0,0,0,0])
         for ridx,run in enumerate(bar_states):
-
-            if np.sum(np.diff([r[1][1] for r in run]))==0:                    # VERTICAL bar, since ypos does not change.
-                positions = [i[1][0] for i in run]                            # Only "xpos" is changing value.
-                if positions[0] < 0:                                          # LEFT of center is negative, so bar starts at left.
-                    restarts = list(np.where(np.diff(positions) < 0)[0] + 1)  # Cycle starts occur when pos. goes from POS-->NEG.
-                    curr_run = 'left'
-                else:                                                         # RIGHT of center is positive, bar starts from right.
-                    restarts = list(np.where(np.diff(positions) > 0)[0] + 1)  # Cycle starts occur when goes from NEG-->POS.
-                    curr_run = 'right'
-            else:                                                             # HORIZONTAL bar, xpos doesn't change.
-                positions = [i[1][1] for i in run]
-                if positions[0] < 0:                                          # BELOW center is negative, bar starts at bottom.
-                    restarts = list(np.where(np.diff(positions) < 0)[0] + 1)
-                    curr_run = 'bottom'
-                else:
-                    restarts = list(np.where(np.diff(positions) > 0)[0] + 1)  # ABOVE center is positive, bar starts at top.
-                    curr_run = 'top'
+            if np.sum(np.diff([r[1][1] for r in run]))==0 and np.sum(np.diff([r[1][0] for r in run]))==0:
+                curr_run = 'blank'
+                restarts = []
+                positions = []
+            else:
+                if np.sum(np.diff([r[1][1] for r in run]))==0:                    # VERTICAL bar, since ypos does not change.
+                    positions = [i[1][0] for i in run]                            # Only "xpos" is changing value.
+                    if positions[0] < 0:                                          # LEFT of center is negative, so bar starts at left.
+                        restarts = list(np.where(np.diff(positions) < 0)[0] + 1)  # Cycle starts occur when pos. goes from POS-->NEG.
+                        curr_run = 'left'
+                    else:                                                         # RIGHT of center is positive, bar starts from right.
+                        restarts = list(np.where(np.diff(positions) > 0)[0] + 1)  # Cycle starts occur when goes from NEG-->POS.
+                        curr_run = 'right'
+                else:                                                             # HORIZONTAL bar, xpos doesn't change.
+                    positions = [i[1][1] for i in run]
+                    if positions[0] < 0:                                          # BELOW center is negative, bar starts at bottom.
+                        restarts = list(np.where(np.diff(positions) < 0)[0] + 1)
+                        curr_run = 'bottom'
+                    else:
+                        restarts = list(np.where(np.diff(positions) > 0)[0] + 1)  # ABOVE center is positive, bar starts at top.
+                        curr_run = 'top'
 
             restarts.append(0)                                                # Add 0 so first start is included in all starting-position indices.
             if curr_run in stimevents.keys():                                        # Add repetition number if this condition is a repeat
@@ -833,6 +839,9 @@ def get_bar_events(dfn, single_run=True, triggername='', remove_orphans=True, bo
                 elif curr_run == 'top':
                     ncond_rep[3] += 1
                     rep_count = ncond_rep[3]
+                elif curr_run == 'blank':
+                    ncond_rep[4] += 1
+                    rep_count = ncond_rep[4]
 
                 curr_run = curr_run + '_' + str(rep_count+1)
 
@@ -929,6 +938,9 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
         print "Expected %i pixel events, missing %i pevs." % (nexpected_pixelevents, nexpected_pixelevents-len(pixelevents))
 
         stimnames = ['left', 'right', 'top', 'bottom']
+        print "Stim names:", list(set([k.split('_')[0] for k in stimevents.keys()]))
+        if len(list(set([k.split('_')[0] for k in stimevents.keys()])))==5:
+            stimnames.append('blank')
 
         # GET TRIAL INFO FOR DB:
         trial_list = [(stimevents[k].ordernum, k) for k in stimevents.keys()]
