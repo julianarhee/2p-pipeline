@@ -769,8 +769,9 @@ def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf,
     
     return fig
 
-def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, nframes_per_trial=89,
-                            response_type='response', nframes_plot=45, yunit_sec=1.0, 
+def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
+                            nframes_per_trial=89, vmin=None, vmax=None, scaley=None,
+                            response_type='response', nframes_plot=45, yunit_sec=1.0, lw=1, 
                             cmap='bone', linecolor='darkslateblue', start_frame=0, row_vals=[], col_vals=[]):
     nr = len(row_vals)
     nc = len(col_vals)
@@ -778,9 +779,11 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
     #stim_on_frame = labels['stim_on_frame'].unique()[0]
     
     fig, axes = pl.subplots(nr, nc, figsize=(12, 6))
-    
+
     coordmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
-    norm = mpl.colors.Normalize(vmin=coordmap.min(), vmax=coordmap.max())
+    vmin = coordmap.min() if vmin is None else vmin
+    vmax = coordmap.max() if vmax is None else vmax
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cmapper = cm.ScalarMappable(norm=norm, cmap=cmap)
     
     ymin=0; ymax=0;
@@ -807,7 +810,7 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
             elif len(tsecs) > nframes_plot:
                 tsecs = tsecs[0:nframes_plot]
             tsecs = np.array(tsecs).astype('float')
-            ax.plot(tsecs, avg_trace, linecolor, lw=1)
+            ax.plot(tsecs, avg_trace, linecolor, lw=lw)
             y1 = np.array(avg_trace + sem_trace)
             y2 = np.array(avg_trace - sem_trace)
             
@@ -815,11 +818,11 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
             ax.tick_params(axis='both', which='both', length=0, labelsize=0)
             ax.set_xticks([])
             ax.set_yticks([])
-            ymin = min([ymin, avg_trace.min()-sem_trace.min()])
-            ymax = max([ymax, avg_trace.max() + sem_trace.max()])
+            ymin = min([ymin, np.nanmin(avg_trace)-np.nanmin(sem_trace)])
+            ymax = max([ymax, np.nanmax(avg_trace) + np.nanmax(sem_trace)])
 
-    ymin = round(ymin, 1) #round(min([ymin, 0]), 1)
-    ymax = round(min([ymax, 2]), 1)
+    ymin = round(ymin, 1) #if scaley is None else scaley[0] #round(min([ymin, 0]), 1)
+    ymax = round(ymax, 1) #if scaley is None else scaley[1]
     for ax in axes.flat:
         ax.set_ylim([ymin, ymax])
         for pos in ['top', 'bottom', 'right', 'left']:
@@ -839,15 +842,17 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
     leg.clear()
     leg.plot(tsecs, avg_trace, alpha=1)
     
+    
     leg.set_ylim([ymin, ymax])
-    yscale = min([ymax, 0.2])
+    yscale = min([ymax, 0.4])
     leg.set_yticks([ymin, yscale-np.abs(ymin)])
     yunits = 'std' if response_type=='zscore' else response_type
     leg.set_ylabel('%.1f %s' % (yscale, yunits))
     
-    
-    leg.set_xlim([tsecs.min(), tsecs.max()])
-    leg.set_xticks([round(tsecs.min(),1), round(tsecs.min()+yunit_sec, 1)])
+    xmin = round(np.nanmin(tsecs), 1)
+    xmax = round(np.nanmax(tsecs), 1)
+    leg.set_xlim([xmin, xmax])
+    leg.set_xticks([0, yunit_sec])
     leg.set_xticklabels([])
     leg.tick_params(axis='both', which='both', length=0, labelsize=0, pad=0.01)
     sns.despine(ax=leg, trim=True)
@@ -914,6 +919,68 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     
     return fig
     
+
+
+
+def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
+    
+    '''
+    fitdf:  dataframe w/ converted fit params 
+    '''
+    row_vals = sorted(sdf[rows].unique())
+    col_vals = sorted(sdf[cols].unique())
+
+    majors = np.array([np.abs(fitdf['sigma_x'][rid]*sigma_scale) for rid in fit_roi_list])
+    minors = np.array([np.abs(fitdf['sigma_y'][rid]*sigma_scale) for rid in fit_roi_list])
+
+    print "Avg sigma-x, -y: %.2f" % majors.mean()
+    print "Avg sigma-y: %.2f" % minors.mean()
+    print "Average RF size: %.2f" % np.mean([majors.mean(), minors.mean()])
+    
+    avg_rfs = (majors + minors) / 2.
+    
+    screen_left = -1*screen['azimuth']/2.
+    screen_right = screen['azimuth']/2.
+    screen_top = screen['elevation']/2.
+    screen_bottom = -1*screen['elevation']/2.
+    
+    
+    fig, ax = pl.subplots(figsize=(12, 6))
+
+    
+    rcolors=iter(cm.bone(np.linspace(0,1,len(fit_roi_list)+5)))
+    for rid in fit_roi_list:
+        rcolor = next(rcolors)
+        #ax.plot(fitdf['x0'][rid], fitdf['y0'][rid], marker='*', color=rcolor)        
+        #xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals, rid=rid)        
+        ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
+                      abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
+                      angle=np.rad2deg(fitdf['theta'][rid]))
+
+        ell.set_alpha(0.9)
+        ell.set_edgecolor(rcolor)
+        ell.set_facecolor('none')
+        ax.add_patch(ell)
+    #ax.invert_yaxis()
+    
+    ax.set_ylim([screen_bottom, screen_top])
+    ax.set_xlim([screen_left, screen_right])
+    ax.patch.set_color('gray')
+    ax.patch.set_alpha(0.5)
+    
+    fig.patch.set_visible(False) #(False) #('off')
+    ax.set_xticks([])
+    ax.set_xticklabels([])
+    ax.set_yticks([])
+    ax.set_yticklabels([])
+        
+        
+    #summary_str = "Avg sigma-x, -y: (%.2f, %.2f)\nAvg RF size: %.2f (min: %.2f, max: %.2f)" % (np.mean(majors), np.mean(minors), np.mean([np.mean(majors), np.mean(minors)]), avg_rfs.min(), avg_rfs.max())
+    #pl.text(ax.get_xlim()[0]-12, ax.get_ylim()[0]-8, summary_str, ha='left', rotation=0, wrap=True)
+    
+    return fig
+    
+
 
 #%%
 
@@ -1462,7 +1529,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             # -----------------------------------------------------------------------------
             linecolor = 'darkslateblue' #'purple'
             cmap = 'bone'
-            nframes_plot = stim_on_frame + nframes_on + int(np.floor(fr*1.0))
+            nframes_plot = stim_on_frame + nframes_on + int(np.floor(fr*1.5))
             start_frame=0
             yunit_sec = round(nframes_on/fr, 1)
                 
@@ -1472,8 +1539,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 os.makedirs(best_rois_figdir)
     
             for rid in fit_roi_list:
-            
                 fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
+                                              vmin=-0.05, vmax=0.5, scaley=[-0.05, 0.6], lw=0.5,
                                               nframes_per_trial=nframes_per_trial, response_type=response_type,
                                               nframes_plot=nframes_plot, start_frame=start_frame, yunit_sec=yunit_sec,
                                               row_vals=row_vals, col_vals=col_vals, linecolor=linecolor, cmap=cmap)
@@ -1481,7 +1548,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 label_figure(fig, data_identifier)
                 fig.suptitle('roi %i' % int(rid+1))
             
-                figname = 'roi%05d_fit-thr-%.2f_%s-rfmap-traces-overlay.png' % (int(rid+1), fit_thr, response_type)
+                figname = 'roi%05d-overlay.pdf' % (int(rid+1)) #, fit_thr, response_type)
                 pl.savefig(os.path.join(best_rois_figdir, figname))
                 pl.close()
                 
@@ -1499,8 +1566,22 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         except Exception as e:
             traceback.print_exc()
             print("Error plotting RFs to screen coords.")
-
-        #%%
+            
+        try:
+            screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+        
+            fig = plot_rfs_to_screen_pretty(fitdf, sdf, screen, fit_roi_list=fit_roi_list)
+            label_figure(fig, data_identifier)
+            #%
+            figname = 'overlaid_RFs_pretty' 
+            pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
+            print figname
+            pl.close()
+        except Exception as e:
+            traceback.print_exc()
+            print("Error plotting RFs to screen coords.")
+            
+            #%%
         try:
             # Identify VF area to target:
             target_fov_dir = os.path.join(rfdir, 'target_fov')

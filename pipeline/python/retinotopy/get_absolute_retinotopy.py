@@ -87,8 +87,12 @@ def extract_options(options):
 #options = ['-i', 'JC067', '-S', '20190320', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
 #options = ['-i', 'JC076', '-S', '20190406', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 #options = ['-i', 'JC076', '-S', '20190420', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
-options = ['-i', 'JC090', '-S', '20190604', '-A', 'FOV3', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC090', '-S', '20190604', '-A', 'FOV3', '-R', 'retino_run1', '-r', 'analysis002']
 #options = ['-i', 'JC085', '-S', '20190622', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC084', '-S', '20190522', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
+
+#options = ['-i', 'JC091', '-S', '20190623', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+options = ['-i', 'JC085', '-S', '20190626', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 opts = extract_options(options)
@@ -176,9 +180,14 @@ print "Found %i mean-projection imgs." % len(mean_projection_fpaths)
 imgs = []
 for fp in mean_projection_fpaths:
     im = tf.imread(fp)
-    if rids[retinoid]['PARAMS']['downsample_factor'] is not None:
-        ds = int(rids[retinoid]['PARAMS']['downsample_factor'])
-        im = ra.block_mean(im, ds)
+    
+    if 'zoom1p0x' in fov:
+        import cv2
+        im = cv2.resize(im, (512, 512))
+    else:
+        if rids[retinoid]['PARAMS']['downsample_factor'] is not None:
+            ds = int(rids[retinoid]['PARAMS']['downsample_factor'])
+            im = ra.block_mean(im, ds)
     tmp_im = np.uint8(np.true_divide(im, np.max(im))*255)
     imgs.append(tmp_im)
     
