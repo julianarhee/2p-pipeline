@@ -12,6 +12,7 @@ import sys
 import optparse
 import json
 import re
+import logging
 import scipy.io
 import numpy as np
 import matplotlib as mpl
@@ -67,6 +68,30 @@ def get_image_description_SI(fname):
         image_descriptions.append(si_parse(field))
 
     return image_descriptions
+
+def val_parse(v):
+    """parse values from si tags into python objects if possible from si parse
+     Args:
+         v: si tags
+     Returns:
+        v: python object
+    """
+
+    try:
+        return eval(v)
+    except:
+        if v == 'true':
+            return True
+        elif v == 'false':
+            return False
+        elif v == 'NaN':
+            return np.nan
+        elif v == 'inf' or v == 'Inf':
+            return np.inf
+        else:
+            return v
+
+
 
 # #################################################################################3
 
