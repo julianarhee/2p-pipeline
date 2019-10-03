@@ -38,9 +38,19 @@ import pylab as plt
 from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import target_visual_field as vf
 from pipeline.python.retinotopy import utils as util
-from pipeline.python.retinotopy import do_retinotopy_analysis as ra
+#from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 from pipeline.python.retinotopy import estimate_RF_size as est
 # In[3]:
+from scipy import ndimage
+
+def block_mean(ar, fact):
+    assert isinstance(fact, int), type(fact)
+    sx, sy = ar.shape
+    X, Y = np.ogrid[0:sx, 0:sy]
+    regions = sy/fact * (X/fact) + Y/fact
+    res = ndimage.mean(ar, labels=regions, index=np.arange(regions.max() + 1))
+    res.shape = (sx/fact, sy/fact)
+    return res
 
 
 #get_ipython().magic(u'matplotlib notebook')
@@ -92,7 +102,8 @@ def extract_options(options):
 #options = ['-i', 'JC084', '-S', '20190522', '-A', 'FOV1', '-R', 'retino_run2', '-r', 'analysis002']
 
 #options = ['-i', 'JC091', '-S', '20190623', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
-options = ['-i', 'JC085', '-S', '20190626', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+#options = ['-i', 'JC085', '-S', '20190626', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
+options = ['-i', 'JC111', '-S', '20191003', '-A', 'FOV1', '-R', 'retino_run1', '-r', 'analysis002']
 
 
 opts = extract_options(options)
@@ -187,7 +198,7 @@ for fp in mean_projection_fpaths:
     else:
         if rids[retinoid]['PARAMS']['downsample_factor'] is not None:
             ds = int(rids[retinoid]['PARAMS']['downsample_factor'])
-            im = ra.block_mean(im, ds)
+            im = block_mean(im, ds)
     tmp_im = np.uint8(np.true_divide(im, np.max(im))*255)
     imgs.append(tmp_im)
     

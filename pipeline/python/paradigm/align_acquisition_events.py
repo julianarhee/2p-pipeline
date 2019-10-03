@@ -94,7 +94,7 @@ from stat import S_IREAD, S_IRGRP, S_IROTH
 
 from pipeline.python.paradigm import utils as util #.utils import format_stimconfigs
 
-from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file, get_frame_info
+from pipeline.python.utils import natural_keys, hash_file_read_only, print_elapsed_time, hash_file #, get_frame_info
 from pipeline.python.traces.utils import load_TID, get_metric_set
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -1690,7 +1690,7 @@ def create_roi_dataframes(options):
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
     #si_info = {'framerate': 44.67, 'volumerate': 44.67 }
-    si_info = get_frame_info(run_dir)
+    si_info = traces.get_frame_info(run_dir)
 
     # Load TRACE ID info:
     # =========================================================================

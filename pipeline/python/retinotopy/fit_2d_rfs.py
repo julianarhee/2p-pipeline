@@ -1122,8 +1122,10 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
     compare_kdes = False
 
     max_zscores = avg_resp_by_cond.max(axis=0)
-    xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
-        
+    #xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
+    xx = fitdf['x0']
+    yy = fitdf['y0']
+    
     xvals = np.array([xx[rid] for rid in fit_roi_list])
     yvals = np.array([yy[rid] for rid in fit_roi_list])
     weights = np.array([max_zscores[rid] for rid in fit_roi_list])
@@ -1365,6 +1367,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
         roi_contours = coor.contours_from_masks(masks)
         
         # Convert to brain coords
+        rfdf['cell'] = rfdf.index.tolist()
         fov_x, rf_x, xlim, fov_y, rf_y, ylim = coor.get_roi_position_um(rfdf, roi_contours, 
                                                                          rf_exp_name=rfname,
                                                                          convert_um=True,
@@ -1540,7 +1543,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     
             for rid in fit_roi_list:
                 fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
-                                              vmin=-0.05, vmax=0.5, scaley=[-0.05, 0.6], lw=0.5,
+                                              #vmin=-0.05, vmax=0.5, scaley=[-0.05, 0.6], lw=0.5,
                                               nframes_per_trial=nframes_per_trial, response_type=response_type,
                                               nframes_plot=nframes_plot, start_frame=start_frame, yunit_sec=yunit_sec,
                                               row_vals=row_vals, col_vals=col_vals, linecolor=linecolor, cmap=cmap)
@@ -1553,6 +1556,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 pl.close()
                 
         #%%
+        #fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
+
         try:
             screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
         
@@ -1597,7 +1602,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             print("Error finding target coords for FOV.")
             
 
-    fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
+    #fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
     #fit_thr = 0.5
     #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
     #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
@@ -1615,10 +1620,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC091' #'JC097' #'JC084' #'JC059'
-session = '20190602' #'20190623' #'20190522' #'20190227'
+animalid = 'JC111' #'JC097' #'JC084' #'JC059'
+session = '20191003' #'20190623' #'20190522' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_rfs_static'
+run = 'combined_rfs10_static'
 traceid = 'traces001' #'traces001'
 segment = False
 #visual_area = 'V1'
@@ -1627,7 +1632,7 @@ select_rois = False
 rows = 'ypos'
 cols = 'xpos'
 
-#options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid]
+options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid]
 #if segment:
 #    options.extend(['--segment', '-V', visual_area])
 
