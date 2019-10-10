@@ -178,20 +178,20 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                         
                     found_fovs = glob.glob(os.path.join(rootdir, animalid, session_str, '%s*' % fov_str))
                     for fov_dir in found_fovs:
-                        session_fpath = os.path.join(fov_dir, 'summaries', 'sessiondata.pkl')    
-    
-                        if os.path.exists(session_fpath):
-                            with open(session_fpath, 'rb') as f:
-                                S = pkl.load(f)
-                        else:
-                            print("Creating new session object...") #% (animalid, session_name))
-                            S = util.Session(animalid, session_str, '%s_%s' % (fov_str, fov_type), 
-                                             visual_area=visual_area, state=state,
-                                             rootdir=rootdir)
-                            with open(session_fpath, 'wb') as f:
-                                pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
-                            print("... created session object!")
-    
+#                        session_fpath = os.path.join(fov_dir, 'summaries', 'sessiondata.pkl')    
+#    
+#                        if os.path.exists(session_fpath):
+#                            with open(session_fpath, 'rb') as f:
+#                                S = pkl.load(f)
+#                        else:
+                        print("Creating new session object...") #% (animalid, session_name))
+                        S = util.Session(animalid, session_str, '%s_%s' % (fov_str, fov_type), 
+                                         visual_area=visual_area, state=state,
+                                         rootdir=rootdir)
+#                            with open(session_fpath, 'wb') as f:
+#                                pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
+#                            print("... created session object!")
+#    
                         experiment_list = S.get_experiment_list(traceid=traceid, trace_type=trace_type)
     
                         #sessiondatapaths[visual_area][animalid].update({s: experiment_list})
