@@ -385,7 +385,7 @@ def extract_options(options):
 #    return statsdir, stats_desc
 #
 
-def get_session_stats(S, response_type='dff', trace_type='corrected', 
+def get_session_stats(S, response_type='dff', trace_type='corrected', update_self=False,
                       responsive_test=None, responsive_thr=0.05, n_stds=2.5,
                       experiment_list=None, traceid='traces001', pretty_plots=False,
                       rootdir='/n/coxfs01/2p-data', create_new=True, n_processes=1):
@@ -448,7 +448,7 @@ def get_session_stats(S, response_type='dff', trace_type='corrected',
                                          n_stds=n_stds,
                                          pretty_plots=pretty_plots,
                                          traceid=traceid, trace_type=trace_type,
-                                         update=False, n_processes=n_processes)
+                                         update=update_self, n_processes=n_processes)
             if estats is not None:
                 if rename:
                     print("[%s] - renaming gratings back to rfs")
