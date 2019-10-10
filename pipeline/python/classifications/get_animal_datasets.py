@@ -21,18 +21,49 @@ import itertools
 
 from pipeline.python.utils import natural_keys
 from pipeline.python.classifications import utils as util
+import cPickle as pkl
 
 rootdir = '/n/coxfs01/2p-data'
+traceid = 'traces001'
 
 animalids = ['JC076', 'JC078', 'JC080', 'JC083', 'JC084', 'JC085', 'JC090', 'JC091', 'JC097', 'JC099', 'JC110', 'JC111']
 
 fov_type = 'zoom2p0x'
 
+
+
+
+animalids = get_animalids(fov_type=fov_type)
+
 for animalid in animalids:
     A = MetaData(animalid)
     slist = A.update_sessions(fov_type=fov_type)
 
+from pipeline.python.classifications import get_dataset_stats as gd
+options = ['-t', 'traces001', '-F', fov_type]
+optsE = gd.extract_options(options)
+sdata_fpath = os.path.join(optsE.aggregate_dir, 'dataset_info.pkl')
+
+sdata = gd.aggregate_session_info(traceid=optsE.traceid, trace_type=optsE.trace_type, 
+                                   state=optsE.state, fov_type=optsE.fov_type, 
+                                   visual_areas=optsE.visual_areas,
+                                   blacklist=optsE.blacklist, 
+                                   rootdir=optsE.rootdir)
+
+with open(sdata_fpath, 'wb') as f:
+    pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
 #%%
+
+def get_animalids(fov_type='zoom2px'):
+    
+    all_paths = glob.glob(os.path.join(rootdir, 'JC*', '20*', '*zoom2p0x*')) #sessionmeta.json'))
+    included_paths = [p for p in all_paths if int(p.split(rootdir)[1].split('/')[2]) >= 20190406]
+    animalids = sorted(list(set([p.split(rootdir)[1].split('/')[1] for p in included_paths])), key=natural_keys)
+    print("Found %i animals with FOV: %s" %(len(animalids),  fov_type))
+    
+    return animalids
+
 class MetaData():
     def __init__(self, animalid, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
@@ -40,6 +71,9 @@ class MetaData():
         self.sessions = {}
     
     def update_sessions(self, fov_type='zoom2p0x'):
+        blacklist = ['JC097_20190717_FOV1', 
+                     'JC089_20190523_FOV1', 'JC089_20190523_FOV2',
+                     'JC092_20190527_FOV1']
         # Check if anesthetized info / visual area info stored in metafile:
         meta_info_file = os.path.join(rootdir, self.animalid, 'sessionmeta.json')
         meta_info = {}
@@ -59,8 +93,8 @@ class MetaData():
             fov_name = os.path.split(session_path)[-1]
             print("[%s]: %s - %s" % (animalid, session_name, fov_name))
             skey = '%s_%s' % (session_name, fov_name.split('_')[0])
-            if self.animalid == 'JC097' and skey == '20190717_FOV1':
-                print("... scene dataset, skipping")
+            if '%s_%s' % (self.animalid, skey) in blacklist:
+                print("... excluded dataset, skipping")
                 continue
 
             # Update meta info if this is a new session:
