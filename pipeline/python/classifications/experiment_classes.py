@@ -673,7 +673,16 @@ class Session():
         tested_exps = [e for e in self.experiment_list if e in size_tested]    
         stimsizes = {}
         for exp in tested_exps:
-            stimsizes[exp] = self.experiments[exp].data.sdf.dropna()['size'].unique()
+            if exp not in self.experiments.keys():
+                E = Experiment(exp, self.animalid, self.session, self.fov)
+                sdf = E.get_stimuli()
+            else:
+                sdf = self.experiments[exp].data.sdf
+            if 'blobs' in exp:
+                stimsizes[exp] = np.array([int(round(i, 1)) for i in sdf.dropna()['size'].unique()])
+            else:
+                stimsizes[exp] = sdf['size'].unique()
+            #stimsizes[exp] = self.experiments[exp].data.sdf.dropna()['size'].unique()
         return stimsizes
  
     
