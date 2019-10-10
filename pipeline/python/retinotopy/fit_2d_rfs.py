@@ -1551,8 +1551,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 label_figure(fig, data_identifier)
                 fig.suptitle('roi %i' % int(rid+1))
             
-                figname = 'roi%05d-overlay.pdf' % (int(rid+1)) #, fit_thr, response_type)
-                pl.savefig(os.path.join(best_rois_figdir, figname))
+                figname = 'roi%05d-overlay' % (int(rid+1)) #, fit_thr, response_type)
+                pl.savefig(os.path.join(best_rois_figdir, '%s.pdf' % figname))
+                pl.savefig(os.path.join(best_rois_figdir, '%s.png' % figname))
+
                 pl.close()
                 
         #%%
