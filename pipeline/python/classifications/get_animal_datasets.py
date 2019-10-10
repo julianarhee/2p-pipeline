@@ -24,9 +24,13 @@ from pipeline.python.classifications import utils as util
 
 rootdir = '/n/coxfs01/2p-data'
 
-animalids = ['JC076', 'JC078', 'JC080', 'JC083', 'JC084', 'JC085', 'JC090', 'JC091', 'JC097', 'JC099']
+animalids = ['JC076', 'JC078', 'JC080', 'JC083', 'JC084', 'JC085', 'JC090', 'JC091', 'JC097', 'JC099', 'JC110', 'JC111']
 
 fov_type = 'zoom2p0x'
+
+for animalid in animalids:
+    A = MetaData(animalid)
+    slist = A.update_sessions(fov_type=fov_type)
 
 #%%
 class MetaData():
@@ -35,6 +39,50 @@ class MetaData():
         self.anesthetized_session_list = []
         self.sessions = {}
     
+    def update_sessions(self, fov_type='zoom2p0x'):
+        # Check if anesthetized info / visual area info stored in metafile:
+        meta_info_file = os.path.join(rootdir, self.animalid, 'sessionmeta.json')
+        meta_info = {}
+        if os.path.exists(meta_info_file):
+            try:
+                with open(meta_info_file, 'r') as f:
+                    meta_info = json.load(f)
+            except Exception as e:
+                print("...creating new meta file")
+                
+        # Get all session for current animal:
+        session_paths =  sorted(glob.glob(os.path.join(rootdir, self.animalid,  '*', 'FOV*_%s' % fov_type)), key=natural_keys)
+
+        print("Found %i acquisitions." % len(session_paths))
+        for si, session_path in enumerate(session_paths):
+            session_name = os.path.split(session_path.split('/FOV')[0])[-1]
+            fov_name = os.path.split(session_path)[-1]
+            print("[%s]: %s - %s" % (animalid, session_name, fov_name))
+            skey = '%s_%s' % (session_name, fov_name.split('_')[0])
+            if self.animalid == 'JC097' and skey == '20190717_FOV1':
+                print("... scene dataset, skipping")
+                continue
+
+            # Update meta info if this is a new session:
+            if skey not in meta_info.keys():
+                user_input = raw_input('--> (%s)\n--  Was this session anesthetized? [Y/n]' % skey)
+                if user_input == 'Y':
+                    #self.anesthetized_session_list.append(session_name)
+                    state = 'anesthetized'
+                else:
+                    state = 'awake'
+                visual_area = raw_input('--  Enter visual area recorded: ')
+                meta_info.update({skey: {'state': state,
+                                        'visual_area': visual_area}})
+            else:
+                state = meta_info[skey]['state']
+                visual_area = meta_info[skey]['visual_area']
+                
+            with open(meta_info_file, 'w') as f:
+                json.dump(meta_info, f, sort_keys=True, indent=4)
+        return meta_info
+    
+            
     def get_sessions(self, fov_type='zoom2p0x', session_list = [],
                      create_new=False, rootdir='/n/coxfs01/2p-data'):
 
@@ -300,7 +348,7 @@ def create_animal_objects(animalid, trace_type='corrected', traceid='traces001',
     
     
     A = MetaData(animalid)
-    A.get_sessions(fov_type=fov_type, create_new=True)
+    A.get_sessions(fov_type=fov_type, create_new=create_new)
     
     
     all_sessions = A.load_experiments(experiment=None, select_subset=False,                                      
@@ -459,7 +507,7 @@ traceid = 'traces001'
 trace_type = 'dff' 
 
 get_grouped = False   # Set to False to save dataframe as hdf5
-create_new = True
+create_new = False
 #
 #animalid = 'JC084'
 #A = create_animal_objects(animalid, trace_type=trace_type, traceid=traceid,
