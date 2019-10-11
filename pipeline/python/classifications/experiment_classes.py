@@ -797,6 +797,7 @@ class Session():
                 self.rois, tmp_tid = get_roi_id(self.animalid, self.session, self.fov, traceid, run_name=experiment_type, rootdir=rootdir)
             print("... ... got rois")
             try:        
+                exp = None
                 if tmp_tid != self.traceid and 'retino' not in experiment_type:
                     self.traceid = tmp_tid
                     print("... ... (renamed traceid)")
@@ -809,10 +810,11 @@ class Session():
                     # TODO:  ficx this, not implemented
                     exp = Objects(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
                 else:
-                    exp = Experiment(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
-                    assert exp.roi_id is not None, "NOT PROCESSED"
+                    print("Not implemented")
+                    #exp = Experiment(self.animalid, self.session, self.fov, self.traceid, rootdir=rootdir)
+                    #assert exp.roi_id is not None, "NOT PROCESSED"
                     
-                if exp.source is None:
+                if exp is None or exp.source is None:
                     continue
                 exp.load(trace_type=trace_type, update_self=True, make_equal=make_equal, add_offset=add_offset)
                 print("... ... loaded traces")
