@@ -93,12 +93,16 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001',
     rfits10, _ = util.get_receptive_field_fits(animalid, session, fov, traceid=traceid,
                                             response_type=response_type, run='combined_rfs10_static')
 
-    rfits_df = gdfs['rfs'].fits
+    rfits_df = gdfs['rfs'].fits.copy()
+    rfits_df['sigma_x'] = rfits_df['sigma_x']*sigma_scale
+    rfits_df['sigma_y'] = rfits_df['sigma_y']*sigma_scale
     xres = list(set(np.diff(rfits['col_vals'])))[0]
     yres = list(set(np.diff(rfits['row_vals'])))[0]
     print("rfs: X- and Y-res: (%i, %i)" % (xres, yres))
 
-    rfits_df10 =  gdfs['rfs10'].fits
+    rfits_df10 =  gdfs['rfs10'].fits.copy()
+    rfits_df10['sigma_x'] = rfits_df10['sigma_x']*sigma_scale
+    rfits_df10['sigma_y'] = rfits_df10['sigma_y']*sigma_scale
     xres10 = list(set(np.diff(rfits10['col_vals'])))[0]
     yres10 = list(set(np.diff(rfits10['row_vals'])))[0]
     print("rfs10: X- and Y-res: (%i, %i)" % (xres10, yres10))
@@ -120,7 +124,7 @@ def compare_rf_resolution(gdfs, animalid, session, fov, traceid='traces001',
         c[ci].set_alpha(0.5)
 
     ## Distribution of peak dF/Fs:
-    ax = pl.subplot2grid((2, 5), (0, 1), colspan=2, rowspan=1)
+    ax = pl.subplot2grid((2, 5), (0, 1), colspan=2, rowspan=1)            
     peak_dfs = [gdfs['rfs'].gdf.get_group(roi).groupby(['config']).mean()[response_type].max() for roi in roi_lists['rfs']]
     peak_dfs10 = [gdfs['rfs10'].gdf.get_group(roi).groupby(['config']).mean()[response_type].max() for roi in roi_lists['rfs10']]
     weights_rfs = np.ones_like(peak_dfs) / float(len(peak_dfs))
@@ -243,7 +247,10 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
     # Fraction of cells:
     ax = axes[1]
     for exp_name in exp_names:
-        peak_values = gdfs[exp_name].gdf.max()[response_type].values
+        print(exp_name)
+        peak_values= [gdfs[exp_name].gdf.get_group(ri).groupby(['config']).mean()[response_type].max() \
+                    for ri in gdfs[exp_name].gdf.groups]
+        #peak_values = gdfs[exp_name].gdf.max()[response_type].values
         weights = np.ones_like(peak_values) / float(len(event_rois))
         exp_str = '%s (%i)' % (exp_name, len(peak_values))
         sns.distplot(peak_values, label=exp_str, ax=ax, norm_hist=0, kde=False,
@@ -540,6 +547,7 @@ def visualize_session_stats(animalid, session, fov, response_type='dff',
         pl.savefig(os.path.join(stats_dir, 'compare_rfs_vs_rfs10_%s.png' % stats_desc))
         if alternate_savedir is not None:
             pl.savefig(os.path.join(alternate_savedir, "compareRFs_%s_%s_%s.png" % (state, visual_area, data_identifier.replace('|', '-'))))
+        
         pl.close()
         
         # # Visualize responses to event-based experiments:
