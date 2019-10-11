@@ -247,7 +247,7 @@ def get_dataset_info(aggregate_dir='/n/coxfs01/2p-data/aggregate-visual-areas',
 
 #%%
 
-options = ['-t', 'traces001', '--response-test', 'nstds', '--response-thr', '10', '-S', 'gratings']
+options = ['-t', 'traces001', '--response-test', 'nstds', '--response-thr', '10', '-S', 'responsivity']
 
 #%%
 def main(options):
@@ -316,23 +316,29 @@ def main(options):
         print(aggregate_stats_dir)
         
         emptystats = {}
-        for animalid in sessiondata['animalid'].unique():
-            session_list = sessions_by_animal[animalid].index.tolist()
-            for session in session_list:
-                fovs = sessions_by_animal[animalid][session]
 
-                for fov in fovs:
-                    nostats = respstats.visualize_session_stats(animalid, session, fov, 
-                                                             create_new=create_new, altdir=aggregate_stats_dir, 
-                                                             traceid=traceid, trace_type=trace_type,
-                                                             plot_rois=plot_rois,
-                                                             response_type=response_type, 
-                                                             responsive_test=responsive_test,
-                                                             responsive_thr=responsive_thr,
-                                                             n_stds = n_stds)
-                    
-                    dset_key = '_'.join([animalid, session, fov])
-                    emptystats[dset_key] = nostats
+        for (visual_area, animalid, session, fov), g in sessiondata.groupby(['visual_area', 'animalid', 'session', 'fov']):
+            skey = '%s_%s' % (visual_area, '-'.join([animalid, session, fov]))
+            #print skey
+
+                
+        #for animalid in sessiondata['animalid'].unique():
+        #    session_list = sessions_by_animal[animalid].index.tolist()
+        #    for session in session_list:
+        #        fovs = sessions_by_animal[animalid][session]
+
+        #       for fov in fovs:
+            nostats = respstats.visualize_session_stats(animalid, session, fov, 
+                                                     create_new=create_new, altdir=aggregate_stats_dir, 
+                                                     traceid=traceid, trace_type=trace_type,
+                                                     plot_rois=plot_rois,
+                                                     response_type=response_type, 
+                                                     responsive_test=responsive_test,
+                                                     responsive_thr=responsive_thr,
+                                                     n_stds = n_stds)
+            
+            dset_key = '_'.join([animalid, session, fov])
+            emptystats[dset_key] = nostats
 
         for k, checklist in emptystats.items():
             if len(checklist) == 0:
