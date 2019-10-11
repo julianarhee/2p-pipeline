@@ -1604,8 +1604,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             print("Error finding target coords for FOV.")
             
 
-    #fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
-    #fit_thr = 0.5
+    fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
+    fit_thr = 0.5
     #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
     #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
 #    
