@@ -550,11 +550,15 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     #% Combine all data trace types and save
     # #########################################################################
     # Get combo dir
-    combined_traceids = '_'.join([os.path.split(f)[-1] \
+    existing_combined = glob.glob(os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', '*%s*' % traceid))
+    if len(existing_combined) > 0:
+        combined_dir = os.path.join(existing_combined[0], 'data_arrays')
+    else:
+        combined_traceids = '_'.join([os.path.split(f)[-1] \
                                   for f in [glob.glob(os.path.join(rundir, 'traces', '%s*' % traceid))[0] \
                                             for rundir in rundirs]])
     
-    combined_dir = os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', combined_traceids, 'data_arrays')
+        combined_dir = os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', combined_traceids, 'data_arrays')
     if not os.path.exists(combined_dir):
         os.makedirs(combined_dir)
         
